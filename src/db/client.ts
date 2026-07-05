@@ -4,11 +4,25 @@
  * without touching schema or queries.
  */
 
-import { openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";
+import { openDatabaseAsync, openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";
 import { drizzle } from "drizzle-orm/expo-sqlite";
+import { Platform } from "react-native";
 import * as schema from "./schema";
 
 export const DB_NAME = "helix.db";
+
+/**
+ * Web only — must resolve before the first getSqlite() call. The sync API's
+ * worker bridge busy-waits a bounded number of spins for the response; on a
+ * cold load the worker (JS + wasm) isn't booted yet, so the first sync call
+ * throws "Sync operation timeout". Opening through the async API first boots
+ * the worker, after which sync opens respond within the spin budget.
+ */
+export async function warmupDb(): Promise<void> {
+  if (Platform.OS !== "web") return;
+  const handle = await openDatabaseAsync(DB_NAME);
+  await handle.closeAsync();
+}
 
 let sqlite: SQLiteDatabase | null = null;
 let database: ReturnType<typeof createDb> | null = null;
