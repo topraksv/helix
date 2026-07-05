@@ -37,7 +37,7 @@ export default function PersonsScreen() {
       <Card>
         <Row>
           <View style={{ flex: 1 }}>
-            <Field value={name} onChangeText={setName} placeholder="İsim" />
+            <Field value={name} onChangeText={setName} placeholder={tr.placeholders.personName} />
           </View>
           <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim()} />
         </Row>

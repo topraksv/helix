@@ -26,15 +26,15 @@ export default function TabsLayout() {
         options={{ title: tr.tabs.dashboard, tabBarIcon: ({ color }) => <TabIcon glyph="◉" color={color} /> }}
       />
       <Tabs.Screen
-        name="nakit-akisi"
+        name="cash-flow"
         options={{ title: tr.tabs.cashflow, tabBarIcon: ({ color }) => <TabIcon glyph="₺" color={color} /> }}
       />
       <Tabs.Screen
-        name="abonelikler"
+        name="subscriptions"
         options={{ title: tr.tabs.subscriptions, tabBarIcon: ({ color }) => <TabIcon glyph="↻" color={color} /> }}
       />
       <Tabs.Screen
-        name="ayarlar"
+        name="settings"
         options={{ title: tr.tabs.settings, tabBarIcon: ({ color }) => <TabIcon glyph="⚙" color={color} /> }}
       />
     </Tabs>

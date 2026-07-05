@@ -8,8 +8,9 @@
 import { create } from "zustand";
 import { getSupabase, isSupabaseConfigured } from "../sync/supabase";
 import { kv } from "../lib/kv";
+import { tr } from "../i18n/tr";
 
-const LAST_USER_KEY = "finans.last_user_id";
+const LAST_USER_KEY = "helix.last_user_id";
 /** Local-only workspace id used when Supabase is not configured (dev/offline-only mode). */
 const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -50,7 +51,7 @@ export const useSession = create<SessionStore>((set) => ({
 
   signIn: async (email, password) => {
     const supabase = getSupabase();
-    if (!supabase) return "Supabase yapılandırılmadı";
+    if (!supabase) return tr.errors.supabaseNotConfigured;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return error.message;
     await kv.set(LAST_USER_KEY, data.user.id);
@@ -60,10 +61,10 @@ export const useSession = create<SessionStore>((set) => ({
 
   signUp: async (email, password) => {
     const supabase = getSupabase();
-    if (!supabase) return "Supabase yapılandırılmadı";
+    if (!supabase) return tr.errors.supabaseNotConfigured;
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) return error.message;
-    if (!data.user) return "Kayıt oluşturulamadı";
+    if (!data.user) return tr.errors.signUpFailed;
     await kv.set(LAST_USER_KEY, data.user.id);
     set({ userId: data.user.id, isOnlineSession: true });
     return null;

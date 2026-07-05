@@ -69,7 +69,7 @@ export default function ComputedColumnsScreen() {
   return (
     <Screen>
       <Card>
-        <Field label={tr.settings.newComputed} value={name} onChangeText={setName} placeholder="Ör. Sabit Giderler Toplamı" />
+        <Field label={tr.settings.newComputed} value={name} onChangeText={setName} placeholder={tr.placeholders.computedColumnName} />
         <Segmented
           options={[
             { value: "sum", label: "Σ" },
@@ -122,7 +122,7 @@ export default function ComputedColumnsScreen() {
         {op === "cc_split" ? (
           <ChipPicker
             options={[
-              { value: "single", label: "Tek çekim" },
+              { value: "single", label: tr.tx.singleCharge },
               { value: "installment", label: "Taksitli" },
             ]}
             value={ccPart}

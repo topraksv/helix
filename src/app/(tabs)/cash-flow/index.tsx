@@ -51,10 +51,10 @@ export default function CashflowScreen() {
         </Spread>
 
         <Row gap={spacing.sm} style={{ marginBottom: spacing.md, flexWrap: "wrap" }}>
-          <Button label={`+ ${tr.cashflow.addTransaction}`} onPress={() => router.push("/islem")} />
-          <Button label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/nakit-akisi/taksitler")} />
-          <Button label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/nakit-akisi/analiz")} />
-          <Button label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/toplu-giris")} />
+          <Button label={`+ ${tr.cashflow.addTransaction}`} onPress={() => router.push("/transaction")} />
+          <Button label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
+          <Button label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
+          <Button label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
         </Row>
 
         {!bundle || bundle.yearMonths.length === 0 ? (
@@ -70,7 +70,7 @@ export default function CashflowScreen() {
         ) : (
           <ScrollView>
             {bundle.yearMonths.map((m) => (
-              <Card key={m.month} onPress={() => router.push(`/nakit-akisi/${m.month}`)}>
+              <Card key={m.month} onPress={() => router.push(`/cash-flow/${m.month}`)}>
                 <Spread>
                   <Heading style={{ marginVertical: 0 }}>{monthLabel(m.month)}</Heading>
                   <Amount minor={m.closingMinor} />
@@ -171,8 +171,8 @@ function MatrixTable({
                 style={{ borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surface }}
               >
                 <View style={[CELL, { width: 110 }]}>
-                  <Link href={`/nakit-akisi/${m.month}`} asChild>
-                    <Text style={[type.label, { color: palette.primary }]} onPress={() => router.push(`/nakit-akisi/${m.month}`)}>
+                  <Link href={`/cash-flow/${m.month}`} asChild>
+                    <Text style={[type.label, { color: palette.primary }]} onPress={() => router.push(`/cash-flow/${m.month}`)}>
                       {monthLabel(m.month)}
                     </Text>
                   </Link>

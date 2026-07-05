@@ -1,4 +1,4 @@
-# Finans — Kişisel Finans & Abonelik Yönetimi
+# Helix — Kişisel Finans & Abonelik Yönetimi
 
 Local-first kişisel finans uygulaması: aylık nakit akışı + taksit motoru + abonelik yönetimi.
 Excel'deki gelir-gider dokümanının uygulamalaşmış hali. **iOS + web** (tek kod tabanı, Expo).

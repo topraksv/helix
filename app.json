@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "Finans",
-    "slug": "finans-app",
+    "name": "Helix",
+    "slug": "helix",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "finansapp",
+    "scheme": "helix",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.toprak.finans",
+      "bundleIdentifier": "com.toprak.helix",
       "supportsTablet": true,
       "infoPlist": {
         "NSFaceIDUsageDescription": "Finansal verilerinizi korumak için Face ID ile kilit açma kullanılır."
