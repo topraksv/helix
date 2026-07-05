@@ -5,14 +5,15 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AppState, Platform, useColorScheme, View } from "react-native";
+import { AppState, Platform, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
+import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import migrations from "../db/migrations/migrations";
-import { getDb } from "../db/client";
+import { getDb, warmupDb } from "../db/client";
 import { useSession } from "../auth/session";
 import { isOnboarded, runMaintenance } from "../data/repo";
 import { refreshRates } from "../services/fx-fetch";
@@ -35,6 +36,47 @@ export function setGlobalThemePreference(pref: ThemePreference) {
 }
 
 export default function RootLayout() {
+  const systemScheme = useColorScheme();
+  // Web: the sqlite worker must be booted through the async API before the
+  // first openDatabaseSync call (see warmupDb). Native opens synchronously.
+  const [dbReady, setDbReady] = useState(Platform.OS !== "web");
+  const [dbError, setDbError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (dbReady) return;
+    warmupDb()
+      .then(() => setDbReady(true))
+      .catch((e) => setDbError(String(e)));
+  }, [dbReady]);
+
+  const background = systemScheme === "dark" ? darkPalette.background : lightPalette.background;
+  const foreground = systemScheme === "dark" ? darkPalette.text : lightPalette.text;
+
+  return (
+    <>
+      {Platform.OS === "web" && (
+        <Head>
+          <title>Helix</title>
+        </Head>
+      )}
+      {dbReady ? (
+        <RootLayoutInner />
+      ) : (
+        <View style={{ flex: 1, backgroundColor: background, justifyContent: "center", padding: 24 }}>
+          {dbError ? (
+            <Text style={{ color: foreground }}>
+              {tr.errors.database}
+              {"\n"}
+              {dbError}
+            </Text>
+          ) : null}
+        </View>
+      )}
+    </>
+  );
+}
+
+function RootLayoutInner() {
   const { success: migrated, error: migrationError } = useMigrations(getDb(), migrations);
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
@@ -146,6 +188,16 @@ export default function RootLayout() {
         </Screen>
       </ThemeContext.Provider>
     );
+  }
+
+  // The route-guard effect above is about to redirect; don't render the
+  // current (protected) screen in the meantime — its hooks require a user.
+  const inAuth = segments[0] === "(auth)";
+  const inOnboarding = segments[0] === "(onboarding)";
+  const redirecting =
+    (!userId && !inAuth) || (!!userId && onboarded === false && !inOnboarding);
+  if (redirecting) {
+    return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
   }
 
   return (
