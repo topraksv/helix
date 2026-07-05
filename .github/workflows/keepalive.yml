@@ -1,0 +1,36 @@
+# Supabase Free tier pauses projects after ~7 days of inactivity (spec §2.2).
+# This heartbeat writes AND reads every 3 days so the project never pauses,
+# even when the app itself is only opened once a month.
+name: supabase-keepalive
+
+on:
+  schedule:
+    - cron: "0 6 */3 * *" # every 3 days at 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upsert and read keep_alive row
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          write_status=$(curl -sS -o /tmp/write.json -w "%{http_code}" \
+            -X POST "$SUPABASE_URL/rest/v1/keep_alive?on_conflict=id" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates" \
+            -d "[{\"id\": 1, \"pinged_at\": \"$(date -u +%FT%TZ)\"}]")
+          echo "write: $write_status"; cat /tmp/write.json
+          [ "$write_status" = "201" ] || [ "$write_status" = "200" ]
+          read_status=$(curl -sS -o /tmp/read.json -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/keep_alive?select=id,pinged_at&id=eq.1" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+          echo "read: $read_status"; cat /tmp/read.json
+          [ "$read_status" = "200" ]
+          grep -q '"id"' /tmp/read.json

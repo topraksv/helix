@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "finans-app",
+    "name": "Finans",
     "slug": "finans-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,12 @@
     "scheme": "finansapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.toprak.finans",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Finansal verilerinizi korumak için Face ID ile kilit açma kullanılır."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -32,6 +37,14 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-local-authentication",
+      [
+        "expo-notifications",
+        {}
       ]
     ],
     "experiments": {
