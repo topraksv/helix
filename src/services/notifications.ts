@@ -71,7 +71,7 @@ export function planNotifications(userId: string): PlannedNotification[] {
   );
 
   for (const e of expected) {
-    const name = subNames.get(e.ref_id) ?? incomeNames.get(e.ref_id) ?? "Ödeme";
+    const name = subNames.get(e.ref_id) ?? incomeNames.get(e.ref_id) ?? tr.common.paymentFallback;
     const amount = formatMinor(e.amount_minor, e.currency);
     if (e.direction === "in") {
       if (e.due_date >= today) planned.push({ date: e.due_date, title: tr.notif.salaryTitle, body: tr.notif.salaryBody(name, amount) });

@@ -42,7 +42,7 @@ export default function TransactionModal() {
 
   // Smart defaults: remember last used category/source per type.
   React.useEffect(() => {
-    void kv.get(`finans.last.${entryType}`).then((v) => {
+    void kv.get(`helix.last.${entryType}`).then((v) => {
       if (!v) return;
       try {
         const parsed = JSON.parse(v) as { categoryId?: string; sourceId?: string };
@@ -109,7 +109,7 @@ export default function TransactionModal() {
           note: note.trim() || null,
         });
       }
-      void kv.set(`finans.last.${entryType}`, JSON.stringify({ categoryId, sourceId }));
+      void kv.set(`helix.last.${entryType}`, JSON.stringify({ categoryId, sourceId }));
       scheduleSync(userId);
       if (thenNew) {
         setAmountRaw("");
@@ -156,7 +156,7 @@ export default function TransactionModal() {
       />
       {currency !== "TRY" ? (
         <View style={{ marginBottom: spacing.md }}>
-          {tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinor(tryMinor))}</Body> : <Body muted>⚠ Kur bulunamadı — önce internetle bir kez kur çek</Body>}
+          {tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinor(tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
           {rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
         </View>
       ) : null}
@@ -195,7 +195,7 @@ export default function TransactionModal() {
         <View style={{ marginVertical: spacing.md }}>
           <Segmented
             options={[
-              { value: "single", label: "Tek çekim" },
+              { value: "single", label: tr.tx.singleCharge },
               { value: "installment", label: tr.tx.installmentToggle },
             ]}
             value={installment ? "installment" : "single"}

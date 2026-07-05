@@ -48,7 +48,7 @@ export default function SetupScreen() {
         persons: persons.map((name, i) => ({ name, isSelf: i === 0 })),
         sources: sources.map((src) => ({ name: src.name, type: src.type, personIndex: src.personIndex })),
       });
-      router.replace(goHistory ? "/toplu-giris" : "/(tabs)");
+      router.replace(goHistory ? "/bulk-entry" : "/(tabs)");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (Platform.OS === "web") window.alert(message);
@@ -111,7 +111,7 @@ export default function SetupScreen() {
           ))}
           <Row>
             <View style={{ flex: 1 }}>
-              <Field value={newPerson} onChangeText={setNewPerson} placeholder="İsim" />
+              <Field value={newPerson} onChangeText={setNewPerson} placeholder={tr.placeholders.personName} />
             </View>
             <Button
               label={tr.onboarding.addPerson}
@@ -136,7 +136,7 @@ export default function SetupScreen() {
               <Button label={tr.common.delete} variant="ghost" onPress={() => setSources(sources.filter((_, j) => j !== i))} />
             </Spread>
           ))}
-          <Field value={newSource} onChangeText={setNewSource} placeholder="Ör. Maximum, WorldEko, Nakit" />
+          <Field value={newSource} onChangeText={setNewSource} placeholder={tr.placeholders.setupSourceName} />
           <ChipPicker
             options={SOURCE_TYPES.map((t) => ({ value: t.value, label: t.label }))}
             value={newSourceType}

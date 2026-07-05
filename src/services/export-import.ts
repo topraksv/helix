@@ -9,6 +9,7 @@ import { File, Paths } from "expo-file-system";
 import { getSqlite } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { writeRows } from "../db/mutations";
+import { tr } from "../i18n/tr";
 import { fromDbShape } from "../db/mutations";
 
 const EXPORT_VERSION = 1;
@@ -89,7 +90,7 @@ export async function saveTextFile(filename: string, content: string, mime: stri
  */
 export async function importBundle(userId: string, bundle: ExportBundle): Promise<{ imported: number }> {
   if (bundle.version !== EXPORT_VERSION || typeof bundle.tables !== "object") {
-    throw new Error("Geçersiz yedek dosyası");
+    throw new Error(tr.errors.invalidBackupFile);
   }
   const sqlite = getSqlite();
   let imported = 0;

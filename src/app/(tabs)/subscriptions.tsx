@@ -75,7 +75,7 @@ export default function SubscriptionsScreen() {
         </View>
       </Spread>
       <Row gap={spacing.sm} style={{ marginBottom: spacing.sm }}>
-        <Button label={tr.common.edit} variant="ghost" onPress={() => router.push({ pathname: "/abonelik-form", params: { id: s.id } })} />
+        <Button label={tr.common.edit} variant="ghost" onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })} />
         <Button label={tr.common.delete} variant="ghost" onPress={() => void remove(s.id, s.name)} />
       </Row>
       <Divider />
@@ -98,7 +98,7 @@ export default function SubscriptionsScreen() {
         </Spread>
       </Card>
 
-      <Button label={`+ ${tr.subs.add}`} onPress={() => router.push("/abonelik-form")} />
+      <Button label={`+ ${tr.subs.add}`} onPress={() => router.push("/subscription-form")} />
       <View style={{ height: spacing.md }} />
 
       {active.length === 0 && passive.length === 0 ? <EmptyState text={tr.cashflow.emptyMonth} /> : null}

@@ -91,7 +91,7 @@ export default function NewPlanModal() {
         value={kind}
         onChange={setKind}
       />
-      <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder="Ör. Dyson Airwrap / Ev Kredisi" />
+      <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={tr.placeholders.installmentTitle} />
       <MoneyField
         label={kind === "card_installment" ? `${tr.installments.totalAmount} (₺)` : `${tr.installments.monthlyAmount} (₺)`}
         value={amountRaw}

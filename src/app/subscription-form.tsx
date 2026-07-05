@@ -99,7 +99,7 @@ export default function SubscriptionFormModal() {
 
   return (
     <Screen>
-      <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder="Netflix, iCloud, Elektrik…" />
+      <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={tr.placeholders.subscriptionName} />
       <MoneyField
         label={`${tr.tx.amount} (${currency})`}
         value={amountRaw}
