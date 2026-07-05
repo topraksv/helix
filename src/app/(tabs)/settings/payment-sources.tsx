@@ -67,7 +67,7 @@ export default function SourcesScreen() {
   return (
     <Screen>
       <Card>
-        <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder="Ör. Maximum Gold" />
+        <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={tr.placeholders.paymentSourceName} />
         <ChipPicker options={TYPES.map((t) => ({ value: t.value, label: t.label }))} value={sourceType} onChange={setSourceType} />
         {persons.length > 1 ? (
           <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonId} />

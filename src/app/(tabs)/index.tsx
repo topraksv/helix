@@ -82,7 +82,7 @@ export default function DashboardScreen() {
     const top = entries.slice(0, 7);
     const rest = entries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
     const slices = top.map((e, i) => ({ ...e, color: colors[i % colors.length] }));
-    if (rest > 0) slices.push({ label: "Diğer", valueMinor: rest, color: colors[7] });
+    if (rest > 0) slices.push({ label: tr.common.other, valueMinor: rest, color: colors[7] });
     return slices;
   }, [dist, categories, colors]);
 
@@ -101,7 +101,7 @@ export default function DashboardScreen() {
   }, [bundle, year, month, colors]);
 
   const nameOf = (e: (typeof expected)[number]) =>
-    subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? "Ödeme";
+    subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
 
   const confirm = async (e: (typeof expected)[number]) => {
     if (!selfPersonId) return;
@@ -120,7 +120,7 @@ export default function DashboardScreen() {
       <Title>{tr.tabs.dashboard}</Title>
 
       {lastEntry.at != null && lastEntry.daysAgo != null && lastEntry.daysAgo >= 1 ? (
-        <Pressable onPress={() => router.push("/mutabakat")} accessibilityRole="button">
+        <Pressable onPress={() => router.push("/reconciliation")} accessibilityRole="button">
           <Card style={{ borderLeftWidth: 3, borderLeftColor: colors[2] }}>
             <Body>{tr.dashboard.lastEntry(dateLabel(lastEntry.at), tr.dashboard.daysAgo(lastEntry.daysAgo))}</Body>
             <Body muted>{tr.dashboard.catchUp} →</Body>

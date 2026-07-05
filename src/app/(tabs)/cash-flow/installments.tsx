@@ -108,7 +108,7 @@ export default function InstallmentsScreen() {
         </Row>
       </Card>
 
-      <Button label={`+ ${tr.installments.newPlan}`} onPress={() => router.push("/taksit-yeni")} />
+      <Button label={`+ ${tr.installments.newPlan}`} onPress={() => router.push("/installment-new")} />
       <View style={{ height: spacing.md }} />
 
       {selfPlans.length === 0 && otherPlans.length === 0 ? <EmptyState text={tr.cashflow.emptyMonth} /> : null}

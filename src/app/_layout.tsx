@@ -30,7 +30,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 const themePrefListeners = new Set<(p: ThemePreference) => void>();
 
 export function setGlobalThemePreference(pref: ThemePreference) {
-  void kv.set("finans.theme", pref);
+  void kv.set("helix.theme", pref);
   for (const listener of themePrefListeners) listener(pref);
 }
 
@@ -52,7 +52,7 @@ export default function RootLayout() {
   );
 
   useEffect(() => {
-    void kv.get("finans.theme").then((v) => {
+    void kv.get("helix.theme").then((v) => {
       if (v === "light" || v === "dark" || v === "system") setThemePref(v);
     });
     themePrefListeners.add(setThemePref);
@@ -71,7 +71,7 @@ export default function RootLayout() {
       return;
     }
     void (async () => {
-      const enabled = (await kv.get("finans.biometric")) === "true";
+      const enabled = (await kv.get("helix.biometric")) === "true";
       setLocked(enabled && Platform.OS !== "web");
     })();
   }, [ready, userId]);
@@ -124,7 +124,7 @@ export default function RootLayout() {
     return (
       <ThemeContext.Provider value={theme}>
         <Screen scroll={false}>
-          <Title>Veritabanı hatası</Title>
+          <Title>{tr.errors.database}</Title>
           <Body>{String(migrationError)}</Body>
         </Screen>
       </ThemeContext.Provider>
@@ -163,11 +163,11 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
-          <Stack.Screen name="islem" options={{ presentation: "modal", title: tr.tx.new }} />
-          <Stack.Screen name="taksit-yeni" options={{ presentation: "modal", title: tr.installments.newPlan }} />
-          <Stack.Screen name="abonelik-form" options={{ presentation: "modal", title: tr.subs.add }} />
-          <Stack.Screen name="toplu-giris" options={{ presentation: "modal", title: tr.bulk.title }} />
-          <Stack.Screen name="mutabakat" options={{ title: tr.catchup.title }} />
+          <Stack.Screen name="transaction" options={{ presentation: "modal", title: tr.tx.new }} />
+          <Stack.Screen name="installment-new" options={{ presentation: "modal", title: tr.installments.newPlan }} />
+          <Stack.Screen name="subscription-form" options={{ presentation: "modal", title: tr.subs.add }} />
+          <Stack.Screen name="bulk-entry" options={{ presentation: "modal", title: tr.bulk.title }} />
+          <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title }} />
         </Stack>
         <UndoSnackbar />
       </View>

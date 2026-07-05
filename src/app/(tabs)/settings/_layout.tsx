@@ -3,7 +3,7 @@ import { Stack } from "expo-router";
 import { tr } from "../../../i18n/tr";
 import { useTheme } from "../../../ui/theme";
 
-export default function CashflowLayout() {
+export default function SettingsLayout() {
   const { palette } = useTheme();
   return (
     <Stack
@@ -14,9 +14,11 @@ export default function CashflowLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="[month]" options={{ title: tr.cashflow.monthDetail }} />
-      <Stack.Screen name="analiz" options={{ title: tr.analysis.title }} />
-      <Stack.Screen name="taksitler" options={{ title: tr.installments.title }} />
+      <Stack.Screen name="categories" options={{ title: tr.settings.categories }} />
+      <Stack.Screen name="persons" options={{ title: tr.settings.persons }} />
+      <Stack.Screen name="payment-sources" options={{ title: tr.settings.sources }} />
+      <Stack.Screen name="incomes" options={{ title: tr.settings.incomeRules }} />
+      <Stack.Screen name="computed-columns" options={{ title: tr.settings.computed }} />
     </Stack>
   );
 }

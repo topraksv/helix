@@ -68,7 +68,7 @@ export default function IncomeRulesScreen() {
   return (
     <Screen>
       <Card>
-        <Field label={tr.settings.addIncomeRule} value={name} onChangeText={setName} placeholder="Maaş" />
+        <Field label={tr.settings.addIncomeRule} value={name} onChangeText={setName} placeholder={tr.placeholders.incomeRuleName} />
         <MoneyField
           label={`${tr.settings.defaultAmount} (₺)`}
           value={amountRaw}

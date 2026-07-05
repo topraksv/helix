@@ -1,7 +1,7 @@
 /** All user-facing strings live here (UI is Turkish; code is English). */
 
 export const tr = {
-  app: { name: "Finans" },
+  app: { name: "Helix" },
   tabs: { dashboard: "Özet", cashflow: "Nakit Akışı", subscriptions: "Abonelikler", settings: "Ayarlar" },
   common: {
     save: "Kaydet", cancel: "Vazgeç", delete: "Sil", edit: "Düzenle", add: "Ekle",
@@ -9,6 +9,24 @@ export const tr = {
     total: "Toplam", note: "Not", notes: "Notlar", none: "—", retry: "Tekrar dene",
     confirm: "Onayla", skip: "Atla", all: "Tümü", active: "Aktif", inactive: "Pasif",
     required: "Bu alan zorunlu", invalidAmount: "Geçersiz tutar", optional: "opsiyonel",
+    other: "Diğer",
+    paymentFallback: "Ödeme",
+  },
+  errors: {
+    database: "Veritabanı hatası",
+    supabaseNotConfigured: "Supabase yapılandırılmadı",
+    signUpFailed: "Kayıt oluşturulamadı",
+    invalidBackupFile: "Geçersiz yedek dosyası",
+  },
+  placeholders: {
+    personName: "İsim",
+    installmentTitle: "Ör. Dyson Airwrap / Ev Kredisi",
+    subscriptionName: "Netflix, iCloud, Elektrik…",
+    computedColumnName: "Ör. Sabit Giderler Toplamı",
+    paymentSourceName: "Ör. Maximum Gold",
+    setupSourceName: "Ör. Maximum, WorldEko, Nakit",
+    incomeRuleName: "Maaş",
+    categoryName: "Ör. Market, Akaryakıt…",
   },
   auth: {
     title: "Giriş yap",
@@ -88,6 +106,8 @@ export const tr = {
     amount: "Tutar", currency: "Para birimi",
     tryEquivalent: (v: string) => `≈ ${v}`,
     staleRate: "Kur güncel değil (son bilinen kur kullanıldı)",
+    rateNotFound: "⚠ Kur bulunamadı — önce internetle bir kez kur çek",
+    singleCharge: "Tek çekim",
     category: "Kategori", source: "Ödeme kaynağı", person: "Kim için",
     effectiveDate: "Ödeme günü (bakiyeye yansıyacağı gün)",
     futureNote: "İleri tarihli — o gün gelince bakiyeye yansır",
@@ -166,6 +186,7 @@ export const tr = {
     exportCsv: "Dışa aktar (CSV — işlemler)",
     import: "İçe aktar (JSON)",
     importConfirm: "Mevcut verilerin üzerine yazılabilir. Devam?",
+    importSuccess: (n: number) => `✅ ${n} kayıt içe aktarıldı`,
     sync: "Senkronizasyon",
     syncNow: "Şimdi senkronize et",
     syncState: { idle: "Güncel", syncing: "Senkronize ediliyor…", error: "Hata", unconfigured: "Yapılandırılmadı" },
