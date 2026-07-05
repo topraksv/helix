@@ -40,7 +40,7 @@ export default function CatchUpScreen() {
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   const nameOf = (e: (typeof expected)[number]) =>
-    subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? "Ödeme";
+    subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
 
   const confirm = async (e: (typeof expected)[number], actual?: number) => {
     if (!selfPersonId) return;
@@ -117,7 +117,7 @@ export default function CatchUpScreen() {
         ))
       )}
 
-      <Button label={`+ ${tr.cashflow.addTransaction}`} variant="secondary" onPress={() => router.push("/islem")} />
+      <Button label={`+ ${tr.cashflow.addTransaction}`} variant="secondary" onPress={() => router.push("/transaction")} />
     </Screen>
   );
 }

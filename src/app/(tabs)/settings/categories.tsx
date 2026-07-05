@@ -56,7 +56,7 @@ export default function CategoriesScreen() {
     <Screen>
       <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.categoriesDesc}</Body>
       <Card>
-        <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder="Ör. Market, Akaryakıt…" />
+        <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={tr.placeholders.categoryName} />
         <Segmented
           options={[
             { value: "expense", label: tr.settings.kindExpense },

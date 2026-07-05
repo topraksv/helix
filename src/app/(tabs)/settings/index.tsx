@@ -34,10 +34,10 @@ export default function SettingsScreen() {
   const [reminderStr, setReminderStr] = useState(String(reminderDays));
 
   React.useEffect(() => {
-    void kv.get("finans.theme").then((v) => {
+    void kv.get("helix.theme").then((v) => {
       if (v === "light" || v === "dark" || v === "system") setThemePref(v);
     });
-    void kv.get("finans.biometric").then((v) => setBiometric(v === "true"));
+    void kv.get("helix.biometric").then((v) => setBiometric(v === "true"));
   }, []);
 
   const notify = (msg: string) => (Platform.OS === "web" ? window.alert(msg) : Alert.alert(tr.app.name, msg));
@@ -45,7 +45,7 @@ export default function SettingsScreen() {
   const exportJson = async () => {
     const bundle = buildExportBundle(userId);
     const path = await saveTextFile(
-      `finans-yedek-${new Date().toISOString().slice(0, 10)}.json`,
+      `helix-yedek-${new Date().toISOString().slice(0, 10)}.json`,
       JSON.stringify(bundle, null, 1),
       "application/json",
     );
@@ -54,7 +54,7 @@ export default function SettingsScreen() {
 
   const exportCsv = async () => {
     const path = await saveTextFile(
-      `finans-islemler-${new Date().toISOString().slice(0, 10)}.csv`,
+      `helix-islemler-${new Date().toISOString().slice(0, 10)}.csv`,
       buildTransactionsCsv(userId),
       "text/csv",
     );
@@ -77,7 +77,7 @@ export default function SettingsScreen() {
     try {
       const content = await new File(picked.assets[0].uri).text();
       const result = await importBundle(userId, JSON.parse(content));
-      notify(`✅ ${result.imported} kayıt içe aktarıldı`);
+      notify(tr.settings.importSuccess(result.imported));
       void syncNow(userId);
     } catch (e) {
       notify(`⚠ ${e instanceof Error ? e.message : String(e)}`);
@@ -89,15 +89,15 @@ export default function SettingsScreen() {
       <Title>{tr.settings.title}</Title>
 
       <Card>
-        <Button label={tr.settings.categories} variant="secondary" onPress={() => router.push("/ayarlar/kategoriler")} />
+        <Button label={tr.settings.categories} variant="secondary" onPress={() => router.push("/settings/categories")} />
         <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.computed} variant="secondary" onPress={() => router.push("/ayarlar/hesaplamalar")} />
+        <Button label={tr.settings.computed} variant="secondary" onPress={() => router.push("/settings/computed-columns")} />
         <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.persons} variant="secondary" onPress={() => router.push("/ayarlar/kisiler")} />
+        <Button label={tr.settings.persons} variant="secondary" onPress={() => router.push("/settings/persons")} />
         <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.sources} variant="secondary" onPress={() => router.push("/ayarlar/kaynaklar")} />
+        <Button label={tr.settings.sources} variant="secondary" onPress={() => router.push("/settings/payment-sources")} />
         <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.incomeRules} variant="secondary" onPress={() => router.push("/ayarlar/gelirler")} />
+        <Button label={tr.settings.incomeRules} variant="secondary" onPress={() => router.push("/settings/incomes")} />
       </Card>
 
       <Card>
@@ -139,7 +139,7 @@ export default function SettingsScreen() {
               value={biometric}
               onValueChange={(v) => {
                 setBiometric(v);
-                void kv.set("finans.biometric", String(v));
+                void kv.set("helix.biometric", String(v));
               }}
             />
           </Spread>
