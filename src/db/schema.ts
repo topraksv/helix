@@ -1,0 +1,228 @@
+/**
+ * Local SQLite schema (Drizzle). Mirrors the Supabase Postgres schema in
+ * supabase/migrations. Conventions:
+ * - ids are client-generated UUIDv7 strings
+ * - money is integer minor units (kuruş), columns end with `_minor`
+ * - dates are `YYYY-MM-DD`, months `YYYY-MM`, timestamps ISO-8601 UTC strings
+ * - soft delete only: `deleted_at` tombstones (sync requires them)
+ */
+
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+const syncColumns = {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  deletedAt: text("deleted_at"),
+};
+
+export const persons = sqliteTable("persons", {
+  ...syncColumns,
+  name: text("name").notNull(),
+  isSelf: integer("is_self", { mode: "boolean" }).notNull().default(false),
+});
+
+export const paymentSources = sqliteTable("payment_sources", {
+  ...syncColumns,
+  name: text("name").notNull(),
+  type: text("type", { enum: ["credit_card", "debit_card", "cash", "bank_transfer"] }).notNull(),
+  personId: text("person_id").notNull(),
+  dueDay: integer("due_day"),
+  statementDay: integer("statement_day"), // reserved for Faz 2 statement cycles
+  color: text("color"),
+  logoSource: text("logo_source", { enum: ["brand", "favicon", "manual", "initials"] })
+    .notNull()
+    .default("initials"),
+  logoRef: text("logo_ref"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+});
+
+export const categories = sqliteTable("categories", {
+  ...syncColumns,
+  name: text("name").notNull(),
+  kind: text("kind", { enum: ["expense", "income"] }).notNull(),
+  icon: text("icon"),
+  color: text("color"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isColumn: integer("is_column", { mode: "boolean" }).notNull().default(false),
+});
+
+export const computedColumns = sqliteTable("computed_columns", {
+  ...syncColumns,
+  name: text("name").notNull(),
+  /** Zod-validated JSON, see src/domain/computed-columns.ts */
+  definition: text("definition").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const installmentPlans = sqliteTable("installment_plans", {
+  ...syncColumns,
+  title: text("title").notNull(),
+  kind: text("kind", { enum: ["card_installment", "loan"] }).notNull(),
+  totalAmountMinor: integer("total_amount_minor"),
+  monthlyAmountMinor: integer("monthly_amount_minor"),
+  installmentCount: integer("installment_count").notNull(),
+  currency: text("currency").notNull().default("TRY"),
+  startMonth: text("start_month").notNull(), // YYYY-MM
+  dueDay: integer("due_day"),
+  paymentSourceId: text("payment_source_id"),
+  personId: text("person_id").notNull(),
+  categoryId: text("category_id"),
+  note: text("note"),
+});
+
+export const transactions = sqliteTable(
+  "transactions",
+  {
+    ...syncColumns,
+    type: text("type", { enum: ["expense", "income", "transfer"] }).notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull().default("TRY"),
+    fxRate: text("fx_rate"), // decimal string, null for TRY
+    amountTryMinor: integer("amount_try_minor").notNull(),
+    entryDate: text("entry_date").notNull(),
+    effectiveDate: text("effective_date").notNull(),
+    status: text("status", { enum: ["pending", "realized"] }).notNull(),
+    categoryId: text("category_id"),
+    paymentSourceId: text("payment_source_id"),
+    personId: text("person_id").notNull(),
+    installmentPlanId: text("installment_plan_id"),
+    installmentNo: integer("installment_no"),
+    subscriptionId: text("subscription_id"),
+    isAggregate: integer("is_aggregate", { mode: "boolean" }).notNull().default(false),
+    note: text("note"),
+  },
+  (t) => [
+    index("idx_tx_effective").on(t.effectiveDate),
+    index("idx_tx_category_effective").on(t.categoryId, t.effectiveDate),
+    index("idx_tx_plan").on(t.installmentPlanId),
+    index("idx_tx_subscription").on(t.subscriptionId),
+  ],
+);
+
+export const subscriptions = sqliteTable("subscriptions", {
+  ...syncColumns,
+  name: text("name").notNull(),
+  amountMinor: integer("amount_minor").notNull(),
+  currency: text("currency").notNull().default("TRY"),
+  cycle: text("cycle", { enum: ["monthly", "yearly", "custom"] }).notNull(),
+  intervalMonths: integer("interval_months").notNull().default(1),
+  billingDay: integer("billing_day").notNull(),
+  nextDueDate: text("next_due_date").notNull(),
+  paymentSourceId: text("payment_source_id"),
+  categoryId: text("category_id"),
+  personId: text("person_id").notNull(),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  canceledAt: text("canceled_at"),
+  trialEndDate: text("trial_end_date"),
+  autoPay: integer("auto_pay", { mode: "boolean" }).notNull().default(false),
+  websiteDomain: text("website_domain"),
+  logoSource: text("logo_source", { enum: ["brand", "favicon", "manual", "initials"] })
+    .notNull()
+    .default("initials"),
+  logoRef: text("logo_ref"),
+  note: text("note"),
+});
+
+export const priceHistory = sqliteTable("price_history", {
+  ...syncColumns,
+  subscriptionId: text("subscription_id").notNull(),
+  amountMinor: integer("amount_minor").notNull(),
+  currency: text("currency").notNull(),
+  effectiveFrom: text("effective_from").notNull(),
+});
+
+export const recurringIncomes = sqliteTable("recurring_incomes", {
+  ...syncColumns,
+  name: text("name").notNull(),
+  defaultAmountMinor: integer("default_amount_minor").notNull(),
+  currency: text("currency").notNull().default("TRY"),
+  payDay: integer("pay_day").notNull(),
+  personId: text("person_id").notNull(),
+  categoryId: text("category_id"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  note: text("note"),
+});
+
+export const expectedPayments = sqliteTable(
+  "expected_payments",
+  {
+    ...syncColumns,
+    direction: text("direction", { enum: ["in", "out"] }).notNull(),
+    kind: text("kind", { enum: ["subscription", "installment", "loan", "recurring_income"] }).notNull(),
+    refId: text("ref_id").notNull(),
+    dueDate: text("due_date").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull().default("TRY"),
+    status: text("status", { enum: ["pending", "paid", "late", "skipped"] }).notNull().default("pending"),
+    paidAt: text("paid_at"),
+    autoConfirmed: integer("auto_confirmed", { mode: "boolean" }).notNull().default(false),
+    transactionId: text("transaction_id"),
+  },
+  (t) => [index("idx_expected_status_due").on(t.status, t.dueDate)],
+);
+
+export const balanceAdjustments = sqliteTable("balance_adjustments", {
+  ...syncColumns,
+  date: text("date").notNull(),
+  amountMinor: integer("amount_minor").notNull(), // signed
+  note: text("note"),
+});
+
+export const cellNotes = sqliteTable("cell_notes", {
+  ...syncColumns,
+  month: text("month").notNull(), // YYYY-MM
+  categoryId: text("category_id").notNull(),
+  body: text("body").notNull(),
+});
+
+export const settings = sqliteTable("settings", {
+  ...syncColumns,
+  key: text("key").notNull(),
+  value: text("value").notNull(), // JSON-encoded
+});
+
+export const fxRates = sqliteTable("fx_rates", {
+  ...syncColumns,
+  currency: text("currency").notNull(),
+  rateDate: text("rate_date").notNull(),
+  rateTry: text("rate_try").notNull(), // decimal string
+});
+
+/** Local-only: outbox of pending mutations to push (never synced itself). */
+export const outbox = sqliteTable("outbox", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  tableName: text("table_name").notNull(),
+  rowId: text("row_id").notNull(),
+  op: text("op", { enum: ["upsert"] }).notNull().default("upsert"),
+  payload: text("payload").notNull(), // JSON row snapshot
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+});
+
+/** Local-only: per-table pull cursor. */
+export const syncState = sqliteTable("sync_state", {
+  tableName: text("table_name").primaryKey(),
+  lastPulledAt: text("last_pulled_at").notNull(),
+});
+
+/** Tables that participate in Supabase sync, in FK-safe upsert order. */
+export const SYNCED_TABLES = {
+  persons,
+  categories: categories,
+  payment_sources: paymentSources,
+  computed_columns: computedColumns,
+  installment_plans: installmentPlans,
+  subscriptions,
+  transactions,
+  price_history: priceHistory,
+  recurring_incomes: recurringIncomes,
+  expected_payments: expectedPayments,
+  balance_adjustments: balanceAdjustments,
+  cell_notes: cellNotes,
+  settings,
+  fx_rates: fxRates,
+} as const;
+
+export type SyncedTableName = keyof typeof SYNCED_TABLES;
