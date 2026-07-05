@@ -1,64 +1,100 @@
-# Helix — Kişisel Finans & Abonelik Yönetimi
+<div align="center">
 
-Local-first kişisel finans uygulaması: aylık nakit akışı + taksit motoru + abonelik yönetimi.
-Excel'deki gelir-gider dokümanının uygulamalaşmış hali. **iOS + web** (tek kod tabanı, Expo).
+# Helix
 
-## Mimari özet
+**Local-first personal finance — monthly cash flow, installment tracking, and subscription management in one place.**
 
-- **Local-first:** `expo-sqlite` (WAL) + Drizzle ORM. UI asla ağ beklemez; uçak modunda tam işlev.
-- **Sync:** Supabase (Postgres + Auth), outbox pattern → push/pull/merge (LWW). Tombstone silme, hard delete yok.
-- **Güvenlik:** her tabloda RLS (`auth.uid() = user_id`), iOS'ta Face ID kilidi, secret'lar `.env`'de.
-- **Para:** tüm tutarlar integer kuruş. Kur: TCMB `today.xml` → Frankfurter fallback → cache.
-- **Domain motorları** (`src/domain/`, saf TS): zincirleme bakiye, taksit motoru, recurrence
-  (ay sonu kırpma), beklenen ödeme/gelir, YTD analytics, sınırlı computed-column motoru.
-  `npm test` ile 56 birim testi (Excel'den doğrulanan golden bakiye zinciri dahil).
+*Your spreadsheet, grown up: works fully offline, syncs when you're back online, and never makes you wait for the network.*
 
-## Kurulum
+[![Expo SDK 57](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v57.0.0/)
+[![React Native](https://img.shields.io/badge/React%20Native-0.86-61DAFB?logo=react&logoColor=white)](https://reactnative.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
+[![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen)](tests/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**iOS + Web from a single codebase** · [Live web app](https://topraksv.github.io/helix/)
+
+</div>
+
+---
+
+## What it does
+
+Helix replaces the monthly income/expense spreadsheet with an app that actually understands your money:
+
+- 📊 **Monthly cash flow** — chained month-over-month balances, category matrix on wide screens, and year-to-date analytics that reconcile to the kuruş.
+- 💳 **Installment engine** — enter "6 installments, 2 already paid" once; Helix spreads the amounts across the right months, tracks `2/6` progress, and totals your obligation for the current month.
+- 🔁 **Subscriptions & recurring rules** — salaries, rent, streaming services; month-end-aware recurrence (a rule on the 31st lands on Feb 28), expected vs. confirmed amounts.
+- 👀 **Watch-only tracking** — follow someone else's installments (they show up and notify, but never touch your balance).
+- 📅 **Future-dated & catch-up flows** — tomorrow's expense doesn't hit today's balance; skip a few days and a reconciliation screen walks you through what came due.
+- 🔔 **Upcoming-payment notifications** with a configurable lead time (iOS).
+
+## How it's built
+
+**Local-first, sync-second.** The UI never waits on the network — everything works in airplane mode.
+
+| Layer | Choice |
+|---|---|
+| App | [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/) + expo-router, React Native 0.86, TypeScript strict |
+| Local store | `expo-sqlite` (WAL) + Drizzle ORM — the single source of truth on device |
+| Sync | Supabase (Postgres + Auth) via an outbox pattern: push → pull → last-write-wins merge, tombstone deletes (no hard deletes) |
+| Security | Row Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, secrets only in `.env` |
+| Money | All amounts stored as integer kuruş — no floats, ever. FX rates: TCMB `today.xml` → Frankfurter fallback → cache |
+| Domain logic | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining, installments, recurrence, expected payments, YTD analytics — covered by 56 unit tests including a golden balance chain validated against the original spreadsheet |
+
+## Getting started
 
 ```bash
+git clone https://github.com/topraksv/helix.git
+cd helix
 npm install
-cp .env.example .env   # Supabase URL + anon key doldur (boş bırakılırsa yalnız-yerel mod)
-npm run web            # veya: npm run ios
-npm test               # domain birim testleri
+cp .env.example .env    # add Supabase URL + anon key (leave empty for local-only mode)
+
+npm run web             # web
+npm run ios             # iOS (Expo Go or dev build)
+
+npm test                # 56 domain unit tests
 npm run typecheck
 ```
 
-### Supabase kurulumu (tek seferlik)
+> **No Supabase project?** Leave `.env` empty — Helix runs fully local with no account or network.
 
-1. [supabase.com](https://supabase.com) → yeni proje (Free tier).
-2. SQL Editor'da `supabase/migrations/00000000000001_init.sql` içeriğini çalıştır.
-3. Settings → API'den `URL` ve `anon` key'i `.env`'e yaz (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`).
-4. GitHub repo → Settings → Secrets and variables → Actions: `SUPABASE_URL` ve
-   `SUPABASE_SERVICE_ROLE_KEY` ekle (keep-alive cron için; service key **asla** `.env`'e girmez).
-5. Actions sekmesinden `supabase-keepalive` workflow'unu bir kez elle çalıştırıp doğrula.
-   Bu cron 3 günde bir DB'ye yazar/okur — Free tier'ın 7 günlük pause'unu engeller (kritik).
+### Supabase setup (one-time, for sync)
 
-## Manuel test senaryoları (kritik akışlar)
+1. Create a free project at [supabase.com](https://supabase.com).
+2. Run [supabase/migrations/00000000000001_init.sql](supabase/migrations/00000000000001_init.sql) in the SQL Editor.
+3. Copy the project URL and publishable (anon) key from **Settings → API** into `.env`:
+   `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
+4. Add two repo secrets under **Settings → Secrets and variables → Actions**: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (the `sb_secret_…` key — it powers the keep-alive cron and must **never** appear in `.env` or client code).
+5. Trigger the `supabase-keepalive` workflow once from the Actions tab to verify. It pings the database every 3 days so the free-tier project never pauses.
 
-1. **Onboarding:** kayıt → şablon seç → başlangıç ayı + açılış bakiyesi → kişi/kaynak ekle → bitir.
-2. **Toplu geçmiş girişi:** 3 geçmiş ayı kategorilere toplam girerek doldur → Nakit Akışı kartları,
-   geniş ekranda matris ve Analiz YTD toplamları Excel ile birebir karşılaştır.
-3. **Taksit:** "6 taksit, 2'si ödendi" harcama ekle → aylara dağılım, `2/6` ilerleme, bitiş ayı doğru;
-   Taksitler ekranında "bu ay toplam yükümlülük" elle hesapla, karşılaştır.
-4. **§2.7 ileri tarihli ödeme:** yarın tarihli gider ekle → bugün bakiye değişmez; ertesi gün açınca
-   (veya cihaz saatini ilerletince) "gerçekleşti" olur ve bakiyeye düşer.
-5. **§2.8 izleme-only:** ikinci kişiye (ör. Betül) taksit ekle → bakiye değişmez; Taksitler'de
-   "Takip edilenler" bölümünde görünür, bildirimi çalışır.
-6. **Maaş kuralı:** Ayarlar → Düzenli gelirler'e maaş ekle → Dashboard'da "beklenen gelir" düşer;
-   farklı tutarla onayla → bakiyeye gerçek tutar yansır.
-7. **Catch-up:** birkaç gün girmeden aç → "Son giriş: X (n gün önce)" banner'ı → Mutabakat
-   ekranında aradaki vadesi gelmiş kalemleri onayla/atla/düzelt.
-8. **Offline:** uçak modunda aç → kilit, giriş, tüm ekranlar ve kayıt çalışır; ağ gelince
-   Ayarlar → Senkronizasyon "Güncel" olur.
-9. **Çok cihaz:** iki istemcide aynı hesapla gir → birinde ekle/düzenle/sil/geri al → diğerinde
-   sync sonrası aynı durum (silinenler dahil).
-10. **RLS:** ikinci bir Supabase kullanıcısı oluştur → birinci kullanıcının verisi hiçbir sorguda dönmez.
-11. **Yedek:** JSON dışa aktar → temiz kuruluma içe aktar → veriler birebir.
-12. **Tema/bildirim:** koyu-açık temada tüm ekranları gez; bildirim izni ver, yaklaşan ödeme bildirimi planlanıyor mu kontrol et (Ayarlar → gün sayısı).
+### Web deployment
 
-## Bilinen sınırlar (Faz 1)
+Every push to `main` runs [deploy-web.yml](.github/workflows/deploy-web.yml): `npx expo export -p web` builds a static site (per-route HTML, `baseUrl: /helix`) and publishes it to GitHub Pages. Deep links to dynamic routes are handled by a `404.html` fallback that hands the URL back to the client-side router.
 
-- Web'de zamanlanmış bildirim yok (platform kısıtı) — in-app gösterim var.
-- Kur çevrimi girişte snapshot'lanır; TCMB hafta sonu kur yayınlamaz → son bilinen kur + ⚠ rozet.
-- Taksitler takvim ayına yazılır; kart ekstre dönemi (kesim tarihi) Faz 2 (şemada alan hazır).
-- CSV import/mutabakat, bütçe uyarıları, takvim görünümü, widget → Faz 2.
+## Project structure
+
+```
+src/
+├── app/        # expo-router routes (tabs: dashboard, cash flow, subscriptions, settings)
+├── domain/     # pure TS money engines — no I/O, fully unit-tested
+├── db/         # Drizzle schema + expo-sqlite setup
+├── sync/       # outbox, push/pull, LWW merge
+├── services/   # FX rates, notifications, backup (JSON export/import)
+├── auth/       # Supabase auth + Face ID lock
+└── ui/         # shared components, theming (light/dark)
+```
+
+Manual test scenarios for the critical flows live in [docs/TESTING.md](docs/TESTING.md).
+
+## Known limitations (Phase 1)
+
+- No scheduled notifications on web (platform limitation) — in-app indicators instead.
+- FX conversion is snapshotted at entry time; TCMB publishes no weekend rates, so the last known rate is used with a ⚠ badge.
+- Installments post to calendar months; card statement periods (cut-off dates) are Phase 2 (schema field already in place).
+- CSV import/reconciliation, budget alerts, calendar view, and widgets → Phase 2.
+
+## License
+
+[MIT](LICENSE)
