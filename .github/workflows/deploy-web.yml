@@ -1,0 +1,54 @@
+# Builds the Expo web app as a static export and publishes it to GitHub Pages
+# on every push to main. Served at https://topraksv.github.io/helix/.
+#
+# The EXPO_PUBLIC_* values below are client-side keys: they ship inside the JS
+# bundle by design (same values as .env), so they are safe to keep in this file.
+# The service role key is NOT used here — it lives only in Actions secrets
+# for the keepalive workflow.
+name: deploy-web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://nwenaeyimbqxyhhsfrsi.supabase.co
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_NvhpZdHfjtL1zRBLQp60gQ_FS90zaj3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx expo export -p web
+      # GitHub Pages serves 404.html for unknown paths (e.g. deep links to
+      # dynamic routes like /cash-flow/2026-05); the not-found page loads the
+      # router bundle, which then renders the real route client-side.
+      - run: cp dist/+not-found.html dist/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
