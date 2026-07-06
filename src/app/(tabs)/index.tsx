@@ -1,7 +1,7 @@
 /** Dashboard: catch-up banner, actual vs projected balance (§2.7),
  *  upcoming/late expected items with confirm, distribution, trend. */
 
-import React from "react";
+import React, { useEffect } from "react";
 import { Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronRight, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
@@ -24,11 +24,60 @@ import {
   useUserId,
 } from "../../data/hooks";
 import { confirmExpected, revertExpected } from "../../data/repo";
+import { connectMarkets, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { scheduleSync } from "../../sync/engine";
-import { Badge, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader } from "../../ui/components";
+import { Badge, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
 import { Donut, Lines, SplitBar, useSeriesColors } from "../../ui/charts";
+import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../ui/theme";
+
+function MarketsCard() {
+  const { palette } = useTheme();
+  const { prices, status } = useMarkets();
+  useEffect(() => connectMarkets(), []);
+  if (status === "error" || Object.keys(prices).length === 0) return null;
+
+  const priceText = (v: number) =>
+    new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+
+  return (
+    <Card>
+      <Spread style={{ marginBottom: spacing.sm }}>
+        <Heading style={{ marginVertical: 0 }}>{tr.markets.title}</Heading>
+        <Row gap={spacing.xs}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.positive }} />
+          <Text style={[type.small, { color: palette.textMuted }]}>{tr.markets.source}</Text>
+        </Row>
+      </Spread>
+      {MARKET_SYMBOLS.map(({ code, label }) => {
+        const p = prices[code];
+        if (!p) return null;
+        return (
+          <Spread key={code} style={{ paddingVertical: spacing.sm - 2 }}>
+            <Body>{label}</Body>
+            <Row gap={spacing.sm}>
+              <Text style={[type.amountSm, { color: palette.textMuted }]}>{priceText(p.buyTry)}</Text>
+              <Text style={[type.amount, { color: palette.text, minWidth: 92, textAlign: "right" }]}>
+                {priceText(p.sellTry)} ₺
+              </Text>
+              {p.direction === "up" ? (
+                <TrendingUp size={15} color={palette.positive} />
+              ) : p.direction === "down" ? (
+                <TrendingDown size={15} color={palette.negative} />
+              ) : (
+                <View style={{ width: 15 }} />
+              )}
+            </Row>
+          </Spread>
+        );
+      })}
+      <Text style={[type.small, { color: palette.textMuted, marginTop: spacing.xs }]}>
+        {tr.markets.buy} · {tr.markets.sell}
+      </Text>
+    </Card>
+  );
+}
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -129,6 +178,7 @@ export default function DashboardScreen() {
 
   return (
     <Screen title={greeting()} subtitle={dateLabel(today)}>
+      <FirstRunTour />
       {/* Catch-up banner */}
       {lastEntry.at != null && lastEntry.daysAgo != null && lastEntry.daysAgo >= 1 ? (
         <Pressable onPress={() => router.push("/reconciliation")} accessibilityRole="button">
@@ -230,6 +280,9 @@ export default function DashboardScreen() {
           <EmptyState icon={PartyPopper} title={tr.dashboard.noUpcoming} />
         </Card>
       )}
+
+      {/* Live markets (Harem Altın feed) */}
+      <MarketsCard />
 
       {/* Expense distribution */}
       {donutSlices.length > 0 ? (

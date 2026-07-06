@@ -1,59 +1,77 @@
 /**
- * Single DB entry point. Everything reads/writes through here so the driver
- * can be swapped (expo-sqlite native / wasm on web / sqlocal fallback)
- * without touching schema or queries.
+ * Single DB entry point — async-only access on every platform.
+ *
+ * Web rationale: expo-sqlite's synchronous bridge needs SharedArrayBuffer
+ * (COOP/COEP headers, a service-worker reload) and busy-waits on the main
+ * thread, which froze or white-screened phones. The async API is plain
+ * message passing: no isolation requirements, no main-thread spinning, works
+ * in every mobile browser. Native simply gets a non-blocking driver.
+ *
+ * Drizzle connects through the generic sqlite-proxy driver, so queries stay
+ * type-safe while executing over the async API.
  */
 
-import { deleteDatabaseAsync, openDatabaseAsync, openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";
-import { drizzle } from "drizzle-orm/expo-sqlite";
+import { deleteDatabaseAsync, openDatabaseAsync, type SQLiteBindParams, type SQLiteDatabase } from "expo-sqlite";
+import { drizzle } from "drizzle-orm/sqlite-proxy";
 import { Platform } from "react-native";
 import * as schema from "./schema";
 
 export const DB_NAME = "helix.db";
 
-/**
- * Web only — must resolve before the first getSqlite() call. The sync API's
- * worker bridge busy-waits a bounded number of spins for the response; on a
- * cold load the worker (JS + wasm) isn't booted yet, so the first sync call
- * throws "Sync operation timeout". Opening through the async API first boots
- * the worker, after which sync opens respond within the spin budget.
- */
-export async function warmupDb(): Promise<void> {
-  if (Platform.OS !== "web") return;
+let handle: Promise<SQLiteDatabase> | null = null;
+
+async function open(): Promise<SQLiteDatabase> {
+  const db = await openDatabaseAsync(DB_NAME, { enableChangeListener: true });
+  // WAL needs shared-memory VFS hooks that wa-sqlite's OPFS backend lacks.
+  if (Platform.OS !== "web") await db.execAsync("PRAGMA journal_mode = WAL;");
+  await db.execAsync("PRAGMA foreign_keys = ON;");
+  return db;
+}
+
+export function getSqliteAsync(): Promise<SQLiteDatabase> {
+  if (!handle) {
+    handle = (async () => {
+      try {
+        return await open();
+      } catch (e) {
+        // "not a database" = corrupt OPFS header (e.g. an old build's reload
+        // killed the worker mid-create). Nothing readable to save — recreate.
+        if (!String(e).includes("not a database")) throw e;
+        await deleteDatabaseAsync(DB_NAME);
+        return open();
+      }
+    })();
+    handle.catch(() => {
+      handle = null; // allow a later retry instead of caching the failure
+    });
+  }
+  return handle;
+}
+
+/** sqlite-proxy expects raw value arrays; expo-sqlite provides them directly. */
+async function exec(
+  sql: string,
+  params: unknown[],
+  method: "run" | "all" | "get" | "values",
+): Promise<{ rows: unknown[] }> {
+  const db = await getSqliteAsync();
+  if (method === "run") {
+    await db.runAsync(sql, params as SQLiteBindParams);
+    return { rows: [] };
+  }
+  const statement = await db.prepareAsync(sql);
   try {
-    const handle = await openDatabaseAsync(DB_NAME);
-    await handle.closeAsync();
-  } catch (e) {
-    // "not a database" = the OPFS file was left with a corrupt header (e.g. a
-    // page reload killed the worker mid-create). There is nothing readable to
-    // save — recreate the file once instead of bricking the app forever.
-    if (!String(e).includes("not a database")) throw e;
-    await deleteDatabaseAsync(DB_NAME);
-    const handle = await openDatabaseAsync(DB_NAME);
-    await handle.closeAsync();
+    const result = await statement.executeForRawResultAsync(params as SQLiteBindParams);
+    const rows = await result.getAllAsync();
+    return { rows: method === "get" ? (rows[0] ?? []) : rows };
+  } finally {
+    await statement.finalizeAsync();
   }
 }
 
-let sqlite: SQLiteDatabase | null = null;
-let database: ReturnType<typeof createDb> | null = null;
-
-function createDb(handle: SQLiteDatabase) {
-  return drizzle(handle, { schema });
-}
-
-export function getSqlite(): SQLiteDatabase {
-  if (!sqlite) {
-    sqlite = openDatabaseSync(DB_NAME, { enableChangeListener: true });
-    // WAL needs the shared-memory VFS hooks that wa-sqlite's OPFS backend
-    // doesn't provide — only ask for it on native.
-    if (Platform.OS !== "web") sqlite.execSync("PRAGMA journal_mode = WAL;");
-    sqlite.execSync("PRAGMA foreign_keys = ON;");
-  }
-  return sqlite;
-}
+const database = drizzle(exec, { schema });
 
 export function getDb() {
-  if (!database) database = createDb(getSqlite());
   return database;
 }
 

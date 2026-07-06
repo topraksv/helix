@@ -6,7 +6,7 @@
 
 import { Platform } from "react-native";
 import { File, Paths } from "expo-file-system";
-import { getSqlite } from "../db/client";
+import { getSqliteAsync } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { fromDbShape, writeRows } from "../db/mutations";
 import { tr } from "../i18n/tr";
@@ -19,11 +19,11 @@ export interface ExportBundle {
   tables: Record<string, Record<string, unknown>[]>;
 }
 
-export function buildExportBundle(userId: string): ExportBundle {
-  const sqlite = getSqlite();
+export async function buildExportBundle(userId: string): Promise<ExportBundle> {
+  const sqlite = await getSqliteAsync();
   const tables: Record<string, Record<string, unknown>[]> = {};
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-    tables[table] = sqlite.getAllSync<Record<string, unknown>>(
+    tables[table] = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM ${table} WHERE user_id = ?`,
       [userId] as never[],
     );
@@ -31,8 +31,9 @@ export function buildExportBundle(userId: string): ExportBundle {
   return { version: EXPORT_VERSION, exportedAt: new Date().toISOString(), tables };
 }
 
-export function buildTransactionsCsv(userId: string): string {
-  const rows = getSqlite().getAllSync<Record<string, unknown>>(
+export async function buildTransactionsCsv(userId: string): Promise<string> {
+  const sqlite = await getSqliteAsync();
+  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT t.effective_date, t.entry_date, t.type, t.status, t.amount_minor, t.currency, t.amount_try_minor,
             c.name as category, ps.name as source, p.name as person, t.installment_no, t.is_aggregate, t.note
      FROM transactions t
@@ -97,7 +98,7 @@ export async function importBundle(userId: string, bundle: ExportBundle): Promis
   if (bundle.version !== EXPORT_VERSION || typeof bundle.tables !== "object") {
     throw new Error(tr.errors.invalidBackupFile);
   }
-  const sqlite = getSqlite();
+  const sqlite = await getSqliteAsync();
   let imported = 0;
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     const rows = bundle.tables[table];
@@ -105,7 +106,7 @@ export async function importBundle(userId: string, bundle: ExportBundle): Promis
     const writes = [] as { table: SyncedTableName; row: Record<string, unknown> }[];
     for (const raw of rows) {
       if (!raw || typeof raw !== "object" || typeof raw.id !== "string") continue;
-      const local = sqlite.getFirstSync<{ updated_at: string }>(
+      const local = await sqlite.getFirstAsync<{ updated_at: string }>(
         `SELECT updated_at FROM ${table} WHERE id = ?`,
         [raw.id] as never[],
       );

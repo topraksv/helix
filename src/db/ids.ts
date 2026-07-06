@@ -26,6 +26,8 @@ export async function deterministicId(naturalKey: string): Promise<string> {
 
 export const naturalKeys = {
   setting: (userId: string, key: string) => `setting:${userId}:${key}`,
+  /** Exactly one "self" person per account; every device converges on this id. */
+  selfPerson: (userId: string) => `person-self:${userId}`,
   fxRate: (userId: string, currency: string, rateDate: string) => `fx:${userId}:${currency}:${rateDate}`,
   expected: (userId: string, kind: string, refId: string, dueDate: string) =>
     `expected:${userId}:${kind}:${refId}:${dueDate}`,

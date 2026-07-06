@@ -5,7 +5,7 @@
  */
 
 import { getTableColumns } from "drizzle-orm";
-import { getSqlite } from "../db/client";
+import { getSqliteAsync } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
@@ -68,11 +68,11 @@ function toLocal(table: SyncedTableName, row: Record<string, unknown>): Record<s
 
 async function pushOutbox(): Promise<void> {
   const supabase = getSupabase()!;
-  const sqlite = getSqlite();
+  const sqlite = await getSqliteAsync();
   // Push per table in FK-safe declaration order, oldest events first.
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     for (;;) {
-      const events = sqlite.getAllSync<{ id: number; payload: string; row_id: string }>(
+      const events = await sqlite.getAllAsync<{ id: number; payload: string; row_id: string }>(
         `SELECT id, payload, row_id FROM outbox WHERE table_name = ? ORDER BY id ASC LIMIT ${PUSH_BATCH}`,
         [table] as never[],
       );
@@ -84,16 +84,16 @@ async function pushOutbox(): Promise<void> {
       const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
       if (error) throw new Error(`push ${table}: ${error.message}`);
       const maxId = events[events.length - 1].id;
-      sqlite.runSync(`DELETE FROM outbox WHERE table_name = ? AND id <= ?`, [table, maxId] as never[]);
+      await sqlite.runAsync(`DELETE FROM outbox WHERE table_name = ? AND id <= ?`, [table, maxId] as never[]);
     }
   }
 }
 
 async function pullAndMerge(userId: string): Promise<void> {
   const supabase = getSupabase()!;
-  const sqlite = getSqlite();
+  const sqlite = await getSqliteAsync();
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-    const cursorRow = sqlite.getFirstSync<{ last_pulled_at: string }>(
+    const cursorRow = await sqlite.getFirstAsync<{ last_pulled_at: string }>(
       `SELECT last_pulled_at FROM sync_state WHERE table_name = ?`,
       [table] as never[],
     );
@@ -109,24 +109,24 @@ async function pullAndMerge(userId: string): Promise<void> {
       if (error) throw new Error(`pull ${table}: ${error.message}`);
       if (!data || data.length === 0) break;
 
-      sqlite.withTransactionSync(() => {
+      await sqlite.withTransactionAsync(async () => {
         for (const remoteRaw of data) {
           const remote = toLocal(table, remoteRaw as Record<string, unknown>);
-          const local = sqlite.getFirstSync<{ updated_at: string }>(
+          const local = await sqlite.getFirstAsync<{ updated_at: string }>(
             `SELECT updated_at FROM ${table} WHERE id = ?`,
             [remote.id] as never[],
           );
           const remoteWins = !local || Date.parse(remote.updated_at as string) >= Date.parse(local.updated_at);
           if (!remoteWins) continue;
           const keys = Object.keys(remote);
-          sqlite.runSync(
+          await sqlite.runAsync(
             `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})
              ON CONFLICT(id) DO UPDATE SET ${keys.filter((k) => k !== "id").map((k) => `${k} = excluded.${k}`).join(", ")}`,
             keys.map((k) => (remote[k] === undefined ? null : remote[k])) as never[],
           );
         }
         cursor = new Date((data[data.length - 1] as { updated_at: string }).updated_at).toISOString();
-        sqlite.runSync(
+        await sqlite.runAsync(
           `INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)
            ON CONFLICT(table_name) DO UPDATE SET last_pulled_at = excluded.last_pulled_at`,
           [table, cursor] as never[],

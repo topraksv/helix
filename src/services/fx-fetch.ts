@@ -6,9 +6,9 @@
 
 import { deterministicId, naturalKeys } from "../db/ids";
 import { writeRows } from "../db/mutations";
-import { getSqlite } from "../db/client";
+import { getSqliteAsync } from "../db/client";
 import { todayISO } from "../domain/dates";
-import { pickRate, type RateLookup } from "../domain/fx";
+import { pickRate, type FxRate, type RateLookup } from "../domain/fx";
 
 export const SUPPORTED_CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 export type Currency = (typeof SUPPORTED_CURRENCIES)[number];
@@ -71,22 +71,31 @@ export async function refreshRates(userId: string): Promise<boolean> {
     });
   }
   if (writes.length > 0) await writeRows(userId, writes, false);
+  await loadRateCache(userId);
   return true;
 }
 
+/**
+ * Rates are read during render (entry forms, subscription totals), so lookups
+ * stay synchronous against an in-memory snapshot loaded at boot and refreshed
+ * after every fetch.
+ */
+let rateCache: FxRate[] = [];
+
+export async function loadRateCache(userId: string): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  const rows = await sqlite.getAllAsync<{ currency: string; rate_date: string; rate_try: string }>(
+    `SELECT currency, rate_date, rate_try FROM fx_rates
+     WHERE user_id = ? AND deleted_at IS NULL ORDER BY rate_date DESC LIMIT 200`,
+    [userId] as never[],
+  );
+  rateCache = rows.map((r) => ({ currency: r.currency, rateDate: r.rate_date, rateTry: Number(r.rate_try) }));
+}
+
 /** Cached rate lookup for entry forms; null when nothing cached yet. */
-export function lookupRate(userId: string, currency: string): RateLookup | null {
+export function lookupRate(_userId: string, currency: string): RateLookup | null {
   if (currency === "TRY") {
     return { rate: { currency: "TRY", rateDate: todayISO(), rateTry: 1 }, isStale: false };
   }
-  const rows = getSqlite().getAllSync<{ currency: string; rate_date: string; rate_try: string }>(
-    `SELECT currency, rate_date, rate_try FROM fx_rates
-     WHERE user_id = ? AND currency = ? AND deleted_at IS NULL ORDER BY rate_date DESC LIMIT 30`,
-    [userId, currency] as never[],
-  );
-  return pickRate(
-    rows.map((r) => ({ currency: r.currency, rateDate: r.rate_date, rateTry: Number(r.rate_try) })),
-    currency,
-    todayISO(),
-  );
+  return pickRate(rateCache, currency, todayISO());
 }

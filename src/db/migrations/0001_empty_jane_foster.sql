@@ -1,0 +1,1 @@
+ALTER TABLE `recurring_incomes` ADD `kind` text DEFAULT 'salary' NOT NULL;

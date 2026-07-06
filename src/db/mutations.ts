@@ -9,7 +9,7 @@
  */
 
 import { getTableColumns } from "drizzle-orm";
-import { getDb, getSqlite } from "./client";
+import { getDb, getSqliteAsync } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
 import { deterministicId, naturalKeys } from "./ids";
 
@@ -83,12 +83,12 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
     });
   }
 
-  const sqlite = getSqlite();
-  sqlite.withTransactionSync(() => {
+  const sqlite = await getSqliteAsync();
+  await sqlite.withTransactionAsync(async () => {
     for (const { table, dbRow } of entries) {
       const { sql, args } = upsertSql(table, dbRow);
-      sqlite.runSync(sql, args as never[]);
-      sqlite.runSync(
+      await sqlite.runAsync(sql, args as never[]);
+      await sqlite.runAsync(
         `INSERT OR IGNORE INTO outbox (table_name, row_id, op, payload, idempotency_key, created_at)
          VALUES (?, ?, 'upsert', ?, ?, ?)`,
         [table, String(dbRow.id), JSON.stringify(dbRow), `${dbRow.id}:${dbRow.updated_at}`, nowIso()] as never[],
@@ -103,8 +103,8 @@ export async function softDelete(
   table: SyncedTableName,
   id: string,
 ): Promise<Record<string, unknown> | null> {
-  const sqlite = getSqlite();
-  const previous = sqlite.getFirstSync<Record<string, unknown>>(
+  const sqlite = await getSqliteAsync();
+  const previous = await sqlite.getFirstAsync<Record<string, unknown>>(
     `SELECT * FROM ${table} WHERE id = ? AND user_id = ?`,
     [id, userId] as never[],
   );
@@ -134,8 +134,9 @@ export function fromDbShape(table: SyncedTableName, dbRow: Record<string, unknow
 }
 
 /** Read a setting value (JSON-decoded) or null. */
-export function readSetting<T>(userId: string, key: string): T | null {
-  const row = getSqlite().getFirstSync<{ value: string }>(
+export async function readSetting<T>(userId: string, key: string): Promise<T | null> {
+  const sqlite = await getSqliteAsync();
+  const row = await sqlite.getFirstAsync<{ value: string }>(
     `SELECT value FROM settings WHERE user_id = ? AND key = ? AND deleted_at IS NULL`,
     [userId, key] as never[],
   );

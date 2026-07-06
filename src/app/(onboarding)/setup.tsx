@@ -5,18 +5,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { seedWorkspace } from "../../data/repo";
 import { useSession } from "../../auth/session";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../../domain/dates";
-import type { PaymentSourceType } from "../../domain/types";
+import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
 import { Body, Button, Card, ChipPicker, Field, Heading, IconButton, MoneyField, Row, Screen, Segmented, Spread } from "../../ui/components";
 import { BrandMark } from "../../ui/brand";
+import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
 import { spacing, type, useTheme } from "../../ui/theme";
 
-const SOURCE_TYPES: { value: PaymentSourceType; label: string }[] = [
-  { value: "credit_card", label: tr.sources.credit_card },
-  { value: "debit_card", label: tr.sources.debit_card },
-  { value: "cash", label: tr.sources.cash },
-  { value: "bank_transfer", label: tr.sources.bank_transfer },
-];
+const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 
 interface DraftSource {
   name: string;
@@ -28,7 +24,7 @@ export default function SetupScreen() {
   const { userId } = useSession();
   const router = useRouter();
   const { palette } = useTheme();
-  const [template, setTemplate] = useState<"excel" | "blank">("excel");
+  const [template, setTemplate] = useState<"excel" | "blank">("blank");
   const [startMonth, setStartMonth] = useState(monthKeyOf(todayISO()));
   const [openingRaw, setOpeningRaw] = useState("");
   const [openingMinor, setOpeningMinor] = useState<number | null>(0);
@@ -73,11 +69,11 @@ export default function SetupScreen() {
         </Row>
 
         <Card>
-          <Heading>{tr.onboarding.templateTitle}</Heading>
+          <Heading>1 · {tr.onboarding.templateTitle}</Heading>
           <Segmented
             options={[
-              { value: "excel", label: tr.onboarding.templateExcel },
               { value: "blank", label: tr.onboarding.templateBlank },
+              { value: "excel", label: tr.onboarding.templateExcel },
             ]}
             value={template}
             onChange={setTemplate}
@@ -88,7 +84,7 @@ export default function SetupScreen() {
         </Card>
 
         <Card>
-          <Heading>{tr.onboarding.startTitle}</Heading>
+          <Heading>2 · {tr.onboarding.startTitle}</Heading>
           <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.startMonth}</Body>
           <Spread style={{ marginBottom: spacing.md }}>
             <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, -1))} />
@@ -96,7 +92,7 @@ export default function SetupScreen() {
             <IconButton icon={ChevronRight} label={tr.onboarding.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, 1))} />
           </Spread>
           <MoneyField
-            label={`${tr.onboarding.openingBalance} (₺)`}
+            label={tr.onboarding.openingBalance}
             value={openingRaw}
             onChangeMinor={(raw, minor) => {
               setOpeningRaw(raw);
@@ -107,11 +103,11 @@ export default function SetupScreen() {
         </Card>
 
         <Card>
-          <Heading>{tr.onboarding.personsTitle}</Heading>
+          <Heading>3 · {tr.onboarding.personsTitle}</Heading>
           <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.personsHint}</Body>
           {persons.map((name, i) => (
             <Spread key={`${name}-${i}`} style={{ marginBottom: spacing.sm }}>
-              <Body>{name}{i === 0 ? " (ben)" : ""}</Body>
+              <Body>{name}{i === 0 ? ` — ${tr.persons.selfBadge}` : ""}</Body>
               {i > 0 ? (
                 <Button label={tr.common.delete} variant="ghost" onPress={() => setPersons(persons.filter((_, j) => j !== i))} />
               ) : null}
@@ -119,7 +115,7 @@ export default function SetupScreen() {
           ))}
           <Row>
             <View style={{ flex: 1 }}>
-              <Field value={newPerson} onChangeText={setNewPerson} placeholder={tr.placeholders.personName} />
+              <Field value={newPerson} onChangeText={setNewPerson} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
             </View>
             <Button
               label={tr.onboarding.addPerson}
@@ -134,7 +130,7 @@ export default function SetupScreen() {
         </Card>
 
         <Card>
-          <Heading>{tr.onboarding.sourcesTitle}</Heading>
+          <Heading>4 · {tr.onboarding.sourcesTitle}</Heading>
           <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.sourcesHint}</Body>
           {sources.map((src, i) => (
             <Spread key={`${src.name}-${i}`} style={{ marginBottom: spacing.sm }}>
@@ -144,7 +140,7 @@ export default function SetupScreen() {
               <Button label={tr.common.delete} variant="ghost" onPress={() => setSources(sources.filter((_, j) => j !== i))} />
             </Spread>
           ))}
-          <Field value={newSource} onChangeText={setNewSource} placeholder={tr.placeholders.setupSourceName} />
+          <Field value={newSource} onChangeText={setNewSource} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
           <ChipPicker
             options={SOURCE_TYPES.map((t) => ({ value: t.value, label: t.label }))}
             value={newSourceType}
@@ -169,7 +165,7 @@ export default function SetupScreen() {
         </Card>
 
         <Card>
-          <Heading>{tr.onboarding.historyPrompt}</Heading>
+          <Heading>5 · {tr.onboarding.historyPrompt}</Heading>
           <View style={{ gap: spacing.sm }}>
             <Button label={tr.onboarding.historyYes} onPress={() => void finish(true)} loading={busy} />
             <Button label={tr.onboarding.historyLater} variant="secondary" onPress={() => void finish(false)} disabled={busy} />

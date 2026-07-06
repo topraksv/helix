@@ -19,18 +19,16 @@ import {
   Inter_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
-import migrations from "../db/migrations/migrations";
-import { getDb, warmupDb } from "../db/client";
+import { migrateDb } from "../db/migrate";
 import { useSession } from "../auth/session";
 import { useOnboarded } from "../data/hooks";
 import { runMaintenance } from "../data/repo";
-import { refreshRates } from "../services/fx-fetch";
+import { loadRateCache, refreshRates } from "../services/fx-fetch";
 import { rescheduleAll } from "../services/notifications";
 import { syncNow } from "../sync/engine";
 import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
-import { Body, Button, Screen, Title } from "../ui/components";
+import { Button, Screen, Title } from "../ui/components";
 import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
 
@@ -46,9 +44,8 @@ export function setGlobalThemePreference(pref: ThemePreference) {
 
 export default function RootLayout() {
   const systemScheme = useColorScheme();
-  // Web: the sqlite worker must be booted through the async API before the
-  // first openDatabaseSync call (see warmupDb). Native opens synchronously.
-  const [dbReady, setDbReady] = useState(Platform.OS !== "web");
+  // Open + migrate the database (async API on every platform) before the app.
+  const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [fontsLoaded, fontsError] = useFonts({
     Inter_400Regular,
@@ -59,17 +56,10 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (dbReady) return;
-    // Non-isolated first load: the COI service worker (+html.tsx) is about to
-    // reload the page. Touching the DB now risks the reload killing the
-    // sqlite worker mid-write and corrupting the OPFS file — stay blank.
-    if (typeof window !== "undefined" && !window.crossOriginIsolated && "serviceWorker" in navigator) {
-      return;
-    }
-    warmupDb()
+    migrateDb()
       .then(() => setDbReady(true))
       .catch((e) => setDbError(String(e)));
-  }, [dbReady]);
+  }, []);
 
   const background = systemScheme === "dark" ? darkPalette.background : lightPalette.background;
   const foreground = systemScheme === "dark" ? darkPalette.text : lightPalette.text;
@@ -99,7 +89,6 @@ export default function RootLayout() {
 }
 
 function RootLayoutInner() {
-  const { success: migrated, error: migrationError } = useMigrations(getDb(), migrations);
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const { userId, ready, bootstrap } = useSession();
@@ -124,8 +113,8 @@ function RootLayoutInner() {
   }, []);
 
   useEffect(() => {
-    if (migrated) void bootstrap();
-  }, [migrated, bootstrap]);
+    void bootstrap(); // DB is migrated before this component mounts
+  }, [bootstrap]);
 
   // Biometric gate (spec §2.3) — local check, works offline.
   useEffect(() => {
@@ -153,8 +142,8 @@ function RootLayoutInner() {
   }, [locked, unlock]);
 
   useEffect(() => {
-    if (migrated && ready) SplashScreen.hideAsync().catch(() => {});
-  }, [migrated, ready]);
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
   // Opportunistic background work on open + foreground (never blocks UI).
   useEffect(() => {
@@ -163,6 +152,7 @@ function RootLayoutInner() {
       void runMaintenance(userId)
         .then(() => rescheduleAll(userId))
         .catch((e) => console.warn("maintenance failed", e));
+      void loadRateCache(userId).catch(() => {});
       void refreshRates(userId).catch(() => {});
       void syncNow(userId);
     };
@@ -175,7 +165,7 @@ function RootLayoutInner() {
 
   // Route guards.
   useEffect(() => {
-    if (!migrated || !ready || locked !== false) return;
+    if (!ready || locked !== false) return;
     if (userId && onboarded === null) return;
     const inAuth = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "(onboarding)";
@@ -184,20 +174,9 @@ function RootLayoutInner() {
     else if (userId && onboarded === true && (inAuth || inOnboarding || (segments as string[]).length === 0)) {
       router.replace("/(tabs)");
     }
-  }, [migrated, ready, locked, userId, onboarded, segments, router]);
+  }, [ready, locked, userId, onboarded, segments, router]);
 
-  if (migrationError) {
-    return (
-      <ThemeContext.Provider value={theme}>
-        <Screen scroll={false}>
-          <Title>{tr.errors.database}</Title>
-          <Body>{String(migrationError)}</Body>
-        </Screen>
-      </ThemeContext.Provider>
-    );
-  }
-
-  if (!migrated || !ready || locked === null) {
+  if (!ready || locked === null) {
     return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
   }
 
@@ -246,6 +225,8 @@ function RootLayoutInner() {
           <Stack.Screen name="installment-new" options={{ presentation: "modal", title: tr.installments.newPlan }} />
           <Stack.Screen name="subscription-form" options={{ presentation: "modal", title: tr.subs.add }} />
           <Stack.Screen name="bulk-entry" options={{ presentation: "modal", title: tr.bulk.title }} />
+          <Stack.Screen name="cell-editor" options={{ presentation: "modal", title: tr.cell.title }} />
+          <Stack.Screen name="import-wizard" options={{ presentation: "modal", title: tr.importer.title }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title }} />
         </Stack>
         <UndoSnackbar />

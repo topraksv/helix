@@ -5,20 +5,16 @@ import { View } from "react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
 import { usePersons, useSources, useUserId } from "../../../data/hooks";
-import type { PaymentSourceType } from "../../../domain/types";
+import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../../domain/types";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Trash2 } from "lucide-react-native";
 import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, InitialsBadge, Row, Screen, Spread } from "../../../ui/components";
+import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
-const TYPES: { value: PaymentSourceType; label: string }[] = [
-  { value: "credit_card", label: tr.sources.credit_card },
-  { value: "debit_card", label: tr.sources.debit_card },
-  { value: "cash", label: tr.sources.cash },
-  { value: "bank_transfer", label: tr.sources.bank_transfer },
-];
+const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 
 export default function SourcesScreen() {
   const userId = useUserId();
@@ -69,13 +65,13 @@ export default function SourcesScreen() {
   return (
     <Screen>
       <Card>
-        <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={tr.placeholders.paymentSourceName} />
+        <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
         <ChipPicker options={TYPES.map((t) => ({ value: t.value, label: t.label }))} value={sourceType} onChange={setSourceType} />
         {persons.length > 1 ? (
           <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         ) : null}
         {sourceType === "credit_card" ? (
-          <Field label={`${tr.sources.dueDay} (${tr.common.optional})`} value={dueDayStr} onChangeText={setDueDayStr} keyboardType="number-pad" />
+          <Field label={tr.sources.dueDay} placeholder={tr.common.optionalHint} value={dueDayStr} onChangeText={setDueDayStr} keyboardType="number-pad" />
         ) : null}
         <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || !personId || !dueDayValid} />
       </Card>

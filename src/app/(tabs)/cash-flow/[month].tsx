@@ -4,7 +4,6 @@ import React, { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
-import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { ChevronDown, ChevronUp, Inbox, StickyNote, Trash2 } from "lucide-react-native";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
@@ -12,7 +11,7 @@ import { newId } from "../../../db/ids";
 import { restoreRow, writeRows } from "../../../db/mutations";
 import { deleteTransaction } from "../../../data/repo";
 import { firstDayOf, lastDayOf, yearOf } from "../../../domain/dates";
-import { useCategories, useLedger, usePersons, useTransactionsBetween, useUserId } from "../../../data/hooks";
+import { useCategories, useLedger, useLive, usePersons, useTransactionsBetween, useUserId } from "../../../data/hooks";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
@@ -44,7 +43,7 @@ export default function MonthDetailScreen() {
     return map;
   }, [transactions]);
 
-  const cellNotes = useLiveQuery(
+  const cellNotes = useLive(
     getDb()
       .select()
       .from(s.cellNotes)

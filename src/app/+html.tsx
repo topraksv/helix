@@ -20,14 +20,6 @@ export default function Root({ children }: PropsWithChildren) {
           name="description"
           content="Local-first personal finance: monthly cash flow, installments, subscriptions."
         />
-        {/* GitHub Pages can't send COOP/COEP headers, so a service worker adds
-            them (SharedArrayBuffer for expo-sqlite). Dev server sets the real
-            headers in metro.config.js, so this only ships in production.
-            Path is absolute because exported HTML lives at nested routes too;
-            keep it in sync with experiments.baseUrl in app.json. */}
-        {process.env.NODE_ENV === "production" && (
-          <script src="/helix/coi-serviceworker.js" />
-        )}
         <ScrollViewStyleReset />
       </head>
       <body>{children}</body>

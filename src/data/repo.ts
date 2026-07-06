@@ -3,7 +3,7 @@
  * All writes flow through writeRows (outbox + last_entry_at + atomicity).
  */
 
-import { getSqlite } from "../db/client";
+import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
 import { nowIso, softDelete, writeRows, writeSetting, type RowWrite } from "../db/mutations";
 import { todayISO, type ISODate, type MonthKey } from "../domain/dates";
@@ -38,7 +38,11 @@ export interface SeedInput {
 
 export async function seedWorkspace(userId: string, input: SeedInput): Promise<void> {
   const writes: RowWrite[] = [];
-  const personIds = input.persons.map(() => newId());
+  // The self person gets a deterministic id so double-taps and multi-device
+  // seeds converge on one row instead of duplicating "me".
+  const personIds = await Promise.all(
+    input.persons.map((p) => (p.isSelf ? deterministicId(naturalKeys.selfPerson(userId)) : Promise.resolve(newId()))),
+  );
   input.persons.forEach((p, i) => {
     writes.push({ table: "persons", row: { id: personIds[i], name: p.name, isSelf: p.isSelf, deletedAt: null } });
   });
@@ -213,8 +217,8 @@ export async function createInstallmentPlan(userId: string, input: NewPlan): Pro
 
 /** Tombstone a plan together with its generated transactions. */
 export async function deletePlan(userId: string, planId: string): Promise<void> {
-  const sqlite = getSqlite();
-  const txIds = sqlite.getAllSync<{ id: string }>(
+  const sqlite = await getSqliteAsync();
+  const txIds = await sqlite.getAllAsync<{ id: string }>(
     `SELECT id FROM transactions WHERE installment_plan_id = ? AND deleted_at IS NULL`,
     [planId] as never[],
   );
@@ -247,10 +251,10 @@ export interface SubscriptionInput {
 
 export async function upsertSubscription(userId: string, input: SubscriptionInput): Promise<string> {
   const id = input.id ?? newId();
-  const sqlite = getSqlite();
+  const sqlite = await getSqliteAsync();
   const writes: RowWrite[] = [];
   if (input.id) {
-    const prev = sqlite.getFirstSync<{ amount_minor: number; currency: string }>(
+    const prev = await sqlite.getFirstAsync<{ amount_minor: number; currency: string }>(
       `SELECT amount_minor, currency FROM subscriptions WHERE id = ?`,
       [id] as never[],
     );
@@ -325,8 +329,9 @@ interface ExpectedRow {
   transaction_id: string | null;
 }
 
-function getExpectedRow(id: string): ExpectedRow | null {
-  return getSqlite().getFirstSync<ExpectedRow>(`SELECT * FROM expected_payments WHERE id = ?`, [id] as never[]);
+async function getExpectedRow(id: string): Promise<ExpectedRow | null> {
+  const sqlite = await getSqliteAsync();
+  return sqlite.getFirstAsync<ExpectedRow>(`SELECT * FROM expected_payments WHERE id = ?`, [id] as never[]);
 }
 
 /**
@@ -339,12 +344,12 @@ export async function confirmExpected(
   expectedId: string,
   opts: { actualAmountMinor?: Minor; categoryId?: string | null; personId: string; auto?: boolean },
 ): Promise<void> {
-  const row = getExpectedRow(expectedId);
+  const row = await getExpectedRow(expectedId);
   if (!row || row.status === "paid") return;
   const amount = opts.actualAmountMinor ?? row.amount_minor;
   const txId = newId();
   const today = todayISO();
-  const sqlite = getSqlite();
+  const sqlite = await getSqliteAsync();
 
   const writes: RowWrite[] = [
     {
@@ -390,7 +395,7 @@ export async function confirmExpected(
   ];
 
   if (row.kind === "subscription") {
-    const sub = sqlite.getFirstSync<Record<string, unknown>>(
+    const sub = await sqlite.getFirstAsync<Record<string, unknown>>(
       `SELECT * FROM subscriptions WHERE id = ? AND deleted_at IS NULL`,
       [row.ref_id] as never[],
     );
@@ -409,7 +414,7 @@ export async function confirmExpected(
 }
 
 export async function skipExpected(userId: string, expectedId: string): Promise<void> {
-  const row = getExpectedRow(expectedId);
+  const row = await getExpectedRow(expectedId);
   if (!row) return;
   await writeRows(userId, [
     {
@@ -421,7 +426,7 @@ export async function skipExpected(userId: string, expectedId: string): Promise<
 
 /** Undo a confirmation: tombstone the created transaction, back to pending. */
 export async function revertExpected(userId: string, expectedId: string): Promise<void> {
-  const row = getExpectedRow(expectedId);
+  const row = await getExpectedRow(expectedId);
   if (!row || row.status !== "paid") return;
   if (row.transaction_id) await softDelete(userId, "transactions", row.transaction_id);
   await writeRows(userId, [
@@ -474,10 +479,36 @@ export async function bulkMonthEntry(
 
 export async function runMaintenance(userId: string): Promise<void> {
   const today = todayISO();
-  const sqlite = getSqlite();
+  const sqlite = await getSqliteAsync();
+
+  // 0) Repair: collapse duplicate "self" persons (a historical seed bug could
+  // create two). Keep the oldest, remap references, tombstone the rest.
+  const selves = await sqlite.getAllAsync<{ id: string }>(
+    `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL ORDER BY created_at ASC`,
+    [userId] as never[],
+  );
+  if (selves.length > 1) {
+    const keepId = selves[0].id;
+    for (const dup of selves.slice(1)) {
+      for (const table of ["transactions", "payment_sources", "subscriptions", "recurring_incomes", "installment_plans"] as const) {
+        const refs = await sqlite.getAllAsync<Record<string, unknown>>(
+          `SELECT * FROM ${table} WHERE user_id = ? AND person_id = ?`,
+          [userId, dup.id] as never[],
+        );
+        if (refs.length > 0) {
+          await writeRows(
+            userId,
+            refs.map((row) => ({ table, row: { ...dbToCamel(row), personId: keepId } })),
+            false,
+          );
+        }
+      }
+      await softDelete(userId, "persons", dup.id);
+    }
+  }
 
   // 1) §2.7 — pending transactions whose effective date arrived become realized.
-  const due = sqlite.getAllSync<Record<string, unknown>>(
+  const due = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions WHERE user_id = ? AND status = 'pending' AND effective_date <= ? AND deleted_at IS NULL`,
     [userId, today] as never[],
   );
@@ -490,17 +521,17 @@ export async function runMaintenance(userId: string): Promise<void> {
   }
 
   // 2) Generate missing expected items (subscriptions + recurring incomes).
-  const subs = sqlite.getAllSync<Record<string, unknown>>(
+  const subs = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT s.*, p.is_self FROM subscriptions s JOIN persons p ON p.id = s.person_id
      WHERE s.user_id = ? AND s.deleted_at IS NULL`,
     [userId] as never[],
   );
-  const incomes = sqlite.getAllSync<Record<string, unknown>>(
+  const incomes = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT r.*, p.is_self FROM recurring_incomes r JOIN persons p ON p.id = r.person_id
      WHERE r.user_id = ? AND r.deleted_at IS NULL`,
     [userId] as never[],
   );
-  const existing = sqlite.getAllSync<{ kind: string; ref_id: string; due_date: string }>(
+  const existing = await sqlite.getAllAsync<{ kind: string; ref_id: string; due_date: string }>(
     `SELECT kind, ref_id, due_date FROM expected_payments WHERE user_id = ? AND deleted_at IS NULL`,
     [userId] as never[],
   );
@@ -556,7 +587,7 @@ export async function runMaintenance(userId: string): Promise<void> {
   }
 
   // 3) Late marking + auto-pay confirmations.
-  const pendingRows = sqlite.getAllSync<ExpectedRow>(
+  const pendingRows = await sqlite.getAllAsync<ExpectedRow>(
     `SELECT * FROM expected_payments WHERE user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
     [userId] as never[],
   );
@@ -571,9 +602,11 @@ export async function runMaintenance(userId: string): Promise<void> {
     status: r.status as ExpectedPaymentLike["status"],
   }));
   const autoPayIds = new Set(subs.filter((s) => Boolean(s.auto_pay)).map((s) => s.id as string));
-  const selfPersonId = sqlite.getFirstSync<{ id: string }>(
-    `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL`,
-    [userId] as never[],
+  const selfPersonId = (
+    await sqlite.getFirstAsync<{ id: string }>(
+      `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL`,
+      [userId] as never[],
+    )
   )?.id;
   for (const item of findAutoConfirmable(pendingLike, autoPayIds, today)) {
     if (selfPersonId) {

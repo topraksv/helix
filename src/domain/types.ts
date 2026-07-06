@@ -8,7 +8,24 @@ import type { Minor } from "./money";
 
 export type TransactionType = "expense" | "income" | "transfer";
 export type TransactionStatus = "pending" | "realized";
-export type PaymentSourceType = "credit_card" | "debit_card" | "cash" | "bank_transfer";
+export type PaymentSourceType =
+  | "credit_card"
+  | "debit_card"
+  | "virtual_card"
+  | "e_wallet"
+  | "cash"
+  | "direct_debit"
+  | "bank_transfer";
+
+export const PAYMENT_SOURCE_TYPES: readonly PaymentSourceType[] = [
+  "credit_card",
+  "debit_card",
+  "virtual_card",
+  "e_wallet",
+  "cash",
+  "direct_debit",
+  "bank_transfer",
+];
 export type SubscriptionCycle = "monthly" | "yearly" | "custom";
 export type ExpectedStatus = "pending" | "paid" | "late" | "skipped";
 export type ExpectedDirection = "in" | "out";
