@@ -29,11 +29,12 @@ jobs:
       EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_NvhpZdHfjtL1zRBLQp60gQ_FS90zaj3
     steps:
       - uses: actions/checkout@v4
-      # Node 24 ships npm 11 — the lockfile is written by npm 11 and npm 10's
-      # `npm ci` misreads its nested esbuild entries ("Missing: … from lock file").
+      # Expo SDK 54 tooling is incompatible with Node 24/26 native TypeScript
+      # stripping (it chokes on expo-modules-core's src/index.ts). Node 22 is
+      # the newest LTS the SDK 54 build supports.
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npx expo export -p web

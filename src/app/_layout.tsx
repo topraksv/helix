@@ -137,7 +137,6 @@ function RootLayoutInner() {
   useEffect(() => {
     // Auto-prompt Face ID when the gate closes; setState happens only after
     // the async authentication resolves, not synchronously in the effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (locked === true) void unlock();
   }, [locked, unlock]);
 
