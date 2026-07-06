@@ -4,6 +4,7 @@
 import React, { useMemo } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
+import { Pencil, Plus, RefreshCw, Trash2, Zap } from "lucide-react-native";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
 import { todayISO } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
@@ -13,10 +14,10 @@ import { dateLabel, tr } from "../../i18n/tr";
 import { useSubscriptions, useUserId } from "../../data/hooks";
 import { softDelete, restoreRow } from "../../db/mutations";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Heading, Row, Screen, Spread, Title } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
-import { spacing } from "../../ui/theme";
+import { spacing, useTheme } from "../../ui/theme";
 
 export default function SubscriptionsScreen() {
   const userId = useUserId();
@@ -24,6 +25,7 @@ export default function SubscriptionsScreen() {
   const router = useRouter();
   const undo = useUndo();
   const today = todayISO();
+  const { palette } = useTheme();
 
   const { active, passive, monthlyLoadTry, yearlyTry } = useMemo(() => {
     const activeSubs = subscriptions.filter((s) => s.isActive);
@@ -50,41 +52,40 @@ export default function SubscriptionsScreen() {
     if (snapshot) undo.show(`${name} — ${tr.common.deleted}`, () => void restoreRow(userId, "subscriptions", snapshot));
   };
 
-  const renderSub = (s: (typeof subscriptions)[number]) => (
-    <View key={s.id}>
-      <Spread style={{ paddingVertical: spacing.sm }}>
-        <Row style={{ flex: 1 }}>
-          <Logo name={s.name} domain={s.websiteDomain} />
-          <View style={{ flex: 1 }}>
-            <Row gap={spacing.sm}>
-              <Body>{s.name}</Body>
-              {s.trialEndDate && s.trialEndDate >= today ? <Badge text={tr.subs.trialBadge} tone="warning" /> : null}
-              {s.autoPay ? <Badge text="⚡" /> : null}
-            </Row>
-            <Body muted>
-              {s.isActive ? tr.subs.nextDue(dateLabel(s.nextDueDate)) : tr.subs.canceled}
-              {s.trialEndDate && s.trialEndDate >= today ? ` · ${tr.subs.trialEnds(dateLabel(s.trialEndDate))}` : ""}
-            </Body>
-          </View>
-        </Row>
-        <View style={{ alignItems: "flex-end" }}>
-          <Amount minor={s.amountMinor} currency={s.currency} colorized={false} />
-          {s.intervalMonths > 1 ? (
-            <Body muted>{tr.subs.perMonth(formatMinor(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))}</Body>
-          ) : null}
-        </View>
-      </Spread>
-      <Row gap={spacing.sm} style={{ marginBottom: spacing.sm }}>
-        <Button label={tr.common.edit} variant="ghost" onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })} />
-        <Button label={tr.common.delete} variant="ghost" onPress={() => void remove(s.id, s.name)} />
-      </Row>
-      <Divider />
-    </View>
-  );
+  const renderSub = (s: (typeof subscriptions)[number]) => {
+    const inTrial = s.trialEndDate != null && s.trialEndDate >= today;
+    return (
+      <ListRow
+        key={s.id}
+        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} />}
+        title={s.name}
+        subtitle={
+          (s.isActive ? tr.subs.nextDue(dateLabel(s.nextDueDate)) : tr.subs.canceled) +
+          (inTrial ? ` · ${tr.subs.trialEnds(dateLabel(s.trialEndDate!))}` : "")
+        }
+        onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })}
+        right={
+          <Row gap={spacing.sm}>
+            {inTrial ? <Badge text={tr.subs.trialBadge} tone="warning" /> : null}
+            {s.autoPay ? <Zap size={14} color={palette.warning} /> : null}
+            <View style={{ alignItems: "flex-end" }}>
+              <Amount minor={s.amountMinor} currency={s.currency} colorized={false} />
+              {s.intervalMonths > 1 ? (
+                <Body muted style={{ fontSize: 12 }}>
+                  {tr.subs.perMonth(formatMinor(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))}
+                </Body>
+              ) : null}
+            </View>
+            <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })} />
+            <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(s.id, s.name)} />
+          </Row>
+        }
+      />
+    );
+  };
 
   return (
-    <Screen>
-      <Title>{tr.subs.title}</Title>
+    <Screen title={tr.subs.title}>
       <Card>
         <Spread>
           <View>
@@ -98,19 +99,21 @@ export default function SubscriptionsScreen() {
         </Spread>
       </Card>
 
-      <Button label={`+ ${tr.subs.add}`} onPress={() => router.push("/subscription-form")} />
-      <View style={{ height: spacing.md }} />
+      <Button icon={Plus} label={tr.subs.add} onPress={() => router.push("/subscription-form")} />
+      <View style={{ height: spacing.lg }} />
 
-      {active.length === 0 && passive.length === 0 ? <EmptyState text={tr.cashflow.emptyMonth} /> : null}
+      {active.length === 0 && passive.length === 0 ? (
+        <EmptyState icon={RefreshCw} title={tr.subs.emptyTitle} hint={tr.subs.emptyHint} />
+      ) : null}
       {active.length > 0 ? (
         <>
-          <Heading>{tr.common.active}</Heading>
+          <SectionHeader>{tr.common.active}</SectionHeader>
           <Card>{active.map(renderSub)}</Card>
         </>
       ) : null}
       {passive.length > 0 ? (
         <>
-          <Heading>{tr.common.inactive}</Heading>
+          <SectionHeader>{tr.common.inactive}</SectionHeader>
           <Card>{passive.map(renderSub)}</Card>
         </>
       ) : null}

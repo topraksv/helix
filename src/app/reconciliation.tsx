@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
+import { CheckCircle2, Plus } from "lucide-react-native";
 import { confirmExpected, revertExpected, skipExpected } from "../data/repo";
 import {
   useLastEntryInfo,
@@ -17,7 +18,7 @@ import { todayISO } from "../domain/dates";
 import { formatMinor, parseTRAmountToMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Badge, Body, Button, Card, Divider, EmptyState, Field, Row, Screen, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, EmptyState, Field, Row, Screen, Spread } from "../ui/components";
 import { useUndo } from "../ui/undo";
 import { spacing } from "../ui/theme";
 
@@ -62,7 +63,7 @@ export default function CatchUpScreen() {
       {lastEntry.at ? <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.subtitle(dateLabel(lastEntry.at))}</Body> : null}
 
       {items.length === 0 ? (
-        <EmptyState text={tr.catchup.nothing} />
+        <EmptyState icon={CheckCircle2} title={tr.catchup.nothing} />
       ) : (
         items.map((e) => (
           <Card key={e.id}>
@@ -117,7 +118,7 @@ export default function CatchUpScreen() {
         ))
       )}
 
-      <Button label={`+ ${tr.cashflow.addTransaction}`} variant="secondary" onPress={() => router.push("/transaction")} />
+      <Button icon={Plus} label={tr.cashflow.addTransaction} variant="secondary" onPress={() => router.push("/transaction")} />
     </Screen>
   );
 }

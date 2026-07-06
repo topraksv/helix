@@ -3,7 +3,7 @@
  * writes instantly (and to sync merges, via SQLite change events).
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { getDb } from "../db/client";
@@ -14,6 +14,25 @@ import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, todayISO, yearOf, 
 import type { TxLike } from "../domain/types";
 import { readSetting } from "../db/mutations";
 
+/**
+ * useLiveQuery swallows query failures into an `error` field nobody reads and
+ * never retries, leaving screens stuck on empty data after a transient
+ * failure (the web sqlite worker can hiccup under a burst of concurrent
+ * queries). Log the error and retry with backoff until it heals.
+ */
+function useLive<T extends Parameters<typeof useLiveQuery>[0]>(query: T, deps: unknown[]) {
+  const [attempt, setAttempt] = useState(0);
+  const res = useLiveQuery(query, [...deps, attempt] as never[]);
+  const failed = res.error != null && res.updatedAt == null;
+  useEffect(() => {
+    if (!failed || attempt >= 6) return;
+    const timer = setTimeout(() => setAttempt((a) => a + 1), 250 * 2 ** attempt);
+    return () => clearTimeout(timer);
+  }, [failed, attempt]);
+  if (failed) console.error("[live-query]", String(res.error));
+  return res;
+}
+
 export function useUserId(): string {
   const userId = useSession((st) => st.userId);
   if (!userId) throw new Error("useUserId used outside an authenticated screen");
@@ -22,7 +41,7 @@ export function useUserId(): string {
 
 export function usePersons() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb().select().from(s.persons).where(and(eq(s.persons.userId, userId), isNull(s.persons.deletedAt))),
     [userId],
   ).data;
@@ -30,7 +49,7 @@ export function usePersons() {
 
 export function useCategories() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.categories)
@@ -42,7 +61,7 @@ export function useCategories() {
 
 export function useSources() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.paymentSources)
@@ -53,7 +72,7 @@ export function useSources() {
 
 export function useSubscriptions() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.subscriptions)
@@ -64,7 +83,7 @@ export function useSubscriptions() {
 
 export function usePlans() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.installmentPlans)
@@ -75,7 +94,7 @@ export function usePlans() {
 
 export function useRecurringIncomes() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.recurringIncomes)
@@ -86,7 +105,7 @@ export function useRecurringIncomes() {
 
 export function useComputedColumns() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.computedColumns)
@@ -98,7 +117,7 @@ export function useComputedColumns() {
 
 export function usePendingExpected() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.expectedPayments)
@@ -110,7 +129,7 @@ export function usePendingExpected() {
 
 export function useTransactionsBetween(from: string, to: string) {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.transactions)
@@ -129,7 +148,7 @@ export function useTransactionsBetween(from: string, to: string) {
 
 export function useAllTransactions() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.transactions)
@@ -141,7 +160,7 @@ export function useAllTransactions() {
 
 export function useAdjustments() {
   const userId = useUserId();
-  return useLiveQuery(
+  return useLive(
     getDb()
       .select()
       .from(s.balanceAdjustments)
@@ -150,9 +169,31 @@ export function useAdjustments() {
   ).data;
 }
 
+/**
+ * Live onboarded flag for the route guard. Reactive on purpose: on a second
+ * device the flag arrives via sync after sign-in, and the guard must lift
+ * without an app restart. `null` = still resolving (or signed out).
+ */
+export function useOnboarded(userId: string | null): boolean | null {
+  const res = useLive(
+    getDb()
+      .select()
+      .from(s.settings)
+      .where(and(eq(s.settings.userId, userId ?? ""), eq(s.settings.key, "onboarded"), isNull(s.settings.deletedAt))),
+    [userId],
+  );
+  if (!userId) return null;
+  if (res.updatedAt == null) return null; // first query still in flight
+  try {
+    return JSON.parse(res.data[0]?.value ?? "false") === true;
+  } catch {
+    return false;
+  }
+}
+
 export function useSettingsMap(): Map<string, string> {
   const userId = useUserId();
-  const rows = useLiveQuery(
+  const rows = useLive(
     getDb().select().from(s.settings).where(and(eq(s.settings.userId, userId), isNull(s.settings.deletedAt))),
     [userId],
   ).data;

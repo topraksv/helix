@@ -6,6 +6,19 @@ import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
+import {
+  Banknote,
+  Calculator,
+  CloudUpload,
+  Columns3,
+  FileDown,
+  FileSpreadsheet,
+  FileUp,
+  LogOut,
+  ScanFace,
+  Users,
+  Wallet,
+} from "lucide-react-native";
 import { useSession } from "../../../auth/session";
 import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
 import { writeSetting } from "../../../db/mutations";
@@ -17,10 +30,9 @@ import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalThemePreference } from "../../_layout";
 import { kv } from "../../../lib/kv";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, Divider, Field, Heading, Screen, Spread, Title } from "../../../ui/components";
-import { spacing } from "../../../ui/theme";
+import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, Spread } from "../../../ui/components";
+import { spacing, useTheme } from "../../../ui/theme";
 import type { ThemePreference } from "../../../ui/theme";
-import { Segmented } from "../../../ui/components";
 
 export default function SettingsScreen() {
   const userId = useUserId();
@@ -28,6 +40,7 @@ export default function SettingsScreen() {
   const settings = useSettingsMap();
   const sync = useSyncStatus();
   const router = useRouter();
+  const { palette } = useTheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
@@ -84,24 +97,23 @@ export default function SettingsScreen() {
     }
   };
 
-  return (
-    <Screen>
-      <Title>{tr.settings.title}</Title>
+  const syncStateColor =
+    sync.state === "idle" ? palette.positive : sync.state === "error" ? palette.negative : palette.warning;
 
+  return (
+    <Screen title={tr.settings.title}>
+      <SectionHeader>{tr.settings.workspaceSection}</SectionHeader>
       <Card>
-        <Button label={tr.settings.categories} variant="secondary" onPress={() => router.push("/settings/categories")} />
-        <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.computed} variant="secondary" onPress={() => router.push("/settings/computed-columns")} />
-        <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.persons} variant="secondary" onPress={() => router.push("/settings/persons")} />
-        <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.sources} variant="secondary" onPress={() => router.push("/settings/payment-sources")} />
-        <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.incomeRules} variant="secondary" onPress={() => router.push("/settings/incomes")} />
+        <ListRow icon={Columns3} title={tr.settings.categories} subtitle={tr.settings.categoriesDesc} chevron onPress={() => router.push("/settings/categories")} />
+        <ListRow icon={Calculator} title={tr.settings.computed} chevron onPress={() => router.push("/settings/computed-columns")} />
+        <ListRow icon={Users} title={tr.settings.persons} chevron onPress={() => router.push("/settings/persons")} />
+        <ListRow icon={Wallet} title={tr.settings.sources} chevron onPress={() => router.push("/settings/payment-sources")} />
+        <ListRow icon={Banknote} title={tr.settings.incomeRules} chevron onPress={() => router.push("/settings/incomes")} />
       </Card>
 
+      <SectionHeader>{tr.settings.appSection}</SectionHeader>
       <Card>
-        <Heading style={{ marginTop: 0 }}>{tr.settings.theme}</Heading>
+        <Body style={{ marginBottom: spacing.sm }}>{tr.settings.theme}</Body>
         <Segmented
           options={[
             { value: "system", label: tr.settings.themeSystem },
@@ -114,10 +126,6 @@ export default function SettingsScreen() {
             setGlobalThemePreference(v);
           }}
         />
-      </Card>
-
-      <Card>
-        <Heading style={{ marginTop: 0 }}>{tr.settings.notifications}</Heading>
         <Field
           label={tr.settings.reminderDays}
           value={reminderStr}
@@ -127,14 +135,15 @@ export default function SettingsScreen() {
         <Button
           label={tr.common.save}
           variant="secondary"
+          size="sm"
           disabled={!Number.isInteger(Number(reminderStr)) || Number(reminderStr) < 0 || Number(reminderStr) === reminderDays}
           onPress={() => {
             void writeSetting(userId, "reminder_days", Number(reminderStr)).then(() => rescheduleAll(userId));
           }}
         />
         {Platform.OS !== "web" ? (
-          <Spread style={{ marginTop: spacing.md }}>
-            <Body>{tr.settings.biometric}</Body>
+          <Spread style={{ marginTop: spacing.lg }}>
+            <ListRow icon={ScanFace} title={tr.settings.biometric} />
             <Switch
               value={biometric}
               onValueChange={(v) => {
@@ -146,28 +155,42 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
+      <SectionHeader>{tr.settings.dataSection}</SectionHeader>
       <Card>
-        <Heading style={{ marginTop: 0 }}>{tr.settings.sync}</Heading>
-        <Body muted>
-          {tr.settings.syncState[sync.state]}
-          {sync.lastSyncAt ? ` · ${tr.settings.lastSync(new Date(sync.lastSyncAt).toLocaleString("tr-TR"))}` : ""}
+        <ListRow
+          icon={CloudUpload}
+          title={tr.settings.sync}
+          subtitle={
+            tr.settings.syncState[sync.state] +
+            (sync.lastSyncAt ? ` · ${tr.settings.lastSync(new Date(sync.lastSyncAt).toLocaleString("tr-TR"))}` : "") +
+            (sync.error ? ` · ${sync.error}` : "") +
+            (!isSupabaseConfigured ? ` · ${tr.settings.syncUnconfiguredHint}` : "")
+          }
+          iconColor={syncStateColor}
+          right={
+            <Button
+              label={tr.settings.syncNow}
+              variant="secondary"
+              size="sm"
+              onPress={() => void syncNow(userId)}
+              disabled={!isSupabaseConfigured}
+            />
+          }
+        />
+        <ListRow icon={FileDown} title={tr.settings.export} chevron onPress={() => void exportJson()} />
+        <ListRow icon={FileSpreadsheet} title={tr.settings.exportCsv} chevron onPress={() => void exportCsv()} />
+        <ListRow icon={FileUp} title={tr.settings.import} chevron onPress={() => void importJson()} />
+      </Card>
+
+      <Card>
+        <ListRow icon={LogOut} iconColor={palette.negative} title={tr.auth.signOut} onPress={() => void signOut()} />
+      </Card>
+
+      <View style={{ alignItems: "center", marginTop: spacing.md }}>
+        <Body muted style={{ fontSize: 12 }}>
+          {tr.app.name} · {tr.app.tagline}
         </Body>
-        {sync.error ? <Body style={{ marginTop: spacing.xs }}>⚠ {sync.error}</Body> : null}
-        {!isSupabaseConfigured ? <Body muted style={{ marginTop: spacing.xs }}>⚠ {tr.settings.syncUnconfiguredHint}</Body> : null}
-        <View style={{ height: spacing.md }} />
-        <Button label={tr.settings.syncNow} variant="secondary" onPress={() => void syncNow(userId)} disabled={!isSupabaseConfigured} />
-      </Card>
-
-      <Card>
-        <Button label={tr.settings.export} variant="secondary" onPress={() => void exportJson()} />
-        <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.exportCsv} variant="secondary" onPress={() => void exportCsv()} />
-        <View style={{ height: spacing.sm }} />
-        <Button label={tr.settings.import} variant="secondary" onPress={() => void importJson()} />
-      </Card>
-
-      <Divider />
-      <Button label={tr.auth.signOut} variant="danger" onPress={() => void signOut()} />
+      </View>
     </Screen>
   );
 }

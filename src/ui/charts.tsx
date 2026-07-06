@@ -35,15 +35,13 @@ export function Donut({ slices, size = 168 }: { slices: DonutSlice[]; size?: num
   const cy = size / 2;
   const strokeWidth = 22;
 
-  let angle = -90;
   const arcs = slices
     .filter((s) => s.valueMinor > 0)
-    .map((s) => {
+    .reduce<(DonutSlice & { path: string; sweep: number })[]>((acc, s) => {
+      const start = -90 + acc.reduce((deg, a) => deg + a.sweep, 0);
       const sweep = total > 0 ? (s.valueMinor / total) * 360 : 0;
-      const path = describeArc(cx, cy, r, angle, angle + sweep);
-      angle += sweep;
-      return { ...s, path, sweep };
-    });
+      return [...acc, { ...s, path: describeArc(cx, cy, r, start, start + sweep), sweep }];
+    }, []);
 
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg, flexWrap: "wrap" }}>

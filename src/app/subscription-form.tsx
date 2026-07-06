@@ -16,13 +16,20 @@ import { spacing } from "../ui/theme";
 
 export default function SubscriptionFormModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const userId = useUserId();
   const subscriptions = useSubscriptions();
+  const existing = useMemo(() => subscriptions.find((s) => s.id === id), [subscriptions, id]);
+  // Live queries resolve async: when editing, hold the form back until the
+  // row is loaded, and key it so state initializers see the real values.
+  if (id && !existing) return <Screen scroll={false}>{null}</Screen>;
+  return <SubscriptionForm key={existing?.id ?? "new"} existing={existing} />;
+}
+
+function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscriptions>[number] }) {
+  const userId = useUserId();
   const categories = useCategories();
   const sources = useSources();
   const persons = usePersons();
   const router = useRouter();
-  const existing = useMemo(() => subscriptions.find((s) => s.id === id), [subscriptions, id]);
 
   const [name, setName] = useState(existing?.name ?? "");
   const [amountRaw, setAmountRaw] = useState(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");
@@ -33,7 +40,10 @@ export default function SubscriptionFormModal() {
   const [billingDayStr, setBillingDayStr] = useState(String(existing?.billingDay ?? 1));
   const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
   const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? null);
-  const [personId, setPersonId] = useState<string | null>(existing?.personId ?? persons.find((p) => p.isSelf)?.id ?? null);
+  // persons load async (live query) — derive the default instead of freezing
+  // a null initial state computed before the first query resolves.
+  const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? null);
+  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [isActive, setIsActive] = useState(existing?.isActive ?? true);
   const [autoPay, setAutoPay] = useState(existing?.autoPay ?? false);
   const [trialDate, setTrialDate] = useState(existing?.trialEndDate ?? "");
@@ -150,7 +160,7 @@ export default function SubscriptionFormModal() {
       {persons.length > 1 ? (
         <>
           <Label>{tr.tx.person}</Label>
-          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonId} />
+          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         </>
       ) : null}
 

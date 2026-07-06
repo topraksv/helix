@@ -7,14 +7,15 @@
 
 import React, { useMemo, useState } from "react";
 import { ScrollView, Text, useWindowDimensions, View } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import { ArrowDownRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Plus } from "lucide-react-native";
 import { creditCardSplit } from "../../../domain/analytics";
 import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
 import { todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { useCategories, useComputedColumns, useLedger, usePersons, useSources, useAllTransactions, toTxLike } from "../../../data/hooks";
-import { Amount, Body, Button, Card, EmptyState, Heading, Row, Screen, Spread, Title } from "../../../ui/components";
+import { Amount, Button, Card, EmptyState, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
 export default function CashflowScreen() {
@@ -38,64 +39,60 @@ export default function CashflowScreen() {
   const txLike = useMemo(() => toTxLike(allTx, persons), [allTx, persons]);
   const columnCategories = categories.filter((c) => c.isColumn);
 
+  const yearSwitcher = (
+    <Row gap={spacing.sm}>
+      <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} />
+      <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
+      <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= currentYear + 1} />
+    </Row>
+  );
+
   return (
-    <Screen padded={false} scroll={false}>
-      <View style={{ flex: 1, padding: spacing.lg }}>
-        <Spread style={{ marginBottom: spacing.md }}>
-          <Title>{tr.cashflow.title}</Title>
-          <Row gap={spacing.sm}>
-            <Button label="◀" variant="secondary" onPress={() => setYear(year - 1)} />
-            <Heading>{year}</Heading>
-            <Button label="▶" variant="secondary" onPress={() => setYear(year + 1)} disabled={year >= currentYear + 1} />
-          </Row>
-        </Spread>
+    <Screen title={tr.cashflow.title} right={yearSwitcher} maxWidth={wide ? 1100 : 760} scroll={false} padded>
+      <Row gap={spacing.sm} style={{ marginBottom: spacing.lg, flexWrap: "wrap" }}>
+        <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+        <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
+        <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
+        <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
+      </Row>
 
-        <Row gap={spacing.sm} style={{ marginBottom: spacing.md, flexWrap: "wrap" }}>
-          <Button label={`+ ${tr.cashflow.addTransaction}`} onPress={() => router.push("/transaction")} />
-          <Button label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
-          <Button label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
-          <Button label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
-        </Row>
-
-        {!bundle || bundle.yearMonths.length === 0 ? (
-          <EmptyState text={tr.cashflow.emptyMonth} />
-        ) : wide ? (
-          <MatrixTable
-            bundle={bundle}
-            columnCategories={columnCategories}
-            computedColumns={computed}
-            creditCardIds={creditCardIds}
-            txLike={txLike}
-          />
-        ) : (
-          <ScrollView>
-            {bundle.yearMonths.map((m) => (
-              <Card key={m.month} onPress={() => router.push(`/cash-flow/${m.month}`)}>
-                <Spread>
-                  <Heading style={{ marginVertical: 0 }}>{monthLabel(m.month)}</Heading>
-                  <Amount minor={m.closingMinor} />
-                </Spread>
-                <Row gap={spacing.lg} style={{ marginTop: spacing.sm }}>
-                  <View>
-                    <Text style={[type.small, { color: palette.textMuted }]}>{tr.cashflow.income}</Text>
-                    <Text style={[type.amount, { color: palette.positive }]}>{formatMinor(m.incomeMinor)}</Text>
-                  </View>
-                  <View>
-                    <Text style={[type.small, { color: palette.textMuted }]}>{tr.cashflow.expense}</Text>
-                    <Text style={[type.amount, { color: palette.negative }]}>{formatMinor(m.expenseMinor)}</Text>
-                  </View>
-                  {m.transferMinor !== 0 ? (
-                    <View>
-                      <Text style={[type.small, { color: palette.textMuted }]}>{tr.cashflow.transfer}</Text>
-                      <Text style={[type.amount, { color: palette.text }]}>{formatMinor(m.transferMinor)}</Text>
-                    </View>
-                  ) : null}
+      {!bundle || bundle.yearMonths.length === 0 ? (
+        <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
+      ) : wide ? (
+        <MatrixTable
+          bundle={bundle}
+          columnCategories={columnCategories}
+          computedColumns={computed}
+          creditCardIds={creditCardIds}
+          txLike={txLike}
+        />
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {bundle.yearMonths.map((m) => (
+            <Card key={m.month} onPress={() => router.push(`/cash-flow/${m.month}`)}>
+              <Spread>
+                <Text style={[type.heading, { color: palette.text }]}>{monthLabel(m.month)}</Text>
+                <Amount minor={m.closingMinor} />
+              </Spread>
+              <Row gap={spacing.lg} style={{ marginTop: spacing.md }}>
+                <Row gap={spacing.xs}>
+                  <ArrowUpRight size={14} color={palette.positive} />
+                  <Text style={[type.amountSm, { color: palette.positive }]}>{formatMinor(m.incomeMinor)}</Text>
                 </Row>
-              </Card>
-            ))}
-          </ScrollView>
-        )}
-      </View>
+                <Row gap={spacing.xs}>
+                  <ArrowDownRight size={14} color={palette.negative} />
+                  <Text style={[type.amountSm, { color: palette.negative }]}>{formatMinor(m.expenseMinor)}</Text>
+                </Row>
+                {m.transferMinor !== 0 ? (
+                  <Text style={[type.amountSm, { color: palette.textMuted }]}>
+                    {tr.cashflow.transfer}: {formatMinor(m.transferMinor)}
+                  </Text>
+                ) : null}
+              </Row>
+            </Card>
+          ))}
+        </ScrollView>
+      )}
     </Screen>
   );
 }
@@ -116,84 +113,86 @@ function MatrixTable({
   const { palette } = useTheme();
   const router = useRouter();
   const today = todayISO();
-  const CELL: object = { width: 132, paddingVertical: spacing.md, paddingHorizontal: spacing.sm };
-  const header = [
-    tr.installments.title.split(" ")[0], // "Taksitler" → KK Taksit derived
-    ...columnCategories.map((c) => c.name),
-    ...computedColumns.map((c) => c.name),
-    tr.cashflow.opening,
-    tr.cashflow.closing,
-  ];
+  const CELL: object = { width: 128, paddingVertical: spacing.md, paddingHorizontal: spacing.sm };
+  const header = ["KK Taksit", ...columnCategories.map((c) => c.name), ...computedColumns.map((c) => c.name), tr.cashflow.opening, tr.cashflow.closing];
 
   return (
-    <ScrollView>
-      <ScrollView horizontal>
-        <View>
-          <Row gap={0} style={{ borderBottomWidth: 1, borderColor: palette.border }}>
-            <View style={[CELL, { width: 110 }]}>
-              <Text style={[type.label, { color: palette.textMuted }]}>{tr.cashflow.year}</Text>
-            </View>
-            {header.map((h, i) => (
-              <View key={`${h}-${i}`} style={CELL}>
-                <Text style={[type.label, { color: palette.textMuted }]} numberOfLines={2}>
-                  {i === 0 ? "KK Taksit" : h}
-                </Text>
+    <Card padded={false} style={{ flex: 1 }}>
+      <ScrollView>
+        <ScrollView horizontal>
+          <View>
+            <Row gap={0} style={{ borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surfaceAlt }}>
+              <View style={[CELL, { width: 116 }]}>
+                <Text style={[type.label, { color: palette.textMuted }]}>{tr.cashflow.year}</Text>
               </View>
-            ))}
-          </Row>
-          {bundle.yearMonths.map((m) => {
-            const cc = creditCardSplit(txLike, creditCardIds, m.month, today);
-            const aggregates = {
-              month: m.month,
-              byCategory: m.byCategory,
-              incomeMinor: m.incomeMinor,
-              expenseMinor: m.expenseMinor,
-              ccSingleMinor: cc.singleMinor,
-              ccInstallmentMinor: cc.installmentMinor,
-            };
-            const cells: number[] = [
-              cc.installmentMinor,
-              ...columnCategories.map((c) => m.byCategory.get(c.id) ?? 0),
-              ...computedColumns.map((c) => {
-                try {
-                  return evaluateComputedColumn(parseDefinition(JSON.parse(c.definition)), aggregates);
-                } catch {
-                  return 0;
-                }
-              }),
-              m.openingMinor,
-              m.closingMinor,
-            ];
-            return (
-              <Row
-                key={m.month}
-                gap={0}
-                style={{ borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surface }}
-              >
-                <View style={[CELL, { width: 110 }]}>
-                  <Link href={`/cash-flow/${m.month}`} asChild>
-                    <Text style={[type.label, { color: palette.primary }]} onPress={() => router.push(`/cash-flow/${m.month}`)}>
+              {header.map((h, i) => (
+                <View key={`${h}-${i}`} style={CELL}>
+                  <Text style={[type.label, { color: palette.textMuted, textAlign: "right" }]} numberOfLines={2}>
+                    {h}
+                  </Text>
+                </View>
+              ))}
+            </Row>
+            {bundle.yearMonths.map((m, rowIndex) => {
+              const cc = creditCardSplit(txLike, creditCardIds, m.month, today);
+              const aggregates = {
+                month: m.month,
+                byCategory: m.byCategory,
+                incomeMinor: m.incomeMinor,
+                expenseMinor: m.expenseMinor,
+                ccSingleMinor: cc.singleMinor,
+                ccInstallmentMinor: cc.installmentMinor,
+              };
+              const cells: number[] = [
+                cc.installmentMinor,
+                ...columnCategories.map((c) => m.byCategory.get(c.id) ?? 0),
+                ...computedColumns.map((c) => {
+                  try {
+                    return evaluateComputedColumn(parseDefinition(JSON.parse(c.definition)), aggregates);
+                  } catch {
+                    return 0;
+                  }
+                }),
+                m.openingMinor,
+                m.closingMinor,
+              ];
+              return (
+                <Row
+                  key={m.month}
+                  gap={0}
+                  style={{
+                    borderBottomWidth: rowIndex === bundle.yearMonths.length - 1 ? 0 : 1,
+                    borderColor: palette.border,
+                    backgroundColor: rowIndex % 2 === 1 ? palette.surfaceAlt + "66" : "transparent",
+                  }}
+                >
+                  <View style={[CELL, { width: 116 }]}>
+                    <Text
+                      style={[type.label, { color: palette.primary, fontFamily: "Inter_600SemiBold", borderRadius: radius.sm }]}
+                      onPress={() => router.push(`/cash-flow/${m.month}`)}
+                      accessibilityRole="link"
+                    >
                       {monthLabel(m.month)}
                     </Text>
-                  </Link>
-                </View>
-                {cells.map((v, i) => (
-                  <View key={i} style={CELL}>
-                    <Text
-                      style={[
-                        type.amount,
-                        { color: v < 0 ? palette.negative : v === 0 ? palette.textMuted : palette.text, textAlign: "right" },
-                      ]}
-                    >
-                      {v === 0 ? "—" : formatMinor(v)}
-                    </Text>
                   </View>
-                ))}
-              </Row>
-            );
-          })}
-        </View>
+                  {cells.map((v, i) => (
+                    <View key={i} style={CELL}>
+                      <Text
+                        style={[
+                          type.amountSm,
+                          { fontSize: 13, color: v < 0 ? palette.negative : v === 0 ? palette.textMuted : palette.text, textAlign: "right" },
+                        ]}
+                      >
+                        {v === 0 ? "—" : formatMinor(v)}
+                      </Text>
+                    </View>
+                  ))}
+                </Row>
+              );
+            })}
+          </View>
+        </ScrollView>
       </ScrollView>
-    </ScrollView>
+    </Card>
   );
 }

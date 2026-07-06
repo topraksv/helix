@@ -5,7 +5,7 @@
 
 import { getSqlite } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
-import { nowIso, readSetting, softDelete, writeRows, writeSetting, type RowWrite } from "../db/mutations";
+import { nowIso, softDelete, writeRows, writeSetting, type RowWrite } from "../db/mutations";
 import { todayISO, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { advanceDueDate } from "../domain/recurrence";
@@ -73,10 +73,6 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
   await writeSetting(userId, "start_month", input.startMonth);
   await writeSetting(userId, "opening_balance_minor", input.openingBalanceMinor);
   await writeSetting(userId, "onboarded", true);
-}
-
-export function isOnboarded(userId: string): boolean {
-  return readSetting<boolean>(userId, "onboarded") === true;
 }
 
 // ---------------------------------------------------------------------------

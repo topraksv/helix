@@ -4,7 +4,7 @@
  * without touching schema or queries.
  */
 
-import { openDatabaseAsync, openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";
+import { deleteDatabaseAsync, openDatabaseAsync, openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";
 import { drizzle } from "drizzle-orm/expo-sqlite";
 import { Platform } from "react-native";
 import * as schema from "./schema";
@@ -20,8 +20,18 @@ export const DB_NAME = "helix.db";
  */
 export async function warmupDb(): Promise<void> {
   if (Platform.OS !== "web") return;
-  const handle = await openDatabaseAsync(DB_NAME);
-  await handle.closeAsync();
+  try {
+    const handle = await openDatabaseAsync(DB_NAME);
+    await handle.closeAsync();
+  } catch (e) {
+    // "not a database" = the OPFS file was left with a corrupt header (e.g. a
+    // page reload killed the worker mid-create). There is nothing readable to
+    // save — recreate the file once instead of bricking the app forever.
+    if (!String(e).includes("not a database")) throw e;
+    await deleteDatabaseAsync(DB_NAME);
+    const handle = await openDatabaseAsync(DB_NAME);
+    await handle.closeAsync();
+  }
 }
 
 let sqlite: SQLiteDatabase | null = null;
@@ -34,7 +44,9 @@ function createDb(handle: SQLiteDatabase) {
 export function getSqlite(): SQLiteDatabase {
   if (!sqlite) {
     sqlite = openDatabaseSync(DB_NAME, { enableChangeListener: true });
-    sqlite.execSync("PRAGMA journal_mode = WAL;");
+    // WAL needs the shared-memory VFS hooks that wa-sqlite's OPFS backend
+    // doesn't provide — only ask for it on native.
+    if (Platform.OS !== "web") sqlite.execSync("PRAGMA journal_mode = WAL;");
     sqlite.execSync("PRAGMA foreign_keys = ON;");
   }
   return sqlite;

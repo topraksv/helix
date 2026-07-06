@@ -3,12 +3,13 @@
 
 import React, { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
 import { categoryMonthMatrix, cumulativeSeries } from "../../../domain/analytics";
 import { makeMonthKey, monthOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { dateLabel, tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
-import { Amount, Body, Button, Card, Divider, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { Amount, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { Lines, useSeriesColors } from "../../../ui/charts";
 import { spacing, type, useTheme } from "../../../ui/theme";
 
@@ -55,9 +56,9 @@ export default function AnalysisScreen() {
       <Spread style={{ marginBottom: spacing.md }}>
         <Heading style={{ marginVertical: 0 }}>{tr.analysis.ytd}</Heading>
         <Row gap={spacing.sm}>
-          <Button label="◀" variant="secondary" onPress={() => setYear(year - 1)} />
-          <Heading style={{ marginVertical: 0 }}>{year}</Heading>
-          <Button label="▶" variant="secondary" onPress={() => setYear(year + 1)} disabled={year >= currentYear} />
+          <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} />
+          <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
+          <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= currentYear} />
         </Row>
       </Spread>
 
@@ -81,9 +82,9 @@ export default function AnalysisScreen() {
 
       <Body muted style={{ marginBottom: spacing.sm }}>{tr.analysis.matrixHint}</Body>
       {rows.length === 0 ? (
-        <EmptyState text={tr.cashflow.emptyMonth} />
+        <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />
       ) : (
-        <Card style={{ padding: 0 }}>
+        <Card padded={false}>
           <ScrollView horizontal>
             <View>
               <Row gap={0} style={{ borderBottomWidth: 1, borderColor: palette.border }}>
