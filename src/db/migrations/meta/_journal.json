@@ -8,6 +8,13 @@
       "when": 1783266624005,
       "tag": "0000_chief_lionheart",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783337511403,
+      "tag": "0001_empty_jane_foster",
+      "breakpoints": true
     }
   ]
 }

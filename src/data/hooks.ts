@@ -4,8 +4,8 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { addDatabaseChangeListener } from "expo-sqlite";
 import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
-import { useLiveQuery } from "drizzle-orm/expo-sqlite";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
@@ -14,23 +14,57 @@ import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, todayISO, yearOf, 
 import type { TxLike } from "../domain/types";
 import { readSetting } from "../db/mutations";
 
+interface LiveResult<T> {
+  data: T[];
+  updatedAt: Date | undefined;
+}
+
 /**
- * useLiveQuery swallows query failures into an `error` field nobody reads and
- * never retries, leaving screens stuck on empty data after a transient
- * failure (the web sqlite worker can hiccup under a burst of concurrent
- * queries). Log the error and retry with backoff until it heals.
+ * Live query over the async driver: runs the drizzle query, then re-runs it
+ * (debounced) whenever any local table changes. Failures are logged and
+ * retried with backoff instead of silently freezing screens on empty data.
  */
-function useLive<T extends Parameters<typeof useLiveQuery>[0]>(query: T, deps: unknown[]) {
-  const [attempt, setAttempt] = useState(0);
-  const res = useLiveQuery(query, [...deps, attempt] as never[]);
-  const failed = res.error != null && res.updatedAt == null;
+export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[]): LiveResult<T> {
+  const [state, setState] = useState<LiveResult<T>>({ data: [], updatedAt: undefined });
+
+  // The builder object is recreated every render, but it only *changes*
+  // when deps change — the effect closure capturing it is deps-accurate,
+  // and drizzle builders are re-executable.
   useEffect(() => {
-    if (!failed || attempt >= 6) return;
-    const timer = setTimeout(() => setAttempt((a) => a + 1), 250 * 2 ** attempt);
-    return () => clearTimeout(timer);
-  }, [failed, attempt]);
-  if (failed) console.error("[live-query]", String(res.error));
-  return res;
+    let cancelled = false;
+    let attempt = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const run = () => {
+      query.then(
+        (data) => {
+          if (cancelled) return;
+          attempt = 0;
+          setState({ data, updatedAt: new Date() });
+        },
+        (error) => {
+          if (cancelled || attempt >= 6) return;
+          console.error("[live-query]", String(error));
+          timer = setTimeout(run, 250 * 2 ** attempt++);
+        },
+      );
+    };
+    run();
+
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(run, 60); // coalesce bursts of change events
+    };
+    const listener = addDatabaseChangeListener(schedule);
+    return () => {
+      cancelled = true;
+      listener.remove();
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return state;
 }
 
 export function useUserId(): string {

@@ -11,7 +11,8 @@ import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Trash2 } from "lucide-react-native";
-import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, MoneyField, Screen, Spread } from "../../../ui/components";
+import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, MoneyField, Screen, Segmented, Spread } from "../../../ui/components";
+import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -22,6 +23,7 @@ export default function IncomeRulesScreen() {
   const categories = useCategories();
   const undo = useUndo();
   const [name, setName] = useState("");
+  const [kind, setKind] = useState<"salary" | "rent" | "allowance" | "other">("salary");
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
   const [payDayStr, setPayDayStr] = useState("15");
@@ -46,6 +48,7 @@ export default function IncomeRulesScreen() {
         row: {
           id: newId(),
           name: name.trim(),
+          kind,
           defaultAmountMinor: amountMinor!,
           currency: "TRY",
           payDay,
@@ -73,9 +76,14 @@ export default function IncomeRulesScreen() {
   return (
     <Screen>
       <Card>
-        <Field label={tr.settings.addIncomeRule} value={name} onChangeText={setName} placeholder={tr.placeholders.incomeRuleName} />
+        <Segmented
+          options={(["salary", "rent", "allowance", "other"] as const).map((k) => ({ value: k, label: tr.incomeKinds[k] }))}
+          value={kind}
+          onChange={setKind}
+        />
+        <Field label={tr.settings.addIncomeRule} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.income)} />
         <MoneyField
-          label={`${tr.settings.defaultAmount} (₺)`}
+          label={tr.settings.defaultAmount}
           value={amountRaw}
           onChangeMinor={(raw, minor) => {
             setAmountRaw(raw);
@@ -105,7 +113,7 @@ export default function IncomeRulesScreen() {
               <View>
                 <Body>{r.name}</Body>
                 <Body muted>
-                  {formatMinor(r.defaultAmountMinor, r.currency)} · {tr.settings.payDay}: {r.payDay}
+                  {tr.incomeKinds[r.kind]} · {formatMinor(r.defaultAmountMinor, r.currency)} · {tr.settings.payDay}: {r.payDay}
                 </Body>
               </View>
               <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(r)} />

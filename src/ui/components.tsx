@@ -4,9 +4,11 @@
  * rendering on iOS and web. Typeface: Inter; icons: lucide.
  */
 
-import React, { useState, type ReactNode } from "react";
+import React, { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -30,6 +32,37 @@ import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 
 function lightTap() {
   if (Platform.OS === "ios") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+}
+
+/**
+ * Motion system: one iOS-flavored entrance used everywhere — quick fade with
+ * a soft rise (220ms, decelerating). Consistent across web and native, never
+ * attention-grabbing.
+ */
+export function FadeIn({ children, delay = 0, style }: { children: ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
+  const [progress] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 220,
+      delay,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: Platform.OS !== "web",
+    }).start();
+  }, [progress, delay]);
+  return (
+    <Animated.View
+      style={[
+        {
+          opacity: progress,
+          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+        },
+        style,
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
 }
 
 /**
@@ -82,10 +115,10 @@ export function Screen({
   if (!scroll) {
     return (
       <View style={{ flex: 1, backgroundColor: palette.background }}>
-        <View style={[{ flex: 1 }, inner]}>
+        <FadeIn style={[{ flex: 1 }, inner]}>
           {header}
           {children}
-        </View>
+        </FadeIn>
       </View>
     );
   }
@@ -95,8 +128,10 @@ export function Screen({
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={inner} keyboardShouldPersistTaps="handled">
-        {header}
-        {children}
+        <FadeIn>
+          {header}
+          {children}
+        </FadeIn>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -382,6 +417,10 @@ export function Field({
               fontSize: 15,
               fontFamily: "Inter_400Regular",
             },
+            // Multiline reads as an intentional text area: taller, top-aligned.
+            props.multiline
+              ? { minHeight: 88, paddingTop: spacing.md, paddingBottom: spacing.md, textAlignVertical: "top" as const }
+              : null,
             style,
           ]}
         />
@@ -504,27 +543,34 @@ export function Segmented<T extends string>({
   );
 }
 
-/** Simple chip-row picker (categories, sources, persons). */
+/** Simple chip-row picker (categories, sources, persons); `multi` toggles a set. */
 export function ChipPicker<T extends string>({
   options,
   value,
   onChange,
+  multi,
+  values,
+  onToggle,
 }: {
   options: { value: T; label: string }[];
-  value: T | null;
-  onChange: (v: T) => void;
+  value?: T | null;
+  onChange?: (v: T) => void;
+  multi?: boolean;
+  values?: T[];
+  onToggle?: (v: T) => void;
 }) {
   const { palette } = useTheme();
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
       {options.map((option) => {
-        const selected = option.value === value;
+        const selected = multi ? (values ?? []).includes(option.value) : option.value === value;
         return (
           <Pressable
             key={option.value}
             onPress={() => {
               lightTap();
-              onChange(option.value);
+              if (multi) onToggle?.(option.value);
+              else onChange?.(option.value);
             }}
             accessibilityRole="button"
             accessibilityState={{ selected }}

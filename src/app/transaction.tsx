@@ -15,6 +15,7 @@ import { scheduleSync } from "../sync/engine";
 import { tr } from "../i18n/tr";
 import { Badge, Body, Button, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented } from "../ui/components";
 import { kv } from "../lib/kv";
+import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
 
 type EntryType = "expense" | "income" | "transfer";
@@ -144,7 +145,7 @@ export default function TransactionModal() {
       />
 
       <MoneyField
-        label={`${tr.tx.amount} (${currency})`}
+        label={`${tr.tx.amount} · ${currency}`}
         value={amountRaw}
         onChangeMinor={(raw, minor) => {
           setAmountRaw(raw);
@@ -192,6 +193,9 @@ export default function TransactionModal() {
         placeholder="2026-07-05"
         autoCapitalize="none"
       />
+      <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
+        {tr.tx.effectiveDateHint}
+      </Body>
       {dateValid && dateStr > todayISO() ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
 
       {entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
@@ -220,7 +224,7 @@ export default function TransactionModal() {
         </View>
       ) : null}
 
-      <Field label={`${tr.common.note} (${tr.common.optional})`} value={note} onChangeText={setNote} multiline />
+      <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={useRotatingPlaceholder(placeholderPools.note)} />
 
       <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
         <Button label={tr.common.save} onPress={() => void save(false)} disabled={!canSave} loading={busy} />

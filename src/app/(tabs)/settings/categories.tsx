@@ -10,6 +10,7 @@ import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Pencil, Trash2 } from "lucide-react-native";
 import { Body, Button, Card, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -57,7 +58,7 @@ export default function CategoriesScreen() {
     <Screen>
       <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.categoriesDesc}</Body>
       <Card>
-        <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={tr.placeholders.categoryName} />
+        <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.category)} />
         <Segmented
           options={[
             { value: "expense", label: tr.settings.kindExpense },

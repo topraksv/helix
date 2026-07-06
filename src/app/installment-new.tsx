@@ -11,6 +11,7 @@ import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { Body, Button, ChipPicker, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 
@@ -95,9 +96,9 @@ export default function NewPlanModal() {
         value={kind}
         onChange={setKind}
       />
-      <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={tr.placeholders.installmentTitle} />
+      <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={useRotatingPlaceholder(placeholderPools.installment)} />
       <MoneyField
-        label={kind === "card_installment" ? `${tr.installments.totalAmount} (₺)` : `${tr.installments.monthlyAmount} (₺)`}
+        label={kind === "card_installment" ? tr.installments.totalAmount : tr.installments.monthlyAmount}
         value={amountRaw}
         onChangeMinor={(raw, minor) => {
           setAmountRaw(raw);

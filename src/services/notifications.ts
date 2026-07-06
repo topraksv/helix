@@ -6,7 +6,7 @@
 
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import { getSqlite } from "../db/client";
+import { getSqliteAsync } from "../db/client";
 import { readSetting } from "../db/mutations";
 import { todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
@@ -38,16 +38,16 @@ interface PlannedNotification {
 }
 
 /** Collect everything worth notifying within the horizon. */
-export function planNotifications(userId: string): PlannedNotification[] {
-  const sqlite = getSqlite();
+export async function planNotifications(userId: string): Promise<PlannedNotification[]> {
+  const sqlite = await getSqliteAsync();
   const today = todayISO();
   const horizon = new Date(`${today}T00:00:00`);
   horizon.setDate(horizon.getDate() + HORIZON_DAYS);
   const horizonIso = horizon.toISOString().slice(0, 10);
-  const reminderDays = readSetting<number>(userId, "reminder_days") ?? 3;
+  const reminderDays = (await readSetting<number>(userId, "reminder_days")) ?? 3;
   const planned: PlannedNotification[] = [];
 
-  const expected = sqlite.getAllSync<{
+  const expected = await sqlite.getAllAsync<{
     due_date: string;
     amount_minor: number;
     currency: string;
@@ -60,14 +60,14 @@ export function planNotifications(userId: string): PlannedNotification[] {
     [userId, horizonIso] as never[],
   );
   const subNames = new Map(
-    sqlite
-      .getAllSync<{ id: string; name: string }>(`SELECT id, name FROM subscriptions WHERE user_id = ?`, [userId] as never[])
-      .map((s) => [s.id, s.name]),
+    (await sqlite.getAllAsync<{ id: string; name: string }>(`SELECT id, name FROM subscriptions WHERE user_id = ?`, [userId] as never[])).map(
+      (s) => [s.id, s.name] as const,
+    ),
   );
   const incomeNames = new Map(
-    sqlite
-      .getAllSync<{ id: string; name: string }>(`SELECT id, name FROM recurring_incomes WHERE user_id = ?`, [userId] as never[])
-      .map((s) => [s.id, s.name]),
+    (
+      await sqlite.getAllAsync<{ id: string; name: string }>(`SELECT id, name FROM recurring_incomes WHERE user_id = ?`, [userId] as never[])
+    ).map((s) => [s.id, s.name] as const),
   );
 
   for (const e of expected) {
@@ -90,7 +90,7 @@ export function planNotifications(userId: string): PlannedNotification[] {
   }
 
   // Trial endings
-  const trials = sqlite.getAllSync<{ name: string; trial_end_date: string }>(
+  const trials = await sqlite.getAllAsync<{ name: string; trial_end_date: string }>(
     `SELECT name, trial_end_date FROM subscriptions
      WHERE user_id = ? AND is_active = 1 AND deleted_at IS NULL
        AND trial_end_date IS NOT NULL AND trial_end_date BETWEEN ? AND ?`,
@@ -101,7 +101,7 @@ export function planNotifications(userId: string): PlannedNotification[] {
   }
 
   // Final installments finishing within the horizon
-  const finals = sqlite.getAllSync<{ title: string; effective_date: string }>(
+  const finals = await sqlite.getAllAsync<{ title: string; effective_date: string }>(
     `SELECT ip.title, t.effective_date FROM transactions t
      JOIN installment_plans ip ON ip.id = t.installment_plan_id
      WHERE t.user_id = ? AND t.deleted_at IS NULL AND t.installment_no = ip.installment_count
@@ -121,7 +121,7 @@ export async function rescheduleAll(userId: string): Promise<void> {
   const granted = await ensurePermission();
   if (!granted) return;
   await Notifications.cancelAllScheduledNotificationsAsync();
-  for (const n of planNotifications(userId)) {
+  for (const n of await planNotifications(userId)) {
     const fireAt = new Date(`${n.date}T09:00:00`);
     if (fireAt.getTime() <= Date.now()) continue;
     await Notifications.scheduleNotificationAsync({

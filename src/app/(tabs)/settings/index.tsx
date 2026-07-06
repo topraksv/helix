@@ -8,6 +8,7 @@ import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import {
   Banknote,
+  BookOpen,
   Calculator,
   CloudUpload,
   Columns3,
@@ -28,6 +29,7 @@ import { syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalThemePreference } from "../../_layout";
+import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../lib/kv";
 import { tr } from "../../../i18n/tr";
 import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, Spread } from "../../../ui/components";
@@ -43,6 +45,7 @@ export default function SettingsScreen() {
   const { palette } = useTheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const [reminderStr, setReminderStr] = useState(String(reminderDays));
 
@@ -56,7 +59,7 @@ export default function SettingsScreen() {
   const notify = (msg: string) => (Platform.OS === "web" ? window.alert(msg) : Alert.alert(tr.app.name, msg));
 
   const exportJson = async () => {
-    const bundle = buildExportBundle(userId);
+    const bundle = await buildExportBundle(userId);
     const path = await saveTextFile(
       `helix-yedek-${new Date().toISOString().slice(0, 10)}.json`,
       JSON.stringify(bundle, null, 1),
@@ -68,7 +71,7 @@ export default function SettingsScreen() {
   const exportCsv = async () => {
     const path = await saveTextFile(
       `helix-islemler-${new Date().toISOString().slice(0, 10)}.csv`,
-      buildTransactionsCsv(userId),
+      await buildTransactionsCsv(userId),
       "text/csv",
     );
     if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "text/csv" });
@@ -180,11 +183,14 @@ export default function SettingsScreen() {
         <ListRow icon={FileDown} title={tr.settings.export} chevron onPress={() => void exportJson()} />
         <ListRow icon={FileSpreadsheet} title={tr.settings.exportCsv} chevron onPress={() => void exportCsv()} />
         <ListRow icon={FileUp} title={tr.settings.import} chevron onPress={() => void importJson()} />
+        <ListRow icon={FileSpreadsheet} title={tr.importer.title} chevron onPress={() => router.push("/import-wizard")} />
       </Card>
 
       <Card>
+        <ListRow icon={BookOpen} title={tr.tour.replay} chevron onPress={() => setTourOpen(true)} />
         <ListRow icon={LogOut} iconColor={palette.negative} title={tr.auth.signOut} onPress={() => void signOut()} />
       </Card>
+      {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}
 
       <View style={{ alignItems: "center", marginTop: spacing.md }}>
         <Body muted style={{ fontSize: 12 }}>

@@ -12,6 +12,7 @@ import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
 import { Body, Button, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
 
 export default function SubscriptionFormModal() {
@@ -47,7 +48,9 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const [isActive, setIsActive] = useState(existing?.isActive ?? true);
   const [autoPay, setAutoPay] = useState(existing?.autoPay ?? false);
   const [trialDate, setTrialDate] = useState(existing?.trialEndDate ?? "");
-  const [domain, setDomain] = useState(existing?.websiteDomain ?? "");
+  // Logos are derived from the name (ui/logo.tsx); the old manual domain
+  // field is gone but stored values keep working as a favicon fallback.
+  const domain = existing?.websiteDomain ?? "";
   const [note, setNote] = useState(existing?.note ?? "");
   const [busy, setBusy] = useState(false);
 
@@ -93,7 +96,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         isActive,
         trialEndDate: trialDate.trim() || null,
         autoPay,
-        websiteDomain: domain.trim() || null,
+        websiteDomain: domain || null,
         note: note.trim() || null,
       });
       scheduleSync(userId);
@@ -107,11 +110,12 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     }
   };
 
+  const namePlaceholder = useRotatingPlaceholder(placeholderPools.subscription);
   return (
     <Screen>
-      <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={tr.placeholders.subscriptionName} />
+      <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
       <MoneyField
-        label={`${tr.tx.amount} (${currency})`}
+        label={`${tr.tx.amount} · ${currency}`}
         value={amountRaw}
         onChangeMinor={(raw, minor) => {
           setAmountRaw(raw);
@@ -164,9 +168,8 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         </>
       ) : null}
 
-      <Field label={`${tr.subs.trialDate} (${tr.common.optional})`} value={trialDate} onChangeText={setTrialDate} placeholder="2026-08-01" autoCapitalize="none" />
-      <Field label={`${tr.subs.domain} (${tr.common.optional})`} value={domain} onChangeText={setDomain} placeholder="netflix.com" autoCapitalize="none" />
-      <Field label={`${tr.common.note} (${tr.common.optional})`} value={note} onChangeText={setNote} multiline />
+      <Field label={tr.subs.trialDate} value={trialDate} onChangeText={setTrialDate} placeholder="2026-08-01" autoCapitalize="none" />
+      <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={tr.common.optionalHint} />
 
       <Spread style={{ marginBottom: spacing.md }}>
         <View style={{ flex: 1 }}>

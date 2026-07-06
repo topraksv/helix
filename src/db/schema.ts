@@ -26,7 +26,9 @@ export const persons = sqliteTable("persons", {
 export const paymentSources = sqliteTable("payment_sources", {
   ...syncColumns,
   name: text("name").notNull(),
-  type: text("type", { enum: ["credit_card", "debit_card", "cash", "bank_transfer"] }).notNull(),
+  type: text("type", {
+    enum: ["credit_card", "debit_card", "virtual_card", "e_wallet", "cash", "direct_debit", "bank_transfer"],
+  }).notNull(),
   personId: text("person_id").notNull(),
   dueDay: integer("due_day"),
   statementDay: integer("statement_day"), // reserved for Faz 2 statement cycles
@@ -136,6 +138,9 @@ export const priceHistory = sqliteTable("price_history", {
 export const recurringIncomes = sqliteTable("recurring_incomes", {
   ...syncColumns,
   name: text("name").notNull(),
+  kind: text("kind", { enum: ["salary", "rent", "allowance", "other"] })
+    .notNull()
+    .default("salary"),
   defaultAmountMinor: integer("default_amount_minor").notNull(),
   currency: text("currency").notNull().default("TRY"),
   payDay: integer("pay_day").notNull(),

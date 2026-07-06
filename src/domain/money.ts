@@ -71,3 +71,22 @@ export function parseTRAmountToMinor(input: string): Minor | null {
   const minor = Number(intPart) * 100 + Number((fracPart + "00").slice(0, 2));
   return negative ? -minor : minor;
 }
+
+/**
+ * Parse a spreadsheet-style sum ("300+400+500", "+300+1.250,50-100") into
+ * minor units. Single plain amounts parse too. Null for anything else.
+ */
+export function parseAmountExpression(input: string): Minor | null {
+  const compact = input.replace(/[₺\s]/g, "");
+  if (compact === "") return null;
+  const terms = compact.match(/[+-]?[\d.,]+/g);
+  if (!terms || terms.join("") !== compact) return null;
+  let total = 0;
+  for (const term of terms) {
+    const sign = term.startsWith("-") ? -1 : 1;
+    const minor = parseTRAmountToMinor(term.replace(/^[+-]/, ""));
+    if (minor == null) return null;
+    total += sign * minor;
+  }
+  return total;
+}

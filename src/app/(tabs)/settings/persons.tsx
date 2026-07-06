@@ -9,6 +9,7 @@ import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Trash2 } from "lucide-react-native";
 import { Badge, Body, Button, Card, Divider, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
+import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -38,24 +39,26 @@ export default function PersonsScreen() {
       <Card>
         <Row>
           <View style={{ flex: 1 }}>
-            <Field value={name} onChangeText={setName} placeholder={tr.placeholders.personName} />
+            <Field value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
           </View>
           <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim()} />
         </Row>
       </Card>
       <Card>
-        {persons.map((p) => (
-          <View key={p.id}>
-            <Spread style={{ paddingVertical: spacing.sm }}>
-              <Row gap={spacing.sm}>
-                <Body>{p.name}</Body>
-                {p.isSelf ? <Badge text="ben" tone="positive" /> : <Badge text={tr.installments.watchOnly} />}
-              </Row>
-              {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(p)} /> : null}
-            </Spread>
-            <Divider />
-          </View>
-        ))}
+        {[...persons]
+          .sort((a, b) => Number(b.isSelf) - Number(a.isSelf))
+          .map((p) => (
+            <View key={p.id}>
+              <Spread style={{ paddingVertical: spacing.sm }}>
+                <Row gap={spacing.sm}>
+                  <Body>{p.name}</Body>
+                  {p.isSelf ? <Badge text={tr.persons.selfBadge} tone="primary" /> : <Badge text={tr.installments.watchOnly} />}
+                </Row>
+                {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(p)} /> : null}
+              </Spread>
+              <Divider />
+            </View>
+          ))}
       </Card>
     </Screen>
   );

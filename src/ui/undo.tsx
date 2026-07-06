@@ -3,6 +3,7 @@
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { create } from "zustand";
+import { FadeIn } from "./components";
 import { radius, spacing, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 
@@ -37,7 +38,7 @@ export function UndoSnackbar() {
     <View
       pointerEvents="box-none"
       style={{ position: "absolute", left: spacing.lg, right: spacing.lg, bottom: 96, alignItems: "center" }}
-    >
+    ><FadeIn>
       <View
         style={{
           flexDirection: "row",
@@ -67,6 +68,6 @@ export function UndoSnackbar() {
           </Pressable>
         ) : null}
       </View>
-    </View>
+    </FadeIn></View>
   );
 }
