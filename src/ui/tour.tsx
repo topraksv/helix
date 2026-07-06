@@ -1,9 +1,9 @@
-/** First-run tour: four short slides explaining where everything lives.
+/** First-run tour: six short slides explaining where everything lives.
  *  Shown once (kv flag), reopenable from Settings. */
 
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View, useWindowDimensions } from "react-native";
-import { CalendarCheck, ChartPie, CloudUpload, Table2, type LucideIcon } from "lucide-react-native";
+import { Banknote, CalendarCheck, ChartPie, CloudUpload, PlusCircle, Table2, type LucideIcon } from "lucide-react-native";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
@@ -13,9 +13,11 @@ const TOUR_KEY = "helix.tour.done";
 
 const SLIDES: { icon: LucideIcon; title: string; body: string }[] = [
   { icon: ChartPie, title: tr.tour.s1Title, body: tr.tour.s1Body },
-  { icon: Table2, title: tr.tour.s2Title, body: tr.tour.s2Body },
-  { icon: CalendarCheck, title: tr.tour.s3Title, body: tr.tour.s3Body },
-  { icon: CloudUpload, title: tr.tour.s4Title, body: tr.tour.s4Body },
+  { icon: PlusCircle, title: tr.tour.s2Title, body: tr.tour.s2Body },
+  { icon: Table2, title: tr.tour.s3Title, body: tr.tour.s3Body },
+  { icon: CalendarCheck, title: tr.tour.s4Title, body: tr.tour.s4Body },
+  { icon: Banknote, title: tr.tour.s5Title, body: tr.tour.s5Body },
+  { icon: CloudUpload, title: tr.tour.s6Title, body: tr.tour.s6Body },
 ];
 
 /** Mounts on the dashboard; shows itself only on the first visit. */

@@ -6,6 +6,7 @@ import { Alert, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";
 import { useCategories, usePersons, useUserId } from "../data/hooks";
+import { categoryIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
@@ -82,7 +83,7 @@ export default function BulkEntryModal() {
       {rows.map((c) => (
         <MoneyField
           key={c.id}
-          label={`${c.icon ? `${c.icon} ` : ""}${c.name} (${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense})`}
+          label={`${categoryIcon(c)} ${c.name} — ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
           value={values[c.id]?.raw ?? ""}
           onChangeMinor={(raw, minor) => setValues((v) => ({ ...v, [c.id]: { raw, minor } }))}
         />

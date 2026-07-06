@@ -6,6 +6,7 @@ import { Switch, View } from "react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
 import { useCategories, useUserId } from "../../../data/hooks";
+import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Pencil, Trash2 } from "lucide-react-native";
@@ -31,7 +32,7 @@ export default function CategoriesScreen() {
           id: newId(),
           name: name.trim(),
           kind,
-          icon: null,
+          icon: suggestCategoryIcon(name.trim(), kind),
           color: null,
           sortOrder: categories.length,
           isColumn: true,
@@ -97,8 +98,7 @@ export default function CategoriesScreen() {
                 ) : (
                   <Spread style={{ paddingVertical: spacing.sm }}>
                     <Body>
-                      {c.icon ? `${c.icon} ` : ""}
-                      {c.name}
+                      {categoryIcon(c)} {c.name}
                     </Body>
                     <Row gap={spacing.sm}>
                       <Body muted>{tr.settings.columnVisible}</Body>

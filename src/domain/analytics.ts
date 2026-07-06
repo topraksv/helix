@@ -25,8 +25,16 @@ export function categoryMonthMatrix(
   year: number,
   today: ISODate,
 ): Map<string, CategoryYearRow> {
-  const start = makeMonthKey(year, 1);
-  const end = makeMonthKey(year, 12);
+  return categoryRangeMatrix(transactions, makeMonthKey(year, 1), makeMonthKey(year, 12), today);
+}
+
+/** Same aggregation over an arbitrary month window (analysis period slicer). */
+export function categoryRangeMatrix(
+  transactions: TxLike[],
+  start: MonthKey,
+  end: MonthKey,
+  today: ISODate,
+): Map<string, CategoryYearRow> {
   const rows = new Map<string, CategoryYearRow>();
   for (const tx of transactions) {
     if (!countsTowardBalance(tx, today) || !tx.categoryId) continue;

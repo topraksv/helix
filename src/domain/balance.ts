@@ -42,19 +42,29 @@ export interface LedgerInput {
   transactions: TxLike[];
   adjustments: AdjustmentLike[];
   today: ISODate;
+  /** Also show future/pending self rows inside category cells (display only —
+   *  balances, income/expense sums and the chain stay realized-only). */
+  includePendingInCells?: boolean;
 }
 
 /** Build the chained month-by-month ledger over [startMonth, endMonth]. */
 export function buildLedger(input: LedgerInput): MonthLedger[] {
-  const { openingBalanceMinor, startMonth, endMonth, transactions, adjustments, today } = input;
+  const { openingBalanceMinor, startMonth, endMonth, transactions, adjustments, today, includePendingInCells } = input;
   const months = monthRange(startMonth, endMonth);
   const byMonth = new Map<MonthKey, TxLike[]>();
+  const pendingByMonth = new Map<MonthKey, TxLike[]>();
   for (const tx of transactions) {
-    if (!countsTowardBalance(tx, today)) continue;
-    const key = monthKeyOf(tx.effectiveDate);
-    const bucket = byMonth.get(key);
-    if (bucket) bucket.push(tx);
-    else byMonth.set(key, [tx]);
+    if (countsTowardBalance(tx, today)) {
+      const key = monthKeyOf(tx.effectiveDate);
+      const bucket = byMonth.get(key);
+      if (bucket) bucket.push(tx);
+      else byMonth.set(key, [tx]);
+    } else if (includePendingInCells && tx.personIsSelf && tx.status === "pending") {
+      const key = monthKeyOf(tx.effectiveDate);
+      const bucket = pendingByMonth.get(key);
+      if (bucket) bucket.push(tx);
+      else pendingByMonth.set(key, [tx]);
+    }
   }
   const adjustmentByMonth = new Map<MonthKey, Minor>();
   for (const adj of adjustments) {
@@ -74,6 +84,11 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       if (tx.type === "income") income += tx.amountTryMinor;
       else if (tx.type === "expense") expense += tx.amountTryMinor;
       else transfer += tx.amountTryMinor;
+      if (tx.categoryId) {
+        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + tx.amountTryMinor);
+      }
+    }
+    for (const tx of pendingByMonth.get(month) ?? []) {
       if (tx.categoryId) {
         byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + tx.amountTryMinor);
       }

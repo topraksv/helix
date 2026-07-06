@@ -284,6 +284,7 @@ export function useLedger(year: number): LedgerBundle | null {
     const startMonth = settingValue<string | null>(settings, "start_month", null);
     if (!startMonth) return null;
     const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
+    const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
     const today = todayISO();
     const txLike = toTxLike(transactions, persons);
     const adj = adjustments.map((a) => ({ date: a.date, amountMinor: a.amountMinor }));
@@ -295,6 +296,7 @@ export function useLedger(year: number): LedgerBundle | null {
       transactions: txLike,
       adjustments: adj,
       today,
+      includePendingInCells,
     });
     const actualBalanceMinor = currentBalance({
       openingBalanceMinor,

@@ -1,22 +1,29 @@
-/** YTD analysis (user's Excel habit): category × month matrix with
- *  cumulative totals, per-category trend, and transaction search. */
+/** Analysis: category × month matrix over a selectable window (3/6/12 months
+ *  or a calendar year), a category filter, per-category cumulative trend and
+ *  transaction search. */
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
-import { categoryMonthMatrix, cumulativeSeries } from "../../../domain/analytics";
-import { makeMonthKey, monthOf, todayISO, yearOf } from "../../../domain/dates";
+import { categoryRangeMatrix, cumulativeSeries } from "../../../domain/analytics";
+import { addMonthsToKey, makeMonthKey, monthKeyOf, monthOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { dateLabel, tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
-import { Amount, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
+import { categoryIcon } from "../../../data/category-icons";
+import { Amount, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Lines, useSeriesColors } from "../../../ui/charts";
 import { spacing, type, useTheme } from "../../../ui/theme";
+
+type Period = "3m" | "6m" | "12m" | "year";
 
 export default function AnalysisScreen() {
   const today = todayISO();
   const currentYear = yearOf(today);
+  const currentMonth = monthKeyOf(today);
+  const [period, setPeriod] = useState<Period>("year");
   const [year, setYear] = useState(currentYear);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const categories = useCategories();
@@ -26,41 +33,73 @@ export default function AnalysisScreen() {
   const colors = useSeriesColors();
   const { width } = useWindowDimensions();
 
-  const txLike = useMemo(() => toTxLike(allTx, persons), [allTx, persons]);
-  const matrix = useMemo(() => categoryMonthMatrix(txLike, year, today), [txLike, year, today]);
-  const monthsUpTo = year === currentYear ? monthOf(today) : 12;
-  const monthKeys = Array.from({ length: monthsUpTo }, (_, i) => makeMonthKey(year, i + 1));
+  // Window: rolling N months ending now, or a calendar year (navigable).
+  const [startMonth, endMonth] =
+    period === "year"
+      ? [makeMonthKey(year, 1), year === currentYear ? currentMonth : makeMonthKey(year, 12)]
+      : [addMonthsToKey(currentMonth, -(Number(period.replace("m", "")) - 1)), currentMonth];
+  const monthKeys = monthRange(startMonth, endMonth);
+
+  // No manual useMemo: the React Compiler (enabled app-wide) memoizes these
+  // and bails out when it finds hand-rolled memoization on unstable deps.
+  const txLike = toTxLike(allTx, persons);
+  const matrix = categoryRangeMatrix(txLike, startMonth, endMonth, today);
 
   const rows = categories
     .map((c) => ({ category: c, data: matrix.get(c.id) }))
-    .filter((r) => r.data && r.data.ytdMinor !== 0);
+    .filter((r) => r.data && r.data.ytdMinor !== 0)
+    .filter((r) => categoryFilter == null || r.category.id === categoryFilter);
 
-  const searchResults = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (q.length < 2) return [];
-    return allTx
-      .filter(
-        (t) =>
-          (t.note ?? "").toLocaleLowerCase("tr-TR").includes(q) ||
-          formatMinor(t.amountTryMinor).includes(q) ||
-          t.effectiveDate.includes(q),
-      )
-      .slice(-50)
-      .reverse();
-  }, [allTx, query]);
+  const q = query.trim().toLocaleLowerCase("tr-TR");
+  const searchResults =
+    q.length < 2
+      ? []
+      : allTx
+          .filter(
+            (t) =>
+              (t.note ?? "").toLocaleLowerCase("tr-TR").includes(q) ||
+              formatMinor(t.amountTryMinor).includes(q) ||
+              t.effectiveDate.includes(q),
+          )
+          .slice(-50)
+          .reverse();
 
-  const selectedRow = selected ? rows.find((r) => r.category.id === selected) : null;
+  const trendRow = (selected ? rows.find((r) => r.category.id === selected) : null) ?? (categoryFilter ? rows[0] : null);
 
   return (
     <Screen>
-      <Spread style={{ marginBottom: spacing.md }}>
-        <Heading style={{ marginVertical: 0 }}>{tr.analysis.ytd}</Heading>
-        <Row gap={spacing.sm}>
-          <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} />
-          <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
-          <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= currentYear} />
-        </Row>
+      {/* Period slicer + (year mode) year switcher */}
+      <Spread style={{ marginBottom: spacing.sm, gap: spacing.md }}>
+        <View style={{ flex: 1, maxWidth: 380 }}>
+          <Segmented
+            options={[
+              { value: "3m", label: tr.analysis.period3m },
+              { value: "6m", label: tr.analysis.period6m },
+              { value: "12m", label: tr.analysis.period12m },
+              { value: "year", label: tr.analysis.periodYear },
+            ]}
+            value={period}
+            onChange={setPeriod}
+          />
+        </View>
+        {period === "year" ? (
+          <Row gap={spacing.sm}>
+            <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} />
+            <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
+            <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= currentYear} />
+          </Row>
+        ) : null}
       </Spread>
+
+      <Select
+        label={tr.tx.category}
+        options={[{ value: "", label: tr.analysis.allCategories }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+        value={categoryFilter ?? ""}
+        onChange={(v) => {
+          setCategoryFilter(v === "" ? null : v);
+          setSelected(null);
+        }}
+      />
 
       <Field placeholder={`${tr.common.search}…`} value={query} onChangeText={setQuery} />
       {searchResults.length > 0 ? (
@@ -80,7 +119,6 @@ export default function AnalysisScreen() {
         </Card>
       ) : null}
 
-      <Body muted style={{ marginBottom: spacing.sm }}>{tr.analysis.matrixHint}</Body>
       {rows.length === 0 ? (
         <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />
       ) : (
@@ -93,13 +131,13 @@ export default function AnalysisScreen() {
                 </View>
                 {monthKeys.map((m) => (
                   <View key={m} style={{ width: 96, padding: spacing.md }}>
-                    <Text style={[type.label, { color: palette.textMuted, textAlign: "right" }]}>
+                    <Text style={[type.label, { color: m === currentMonth ? palette.primary : palette.textMuted, textAlign: "right" }]}>
                       {tr.months[monthOf(m) - 1].slice(0, 3)}
                     </Text>
                   </View>
                 ))}
                 <View style={{ width: 110, padding: spacing.md }}>
-                  <Text style={[type.label, { color: palette.text, textAlign: "right" }]}>{tr.analysis.ytd}</Text>
+                  <Text style={[type.label, { color: palette.text, textAlign: "right" }]}>{tr.common.total}</Text>
                 </View>
               </Row>
               {rows.map(({ category, data }) => (
@@ -118,8 +156,7 @@ export default function AnalysisScreen() {
                   >
                     <View style={{ width: 150, padding: spacing.md }}>
                       <Text style={[type.label, { color: palette.primary }]} numberOfLines={1}>
-                        {category.icon ? `${category.icon} ` : ""}
-                        {category.name}
+                        {categoryIcon(category)} {category.name}
                       </Text>
                     </View>
                     {monthKeys.map((m) => {
@@ -148,17 +185,17 @@ export default function AnalysisScreen() {
         </Card>
       )}
 
-      {selectedRow ? (
+      {trendRow ? (
         <Card>
-          <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(selectedRow.category.name)}</Heading>
+          <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(trendRow.category.name)}</Heading>
           <Lines
             width={Math.min(width - spacing.lg * 4, 640)}
             xLabels={monthKeys.map((m) => tr.months[monthOf(m) - 1].slice(0, 3))}
             series={[
               {
-                label: selectedRow.category.name,
+                label: trendRow.category.name,
                 color: colors[0],
-                points: cumulativeSeries(selectedRow.data!, monthKeys[0], monthKeys[monthKeys.length - 1]).map(
+                points: cumulativeSeries(trendRow.data!, monthKeys[0], monthKeys[monthKeys.length - 1]).map(
                   (p) => p.cumulativeMinor,
                 ),
               },

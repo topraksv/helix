@@ -14,6 +14,7 @@ import { newId } from "../db/ids";
 import { writeRows, type RowWrite } from "../db/mutations";
 import { bulkMonthEntry } from "../data/repo";
 import { useCategories, usePersons, useUserId } from "../data/hooks";
+import { suggestCategoryIcon } from "../data/category-icons";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { parseSheet, readWorkbook, type ParsedSheet } from "../services/spreadsheet-import";
@@ -40,6 +41,9 @@ export default function ImportWizardModal() {
         "text/csv",
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.macroEnabled.12", // xlsm
+        "application/vnd.ms-excel.sheet.binary.macroEnabled.12", // xlsb
+        "application/vnd.oasis.opendocument.spreadsheet", // ods
       ],
       copyToCacheDirectory: true,
     });
@@ -88,7 +92,7 @@ export default function ImportWizardModal() {
               id,
               name: col.label,
               kind: col.kindGuess,
-              icon: null,
+              icon: suggestCategoryIcon(col.label, col.kindGuess),
               color: null,
               sortOrder: categories.length + newCategories.length,
               isColumn: true,

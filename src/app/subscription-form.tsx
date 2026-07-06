@@ -12,6 +12,7 @@ import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
 import { Body, Button, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
 
@@ -36,6 +37,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const [amountRaw, setAmountRaw] = useState(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");
   const [amountMinor, setAmountMinor] = useState<number | null>(existing?.amountMinor ?? null);
   const [currency, setCurrency] = useState(existing?.currency ?? "TRY");
+  const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
   const [cycle, setCycle] = useState<"monthly" | "yearly" | "custom">(existing?.cycle ?? "monthly");
   const [intervalStr, setIntervalStr] = useState(String(existing?.intervalMonths ?? 1));
   const [billingDayStr, setBillingDayStr] = useState(String(existing?.billingDay ?? 1));
@@ -47,7 +49,8 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [isActive, setIsActive] = useState(existing?.isActive ?? true);
   const [autoPay, setAutoPay] = useState(existing?.autoPay ?? false);
-  const [trialDate, setTrialDate] = useState(existing?.trialEndDate ?? "");
+  const [isTrial, setIsTrial] = useState(existing?.trialEndDate != null);
+  const [trialDate, setTrialDate] = useState<string | null>(existing?.trialEndDate ?? null);
   // Logos are derived from the name (ui/logo.tsx); the old manual domain
   // field is gone but stored values keep working as a favicon fallback.
   const domain = existing?.websiteDomain ?? "";
@@ -56,7 +59,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
 
   const billingDay = Number(billingDayStr);
   const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);
-  const trialValid = trialDate.trim() === "" || /^\d{4}-\d{2}-\d{2}$/.test(trialDate.trim());
+  const trialValid = !isTrial || trialDate != null;
   const valid =
     name.trim() !== "" &&
     amountMinor != null &&
@@ -94,7 +97,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         categoryId,
         personId,
         isActive,
-        trialEndDate: trialDate.trim() || null,
+        trialEndDate: isTrial ? trialDate : null,
         autoPay,
         websiteDomain: domain || null,
         note: note.trim() || null,
@@ -122,8 +125,16 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           setAmountMinor(minor);
         }}
       />
-      <Label>{tr.tx.currency}</Label>
-      <ChipPicker options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))} value={currency as never} onChange={setCurrency} />
+      {showCurrency ? (
+        <>
+          <Label>{tr.tx.currency}</Label>
+          <ChipPicker options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))} value={currency as never} onChange={setCurrency} />
+        </>
+      ) : (
+        <View style={{ alignSelf: "flex-start", marginBottom: spacing.md }}>
+          <Button size="sm" variant="ghost" label={tr.tx.changeCurrency} onPress={() => setShowCurrency(true)} />
+        </View>
+      )}
 
       <Segmented
         options={[
@@ -168,7 +179,14 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         </>
       ) : null}
 
-      <Field label={tr.subs.trialDate} value={trialDate} onChangeText={setTrialDate} placeholder="2026-08-01" autoCapitalize="none" />
+      <Spread style={{ marginBottom: spacing.md }}>
+        <View style={{ flex: 1, paddingRight: spacing.md }}>
+          <Body>{tr.subs.trialToggle}</Body>
+          <Body muted style={{ fontSize: 12 }}>{tr.subs.trialToggleHint}</Body>
+        </View>
+        <Switch value={isTrial} onValueChange={setIsTrial} />
+      </Spread>
+      {isTrial ? <DateField label={tr.subs.trialDate} value={trialDate} onChange={setTrialDate} /> : null}
       <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={tr.common.optionalHint} />
 
       <Spread style={{ marginBottom: spacing.md }}>

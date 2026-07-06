@@ -18,7 +18,7 @@ import type { ExpectedPaymentLike, PaymentSourceType, TransactionType } from "..
 // ---------------------------------------------------------------------------
 
 /** Excel-like default template. Pure template content — fully editable later. */
-const TEMPLATE_CATEGORIES: { name: string; kind: "expense" | "income"; isColumn: boolean; icon?: string }[] = [
+export const TEMPLATE_CATEGORIES: { name: string; kind: "expense" | "income"; isColumn: boolean; icon?: string }[] = [
   { name: "Kredi Kartı Tek Çekim", kind: "expense", isColumn: true, icon: "💳" },
   { name: "Ev Kredisi", kind: "expense", isColumn: true, icon: "🏠" },
   { name: "Fatura ve Abonelikler", kind: "expense", isColumn: true, icon: "🧾" },

@@ -6,6 +6,7 @@ import { Alert, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import { addTransaction, createInstallmentPlan } from "../data/repo";
 import { useCategories, usePersons, useSources, useUserId } from "../data/hooks";
+import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
@@ -14,6 +15,7 @@ import { lookupRate, SUPPORTED_CURRENCIES } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
 import { tr } from "../i18n/tr";
 import { Badge, Body, Button, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented } from "../ui/components";
+import { DateField } from "../ui/calendar";
 import { kv } from "../lib/kv";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
@@ -31,6 +33,7 @@ export default function TransactionModal() {
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
   const [currency, setCurrency] = useState<string>("TRY");
+  const [showCurrency, setShowCurrency] = useState(false);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
   // persons load async (live query) — deriving keeps "self" as the default
@@ -64,7 +67,7 @@ export default function TransactionModal() {
   const kindForCategories = entryType === "income" ? "income" : "expense";
   const categoryOptions = categories
     .filter((c) => c.kind === kindForCategories)
-    .map((c) => ({ value: c.id, label: `${c.icon ? `${c.icon} ` : ""}${c.name}` }));
+    .map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }));
 
   const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
   const count = Number(countStr);
@@ -152,12 +155,20 @@ export default function TransactionModal() {
           setAmountMinor(minor);
         }}
       />
-      <Label>{tr.tx.currency}</Label>
-      <ChipPicker
-        options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
-        value={currency as never}
-        onChange={(c) => setCurrency(c)}
-      />
+      {showCurrency ? (
+        <>
+          <Label>{tr.tx.currency}</Label>
+          <ChipPicker
+            options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
+            value={currency as never}
+            onChange={(c) => setCurrency(c)}
+          />
+        </>
+      ) : (
+        <View style={{ alignSelf: "flex-start", marginBottom: spacing.md }}>
+          <Button size="sm" variant="ghost" label={tr.tx.changeCurrency} onPress={() => setShowCurrency(true)} />
+        </View>
+      )}
       {currency !== "TRY" ? (
         <View style={{ marginBottom: spacing.md }}>
           {tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinor(tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
@@ -186,17 +197,10 @@ export default function TransactionModal() {
         </>
       ) : null}
 
-      <Field
-        label={tr.tx.effectiveDate}
-        value={dateStr}
-        onChangeText={setDateStr}
-        placeholder="2026-07-05"
-        autoCapitalize="none"
-      />
+      <DateField label={tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
       <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
-        {tr.tx.effectiveDateHint}
+        {dateValid && dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
       </Body>
-      {dateValid && dateStr > todayISO() ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
 
       {entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
         <View style={{ marginVertical: spacing.md }}>

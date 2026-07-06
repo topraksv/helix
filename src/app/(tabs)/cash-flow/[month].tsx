@@ -12,6 +12,7 @@ import { restoreRow, writeRows } from "../../../db/mutations";
 import { deleteTransaction } from "../../../data/repo";
 import { firstDayOf, lastDayOf, yearOf } from "../../../domain/dates";
 import { useCategories, useLedger, useLive, usePersons, useTransactionsBetween, useUserId } from "../../../data/hooks";
+import { categoryIcon } from "../../../data/category-icons";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
@@ -105,8 +106,8 @@ export default function MonthDetailScreen() {
             <Pressable onPress={() => setExpanded(open ? null : categoryId)} accessibilityRole="button">
               <Spread>
                 <Row gap={spacing.sm} style={{ flex: 1 }}>
-                  <Heading style={{ marginVertical: 0 }} >
-                    {category?.icon ? `${category.icon} ` : ""}
+                  <Heading style={{ marginVertical: 0 }}>
+                    {category ? `${categoryIcon(category)} ` : ""}
                     {title}
                   </Heading>
                   {note ? <StickyNote size={14} color={palette.textMuted} /> : null}
