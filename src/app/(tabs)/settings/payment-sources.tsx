@@ -8,8 +8,8 @@ import { usePersons, useSources, useUserId } from "../../../data/hooks";
 import type { PaymentSourceType } from "../../../domain/types";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, ChipPicker, Divider, Field, Row, Screen, Spread } from "../../../ui/components";
-import { InitialsBadge } from "../../../ui/components";
+import { Trash2 } from "lucide-react-native";
+import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, InitialsBadge, Row, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -27,7 +27,9 @@ export default function SourcesScreen() {
   const undo = useUndo();
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState<PaymentSourceType>("credit_card");
-  const [personId, setPersonId] = useState<string | null>(persons.find((p) => p.isSelf)?.id ?? null);
+  // persons load async (live query) — derive the default owner.
+  const [personChoice, setPersonChoice] = useState<string | null>(null);
+  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [dueDayStr, setDueDayStr] = useState("");
 
   const dueDay = dueDayStr.trim() === "" ? null : Number(dueDayStr);
@@ -70,7 +72,7 @@ export default function SourcesScreen() {
         <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={tr.placeholders.paymentSourceName} />
         <ChipPicker options={TYPES.map((t) => ({ value: t.value, label: t.label }))} value={sourceType} onChange={setSourceType} />
         {persons.length > 1 ? (
-          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonId} />
+          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         ) : null}
         {sourceType === "credit_card" ? (
           <Field label={`${tr.sources.dueDay} (${tr.common.optional})`} value={dueDayStr} onChangeText={setDueDayStr} keyboardType="number-pad" />
@@ -93,7 +95,7 @@ export default function SourcesScreen() {
                   </Body>
                 </View>
               </Row>
-              <Button label={tr.common.delete} variant="ghost" onPress={() => void remove(s)} />
+              <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(s)} />
             </Spread>
             <Divider />
           </View>

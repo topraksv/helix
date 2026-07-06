@@ -1,53 +1,136 @@
-/** Shared UI primitives. Accessible touch targets (min 44pt), TR formatting. */
+/**
+ * Shared UI primitives — the design system's single implementation point.
+ * Accessible touch targets (min 44pt), TR money formatting, identical
+ * rendering on iOS and web. Typeface: Inter; icons: lucide.
+ */
 
-import React, { type ReactNode } from "react";
+import React, { useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type StyleProp,
   type TextInputProps,
+  type TextStyle,
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import { Eye, EyeOff, ChevronRight, type LucideIcon } from "lucide-react-native";
 import { formatMinor, parseTRAmountToMinor } from "../domain/money";
-import { radius, spacing, type, useTheme } from "./theme";
+import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 
-export function Screen({ children, scroll = true, padded = true }: { children: ReactNode; scroll?: boolean; padded?: boolean }) {
+function lightTap() {
+  if (Platform.OS === "ios") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+}
+
+/**
+ * Screen scaffold: themed background, safe-area padding, optional large
+ * title header (replaces the native header inside tabs so titles never
+ * appear twice), and content centering on wide viewports.
+ */
+export function Screen({
+  children,
+  scroll = true,
+  padded = true,
+  title,
+  subtitle,
+  right,
+  maxWidth = 760,
+}: {
+  children: ReactNode;
+  scroll?: boolean;
+  padded?: boolean;
+  title?: string;
+  subtitle?: string;
+  right?: ReactNode;
+  maxWidth?: number;
+}) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  const style = [{ flex: 1, backgroundColor: palette.background }];
+  const { width } = useWindowDimensions();
+  const wide = width > maxWidth + spacing.xl * 2;
+
+  const header =
+    title != null ? (
+      <View style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
+        <View style={{ flex: 1 }}>
+          <Text style={[type.title, { color: palette.text }]}>{title}</Text>
+          {subtitle ? (
+            <Text style={[type.body, { color: palette.textMuted, marginTop: 2 }]}>{subtitle}</Text>
+          ) : null}
+        </View>
+        {right}
+      </View>
+    ) : null;
+
   const inner: StyleProp<ViewStyle> = [
-    padded && { padding: spacing.lg },
+    padded && { paddingHorizontal: spacing.lg },
+    { paddingTop: title ? Math.max(insets.top, spacing.lg) : spacing.lg },
     { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.xxl },
+    wide && { width: "100%", maxWidth, alignSelf: "center" },
   ];
-  if (!scroll) return <View style={[style, inner, { flex: 1 }]}>{children}</View>;
+
+  if (!scroll) {
+    return (
+      <View style={{ flex: 1, backgroundColor: palette.background }}>
+        <View style={[{ flex: 1 }, inner]}>
+          {header}
+          {children}
+        </View>
+      </View>
+    );
+  }
   return (
-    <ScrollView style={style} contentContainerStyle={inner} keyboardShouldPersistTaps="handled">
-      {children}
-    </ScrollView>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: palette.background }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView contentContainerStyle={inner} keyboardShouldPersistTaps="handled">
+        {header}
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
-export function Card({ children, style, onPress }: { children: ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void }) {
-  const { palette } = useTheme();
-  const base = {
-    backgroundColor: palette.surface,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: palette.border,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-  };
+export function Card({
+  children,
+  style,
+  onPress,
+  padded = true,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  onPress?: () => void;
+  padded?: boolean;
+}) {
+  const { palette, scheme } = useTheme();
+  const base: StyleProp<ViewStyle> = [
+    {
+      backgroundColor: palette.surface,
+      borderRadius: radius.lg,
+      borderWidth: scheme === "dark" ? StyleSheet.hairlineWidth : 0,
+      borderColor: palette.border,
+      padding: padded ? spacing.lg : 0,
+      marginBottom: spacing.md,
+      overflow: "hidden",
+    },
+    scheme === "light" && cardShadow,
+  ];
   if (onPress) {
     return (
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [base, style, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [base, style, pressed && { opacity: 0.9, transform: [{ scale: 0.995 }] }]}
         accessibilityRole="button"
       >
         {children}
@@ -57,31 +140,83 @@ export function Card({ children, style, onPress }: { children: ReactNode; style?
   return <View style={[base, style]}>{children}</View>;
 }
 
+/** Gradient hero container (dashboard balance, auth brand panel). */
+export function HeroCard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const { palette } = useTheme();
+  return (
+    <LinearGradient
+      colors={[palette.gradientFrom, palette.gradientTo]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1.1, y: 1.2 }}
+      style={[
+        { borderRadius: radius.lg, padding: spacing.xl, marginBottom: spacing.md, overflow: "hidden" },
+        style,
+      ]}
+    >
+      {children}
+    </LinearGradient>
+  );
+}
+
 export function Title({ children }: { children: ReactNode }) {
   const { palette } = useTheme();
   return <Text style={[type.title, { color: palette.text, marginBottom: spacing.md }]}>{children}</Text>;
 }
 
-export function Heading({ children, style }: { children: ReactNode; style?: object }) {
+export function Heading({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
   const { palette } = useTheme();
   return <Text style={[type.heading, { color: palette.text, marginVertical: spacing.sm }, style]}>{children}</Text>;
 }
 
-export function Body({ children, muted, style }: { children: ReactNode; muted?: boolean; style?: object }) {
+export function Body({ children, muted, style }: { children: ReactNode; muted?: boolean; style?: StyleProp<TextStyle> }) {
   const { palette } = useTheme();
   return <Text style={[type.body, { color: muted ? palette.textMuted : palette.text }, style]}>{children}</Text>;
 }
 
-export function Label({ children, style }: { children: ReactNode; style?: object }) {
+export function Label({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
   const { palette } = useTheme();
-  return <Text style={[type.label, { color: palette.textMuted, marginBottom: spacing.xs }, style]}>{children}</Text>;
+  return <Text style={[type.label, { color: palette.textMuted, marginBottom: spacing.xs + 2 }, style]}>{children}</Text>;
+}
+
+/** Section title used between card groups. */
+export function SectionHeader({ children }: { children: ReactNode }) {
+  const { palette } = useTheme();
+  return (
+    <Text
+      style={[
+        type.label,
+        {
+          color: palette.textMuted,
+          textTransform: "uppercase",
+          letterSpacing: 0.8,
+          fontSize: 12,
+          marginBottom: spacing.sm,
+          marginTop: spacing.sm,
+        },
+      ]}
+    >
+      {children}
+    </Text>
+  );
 }
 
 /** Signed money text: red for negatives, tabular figures. */
-export function Amount({ minor, currency = "TRY", large, colorized = true }: { minor: number; currency?: string; large?: boolean; colorized?: boolean }) {
+export function Amount({
+  minor,
+  currency = "TRY",
+  large,
+  colorized = true,
+  color,
+}: {
+  minor: number;
+  currency?: string;
+  large?: boolean;
+  colorized?: boolean;
+  color?: string;
+}) {
   const { palette } = useTheme();
-  const color = colorized && minor < 0 ? palette.negative : palette.text;
-  return <Text style={[large ? type.amountLg : type.amount, { color }]}>{formatMinor(minor, currency)}</Text>;
+  const resolved = color ?? (colorized && minor < 0 ? palette.negative : palette.text);
+  return <Text style={[large ? type.amountLg : type.amount, { color: resolved }]}>{formatMinor(minor, currency)}</Text>;
 }
 
 export function Row({ children, style, gap = spacing.md }: { children: ReactNode; style?: StyleProp<ViewStyle>; gap?: number }) {
@@ -98,62 +233,170 @@ export function Button({
   variant = "primary",
   disabled,
   loading,
+  icon: IconCmp,
+  size = "md",
 }: {
   label: string;
   onPress: () => void;
   variant?: "primary" | "secondary" | "danger" | "ghost";
   disabled?: boolean;
   loading?: boolean;
+  icon?: LucideIcon;
+  size?: "md" | "sm";
 }) {
   const { palette } = useTheme();
   const background =
-    variant === "primary" ? palette.primary : variant === "danger" ? palette.negative : variant === "secondary" ? palette.surfaceAlt : "transparent";
-  const color = variant === "primary" || variant === "danger" ? palette.onPrimary : variant === "ghost" ? palette.primary : palette.text;
+    variant === "primary"
+      ? palette.primary
+      : variant === "danger"
+        ? palette.negative
+        : variant === "secondary"
+          ? palette.surfaceAlt
+          : "transparent";
+  const color =
+    variant === "primary"
+      ? palette.onPrimary
+      : variant === "danger"
+        ? "#FFFFFF"
+        : variant === "ghost"
+          ? palette.primary
+          : palette.text;
+  const small = size === "sm";
   return (
     <Pressable
       accessibilityRole="button"
       disabled={disabled || loading}
-      onPress={onPress}
+      onPress={() => {
+        lightTap();
+        onPress();
+      }}
       style={({ pressed }) => [
         {
           backgroundColor: background,
-          borderRadius: radius.sm,
-          paddingVertical: spacing.md,
-          paddingHorizontal: spacing.lg,
-          minHeight: 44,
+          borderRadius: radius.sm + 2,
+          paddingVertical: small ? spacing.sm : spacing.md + 1,
+          paddingHorizontal: small ? spacing.md : spacing.lg,
+          minHeight: small ? 36 : 48,
+          flexDirection: "row",
+          gap: spacing.sm,
           alignItems: "center",
           justifyContent: "center",
-          opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
+          opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
+          transform: pressed ? [{ scale: 0.98 }] : undefined,
         },
       ]}
     >
-      {loading ? <ActivityIndicator color={color} /> : <Text style={[type.label, { color, fontSize: 15 }]}>{label}</Text>}
+      {loading ? (
+        <ActivityIndicator color={color} />
+      ) : (
+        <>
+          {IconCmp ? <IconCmp size={small ? 15 : 17} color={color} strokeWidth={2.2} /> : null}
+          <Text style={[type.label, { color, fontSize: small ? 13 : 15 }]}>{label}</Text>
+        </>
+      )}
     </Pressable>
   );
 }
 
-export function Field(props: TextInputProps & { label?: string }) {
+/** Circular icon-only button (navigation arrows, close, inline actions). */
+export function IconButton({
+  icon: IconCmp,
+  onPress,
+  disabled,
+  tone = "default",
+  size = 36,
+  label,
+}: {
+  icon: LucideIcon;
+  onPress: () => void;
+  disabled?: boolean;
+  tone?: "default" | "danger" | "primary";
+  size?: number;
+  label?: string;
+}) {
   const { palette } = useTheme();
+  const color = tone === "danger" ? palette.negative : tone === "primary" ? palette.primary : palette.textMuted;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={() => {
+        lightTap();
+        onPress();
+      }}
+      hitSlop={6}
+      style={({ pressed }) => [
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: palette.surfaceAlt,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
+        },
+      ]}
+    >
+      <IconCmp size={size * 0.5} color={color} strokeWidth={2.2} />
+    </Pressable>
+  );
+}
+
+export function Field({
+  label,
+  error,
+  secure,
+  style,
+  ...props
+}: TextInputProps & { label?: string; error?: string | null; secure?: boolean }) {
+  const { palette } = useTheme();
+  const [focused, setFocused] = useState(false);
+  const [hidden, setHidden] = useState(secure === true);
   return (
     <View style={{ marginBottom: spacing.md }}>
-      {props.label ? <Label>{props.label}</Label> : null}
-      <TextInput
-        placeholderTextColor={palette.textMuted}
-        {...props}
-        style={[
-          {
-            backgroundColor: palette.surfaceAlt,
-            color: palette.text,
-            borderRadius: radius.sm,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: palette.border,
-            paddingHorizontal: spacing.md,
-            minHeight: 44,
-            fontSize: 15,
-          },
-          props.style,
-        ]}
-      />
+      {label ? <Label>{label}</Label> : null}
+      <View>
+        <TextInput
+          placeholderTextColor={palette.textMuted}
+          {...props}
+          secureTextEntry={secure ? hidden : props.secureTextEntry}
+          onFocus={(e) => {
+            setFocused(true);
+            props.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            props.onBlur?.(e);
+          }}
+          style={[
+            {
+              backgroundColor: palette.surfaceAlt,
+              color: palette.text,
+              borderRadius: radius.sm,
+              borderWidth: 1.5,
+              borderColor: error ? palette.negative : focused ? palette.focus : "transparent",
+              paddingHorizontal: spacing.md,
+              paddingRight: secure ? 44 : spacing.md,
+              minHeight: 48,
+              fontSize: 15,
+              fontFamily: "Inter_400Regular",
+            },
+            style,
+          ]}
+        />
+        {secure ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setHidden(!hidden)}
+            hitSlop={8}
+            style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
+          >
+            {hidden ? <Eye size={18} color={palette.textMuted} /> : <EyeOff size={18} color={palette.textMuted} />}
+          </Pressable>
+        ) : null}
+      </View>
+      {error ? <Text style={[type.small, { color: palette.negative, marginTop: spacing.xs }]}>{error}</Text> : null}
     </View>
   );
 }
@@ -171,6 +414,7 @@ export function MoneyField({
   placeholder?: string;
 }) {
   const { palette } = useTheme();
+  const [focused, setFocused] = useState(false);
   const minor = value.trim() === "" ? null : parseTRAmountToMinor(value);
   const invalid = value.trim() !== "" && minor === null;
   return (
@@ -183,15 +427,18 @@ export function MoneyField({
         inputMode="decimal"
         placeholder={placeholder}
         placeholderTextColor={palette.textMuted}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         style={{
           backgroundColor: palette.surfaceAlt,
           color: invalid ? palette.negative : palette.text,
           borderRadius: radius.sm,
-          borderWidth: 1,
-          borderColor: invalid ? palette.negative : palette.border,
+          borderWidth: 1.5,
+          borderColor: invalid ? palette.negative : focused ? palette.focus : "transparent",
           paddingHorizontal: spacing.md,
-          minHeight: 44,
-          fontSize: 16,
+          minHeight: 48,
+          fontSize: 17,
+          fontFamily: "Inter_600SemiBold",
           fontVariant: ["tabular-nums"],
         }}
       />
@@ -209,13 +456,13 @@ export function Segmented<T extends string>({
   value: T;
   onChange: (v: T) => void;
 }) {
-  const { palette } = useTheme();
+  const { palette, scheme } = useTheme();
   return (
     <View
       style={{
         flexDirection: "row",
         backgroundColor: palette.surfaceAlt,
-        borderRadius: radius.sm,
+        borderRadius: radius.sm + 2,
         padding: 3,
         marginBottom: spacing.md,
       }}
@@ -225,18 +472,31 @@ export function Segmented<T extends string>({
         return (
           <Pressable
             key={option.value}
-            onPress={() => onChange(option.value)}
+            onPress={() => {
+              lightTap();
+              onChange(option.value);
+            }}
             accessibilityRole="button"
             accessibilityState={{ selected }}
-            style={{
-              flex: 1,
-              paddingVertical: spacing.sm + 2,
-              borderRadius: radius.sm - 2,
-              alignItems: "center",
-              backgroundColor: selected ? palette.surface : "transparent",
-            }}
+            style={[
+              {
+                flex: 1,
+                paddingVertical: spacing.sm + 2,
+                borderRadius: radius.sm - 1,
+                alignItems: "center",
+                backgroundColor: selected ? palette.surface : "transparent",
+              },
+              selected && scheme === "light" && cardShadow,
+            ]}
           >
-            <Text style={[type.label, { color: selected ? palette.text : palette.textMuted }]}>{option.label}</Text>
+            <Text
+              style={[
+                type.label,
+                { color: selected ? palette.text : palette.textMuted, fontFamily: selected ? "Inter_600SemiBold" : "Inter_500Medium" },
+              ]}
+            >
+              {option.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -250,7 +510,7 @@ export function ChipPicker<T extends string>({
   value,
   onChange,
 }: {
-  options: { value: T; label: string; color?: string }[];
+  options: { value: T; label: string }[];
   value: T | null;
   onChange: (v: T) => void;
 }) {
@@ -262,21 +522,34 @@ export function ChipPicker<T extends string>({
         return (
           <Pressable
             key={option.value}
-            onPress={() => onChange(option.value)}
+            onPress={() => {
+              lightTap();
+              onChange(option.value);
+            }}
             accessibilityRole="button"
             accessibilityState={{ selected }}
             style={{
               paddingVertical: spacing.sm,
-              paddingHorizontal: spacing.md,
+              paddingHorizontal: spacing.md + 2,
               borderRadius: radius.full,
-              borderWidth: 1,
+              borderWidth: 1.5,
               borderColor: selected ? palette.primary : palette.border,
-              backgroundColor: selected ? palette.primary : palette.surface,
-              minHeight: 36,
+              backgroundColor: selected ? palette.primarySoft : palette.surface,
+              minHeight: 38,
               justifyContent: "center",
             }}
           >
-            <Text style={[type.label, { color: selected ? palette.onPrimary : palette.text }]}>{option.label}</Text>
+            <Text
+              style={[
+                type.label,
+                {
+                  color: selected ? palette.primary : palette.text,
+                  fontFamily: selected ? "Inter_600SemiBold" : "Inter_500Medium",
+                },
+              ]}
+            >
+              {option.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -284,26 +557,43 @@ export function ChipPicker<T extends string>({
   );
 }
 
-export function Badge({ text, tone = "muted" }: { text: string; tone?: "muted" | "positive" | "negative" | "warning" }) {
+export function Badge({ text, tone = "muted" }: { text: string; tone?: "muted" | "positive" | "negative" | "warning" | "primary" }) {
   const { palette } = useTheme();
   const colors = {
     muted: { bg: palette.surfaceAlt, fg: palette.textMuted },
-    positive: { bg: palette.positive + "22", fg: palette.positive },
-    negative: { bg: palette.negative + "22", fg: palette.negative },
-    warning: { bg: palette.warning + "22", fg: palette.warning },
+    positive: { bg: palette.positive + "1F", fg: palette.positive },
+    negative: { bg: palette.negative + "1F", fg: palette.negative },
+    warning: { bg: palette.warning + "1F", fg: palette.warning },
+    primary: { bg: palette.primarySoft, fg: palette.primary },
   }[tone];
   return (
-    <View style={{ backgroundColor: colors.bg, borderRadius: radius.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 3 }}>
-      <Text style={[type.small, { color: colors.fg }]}>{text}</Text>
+    <View style={{ backgroundColor: colors.bg, borderRadius: radius.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 3, alignSelf: "flex-start" }}>
+      <Text style={[type.small, { color: colors.fg, fontFamily: "Inter_500Medium" }]}>{text}</Text>
     </View>
   );
 }
 
-export function EmptyState({ text }: { text: string }) {
+export function EmptyState({ icon: IconCmp, title, hint }: { icon?: LucideIcon; title: string; hint?: string }) {
   const { palette } = useTheme();
   return (
-    <View style={{ padding: spacing.xl, alignItems: "center" }}>
-      <Text style={[type.body, { color: palette.textMuted, textAlign: "center" }]}>{text}</Text>
+    <View style={{ padding: spacing.xxl, alignItems: "center", gap: spacing.sm }}>
+      {IconCmp ? (
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: palette.surfaceAlt,
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: spacing.xs,
+          }}
+        >
+          <IconCmp size={26} color={palette.textMuted} strokeWidth={1.8} />
+        </View>
+      ) : null}
+      <Text style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
+      {hint ? <Text style={[type.body, { color: palette.textMuted, textAlign: "center" }]}>{hint}</Text> : null}
     </View>
   );
 }
@@ -313,11 +603,86 @@ export function Divider() {
   return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.sm }} />;
 }
 
+/**
+ * List row: icon chip + title/subtitle + right accessory. The workhorse of
+ * settings and list screens.
+ */
+export function ListRow({
+  icon: IconCmp,
+  iconColor,
+  leading,
+  title,
+  subtitle,
+  right,
+  onPress,
+  chevron = false,
+}: {
+  icon?: LucideIcon;
+  iconColor?: string;
+  leading?: ReactNode;
+  title: string;
+  subtitle?: string;
+  right?: ReactNode;
+  onPress?: () => void;
+  chevron?: boolean;
+}) {
+  const { palette } = useTheme();
+  const content = (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md - 2 }}>
+      {leading}
+      {IconCmp ? (
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 11,
+            backgroundColor: iconColor ? iconColor + "1F" : palette.primarySoft,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <IconCmp size={18} color={iconColor ?? palette.primary} strokeWidth={2} />
+        </View>
+      ) : null}
+      <View style={{ flex: 1 }}>
+        <Text style={[type.body, { color: palette.text, fontFamily: "Inter_500Medium" }]} numberOfLines={1}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={[type.small, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {right}
+      {chevron ? <ChevronRight size={17} color={palette.textMuted} /> : null}
+    </View>
+  );
+  if (!onPress) return content;
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
+      {content}
+    </Pressable>
+  );
+}
+
+/** Compact stat block (label over value) used in hero/summary rows. */
+export function StatTile({ label, minor, currency = "TRY", tone }: { label: string; minor: number; currency?: string; tone?: "positive" | "negative" }) {
+  const { palette } = useTheme();
+  const color = tone === "positive" ? palette.positive : tone === "negative" ? palette.negative : palette.text;
+  return (
+    <View style={{ flex: 1, backgroundColor: palette.surface, borderRadius: radius.md, padding: spacing.md }}>
+      <Text style={[type.small, { color: palette.textMuted, marginBottom: 2 }]}>{label}</Text>
+      <Text style={[type.amount, { color, fontSize: 16 }]}>{formatMinor(minor, currency)}</Text>
+    </View>
+  );
+}
+
 /** Initials avatar with a deterministic hue from the name (logo fallback). */
 export function InitialsBadge({ name, size = 36 }: { name: string; size?: number }) {
   let hash = 0;
   for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
-  const bg = `hsl(${hash}, 45%, 45%)`;
+  const bg = `hsl(${hash}, 42%, 46%)`;
   const initials = name
     .split(/\s+/)
     .slice(0, 2)
@@ -328,13 +693,13 @@ export function InitialsBadge({ name, size = 36 }: { name: string; size?: number
       style={{
         width: size,
         height: size,
-        borderRadius: size / 2,
+        borderRadius: size / 3,
         backgroundColor: bg,
         alignItems: "center",
         justifyContent: "center",
       }}
     >
-      <Text style={{ color: "#fff", fontSize: size * 0.4, fontWeight: "600" }}>{initials}</Text>
+      <Text style={{ color: "#fff", fontSize: size * 0.38, fontFamily: "Inter_600SemiBold" }}>{initials}</Text>
     </View>
   );
 }

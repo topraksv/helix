@@ -1,12 +1,13 @@
 /** Dashboard: catch-up banner, actual vs projected balance (§2.7),
  *  upcoming/late expected items with confirm, distribution, trend. */
 
-import React, { useMemo } from "react";
-import { Pressable, useWindowDimensions, View } from "react-native";
+import React from "react";
+import { Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronRight, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { distributionForRange, fixedVsVariable } from "../../domain/analytics";
 import { projectedBalance } from "../../domain/balance";
-import { firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthOf, todayISO, yearOf } from "../../domain/dates";
+import { firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { dateLabel, monthLabel, tr } from "../../i18n/tr";
 import {
@@ -18,15 +19,24 @@ import {
   useLedger,
   usePendingExpected,
   usePersons,
+  useRecurringIncomes,
+  useSubscriptions,
   useUserId,
 } from "../../data/hooks";
 import { confirmExpected, revertExpected } from "../../data/repo";
-import { useRecurringIncomes, useSubscriptions } from "../../data/hooks";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Heading, Row, Screen, Spread, Title } from "../../ui/components";
+import { Badge, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader } from "../../ui/components";
 import { Donut, Lines, SplitBar, useSeriesColors } from "../../ui/charts";
 import { useUndo } from "../../ui/undo";
-import { spacing } from "../../ui/theme";
+import { radius, spacing, type, useTheme } from "../../ui/theme";
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 6) return tr.dashboard.greetingNight;
+  if (hour < 12) return tr.dashboard.greetingMorning;
+  if (hour < 18) return tr.dashboard.greetingDay;
+  return tr.dashboard.greetingEvening;
+}
 
 export default function DashboardScreen() {
   const userId = useUserId();
@@ -45,10 +55,12 @@ export default function DashboardScreen() {
   const colors = useSeriesColors();
   const undo = useUndo();
   const { width } = useWindowDimensions();
+  const { palette } = useTheme();
 
-  const txLike = useMemo(() => toTxLike(allTx, persons), [allTx, persons]);
+  // No manual useMemo here: the React Compiler (enabled app-wide) memoizes
+  // these derivations automatically and bails out when useMemo is hand-rolled.
+  const txLike = toTxLike(allTx, persons);
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
-  const selfIds = useMemo(() => new Set(persons.filter((p) => p.isSelf).map((p) => p.id)), [persons]);
 
   const pendingItems = expected.filter((e) => e.status === "pending" || e.status === "late");
   const upcoming = pendingItems
@@ -56,49 +68,47 @@ export default function DashboardScreen() {
     .slice(0, 8);
   const late = pendingItems.filter((e) => e.status === "late" || (e.status === "pending" && e.dueDate < today));
 
-  const projected = useMemo(() => {
-    if (!bundle) return null;
-    const horizon = lastDayOf(month);
-    // Future pending transactions + unpaid expected items (installment tx are
-    // already pending transactions, so expected covers only subs/incomes → no double count).
-    const flows = [
-      ...txLike
-        .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate > today)
-        .map((t) => ({ direction: (t.type === "income" ? "in" : "out") as "in" | "out", amountTryMinor: t.amountTryMinor, date: t.effectiveDate })),
-      ...pendingItems
-        .filter((e) => e.currency === "TRY" && e.dueDate >= today)
-        .map((e) => ({ direction: e.direction, amountTryMinor: e.amountMinor, date: e.dueDate })),
-    ];
-    return projectedBalance(bundle.actualBalanceMinor, flows, horizon);
-  }, [bundle, txLike, pendingItems, today, month]);
+  // Future pending transactions + unpaid expected items (installment tx are
+  // already pending transactions, so expected covers only subs/incomes → no double count).
+  const projected = bundle
+    ? projectedBalance(
+        bundle.actualBalanceMinor,
+        [
+          ...txLike
+            .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate > today)
+            .map((t) => ({ direction: (t.type === "income" ? "in" : "out") as "in" | "out", amountTryMinor: t.amountTryMinor, date: t.effectiveDate })),
+          ...pendingItems
+            .filter((e) => e.currency === "TRY" && e.dueDate >= today)
+            .map((e) => ({ direction: e.direction, amountTryMinor: e.amountMinor, date: e.dueDate })),
+        ],
+        lastDayOf(month),
+      )
+    : null;
 
-  const dist = useMemo(() => distributionForRange(txLike, firstDayOf(month), lastDayOf(month), today), [txLike, month, today]);
-  const fv = useMemo(() => fixedVsVariable(txLike, firstDayOf(month), lastDayOf(month), today), [txLike, month, today]);
+  const dist = distributionForRange(txLike, firstDayOf(month), lastDayOf(month), today);
+  const fv = fixedVsVariable(txLike, firstDayOf(month), lastDayOf(month), today);
 
-  const donutSlices = useMemo(() => {
-    const entries = [...dist.expenseByCategory.entries()]
-      .map(([id, v]) => ({ label: categories.find((c) => c.id === id)?.name ?? tr.common.none, valueMinor: v }))
-      .sort((a, b) => b.valueMinor - a.valueMinor);
-    const top = entries.slice(0, 7);
-    const rest = entries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
-    const slices = top.map((e, i) => ({ ...e, color: colors[i % colors.length] }));
-    if (rest > 0) slices.push({ label: tr.common.other, valueMinor: rest, color: colors[7] });
-    return slices;
-  }, [dist, categories, colors]);
+  const donutEntries = [...dist.expenseByCategory.entries()]
+    .map(([id, v]) => ({ label: categories.find((c) => c.id === id)?.name ?? tr.common.none, valueMinor: v }))
+    .sort((a, b) => b.valueMinor - a.valueMinor);
+  const donutRest = donutEntries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
+  const donutSlices = [
+    ...donutEntries.slice(0, 7).map((e, i) => ({ ...e, color: colors[i % colors.length] })),
+    ...(donutRest > 0 ? [{ label: tr.common.other, valueMinor: donutRest, color: colors[7] }] : []),
+  ];
 
-  const trend = useMemo(() => {
-    if (!bundle) return null;
-    const months = bundle.ledger.filter((m) => yearOf(m.month) === year && m.month <= month);
-    if (months.length < 2) return null;
-    return {
-      labels: months.map((m) => tr.months[monthOf(m.month) - 1].slice(0, 3)),
-      series: [
-        { label: tr.cashflow.income, color: colors[1], points: months.map((m) => m.incomeMinor) },
-        { label: tr.cashflow.expense, color: colors[5], points: months.map((m) => m.expenseMinor) },
-        { label: "Net", color: colors[0], points: months.map((m) => m.closingMinor) },
-      ],
-    };
-  }, [bundle, year, month, colors]);
+  const trendMonths = bundle ? bundle.ledger.filter((m) => yearOf(m.month) === year && m.month <= month) : [];
+  const trend =
+    trendMonths.length >= 2
+      ? {
+          labels: trendMonths.map((m) => tr.months[monthOf(m.month) - 1].slice(0, 3)),
+          series: [
+            { label: tr.cashflow.income, color: colors[1], points: trendMonths.map((m) => m.incomeMinor) },
+            { label: tr.cashflow.expense, color: colors[5], points: trendMonths.map((m) => m.expenseMinor) },
+            { label: "Net", color: colors[0], points: trendMonths.map((m) => m.closingMinor) },
+          ],
+        }
+      : null;
 
   const nameOf = (e: (typeof expected)[number]) =>
     subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
@@ -115,81 +125,113 @@ export default function DashboardScreen() {
     undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
   };
 
-  return (
-    <Screen>
-      <Title>{tr.tabs.dashboard}</Title>
+  const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
 
+  return (
+    <Screen title={greeting()} subtitle={dateLabel(today)}>
+      {/* Catch-up banner */}
       {lastEntry.at != null && lastEntry.daysAgo != null && lastEntry.daysAgo >= 1 ? (
         <Pressable onPress={() => router.push("/reconciliation")} accessibilityRole="button">
-          <Card style={{ borderLeftWidth: 3, borderLeftColor: colors[2] }}>
-            <Body>{tr.dashboard.lastEntry(dateLabel(lastEntry.at), tr.dashboard.daysAgo(lastEntry.daysAgo))}</Body>
-            <Body muted>{tr.dashboard.catchUp} →</Body>
+          <Card style={{ backgroundColor: palette.warning + "14", borderWidth: 0 }}>
+            <Row>
+              <History size={20} color={palette.warning} />
+              <View style={{ flex: 1 }}>
+                <Body>{tr.dashboard.lastEntry(dateLabel(lastEntry.at), tr.dashboard.daysAgo(lastEntry.daysAgo))}</Body>
+                <Body muted>{tr.dashboard.catchUp}</Body>
+              </View>
+              <ChevronRight size={18} color={palette.textMuted} />
+            </Row>
           </Card>
         </Pressable>
       ) : null}
 
+      {/* Hero balance */}
       {bundle ? (
-        <Card>
-          <Spread>
-            <View>
-              <Body muted>{tr.dashboard.actualBalance}</Body>
-              <Amount minor={bundle.actualBalanceMinor} large />
+        <HeroCard>
+          <Text style={[type.label, { color: "rgba(255,255,255,0.75)", textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
+            {tr.dashboard.actualBalance}
+          </Text>
+          <Text style={[type.amountLg, { color: "#FFFFFF", fontSize: 38, marginTop: spacing.xs }]}>
+            {formatMinor(bundle.actualBalanceMinor)}
+          </Text>
+          {projected != null && projectedDelta != null ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.sm,
+                marginTop: spacing.md,
+                backgroundColor: "rgba(255,255,255,0.14)",
+                alignSelf: "flex-start",
+                borderRadius: radius.full,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.xs + 2,
+              }}
+            >
+              {projectedDelta >= 0 ? (
+                <TrendingUp size={14} color="#FFFFFF" />
+              ) : (
+                <TrendingDown size={14} color="#FFFFFF" />
+              )}
+              <Text style={[type.amountSm, { color: "#FFFFFF" }]}>
+                {tr.dashboard.projectedBalance} · {formatMinor(projected)}
+              </Text>
             </View>
-            {projected != null ? (
-              <View style={{ alignItems: "flex-end" }}>
-                <Body muted>{tr.dashboard.projectedBalance}</Body>
-                <Amount minor={projected} />
-                <Body muted>({monthLabel(month)})</Body>
-              </View>
-            ) : null}
-          </Spread>
-        </Card>
+          ) : null}
+        </HeroCard>
       ) : null}
 
+      {/* Quick actions */}
+      <Row style={{ marginBottom: spacing.lg }}>
+        <View style={{ flex: 1 }}>
+          <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button icon={History} label={tr.catchup.title} variant="secondary" onPress={() => router.push("/reconciliation")} />
+        </View>
+      </Row>
+
+      {/* Upcoming payments */}
+      <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
       {(late.length > 0 || upcoming.length > 0) && selfPersonId ? (
         <Card>
-          <Heading style={{ marginTop: 0 }}>{tr.dashboard.upcoming}</Heading>
           {late.map((e) => (
-            <View key={e.id}>
-              <Spread style={{ paddingVertical: spacing.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Row gap={spacing.sm}>
-                    <Badge text={tr.dashboard.late} tone="negative" />
-                    <Body>{nameOf(e)}</Body>
-                  </Row>
-                  <Body muted>{dateLabel(e.dueDate)} · {formatMinor(e.amountMinor, e.currency)}</Body>
-                </View>
-                <Button label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid} variant="secondary" onPress={() => void confirm(e)} />
-              </Spread>
-              <Divider />
-            </View>
+            <ListRow
+              key={e.id}
+              icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
+              iconColor={palette.negative}
+              title={nameOf(e)}
+              subtitle={`${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
+              right={
+                <Row gap={spacing.sm}>
+                  <Badge text={tr.dashboard.late} tone="negative" />
+                  <Button size="sm" label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid} variant="secondary" onPress={() => void confirm(e)} />
+                </Row>
+              }
+            />
           ))}
           {upcoming.map((e) => (
-            <View key={e.id}>
-              <Spread style={{ paddingVertical: spacing.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Body>
-                    {e.direction === "in" ? "↓ " : ""}
-                    {nameOf(e)}
-                  </Body>
-                  <Body muted>
-                    {tr.dashboard.inDays(daysBetween(today, e.dueDate))} · {dateLabel(e.dueDate)} · {formatMinor(e.amountMinor, e.currency)}
-                  </Body>
-                </View>
-                {e.dueDate <= today ? (
-                  <Button label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid} variant="secondary" onPress={() => void confirm(e)} />
-                ) : null}
-              </Spread>
-              <Divider />
-            </View>
+            <ListRow
+              key={e.id}
+              icon={e.direction === "in" ? ArrowDownLeft : CalendarClock}
+              iconColor={e.direction === "in" ? palette.positive : undefined}
+              title={nameOf(e)}
+              subtitle={`${tr.dashboard.inDays(daysBetween(today, e.dueDate))} · ${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
+              right={
+                e.dueDate <= today ? (
+                  <Button size="sm" label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid} variant="secondary" onPress={() => void confirm(e)} />
+                ) : undefined
+              }
+            />
           ))}
         </Card>
       ) : (
         <Card>
-          <Body muted>{tr.dashboard.noUpcoming}</Body>
+          <EmptyState icon={PartyPopper} title={tr.dashboard.noUpcoming} />
         </Card>
       )}
 
+      {/* Expense distribution */}
       {donutSlices.length > 0 ? (
         <Card>
           <Heading style={{ marginTop: 0 }}>
@@ -204,6 +246,7 @@ export default function DashboardScreen() {
         </Card>
       ) : null}
 
+      {/* Fixed vs variable */}
       {fv.fixedMinor + fv.variableMinor > 0 ? (
         <Card>
           <Heading style={{ marginTop: 0 }}>{tr.dashboard.fixedVsVariable}</Heading>
@@ -216,6 +259,7 @@ export default function DashboardScreen() {
         </Card>
       ) : null}
 
+      {/* Yearly trend */}
       {trend ? (
         <Card>
           <Heading style={{ marginTop: 0 }}>{tr.dashboard.trend}</Heading>

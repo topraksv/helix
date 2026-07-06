@@ -9,7 +9,8 @@ import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
 import { deriveStartMonth } from "../domain/installments";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
-import { Body, Button, ChipPicker, Field, Heading, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { Body, Button, ChipPicker, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 
@@ -29,7 +30,10 @@ export default function NewPlanModal() {
   const [startMonth, setStartMonth] = useState(monthKeyOf(todayISO()));
   const [usePaidDerive, setUsePaidDerive] = useState(true);
   const [sourceId, setSourceId] = useState<string | null>(null);
-  const [personId, setPersonId] = useState<string | null>(persons.find((p) => p.isSelf)?.id ?? null);
+  // persons load async (live query) — derive the default instead of freezing
+  // a null initial state computed before the first query resolves.
+  const [personChoice, setPersonChoice] = useState<string | null>(null);
+  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -117,9 +121,9 @@ export default function NewPlanModal() {
         <>
           <Label>{tr.installments.startMonth}</Label>
           <Spread style={{ marginBottom: spacing.md }}>
-            <Button label="◀" variant="secondary" onPress={() => { setUsePaidDerive(false); setStartMonth(addMonthsToKey(startMonth, -1)); }} />
+            <IconButton icon={ChevronLeft} label={tr.installments.startMonth} onPress={() => { setUsePaidDerive(false); setStartMonth(addMonthsToKey(startMonth, -1)); }} />
             <Heading>{monthLabel(startMonth)}</Heading>
-            <Button label="▶" variant="secondary" onPress={() => { setUsePaidDerive(false); setStartMonth(addMonthsToKey(startMonth, 1)); }} />
+            <IconButton icon={ChevronRight} label={tr.installments.startMonth} onPress={() => { setUsePaidDerive(false); setStartMonth(addMonthsToKey(startMonth, 1)); }} />
           </Spread>
         </>
       )}
@@ -133,7 +137,7 @@ export default function NewPlanModal() {
       {persons.length > 1 ? (
         <>
           <Label>{tr.tx.person}</Label>
-          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonId} />
+          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         </>
       ) : null}
       <Label>{tr.tx.category}</Label>

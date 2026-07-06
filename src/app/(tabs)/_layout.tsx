@@ -1,41 +1,55 @@
 import React from "react";
-import { Text, type ColorValue } from "react-native";
+import { Platform } from "react-native";
 import { Tabs } from "expo-router";
+import { ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
 import { useTheme } from "../../ui/theme";
-
-function TabIcon({ glyph, color }: { glyph: string; color: ColorValue }) {
-  return <Text style={{ fontSize: 20, color }}>{glyph}</Text>;
-}
 
 export default function TabsLayout() {
   const { palette } = useTheme();
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: palette.surface },
-        headerTintColor: palette.text,
-        tabBarStyle: { backgroundColor: palette.surface, borderTopColor: palette.border },
+        // Screens draw their own large titles; a native header would repeat them.
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: palette.surface,
+          borderTopColor: palette.border,
+          ...(Platform.OS === "web" ? { height: 60, paddingBottom: 8, paddingTop: 6 } : {}),
+        },
         tabBarActiveTintColor: palette.primary,
         tabBarInactiveTintColor: palette.textMuted,
+        tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11 },
         sceneStyle: { backgroundColor: palette.background },
       }}
     >
       <Tabs.Screen
         name="index"
-        options={{ title: tr.tabs.dashboard, tabBarIcon: ({ color }) => <TabIcon glyph="◉" color={color} /> }}
+        options={{
+          title: tr.tabs.dashboard,
+          tabBarIcon: ({ color, size }) => <ChartPie color={color} size={size - 2} strokeWidth={2} />,
+        }}
       />
       <Tabs.Screen
         name="cash-flow"
-        options={{ title: tr.tabs.cashflow, tabBarIcon: ({ color }) => <TabIcon glyph="₺" color={color} /> }}
+        options={{
+          title: tr.tabs.cashflow,
+          tabBarIcon: ({ color, size }) => <WalletCards color={color} size={size - 2} strokeWidth={2} />,
+        }}
       />
       <Tabs.Screen
         name="subscriptions"
-        options={{ title: tr.tabs.subscriptions, tabBarIcon: ({ color }) => <TabIcon glyph="↻" color={color} /> }}
+        options={{
+          title: tr.tabs.subscriptions,
+          tabBarIcon: ({ color, size }) => <RefreshCw color={color} size={size - 2} strokeWidth={2} />,
+        }}
       />
       <Tabs.Screen
         name="settings"
-        options={{ title: tr.tabs.settings, tabBarIcon: ({ color }) => <TabIcon glyph="⚙" color={color} /> }}
+        options={{
+          title: tr.tabs.settings,
+          tabBarIcon: ({ color, size }) => <Settings color={color} size={size - 2} strokeWidth={2} />,
+        }}
       />
     </Tabs>
   );

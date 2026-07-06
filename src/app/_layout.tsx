@@ -11,11 +11,20 @@ import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import * as LocalAuthentication from "expo-local-authentication";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  useFonts,
+} from "@expo-google-fonts/inter";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import migrations from "../db/migrations/migrations";
 import { getDb, warmupDb } from "../db/client";
 import { useSession } from "../auth/session";
-import { isOnboarded, runMaintenance } from "../data/repo";
+import { useOnboarded } from "../data/hooks";
+import { runMaintenance } from "../data/repo";
 import { refreshRates } from "../services/fx-fetch";
 import { rescheduleAll } from "../services/notifications";
 import { syncNow } from "../sync/engine";
@@ -41,9 +50,22 @@ export default function RootLayout() {
   // first openDatabaseSync call (see warmupDb). Native opens synchronously.
   const [dbReady, setDbReady] = useState(Platform.OS !== "web");
   const [dbError, setDbError] = useState<string | null>(null);
+  const [fontsLoaded, fontsError] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+  });
 
   useEffect(() => {
     if (dbReady) return;
+    // Non-isolated first load: the COI service worker (+html.tsx) is about to
+    // reload the page. Touching the DB now risks the reload killing the
+    // sqlite worker mid-write and corrupting the OPFS file — stay blank.
+    if (typeof window !== "undefined" && !window.crossOriginIsolated && "serviceWorker" in navigator) {
+      return;
+    }
     warmupDb()
       .then(() => setDbReady(true))
       .catch((e) => setDbError(String(e)));
@@ -59,7 +81,7 @@ export default function RootLayout() {
           <title>Helix</title>
         </Head>
       )}
-      {dbReady ? (
+      {dbReady && (fontsLoaded || fontsError != null) ? (
         <RootLayoutInner />
       ) : (
         <View style={{ flex: 1, backgroundColor: background, justifyContent: "center", padding: 24 }}>
@@ -82,7 +104,7 @@ function RootLayoutInner() {
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const { userId, ready, bootstrap } = useSession();
   const [locked, setLocked] = useState<boolean | null>(null);
-  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const onboarded = useOnboarded(userId);
   const segments = useSegments();
   const router = useRouter();
 
@@ -108,11 +130,11 @@ function RootLayoutInner() {
   // Biometric gate (spec §2.3) — local check, works offline.
   useEffect(() => {
     if (!ready) return;
-    if (!userId) {
-      setLocked(false);
-      return;
-    }
     void (async () => {
+      if (!userId) {
+        setLocked(false);
+        return;
+      }
       const enabled = (await kv.get("helix.biometric")) === "true";
       setLocked(enabled && Platform.OS !== "web");
     })();
@@ -124,6 +146,9 @@ function RootLayoutInner() {
   }, []);
 
   useEffect(() => {
+    // Auto-prompt Face ID when the gate closes; setState happens only after
+    // the async authentication resolves, not synchronously in the effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (locked === true) void unlock();
   }, [locked, unlock]);
 
@@ -134,7 +159,6 @@ function RootLayoutInner() {
   // Opportunistic background work on open + foreground (never blocks UI).
   useEffect(() => {
     if (!ready || !userId || locked !== false) return;
-    setOnboarded(isOnboarded(userId));
     const kick = () => {
       void runMaintenance(userId)
         .then(() => rescheduleAll(userId))
@@ -190,13 +214,14 @@ function RootLayoutInner() {
     );
   }
 
-  // The route-guard effect above is about to redirect; don't render the
-  // current (protected) screen in the meantime — its hooks require a user.
+  // Don't render protected screens until the user is signed in AND onboarded:
+  // their hooks require a user, and mounting the dashboard's query burst
+  // against a freshly created database (mid sign-up, pre-seed) has proven
+  // fragile on the web sqlite worker.
   const inAuth = segments[0] === "(auth)";
   const inOnboarding = segments[0] === "(onboarding)";
-  const redirecting =
-    (!userId && !inAuth) || (!!userId && onboarded === false && !inOnboarding);
-  if (redirecting) {
+  const blocked = inAuth ? !!userId && onboarded === true : inOnboarding ? !userId : !userId || onboarded !== true;
+  if (blocked) {
     return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
   }
 
@@ -208,7 +233,9 @@ function RootLayoutInner() {
           screenOptions={{
             headerStyle: { backgroundColor: theme.palette.surface },
             headerTintColor: theme.palette.text,
-            headerTitleStyle: { color: theme.palette.text },
+            headerTitleStyle: { color: theme.palette.text, fontFamily: "Inter_600SemiBold" },
+            headerBackTitleStyle: { fontFamily: "Inter_500Medium" },
+            headerShadowVisible: false,
             contentStyle: { backgroundColor: theme.palette.background },
           }}
         >

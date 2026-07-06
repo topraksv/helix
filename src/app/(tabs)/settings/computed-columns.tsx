@@ -9,8 +9,8 @@ import { useCategories, useComputedColumns, useUserId } from "../../../data/hook
 import { parseDefinition, type ComputedColumnDefinition } from "../../../domain/computed-columns";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, Divider, Field, Label, Row, Screen, Segmented, Spread } from "../../../ui/components";
-import { ChipPicker } from "../../../ui/components";
+import { Trash2 } from "lucide-react-native";
+import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, Screen, Segmented, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -137,9 +137,7 @@ export default function ComputedColumnsScreen() {
           <View key={c.id}>
             <Spread style={{ paddingVertical: spacing.sm }}>
               <Body>{c.name}</Body>
-              <Row gap={spacing.sm}>
-                <Button label={tr.common.delete} variant="ghost" onPress={() => void remove(c)} />
-              </Row>
+              <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
             </Spread>
             <Divider />
           </View>

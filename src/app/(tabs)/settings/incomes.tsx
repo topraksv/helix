@@ -10,7 +10,8 @@ import { runMaintenance } from "../../../data/repo";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, ChipPicker, Divider, Field, Label, MoneyField, Row, Screen, Spread } from "../../../ui/components";
+import { Trash2 } from "lucide-react-native";
+import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, MoneyField, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -24,10 +25,14 @@ export default function IncomeRulesScreen() {
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
   const [payDayStr, setPayDayStr] = useState("15");
-  const [personId, setPersonId] = useState<string | null>(persons.find((p) => p.isSelf)?.id ?? null);
-  const [categoryId, setCategoryId] = useState<string | null>(
-    categories.find((c) => c.kind === "income" && c.name.toLocaleLowerCase("tr-TR").includes("maaş"))?.id ?? null,
-  );
+  // persons/categories load async (live queries) — derive the defaults.
+  const [personChoice, setPersonChoice] = useState<string | null>(null);
+  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
+  const [categoryChoice, setCategoryChoice] = useState<string | null>(null);
+  const categoryId =
+    categoryChoice ??
+    categories.find((c) => c.kind === "income" && c.name.toLocaleLowerCase("tr-TR").includes("maaş"))?.id ??
+    null;
 
   const payDay = Number(payDayStr);
   const valid =
@@ -81,14 +86,14 @@ export default function IncomeRulesScreen() {
         {persons.length > 1 ? (
           <>
             <Label>{tr.tx.person}</Label>
-            <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonId} />
+            <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
           </>
         ) : null}
         <Label>{tr.tx.category}</Label>
         <ChipPicker
           options={categories.filter((c) => c.kind === "income").map((c) => ({ value: c.id, label: c.name }))}
           value={categoryId}
-          onChange={setCategoryId}
+          onChange={setCategoryChoice}
         />
         <Button label={tr.common.add} onPress={() => void add()} disabled={!valid} />
       </Card>
@@ -103,9 +108,7 @@ export default function IncomeRulesScreen() {
                   {formatMinor(r.defaultAmountMinor, r.currency)} · {tr.settings.payDay}: {r.payDay}
                 </Body>
               </View>
-              <Row gap={spacing.sm}>
-                <Button label={tr.common.delete} variant="ghost" onPress={() => void remove(r)} />
-              </Row>
+              <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(r)} />
             </Spread>
             <Divider />
           </View>

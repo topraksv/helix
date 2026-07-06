@@ -8,9 +8,8 @@ import { Platform } from "react-native";
 import { File, Paths } from "expo-file-system";
 import { getSqlite } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
-import { writeRows } from "../db/mutations";
+import { fromDbShape, writeRows } from "../db/mutations";
 import { tr } from "../i18n/tr";
-import { fromDbShape } from "../db/mutations";
 
 const EXPORT_VERSION = 1;
 
@@ -44,6 +43,12 @@ export function buildTransactionsCsv(userId: string): string {
      ORDER BY t.effective_date`,
     [userId] as never[],
   );
+  // User-entered text cells are sanitized against CSV formula injection
+  // (a leading = + @ or tab would execute when opened in Excel).
+  const safeCell = (v: unknown) => {
+    const s = String(v ?? "").replace(/[\n;]/g, " ");
+    return /^[=+@\t-]/.test(s) ? `'${s}` : s;
+  };
   const header = "tarih;giris_tarihi;tur;durum;tutar;para_birimi;tutar_try;kategori;kaynak;kisi;taksit_no;toplu;not";
   const lines = rows.map((r) =>
     [
@@ -54,12 +59,12 @@ export function buildTransactionsCsv(userId: string): string {
       ((r.amount_minor as number) / 100).toFixed(2).replace(".", ","),
       r.currency,
       ((r.amount_try_minor as number) / 100).toFixed(2).replace(".", ","),
-      r.category ?? "",
-      r.source ?? "",
-      r.person ?? "",
+      safeCell(r.category),
+      safeCell(r.source),
+      safeCell(r.person),
       r.installment_no ?? "",
       r.is_aggregate ? "evet" : "",
-      String(r.note ?? "").replace(/[\n;]/g, " "),
+      safeCell(r.note),
     ].join(";"),
   );
   return [header, ...lines].join("\n");

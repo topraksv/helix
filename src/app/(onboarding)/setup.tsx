@@ -1,13 +1,15 @@
 import React, { useState } from "react";
-import { Alert, Platform, View } from "react-native";
+import { Alert, Platform, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { seedWorkspace } from "../../data/repo";
 import { useSession } from "../../auth/session";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
-import { Body, Button, Card, ChipPicker, Field, Heading, MoneyField, Row, Screen, Segmented, Spread, Title } from "../../ui/components";
-import { spacing } from "../../ui/theme";
+import { Body, Button, Card, ChipPicker, Field, Heading, IconButton, MoneyField, Row, Screen, Segmented, Spread } from "../../ui/components";
+import { BrandMark } from "../../ui/brand";
+import { spacing, type, useTheme } from "../../ui/theme";
 
 const SOURCE_TYPES: { value: PaymentSourceType; label: string }[] = [
   { value: "credit_card", label: tr.sources.credit_card },
@@ -25,6 +27,7 @@ interface DraftSource {
 export default function SetupScreen() {
   const { userId } = useSession();
   const router = useRouter();
+  const { palette } = useTheme();
   const [template, setTemplate] = useState<"excel" | "blank">("excel");
   const [startMonth, setStartMonth] = useState(monthKeyOf(todayISO()));
   const [openingRaw, setOpeningRaw] = useState("");
@@ -59,10 +62,15 @@ export default function SetupScreen() {
   };
 
   return (
-    <Screen>
-      <View style={{ maxWidth: 560, width: "100%", alignSelf: "center" }}>
-        <Title>{tr.onboarding.welcome}</Title>
-        <Body muted style={{ marginBottom: spacing.lg }}>{tr.onboarding.intro}</Body>
+    <Screen maxWidth={560}>
+      <View>
+        <Row gap={spacing.md} style={{ marginBottom: spacing.lg }}>
+          <BrandMark size={44} />
+          <View>
+            <Text style={[type.title, { color: palette.text }]}>{tr.onboarding.welcome}</Text>
+            <Body muted>{tr.onboarding.intro}</Body>
+          </View>
+        </Row>
 
         <Card>
           <Heading>{tr.onboarding.templateTitle}</Heading>
@@ -83,9 +91,9 @@ export default function SetupScreen() {
           <Heading>{tr.onboarding.startTitle}</Heading>
           <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.startMonth}</Body>
           <Spread style={{ marginBottom: spacing.md }}>
-            <Button label="◀" variant="secondary" onPress={() => setStartMonth(addMonthsToKey(startMonth, -1))} />
+            <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, -1))} />
             <Heading>{monthLabel(startMonth)}</Heading>
-            <Button label="▶" variant="secondary" onPress={() => setStartMonth(addMonthsToKey(startMonth, 1))} />
+            <IconButton icon={ChevronRight} label={tr.onboarding.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, 1))} />
           </Spread>
           <MoneyField
             label={`${tr.onboarding.openingBalance} (₺)`}

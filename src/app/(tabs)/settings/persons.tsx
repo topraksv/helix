@@ -7,7 +7,8 @@ import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
 import { usePersons, useUserId } from "../../../data/hooks";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Badge, Body, Button, Card, Divider, Field, Row, Screen, Spread } from "../../../ui/components";
+import { Trash2 } from "lucide-react-native";
+import { Badge, Body, Button, Card, Divider, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -50,7 +51,7 @@ export default function PersonsScreen() {
                 <Body>{p.name}</Body>
                 {p.isSelf ? <Badge text="ben" tone="positive" /> : <Badge text={tr.installments.watchOnly} />}
               </Row>
-              {!p.isSelf ? <Button label={tr.common.delete} variant="ghost" onPress={() => void remove(p)} /> : null}
+              {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(p)} /> : null}
             </Spread>
             <Divider />
           </View>

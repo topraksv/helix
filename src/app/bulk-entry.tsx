@@ -8,7 +8,8 @@ import { bulkMonthEntry } from "../data/repo";
 import { useCategories, usePersons, useUserId } from "../data/hooks";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
-import { Body, Button, Heading, MoneyField, Screen, Spread } from "../ui/components";
+import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { Body, Button, Heading, IconButton, MoneyField, Screen, Spread } from "../ui/components";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 
@@ -68,11 +69,11 @@ export default function BulkEntryModal() {
     <Screen>
       <Body muted style={{ marginBottom: spacing.md }}>{tr.bulk.subtitle}</Body>
       <Spread style={{ marginBottom: spacing.lg }}>
-        <Button label="◀" variant="secondary" onPress={() => setMonth(addMonthsToKey(month, -1))} />
+        <IconButton icon={ChevronLeft} label={tr.bulk.month} onPress={() => setMonth(addMonthsToKey(month, -1))} />
         <Heading>{monthLabel(month)}</Heading>
-        <Button
-          label="▶"
-          variant="secondary"
+        <IconButton
+          icon={ChevronRight}
+          label={tr.bulk.month}
           onPress={() => setMonth(addMonthsToKey(month, 1))}
           disabled={month >= monthKeyOf(todayISO())}
         />

@@ -5,19 +5,18 @@ import { Pressable, Text, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
 import { useLiveQuery } from "drizzle-orm/expo-sqlite";
+import { ChevronDown, ChevronUp, Inbox, StickyNote, Trash2 } from "lucide-react-native";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
 import { newId } from "../../../db/ids";
-import { writeRows } from "../../../db/mutations";
+import { restoreRow, writeRows } from "../../../db/mutations";
 import { deleteTransaction } from "../../../data/repo";
-import { restoreRow } from "../../../db/mutations";
-import { firstDayOf, lastDayOf } from "../../../domain/dates";
+import { firstDayOf, lastDayOf, yearOf } from "../../../domain/dates";
 import { useCategories, useLedger, usePersons, useTransactionsBetween, useUserId } from "../../../data/hooks";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { spacing, type, useTheme } from "../../../ui/theme";
-import { yearOf } from "../../../domain/dates";
 
 export default function MonthDetailScreen() {
   const { month } = useLocalSearchParams<{ month: string }>();
@@ -69,16 +68,16 @@ export default function MonthDetailScreen() {
             <Body muted>{tr.cashflow.opening}</Body>
             <Amount minor={ledgerMonth.openingMinor} />
           </Spread>
-          <Spread>
+          <Spread style={{ marginTop: spacing.xs }}>
             <Body muted>{tr.cashflow.income}</Body>
-            <Amount minor={ledgerMonth.incomeMinor} colorized={false} />
+            <Amount minor={ledgerMonth.incomeMinor} colorized={false} color={palette.positive} />
           </Spread>
-          <Spread>
+          <Spread style={{ marginTop: spacing.xs }}>
             <Body muted>{tr.cashflow.expense}</Body>
             <Amount minor={-ledgerMonth.expenseMinor} />
           </Spread>
           {ledgerMonth.transferMinor !== 0 ? (
-            <Spread>
+            <Spread style={{ marginTop: spacing.xs }}>
               <Body muted>{tr.cashflow.transfer}</Body>
               <Amount minor={-ledgerMonth.transferMinor} />
             </Spread>
@@ -91,7 +90,7 @@ export default function MonthDetailScreen() {
         </Card>
       ) : null}
 
-      {transactions.length === 0 ? <EmptyState text={tr.cashflow.emptyMonth} /> : null}
+      {transactions.length === 0 ? <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} /> : null}
 
       {[...byCategory.entries()].map(([categoryId, txs]) => {
         const category = categories.find((c) => c.id === categoryId);
@@ -106,14 +105,17 @@ export default function MonthDetailScreen() {
           <Card key={categoryId}>
             <Pressable onPress={() => setExpanded(open ? null : categoryId)} accessibilityRole="button">
               <Spread>
-                <Row gap={spacing.sm}>
-                  <Heading style={{ marginVertical: 0 }}>
+                <Row gap={spacing.sm} style={{ flex: 1 }}>
+                  <Heading style={{ marginVertical: 0 }} >
                     {category?.icon ? `${category.icon} ` : ""}
                     {title}
                   </Heading>
-                  {note ? <Badge text="🗒" /> : null}
+                  {note ? <StickyNote size={14} color={palette.textMuted} /> : null}
                 </Row>
-                <Amount minor={selfSum} />
+                <Row gap={spacing.sm}>
+                  <Amount minor={selfSum} />
+                  {open ? <ChevronUp size={16} color={palette.textMuted} /> : <ChevronDown size={16} color={palette.textMuted} />}
+                </Row>
               </Spread>
             </Pressable>
             {open ? (
@@ -131,9 +133,9 @@ export default function MonthDetailScreen() {
                         {t.note ? <Text style={[type.small, { color: palette.textMuted }]}>{t.note}</Text> : null}
                         {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
                       </View>
-                      <Row gap={spacing.md}>
+                      <Row gap={spacing.sm}>
                         <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
-                        <Button label={tr.common.delete} variant="ghost" onPress={() => void removeTx(t.id)} />
+                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void removeTx(t.id)} />
                       </Row>
                     </Spread>
                     <Divider />
@@ -172,7 +174,7 @@ function CellNoteEditor({
   return (
     <View style={{ marginTop: spacing.sm }}>
       <Field label={tr.cashflow.cellNote} value={text} onChangeText={setText} multiline placeholder="…" />
-      <Button label={tr.common.save} variant="secondary" onPress={() => void save()} disabled={text === (existing?.body ?? "")} />
+      <Button label={tr.common.save} variant="secondary" size="sm" onPress={() => void save()} disabled={text === (existing?.body ?? "")} />
     </View>
   );
 }

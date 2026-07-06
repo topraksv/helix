@@ -10,6 +10,8 @@ export default function SettingsLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: palette.surface },
         headerTintColor: palette.text,
+        headerTitleStyle: { color: palette.text, fontFamily: "Inter_600SemiBold" },
+        headerShadowVisible: false,
         contentStyle: { backgroundColor: palette.background },
       }}
     >

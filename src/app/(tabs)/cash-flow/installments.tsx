@@ -4,6 +4,7 @@
 import React, { useMemo } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
+import { CreditCard, Plus } from "lucide-react-native";
 import { planProgress, type GeneratedInstallment } from "../../../domain/installments";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO } from "../../../domain/dates";
 import { fixedVsVariable } from "../../../domain/analytics";
@@ -16,8 +17,8 @@ import {
   usePlans,
   useSources,
 } from "../../../data/hooks";
-import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Heading, Row, Screen, Spread } from "../../../ui/components";
-import { spacing } from "../../../ui/theme";
+import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { spacing, useTheme } from "../../../ui/theme";
 
 export default function InstallmentsScreen() {
   const plans = usePlans();
@@ -25,6 +26,7 @@ export default function InstallmentsScreen() {
   const persons = usePersons();
   const allTx = useAllTransactions();
   const router = useRouter();
+  const { palette } = useTheme();
   const today = todayISO();
   const month = monthKeyOf(today);
 
@@ -67,7 +69,7 @@ export default function InstallmentsScreen() {
   const selfPlans = plans.filter((p) => selfIds.has(p.personId));
   const otherPlans = plans.filter((p) => !selfIds.has(p.personId));
 
-  const renderPlan = (plan: (typeof plans)[number]) => {
+  const renderPlan = (plan: (typeof plans)[number], watchedBy?: string) => {
     const items = itemsByPlan.get(plan.id) ?? [];
     if (items.length === 0) return null;
     const progress = planProgress(items);
@@ -75,16 +77,28 @@ export default function InstallmentsScreen() {
     return (
       <View key={plan.id}>
         <Spread style={{ paddingVertical: spacing.sm }}>
-          <View style={{ flex: 1 }}>
-            <Body>
-              {plan.title}
-              {plan.kind === "loan" ? `  ·  ${tr.installments.loan}` : ""}
-            </Body>
-            <Body muted>
+          <View style={{ flex: 1, paddingRight: spacing.md }}>
+            <Row gap={spacing.sm}>
+              <Body style={{ fontFamily: "Inter_500Medium" }}>{plan.title}</Body>
+              {plan.kind === "loan" ? <Badge text={tr.installments.loan} /> : null}
+              {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
+            </Row>
+            <Body muted style={{ marginTop: 2 }}>
               {sourceName.get(plan.paymentSourceId ?? "") ?? tr.common.none} · {tr.installments.progress(progress.paid, progress.total)}
               {finished ? ` · ${tr.installments.finished}` : ` · ${tr.installments.remaining(progress.remaining, formatMinor(progress.monthlyMinor))}`}
+              {` · ${tr.installments.endsAt(monthLabel(progress.endMonth))}`}
             </Body>
-            <Body muted>{tr.installments.endsAt(monthLabel(progress.endMonth))}</Body>
+            {/* progress track */}
+            <View style={{ height: 6, borderRadius: 3, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
+              <View
+                style={{
+                  height: 6,
+                  borderRadius: 3,
+                  width: `${Math.round((progress.paid / Math.max(progress.total, 1)) * 100)}%`,
+                  backgroundColor: finished ? palette.positive : palette.primary,
+                }}
+              />
+            </View>
           </View>
           {finished ? <Badge text="✓" tone="positive" /> : <Amount minor={progress.remainingMinor} colorized={false} />}
         </Spread>
@@ -96,7 +110,7 @@ export default function InstallmentsScreen() {
   return (
     <Screen>
       <Card>
-        <Heading style={{ marginVertical: 0 }}>{tr.installments.thisMonthTotal}</Heading>
+        <Body muted>{tr.installments.thisMonthTotal}</Body>
         <Amount minor={monthTotals.total} large colorized={false} />
         <Row gap={spacing.lg} style={{ marginTop: spacing.sm }}>
           <Body muted>
@@ -108,26 +122,19 @@ export default function InstallmentsScreen() {
         </Row>
       </Card>
 
-      <Button label={`+ ${tr.installments.newPlan}`} onPress={() => router.push("/installment-new")} />
-      <View style={{ height: spacing.md }} />
+      <Button icon={Plus} label={tr.installments.newPlan} onPress={() => router.push("/installment-new")} />
+      <View style={{ height: spacing.lg }} />
 
-      {selfPlans.length === 0 && otherPlans.length === 0 ? <EmptyState text={tr.cashflow.emptyMonth} /> : null}
+      {selfPlans.length === 0 && otherPlans.length === 0 ? (
+        <EmptyState icon={CreditCard} title={tr.installments.emptyTitle} hint={tr.installments.emptyHint} />
+      ) : null}
 
-      {selfPlans.length > 0 ? <Card>{selfPlans.map(renderPlan)}</Card> : null}
+      {selfPlans.length > 0 ? <Card>{selfPlans.map((p) => renderPlan(p))}</Card> : null}
 
       {otherPlans.length > 0 ? (
         <>
-          <Heading>{tr.installments.othersSection}</Heading>
-          <Card>
-            {otherPlans.map((p) => (
-              <View key={p.id}>
-                <Row gap={spacing.sm}>
-                  <Badge text={`${tr.installments.watchOnly}: ${personName.get(p.personId) ?? ""}`} tone="warning" />
-                </Row>
-                {renderPlan(p)}
-              </View>
-            ))}
-          </Card>
+          <SectionHeader>{tr.installments.othersSection}</SectionHeader>
+          <Card>{otherPlans.map((p) => renderPlan(p, personName.get(p.personId) ?? ""))}</Card>
         </>
       ) : null}
     </Screen>

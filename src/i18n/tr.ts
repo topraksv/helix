@@ -1,7 +1,7 @@
 /** All user-facing strings live here (UI is Turkish; code is English). */
 
 export const tr = {
-  app: { name: "Helix" },
+  app: { name: "Helix", tagline: "Nakit akışın, taksitlerin ve aboneliklerin — tek yerde." },
   tabs: { dashboard: "Özet", cashflow: "Nakit Akışı", subscriptions: "Abonelikler", settings: "Ayarlar" },
   common: {
     save: "Kaydet", cancel: "Vazgeç", delete: "Sil", edit: "Düzenle", add: "Ekle",
@@ -29,15 +29,19 @@ export const tr = {
     categoryName: "Ör. Market, Akaryakıt…",
   },
   auth: {
-    title: "Giriş yap",
+    welcomeBack: "Tekrar hoş geldin",
+    signInSubtitle: "Kaldığın yerden devam et.",
+    signUpTitle: "Hesap oluştur",
+    signUpSubtitle: "Birkaç saniyede hazır — verilerin cihazında kalır, bulutla senkronlanır.",
     email: "E-posta", password: "Şifre",
-    signIn: "Giriş", signUp: "Hesap oluştur",
+    signIn: "Giriş yap",
     signOut: "Çıkış yap",
-    noAccount: "Hesabın yok mu? Oluştur",
-    haveAccount: "Zaten hesabın var mı? Giriş yap",
-    error: "Giriş başarısız",
-    offlineNote: "Çevrimdışısın — daha önce giriş yaptıysan verilerin cihazında hazır.",
-    continueOffline: "Çevrimdışı devam et",
+    passwordMin: "En az 6 karakter",
+    noAccount: "Hesabın yok mu?",
+    signUpAction: "Kayıt ol",
+    haveAccount: "Zaten hesabın var mı?",
+    signInAction: "Giriş yap",
+    offlineNote: "Verilerin cihazında saklanır — internet yokken de çalışır.",
   },
   lock: { title: "Kilidi aç", prompt: "Devam etmek için kimliğini doğrula", button: "Face ID ile aç" },
   onboarding: {
@@ -62,6 +66,10 @@ export const tr = {
   },
   dashboard: {
     title: "Özet",
+    greetingMorning: "Günaydın 👋",
+    greetingDay: "İyi günler 👋",
+    greetingEvening: "İyi akşamlar 👋",
+    greetingNight: "İyi geceler 🌙",
     actualBalance: "Güncel bakiye",
     projectedBalance: "Ay sonu öngörüsü",
     lastEntry: (d: string, ago: string) => `Son giriş: ${d} (${ago})`,
@@ -97,6 +105,7 @@ export const tr = {
     analysis: "Analiz",
     installments: "Taksitler",
     emptyMonth: "Bu ayda kayıt yok",
+    emptyYearHint: "İşlem ekleyerek veya geçmiş ay girişiyle başlayabilirsin.",
     cellTransactions: "Hareketler",
     cellNote: "Hücre notu",
   },
@@ -143,6 +152,8 @@ export const tr = {
     startMonth: "İlk taksit ayı",
     kind: "Tür",
     finished: "Tamamlandı",
+    emptyTitle: "Henüz taksit ya da kredi yok",
+    emptyHint: "Taksitli bir harcama veya krediyi ekle; aylara dağılımı otomatik hesaplanır.",
   },
   subs: {
     title: "Abonelikler",
@@ -164,6 +175,8 @@ export const tr = {
     canceled: "İptal edildi",
     paymentsPast: "Ödeme geçmişi",
     perMonth: (v: string) => `${v}/ay`,
+    emptyTitle: "Henüz abonelik yok",
+    emptyHint: "Netflix'ten elektrik faturasına — düzenli ödemelerini ekle, yaklaşanları Helix hatırlatsın.",
   },
   analysis: {
     title: "Analiz",
@@ -173,6 +186,9 @@ export const tr = {
   },
   settings: {
     title: "Ayarlar",
+    workspaceSection: "Çalışma alanı",
+    appSection: "Uygulama",
+    dataSection: "Veri & Senkron",
     categories: "Kategoriler & Kolonlar",
     categoriesDesc: "Kolon seti tamamen sana ait",
     computed: "Hesaplama kolonları",

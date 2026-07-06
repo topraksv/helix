@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import { addTransaction, createInstallmentPlan } from "../data/repo";
 import { useCategories, usePersons, useSources, useUserId } from "../data/hooks";
 import { convertToTryMinor } from "../domain/fx";
-import { addMonthsToKey, assertISODate, monthKeyOf, todayISO } from "../domain/dates";
+import { assertISODate, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { deriveStartMonth } from "../domain/installments";
 import { lookupRate, SUPPORTED_CURRENCIES } from "../services/fx-fetch";
@@ -32,7 +32,10 @@ export default function TransactionModal() {
   const [currency, setCurrency] = useState<string>("TRY");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
-  const [personId, setPersonId] = useState<string | null>(persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null);
+  // persons load async (live query) — deriving keeps "self" as the default
+  // even when the modal mounts before the first query resolves.
+  const [personChoice, setPersonChoice] = useState<string | null>(null);
+  const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [dateStr, setDateStr] = useState(todayISO());
   const [note, setNote] = useState("");
   const [installment, setInstallment] = useState(false);
@@ -178,7 +181,7 @@ export default function TransactionModal() {
       {persons.length > 1 ? (
         <>
           <Label>{tr.tx.person}</Label>
-          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonId} />
+          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         </>
       ) : null}
 

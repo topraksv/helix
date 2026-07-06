@@ -1,10 +1,12 @@
 import React, { useState } from "react";
-import { View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { AlertCircle, CloudOff } from "lucide-react-native";
 import { useSession } from "../../auth/session";
 import { isSupabaseConfigured } from "../../sync/supabase";
-import { Body, Button, Field, Screen, Title } from "../../ui/components";
-import { spacing } from "../../ui/theme";
+import { Body, Button, Field, Screen } from "../../ui/components";
+import { BrandMark } from "../../ui/brand";
+import { radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
 
 export default function SignInScreen() {
@@ -13,10 +15,15 @@ export default function SignInScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const { signIn, signUp, bootstrap } = useSession();
+  const { signIn, signUp } = useSession();
   const router = useRouter();
+  const { palette } = useTheme();
+
+  const emailValid = /.+@.+\..+/.test(email.trim());
+  const canSubmit = emailValid && password.length >= 6 && !busy;
 
   const submit = async () => {
+    if (!canSubmit) return;
     setBusy(true);
     setError(null);
     const err = mode === "signIn" ? await signIn(email.trim(), password) : await signUp(email.trim(), password);
@@ -25,50 +32,110 @@ export default function SignInScreen() {
     else router.replace("/");
   };
 
+  const switchMode = () => {
+    setError(null);
+    setMode(mode === "signIn" ? "signUp" : "signIn");
+  };
+
   return (
-    <Screen>
-      <View style={{ maxWidth: 420, width: "100%", alignSelf: "center", marginTop: spacing.xxl }}>
-        <Title>{tr.app.name}</Title>
-        <Body muted style={{ marginBottom: spacing.xl }}>
-          {mode === "signIn" ? tr.auth.title : tr.auth.signUp}
+    <Screen scroll maxWidth={440}>
+      <View style={{ flex: 1, justifyContent: "center", paddingVertical: spacing.xxl }}>
+        {/* Brand */}
+        <View style={{ alignItems: "center", marginBottom: spacing.xxl }}>
+          <BrandMark size={64} />
+          <Text style={[type.display, { color: palette.text, fontSize: 28, marginTop: spacing.md }]}>
+            {tr.app.name}
+          </Text>
+          <Body muted style={{ marginTop: spacing.xs, textAlign: "center" }}>
+            {tr.app.tagline}
+          </Body>
+        </View>
+
+        <Text style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>
+          {mode === "signIn" ? tr.auth.welcomeBack : tr.auth.signUpTitle}
+        </Text>
+        <Body muted style={{ marginBottom: spacing.lg }}>
+          {mode === "signIn" ? tr.auth.signInSubtitle : tr.auth.signUpSubtitle}
         </Body>
+
         <Field
           label={tr.auth.email}
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(v) => {
+            setEmail(v);
+            setError(null);
+          }}
           autoCapitalize="none"
           keyboardType="email-address"
           autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="next"
+          placeholder="ornek@eposta.com"
         />
         <Field
           label={tr.auth.password}
           value={password}
-          onChangeText={setPassword}
-          secureTextEntry
+          onChangeText={(v) => {
+            setPassword(v);
+            setError(null);
+          }}
+          secure
           autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+          textContentType={mode === "signIn" ? "password" : "newPassword"}
+          returnKeyType="go"
+          onSubmitEditing={() => void submit()}
+          error={mode === "signUp" && password.length > 0 && password.length < 6 ? tr.auth.passwordMin : null}
         />
-        {error ? <Body style={{ marginBottom: spacing.md }}>⚠ {error}</Body> : null}
+
+        {error ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.sm,
+              backgroundColor: palette.negative + "16",
+              borderRadius: radius.sm,
+              padding: spacing.md,
+              marginBottom: spacing.md,
+            }}
+          >
+            <AlertCircle size={17} color={palette.negative} />
+            <Text style={[type.label, { color: palette.negative, flex: 1 }]}>{error}</Text>
+          </View>
+        ) : null}
+
         <Button
-          label={mode === "signIn" ? tr.auth.signIn : tr.auth.signUp}
+          label={mode === "signIn" ? tr.auth.signIn : tr.auth.signUpTitle}
           onPress={() => void submit()}
           loading={busy}
-          disabled={!email.trim() || password.length < 6}
+          disabled={!canSubmit}
         />
-        <View style={{ height: spacing.md }} />
-        <Button
-          label={mode === "signIn" ? tr.auth.noAccount : tr.auth.haveAccount}
-          variant="ghost"
-          onPress={() => setMode(mode === "signIn" ? "signUp" : "signIn")}
-        />
-        {!isSupabaseConfigured ? (
-          <Body muted style={{ marginTop: spacing.xl }}>
-            ⚠ {tr.settings.syncUnconfiguredHint}
-          </Body>
-        ) : (
-          <Body muted style={{ marginTop: spacing.xl }}>
-            {tr.auth.offlineNote}
-          </Body>
-        )}
+
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: spacing.xs, marginTop: spacing.lg }}>
+          <Body muted>{mode === "signIn" ? tr.auth.noAccount : tr.auth.haveAccount}</Body>
+          <Pressable accessibilityRole="button" onPress={switchMode} hitSlop={8}>
+            <Text style={[type.body, { color: palette.primary, fontFamily: "Inter_600SemiBold" }]}>
+              {mode === "signIn" ? tr.auth.signUpAction : tr.auth.signInAction}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Offline / local-only note */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+            justifyContent: "center",
+            marginTop: spacing.xxl,
+            paddingHorizontal: spacing.lg,
+          }}
+        >
+          <CloudOff size={14} color={palette.textMuted} />
+          <Text style={[type.small, { color: palette.textMuted, textAlign: "center", flexShrink: 1 }]}>
+            {isSupabaseConfigured ? tr.auth.offlineNote : tr.settings.syncUnconfiguredHint}
+          </Text>
+        </View>
       </View>
     </Screen>
   );
