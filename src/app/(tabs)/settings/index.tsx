@@ -9,6 +9,7 @@ import * as Sharing from "expo-sharing";
 import {
   Banknote,
   BookOpen,
+  CalendarClock,
   Calculator,
   CloudUpload,
   Columns3,
@@ -47,6 +48,7 @@ export default function SettingsScreen() {
   const [biometric, setBiometric] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
+  const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
   const [reminderStr, setReminderStr] = useState(String(reminderDays));
 
   React.useEffect(() => {
@@ -108,10 +110,10 @@ export default function SettingsScreen() {
       <SectionHeader>{tr.settings.workspaceSection}</SectionHeader>
       <Card>
         <ListRow icon={Columns3} title={tr.settings.categories} subtitle={tr.settings.categoriesDesc} chevron onPress={() => router.push("/settings/categories")} />
-        <ListRow icon={Calculator} title={tr.settings.computed} chevron onPress={() => router.push("/settings/computed-columns")} />
-        <ListRow icon={Users} title={tr.settings.persons} chevron onPress={() => router.push("/settings/persons")} />
-        <ListRow icon={Wallet} title={tr.settings.sources} chevron onPress={() => router.push("/settings/payment-sources")} />
-        <ListRow icon={Banknote} title={tr.settings.incomeRules} chevron onPress={() => router.push("/settings/incomes")} />
+        <ListRow icon={Calculator} title={tr.settings.computed} subtitle={tr.settings.computedDesc} chevron onPress={() => router.push("/settings/computed-columns")} />
+        <ListRow icon={Users} title={tr.settings.persons} subtitle={tr.settings.personsDesc} chevron onPress={() => router.push("/settings/persons")} />
+        <ListRow icon={Wallet} title={tr.settings.sources} subtitle={tr.settings.sourcesDesc} chevron onPress={() => router.push("/settings/payment-sources")} />
+        <ListRow icon={Banknote} title={tr.settings.incomeRules} subtitle={tr.settings.incomeRulesDesc} chevron onPress={() => router.push("/settings/incomes")} />
       </Card>
 
       <SectionHeader>{tr.settings.appSection}</SectionHeader>
@@ -156,6 +158,15 @@ export default function SettingsScreen() {
             />
           </Spread>
         ) : null}
+        <Spread style={{ marginTop: spacing.md }}>
+          <View style={{ flex: 1, paddingRight: spacing.md }}>
+            <ListRow icon={CalendarClock} title={tr.settings.showPending} subtitle={tr.settings.showPendingHint} />
+          </View>
+          <Switch
+            value={showPending}
+            onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)}
+          />
+        </Spread>
       </Card>
 
       <SectionHeader>{tr.settings.dataSection}</SectionHeader>
@@ -180,14 +191,14 @@ export default function SettingsScreen() {
             />
           }
         />
-        <ListRow icon={FileDown} title={tr.settings.export} chevron onPress={() => void exportJson()} />
-        <ListRow icon={FileSpreadsheet} title={tr.settings.exportCsv} chevron onPress={() => void exportCsv()} />
-        <ListRow icon={FileUp} title={tr.settings.import} chevron onPress={() => void importJson()} />
-        <ListRow icon={FileSpreadsheet} title={tr.importer.title} chevron onPress={() => router.push("/import-wizard")} />
+        <ListRow icon={FileDown} title={tr.settings.export} subtitle={tr.settings.exportDesc} chevron onPress={() => void exportJson()} />
+        <ListRow icon={FileSpreadsheet} title={tr.settings.exportCsv} subtitle={tr.settings.exportCsvDesc} chevron onPress={() => void exportCsv()} />
+        <ListRow icon={FileUp} title={tr.settings.import} subtitle={tr.settings.importDesc} chevron onPress={() => void importJson()} />
+        <ListRow icon={FileSpreadsheet} title={tr.importer.title} subtitle={tr.importer.settingsDesc} chevron onPress={() => router.push("/import-wizard")} />
       </Card>
 
       <Card>
-        <ListRow icon={BookOpen} title={tr.tour.replay} chevron onPress={() => setTourOpen(true)} />
+        <ListRow icon={BookOpen} title={tr.tour.replay} subtitle={tr.tour.replayDesc} chevron onPress={() => setTourOpen(true)} />
         <ListRow icon={LogOut} iconColor={palette.negative} title={tr.auth.signOut} onPress={() => void signOut()} />
       </Card>
       {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}

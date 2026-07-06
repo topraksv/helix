@@ -10,6 +10,7 @@ import {
   Animated,
   Easing,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -26,7 +27,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { Eye, EyeOff, ChevronRight, type LucideIcon } from "lucide-react-native";
+import { Calculator as CalculatorIcon, ChevronDown, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 import { formatMinor, parseTRAmountToMinor } from "../domain/money";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 
@@ -440,7 +441,7 @@ export function Field({
   );
 }
 
-/** TR money input ("1.234,56"); reports minor units, shows validation state. */
+/** TR money input ("1.234,56") with a popup calculator; reports minor units. */
 export function MoneyField({
   label,
   value,
@@ -454,33 +455,158 @@ export function MoneyField({
 }) {
   const { palette } = useTheme();
   const [focused, setFocused] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
   const minor = value.trim() === "" ? null : parseTRAmountToMinor(value);
   const invalid = value.trim() !== "" && minor === null;
   return (
     <View style={{ marginBottom: spacing.md }}>
       {label ? <Label>{label}</Label> : null}
-      <TextInput
-        value={value}
-        onChangeText={(raw) => onChangeMinor(raw, raw.trim() === "" ? null : parseTRAmountToMinor(raw))}
-        keyboardType="decimal-pad"
-        inputMode="decimal"
-        placeholder={placeholder}
-        placeholderTextColor={palette.textMuted}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={{
-          backgroundColor: palette.surfaceAlt,
-          color: invalid ? palette.negative : palette.text,
-          borderRadius: radius.sm,
-          borderWidth: 1.5,
-          borderColor: invalid ? palette.negative : focused ? palette.focus : "transparent",
-          paddingHorizontal: spacing.md,
-          minHeight: 48,
-          fontSize: 17,
-          fontFamily: "Inter_600SemiBold",
-          fontVariant: ["tabular-nums"],
-        }}
-      />
+      <View>
+        <TextInput
+          value={value}
+          onChangeText={(raw) => onChangeMinor(raw, raw.trim() === "" ? null : parseTRAmountToMinor(raw))}
+          keyboardType="decimal-pad"
+          inputMode="decimal"
+          placeholder={placeholder}
+          placeholderTextColor={palette.textMuted}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            backgroundColor: palette.surfaceAlt,
+            color: invalid ? palette.negative : palette.text,
+            borderRadius: radius.sm,
+            borderWidth: 1.5,
+            borderColor: invalid ? palette.negative : focused ? palette.focus : "transparent",
+            paddingHorizontal: spacing.md,
+            paddingRight: 44,
+            minHeight: 48,
+            fontSize: 17,
+            fontFamily: "Inter_600SemiBold",
+            fontVariant: ["tabular-nums"],
+          }}
+        />
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setCalcOpen(true)}
+          hitSlop={8}
+          style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
+        >
+          <CalculatorIcon size={18} color={palette.textMuted} />
+        </Pressable>
+      </View>
+      {calcOpen ? (
+        <LazyCalculatorModal
+          onClose={() => setCalcOpen(false)}
+          onResult={(major) => {
+            const raw = (Math.round(major * 100) / 100).toFixed(2).replace(".", ",");
+            onChangeMinor(raw, parseTRAmountToMinor(raw));
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/** Indirection avoids a static components ⇄ calculator import cycle. */
+function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: number) => void }) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { CalculatorModal } = require("./calculator") as typeof import("./calculator");
+  return <CalculatorModal {...props} />;
+}
+
+/** Dropdown select: field-styled trigger opening a modal option list. */
+export function Select<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label?: string;
+  options: { value: T; label: string }[];
+  value: T | null;
+  onChange: (v: T) => void;
+  placeholder?: string;
+}) {
+  const { palette, scheme } = useTheme();
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.value === value);
+  return (
+    <View style={{ marginBottom: spacing.md }}>
+      {label ? <Label>{label}</Label> : null}
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setOpen(true)}
+        style={({ pressed }) => [
+          {
+            backgroundColor: palette.surfaceAlt,
+            borderRadius: radius.sm,
+            borderWidth: 1.5,
+            borderColor: open ? palette.focus : "transparent",
+            paddingHorizontal: spacing.md,
+            minHeight: 48,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
+      >
+        <Text style={[type.body, { color: current ? palette.text : palette.textMuted }]} numberOfLines={1}>
+          {current?.label ?? placeholder ?? ""}
+        </Text>
+        <ChevronDown size={17} color={palette.textMuted} />
+      </Pressable>
+      {open ? (
+        <Modal transparent animationType="fade" visible onRequestClose={() => setOpen(false)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", justifyContent: "center", padding: spacing.lg }}
+            onPress={() => setOpen(false)}
+          >
+            <Pressable onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
+              <FadeIn
+                style={[
+                  { backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: spacing.sm, maxHeight: 420 },
+                  scheme === "light" && cardShadow,
+                ]}
+              >
+                <ScrollView>
+                  {options.map((option) => {
+                    const selected = option.value === value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        onPress={() => {
+                          onChange(option.value);
+                          setOpen(false);
+                        }}
+                        style={({ pressed }) => [
+                          {
+                            paddingHorizontal: spacing.lg,
+                            paddingVertical: spacing.md,
+                            backgroundColor: selected ? palette.primarySoft : pressed ? palette.surfaceAlt : "transparent",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            type.body,
+                            { color: selected ? palette.primary : palette.text, fontFamily: selected ? "Inter_600SemiBold" : "Inter_400Regular" },
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </FadeIn>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -531,8 +657,11 @@ export function Segmented<T extends string>({
             <Text
               style={[
                 type.label,
-                { color: selected ? palette.text : palette.textMuted, fontFamily: selected ? "Inter_600SemiBold" : "Inter_500Medium" },
+                // Constant metrics: only color changes on selection, so labels
+                // never shift or look off-center when the thumb moves.
+                { color: selected ? palette.text : palette.textMuted, fontFamily: "Inter_600SemiBold", textAlign: "center" },
               ]}
+              numberOfLines={1}
             >
               {option.label}
             </Text>

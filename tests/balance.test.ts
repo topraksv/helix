@@ -153,3 +153,28 @@ describe("balance adjustments (reconciliation)", () => {
     expect(ledger[1].closingMinor).toBe(975_00);
   });
 });
+
+describe("pending rows in table cells (display-only)", async () => {
+  const { buildLedger } = await import("../src/domain/balance");
+  const base = {
+    openingBalanceMinor: 100_00,
+    startMonth: "2026-07",
+    endMonth: "2026-08",
+    adjustments: [],
+    today: "2026-07-10" as const,
+  };
+  const pendingTx = {
+    id: "t1", type: "expense" as const, amountTryMinor: 50_00, effectiveDate: "2026-08-05",
+    status: "pending" as const, categoryId: "cat", paymentSourceId: null, personIsSelf: true,
+    installmentPlanId: null, subscriptionId: null, isAggregate: false,
+  };
+
+  it("keeps balances realized-only but surfaces pending in byCategory when asked", () => {
+    const withFlag = buildLedger({ ...base, transactions: [pendingTx], includePendingInCells: true });
+    expect(withFlag[1].byCategory.get("cat")).toBe(50_00);
+    expect(withFlag[1].expenseMinor).toBe(0);
+    expect(withFlag[1].closingMinor).toBe(100_00);
+    const without = buildLedger({ ...base, transactions: [pendingTx] });
+    expect(without[1].byCategory.get("cat")).toBeUndefined();
+  });
+});

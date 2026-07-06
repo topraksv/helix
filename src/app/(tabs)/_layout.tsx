@@ -1,7 +1,7 @@
 import React from "react";
 import { Platform } from "react-native";
 import { Tabs } from "expo-router";
-import { ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
+import { Calculator, ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
 import { useTheme } from "../../ui/theme";
 
@@ -42,6 +42,13 @@ export default function TabsLayout() {
         options={{
           title: tr.tabs.subscriptions,
           tabBarIcon: ({ color, size }) => <RefreshCw color={color} size={size - 2} strokeWidth={2} />,
+        }}
+      />
+      <Tabs.Screen
+        name="calculator"
+        options={{
+          title: tr.tabs.calculator,
+          tabBarIcon: ({ color, size }) => <Calculator color={color} size={size - 2} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen

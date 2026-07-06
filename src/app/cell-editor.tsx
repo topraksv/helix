@@ -122,10 +122,13 @@ export default function CellEditorModal() {
 
       {/* Quick entry */}
       <SectionHeader>{tr.cell.quickEntry}</SectionHeader>
+      <Body muted style={{ marginBottom: spacing.sm, fontSize: 12 }}>
+        {tr.cell.quickEntryHint}
+      </Body>
       <Field
         value={entryRaw}
         onChangeText={setEntryRaw}
-        placeholder="300+400+500"
+        placeholder={tr.cell.quickEntryPlaceholder}
         keyboardType="numbers-and-punctuation"
         inputMode="text"
         autoCapitalize="none"

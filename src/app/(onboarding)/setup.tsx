@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Alert, Platform, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { seedWorkspace } from "../../data/repo";
+import { seedWorkspace, TEMPLATE_CATEGORIES } from "../../data/repo";
 import { useSession } from "../../auth/session";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
@@ -81,6 +81,23 @@ export default function SetupScreen() {
           <Body muted>
             {template === "excel" ? tr.onboarding.templateExcelDesc : tr.onboarding.templateBlankDesc}
           </Body>
+          {template === "excel" ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md }}>
+              {TEMPLATE_CATEGORIES.map((c) => (
+                <View
+                  key={c.name}
+                  style={{
+                    backgroundColor: palette.surfaceAlt,
+                    borderRadius: 999,
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.xs + 2,
+                  }}
+                >
+                  <Text style={[type.small, { color: palette.text }]}>{c.icon} {c.name}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </Card>
 
         <Card>

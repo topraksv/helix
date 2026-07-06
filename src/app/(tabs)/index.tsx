@@ -43,11 +43,20 @@ function MarketsCard() {
 
   return (
     <Card>
-      <Spread style={{ marginBottom: spacing.sm }}>
+      <Spread style={{ marginBottom: spacing.xs }}>
         <Heading style={{ marginVertical: 0 }}>{tr.markets.title}</Heading>
         <Row gap={spacing.xs}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.positive }} />
           <Text style={[type.small, { color: palette.textMuted }]}>{tr.markets.source}</Text>
+        </Row>
+      </Spread>
+      {/* column headers over the price columns */}
+      <Spread style={{ marginBottom: spacing.xs }}>
+        <View />
+        <Row gap={spacing.sm}>
+          <Text style={[type.small, { color: palette.textMuted, minWidth: 78, textAlign: "right" }]}>{tr.markets.buy}</Text>
+          <Text style={[type.small, { color: palette.textMuted, minWidth: 92, textAlign: "right" }]}>{tr.markets.sell}</Text>
+          <View style={{ width: 15 }} />
         </Row>
       </Spread>
       {MARKET_SYMBOLS.map(({ code, label }) => {
@@ -57,7 +66,7 @@ function MarketsCard() {
           <Spread key={code} style={{ paddingVertical: spacing.sm - 2 }}>
             <Body>{label}</Body>
             <Row gap={spacing.sm}>
-              <Text style={[type.amountSm, { color: palette.textMuted }]}>{priceText(p.buyTry)}</Text>
+              <Text style={[type.amountSm, { color: palette.textMuted, minWidth: 78, textAlign: "right" }]}>{priceText(p.buyTry)}</Text>
               <Text style={[type.amount, { color: palette.text, minWidth: 92, textAlign: "right" }]}>
                 {priceText(p.sellTry)} ₺
               </Text>
@@ -72,9 +81,6 @@ function MarketsCard() {
           </Spread>
         );
       })}
-      <Text style={[type.small, { color: palette.textMuted, marginTop: spacing.xs }]}>
-        {tr.markets.buy} · {tr.markets.sell}
-      </Text>
     </Card>
   );
 }
