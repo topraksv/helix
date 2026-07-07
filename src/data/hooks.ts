@@ -9,8 +9,8 @@ import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
-import { buildLedger, currentBalance, type MonthLedger } from "../domain/balance";
-import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, todayISO, yearOf, type MonthKey } from "../domain/dates";
+import { balanceEffect, buildLedger, countsTowardBalance, currentBalance, type MonthLedger } from "../domain/balance";
+import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { readSetting } from "../db/mutations";
 
@@ -281,16 +281,35 @@ export function useLedger(year: number): LedgerBundle | null {
   const adjustments = useAdjustments();
 
   return useMemo(() => {
-    const startMonth = settingValue<string | null>(settings, "start_month", null);
-    if (!startMonth) return null;
+    const configuredStart = settingValue<string | null>(settings, "start_month", null);
+    if (!configuredStart) return null;
     const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
     const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
     const today = todayISO();
     const txLike = toTxLike(transactions, persons);
     const adj = adjustments.map((a) => ({ date: a.date, amountMinor: a.amountMinor }));
-    const endMonth = makeMonthKey(Math.max(year, yearOf(todayISO())), 12);
+
+    // Extend the ledger back to the earliest recorded data so history entered
+    // before the configured opening month (e.g. a 2025 row) still appears.
+    // The opening balance stays anchored at `configuredStart`; the balance at
+    // the extended start is back-computed so opening(configuredStart) is
+    // unchanged.
+    const earliestData = [
+      configuredStart,
+      ...txLike.map((t) => monthKeyOf(t.effectiveDate)),
+      ...adj.map((a) => monthKeyOf(a.date)),
+    ].reduce((min, m) => (m < min ? m : min), configuredStart);
+
+    const anchorDay = firstDayOf(configuredStart);
+    const beforeAnchor =
+      txLike.reduce((sum, t) => (t.effectiveDate < anchorDay && countsTowardBalance(t, today) ? sum + balanceEffect(t) : sum), 0) +
+      adj.reduce((sum, a) => (a.date < anchorDay && a.date <= today ? sum + a.amountMinor : sum), 0);
+    const openingAtStart = openingBalanceMinor - beforeAnchor;
+
+    const startMonth = earliestData;
+    const endMonth = makeMonthKey(Math.max(year, yearOf(today)), 12);
     const ledger = buildLedger({
-      openingBalanceMinor,
+      openingBalanceMinor: openingAtStart,
       startMonth,
       endMonth,
       transactions: txLike,
@@ -299,7 +318,7 @@ export function useLedger(year: number): LedgerBundle | null {
       includePendingInCells,
     });
     const actualBalanceMinor = currentBalance({
-      openingBalanceMinor,
+      openingBalanceMinor: openingAtStart,
       startMonth,
       transactions: txLike,
       adjustments: adj,

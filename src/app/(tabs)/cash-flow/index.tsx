@@ -348,13 +348,13 @@ function MatrixTable({
                         style={[
                           type.label,
                           {
-                            color: rowMonth!.data ? palette.primary : palette.textMuted,
+                            color: palette.primary,
                             fontFamily: isCurrentRow ? "Inter_700Bold" : "Inter_600SemiBold",
                             fontSize: compact ? 12 : 13,
                           },
                         ]}
-                        onPress={rowMonth!.data ? () => router.push(`/cash-flow/${rowMonth!.month}`) : undefined}
-                        accessibilityRole={rowMonth!.data ? "link" : undefined}
+                        onPress={() => router.push(`/cash-flow/${rowMonth!.month}`)}
+                        accessibilityRole="link"
                         numberOfLines={1}
                       >
                         {compact ? rowHeadLabel.split(" ")[0] : rowHeadLabel}
@@ -380,7 +380,7 @@ function MatrixTable({
                         note={note}
                         highlighted={isCurrentCol}
                         onPress={
-                          column.categoryId && slot.data
+                          column.categoryId
                             ? () => router.push({ pathname: "/cell-editor", params: { month: slot.month, categoryId: column.categoryId! } })
                             : undefined
                         }

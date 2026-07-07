@@ -127,6 +127,7 @@ export const tr = {
   },
   tx: {
     new: "Yeni İşlem",
+    edit: "İşlemi Düzenle",
     type: "Tür", expense: "Gider", income: "Gelir", transferInvest: "Yatırım / Transfer",
     amount: "Tutar", currency: "Para Birimi",
     tryEquivalent: (v: string) => `≈ ${v}`,
@@ -223,6 +224,8 @@ export const tr = {
     period12m: "12 Ay",
     periodYear: "Yıl",
     allCategories: "Tüm Kategoriler",
+    searchPlaceholder: "Ara: kategori, tutar, ay ya da yıl…",
+    noResults: "Eşleşen işlem yok.",
     matrixHint: "Kategori × ay matrisi — yıllık görünüm",
     trendOf: (c: string) => `${c} — kümülatif`,
   },
