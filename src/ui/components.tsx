@@ -332,7 +332,7 @@ export function Button({
           alignItems: "center",
           justifyContent: "center",
           opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
-          transform: pressed ? [{ scale: 0.98 }] : undefined,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
         },
       ]}
     >
