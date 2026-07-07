@@ -251,18 +251,22 @@ export default function ComputedColumnsScreen() {
         renderItem={(c) => {
           const visible = !hidden.includes(c.id);
           return (
-            <Spread style={{ paddingVertical: spacing.sm }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}>
-                <Calculator size={16} color={palette.textMuted} />
-                <Body numberOfLines={1}>{c.name}</Body>
-              </View>
-              <Row gap={spacing.sm}>
+            <View style={{ paddingVertical: spacing.sm }}>
+              <Spread>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1, paddingRight: spacing.sm }}>
+                  <Calculator size={16} color={palette.textMuted} />
+                  <Body numberOfLines={2} style={{ flex: 1 }}>{c.name}</Body>
+                </View>
+                <Row gap={spacing.sm}>
+                  <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(c)} />
+                  <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
+                </Row>
+              </Spread>
+              <Spread style={{ marginTop: spacing.xs }}>
                 <Body muted style={{ fontSize: 12 }}>{tr.computed.showInTable}</Body>
                 <Switch value={visible} onValueChange={(v) => void toggleVisible(c.id, v)} />
-                <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(c)} />
-                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
-              </Row>
-            </Spread>
+              </Spread>
+            </View>
           );
         }}
       />

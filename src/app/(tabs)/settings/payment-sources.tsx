@@ -8,8 +8,8 @@ import { usePersons, useSources, useUserId } from "../../../data/hooks";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../../domain/types";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Trash2 } from "lucide-react-native";
-import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, InitialsBadge, Row, Screen, Spread } from "../../../ui/components";
+import { Pencil, Trash2 } from "lucide-react-native";
+import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, InitialsBadge, Label, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
@@ -21,6 +21,7 @@ export default function SourcesScreen() {
   const sources = useSources();
   const persons = usePersons();
   const undo = useUndo();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState<PaymentSourceType>("credit_card");
   // persons load async (live query) — derive the default owner.
@@ -31,29 +32,41 @@ export default function SourcesScreen() {
   const dueDay = dueDayStr.trim() === "" ? null : Number(dueDayStr);
   const dueDayValid = dueDay === null || (Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31);
 
-  const add = async () => {
+  const resetForm = () => {
+    setEditingId(null);
+    setName("");
+    setSourceType("credit_card");
+    setPersonChoice(null);
+    setDueDayStr("");
+  };
+
+  const startEdit = (src: (typeof sources)[number]) => {
+    setEditingId(src.id);
+    setName(src.name);
+    setSourceType(src.type);
+    setPersonChoice(src.personId);
+    setDueDayStr(src.dueDay != null ? String(src.dueDay) : "");
+  };
+
+  const save = async () => {
     if (!personId) return;
+    const existing = editingId ? sources.find((s) => s.id === editingId) : null;
     await writeRows(userId, [
       {
         table: "payment_sources",
         row: {
-          id: newId(),
+          ...(existing ?? { statementDay: null, color: null, logoSource: "initials", logoRef: null, isActive: true }),
+          id: editingId ?? newId(),
           name: name.trim(),
           type: sourceType,
           personId,
           dueDay,
-          statementDay: null,
-          color: null,
-          logoSource: "initials",
-          logoRef: null,
-          isActive: true,
           deletedAt: null,
         },
       },
     ]);
     scheduleSync(userId);
-    setName("");
-    setDueDayStr("");
+    resetForm();
   };
 
   const remove = async (s: (typeof sources)[number]) => {
@@ -65,6 +78,7 @@ export default function SourcesScreen() {
   return (
     <Screen>
       <Card>
+        {editingId ? <Label>{tr.common.edit}</Label> : null}
         <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
         <ChipPicker options={TYPES.map((t) => ({ value: t.value, label: t.label }))} value={sourceType} onChange={setSourceType} />
         {persons.length > 1 ? (
@@ -73,7 +87,16 @@ export default function SourcesScreen() {
         {sourceType === "credit_card" ? (
           <Field label={tr.sources.dueDay} placeholder={tr.common.optionalHint} value={dueDayStr} onChangeText={setDueDayStr} keyboardType="number-pad" />
         ) : null}
-        <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || !personId || !dueDayValid} />
+        {editingId ? (
+          <Row>
+            <View style={{ flex: 1 }}>
+              <Button label={tr.common.save} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid} />
+            </View>
+            <Button label={tr.common.cancel} variant="ghost" onPress={resetForm} />
+          </Row>
+        ) : (
+          <Button label={tr.common.add} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid} />
+        )}
       </Card>
 
       <CardList
@@ -92,7 +115,10 @@ export default function SourcesScreen() {
                 </Body>
               </View>
             </Row>
-            <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(s)} />
+            <Row gap={spacing.sm}>
+              <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(s)} />
+              <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(s)} />
+            </Row>
           </Spread>
         )}
       />

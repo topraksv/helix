@@ -7,7 +7,7 @@ import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
 import { usePersons, useUserId } from "../../../data/hooks";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Trash2 } from "lucide-react-native";
+import { Pencil, Trash2 } from "lucide-react-native";
 import { Badge, Body, Button, Card, CardList, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -18,6 +18,14 @@ export default function PersonsScreen() {
   const persons = usePersons();
   const undo = useUndo();
   const [name, setName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  const rename = async (p: (typeof persons)[number], newName: string) => {
+    await writeRows(userId, [{ table: "persons", row: { ...p, name: newName.trim() } }]);
+    scheduleSync(userId);
+    setEditingId(null);
+  };
 
   const add = async () => {
     await writeRows(userId, [
@@ -47,15 +55,28 @@ export default function PersonsScreen() {
       <CardList
         items={[...persons].sort((a, b) => Number(b.isSelf) - Number(a.isSelf))}
         keyExtractor={(p) => p.id}
-        renderItem={(p) => (
-          <Spread style={{ paddingVertical: spacing.sm }}>
-            <Row gap={spacing.sm}>
-              <Body>{p.name}</Body>
-              {p.isSelf ? <Badge text={tr.persons.selfBadge} tone="primary" /> : <Badge text={tr.installments.watchOnly} />}
+        renderItem={(p) =>
+          editingId === p.id ? (
+            <Row style={{ paddingVertical: spacing.sm }}>
+              <View style={{ flex: 1 }}>
+                <Field value={editName} onChangeText={setEditName} />
+              </View>
+              <Button label={tr.common.save} variant="secondary" disabled={!editName.trim()} onPress={() => void rename(p, editName)} />
+              <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
             </Row>
-            {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(p)} /> : null}
-          </Spread>
-        )}
+          ) : (
+            <Spread style={{ paddingVertical: spacing.sm }}>
+              <Row gap={spacing.sm} style={{ flex: 1, paddingRight: spacing.sm }}>
+                <Body numberOfLines={1}>{p.name}</Body>
+                {p.isSelf ? <Badge text={tr.persons.selfBadge} tone="primary" /> : <Badge text={tr.installments.watchOnly} />}
+              </Row>
+              <Row gap={spacing.sm}>
+                <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => { setEditingId(p.id); setEditName(p.name); }} />
+                {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(p)} /> : null}
+              </Row>
+            </Spread>
+          )
+        }
       />
     </Screen>
   );

@@ -33,7 +33,6 @@ export default function CellEditorModal() {
   const undo = useUndo();
   const { palette } = useTheme();
   const [entryRaw, setEntryRaw] = useState("");
-  const [entryNote, setEntryNote] = useState("");
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -79,12 +78,11 @@ export default function CellEditorModal() {
         categoryId: category.id,
         paymentSourceId: null,
         personId: selfId,
-        note: entryNote.trim() || (entryRaw.includes("+") || entryRaw.includes("-") ? entryRaw.trim() : null),
+        note: entryRaw.includes("+") || entryRaw.includes("-") ? entryRaw.trim() : null,
         isAggregate: entryRaw.includes("+") || entryRaw.includes("-"),
       });
       scheduleSync(userId);
       setEntryRaw("");
-      setEntryNote("");
     } finally {
       setBusy(false);
     }
@@ -140,7 +138,6 @@ export default function CellEditorModal() {
           = {formatMinor(entryMinor)}
         </Body>
       ) : null}
-      <Field value={entryNote} onChangeText={setEntryNote} placeholder={tr.cell.entryNotePlaceholder} />
       <Button
         label={tr.common.add}
         onPress={() => void addEntry()}

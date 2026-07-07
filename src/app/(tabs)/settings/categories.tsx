@@ -95,25 +95,29 @@ export default function CategoriesScreen() {
                 <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
               </Row>
             ) : (
-              <Spread style={{ paddingVertical: spacing.sm }}>
-                <Body numberOfLines={1} style={{ flex: 1, paddingRight: spacing.sm }}>
-                  {categoryIcon(c)} {c.name}
-                </Body>
-                <Row gap={spacing.sm}>
-                  <Body muted>{tr.settings.columnVisible}</Body>
+              <View style={{ paddingVertical: spacing.sm }}>
+                <Spread>
+                  <Body numberOfLines={2} style={{ flex: 1, paddingRight: spacing.sm }}>
+                    {categoryIcon(c)} {c.name}
+                  </Body>
+                  <Row gap={spacing.sm}>
+                    <IconButton
+                      icon={Pencil}
+                      size={32}
+                      label={tr.common.edit}
+                      onPress={() => {
+                        setEditingId(c.id);
+                        setEditName(c.name);
+                      }}
+                    />
+                    <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
+                  </Row>
+                </Spread>
+                <Spread style={{ marginTop: spacing.xs }}>
+                  <Body muted style={{ fontSize: 12 }}>{tr.settings.columnVisible}</Body>
                   <Switch value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
-                  <IconButton
-                    icon={Pencil}
-                    size={32}
-                    label={tr.common.edit}
-                    onPress={() => {
-                      setEditingId(c.id);
-                      setEditName(c.name);
-                    }}
-                  />
-                  <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
-                </Row>
-              </Spread>
+                </Spread>
+              </View>
             )
           }
         />
