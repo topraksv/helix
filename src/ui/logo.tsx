@@ -58,9 +58,67 @@ const BRAND_ALIASES: Record<string, string> = {
   "google one": "google",
   "apple music": "applemusic",
   "apple tv": "appletv",
+  "apple tv+": "appletv",
   icloud: "icloud",
   "x premium": "x",
   twitter: "x",
+  "disney+": "disneyplus",
+  disney: "disneyplus",
+  gain: "gain",
+  tabii: "tabii",
+  todtv: "todtv",
+  "amazon music": "amazonmusic",
+  deezer: "deezer",
+  tidal: "tidal",
+  duolingo: "duolingo",
+  notion: "notion",
+  dropbox: "dropbox",
+  "adobe creative cloud": "adobe",
+  adobe: "adobe",
+  canva: "canva",
+  linkedin: "linkedin",
+  "linkedin premium": "linkedin",
+  patreon: "patreon",
+  twitch: "twitch",
+  playstation: "playstation",
+  "playstation plus": "playstation",
+  "xbox game pass": "xbox",
+  xbox: "xbox",
+  steam: "steam",
+  nintendo: "nintendo",
+  github: "github",
+  "github copilot": "github",
+  medium: "medium",
+  audible: "audible",
+  storytel: "storytel",
+};
+
+/** Brands whose favicon domain isn't simply `<slug>.com`. */
+const DOMAIN_OVERRIDES: Record<string, string> = {
+  netflix: "netflix.com",
+  amazon: "amazon.com",
+  "amazon prime": "primevideo.com",
+  prime: "primevideo.com",
+  "prime video": "primevideo.com",
+  spotify: "spotify.com",
+  youtube: "youtube.com",
+  "youtube premium": "youtube.com",
+  "youtube music": "music.youtube.com",
+  disney: "disneyplus.com",
+  "disney+": "disneyplus.com",
+  hbo: "max.com",
+  "hbo max": "max.com",
+  chatgpt: "openai.com",
+  "google one": "one.google.com",
+  x: "x.com",
+  twitter: "x.com",
+  "apple music": "music.apple.com",
+  "apple tv": "tv.apple.com",
+  icloud: "icloud.com",
+  tabii: "tabii.com",
+  gain: "gain.tv",
+  exxen: "exxen.com",
+  blutv: "blutv.com",
 };
 
 function slugify(name: string): string {
@@ -77,10 +135,18 @@ export function Logo({ name, domain, size = 36 }: { name: string; domain?: strin
   const utility = useMemo(() => UTILITY_ICONS.find((u) => u.match.test(name)), [name]);
   const urls = useMemo(() => {
     const list: string[] = [];
-    const alias = BRAND_ALIASES[name.trim().toLocaleLowerCase("tr-TR")];
+    const key = name.trim().toLocaleLowerCase("tr-TR");
+    const alias = BRAND_ALIASES[key];
     const slug = alias ?? slugify(name);
+    // 1) simple-icons: crisp, brand-coloured monochrome mark.
     if (slug.length >= 3) list.push(`https://cdn.simpleicons.org/${slug}`);
-    if (domain) list.push(`https://icons.duckduckgo.com/ip3/${domain.replace(/^https?:\/\//, "")}.ico`);
+    // 2) a real favicon — covers the long tail with full-colour logos. Prefer
+    //    an explicit domain, then a known override, then the common `<slug>.com`.
+    const fav = (d: string) => `https://icons.duckduckgo.com/ip3/${d.replace(/^https?:\/\//, "").replace(/\/$/, "")}.ico`;
+    if (domain) list.push(fav(domain));
+    const override = DOMAIN_OVERRIDES[key];
+    if (override) list.push(fav(override));
+    else if (slug.length >= 3) list.push(fav(`${slug}.com`));
     return list;
   }, [name, domain]);
 

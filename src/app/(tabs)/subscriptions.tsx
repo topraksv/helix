@@ -4,7 +4,7 @@
 import React, { useMemo } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Pencil, Plus, RefreshCw, Trash2, Zap } from "lucide-react-native";
+import { Pencil, Plus, RefreshCw, Repeat, Trash2 } from "lucide-react-native";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
 import { todayISO } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
@@ -66,17 +66,14 @@ export default function SubscriptionsScreen() {
         onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })}
         right={
           <Row gap={spacing.sm}>
-            <View style={{ alignItems: "flex-end", justifyContent: "center" }}>
-              {/* trial badge, autopay and price share one horizontal axis */}
+            {/* Price on top; the trial tag drops to its own line so it never
+                crowds the amount on a narrow phone screen. */}
+            <View style={{ alignItems: "flex-end", justifyContent: "center", gap: 3 }}>
               <Row gap={spacing.xs}>
-                {inTrial ? (
-                  <View>
-                    <Badge text={tr.subs.trialBadge} tone="warning" />
-                  </View>
-                ) : null}
-                {s.autoPay ? <Zap size={14} color={palette.warning} /> : null}
+                {s.autoPay ? <Repeat size={13} color={palette.primary} /> : null}
                 <Amount minor={s.amountMinor} currency={s.currency} colorized={false} />
               </Row>
+              {inTrial ? <Badge text={tr.subs.trialBadge} tone="warning" /> : null}
               {s.intervalMonths > 1 ? (
                 <Body muted style={{ fontSize: 12 }}>
                   {tr.subs.perMonth(formatMinor(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))}
