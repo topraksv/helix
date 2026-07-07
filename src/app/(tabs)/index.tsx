@@ -27,7 +27,7 @@ import { confirmExpected, revertExpected } from "../../data/repo";
 import { connectMarkets, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Badge, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
-import { Donut, Lines, SplitBar, useSeriesColors } from "../../ui/charts";
+import { Bars, Donut, SplitBar, useSeriesColors } from "../../ui/charts";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../ui/theme";
@@ -211,17 +211,13 @@ export default function DashboardScreen() {
   ];
 
   const trendMonths = bundle ? bundle.ledger.filter((m) => yearOf(m.month) === year && m.month <= month) : [];
-  const trend =
+  // Grouped income-vs-expense bars read far clearer than three overlapping
+  // lines where a cumulative balance dwarfed the monthly flows.
+  const trendGroups =
     trendMonths.length >= 2
-      ? {
-          labels: trendMonths.map((m) => tr.months[monthOf(m.month) - 1].slice(0, 3)),
-          series: [
-            { label: tr.cashflow.income, color: colors[1], points: trendMonths.map((m) => m.incomeMinor) },
-            { label: tr.cashflow.expense, color: colors[5], points: trendMonths.map((m) => m.expenseMinor) },
-            { label: "Net", color: colors[0], points: trendMonths.map((m) => m.closingMinor) },
-          ],
-        }
+      ? trendMonths.map((m) => ({ label: tr.months[monthOf(m.month) - 1].slice(0, 3), values: [m.incomeMinor, m.expenseMinor] }))
       : null;
+  const thisMonthNet = trendMonths.find((m) => m.month === month);
 
   const confirm = async (e: (typeof expected)[number]) => {
     if (!selfPersonId) return;
@@ -394,11 +390,23 @@ export default function DashboardScreen() {
         </Card>
       ) : null}
 
-      {/* Yearly trend */}
-      {trend ? (
+      {/* Monthly income vs expense */}
+      {trendGroups ? (
         <Card>
-          <Heading style={{ marginTop: 0 }}>{tr.dashboard.trend}</Heading>
-          <Lines width={Math.min(width - spacing.lg * 4, 640)} xLabels={trend.labels} series={trend.series} />
+          <Spread style={{ marginBottom: spacing.xs }}>
+            <Heading style={{ marginTop: 0, marginBottom: 0 }}>{tr.dashboard.trend}</Heading>
+            {thisMonthNet ? (
+              <Body muted style={{ fontSize: 12 }}>{tr.dashboard.trendNet(formatMinor(thisMonthNet.incomeMinor - thisMonthNet.expenseMinor))}</Body>
+            ) : null}
+          </Spread>
+          <Bars
+            width={Math.min(width - spacing.lg * 4, 640)}
+            groups={trendGroups}
+            series={[
+              { label: tr.cashflow.income, color: colors[1] },
+              { label: tr.cashflow.expense, color: colors[5] },
+            ]}
+          />
         </Card>
       ) : null}
     </Screen>

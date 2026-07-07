@@ -8,7 +8,7 @@
 
 import React from "react";
 import { Text, View } from "react-native";
-import Svg, { Circle, Path, Line as SvgLine, Text as SvgText } from "react-native-svg";
+import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import { formatMinor } from "../domain/money";
 import { spacing, type, useTheme } from "./theme";
 
@@ -159,6 +159,80 @@ export function Lines({
           ) : null,
         )}
       </Svg>
+    </View>
+  );
+}
+
+export interface BarGroup {
+  label: string;
+  /** One value per series (minor units); null/0 renders no bar. */
+  values: (number | null)[];
+}
+
+/**
+ * Grouped vertical bars — one cluster per x slot, one bar per series. Signed
+ * values dip below a shared zero line. Paired with a legend (relief rule).
+ */
+export function Bars({
+  groups,
+  series,
+  height = 190,
+  width = 320,
+}: {
+  groups: BarGroup[];
+  series: { label: string; color: string }[];
+  height?: number;
+  width?: number;
+}) {
+  const { palette } = useTheme();
+  const pad = { left: 8, right: 8, top: 14, bottom: 22 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const all = groups.flatMap((g) => g.values.filter((v): v is number => v != null));
+  if (all.length === 0 || groups.length === 0) return null;
+  const max = Math.max(...all, 1);
+  const min = Math.min(0, ...all);
+  const span = max - min || 1;
+  const groupW = plotW / groups.length;
+  const barGap = 2;
+  const nSeries = Math.max(series.length, 1);
+  const barW = Math.max(3, (groupW * 0.68 - barGap * (nSeries - 1)) / nSeries);
+  const y = (v: number) => pad.top + plotH - ((v - min) / span) * plotH;
+  const zeroY = y(0);
+  const everyN = groups.length <= 6 ? 1 : Math.ceil(groups.length / 6);
+
+  return (
+    <View>
+      <Svg width={width} height={height}>
+        <SvgLine x1={pad.left} y1={zeroY} x2={pad.left + plotW} y2={zeroY} stroke={palette.border} strokeWidth={1} />
+        {groups.map((g, gi) => {
+          const gx = pad.left + gi * groupW + groupW * 0.16;
+          return g.values.map((v, si) => {
+            if (v == null || v === 0) return null;
+            const top = v > 0 ? y(v) : zeroY;
+            const h = Math.abs(y(v) - zeroY);
+            const bx = gx + si * (barW + barGap);
+            return <Rect key={`${gi}-${si}`} x={bx} y={top} width={barW} height={Math.max(1, h)} rx={2} fill={series[si]?.color ?? palette.primary} />;
+          });
+        })}
+        {groups.map((g, gi) =>
+          gi % everyN === 0 ? (
+            <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 6} fontSize={9} fill={palette.textMuted} textAnchor="middle">
+              {g.label}
+            </SvgText>
+          ) : null,
+        )}
+      </Svg>
+      {series.length > 1 ? (
+        <View style={{ flexDirection: "row", gap: spacing.md, justifyContent: "center", marginTop: 2 }}>
+          {series.map((s) => (
+            <View key={s.label} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: s.color }} />
+              <Text style={[type.small, { color: palette.textMuted }]}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
