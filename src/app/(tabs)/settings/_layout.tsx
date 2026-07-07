@@ -21,6 +21,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="payment-sources" options={{ title: tr.settings.sources }} />
       <Stack.Screen name="incomes" options={{ title: tr.settings.incomeRules }} />
       <Stack.Screen name="computed-columns" options={{ title: tr.settings.computed }} />
+      <Stack.Screen name="opening-balance" options={{ title: tr.settings.opening }} />
     </Stack>
   );
 }

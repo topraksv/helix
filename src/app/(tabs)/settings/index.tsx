@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   FileUp,
   LogOut,
+  PiggyBank,
   ScanFace,
   Users,
   Wallet,
@@ -114,6 +115,7 @@ export default function SettingsScreen() {
         <ListRow icon={Users} title={tr.settings.persons} subtitle={tr.settings.personsDesc} chevron onPress={() => router.push("/settings/persons")} />
         <ListRow icon={Wallet} title={tr.settings.sources} subtitle={tr.settings.sourcesDesc} chevron onPress={() => router.push("/settings/payment-sources")} />
         <ListRow icon={Banknote} title={tr.settings.incomeRules} subtitle={tr.settings.incomeRulesDesc} chevron onPress={() => router.push("/settings/incomes")} />
+        <ListRow icon={PiggyBank} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />
       </Card>
 
       <SectionHeader>{tr.settings.appSection}</SectionHeader>
