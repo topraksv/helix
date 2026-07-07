@@ -15,7 +15,7 @@ for the network.
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
 [![64 tests passing](https://img.shields.io/badge/tests-64%20passing-brightgreen)](tests/)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
+[![Proprietary](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](#license)
 
 *iOS + Web from a single codebase.*
 
@@ -161,6 +161,9 @@ Helix already handles the day-to-day. On the horizon:
 
 ## License
 
-Released under the [MIT License](LICENSE) — free to use, modify, and
-distribute, including commercially, as long as the copyright and license notice
-are kept. © 2026 Ömer Toprak Şavlı.
+**Proprietary — all rights reserved.** © 2026 Ömer Toprak Şavlı, sole developer
+and maintainer. The source is published here for transparency and reference
+only; it is *not* open-source. You may view the code and fork within GitHub to
+propose contributions, but running, copying, modifying, redistributing, or
+otherwise using the Software requires prior written permission. See the full
+terms in [LICENSE](LICENSE), and contact the author for any licensing request.
