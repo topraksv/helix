@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AppState, Platform, Text, useColorScheme, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
@@ -47,6 +47,11 @@ export default function RootLayout() {
   // Open + migrate the database (async API on every platform) before the app.
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  // Fonts are cosmetic: never let a slow/flaky web font fetch hold the whole
+  // app on a blank screen — after a short grace we render with the system
+  // fallback (this was the mobile-web "white screen" culprit).
+  const [fontGrace, setFontGrace] = useState(false);
   const [fontsLoaded, fontsError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -56,13 +61,26 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    migrateDb()
-      .then(() => setDbReady(true))
-      .catch((e) => setDbError(String(e)));
+    let cancelled = false;
+    setDbError(null);
+    migrateDb().then(
+      () => !cancelled && setDbReady(true),
+      (e) => !cancelled && setDbError(String(e)),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setFontGrace(true), 2500);
+    return () => clearTimeout(t);
   }, []);
 
   const background = systemScheme === "dark" ? darkPalette.background : lightPalette.background;
   const foreground = systemScheme === "dark" ? darkPalette.text : lightPalette.text;
+  const primary = systemScheme === "dark" ? darkPalette.primary : lightPalette.primary;
+  const fontsReady = fontsLoaded || fontsError != null || fontGrace;
 
   return (
     <>
@@ -71,17 +89,27 @@ export default function RootLayout() {
           <title>Helix</title>
         </Head>
       )}
-      {dbReady && (fontsLoaded || fontsError != null) ? (
+      {dbReady && fontsReady ? (
         <RootLayoutInner />
       ) : (
-        <View style={{ flex: 1, backgroundColor: background, justifyContent: "center", padding: 24 }}>
+        <View style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: 24, gap: 16 }}>
           {dbError ? (
-            <Text style={{ color: foreground }}>
-              {tr.errors.database}
-              {"\n"}
-              {dbError}
-            </Text>
-          ) : null}
+            <>
+              <Text style={{ color: foreground, textAlign: "center" }}>{tr.errors.database}</Text>
+              <Text
+                accessibilityRole="button"
+                onPress={() => {
+                  setDbReady(false);
+                  setAttempt((a) => a + 1);
+                }}
+                style={{ color: primary, fontWeight: "600" }}
+              >
+                {tr.common.retry}
+              </Text>
+            </>
+          ) : (
+            <ActivityIndicator color={primary} />
+          )}
         </View>
       )}
     </>

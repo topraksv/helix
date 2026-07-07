@@ -50,18 +50,30 @@ export default function AnalysisScreen() {
     .filter((r) => r.data && r.data.ytdMinor !== 0)
     .filter((r) => categoryFilter == null || r.category.id === categoryFilter);
 
+  // Simple but effective search: each transaction becomes one lowercased
+  // haystack of category name, note, Turkish month name, year and amount
+  // digits, so "market", "mart", "2025" or "1500" all filter sensibly.
+  const catName = (cid: string | null) => (cid ? categories.find((c) => c.id === cid)?.name ?? "" : "");
   const q = query.trim().toLocaleLowerCase("tr-TR");
   const searchResults =
-    q.length < 2
+    q.length < 1
       ? []
       : allTx
-          .filter(
-            (t) =>
-              (t.note ?? "").toLocaleLowerCase("tr-TR").includes(q) ||
-              formatMinor(t.amountTryMinor).includes(q) ||
-              t.effectiveDate.includes(q),
-          )
-          .slice(-50)
+          .filter((t) => {
+            const mk = monthKeyOf(t.effectiveDate);
+            const haystack = [
+              catName(t.categoryId),
+              t.note ?? "",
+              tr.months[monthOf(mk) - 1],
+              String(yearOf(t.effectiveDate)),
+              String(Math.round(t.amountTryMinor / 100)),
+              (t.amountTryMinor / 100).toFixed(2).replace(".", ","),
+            ]
+              .join(" ")
+              .toLocaleLowerCase("tr-TR");
+            return haystack.includes(q);
+          })
+          .slice(-100)
           .reverse();
 
   const trendRow = (selected ? rows.find((r) => r.category.id === selected) : null) ?? (categoryFilter ? rows[0] : null);
@@ -101,21 +113,28 @@ export default function AnalysisScreen() {
         }}
       />
 
-      <Field placeholder={`${tr.common.search}…`} value={query} onChangeText={setQuery} />
-      {searchResults.length > 0 ? (
+      <Field placeholder={tr.analysis.searchPlaceholder} value={query} onChangeText={setQuery} autoCapitalize="none" />
+      {q.length >= 1 ? (
         <Card>
-          {searchResults.map((t) => (
-            <View key={t.id}>
-              <Spread style={{ paddingVertical: spacing.xs }}>
-                <Body>
-                  {dateLabel(t.effectiveDate)}
-                  {t.note ? ` · ${t.note}` : ""}
-                </Body>
-                <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
-              </Spread>
-              <Divider />
-            </View>
-          ))}
+          {searchResults.length === 0 ? (
+            <Body muted style={{ paddingVertical: spacing.sm }}>{tr.analysis.noResults}</Body>
+          ) : (
+            searchResults.map((t) => (
+              <View key={t.id}>
+                <Spread style={{ paddingVertical: spacing.xs }}>
+                  <View style={{ flex: 1, paddingRight: spacing.sm }}>
+                    <Body numberOfLines={1}>{catName(t.categoryId) || tr.common.none}</Body>
+                    <Body muted style={{ fontSize: 12 }} numberOfLines={1}>
+                      {dateLabel(t.effectiveDate)}
+                      {t.note ? ` · ${t.note}` : ""}
+                    </Body>
+                  </View>
+                  <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
+                </Spread>
+                <Divider />
+              </View>
+            ))
+          )}
         </Card>
       ) : null}
 

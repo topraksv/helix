@@ -3,9 +3,9 @@
 
 import React, { useMemo, useState } from "react";
 import { Alert, Platform, View } from "react-native";
-import { useRouter } from "expo-router";
-import { addTransaction, createInstallmentPlan } from "../data/repo";
-import { useCategories, usePersons, useSources, useUserId } from "../data/hooks";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { addTransaction, createInstallmentPlan, updateTransaction } from "../data/repo";
+import { useAllTransactions, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, monthKeyOf, todayISO } from "../domain/dates";
@@ -22,33 +22,47 @@ import { spacing } from "../ui/theme";
 
 type EntryType = "expense" | "income" | "transfer";
 
+type ExistingTx = ReturnType<typeof useAllTransactions>[number];
+
 export default function TransactionModal() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const allTx = useAllTransactions();
+  const existing = id ? allTx.find((t) => t.id === id) : undefined;
+  // Editing: wait for the row to load, then key by id so state initializers
+  // see the real values.
+  if (id && !existing) return <Screen scroll={false}>{null}</Screen>;
+  return <TransactionForm key={existing?.id ?? "new"} existing={existing} />;
+}
+
+function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const userId = useUserId();
   const categories = useCategories();
   const sources = useSources();
   const persons = usePersons();
   const router = useRouter();
+  const isEdit = existing != null;
 
-  const [entryType, setEntryType] = useState<EntryType>("expense");
-  const [amountRaw, setAmountRaw] = useState("");
-  const [amountMinor, setAmountMinor] = useState<number | null>(null);
-  const [currency, setCurrency] = useState<string>("TRY");
-  const [showCurrency, setShowCurrency] = useState(false);
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [sourceId, setSourceId] = useState<string | null>(null);
+  const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? "expense");
+  const [amountRaw, setAmountRaw] = useState(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");
+  const [amountMinor, setAmountMinor] = useState<number | null>(existing?.amountMinor ?? null);
+  const [currency, setCurrency] = useState<string>(existing?.currency ?? "TRY");
+  const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
+  const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
+  const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? null);
   // persons load async (live query) — deriving keeps "self" as the default
   // even when the modal mounts before the first query resolves.
-  const [personChoice, setPersonChoice] = useState<string | null>(null);
+  const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? null);
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
-  const [dateStr, setDateStr] = useState(todayISO());
-  const [note, setNote] = useState("");
+  const [dateStr, setDateStr] = useState(existing?.effectiveDate ?? todayISO());
+  const [note, setNote] = useState(existing?.note ?? "");
   const [installment, setInstallment] = useState(false);
   const [countStr, setCountStr] = useState("2");
   const [paidStr, setPaidStr] = useState("0");
   const [busy, setBusy] = useState(false);
 
-  // Smart defaults: remember last used category/source per type.
+  // Smart defaults (new entries only): remember last used category/source.
   React.useEffect(() => {
+    if (isEdit) return;
     void kv.get(`helix.last.${entryType}`).then((v) => {
       if (!v) return;
       try {
@@ -83,6 +97,23 @@ export default function TransactionModal() {
     try {
       assertISODate(dateStr);
       const fxRate = currency === "TRY" ? null : String(rate!.rate.rateTry);
+      if (isEdit) {
+        await updateTransaction(userId, existing as unknown as Record<string, unknown>, {
+          type: entryType,
+          amountMinor: amountMinor!,
+          currency,
+          fxRate,
+          amountTryMinor: tryMinor!,
+          effectiveDate: dateStr,
+          categoryId,
+          paymentSourceId: sourceId,
+          personId,
+          note: note.trim() || null,
+        });
+        scheduleSync(userId);
+        router.back();
+        return;
+      }
       if (installment) {
         const person = persons.find((p) => p.id === personId)!;
         await createInstallmentPlan(userId, {
@@ -134,6 +165,7 @@ export default function TransactionModal() {
 
   return (
     <Screen>
+      <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
       <Segmented
         options={[
           { value: "expense", label: tr.tx.expense },
@@ -202,7 +234,7 @@ export default function TransactionModal() {
         {dateValid && dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
       </Body>
 
-      {entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
+      {!isEdit && entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
         <View style={{ marginVertical: spacing.md }}>
           <Segmented
             options={[
@@ -232,7 +264,9 @@ export default function TransactionModal() {
 
       <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
         <Button label={tr.common.save} onPress={() => void save(false)} disabled={!canSave} loading={busy} />
-        <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void save(true)} disabled={!canSave || busy} />
+        {!isEdit ? (
+          <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void save(true)} disabled={!canSave || busy} />
+        ) : null}
       </View>
     </Screen>
   );

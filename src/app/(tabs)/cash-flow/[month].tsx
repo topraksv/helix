@@ -2,9 +2,9 @@
 
 import React, { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
-import { ChevronDown, ChevronUp, Inbox, StickyNote, Trash2 } from "lucide-react-native";
+import { ChevronDown, ChevronUp, Inbox, Pencil, StickyNote, Trash2 } from "lucide-react-native";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
 import { newId } from "../../../db/ids";
@@ -20,6 +20,7 @@ import { spacing, type, useTheme } from "../../../ui/theme";
 
 export default function MonthDetailScreen() {
   const { month } = useLocalSearchParams<{ month: string }>();
+  const router = useRouter();
   const userId = useUserId();
   const categories = useCategories();
   const persons = usePersons();
@@ -135,6 +136,7 @@ export default function MonthDetailScreen() {
                       </View>
                       <Row gap={spacing.sm}>
                         <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
+                        <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })} />
                         <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void removeTx(t.id)} />
                       </Row>
                     </Spread>

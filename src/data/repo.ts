@@ -120,6 +120,38 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
   return id;
 }
 
+/** Editable fields of a single transaction (installment linkage is preserved). */
+export interface TransactionPatch {
+  type: TransactionType;
+  amountMinor: Minor;
+  currency: string;
+  fxRate: string | null;
+  amountTryMinor: Minor;
+  effectiveDate: ISODate;
+  categoryId: string | null;
+  paymentSourceId: string | null;
+  personId: string;
+  note: string | null;
+}
+
+/** Update an existing transaction in place; status is re-derived from the date. */
+export async function updateTransaction(
+  userId: string,
+  existing: Record<string, unknown>,
+  patch: TransactionPatch,
+): Promise<void> {
+  await writeRows(userId, [
+    {
+      table: "transactions",
+      row: {
+        ...existing,
+        ...patch,
+        status: patch.effectiveDate <= todayISO() ? "realized" : "pending",
+      },
+    },
+  ]);
+}
+
 export async function deleteTransaction(userId: string, id: string) {
   return softDelete(userId, "transactions", id);
 }

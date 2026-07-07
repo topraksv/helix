@@ -204,9 +204,23 @@ export function Heading({ children, style }: { children: ReactNode; style?: Styl
   return <Text style={[type.heading, { color: palette.text, marginVertical: spacing.sm }, style]}>{children}</Text>;
 }
 
-export function Body({ children, muted, style }: { children: ReactNode; muted?: boolean; style?: StyleProp<TextStyle> }) {
+export function Body({
+  children,
+  muted,
+  style,
+  numberOfLines,
+}: {
+  children: ReactNode;
+  muted?: boolean;
+  style?: StyleProp<TextStyle>;
+  numberOfLines?: number;
+}) {
   const { palette } = useTheme();
-  return <Text style={[type.body, { color: muted ? palette.textMuted : palette.text }, style]}>{children}</Text>;
+  return (
+    <Text numberOfLines={numberOfLines} style={[type.body, { color: muted ? palette.textMuted : palette.text }, style]}>
+      {children}
+    </Text>
+  );
 }
 
 export function Label({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
