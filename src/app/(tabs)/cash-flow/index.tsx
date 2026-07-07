@@ -103,12 +103,25 @@ export default function CashflowScreen() {
 
   return (
     <Screen title={tr.cashflow.title} right={yearSwitcher} maxWidth={wide ? 1200 : 760} scroll={false} padded>
-      <Row gap={spacing.sm} style={{ marginBottom: spacing.md, flexWrap: "wrap" }}>
-        <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-        <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
-        <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
-        <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
-      </Row>
+      {/* On phones keep the table the focus: one action row — a primary
+          "İşlem Ekle" plus icon-only secondaries — instead of two wrapped rows. */}
+      {wide ? (
+        <Row gap={spacing.sm} style={{ marginBottom: spacing.md, flexWrap: "wrap" }}>
+          <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+          <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
+          <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
+          <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
+        </Row>
+      ) : (
+        <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
+          <View style={{ flex: 1 }}>
+            <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+          </View>
+          <IconButton icon={CreditCard} size={40} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
+          <IconButton icon={ChartNoAxesColumn} size={40} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
+          <IconButton icon={CalendarPlus} size={40} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
+        </Row>
+      )}
 
       {!bundle ? (
         <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
@@ -338,6 +351,7 @@ function MatrixTable({
     }));
   }
 
+  const isColumns = orientation === "monthsAsColumns";
   const validPin = pinnedKey && stickyColumns.some((c) => c.key === pinnedKey) ? pinnedKey : null;
 
   return (
@@ -349,11 +363,14 @@ function MatrixTable({
         headWidth={HEAD_W}
         cellWidth={CELL_W}
         currentColumnKey={currentColumnKey}
-        pinnedKey={validPin}
-        onTogglePin={onTogglePin}
+        pinnedKey={isColumns ? null : validPin}
+        onTogglePin={isColumns ? undefined : onTogglePin}
+        onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : undefined}
         height={tableHeight}
       />
-      <Text style={[type.small, { color: palette.textMuted, padding: spacing.sm, textAlign: "center" }]}>{tr.cashflow.pinHint}</Text>
+      <Text style={[type.small, { color: palette.textMuted, padding: spacing.sm, textAlign: "center" }]}>
+        {isColumns ? tr.cashflow.monthTapHint : tr.cashflow.pinHint}
+      </Text>
     </Card>
   );
 }
