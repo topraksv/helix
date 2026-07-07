@@ -13,7 +13,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta
           name="viewport"
-          content="width=device-width, initial-scale=1, shrink-to-fit=no"
+          content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
         {/* Tab title comes from expo-router <Head> in _layout.tsx. */}
         <meta
@@ -21,6 +21,17 @@ export default function Root({ children }: PropsWithChildren) {
           content="Local-first personal finance: monthly cash flow, installments, subscriptions."
         />
         <ScrollViewStyleReset />
+        {/* Lock the page frame: the app scrolls inside its own ScrollViews, so
+            the document itself must never pan (that revealed white gutters and
+            shifted the footer on mobile web). */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              "html,body,#root{height:100%;width:100%;max-width:100%;overflow:hidden;overscroll-behavior:none;}" +
+              "body{position:fixed;top:0;left:0;right:0;bottom:0;margin:0;}" +
+              "*{box-sizing:border-box;}",
+          }}
+        />
       </head>
       <body>{children}</body>
     </html>
