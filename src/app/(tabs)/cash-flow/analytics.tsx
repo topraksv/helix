@@ -12,7 +12,7 @@ import { dateLabel, tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
-import { Lines, useSeriesColors } from "../../../ui/charts";
+import { Bars, Donut, Lines, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
 
@@ -26,6 +26,7 @@ export default function AnalysisScreen() {
   const [year, setYear] = useState(currentYear);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [chartType, setChartType] = useState<"pie" | "bars">("pie");
   const [query, setQuery] = useState("");
   const categories = useCategories();
   const persons = usePersons();
@@ -78,6 +79,30 @@ export default function AnalysisScreen() {
           .reverse();
 
   const trendRow = (selected ? rows.find((r) => r.category.id === selected) : null) ?? (categoryFilter ? rows[0] : null);
+
+  // Chart data: pie = expense-category shares over the window; bars = monthly
+  // income vs expense, or the filtered category's month-by-month values.
+  const expenseRows = categories
+    .map((c) => ({ category: c, data: matrix.get(c.id) }))
+    .filter((r) => r.data && r.category.kind === "expense" && r.data.ytdMinor !== 0)
+    .sort((a, b) => b.data!.ytdMinor - a.data!.ytdMinor);
+  const pieSlices = [
+    ...expenseRows.slice(0, 7).map((r, i) => ({ label: r.category.name, valueMinor: r.data!.ytdMinor, color: colors[i % colors.length] })),
+    ...(() => {
+      const rest = expenseRows.slice(7).reduce((sum, r) => sum + r.data!.ytdMinor, 0);
+      return rest > 0 ? [{ label: tr.common.other, valueMinor: rest, color: colors[7] }] : [];
+    })(),
+  ];
+  const barGroups = monthKeys.map((m) => {
+    const label = tr.months[monthOf(m) - 1].slice(0, 3);
+    if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
+    const income = categories.filter((c) => c.kind === "income").reduce((s, c) => s + (matrix.get(c.id)?.monthly.get(m) ?? 0), 0);
+    const expense = categories.filter((c) => c.kind === "expense").reduce((s, c) => s + (matrix.get(c.id)?.monthly.get(m) ?? 0), 0);
+    return { label, values: [income, expense] };
+  });
+  const barSeries = categoryFilter
+    ? [{ label: catName(categoryFilter) || tr.tx.category, color: colors[0] }]
+    : [{ label: tr.cashflow.income, color: colors[1] }, { label: tr.cashflow.expense, color: colors[5] }];
 
   return (
     <Screen>
@@ -135,6 +160,35 @@ export default function AnalysisScreen() {
                 <Divider />
               </View>
             ))
+          )}
+        </Card>
+      ) : null}
+
+      {rows.length > 0 ? (
+        <Card>
+          <Spread style={{ marginBottom: spacing.sm }}>
+            <Heading style={{ marginTop: 0, marginBottom: 0 }}>
+              {chartType === "pie" ? tr.analysis.chartExpenseDist : categoryFilter ? catName(categoryFilter) : tr.dashboard.trend}
+            </Heading>
+            <View style={{ width: 168 }}>
+              <Segmented
+                options={[
+                  { value: "pie", label: tr.analysis.chartPie },
+                  { value: "bars", label: tr.analysis.chartBars },
+                ]}
+                value={chartType}
+                onChange={setChartType}
+              />
+            </View>
+          </Spread>
+          {chartType === "pie" ? (
+            pieSlices.length > 0 ? (
+              <Donut slices={pieSlices} />
+            ) : (
+              <Body muted>{tr.analysis.noResults}</Body>
+            )
+          ) : (
+            <Bars width={Math.min(width - spacing.lg * 4, 640)} groups={barGroups} series={barSeries} />
           )}
         </Card>
       ) : null}
