@@ -7,10 +7,69 @@
  * fixed and scrolling halves aligned; fixed row heights keep rows level.
  */
 
-import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { Pin } from "lucide-react-native";
 import { spacing, type, useTheme } from "./theme";
+
+/**
+ * Web-only: let the mouse drag the table in both axes (grab-to-pan), on top of
+ * the wheel/trackpad scrolling RNW already gives us. The horizontal scroller is
+ * nested inside the vertical one, so a single drag updates both scroll offsets.
+ * A small movement threshold keeps taps on cells from being swallowed.
+ */
+function useDragToPan(vRef: React.RefObject<ScrollView | null>, hRef: React.RefObject<ScrollView | null>) {
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const vNode = (vRef.current as unknown as { getScrollableNode?: () => HTMLElement } | null)?.getScrollableNode?.();
+    const hNode = (hRef.current as unknown as { getScrollableNode?: () => HTMLElement } | null)?.getScrollableNode?.();
+    if (!vNode) return;
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    let moved = false;
+
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      dragging = true;
+      moved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = hNode ? hNode.scrollLeft : 0;
+      startTop = vNode.scrollTop;
+    };
+    const onMove = (e: MouseEvent) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!moved && Math.abs(dx) + Math.abs(dy) > 4) {
+        moved = true;
+        vNode.style.cursor = "grabbing";
+      }
+      if (moved) {
+        if (hNode) hNode.scrollLeft = startLeft - dx;
+        vNode.scrollTop = startTop - dy;
+        e.preventDefault();
+      }
+    };
+    const onUp = () => {
+      dragging = false;
+      vNode.style.cursor = "grab";
+    };
+
+    vNode.style.cursor = "grab";
+    vNode.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove, { passive: false });
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      vNode.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [vRef, hRef]);
+}
 
 export interface StickyColumn {
   key: string;
@@ -39,6 +98,7 @@ export function StickyTable({
   pinnedKey,
   onTogglePin,
   currentColumnKey,
+  height,
 }: {
   cornerLabel: string;
   columns: StickyColumn[];
@@ -52,8 +112,13 @@ export function StickyTable({
   onTogglePin?: (key: string) => void;
   /** Highlighted (e.g. current month) column key. */
   currentColumnKey?: string;
+  /** Explicit viewport height; when omitted the table flexes to fill. */
+  height?: number;
 }) {
   const { palette } = useTheme();
+  const vScrollRef = useRef<ScrollView>(null);
+  const hScrollRef = useRef<ScrollView>(null);
+  useDragToPan(vScrollRef, hScrollRef);
   const pinnedIndex = pinnedKey ? columns.findIndex((c) => c.key === pinnedKey) : -1;
   const pinnedCol = pinnedIndex >= 0 ? columns[pinnedIndex] : null;
   const scrollCols = columns.filter((_, i) => i !== pinnedIndex);
@@ -63,7 +128,7 @@ export function StickyTable({
     highlight ? palette.primarySoft + "55" : i % 2 === 1 ? palette.surfaceAlt + "66" : "transparent";
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+    <ScrollView ref={vScrollRef} showsVerticalScrollIndicator={false} style={height ? { height } : { flex: 1 }}>
       <View style={{ flexDirection: "row" }}>
         {/* Fixed left block: corner + labels (+ optional pinned column) */}
         <View style={{ borderRightWidth: 1, borderColor: palette.border }}>
@@ -109,7 +174,7 @@ export function StickyTable({
         </View>
 
         {/* Scrollable block: header + data rows share one horizontal ScrollView */}
-        <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }}>
+        <ScrollView ref={hScrollRef} horizontal showsHorizontalScrollIndicator style={{ flex: 1 }}>
           <View>
             <View style={{ flexDirection: "row", height: headerHeight, backgroundColor: palette.surfaceAlt, borderBottomWidth: 1, borderColor: palette.border }}>
               {scrollCols.map((c) => (

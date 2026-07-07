@@ -676,6 +676,8 @@ export function Segmented<T extends string>({
                 { color: selected ? palette.text : palette.textMuted, fontFamily: "Inter_600SemiBold", textAlign: "center" },
               ]}
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
             >
               {option.label}
             </Text>
@@ -790,6 +792,41 @@ export function EmptyState({ icon: IconCmp, title, hint }: { icon?: LucideIcon; 
 export function Divider() {
   const { palette } = useTheme();
   return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.sm }} />;
+}
+
+/**
+ * A Card that renders a list of items with dividers *between* them only —
+ * never a trailing line under the last (or only) row — and renders nothing at
+ * all when the list is empty (no stray empty box). The single reusable answer
+ * for every settings/list screen.
+ */
+export function CardList<T>({
+  items,
+  keyExtractor,
+  renderItem,
+  header,
+  style,
+  padded = true,
+}: {
+  items: T[];
+  keyExtractor: (item: T, index: number) => string;
+  renderItem: (item: T, index: number) => ReactNode;
+  header?: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  padded?: boolean;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <Card style={style} padded={padded}>
+      {header}
+      {items.map((item, i) => (
+        <React.Fragment key={keyExtractor(item, i)}>
+          {i > 0 ? <Divider /> : null}
+          {renderItem(item, i)}
+        </React.Fragment>
+      ))}
+    </Card>
+  );
 }
 
 /**

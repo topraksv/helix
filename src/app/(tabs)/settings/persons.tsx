@@ -8,7 +8,7 @@ import { usePersons, useUserId } from "../../../data/hooks";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Trash2 } from "lucide-react-native";
-import { Badge, Body, Button, Card, Divider, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
@@ -44,22 +44,19 @@ export default function PersonsScreen() {
           <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim()} />
         </Row>
       </Card>
-      <Card>
-        {[...persons]
-          .sort((a, b) => Number(b.isSelf) - Number(a.isSelf))
-          .map((p) => (
-            <View key={p.id}>
-              <Spread style={{ paddingVertical: spacing.sm }}>
-                <Row gap={spacing.sm}>
-                  <Body>{p.name}</Body>
-                  {p.isSelf ? <Badge text={tr.persons.selfBadge} tone="primary" /> : <Badge text={tr.installments.watchOnly} />}
-                </Row>
-                {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(p)} /> : null}
-              </Spread>
-              <Divider />
-            </View>
-          ))}
-      </Card>
+      <CardList
+        items={[...persons].sort((a, b) => Number(b.isSelf) - Number(a.isSelf))}
+        keyExtractor={(p) => p.id}
+        renderItem={(p) => (
+          <Spread style={{ paddingVertical: spacing.sm }}>
+            <Row gap={spacing.sm}>
+              <Body>{p.name}</Body>
+              {p.isSelf ? <Badge text={tr.persons.selfBadge} tone="primary" /> : <Badge text={tr.installments.watchOnly} />}
+            </Row>
+            {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(p)} /> : null}
+          </Spread>
+        )}
+      />
     </Screen>
   );
 }

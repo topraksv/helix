@@ -2,9 +2,9 @@
  *  obligation (spec §3.2), watch-only section for payer-other plans (§2.8). */
 
 import React, { useMemo } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { CreditCard, Plus } from "lucide-react-native";
+import { ChevronRight, CreditCard, Plus } from "lucide-react-native";
 import { planProgress, type GeneratedInstallment } from "../../../domain/installments";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO } from "../../../domain/dates";
 import { fixedVsVariable } from "../../../domain/analytics";
@@ -17,7 +17,7 @@ import {
   usePlans,
   useSources,
 } from "../../../data/hooks";
-import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, EmptyState, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { spacing, useTheme } from "../../../ui/theme";
 
 export default function InstallmentsScreen() {
@@ -66,16 +66,20 @@ export default function InstallmentsScreen() {
     return { total: realizedOrPlanned, fixed: fv.fixedMinor, variable: fv.variableMinor };
   }, [txLike, month]);
 
-  const selfPlans = plans.filter((p) => selfIds.has(p.personId));
-  const otherPlans = plans.filter((p) => !selfIds.has(p.personId));
+  const hasItems = (p: (typeof plans)[number]) => (itemsByPlan.get(p.id)?.length ?? 0) > 0;
+  const selfPlans = plans.filter((p) => selfIds.has(p.personId) && hasItems(p));
+  const otherPlans = plans.filter((p) => !selfIds.has(p.personId) && hasItems(p));
 
   const renderPlan = (plan: (typeof plans)[number], watchedBy?: string) => {
     const items = itemsByPlan.get(plan.id) ?? [];
-    if (items.length === 0) return null;
     const progress = planProgress(items);
     const finished = progress.remaining === 0;
     return (
-      <View key={plan.id}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push({ pathname: "/installment-new", params: { id: plan.id } })}
+        style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+      >
         <Spread style={{ paddingVertical: spacing.sm }}>
           <View style={{ flex: 1, paddingRight: spacing.md }}>
             <Row gap={spacing.sm}>
@@ -100,10 +104,12 @@ export default function InstallmentsScreen() {
               />
             </View>
           </View>
-          {finished ? <Badge text="✓" tone="positive" /> : <Amount minor={progress.remainingMinor} colorized={false} />}
+          <Row gap={spacing.xs}>
+            {finished ? <Badge text="✓" tone="positive" /> : <Amount minor={progress.remainingMinor} colorized={false} />}
+            <ChevronRight size={16} color={palette.textMuted} />
+          </Row>
         </Spread>
-        <Divider />
-      </View>
+      </Pressable>
     );
   };
 
@@ -129,12 +135,12 @@ export default function InstallmentsScreen() {
         <EmptyState icon={CreditCard} title={tr.installments.emptyTitle} hint={tr.installments.emptyHint} />
       ) : null}
 
-      {selfPlans.length > 0 ? <Card>{selfPlans.map((p) => renderPlan(p))}</Card> : null}
+      <CardList items={selfPlans} keyExtractor={(p) => p.id} renderItem={(p) => renderPlan(p)} />
 
       {otherPlans.length > 0 ? (
         <>
           <SectionHeader>{tr.installments.othersSection}</SectionHeader>
-          <Card>{otherPlans.map((p) => renderPlan(p, personName.get(p.personId) ?? ""))}</Card>
+          <CardList items={otherPlans} keyExtractor={(p) => p.id} renderItem={(p) => renderPlan(p, personName.get(p.personId) ?? "")} />
         </>
       ) : null}
     </Screen>

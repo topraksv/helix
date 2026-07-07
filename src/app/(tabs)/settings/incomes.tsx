@@ -15,7 +15,7 @@ import { runMaintenance } from "../../../data/repo";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, ChipPicker, Divider, EmptyState, Field, IconButton, Label, MoneyField, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, EmptyState, Field, IconButton, Label, MoneyField, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -146,22 +146,21 @@ export default function IncomeRulesScreen() {
       {incomes.length === 0 ? (
         <EmptyState icon={Banknote} title={tr.incomes.emptyTitle} hint={tr.incomes.emptyHint} />
       ) : (
-        <Card>
-          {incomes.map((r) => (
-            <View key={r.id}>
-              <Spread style={{ paddingVertical: spacing.sm }}>
-                <View>
-                  <Body>{r.name}</Body>
-                  <Body muted>
-                    {tr.incomeKinds[r.kind]} · {formatMinor(r.defaultAmountMinor, r.currency)} · {tr.incomes.everyMonth(r.payDay)}
-                  </Body>
-                </View>
-                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(r)} />
-              </Spread>
-              <Divider />
-            </View>
-          ))}
-        </Card>
+        <CardList
+          items={incomes}
+          keyExtractor={(r) => r.id}
+          renderItem={(r) => (
+            <Spread style={{ paddingVertical: spacing.sm }}>
+              <View style={{ flex: 1, paddingRight: spacing.sm }}>
+                <Body numberOfLines={1}>{r.name}</Body>
+                <Body muted numberOfLines={1}>
+                  {tr.incomeKinds[r.kind]} · {formatMinor(r.defaultAmountMinor, r.currency)} · {tr.incomes.everyMonth(r.payDay)}
+                </Body>
+              </View>
+              <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(r)} />
+            </Spread>
+          )}
+        />
       )}
     </Screen>
   );

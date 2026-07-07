@@ -179,9 +179,13 @@ export interface NewPlan {
   tryFactor: number;
 }
 
-/** Create the plan and materialize one transaction per month (deterministic ids). */
-export async function createInstallmentPlan(userId: string, input: NewPlan): Promise<string> {
-  const planId = newId();
+/**
+ * Write the plan row plus one deterministic transaction per scheduled month.
+ * Installment transactions are a pure function of (plan params, start month):
+ * their id is deterministic and their realized/pending status is derived from
+ * the date, so regenerating on edit reproduces the same paid/unpaid split.
+ */
+async function writePlanWithSchedule(userId: string, planId: string, input: NewPlan): Promise<Set<number>> {
   const today = todayISO();
   const schedule = generateSchedule(
     {
@@ -218,7 +222,9 @@ export async function createInstallmentPlan(userId: string, input: NewPlan): Pro
       },
     },
   ];
+  const keepNos = new Set<number>();
   for (const item of schedule) {
+    keepNos.add(item.installmentNo);
     writes.push({
       table: "transactions",
       row: {
@@ -244,7 +250,32 @@ export async function createInstallmentPlan(userId: string, input: NewPlan): Pro
     });
   }
   await writeRows(userId, writes);
+  return keepNos;
+}
+
+/** Create the plan and materialize one transaction per month (deterministic ids). */
+export async function createInstallmentPlan(userId: string, input: NewPlan): Promise<string> {
+  const planId = newId();
+  await writePlanWithSchedule(userId, planId, input);
   return planId;
+}
+
+/**
+ * Edit an existing plan in place: rewrite the plan row, regenerate the
+ * schedule (deterministic ids un-delete/update matching months), and tombstone
+ * any previously-generated installments that fall outside the new schedule
+ * (e.g. when the installment count is reduced).
+ */
+export async function updateInstallmentPlan(userId: string, planId: string, input: NewPlan): Promise<void> {
+  const keepNos = await writePlanWithSchedule(userId, planId, input);
+  const sqlite = await getSqliteAsync();
+  const existing = await sqlite.getAllAsync<{ id: string; installment_no: number }>(
+    `SELECT id, installment_no FROM transactions WHERE installment_plan_id = ? AND deleted_at IS NULL`,
+    [planId] as never[],
+  );
+  for (const t of existing) {
+    if (t.installment_no != null && !keepNos.has(t.installment_no)) await softDelete(userId, "transactions", t.id);
+  }
 }
 
 /** Tombstone a plan together with its generated transactions. */

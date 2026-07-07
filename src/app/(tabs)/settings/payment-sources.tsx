@@ -9,7 +9,7 @@ import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../../domain/ty
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Trash2 } from "lucide-react-native";
-import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, InitialsBadge, Row, Screen, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, InitialsBadge, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
@@ -76,27 +76,26 @@ export default function SourcesScreen() {
         <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || !personId || !dueDayValid} />
       </Card>
 
-      <Card>
-        {sources.map((s) => (
-          <View key={s.id}>
-            <Spread style={{ paddingVertical: spacing.sm }}>
-              <Row style={{ flex: 1 }}>
-                <InitialsBadge name={s.name} size={32} />
-                <View style={{ flex: 1 }}>
-                  <Body>{s.name}</Body>
-                  <Body muted>
-                    {TYPES.find((t) => t.value === s.type)?.label}
-                    {s.dueDay ? ` · ${tr.sources.dueDay}: ${s.dueDay}` : ""}
-                    {persons.length > 1 ? ` · ${persons.find((p) => p.id === s.personId)?.name ?? ""}` : ""}
-                  </Body>
-                </View>
-              </Row>
-              <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(s)} />
-            </Spread>
-            <Divider />
-          </View>
-        ))}
-      </Card>
+      <CardList
+        items={sources}
+        keyExtractor={(s) => s.id}
+        renderItem={(s) => (
+          <Spread style={{ paddingVertical: spacing.sm }}>
+            <Row style={{ flex: 1 }}>
+              <InitialsBadge name={s.name} size={32} />
+              <View style={{ flex: 1 }}>
+                <Body numberOfLines={1}>{s.name}</Body>
+                <Body muted numberOfLines={1}>
+                  {TYPES.find((t) => t.value === s.type)?.label}
+                  {s.dueDay ? ` · ${tr.sources.dueDay}: ${s.dueDay}` : ""}
+                  {persons.length > 1 ? ` · ${persons.find((p) => p.id === s.personId)?.name ?? ""}` : ""}
+                </Body>
+              </View>
+            </Row>
+            <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(s)} />
+          </Spread>
+        )}
+      />
     </Screen>
   );
 }

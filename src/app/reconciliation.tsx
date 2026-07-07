@@ -3,7 +3,7 @@
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { CheckCircle2, Plus } from "lucide-react-native";
 import { confirmExpected, revertExpected, skipExpected } from "../data/repo";
 import {
@@ -60,6 +60,8 @@ export default function CatchUpScreen() {
 
   return (
     <Screen>
+      <Stack.Screen options={{ title: tr.catchup.title }} />
+      <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.intro}</Body>
       {lastEntry.at ? <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.subtitle(dateLabel(lastEntry.at))}</Body> : null}
 
       {items.length === 0 ? (

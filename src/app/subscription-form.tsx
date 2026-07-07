@@ -11,10 +11,12 @@ import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
-import { Body, Button, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { Body, Button, ChipPicker, Field, Label, MoneyField, Screen, Segmented, Spread } from "../ui/components";
 import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
+
+const QUICK_DAYS = ["1", "5", "10", "15", "20", "25", "28"] as const;
 
 export default function SubscriptionFormModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -136,6 +138,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         </View>
       )}
 
+      <Label>{tr.subs.cycle}</Label>
       <Segmented
         options={[
           { value: "monthly", label: tr.subs.monthly },
@@ -145,16 +148,21 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         value={cycle}
         onChange={setCycle}
       />
-      <Row>
-        {cycle === "custom" ? (
-          <View style={{ flex: 1 }}>
-            <Field label={tr.subs.custom} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
-          </View>
-        ) : null}
-        <View style={{ flex: 1 }}>
-          <Field label={tr.subs.billingDay} value={billingDayStr} onChangeText={setBillingDayStr} keyboardType="number-pad" />
-        </View>
-      </Row>
+      {cycle === "custom" ? (
+        <>
+          <Field label={tr.subs.intervalLabel} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
+          <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.intervalHint}</Body>
+        </>
+      ) : null}
+
+      <Label>{tr.subs.billingDay}</Label>
+      <ChipPicker
+        options={QUICK_DAYS.map((d) => ({ value: d, label: d }))}
+        value={(QUICK_DAYS as readonly string[]).includes(billingDayStr) ? (billingDayStr as (typeof QUICK_DAYS)[number]) : null}
+        onChange={setBillingDayStr}
+      />
+      <Field value={billingDayStr} onChangeText={setBillingDayStr} keyboardType="number-pad" placeholder={tr.subs.billingDay} />
+      <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.billingDayHint}</Body>
 
       {categories.length > 0 ? (
         <>
