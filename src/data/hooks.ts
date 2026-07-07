@@ -9,7 +9,7 @@ import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
-import { balanceEffect, buildLedger, countsTowardBalance, currentBalance, type MonthLedger } from "../domain/balance";
+import { buildLedger, currentBalance, resolveLedgerAnchor, type MonthLedger } from "../domain/balance";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { readSetting } from "../db/mutations";
@@ -291,22 +291,14 @@ export function useLedger(year: number): LedgerBundle | null {
 
     // Extend the ledger back to the earliest recorded data so history entered
     // before the configured opening month (e.g. a 2025 row) still appears.
-    // The opening balance stays anchored at `configuredStart`; the balance at
-    // the extended start is back-computed so opening(configuredStart) is
-    // unchanged.
-    const earliestData = [
+    const { startMonth, openingBalanceMinor: openingAtStart } = resolveLedgerAnchor(
       configuredStart,
-      ...txLike.map((t) => monthKeyOf(t.effectiveDate)),
-      ...adj.map((a) => monthKeyOf(a.date)),
-    ].reduce((min, m) => (m < min ? m : min), configuredStart);
+      openingBalanceMinor,
+      txLike,
+      adj,
+      today,
+    );
 
-    const anchorDay = firstDayOf(configuredStart);
-    const beforeAnchor =
-      txLike.reduce((sum, t) => (t.effectiveDate < anchorDay && countsTowardBalance(t, today) ? sum + balanceEffect(t) : sum), 0) +
-      adj.reduce((sum, a) => (a.date < anchorDay && a.date <= today ? sum + a.amountMinor : sum), 0);
-    const openingAtStart = openingBalanceMinor - beforeAnchor;
-
-    const startMonth = earliestData;
     const endMonth = makeMonthKey(Math.max(year, yearOf(today)), 12);
     const ledger = buildLedger({
       openingBalanceMinor: openingAtStart,

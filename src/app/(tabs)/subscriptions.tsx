@@ -66,10 +66,17 @@ export default function SubscriptionsScreen() {
         onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })}
         right={
           <Row gap={spacing.sm}>
-            {inTrial ? <Badge text={tr.subs.trialBadge} tone="warning" /> : null}
-            {s.autoPay ? <Zap size={14} color={palette.warning} /> : null}
-            <View style={{ alignItems: "flex-end" }}>
-              <Amount minor={s.amountMinor} currency={s.currency} colorized={false} />
+            <View style={{ alignItems: "flex-end", justifyContent: "center" }}>
+              {/* trial badge, autopay and price share one horizontal axis */}
+              <Row gap={spacing.xs}>
+                {inTrial ? (
+                  <View>
+                    <Badge text={tr.subs.trialBadge} tone="warning" />
+                  </View>
+                ) : null}
+                {s.autoPay ? <Zap size={14} color={palette.warning} /> : null}
+                <Amount minor={s.amountMinor} currency={s.currency} colorized={false} />
+              </Row>
               {s.intervalMonths > 1 ? (
                 <Body muted style={{ fontSize: 12 }}>
                   {tr.subs.perMonth(formatMinor(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))}

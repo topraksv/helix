@@ -47,6 +47,43 @@ export interface LedgerInput {
   includePendingInCells?: boolean;
 }
 
+/**
+ * Resolve the effective ledger anchor so history entered before the
+ * configured opening month still appears. Extends the start back to the
+ * earliest recorded data and back-computes the opening balance there, so the
+ * balance AT the configured start (and the current balance) is unchanged.
+ */
+export function resolveLedgerAnchor(
+  configuredStart: MonthKey,
+  configuredOpeningMinor: Minor,
+  transactions: TxLike[],
+  adjustments: AdjustmentLike[],
+  today: ISODate,
+): { startMonth: MonthKey; openingBalanceMinor: Minor } {
+  let startMonth = configuredStart;
+  for (const tx of transactions) {
+    const m = monthKeyOf(tx.effectiveDate);
+    if (m < startMonth) startMonth = m;
+  }
+  for (const a of adjustments) {
+    const m = monthKeyOf(a.date);
+    if (m < startMonth) startMonth = m;
+  }
+  if (startMonth === configuredStart) {
+    return { startMonth, openingBalanceMinor: configuredOpeningMinor };
+  }
+  // Sum balance-affecting flows strictly before the configured anchor month.
+  const anchorDay = `${configuredStart}-01`;
+  let beforeAnchor = 0;
+  for (const tx of transactions) {
+    if (tx.effectiveDate < anchorDay && countsTowardBalance(tx, today)) beforeAnchor += balanceEffect(tx);
+  }
+  for (const a of adjustments) {
+    if (a.date < anchorDay && a.date <= today) beforeAnchor += a.amountMinor;
+  }
+  return { startMonth, openingBalanceMinor: configuredOpeningMinor - beforeAnchor };
+}
+
 /** Build the chained month-by-month ledger over [startMonth, endMonth]. */
 export function buildLedger(input: LedgerInput): MonthLedger[] {
   const { openingBalanceMinor, startMonth, endMonth, transactions, adjustments, today, includePendingInCells } = input;

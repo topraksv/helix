@@ -178,3 +178,32 @@ describe("pending rows in table cells (display-only)", async () => {
     expect(without[1].byCategory.get("cat")).toBeUndefined();
   });
 });
+
+describe("resolveLedgerAnchor (prior-year history)", async () => {
+  const { resolveLedgerAnchor } = await import("../src/domain/balance");
+  const tx = (id: string, date: string, amt: number, type: "income" | "expense" = "expense") => ({
+    id, type, amountTryMinor: amt, effectiveDate: date, status: "realized" as const,
+    categoryId: "c", paymentSourceId: null, personIsSelf: true,
+    installmentPlanId: null, subscriptionId: null, isAggregate: false,
+  });
+
+  it("returns configured values when no earlier data exists", () => {
+    const r = resolveLedgerAnchor("2026-01", 100_00, [tx("a", "2026-03-01", 10_00)], [], "2026-07-01");
+    expect(r.startMonth).toBe("2026-01");
+    expect(r.openingBalanceMinor).toBe(100_00);
+  });
+
+  it("extends the start back and back-computes the opening for prior-year data", () => {
+    // Configured start 2026-01 with opening 100_00; a 2025-11 expense of 30_00.
+    const r = resolveLedgerAnchor("2026-01", 100_00, [tx("a", "2025-11-15", 30_00)], [], "2026-07-01");
+    expect(r.startMonth).toBe("2025-11");
+    // opening(2026-01) must stay 100_00 → opening(2025-11) = 100_00 + 30_00 = 130_00
+    expect(r.openingBalanceMinor).toBe(130_00);
+  });
+
+  it("income before the anchor lowers the back-computed opening", () => {
+    const r = resolveLedgerAnchor("2026-01", 100_00, [tx("a", "2025-12-01", 40_00, "income")], [], "2026-07-01");
+    expect(r.startMonth).toBe("2025-12");
+    expect(r.openingBalanceMinor).toBe(60_00); // 100_00 - 40_00
+  });
+});
