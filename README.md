@@ -6,11 +6,11 @@
 
 *Your spreadsheet, grown up: works fully offline, syncs when you're back online, and never makes you wait for the network.*
 
-[![Expo SDK 57](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v57.0.0/)
-[![React Native](https://img.shields.io/badge/React%20Native-0.86-61DAFB?logo=react&logoColor=white)](https://reactnative.dev)
+[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-000020?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
+[![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB?logo=react&logoColor=white)](https://reactnative.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
-[![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-64%20passing-brightgreen)](tests/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **iOS + Web from a single codebase** · [Live web app](https://topraksv.github.io/helix/)
@@ -36,14 +36,18 @@ Helix replaces the monthly income/expense spreadsheet with an app that actually 
 
 | Layer | Choice |
 |---|---|
-| App | [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/) + expo-router, React Native 0.86, TypeScript strict |
-| Local store | `expo-sqlite` (WAL) + Drizzle ORM — the single source of truth on device |
+| App | [Expo SDK 54](https://docs.expo.dev/versions/v54.0.0/) + expo-router, React Native 0.81, React 19, TypeScript strict |
+| Local store | `expo-sqlite` **async** API + Drizzle (via the `sqlite-proxy` driver) — the single source of truth on device, non-blocking on every platform |
 | Sync | Supabase (Postgres + Auth) via an outbox pattern: push → pull → last-write-wins merge, tombstone deletes (no hard deletes) |
-| Security | Row Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, secrets only in `.env` |
-| Money | All amounts stored as integer kuruş — no floats, ever. FX rates: TCMB `today.xml` → Frankfurter fallback → cache |
-| Domain logic | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining, installments, recurrence, expected payments, YTD analytics — covered by 56 unit tests including a golden balance chain validated against the original spreadsheet |
+| Security | Row Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, parameterized SQL, secrets only in `.env` / CI |
+| Money | All amounts stored as integer kuruş — no floats, ever. FX rates: TCMB `today.xml` → Frankfurter fallback → cache. Live gold/FX from Harem Altın's socket feed |
+| Tables | A cross-platform sticky-column matrix ([src/ui/sticky-table.tsx](src/ui/sticky-table.tsx)) — pinned first column + optional pinned extra column, months-as-rows/columns pivot, on web and iOS alike |
+| Domain logic | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics — covered by 64 unit tests including a golden balance chain validated against the original spreadsheet |
 
 ## Getting started
+
+> **Node 22 required.** Expo SDK 54's build tooling is incompatible with
+> Node 24+ native TypeScript stripping. Use Node 22 (LTS).
 
 ```bash
 git clone https://github.com/topraksv/helix.git
@@ -52,9 +56,9 @@ npm install
 cp .env.example .env    # add Supabase URL + anon key (leave empty for local-only mode)
 
 npm run web             # web
-npm run ios             # iOS (Expo Go or dev build)
+npm run ios             # iOS dev build (npx expo run:ios --device for a real phone)
 
-npm test                # 56 domain unit tests
+npm test                # 64 domain unit tests
 npm run typecheck
 ```
 

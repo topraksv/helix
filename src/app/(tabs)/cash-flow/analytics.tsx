@@ -3,7 +3,7 @@
  *  transaction search. */
 
 import React, { useState } from "react";
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries } from "../../../domain/analytics";
 import { addMonthsToKey, makeMonthKey, monthKeyOf, monthOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
@@ -13,6 +13,7 @@ import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../.
 import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Lines, useSeriesColors } from "../../../ui/charts";
+import { StickyTable } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
 
 type Period = "3m" | "6m" | "12m" | "year";
@@ -141,66 +142,36 @@ export default function AnalysisScreen() {
       {rows.length === 0 ? (
         <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />
       ) : (
-        <Card padded={false}>
-          <ScrollView horizontal>
-            <View>
-              <Row gap={0} style={{ borderBottomWidth: 1, borderColor: palette.border }}>
-                <View style={{ width: 150, padding: spacing.md }}>
-                  <Text style={[type.label, { color: palette.textMuted }]}>{tr.tx.category}</Text>
-                </View>
-                {monthKeys.map((m) => (
-                  <View key={m} style={{ width: 96, padding: spacing.md }}>
-                    <Text style={[type.label, { color: m === currentMonth ? palette.primary : palette.textMuted, textAlign: "right" }]}>
-                      {tr.months[monthOf(m) - 1].slice(0, 3)}
+        <Card padded={false} style={{ height: Math.min(rows.length, 8) * 52 + 60 }}>
+          <StickyTable
+            cornerLabel={tr.tx.category}
+            headWidth={150}
+            cellWidth={96}
+            currentColumnKey={currentMonth}
+            columns={[...monthKeys.map((m) => ({ key: m, label: tr.months[monthOf(m) - 1].slice(0, 3) })), { key: "__total", label: tr.common.total }]}
+            rows={rows.map(({ category, data }) => ({
+              key: category.id,
+              label: `${categoryIcon(category)} ${category.name}`,
+              onLabelPress: () => setSelected(selected === category.id ? null : category.id),
+              rowHighlight: selected === category.id,
+              cells: [
+                ...monthKeys.map((m) => {
+                  const v = data!.monthly.get(m) ?? 0;
+                  return (
+                    <Text
+                      key={m}
+                      style={[type.small, { flex: 1, textAlign: "right", paddingHorizontal: spacing.sm, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text }]}
+                    >
+                      {v === 0 ? "—" : formatMinor(v)}
                     </Text>
-                  </View>
-                ))}
-                <View style={{ width: 110, padding: spacing.md }}>
-                  <Text style={[type.label, { color: palette.text, textAlign: "right" }]}>{tr.common.total}</Text>
-                </View>
-              </Row>
-              {rows.map(({ category, data }) => (
-                <Pressable
-                  key={category.id}
-                  onPress={() => setSelected(selected === category.id ? null : category.id)}
-                  accessibilityRole="button"
-                >
-                  <Row
-                    gap={0}
-                    style={{
-                      borderBottomWidth: 1,
-                      borderColor: palette.border,
-                      backgroundColor: selected === category.id ? palette.surfaceAlt : "transparent",
-                    }}
-                  >
-                    <View style={{ width: 150, padding: spacing.md }}>
-                      <Text style={[type.label, { color: palette.primary }]} numberOfLines={1}>
-                        {categoryIcon(category)} {category.name}
-                      </Text>
-                    </View>
-                    {monthKeys.map((m) => {
-                      const v = data!.monthly.get(m) ?? 0;
-                      return (
-                        <View key={m} style={{ width: 96, padding: spacing.md }}>
-                          <Text
-                            style={[
-                              type.small,
-                              { textAlign: "right", fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text },
-                            ]}
-                          >
-                            {v === 0 ? "—" : formatMinor(v)}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                    <View style={{ width: 110, padding: spacing.md }}>
-                      <Text style={[type.amount, { textAlign: "right", color: palette.text }]}>{formatMinor(data!.ytdMinor)}</Text>
-                    </View>
-                  </Row>
-                </Pressable>
-              ))}
-            </View>
-          </ScrollView>
+                  );
+                }),
+                <Text key="__total" style={[type.amount, { flex: 1, textAlign: "right", paddingHorizontal: spacing.sm, color: palette.text }]}>
+                  {formatMinor(data!.ytdMinor)}
+                </Text>,
+              ],
+            }))}
+          />
         </Card>
       )}
 

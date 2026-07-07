@@ -1,12 +1,16 @@
 import React from "react";
-import { Platform } from "react-native";
 import { Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Calculator, ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
 import { useTheme } from "../../ui/theme";
 
 export default function TabsLayout() {
   const { palette } = useTheme();
+  const insets = useSafeAreaInsets();
+  // Give the bar enough room for icon + label + the device/browser safe area,
+  // so labels are never clipped (was cut off on mobile web).
+  const bottomPad = Math.max(insets.bottom, 8);
   return (
     <Tabs
       screenOptions={{
@@ -15,11 +19,14 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: palette.surface,
           borderTopColor: palette.border,
-          ...(Platform.OS === "web" ? { height: 60, paddingBottom: 8, paddingTop: 6 } : {}),
+          height: 56 + bottomPad,
+          paddingBottom: bottomPad,
+          paddingTop: 8,
         },
         tabBarActiveTintColor: palette.primary,
         tabBarInactiveTintColor: palette.textMuted,
         tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11 },
+        tabBarIconStyle: { marginBottom: 0 },
         sceneStyle: { backgroundColor: palette.background },
       }}
     >
