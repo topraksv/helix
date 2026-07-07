@@ -65,10 +65,14 @@ export function TourModal({ onClose }: { onClose: () => void }) {
           >
             <IconCmp size={30} color={palette.primary} strokeWidth={1.9} />
           </View>
-          <Text style={[type.heading, { color: palette.text, textAlign: "center", fontSize: 19 }]}>{slide.title}</Text>
-          <Text style={[type.body, { color: palette.textMuted, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
-            {slide.body}
-          </Text>
+          {/* Fixed min-height so the dots + button don't jump as slide text
+              length changes between steps. */}
+          <View style={{ minHeight: 132, justifyContent: "flex-start" }}>
+            <Text style={[type.heading, { color: palette.text, textAlign: "center", fontSize: 19 }]}>{slide.title}</Text>
+            <Text style={[type.body, { color: palette.textMuted, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
+              {slide.body}
+            </Text>
+          </View>
 
           {/* dots */}
           <Row gap={spacing.sm} style={{ justifyContent: "center", marginVertical: spacing.xl }}>
