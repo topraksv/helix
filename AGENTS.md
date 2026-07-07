@@ -74,7 +74,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ## What works well here (keep doing)
 
 - **One reusable primitive over per-screen copies.** `StickyTable`, `Segmented`,
-  `DateField`, the calculator popup, `Logo` — each is built once and reused;
+  `DateField`, `CardList` (list-in-a-card: dividers only *between* rows, nothing
+  when empty), the calculator popup, `Logo` — each is built once and reused;
   Mali Tablo and Analiz share the same table. Add to `src/ui/`, don't inline.
 - **Pure domain functions + unit tests** for anything with logic (balances,
   installments, the ledger anchor, spreadsheet parsing). They're cheap to test
