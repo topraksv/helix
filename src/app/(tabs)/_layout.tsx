@@ -1,4 +1,5 @@
 import React from "react";
+import { Platform } from "react-native";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Calculator, ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
@@ -8,9 +9,13 @@ import { useTheme } from "../../ui/theme";
 export default function TabsLayout() {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  // Give the bar enough room for icon + label + the device/browser safe area,
-  // so labels are never clipped (was cut off on mobile web).
-  const bottomPad = Math.max(insets.bottom, 8);
+  // Mobile web reports no safe-area inset yet the label baseline still needs
+  // room, so reserve a floor on web; on native the device inset is enough.
+  const isWeb = Platform.OS === "web";
+  const bottomPad = Math.max(insets.bottom, isWeb ? 14 : 8);
+  // Web clips descenders (ç/ğ) when the label line box hugs the item edge:
+  // give the bar extra height + an explicit line height so nothing is cut.
+  const barHeight = (isWeb ? 64 : 56) + bottomPad;
   return (
     <Tabs
       screenOptions={{
@@ -19,13 +24,13 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: palette.surface,
           borderTopColor: palette.border,
-          height: 56 + bottomPad,
+          height: barHeight,
           paddingBottom: bottomPad,
           paddingTop: 8,
         },
         tabBarActiveTintColor: palette.primary,
         tabBarInactiveTintColor: palette.textMuted,
-        tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11 },
+        tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11, lineHeight: 15, paddingTop: 1 },
         tabBarIconStyle: { marginBottom: 0 },
         sceneStyle: { backgroundColor: palette.background },
       }}

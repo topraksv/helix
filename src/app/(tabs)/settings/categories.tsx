@@ -10,7 +10,7 @@ import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons"
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Pencil, Trash2 } from "lucide-react-native";
-import { Body, Button, Card, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, Field, Heading, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
@@ -71,57 +71,53 @@ export default function CategoriesScreen() {
         <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim()} />
       </Card>
 
-      {(["expense", "income"] as const).map((k) => {
-        const list = categories.filter((c) => c.kind === k);
-        if (list.length === 0) return null;
-        return (
-          <Card key={k}>
-            <Heading style={{ marginTop: 0 }}>{k === "expense" ? tr.settings.kindExpense : tr.settings.kindIncome}</Heading>
-            {list.map((c) => (
-              <View key={c.id}>
-                {editingId === c.id ? (
-                  <Row style={{ paddingVertical: spacing.sm }}>
-                    <View style={{ flex: 1 }}>
-                      <Field value={editName} onChangeText={setEditName} />
-                    </View>
-                    <Button
-                      label={tr.common.save}
-                      variant="secondary"
-                      disabled={!editName.trim()}
-                      onPress={() => {
-                        void update(c, { name: editName.trim() });
-                        setEditingId(null);
-                      }}
-                    />
-                    <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
-                  </Row>
-                ) : (
-                  <Spread style={{ paddingVertical: spacing.sm }}>
-                    <Body>
-                      {categoryIcon(c)} {c.name}
-                    </Body>
-                    <Row gap={spacing.sm}>
-                      <Body muted>{tr.settings.columnVisible}</Body>
-                      <Switch value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
-                      <IconButton
-                        icon={Pencil}
-                        size={32}
-                        label={tr.common.edit}
-                        onPress={() => {
-                          setEditingId(c.id);
-                          setEditName(c.name);
-                        }}
-                      />
-                      <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
-                    </Row>
-                  </Spread>
-                )}
-                <Divider />
-              </View>
-            ))}
-          </Card>
-        );
-      })}
+      {(["expense", "income"] as const).map((k) => (
+        <CardList
+          key={k}
+          items={categories.filter((c) => c.kind === k)}
+          keyExtractor={(c) => c.id}
+          header={<Heading style={{ marginTop: 0 }}>{k === "expense" ? tr.settings.kindExpense : tr.settings.kindIncome}</Heading>}
+          renderItem={(c) =>
+            editingId === c.id ? (
+              <Row style={{ paddingVertical: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Field value={editName} onChangeText={setEditName} />
+                </View>
+                <Button
+                  label={tr.common.save}
+                  variant="secondary"
+                  disabled={!editName.trim()}
+                  onPress={() => {
+                    void update(c, { name: editName.trim() });
+                    setEditingId(null);
+                  }}
+                />
+                <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
+              </Row>
+            ) : (
+              <Spread style={{ paddingVertical: spacing.sm }}>
+                <Body numberOfLines={1} style={{ flex: 1, paddingRight: spacing.sm }}>
+                  {categoryIcon(c)} {c.name}
+                </Body>
+                <Row gap={spacing.sm}>
+                  <Body muted>{tr.settings.columnVisible}</Body>
+                  <Switch value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
+                  <IconButton
+                    icon={Pencil}
+                    size={32}
+                    label={tr.common.edit}
+                    onPress={() => {
+                      setEditingId(c.id);
+                      setEditName(c.name);
+                    }}
+                  />
+                  <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
+                </Row>
+              </Spread>
+            )
+          }
+        />
+      ))}
     </Screen>
   );
 }

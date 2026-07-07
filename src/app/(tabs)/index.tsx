@@ -118,10 +118,57 @@ export default function DashboardScreen() {
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
 
   const pendingItems = expected.filter((e) => e.status === "pending" || e.status === "late");
-  const upcoming = pendingItems
-    .filter((e) => e.status === "pending" && e.dueDate >= today && daysBetween(today, e.dueDate) <= 14)
-    .slice(0, 8);
   const late = pendingItems.filter((e) => e.status === "late" || (e.status === "pending" && e.dueDate < today));
+
+  const catName = (id: string | null) => categories.find((c) => c.id === id)?.name;
+  const nameOf = (e: (typeof expected)[number]) =>
+    subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
+  // Upcoming = the next ~31 days of everything you'll pay/receive on a fixed
+  // schedule: subscriptions + recurring incomes (expected items) AND your own
+  // future-dated one-off entries (a bill you scheduled ahead). A month-wide
+  // window so each monthly obligation shows once, auto-pay or not.
+  const upcoming: {
+    key: string;
+    kind: "expected" | "tx";
+    expectedId?: string;
+    direction: "in" | "out";
+    name: string;
+    typeLabel: string;
+    amountMinor: number;
+    currency: string;
+    date: string;
+  }[] = [
+    ...pendingItems
+      .filter((e) => e.status === "pending" && e.dueDate >= today && daysBetween(today, e.dueDate) <= 31)
+      .map((e) => ({
+        key: e.id,
+        kind: "expected" as const,
+        expectedId: e.id,
+        direction: e.direction,
+        name: nameOf(e),
+        typeLabel:
+          e.direction === "in"
+            ? tr.dashboard.expectedIncome
+            : catName(subscriptions.find((s) => s.id === e.refId)?.categoryId ?? null) ?? tr.subs.title,
+        amountMinor: e.amountMinor,
+        currency: e.currency,
+        date: e.dueDate,
+      })),
+    ...txLike
+      .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate > today && daysBetween(today, t.effectiveDate) <= 31)
+      .map((t) => ({
+        key: t.id,
+        kind: "tx" as const,
+        direction: (t.type === "income" ? "in" : "out") as "in" | "out",
+        name: catName(t.categoryId) ?? tr.dashboard.scheduledTx,
+        typeLabel: tr.dashboard.scheduledTx,
+        amountMinor: t.amountTryMinor,
+        currency: "TRY",
+        date: t.effectiveDate,
+      })),
+  ]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 12);
 
   // Future pending transactions + unpaid expected items (installment tx are
   // already pending transactions, so expected covers only subs/incomes → no double count).
@@ -164,9 +211,6 @@ export default function DashboardScreen() {
           ],
         }
       : null;
-
-  const nameOf = (e: (typeof expected)[number]) =>
-    subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
 
   const confirm = async (e: (typeof expected)[number]) => {
     if (!selfPersonId) return;
@@ -266,16 +310,24 @@ export default function DashboardScreen() {
               }
             />
           ))}
-          {upcoming.map((e) => (
+          {upcoming.map((u) => (
             <ListRow
-              key={e.id}
-              icon={e.direction === "in" ? ArrowDownLeft : CalendarClock}
-              iconColor={e.direction === "in" ? palette.positive : undefined}
-              title={nameOf(e)}
-              subtitle={`${tr.dashboard.inDays(daysBetween(today, e.dueDate))} · ${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
+              key={u.key}
+              icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
+              iconColor={u.direction === "in" ? palette.positive : undefined}
+              title={u.name}
+              subtitle={`${u.typeLabel} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
               right={
-                e.dueDate <= today ? (
-                  <Button size="sm" label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid} variant="secondary" onPress={() => void confirm(e)} />
+                u.kind === "expected" && u.date <= today && u.expectedId ? (
+                  <Button
+                    size="sm"
+                    label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                    variant="secondary"
+                    onPress={() => {
+                      const e = expected.find((x) => x.id === u.expectedId);
+                      if (e) void confirm(e);
+                    }}
+                  />
                 ) : undefined
               }
             />
@@ -283,7 +335,7 @@ export default function DashboardScreen() {
         </Card>
       ) : (
         <Card>
-          <EmptyState icon={PartyPopper} title={tr.dashboard.noUpcoming} />
+          <EmptyState icon={PartyPopper} title={tr.dashboard.noUpcoming} hint={tr.dashboard.upcomingHint} />
         </Card>
       )}
 

@@ -8,6 +8,7 @@
 
 import React, { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowDownRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, Plus } from "lucide-react-native";
 import { and, eq, isNull } from "drizzle-orm";
@@ -19,6 +20,7 @@ import { makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../..
 import { formatMinor } from "../../../domain/money";
 import { monthLabel, tr } from "../../../i18n/tr";
 import {
+  settingValue,
   toTxLike,
   useAllTransactions,
   useCategories,
@@ -26,6 +28,7 @@ import {
   useLedger,
   useLive,
   usePersons,
+  useSettingsMap,
   useSources,
   useUserId,
 } from "../../../data/hooks";
@@ -43,6 +46,9 @@ export default function CashflowScreen() {
   const bundle = useLedger(year);
   const categories = useCategories();
   const computed = useComputedColumns();
+  const settings = useSettingsMap();
+  const hiddenComputed = settingValue<string[]>(settings, "computed_columns_hidden", []);
+  const visibleComputed = computed.filter((c) => !hiddenComputed.includes(c.id));
   const sources = useSources();
   const persons = usePersons();
   const allTx = useAllTransactions();
@@ -108,29 +114,29 @@ export default function CashflowScreen() {
         <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
       ) : (
         <View style={{ flex: 1 }}>
-          <Spread style={{ marginBottom: spacing.sm, gap: spacing.sm }}>
-            <View style={{ flex: 1, maxWidth: 420 }}>
-              <Segmented
-                options={[
-                  { value: "rows", label: tr.cashflow.monthsAsRows },
-                  { value: "columns", label: tr.cashflow.monthsAsColumns },
-                  { value: "cards", label: tr.cashflow.viewCards },
-                ]}
-                value={mode}
-                onChange={changeMode}
-              />
-            </View>
-            {showTable ? (
+          {/* Full-width segmented so the month-orientation labels never clip
+              (web ignores adjustsFontSizeToFit); the column editor sits below. */}
+          <Segmented
+            options={[
+              { value: "rows", label: tr.cashflow.monthsAsRows },
+              { value: "columns", label: tr.cashflow.monthsAsColumns },
+              { value: "cards", label: tr.cashflow.viewCards },
+            ]}
+            value={mode}
+            onChange={changeMode}
+          />
+          {showTable ? (
+            <View style={{ alignSelf: "flex-end", marginTop: -spacing.xs, marginBottom: spacing.sm }}>
               <Button icon={Pencil} size="sm" label={tr.cashflow.editColumns} variant="ghost" onPress={() => router.push("/settings/categories")} />
-            ) : null}
-          </Spread>
+            </View>
+          ) : null}
 
           {showTable ? (
             <MatrixTable
               year={year}
               bundle={bundle}
               columnCategories={columnCategories}
-              computedColumns={computed}
+              computedColumns={visibleComputed}
               creditCardIds={creditCardIds}
               txLike={txLike}
               orientation={orientation}
@@ -184,6 +190,8 @@ interface ColumnDef {
   /** Category columns open the cell editor; derived columns are read-only. */
   categoryId: string | null;
   value: (m: MonthLedger) => number;
+  /** Optional action for derived columns (e.g. cc split → Taksitler screen). */
+  action?: () => void;
 }
 
 interface MonthSlot {
@@ -242,7 +250,7 @@ function MatrixTable({
 
   const columns: ColumnDef[] = useMemo(
     () => [
-      { key: "cc", label: tr.cashflow.ccInstallments, categoryId: null, value: (m) => ccByMonth.get(m.month)?.installmentMinor ?? 0 },
+      { key: "cc", label: tr.cashflow.ccInstallments, categoryId: null, value: (m) => ccByMonth.get(m.month)?.installmentMinor ?? 0, action: () => router.push("/cash-flow/installments") },
       ...columnCategories.map<ColumnDef>((c) => ({ key: c.id, label: c.name, categoryId: c.id, value: (m) => m.byCategory.get(c.id) ?? 0 })),
       ...computedColumns.map<ColumnDef>((c) => ({
         key: c.id,
@@ -267,12 +275,23 @@ function MatrixTable({
       { key: "opening", label: tr.cashflow.opening, categoryId: null, value: (m) => m.openingMinor },
       { key: "closing", label: tr.cashflow.closing, categoryId: null, value: (m) => m.closingMinor },
     ],
-    [columnCategories, computedColumns, ccByMonth],
+    [columnCategories, computedColumns, ccByMonth, router],
   );
 
   const CELL_W = compact ? 104 : 128;
   const HEAD_W = compact ? 104 : 132;
   const fontSize = compact ? 12 : 13;
+
+  // On phones the flex chain (tab navigator → non-scroll Screen) can collapse
+  // the table to a few rows on web; pin an explicit viewport height so it fills
+  // the tall, narrow screen instead of leaving dead space below.
+  const { height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const tableHeight = compact ? Math.max(360, winH - insets.top - insets.bottom - 300) : undefined;
+
+  // Category cells open the editor; derived columns may carry their own action.
+  const pressFor = (c: ColumnDef, month: MonthKey): (() => void) | undefined =>
+    c.categoryId ? () => router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId! } }) : c.action;
 
   const cell = (value: number | null, note: string | undefined, onPress: (() => void) | undefined, highlighted: boolean) => (
     <MatrixCell value={value} note={note} onPress={onPress} highlighted={highlighted} fontSize={fontSize} />
@@ -296,7 +315,7 @@ function MatrixTable({
         cell(
           slot.data ? c.value(slot.data) : null,
           c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
-          c.categoryId ? () => router.push({ pathname: "/cell-editor", params: { month: slot.month, categoryId: c.categoryId! } }) : undefined,
+          pressFor(c, slot.month),
           false,
         ),
       ),
@@ -312,7 +331,7 @@ function MatrixTable({
         cell(
           slot.data ? c.value(slot.data) : null,
           c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
-          c.categoryId ? () => router.push({ pathname: "/cell-editor", params: { month: slot.month, categoryId: c.categoryId! } }) : undefined,
+          pressFor(c, slot.month),
           slot.month === currentMonth,
         ),
       ),
@@ -322,7 +341,7 @@ function MatrixTable({
   const validPin = pinnedKey && stickyColumns.some((c) => c.key === pinnedKey) ? pinnedKey : null;
 
   return (
-    <Card padded={false} style={{ flex: 1 }}>
+    <Card padded={false} style={compact ? undefined : { flex: 1 }}>
       <StickyTable
         cornerLabel={cornerLabel}
         columns={stickyColumns}
@@ -332,6 +351,7 @@ function MatrixTable({
         currentColumnKey={currentColumnKey}
         pinnedKey={validPin}
         onTogglePin={onTogglePin}
+        height={tableHeight}
       />
       <Text style={[type.small, { color: palette.textMuted, padding: spacing.sm, textAlign: "center" }]}>{tr.cashflow.pinHint}</Text>
     </Card>

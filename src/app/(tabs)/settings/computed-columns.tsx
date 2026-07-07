@@ -6,19 +6,21 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
-import { Calculator, CreditCard, Minus, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
+import { Pressable, Switch, Text, View } from "react-native";
+import { Calculator, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import { newId } from "../../../db/ids";
-import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
-import { useCategories, useComputedColumns, useLedger, useUserId } from "../../../data/hooks";
+import { restoreRow, softDelete, writeRows, writeSetting } from "../../../db/mutations";
+import { settingValue, useCategories, useComputedColumns, useLedger, useSettingsMap, useUserId } from "../../../data/hooks";
 import { evaluateComputedColumn, parseDefinition, type ComputedColumnDefinition } from "../../../domain/computed-columns";
 import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, Screen, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, Label, Row, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
+
+const HIDDEN_KEY = "computed_columns_hidden";
 
 type Op = ComputedColumnDefinition["op"];
 
@@ -37,6 +39,9 @@ export default function ComputedColumnsScreen() {
   const { palette } = useTheme();
   const today = todayISO();
   const bundle = useLedger(yearOf(today));
+  const settings = useSettingsMap();
+  const hidden = settingValue<string[]>(settings, HIDDEN_KEY, []);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [op, setOp] = useState<Op>("sum");
   const [plus, setPlus] = useState<string[]>([]);
@@ -78,24 +83,60 @@ export default function ComputedColumnsScreen() {
 
   const valid = name.trim() !== "" && definition !== null;
 
-  const add = async () => {
+  const resetForm = () => {
+    setEditingId(null);
+    setName("");
+    setOp("sum");
+    setPlus([]);
+    setMinus([]);
+    setCcPart("single");
+  };
+
+  const save = async () => {
     if (!valid) return;
+    const existing = editingId ? columns.find((c) => c.id === editingId) : null;
     await writeRows(userId, [
       {
         table: "computed_columns",
-        row: { id: newId(), name: name.trim(), definition: JSON.stringify(definition), sortOrder: columns.length, deletedAt: null },
+        row: {
+          id: editingId ?? newId(),
+          name: name.trim(),
+          definition: JSON.stringify(definition),
+          sortOrder: existing?.sortOrder ?? columns.length,
+          deletedAt: null,
+        },
       },
     ]);
     scheduleSync(userId);
-    setName("");
-    setPlus([]);
-    setMinus([]);
+    resetForm();
+  };
+
+  // Load an existing column back into the form for editing.
+  const startEdit = (c: (typeof columns)[number]) => {
+    setEditingId(c.id);
+    setName(c.name);
+    try {
+      const def = parseDefinition(JSON.parse(c.definition));
+      setOp(def.op);
+      setPlus(def.op === "sum" ? def.categoryIds : def.op === "difference" ? def.plusCategoryIds : []);
+      setMinus(def.op === "difference" ? def.minusCategoryIds : []);
+      setCcPart(def.op === "cc_split" ? def.part : "single");
+    } catch {
+      /* keep whatever is in the form */
+    }
   };
 
   const remove = async (c: (typeof columns)[number]) => {
+    if (editingId === c.id) resetForm();
     const snapshot = await softDelete(userId, "computed_columns", c.id);
     scheduleSync(userId);
     if (snapshot) undo.show(`${c.name} — ${tr.common.deleted}`, () => void restoreRow(userId, "computed_columns", snapshot));
+  };
+
+  const toggleVisible = async (id: string, show: boolean) => {
+    const next = show ? hidden.filter((x) => x !== id) : [...new Set([...hidden, id])];
+    await writeSetting(userId, HIDDEN_KEY, next);
+    scheduleSync(userId);
   };
 
   const categoryChips = categories.map((c) => ({ value: c.id, label: c.name }));
@@ -103,6 +144,11 @@ export default function ComputedColumnsScreen() {
   return (
     <Screen>
       <Body muted style={{ marginBottom: spacing.md }}>{tr.computed.intro}</Body>
+      {editingId ? (
+        <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.md }}>
+          <Body style={{ color: palette.primary, fontSize: 13 }}>{tr.computed.editing(name || "…")}</Body>
+        </View>
+      ) : null}
 
       {/* 1) Calculation type */}
       <Label>{tr.computed.stepType}</Label>
@@ -185,26 +231,41 @@ export default function ComputedColumnsScreen() {
           </View>
         ) : null}
 
-        <Button icon={Plus} label={tr.computed.addAction} onPress={() => void add()} disabled={!valid} />
+        {editingId ? (
+          <Row>
+            <View style={{ flex: 1 }}>
+              <Button label={tr.computed.saveEdit} onPress={() => void save()} disabled={!valid} />
+            </View>
+            <Button variant="ghost" label={tr.computed.cancelEdit} onPress={resetForm} />
+          </Row>
+        ) : (
+          <Button icon={Plus} label={tr.computed.addAction} onPress={() => void save()} disabled={!valid} />
+        )}
       </Card>
 
       {/* Existing columns */}
-      {columns.length > 0 ? (
-        <Card>
-          {columns.map((c) => (
-            <View key={c.id}>
-              <Spread style={{ paddingVertical: spacing.sm }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}>
-                  <Calculator size={16} color={palette.textMuted} />
-                  <Body>{c.name}</Body>
-                </View>
+      <CardList
+        items={columns}
+        keyExtractor={(c) => c.id}
+        header={columns.length > 0 ? <Label>{tr.computed.existingTitle}</Label> : undefined}
+        renderItem={(c) => {
+          const visible = !hidden.includes(c.id);
+          return (
+            <Spread style={{ paddingVertical: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}>
+                <Calculator size={16} color={palette.textMuted} />
+                <Body numberOfLines={1}>{c.name}</Body>
+              </View>
+              <Row gap={spacing.sm}>
+                <Body muted style={{ fontSize: 12 }}>{tr.computed.showInTable}</Body>
+                <Switch value={visible} onValueChange={(v) => void toggleVisible(c.id, v)} />
+                <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(c)} />
                 <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
-              </Spread>
-              <Divider />
-            </View>
-          ))}
-        </Card>
-      ) : null}
+              </Row>
+            </Spread>
+          );
+        }}
+      />
     </Screen>
   );
 }
