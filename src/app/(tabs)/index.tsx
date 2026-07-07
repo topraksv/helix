@@ -26,7 +26,7 @@ import {
 import { confirmExpected, revertExpected } from "../../data/repo";
 import { connectMarkets, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { scheduleSync } from "../../sync/engine";
-import { Badge, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
 import { Donut, Lines, SplitBar, useSeriesColors } from "../../ui/charts";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
@@ -170,6 +170,17 @@ export default function DashboardScreen() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 12);
 
+  // One honest number: everything still owed on a fixed schedule this month —
+  // unpaid subscriptions plus installments/future-dated expenses due by month end.
+  const monthEnd = lastDayOf(month);
+  const remainingFixedMinor =
+    pendingItems
+      .filter((e) => e.direction === "out" && e.currency === "TRY" && e.dueDate >= today && e.dueDate <= monthEnd)
+      .reduce((sum, e) => sum + e.amountMinor, 0) +
+    txLike
+      .filter((t) => t.personIsSelf && t.type === "expense" && t.status === "pending" && t.effectiveDate >= today && t.effectiveDate <= monthEnd)
+      .reduce((sum, t) => sum + t.amountTryMinor, 0);
+
   // Future pending transactions + unpaid expected items (installment tx are
   // already pending transactions, so expected covers only subs/incomes → no double count).
   const projected = bundle
@@ -279,6 +290,19 @@ export default function DashboardScreen() {
             </View>
           ) : null}
         </HeroCard>
+      ) : null}
+
+      {/* Remaining fixed spend this month — one honest figure */}
+      {bundle && remainingFixedMinor > 0 ? (
+        <Card>
+          <Spread>
+            <View style={{ flex: 1, paddingRight: spacing.md }}>
+              <Body muted>{tr.dashboard.remainingFixed}</Body>
+              <Body muted style={{ fontSize: 11, marginTop: 2 }}>{tr.dashboard.remainingFixedHint}</Body>
+            </View>
+            <Amount minor={-remainingFixedMinor} />
+          </Spread>
+        </Card>
       ) : null}
 
       {/* Quick actions */}
