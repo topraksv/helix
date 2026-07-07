@@ -1,10 +1,9 @@
 /**
- * Mali Tablo. One dataset, two presentations:
- * - matrix (default on every width; compact cells on phones) with a pivot
- *   toggle, full Jan–Dec rows and the current month highlighted
- * - month cards as an optional compact view on narrow screens
- * Cells open an editor (transactions + note + quick entry); notes show a dot
- * and a hover tooltip.
+ * Mali Tablo. A spreadsheet matrix with a pinned first column (sticky on web
+ * and iOS), a pivot toggle (months as rows / columns) available on every
+ * width, full Jan–Dec rows with the current month highlighted, and an
+ * optional user-pinned extra column. Cells open the editor; notes show a dot.
+ * Phones can also switch to a compact month-card list.
  */
 
 import React, { useMemo, useState } from "react";
@@ -33,10 +32,10 @@ import {
 import type { MonthLedger } from "../../../domain/balance";
 import { kv } from "../../../lib/kv";
 import { Amount, Button, Card, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
-import { cardShadow, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { StickyTable, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
+import { spacing, type, useTheme } from "../../../ui/theme";
 
-type Orientation = "monthsAsRows" | "monthsAsColumns";
-type NarrowView = "table" | "cards";
+type MatrixMode = "cards" | "rows" | "columns";
 
 export default function CashflowScreen() {
   const currentYear = yearOf(todayISO());
@@ -51,24 +50,25 @@ export default function CashflowScreen() {
   const wide = width >= 900;
   const router = useRouter();
   const { palette } = useTheme();
-  const [orientation, setOrientation] = useState<Orientation>("monthsAsRows");
-  const [narrowView, setNarrowView] = useState<NarrowView>("table");
+  const [mode, setMode] = useState<MatrixMode>("rows");
+  const [pinnedKey, setPinnedKey] = useState<string | null>(null);
 
   React.useEffect(() => {
-    void kv.get("helix.matrix.orientation").then((v) => {
-      if (v === "monthsAsRows" || v === "monthsAsColumns") setOrientation(v);
+    void kv.get("helix.matrix.mode").then((v) => {
+      if (v === "cards" || v === "rows" || v === "columns") setMode(v);
     });
-    void kv.get("helix.matrix.narrowView").then((v) => {
-      if (v === "table" || v === "cards") setNarrowView(v);
+    void kv.get("helix.matrix.pinned").then((v) => {
+      if (v) setPinnedKey(v);
     });
   }, []);
-  const changeOrientation = (v: Orientation) => {
-    setOrientation(v);
-    void kv.set("helix.matrix.orientation", v);
+  const changeMode = (v: MatrixMode) => {
+    setMode(v);
+    void kv.set("helix.matrix.mode", v);
   };
-  const changeNarrowView = (v: NarrowView) => {
-    setNarrowView(v);
-    void kv.set("helix.matrix.narrowView", v);
+  const togglePin = (key: string) => {
+    const next = pinnedKey === key ? null : key;
+    setPinnedKey(next);
+    void kv.set("helix.matrix.pinned", next ?? "");
   };
 
   const creditCardIds = useMemo(
@@ -78,8 +78,8 @@ export default function CashflowScreen() {
   const txLike = useMemo(() => toTxLike(allTx, persons), [allTx, persons]);
   const columnCategories = categories.filter((c) => c.isColumn);
 
-  // Year switcher bounds: back to the workspace start, forward only while
-  // there is actual data (e.g. installments spilling into next year).
+  // Year switcher bounds: back to the earliest data, forward only while there
+  // is actual data (e.g. installments spilling into next year).
   const minYear = bundle ? yearOf(bundle.startMonth) : currentYear;
   const lastDataYear = allTx.length > 0 ? yearOf(allTx[allTx.length - 1].effectiveDate) : currentYear;
   const maxYear = Math.max(currentYear, lastDataYear);
@@ -92,7 +92,8 @@ export default function CashflowScreen() {
     </Row>
   );
 
-  const showTable = wide || narrowView === "table";
+  const orientation = mode === "columns" ? "monthsAsColumns" : "monthsAsRows";
+  const showTable = mode !== "cards";
 
   return (
     <Screen title={tr.cashflow.title} right={yearSwitcher} maxWidth={wide ? 1200 : 760} scroll={false} padded>
@@ -108,28 +109,20 @@ export default function CashflowScreen() {
       ) : (
         <View style={{ flex: 1 }}>
           <Spread style={{ marginBottom: spacing.sm, gap: spacing.sm }}>
-            <View style={{ width: wide ? 320 : 220 }}>
-              {wide ? (
-                <Segmented
-                  options={[
-                    { value: "monthsAsRows", label: tr.cashflow.monthsAsRows },
-                    { value: "monthsAsColumns", label: tr.cashflow.monthsAsColumns },
-                  ]}
-                  value={orientation}
-                  onChange={changeOrientation}
-                />
-              ) : (
-                <Segmented
-                  options={[
-                    { value: "table", label: tr.cashflow.viewTable },
-                    { value: "cards", label: tr.cashflow.viewCards },
-                  ]}
-                  value={narrowView}
-                  onChange={changeNarrowView}
-                />
-              )}
+            <View style={{ flex: 1, maxWidth: 420 }}>
+              <Segmented
+                options={[
+                  { value: "rows", label: tr.cashflow.monthsAsRows },
+                  { value: "columns", label: tr.cashflow.monthsAsColumns },
+                  { value: "cards", label: tr.cashflow.viewCards },
+                ]}
+                value={mode}
+                onChange={changeMode}
+              />
             </View>
-            <Button icon={Pencil} size="sm" label={tr.cashflow.editColumns} variant="ghost" onPress={() => router.push("/settings/categories")} />
+            {showTable ? (
+              <Button icon={Pencil} size="sm" label={tr.cashflow.editColumns} variant="ghost" onPress={() => router.push("/settings/categories")} />
+            ) : null}
           </Spread>
 
           {showTable ? (
@@ -140,8 +133,10 @@ export default function CashflowScreen() {
               computedColumns={computed}
               creditCardIds={creditCardIds}
               txLike={txLike}
-              orientation={wide ? orientation : "monthsAsRows"}
+              orientation={orientation}
               compact={!wide}
+              pinnedKey={pinnedKey}
+              onTogglePin={togglePin}
             />
           ) : (
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -191,7 +186,6 @@ interface ColumnDef {
   value: (m: MonthLedger) => number;
 }
 
-/** A display slot for every calendar month; `data` is null before the workspace start. */
 interface MonthSlot {
   month: MonthKey;
   data: MonthLedger | null;
@@ -206,6 +200,8 @@ function MatrixTable({
   txLike,
   orientation,
   compact,
+  pinnedKey,
+  onTogglePin,
 }: {
   year: number;
   bundle: NonNullable<ReturnType<typeof useLedger>>;
@@ -213,8 +209,10 @@ function MatrixTable({
   computedColumns: ReturnType<typeof useComputedColumns>;
   creditCardIds: Set<string>;
   txLike: ReturnType<typeof toTxLike>;
-  orientation: Orientation;
+  orientation: "monthsAsRows" | "monthsAsColumns";
   compact: boolean;
+  pinnedKey: string | null;
+  onTogglePin: (key: string) => void;
 }) {
   const { palette } = useTheme();
   const router = useRouter();
@@ -222,14 +220,12 @@ function MatrixTable({
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
 
-  // Cell notes for indicator dots + hover tooltips, keyed `${month}:${categoryId}`.
   const cellNotes = useLive(
     getDb().select().from(s.cellNotes).where(and(eq(s.cellNotes.userId, userId), isNull(s.cellNotes.deletedAt))),
     [userId],
   ).data;
   const noteByCell = useMemo(() => new Map(cellNotes.map((n) => [`${n.month}:${n.categoryId}`, n.body])), [cellNotes]);
 
-  // Full calendar year — months before the workspace start render as empty.
   const months = useMemo<MonthSlot[]>(() => {
     const dataByMonth = new Map(bundle.yearMonths.map((m) => [m.month, m]));
     return Array.from({ length: 12 }, (_, i) => {
@@ -247,12 +243,7 @@ function MatrixTable({
   const columns: ColumnDef[] = useMemo(
     () => [
       { key: "cc", label: tr.cashflow.ccInstallments, categoryId: null, value: (m) => ccByMonth.get(m.month)?.installmentMinor ?? 0 },
-      ...columnCategories.map<ColumnDef>((c) => ({
-        key: c.id,
-        label: c.name,
-        categoryId: c.id,
-        value: (m) => m.byCategory.get(c.id) ?? 0,
-      })),
+      ...columnCategories.map<ColumnDef>((c) => ({ key: c.id, label: c.name, categoryId: c.id, value: (m) => m.byCategory.get(c.id) ?? 0 })),
       ...computedColumns.map<ColumnDef>((c) => ({
         key: c.id,
         label: c.name,
@@ -279,141 +270,88 @@ function MatrixTable({
     [columnCategories, computedColumns, ccByMonth],
   );
 
-  const monthsAsRows = orientation === "monthsAsRows";
-  const HEAD_W = compact ? 96 : monthsAsRows ? 116 : 170;
-  const CELL_W = compact ? 98 : monthsAsRows ? 128 : 112;
+  const CELL_W = compact ? 104 : 128;
+  const HEAD_W = compact ? 104 : 132;
   const fontSize = compact ? 12 : 13;
 
-  const headerLabels = monthsAsRows
-    ? columns.map((c) => c.label)
-    : months.map((m) => monthLabel(m.month).split(" ")[0]);
-  const currentHeaderIdx = monthsAsRows ? -1 : months.findIndex((m) => m.month === currentMonth);
-  const rowCount = monthsAsRows ? months.length : columns.length;
+  const cell = (value: number | null, note: string | undefined, onPress: (() => void) | undefined, highlighted: boolean) => (
+    <MatrixCell value={value} note={note} onPress={onPress} highlighted={highlighted} fontSize={fontSize} />
+  );
+
+  let cornerLabel: string;
+  let stickyColumns: StickyColumn[];
+  let stickyRows: StickyRow[];
+  let currentColumnKey: string | undefined;
+
+  if (orientation === "monthsAsRows") {
+    cornerLabel = tr.cashflow.monthHeader;
+    stickyColumns = columns.map((c) => ({ key: c.key, label: c.label }));
+    stickyRows = months.map((slot) => ({
+      key: slot.month,
+      label: compact ? monthLabel(slot.month).split(" ")[0] : monthLabel(slot.month),
+      onLabelPress: () => router.push(`/cash-flow/${slot.month}`),
+      labelHighlight: slot.month === currentMonth,
+      rowHighlight: slot.month === currentMonth,
+      cells: columns.map((c) =>
+        cell(
+          slot.data ? c.value(slot.data) : null,
+          c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
+          c.categoryId ? () => router.push({ pathname: "/cell-editor", params: { month: slot.month, categoryId: c.categoryId! } }) : undefined,
+          false,
+        ),
+      ),
+    }));
+  } else {
+    cornerLabel = tr.cashflow.itemHeader;
+    stickyColumns = months.map((slot) => ({ key: slot.month, label: monthLabel(slot.month).split(" ")[0] }));
+    currentColumnKey = currentMonth;
+    stickyRows = columns.map((c) => ({
+      key: c.key,
+      label: c.label,
+      cells: months.map((slot) =>
+        cell(
+          slot.data ? c.value(slot.data) : null,
+          c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
+          c.categoryId ? () => router.push({ pathname: "/cell-editor", params: { month: slot.month, categoryId: c.categoryId! } }) : undefined,
+          slot.month === currentMonth,
+        ),
+      ),
+    }));
+  }
+
+  const validPin = pinnedKey && stickyColumns.some((c) => c.key === pinnedKey) ? pinnedKey : null;
 
   return (
     <Card padded={false} style={{ flex: 1 }}>
-      <ScrollView>
-        <ScrollView horizontal>
-          <View>
-            {/* header row */}
-            <Row gap={0} style={{ borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surfaceAlt }}>
-              <View style={{ width: HEAD_W, paddingVertical: spacing.md, paddingHorizontal: spacing.sm }}>
-                <Text style={[type.label, { color: palette.textMuted }]}>{monthsAsRows ? tr.cashflow.monthHeader : tr.cashflow.itemHeader}</Text>
-              </View>
-              {headerLabels.map((label, i) => (
-                <View
-                  key={`${label}-${i}`}
-                  style={{
-                    width: CELL_W,
-                    paddingVertical: spacing.md,
-                    paddingHorizontal: spacing.sm,
-                    backgroundColor: i === currentHeaderIdx ? palette.primarySoft : "transparent",
-                  }}
-                >
-                  <Text
-                    style={[
-                      type.label,
-                      { color: i === currentHeaderIdx ? palette.primary : palette.textMuted, textAlign: "right" },
-                    ]}
-                    numberOfLines={2}
-                  >
-                    {label}
-                  </Text>
-                </View>
-              ))}
-            </Row>
-            {/* body */}
-            {Array.from({ length: rowCount }, (_, rowIndex) => {
-              const rowMonth = monthsAsRows ? months[rowIndex] : null;
-              const isCurrentRow = rowMonth?.month === currentMonth;
-              const rowHeadLabel = monthsAsRows ? monthLabel(months[rowIndex].month) : columns[rowIndex].label;
-              const cellCount = monthsAsRows ? columns.length : months.length;
-              return (
-                <Row
-                  key={rowIndex}
-                  gap={0}
-                  style={{
-                    borderBottomWidth: rowIndex === rowCount - 1 ? 0 : 1,
-                    borderColor: palette.border,
-                    backgroundColor: isCurrentRow
-                      ? palette.primarySoft + "55"
-                      : rowIndex % 2 === 1
-                        ? palette.surfaceAlt + "66"
-                        : "transparent",
-                  }}
-                >
-                  <View style={{ width: HEAD_W, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, justifyContent: "center" }}>
-                    {monthsAsRows ? (
-                      <Text
-                        style={[
-                          type.label,
-                          {
-                            color: palette.primary,
-                            fontFamily: isCurrentRow ? "Inter_700Bold" : "Inter_600SemiBold",
-                            fontSize: compact ? 12 : 13,
-                          },
-                        ]}
-                        onPress={() => router.push(`/cash-flow/${rowMonth!.month}`)}
-                        accessibilityRole="link"
-                        numberOfLines={1}
-                      >
-                        {compact ? rowHeadLabel.split(" ")[0] : rowHeadLabel}
-                      </Text>
-                    ) : (
-                      <Text style={[type.label, { color: palette.text, fontSize: compact ? 12 : 13 }]} numberOfLines={2}>
-                        {rowHeadLabel}
-                      </Text>
-                    )}
-                  </View>
-                  {Array.from({ length: cellCount }, (_, cellIndex) => {
-                    const column = monthsAsRows ? columns[cellIndex] : columns[rowIndex];
-                    const slot = monthsAsRows ? months[rowIndex] : months[cellIndex];
-                    const isCurrentCol = !monthsAsRows && slot.month === currentMonth;
-                    const value = slot.data ? column.value(slot.data) : null;
-                    const note = column.categoryId ? noteByCell.get(`${slot.month}:${column.categoryId}`) : undefined;
-                    return (
-                      <MatrixCell
-                        key={cellIndex}
-                        width={CELL_W}
-                        fontSize={fontSize}
-                        value={value}
-                        note={note}
-                        highlighted={isCurrentCol}
-                        onPress={
-                          column.categoryId
-                            ? () => router.push({ pathname: "/cell-editor", params: { month: slot.month, categoryId: column.categoryId! } })
-                            : undefined
-                        }
-                      />
-                    );
-                  })}
-                </Row>
-              );
-            })}
-          </View>
-        </ScrollView>
-      </ScrollView>
+      <StickyTable
+        cornerLabel={cornerLabel}
+        columns={stickyColumns}
+        rows={stickyRows}
+        headWidth={HEAD_W}
+        cellWidth={CELL_W}
+        currentColumnKey={currentColumnKey}
+        pinnedKey={validPin}
+        onTogglePin={onTogglePin}
+      />
+      <Text style={[type.small, { color: palette.textMuted, padding: spacing.sm, textAlign: "center" }]}>{tr.cashflow.pinHint}</Text>
     </Card>
   );
 }
 
-/** One matrix cell: tabular number, note dot, hover tooltip (web). */
 function MatrixCell({
-  width,
-  fontSize,
   value,
   note,
   highlighted,
   onPress,
+  fontSize,
 }: {
-  width: number;
-  fontSize: number;
   value: number | null;
   note?: string;
   highlighted?: boolean;
   onPress?: () => void;
+  fontSize: number;
 }) {
-  const { palette, scheme } = useTheme();
+  const { palette } = useTheme();
   const [hovered, setHovered] = useState(false);
   return (
     <Pressable
@@ -423,49 +361,21 @@ function MatrixCell({
       onHoverOut={() => setHovered(false)}
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityHint={note}
-      style={({ pressed }) => [
-        { width, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, justifyContent: "center" },
+      style={[
+        { flex: 1, justifyContent: "center", paddingHorizontal: spacing.sm },
         highlighted && { backgroundColor: palette.primarySoft + "55" },
-        (pressed || (hovered && onPress)) && { backgroundColor: palette.primarySoft },
+        hovered && onPress && { backgroundColor: palette.primarySoft },
       ]}
     >
       <Text
         style={[
           type.amountSm,
-          {
-            fontSize,
-            color: value == null || value === 0 ? palette.textMuted : value < 0 ? palette.negative : palette.text,
-            textAlign: "right",
-          },
+          { fontSize, color: value == null || value === 0 ? palette.textMuted : value < 0 ? palette.negative : palette.text, textAlign: "right" },
         ]}
       >
         {value == null || value === 0 ? "—" : formatMinor(value)}
       </Text>
-      {note ? (
-        <View style={{ position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: 3, backgroundColor: palette.warning }} />
-      ) : null}
-      {note && hovered ? (
-        <View
-          style={[
-            {
-              position: "absolute",
-              bottom: "100%",
-              right: 0,
-              maxWidth: 260,
-              minWidth: 140,
-              backgroundColor: scheme === "dark" ? palette.surfaceAlt : palette.text,
-              borderRadius: radius.sm,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm,
-              zIndex: 10,
-            },
-            cardShadow,
-          ]}
-          pointerEvents="none"
-        >
-          <Text style={[type.small, { color: scheme === "dark" ? palette.text : palette.background }]}>{note}</Text>
-        </View>
-      ) : null}
+      {note ? <View style={{ position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: 3, backgroundColor: palette.warning }} /> : null}
     </Pressable>
   );
 }
