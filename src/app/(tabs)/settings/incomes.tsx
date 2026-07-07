@@ -7,7 +7,7 @@
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { Banknote, Trash2 } from "lucide-react-native";
+import { Banknote, Pencil, Trash2 } from "lucide-react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
 import { useCategories, usePersons, useRecurringIncomes, useUserId } from "../../../data/hooks";
@@ -15,7 +15,7 @@ import { runMaintenance } from "../../../data/repo";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, ChipPicker, EmptyState, Field, IconButton, Label, MoneyField, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, EmptyState, Field, IconButton, Label, MoneyField, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 
@@ -29,6 +29,7 @@ export default function IncomeRulesScreen() {
   const persons = usePersons();
   const categories = useCategories();
   const undo = useUndo();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [kind, setKind] = useState<IncomeKind>("salary");
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
@@ -53,13 +54,39 @@ export default function IncomeRulesScreen() {
   const dayValid = Number.isInteger(payDay) && payDay >= 1 && payDay <= 31;
   const valid = effectiveName.trim() !== "" && amountMinor != null && amountMinor > 0 && dayValid && personId != null;
 
-  const add = async () => {
+  const resetForm = () => {
+    setEditingId(null);
+    setKind("salary");
+    setName("");
+    setNameTouched(false);
+    setAmountRaw("");
+    setAmountMinor(null);
+    setPayDayStr("15");
+    setPersonChoice(null);
+    setCategoryChoice(null);
+  };
+
+  const startEdit = (r: (typeof incomes)[number]) => {
+    setEditingId(r.id);
+    setKind(r.kind as IncomeKind);
+    setName(r.name);
+    setNameTouched(true);
+    setAmountRaw((r.defaultAmountMinor / 100).toFixed(2).replace(".", ","));
+    setAmountMinor(r.defaultAmountMinor);
+    setPayDayStr(String(r.payDay));
+    setPersonChoice(r.personId);
+    setCategoryChoice(r.categoryId ?? null);
+  };
+
+  const save = async () => {
     if (!valid || !personId) return;
+    const existing = editingId ? incomes.find((r) => r.id === editingId) : null;
     await writeRows(userId, [
       {
         table: "recurring_incomes",
         row: {
-          id: newId(),
+          ...(existing ?? { note: null }),
+          id: editingId ?? newId(),
           name: effectiveName.trim(),
           kind,
           defaultAmountMinor: amountMinor!,
@@ -67,18 +94,14 @@ export default function IncomeRulesScreen() {
           payDay,
           personId,
           categoryId,
-          isActive: true,
-          note: null,
+          isActive: existing ? existing.isActive : true,
           deletedAt: null,
         },
       },
     ]);
-    await runMaintenance(userId); // generate this month's expected income immediately
+    await runMaintenance(userId); // (re)generate this month's expected income immediately
     scheduleSync(userId);
-    setName("");
-    setNameTouched(false);
-    setAmountRaw("");
-    setAmountMinor(null);
+    resetForm();
   };
 
   const remove = async (r: (typeof incomes)[number]) => {
@@ -140,7 +163,16 @@ export default function IncomeRulesScreen() {
         <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>
           {tr.incomes.behaviorHint(dayValid ? payDay : 15)}
         </Body>
-        <Button label={tr.settings.addIncomeRule} onPress={() => void add()} disabled={!valid} />
+        {editingId ? (
+          <Row>
+            <View style={{ flex: 1 }}>
+              <Button label={tr.common.save} onPress={() => void save()} disabled={!valid} />
+            </View>
+            <Button label={tr.common.cancel} variant="ghost" onPress={resetForm} />
+          </Row>
+        ) : (
+          <Button label={tr.settings.addIncomeRule} onPress={() => void save()} disabled={!valid} />
+        )}
       </Card>
 
       {incomes.length === 0 ? (
@@ -157,7 +189,10 @@ export default function IncomeRulesScreen() {
                   {tr.incomeKinds[r.kind]} · {formatMinor(r.defaultAmountMinor, r.currency)} · {tr.incomes.everyMonth(r.payDay)}
                 </Body>
               </View>
-              <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(r)} />
+              <Row gap={spacing.sm}>
+                <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(r)} />
+                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(r)} />
+              </Row>
             </Spread>
           )}
         />

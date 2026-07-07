@@ -98,7 +98,7 @@ export const tr = {
     title: "Hücre Detayı",
     total: "Hücre toplamı",
     quickEntry: "Hızlı Giriş",
-    quickEntryHint: "Tek bir tutar yazabilir ya da artı/eksi ile birden fazla tutarı toplayarak tek kayda dönüştürebilirsin. Alta not düşersen hangi tutarın ne olduğunu hatırlarsın.",
+    quickEntryHint: "Tek bir tutar yazabilir ya da artı/eksi ile birden fazla tutarı toplayarak tek kayda dönüştürebilirsin (ör. 300+400+500 tek kayıt olur). Bu ay bu kaleme dair bir açıklaman varsa aşağıdaki Hücre Notu'na yazabilirsin.",
     quickEntryPlaceholder: "Tutar — ör. 300 + 400 + 500",
     entryNotePlaceholder: "Not — ör. 300 market, 400 eczane, 500 giyim",
     noNote: "Bu hücrede not yok.",
