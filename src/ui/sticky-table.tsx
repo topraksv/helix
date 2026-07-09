@@ -11,8 +11,8 @@
  * scrolling once the table has focus.
  */
 
-import React, { useEffect, useRef } from "react";
-import { Platform, Pressable, ScrollView, Text, View, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
 import { Pin } from "lucide-react-native";
 import { spacing, type, useTheme } from "./theme";
 
@@ -135,6 +135,8 @@ export function StickyTable({
   onTogglePin,
   onColumnPress,
   currentColumnKey,
+  focusColumnKey,
+  focusRowKey,
   height,
 }: {
   cornerLabel: string;
@@ -151,6 +153,10 @@ export function StickyTable({
   onColumnPress?: (key: string) => void;
   /** Highlighted (e.g. current month) column key. */
   currentColumnKey?: string;
+  /** Center this column horizontally on open (e.g. the current month). */
+  focusColumnKey?: string;
+  /** Center this row vertically on open (e.g. the current month row). */
+  focusRowKey?: string;
   /** Explicit viewport height; when omitted the table flexes to fill. */
   height?: number;
 }) {
@@ -159,12 +165,42 @@ export function StickyTable({
   const bodyHRef = useRef<ScrollView>(null);
   const headerHRef = useRef<ScrollView>(null);
   useWebInteractions(vRef, bodyHRef, headerHRef);
+  const [bodyW, setBodyW] = useState(0);
+  const [bodyViewH, setBodyViewH] = useState(0);
+  const focusedSig = useRef("");
 
   const pinnedIndex = pinnedKey ? columns.findIndex((c) => c.key === pinnedKey) : -1;
   const pinnedCol = pinnedIndex >= 0 ? columns[pinnedIndex] : null;
   const scrollCols = columns.filter((_, i) => i !== pinnedIndex);
   const cellCenter = { justifyContent: "center" as const, paddingHorizontal: spacing.sm };
   const leftWidth = headWidth + (pinnedCol ? cellWidth : 0);
+
+  // Center the current month on open (clamped at the edges), then leave the
+  // user free to scroll. Re-runs when the focus target or viewport changes.
+  useEffect(() => {
+    const sig = `${focusColumnKey}|${focusRowKey}|${bodyW}|${bodyViewH}|${scrollCols.length}|${rows.length}`;
+    if (focusedSig.current === sig) return;
+    if (focusColumnKey && bodyW > 0) {
+      const idx = scrollCols.findIndex((c) => c.key === focusColumnKey);
+      if (idx >= 0) {
+        const contentW = scrollCols.length * cellWidth;
+        const target = Math.max(0, Math.min(idx * cellWidth + cellWidth / 2 - bodyW / 2, contentW - bodyW));
+        bodyHRef.current?.scrollTo({ x: target, animated: false });
+        headerHRef.current?.scrollTo({ x: target, animated: false });
+        focusedSig.current = sig;
+      }
+    }
+    if (focusRowKey && bodyViewH > 0) {
+      const idx = rows.findIndex((r) => r.key === focusRowKey);
+      if (idx >= 0) {
+        const contentH = rows.length * rowHeight;
+        const target = Math.max(0, Math.min(idx * rowHeight + rowHeight / 2 - bodyViewH / 2, contentH - bodyViewH));
+        vRef.current?.scrollTo({ y: target, animated: false });
+        focusedSig.current = sig;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusColumnKey, focusRowKey, bodyW, bodyViewH, scrollCols.length, rows.length, cellWidth, rowHeight]);
 
   const rowBg = (i: number, highlight?: boolean) =>
     highlight ? palette.primarySoft + "55" : i % 2 === 1 ? palette.surfaceAlt + "66" : "transparent";
@@ -216,7 +252,7 @@ export function StickyTable({
       <View style={{ flexDirection: "row", height: headerHeight, borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surfaceAlt }}>
         <View style={{ flexDirection: "row", width: leftWidth, borderRightWidth: 1, borderColor: palette.border }}>
           <View style={[{ width: headWidth }, cellCenter]}>
-            <Text style={[type.label, { color: palette.textMuted }]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>
+            <Text style={[type.label, { color: palette.textMuted, textAlign: "center" }]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>
               {cornerLabel}
             </Text>
           </View>
@@ -231,7 +267,13 @@ export function StickyTable({
 
       {/* Body: fixed-left labels (+ pinned col) beside a horizontally-scrolling
           data grid; the whole body scrolls vertically as one. */}
-      <ScrollView ref={vRef} showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.sm }}>
+      <ScrollView
+        ref={vRef}
+        showsVerticalScrollIndicator={false}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: spacing.sm }}
+        onLayout={(e: LayoutChangeEvent) => setBodyViewH(e.nativeEvent.layout.height)}
+      >
         <View style={{ flexDirection: "row" }}>
           <View style={{ width: leftWidth, borderRightWidth: 1, borderColor: palette.border }}>
             {rows.map((r, ri) => (
@@ -252,7 +294,7 @@ export function StickyTable({
                   style={[{ width: headWidth }, cellCenter]}
                 >
                   <Text
-                    style={[type.label, { color: r.onLabelPress ? palette.primary : palette.text, fontFamily: r.labelHighlight ? "Inter_700Bold" : "Inter_600SemiBold" }]}
+                    style={[type.label, { color: r.onLabelPress ? palette.primary : palette.text, textAlign: "center", fontFamily: r.labelHighlight ? "Inter_700Bold" : "Inter_600SemiBold" }]}
                     numberOfLines={2}
                     adjustsFontSizeToFit
                     minimumFontScale={0.8}
@@ -271,6 +313,7 @@ export function StickyTable({
             showsHorizontalScrollIndicator
             scrollEventThrottle={16}
             onScroll={onBodyScroll}
+            onLayout={(e: LayoutChangeEvent) => setBodyW(e.nativeEvent.layout.width)}
             style={{ flex: 1 }}
           >
             <View>
