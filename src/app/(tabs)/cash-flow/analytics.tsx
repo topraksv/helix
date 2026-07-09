@@ -106,10 +106,11 @@ export default function AnalysisScreen() {
 
   return (
     <Screen>
-      {/* Period slicer + (year mode) year switcher */}
-      <Spread style={{ marginBottom: spacing.sm, gap: spacing.md }}>
+      {/* Period slicer + (year mode) year switcher — one aligned axis */}
+      <Spread style={{ marginBottom: spacing.md, gap: spacing.md }}>
         <View style={{ flex: 1, maxWidth: 380 }}>
           <Segmented
+            noMargin
             options={[
               { value: "3m", label: tr.analysis.period3m },
               { value: "6m", label: tr.analysis.period6m },

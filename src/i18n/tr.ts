@@ -129,7 +129,7 @@ export const tr = {
     viewTable: "Tablo",
     viewCards: "Kartlar",
     pinHint: "Bir kolon başlığına dokunarak sabitleyebilirsin.",
-    monthTapHint: "Bir ay başlığına dokunarak o ayın detayına gidebilirsin.",
+    monthTapHint: "Bir ay başlığına dokun → o ayın detayı. Sabitlemek için 📌 simgesine dokun.",
     cellTransactions: "Hareketler",
     cellNote: "Hücre Notu",
     ccInstallmentsHint: "Kredi kartı taksitleri — Taksitler ekranından yönetilir.",
