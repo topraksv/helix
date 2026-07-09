@@ -166,6 +166,7 @@ export default function SettingsScreen() {
         <ListRow
           icon={CalendarClock}
           title={tr.settings.showPending}
+          titleLines={2}
           right={<Switch value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
         />
         <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.settings.showPendingHint}</Body>

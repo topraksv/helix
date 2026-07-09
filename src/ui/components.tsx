@@ -123,7 +123,9 @@ export function Screen({
   const inner: StyleProp<ViewStyle> = [
     padded && { paddingHorizontal: spacing.lg },
     { paddingTop: title ? Math.max(insets.top, spacing.lg) : spacing.lg },
-    { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.xxl },
+    // Consistent, modest bottom margin on every scroll screen (the tab bar is
+    // already excluded from the scene, so no need for a large reserve here).
+    { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.md },
     wide && { width: "100%", maxWidth, alignSelf: "center" },
   ];
 
@@ -868,6 +870,7 @@ export function ListRow({
   iconColor,
   leading,
   title,
+  titleLines = 1,
   subtitle,
   right,
   onPress,
@@ -877,6 +880,7 @@ export function ListRow({
   iconColor?: string;
   leading?: ReactNode;
   title: string;
+  titleLines?: number;
   subtitle?: string;
   right?: ReactNode;
   onPress?: () => void;
@@ -901,7 +905,7 @@ export function ListRow({
         </View>
       ) : null}
       <View style={{ flex: 1 }}>
-        <Text style={[type.body, { color: palette.text, fontFamily: "Inter_500Medium" }]} numberOfLines={1}>
+        <Text style={[type.body, { color: palette.text, fontFamily: "Inter_500Medium" }]} numberOfLines={titleLines}>
           {title}
         </Text>
         {subtitle ? (
