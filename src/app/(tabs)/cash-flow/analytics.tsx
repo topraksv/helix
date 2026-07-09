@@ -173,6 +173,7 @@ export default function AnalysisScreen() {
             </Heading>
             <View style={{ width: 168 }}>
               <Segmented
+                noMargin
                 options={[
                   { value: "pie", label: tr.analysis.chartPie },
                   { value: "bars", label: tr.analysis.chartBars },

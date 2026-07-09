@@ -341,7 +341,14 @@ export function Button({
       ) : (
         <>
           {IconCmp ? <IconCmp size={small ? 15 : 17} color={color} strokeWidth={2.2} /> : null}
-          <Text style={[type.label, { color, fontSize: small ? 13 : 15 }]}>{label}</Text>
+          <Text
+            style={[type.label, { color, fontSize: small ? 13 : 15 }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+          >
+            {label}
+          </Text>
         </>
       )}
     </Pressable>

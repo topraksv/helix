@@ -307,7 +307,7 @@ export default function DashboardScreen() {
           <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
         </View>
         <View style={{ flex: 1 }}>
-          <Button icon={History} label={tr.catchup.title} variant="secondary" onPress={() => router.push("/reconciliation")} />
+          <Button icon={History} label={tr.dashboard.catchupShort} variant="secondary" onPress={() => router.push("/reconciliation")} />
         </View>
       </Row>
 
