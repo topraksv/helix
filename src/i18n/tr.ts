@@ -92,6 +92,12 @@ export const tr = {
     daysAgo: (n: number) => (n === 0 ? "bugün" : n === 1 ? "dün" : `${n} gün önce`),
     inDays: (n: number) => (n === 0 ? "bugün" : n === 1 ? "yarın" : `${n} gün sonra`),
   },
+  sync: {
+    errRls: "Eşitleme başarısız: bu cihazda başka bir hesaba ait eski kayıtlar bulundu. Çıkış yapıp yeniden giriş yapman sorunu çözer.",
+    errAuth: "Oturum süren dolmuş. Lütfen çıkış yapıp tekrar giriş yap.",
+    errNetwork: "İnternet bağlantısı yok. Bağlanınca verilerin otomatik eşitlenecek.",
+    errGeneric: "Şu an eşitleme yapılamadı; birazdan otomatik olarak tekrar denenecek.",
+  },
   catchup: {
     title: "Onay Bekleyenler",
     intro: "Günü geldiği hâlde henüz kaydetmediğin ödemeler ve gelirler burada birikir. Her birini Ödendi/Alındı ile onayla, gerçekleşmediyse Atla, tutarı farklıysa düzelt — bakiyene anında işlensin.",

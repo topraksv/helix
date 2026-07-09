@@ -9,6 +9,15 @@ import { getSqliteAsync } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
+import { tr } from "../i18n/tr";
+
+/** Map a raw PostgREST/network error to a short, friendly Turkish message. */
+function friendlySyncError(raw: string): string {
+  if (/row-level security|violates row-level|permission denied/i.test(raw)) return tr.sync.errRls;
+  if (/jwt|token|401|unauthorized|not authenticated/i.test(raw)) return tr.sync.errAuth;
+  if (/network|fetch|failed to fetch|timeout|offline/i.test(raw)) return tr.sync.errNetwork;
+  return tr.sync.errGeneric;
+}
 
 const PULL_PAGE = 1000;
 const PUSH_BATCH = 200;
@@ -66,7 +75,7 @@ function toLocal(table: SyncedTableName, row: Record<string, unknown>): Record<s
   return out;
 }
 
-async function pushOutbox(): Promise<void> {
+async function pushOutbox(userId: string): Promise<void> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
   // Push per table in FK-safe declaration order, oldest events first.
@@ -77,12 +86,23 @@ async function pushOutbox(): Promise<void> {
         [table] as never[],
       );
       if (events.length === 0) break;
-      // Keep only the newest event per row within the batch (idempotent upserts).
+      // Keep only the newest event per row (idempotent upserts), and drop any
+      // row that belongs to another account — it can never pass RLS under this
+      // session, so pushing it would fail the whole batch.
       const latestByRow = new Map<string, { id: number; payload: string }>();
-      for (const e of events) latestByRow.set(e.row_id, e);
+      for (const e of events) {
+        try {
+          if ((JSON.parse(e.payload) as { user_id?: string }).user_id === userId) latestByRow.set(e.row_id, e);
+        } catch {
+          /* skip malformed payloads */
+        }
+      }
       const rows = [...latestByRow.values()].map((e) => toRemote(table, JSON.parse(e.payload)));
-      const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
-      if (error) throw new Error(`push ${table}: ${error.message}`);
+      if (rows.length > 0) {
+        const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
+        if (error) throw new Error(`push ${table}: ${error.message}`);
+      }
+      // Clear the whole batch (own rows pushed, foreign rows discarded).
       const maxId = events[events.length - 1].id;
       await sqlite.runAsync(`DELETE FROM outbox WHERE table_name = ? AND id <= ?`, [table, maxId] as never[]);
     }
@@ -153,13 +173,14 @@ export async function syncNow(userId: string): Promise<void> {
   syncing = true;
   status.set({ state: "syncing" });
   try {
-    await pushOutbox();
+    await pushOutbox(userId);
     await pullAndMerge(userId);
     retryAttempt = 0;
     status.set({ state: "idle", lastSyncAt: new Date().toISOString(), error: null });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    status.set({ state: "error", error: message });
+    const raw = e instanceof Error ? e.message : String(e);
+    console.error("[sync]", raw);
+    status.set({ state: "error", error: friendlySyncError(raw) });
     // Exponential backoff retry: 5s, 10s, 20s… capped at 5 min.
     const delay = Math.min(5000 * 2 ** retryAttempt, 300_000);
     retryAttempt += 1;

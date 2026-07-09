@@ -7,12 +7,32 @@
 
 import { create } from "zustand";
 import { getSupabase, isSupabaseConfigured } from "../sync/supabase";
+import { resetLocalWorkspace } from "../db/mutations";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 
 const LAST_USER_KEY = "helix.last_user_id";
+/** Owner of the data currently in the local DB (for account-switch detection). */
+const LOCAL_OWNER_KEY = "helix.local_owner";
 /** Local-only workspace id used when Supabase is not configured (dev/offline-only mode). */
 const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
+
+/**
+ * Ensure the local DB belongs to `userId`. If a different account previously
+ * used this device, wipe the local workspace so its rows never sync under the
+ * new session; the cloud re-hydrates the incoming account's data on next pull.
+ */
+async function ensureWorkspaceFor(userId: string): Promise<void> {
+  const owner = await kv.get(LOCAL_OWNER_KEY);
+  if (owner && owner !== userId) {
+    try {
+      await resetLocalWorkspace();
+    } catch {
+      // best-effort; a stale owner is corrected below regardless
+    }
+  }
+  if (owner !== userId) await kv.set(LOCAL_OWNER_KEY, userId);
+}
 
 interface SessionStore {
   userId: string | null;
@@ -54,6 +74,7 @@ export const useSession = create<SessionStore>((set) => ({
     if (!supabase) return tr.errors.supabaseNotConfigured;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return error.message;
+    await ensureWorkspaceFor(data.user.id);
     await kv.set(LAST_USER_KEY, data.user.id);
     set({ userId: data.user.id, isOnlineSession: true });
     return null;
@@ -65,6 +86,7 @@ export const useSession = create<SessionStore>((set) => ({
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) return error.message;
     if (!data.user) return tr.errors.signUpFailed;
+    await ensureWorkspaceFor(data.user.id);
     await kv.set(LAST_USER_KEY, data.user.id);
     set({ userId: data.user.id, isOnlineSession: true });
     return null;
