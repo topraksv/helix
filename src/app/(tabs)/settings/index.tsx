@@ -34,7 +34,7 @@ import { setGlobalThemePreference } from "../../_layout";
 import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../lib/kv";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, Spread } from "../../../ui/components";
+import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented } from "../../../ui/components";
 import { spacing, useTheme } from "../../../ui/theme";
 import type { ThemePreference } from "../../../ui/theme";
 
@@ -149,26 +149,26 @@ export default function SettingsScreen() {
           }}
         />
         {Platform.OS !== "web" ? (
-          <Spread style={{ marginTop: spacing.lg }}>
-            <ListRow icon={ScanFace} title={tr.settings.biometric} />
-            <Switch
-              value={biometric}
-              onValueChange={(v) => {
-                setBiometric(v);
-                void kv.set("helix.biometric", String(v));
-              }}
-            />
-          </Spread>
-        ) : null}
-        <Spread style={{ marginTop: spacing.md }}>
-          <View style={{ flex: 1, paddingRight: spacing.md }}>
-            <ListRow icon={CalendarClock} title={tr.settings.showPending} subtitle={tr.settings.showPendingHint} />
-          </View>
-          <Switch
-            value={showPending}
-            onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)}
+          <ListRow
+            icon={ScanFace}
+            title={tr.settings.biometric}
+            right={
+              <Switch
+                value={biometric}
+                onValueChange={(v) => {
+                  setBiometric(v);
+                  void kv.set("helix.biometric", String(v));
+                }}
+              />
+            }
           />
-        </Spread>
+        ) : null}
+        <ListRow
+          icon={CalendarClock}
+          title={tr.settings.showPending}
+          right={<Switch value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
+        />
+        <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.settings.showPendingHint}</Body>
       </Card>
 
       <SectionHeader>{tr.settings.dataSection}</SectionHeader>

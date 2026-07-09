@@ -59,7 +59,7 @@ export default function PersonsScreen() {
           editingId === p.id ? (
             <Row style={{ paddingVertical: spacing.sm }}>
               <View style={{ flex: 1 }}>
-                <Field value={editName} onChangeText={setEditName} />
+                <Field noMargin value={editName} onChangeText={setEditName} autoFocus />
               </View>
               <Button label={tr.common.save} variant="secondary" disabled={!editName.trim()} onPress={() => void rename(p, editName)} />
               <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />

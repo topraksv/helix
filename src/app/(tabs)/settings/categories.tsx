@@ -81,7 +81,7 @@ export default function CategoriesScreen() {
             editingId === c.id ? (
               <Row style={{ paddingVertical: spacing.sm }}>
                 <View style={{ flex: 1 }}>
-                  <Field value={editName} onChangeText={setEditName} />
+                  <Field noMargin value={editName} onChangeText={setEditName} autoFocus />
                 </View>
                 <Button
                   label={tr.common.save}
