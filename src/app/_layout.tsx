@@ -240,6 +240,7 @@ function RootLayoutInner() {
             headerStyle: { backgroundColor: theme.palette.surface },
             headerTintColor: theme.palette.text,
             headerTitleStyle: { color: theme.palette.text, fontFamily: "Inter_600SemiBold" },
+            headerBackTitle: tr.common.back,
             headerBackTitleStyle: { fontFamily: "Inter_500Medium" },
             headerShadowVisible: false,
             contentStyle: { backgroundColor: theme.palette.background },

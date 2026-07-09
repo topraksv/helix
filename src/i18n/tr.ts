@@ -14,6 +14,7 @@ export const tr = {
     paymentFallback: "Ödeme",
     previous: "Önceki",
     next: "Sonraki",
+    back: "Geri",
     pickDate: "Tarih Seç",
   },
   errors: {
