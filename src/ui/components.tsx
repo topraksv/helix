@@ -4,7 +4,7 @@
  * rendering on iOS and web. Typeface: Inter; icons: lucide.
  */
 
-import React, { useEffect, useState, type ReactNode } from "react";
+import React, { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -33,6 +33,20 @@ import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 
 function lightTap() {
   if (Platform.OS === "ios") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+}
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+/**
+ * Springy press feedback used by tappable primitives — a small, quick scale-in
+ * on press and a gentle settle back, giving surfaces a native-iOS liveliness
+ * without attention-grabbing motion. Returns a stable animated scale value.
+ */
+function useSpringPress(pressedScale = 0.97) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const onPressIn = () => Animated.spring(scale, { toValue: pressedScale, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
+  const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 38, bounciness: 8 }).start();
+  return { scale, onPressIn, onPressOut };
 }
 
 /**
@@ -150,6 +164,7 @@ export function Card({
   padded?: boolean;
 }) {
   const { palette, scheme } = useTheme();
+  const press = useSpringPress(0.985);
   const base: StyleProp<ViewStyle> = [
     {
       backgroundColor: palette.surface,
@@ -164,13 +179,15 @@ export function Card({
   ];
   if (onPress) {
     return (
-      <Pressable
+      <AnimatedPressable
         onPress={onPress}
-        style={({ pressed }) => [base, style, pressed && { opacity: 0.9, transform: [{ scale: 0.995 }] }]}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
+        style={[base, style, { transform: [{ scale: press.scale }] }]}
         accessibilityRole="button"
       >
         {children}
-      </Pressable>
+      </AnimatedPressable>
     );
   }
   return <View style={[base, style]}>{children}</View>;
@@ -312,15 +329,18 @@ export function Button({
           ? palette.primary
           : palette.text;
   const small = size === "sm";
+  const press = useSpringPress(0.97);
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       disabled={disabled || loading}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
       onPress={() => {
         lightTap();
         onPress();
       }}
-      style={({ pressed }) => [
+      style={[
         {
           backgroundColor: background,
           borderRadius: radius.sm + 2,
@@ -331,8 +351,8 @@ export function Button({
           gap: spacing.sm,
           alignItems: "center",
           justifyContent: "center",
-          opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          opacity: disabled ? 0.45 : 1,
+          transform: [{ scale: press.scale }],
         },
       ]}
     >
@@ -351,7 +371,7 @@ export function Button({
           </Text>
         </>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
