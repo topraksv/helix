@@ -71,6 +71,7 @@ export const tr = {
     projectedBalance: "Ay Sonu Öngörüsü",
     lastEntry: (d: string, ago: string) => `Son giriş: ${d} — ${ago}`,
     catchUp: "Onay bekleyen ödemeleri gözden geçir",
+    catchupShort: "Bekleyenler",
     upcoming: "Yaklaşan Ödemeler",
     upcomingHint: "Otomatik ödeme olsun olmasın, önümüzdeki günlerde ödeyeceklerin — abonelikler, düzenli gelirler ve ileri tarihli işlemler.",
     scheduledTx: "İleri tarihli işlem",
