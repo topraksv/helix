@@ -25,44 +25,47 @@ export interface Palette {
   gradientTo: string;
 }
 
+// Warm Organic Editorial — linen paper, antique charcoal, terracotta accent,
+// with sage + camel secondaries. No pure #FFF / #000.
 export const lightPalette: Palette = {
-  background: "#F6F7FA",
-  surface: "#FFFFFF",
-  surfaceAlt: "#EFF1F6",
-  border: "#E4E7EF",
-  text: "#12162B",
-  textMuted: "#5D6579",
-  primary: "#4F46E5",
-  primarySoft: "#EEF0FE",
-  onPrimary: "#FFFFFF",
-  positive: "#0A7F53",
-  negative: "#C93B31",
-  warning: "#96690A",
-  focus: "#4F46E5",
-  gradientFrom: "#4F46E5",
-  gradientTo: "#7C3AED",
+  background: "#F3EFE0",
+  surface: "#FBF8EF",
+  surfaceAlt: "#ECE5D3",
+  border: "#E1D8C4",
+  text: "#1E1E1E",
+  textMuted: "#6E6656",
+  primary: "#C9623F",
+  primarySoft: "#F0E0D6",
+  onPrimary: "#F6F5F2",
+  positive: "#5F7A55",
+  negative: "#A8432B",
+  warning: "#A9772F",
+  focus: "#C9623F",
+  gradientFrom: "#C9623F",
+  gradientTo: "#B5754A",
 };
 
 export const darkPalette: Palette = {
-  background: "#0B0E15",
-  surface: "#131824",
-  surfaceAlt: "#1B2231",
-  border: "#252D40",
-  text: "#EFF1F7",
-  textMuted: "#98A0B5",
-  primary: "#8B93F8",
-  primarySoft: "#232A45",
-  onPrimary: "#0B0E15",
-  positive: "#4ADE97",
-  negative: "#F28B82",
-  warning: "#E8B54A",
-  focus: "#8B93F8",
-  gradientFrom: "#4338CA",
-  gradientTo: "#7C3AED",
+  background: "#181817",
+  surface: "#222221",
+  surfaceAlt: "#2B2B28",
+  border: "#34332F",
+  text: "#F6F5F2",
+  textMuted: "#A8A296",
+  primary: "#C9623F",
+  primarySoft: "#3A2A22",
+  onPrimary: "#F6F5F2",
+  positive: "#96A085",
+  negative: "#D97757",
+  warning: "#CBA15E",
+  focus: "#C9623F",
+  gradientFrom: "#C9623F",
+  gradientTo: "#8A5236",
 };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
-export const radius = { sm: 10, md: 14, lg: 20, xl: 28, full: 999 } as const;
+// Ultra-soft organic corners in the 12–16px editorial range.
+export const radius = { sm: 12, md: 14, lg: 16, xl: 22, full: 999 } as const;
 
 export const font = {
   regular: "Inter_400Regular",
@@ -93,13 +96,13 @@ export const type = {
   amountSm: { fontSize: 12, fontFamily: font.medium, fontVariant: ["tabular-nums" as const] },
 };
 
-/** Soft elevation for cards; renders as box-shadow on web. */
+/** Whisper-soft elevation for light cards; renders as box-shadow on web. */
 export const cardShadow = {
-  shadowColor: "#0B0E15",
-  shadowOpacity: 0.06,
-  shadowRadius: 16,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 2,
+  shadowColor: "#1E1E1E",
+  shadowOpacity: 0.05,
+  shadowRadius: 14,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 1,
 } as const;
 
 export type ThemePreference = "system" | "light" | "dark";

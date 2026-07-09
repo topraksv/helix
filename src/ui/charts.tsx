@@ -12,8 +12,10 @@ import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react
 import { formatMinor } from "../domain/money";
 import { spacing, type, useTheme } from "./theme";
 
-const LIGHT_SERIES = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
-const DARK_SERIES = ["#3987e5", "#199e70", "#c98500", "#008300", "#9085e9", "#e66767", "#d55181", "#d95926"];
+// Warm editorial categorical palette — earth tones spanning distinct hues.
+// Index 1 (sage) reads as income, index 5 (brick) as expense on the dashboard.
+const LIGHT_SERIES = ["#C9623F", "#7D8370", "#C5A07F", "#5E7A8C", "#A9772F", "#A8432B", "#6E8B5F", "#B08A3E"];
+const DARK_SERIES = ["#D97757", "#96A085", "#D6B48F", "#7C99AB", "#CBA15E", "#D45A3E", "#8FAA7C", "#CBA85C"];
 
 export function useSeriesColors(): string[] {
   const { scheme } = useTheme();

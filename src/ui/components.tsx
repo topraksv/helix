@@ -171,7 +171,8 @@ export function Card({
     {
       backgroundColor: palette.surface,
       borderRadius: radius.lg,
-      borderWidth: scheme === "dark" ? StyleSheet.hairlineWidth : 0,
+      // Razor-thin border on both themes (editorial look), not a heavy shadow.
+      borderWidth: StyleSheet.hairlineWidth,
       borderColor: palette.border,
       padding: padded ? spacing.lg : 0,
       marginBottom: spacing.md,
