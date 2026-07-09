@@ -405,13 +405,14 @@ export function Field({
   error,
   secure,
   style,
+  noMargin = false,
   ...props
-}: TextInputProps & { label?: string; error?: string | null; secure?: boolean }) {
+}: TextInputProps & { label?: string; error?: string | null; secure?: boolean; noMargin?: boolean }) {
   const { palette } = useTheme();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(secure === true);
   return (
-    <View style={{ marginBottom: spacing.md }}>
+    <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
       {label ? <Label>{label}</Label> : null}
       <View>
         <TextInput

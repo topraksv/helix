@@ -290,7 +290,7 @@ export const tr = {
     syncState: { idle: "Güncel", syncing: "Senkronize ediliyor…", error: "Hata", unconfigured: "Yapılandırılmadı" },
     lastSync: (d: string) => `Son senkron: ${d}`,
     syncUnconfiguredHint: "Bulut senkronu yapılandırılmadı; veriler yalnız bu cihazda.",
-    syncExplain: "Verilerin önce bu cihazda saklanır. İnternet varken arka planda güvenli sunucunla (Supabase) çift yönlü eşitlenir: gönderilir, uzaktakiler alınır, çakışmada en son değişiklik kazanır. Çevrimdışıyken yaptıkların sıraya alınır, bağlanınca otomatik gönderilir. Aynı hesapla girdiğin her cihaz aynı veriyi görür; sildiklerin kalıcı olarak işaretlenir, geri gelmez.",
+    syncExplain: "Verilerin cihazında güvenle saklanır; internet olduğunda otomatik yedeklenir ve aynı hesapla girdiğin tüm cihazlarda güncel kalır.",
     columnVisible: "Tabloda göster",
     showPending: "İleri Tarihli İşlemler Tabloda Görünsün",
     showPendingHint: "Kapatırsan gelecek tarihli kayıtlar hücrelerde gizlenir; bakiye zaten günü gelince etkilenir.",
