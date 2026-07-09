@@ -65,9 +65,9 @@ export function TourModal({ onClose }: { onClose: () => void }) {
           >
             <IconCmp size={30} color={palette.primary} strokeWidth={1.9} />
           </View>
-          {/* Fixed min-height so the dots + button don't jump as slide text
-              length changes between steps. */}
-          <View style={{ minHeight: 132, justifyContent: "flex-start" }}>
+          {/* Fixed height covering the tallest slide so the dots + button never
+              move between steps (the longest body is ~190px tall). */}
+          <View style={{ height: 210, justifyContent: "flex-start" }}>
             <Text style={[type.heading, { color: palette.text, textAlign: "center", fontSize: 19 }]}>{slide.title}</Text>
             <Text style={[type.body, { color: palette.textMuted, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
               {slide.body}
@@ -91,13 +91,21 @@ export function TourModal({ onClose }: { onClose: () => void }) {
 
           <Button
             label={last ? tr.tour.start : tr.tour.next}
-            onPress={() => (last ? onClose() : setStep(step + 1))}
+            onPress={() => {
+              // Functional update + clamp so rapid taps can't overshoot or skip.
+              if (step >= SLIDES.length - 1) onClose();
+              else setStep((s) => Math.min(s + 1, SLIDES.length - 1));
+            }}
           />
-          {!last ? (
-            <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center", marginTop: spacing.md }} hitSlop={8}>
-              <Text style={[type.label, { color: palette.textMuted }]}>{tr.tour.skip}</Text>
-            </Pressable>
-          ) : null}
+          {/* Reserve the skip row's height on every slide (shown only when not
+              last) so the card height — and thus the button — never shifts. */}
+          <View style={{ height: 20, marginTop: spacing.md, justifyContent: "center" }}>
+            {!last ? (
+              <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center" }} hitSlop={8}>
+                <Text style={[type.label, { color: palette.textMuted }]}>{tr.tour.skip}</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </FadeIn>
       </View>
     </Modal>

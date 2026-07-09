@@ -11,6 +11,7 @@ export default function SettingsLayout() {
         headerStyle: { backgroundColor: palette.surface },
         headerTintColor: palette.text,
         headerTitleStyle: { color: palette.text, fontFamily: "Inter_600SemiBold" },
+        headerBackTitle: tr.common.back,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: palette.background },
       }}
