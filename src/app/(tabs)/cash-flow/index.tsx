@@ -8,7 +8,6 @@
 
 import React, { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowDownRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, Plus } from "lucide-react-native";
 import { and, eq, isNull } from "drizzle-orm";
@@ -49,6 +48,8 @@ export default function CashflowScreen() {
   const settings = useSettingsMap();
   const hiddenComputed = settingValue<string[]>(settings, "computed_columns_hidden", []);
   const visibleComputed = computed.filter((c) => !hiddenComputed.includes(c.id));
+  const ccLabel = settingValue<string>(settings, "cc_col_label", tr.cashflow.ccInstallments);
+  const ccHidden = settingValue<boolean>(settings, "cc_col_hidden", false);
   const sources = useSources();
   const persons = usePersons();
   const allTx = useAllTransactions();
@@ -58,6 +59,7 @@ export default function CashflowScreen() {
   const { palette } = useTheme();
   const [mode, setMode] = useState<MatrixMode>("rows");
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
+  const [tableAreaH, setTableAreaH] = useState(0);
 
   React.useEffect(() => {
     void kv.get("helix.matrix.mode").then((v) => {
@@ -145,18 +147,25 @@ export default function CashflowScreen() {
           ) : null}
 
           {showTable ? (
-            <MatrixTable
-              year={year}
-              bundle={bundle}
-              columnCategories={columnCategories}
-              computedColumns={visibleComputed}
-              creditCardIds={creditCardIds}
-              txLike={txLike}
-              orientation={orientation}
-              compact={!wide}
-              pinnedKey={pinnedKey}
-              onTogglePin={togglePin}
-            />
+            <View style={{ flex: 1 }} onLayout={(e) => setTableAreaH(e.nativeEvent.layout.height)}>
+              {tableAreaH > 0 ? (
+                <MatrixTable
+                  year={year}
+                  bundle={bundle}
+                  columnCategories={columnCategories}
+                  computedColumns={visibleComputed}
+                  creditCardIds={creditCardIds}
+                  txLike={txLike}
+                  orientation={orientation}
+                  compact={!wide}
+                  measuredHeight={tableAreaH}
+                  ccLabel={ccLabel}
+                  ccHidden={ccHidden}
+                  pinnedKey={pinnedKey}
+                  onTogglePin={togglePin}
+                />
+              ) : null}
+            </View>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false}>
               {bundle.yearMonths.map((m) => {
@@ -221,6 +230,9 @@ function MatrixTable({
   txLike,
   orientation,
   compact,
+  measuredHeight,
+  ccLabel,
+  ccHidden,
   pinnedKey,
   onTogglePin,
 }: {
@@ -232,6 +244,9 @@ function MatrixTable({
   txLike: ReturnType<typeof toTxLike>;
   orientation: "monthsAsRows" | "monthsAsColumns";
   compact: boolean;
+  measuredHeight: number;
+  ccLabel: string;
+  ccHidden: boolean;
   pinnedKey: string | null;
   onTogglePin: (key: string) => void;
 }) {
@@ -263,7 +278,9 @@ function MatrixTable({
 
   const columns: ColumnDef[] = useMemo(
     () => [
-      { key: "cc", label: tr.cashflow.ccInstallments, categoryId: null, value: (m) => ccByMonth.get(m.month)?.installmentMinor ?? 0, action: () => router.push("/cash-flow/installments") },
+      ...(ccHidden
+        ? []
+        : [{ key: "cc", label: ccLabel, categoryId: null, value: (m: MonthLedger) => ccByMonth.get(m.month)?.installmentMinor ?? 0, action: () => router.push("/cash-flow/installments") } as ColumnDef]),
       ...columnCategories.map<ColumnDef>((c) => ({ key: c.id, label: c.name, categoryId: c.id, value: (m) => m.byCategory.get(c.id) ?? 0 })),
       ...computedColumns.map<ColumnDef>((c) => ({
         key: c.id,
@@ -288,19 +305,18 @@ function MatrixTable({
       { key: "opening", label: tr.cashflow.opening, categoryId: null, value: (m) => m.openingMinor },
       { key: "closing", label: tr.cashflow.closing, categoryId: null, value: (m) => m.closingMinor },
     ],
-    [columnCategories, computedColumns, ccByMonth, router],
+    [columnCategories, computedColumns, ccByMonth, router, ccLabel, ccHidden],
   );
 
   const CELL_W = compact ? 104 : 128;
-  const HEAD_W = compact ? 104 : 132;
+  const HEAD_W = compact ? 80 : 132;
   const fontSize = compact ? 12 : 13;
+  const HINT_H = 34;
 
-  // On phones the flex chain (tab navigator → non-scroll Screen) can collapse
-  // the table to a few rows on web; pin an explicit viewport height so it fills
-  // the tall, narrow screen instead of leaving dead space below.
-  const { height: winH } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const tableHeight = compact ? Math.max(360, winH - insets.top - insets.bottom - 300) : undefined;
+  // The parent measures the exact space above the tab bar (onLayout); pin the
+  // table to it minus the hint row so the table — and its bottom hint — always
+  // sit fully above the footer, on every platform.
+  const tableHeight = compact ? Math.max(240, measuredHeight - HINT_H) : undefined;
 
   // Category cells open the editor; derived columns may carry their own action.
   const pressFor = (c: ColumnDef, month: MonthKey): (() => void) | undefined =>
@@ -353,9 +369,11 @@ function MatrixTable({
 
   const isColumns = orientation === "monthsAsColumns";
   const validPin = pinnedKey && stickyColumns.some((c) => c.key === pinnedKey) ? pinnedKey : null;
+  // Center the current month on open (only when it's in the shown year).
+  const focusMonth = yearOf(currentMonth) === year ? currentMonth : undefined;
 
   return (
-    <Card padded={false} style={compact ? undefined : { flex: 1 }}>
+    <Card padded={false} style={compact ? { height: measuredHeight } : { flex: 1 }}>
       <StickyTable
         cornerLabel={cornerLabel}
         columns={stickyColumns}
@@ -363,6 +381,8 @@ function MatrixTable({
         headWidth={HEAD_W}
         cellWidth={CELL_W}
         currentColumnKey={currentColumnKey}
+        focusColumnKey={isColumns ? focusMonth : undefined}
+        focusRowKey={isColumns ? undefined : focusMonth}
         pinnedKey={validPin}
         onTogglePin={onTogglePin}
         onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : undefined}

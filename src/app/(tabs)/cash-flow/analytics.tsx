@@ -34,6 +34,7 @@ export default function AnalysisScreen() {
   const { palette } = useTheme();
   const colors = useSeriesColors();
   const { width } = useWindowDimensions();
+  const compact = width < 900;
 
   // Window: rolling N months ending now, or a calendar year (navigable).
   const [startMonth, endMonth] =
@@ -201,9 +202,10 @@ export default function AnalysisScreen() {
         <Card padded={false} style={{ height: Math.min(rows.length, 8) * 52 + 60 }}>
           <StickyTable
             cornerLabel={tr.tx.category}
-            headWidth={150}
-            cellWidth={96}
+            headWidth={compact ? 96 : 132}
+            cellWidth={compact ? 88 : 96}
             currentColumnKey={currentMonth}
+            focusColumnKey={currentMonth}
             columns={[...monthKeys.map((m) => ({ key: m, label: tr.months[monthOf(m) - 1].slice(0, 3) })), { key: "__total", label: tr.common.total }]}
             rows={rows.map(({ category, data }) => ({
               key: category.id,
@@ -216,13 +218,13 @@ export default function AnalysisScreen() {
                   return (
                     <Text
                       key={m}
-                      style={[type.small, { flex: 1, textAlign: "right", paddingHorizontal: spacing.sm, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text }]}
+                      style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.sm, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text }]}
                     >
                       {v === 0 ? "—" : formatMinor(v)}
                     </Text>
                   );
                 }),
-                <Text key="__total" style={[type.amount, { flex: 1, textAlign: "right", paddingHorizontal: spacing.sm, color: palette.text }]}>
+                <Text key="__total" style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.sm, fontSize: compact ? 12 : 13, color: palette.text }]}>
                   {formatMinor(data!.ytdMinor)}
                 </Text>,
               ],
