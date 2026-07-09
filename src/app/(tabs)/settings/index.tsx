@@ -179,7 +179,6 @@ export default function SettingsScreen() {
           subtitle={
             tr.settings.syncState[sync.state] +
             (sync.lastSyncAt ? ` · ${tr.settings.lastSync(new Date(sync.lastSyncAt).toLocaleString("tr-TR"))}` : "") +
-            (sync.error ? ` · ${sync.error}` : "") +
             (!isSupabaseConfigured ? ` · ${tr.settings.syncUnconfiguredHint}` : "")
           }
           iconColor={syncStateColor}
@@ -193,6 +192,9 @@ export default function SettingsScreen() {
             />
           }
         />
+        {sync.error ? (
+          <Body style={{ fontSize: 12, marginTop: spacing.xs, color: palette.negative }}>{sync.error}</Body>
+        ) : null}
         <Body muted style={{ fontSize: 12, marginTop: spacing.xs, marginBottom: spacing.sm }}>
           {tr.settings.syncExplain}
         </Body>

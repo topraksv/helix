@@ -23,6 +23,23 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Wipe every synced table + the outbox + sync cursors. Used when a *different*
+ * account signs in on this device: the cloud (RLS-scoped) is the source of
+ * truth, so clearing local state prevents the previous account's rows from
+ * being pushed under the new session (which would violate row-level security).
+ */
+export async function resetLocalWorkspace(): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  await sqlite.withTransactionAsync(async () => {
+    for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+      await sqlite.runAsync(`DELETE FROM ${table}`, [] as never[]);
+    }
+    await sqlite.runAsync(`DELETE FROM outbox`, [] as never[]);
+    await sqlite.runAsync(`DELETE FROM sync_state`, [] as never[]);
+  });
+}
+
 /** camelCase Drizzle row → snake_case DB/remote payload. */
 export function toDbShape(table: SyncedTableName, row: Record<string, unknown>): Record<string, unknown> {
   const columns = getTableColumns(SYNCED_TABLES[table]);
