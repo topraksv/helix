@@ -363,8 +363,8 @@ function MatrixTable({
         headWidth={HEAD_W}
         cellWidth={CELL_W}
         currentColumnKey={currentColumnKey}
-        pinnedKey={isColumns ? null : validPin}
-        onTogglePin={isColumns ? undefined : onTogglePin}
+        pinnedKey={validPin}
+        onTogglePin={onTogglePin}
         onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : undefined}
         height={tableHeight}
       />

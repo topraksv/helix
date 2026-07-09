@@ -174,23 +174,41 @@ export function StickyTable({
     headerHRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false });
   };
 
-  const headerCell = (c: StickyColumn) => (
-    <Pressable
-      key={c.key}
-      disabled={!onColumnPress && !onTogglePin}
-      onPress={onColumnPress ? () => onColumnPress(c.key) : onTogglePin ? () => onTogglePin(c.key) : undefined}
-      style={[{ width: cellWidth, backgroundColor: c.key === currentColumnKey ? palette.primarySoft : "transparent" }, cellCenter]}
-    >
-      <Text
-        style={[type.label, { color: c.key === currentColumnKey ? palette.primary : palette.textMuted, textAlign: "right" }]}
-        numberOfLines={2}
-        adjustsFontSizeToFit
-        minimumFontScale={0.8}
+  // When a header has both a tap action (open month) and pin, the label opens
+  // and a small pin icon (top-right) toggles the fixed column; otherwise the
+  // whole header runs the single action. Labels are centred either way.
+  const headerCell = (c: StickyColumn) => {
+    const isCurrent = c.key === currentColumnKey;
+    const both = !!onColumnPress && !!onTogglePin;
+    const labelAction = onColumnPress ?? onTogglePin;
+    return (
+      <View
+        key={c.key}
+        style={{ width: cellWidth, height: headerHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", paddingHorizontal: spacing.sm }}
       >
-        {c.label}
-      </Text>
-    </Pressable>
-  );
+        <Pressable disabled={!labelAction} onPress={labelAction ? () => labelAction(c.key) : undefined}>
+          <Text
+            style={[type.label, { color: isCurrent ? palette.primary : palette.textMuted, textAlign: "center" }]}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
+            {c.label}
+          </Text>
+        </Pressable>
+        {both ? (
+          <Pressable
+            onPress={() => onTogglePin!(c.key)}
+            hitSlop={8}
+            accessibilityRole="button"
+            style={{ position: "absolute", top: 4, right: 4, padding: 2 }}
+          >
+            <Pin size={11} color={palette.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  };
 
   return (
     <View style={height ? { height } : { flex: 1 }}>

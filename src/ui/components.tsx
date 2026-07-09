@@ -630,10 +630,12 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  noMargin = false,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
+  noMargin?: boolean;
 }) {
   const { palette, scheme } = useTheme();
   return (
@@ -643,7 +645,7 @@ export function Segmented<T extends string>({
         backgroundColor: palette.surfaceAlt,
         borderRadius: radius.sm + 2,
         padding: 3,
-        marginBottom: spacing.md,
+        marginBottom: noMargin ? 0 : spacing.md,
       }}
     >
       {options.map((option) => {
