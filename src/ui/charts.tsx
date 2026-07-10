@@ -80,7 +80,7 @@ export function Donut({ slices, size = 168 }: { slices: DonutSlice[]; size?: num
         {slices.map((s, i) => (
           <View key={`${s.label}-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: s.color }} />
-            <Text style={[type.small, { color: palette.text, flex: 1 }]} numberOfLines={1}>
+            <Text style={[type.small, { color: palette.text, flex: 1 }]}>
               {s.label}
             </Text>
             <Text style={[type.small, { color: palette.textMuted, fontVariant: ["tabular-nums"] }]}>

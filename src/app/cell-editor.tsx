@@ -192,7 +192,7 @@ export default function CellEditorModal() {
                   {t.isAggregate ? <Badge text={tr.bulk.aggregateBadge} /> : null}
                   {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
                   {t.note ? (
-                    <Text style={[type.small, { color: palette.textMuted, flexShrink: 1 }]} numberOfLines={1}>
+                    <Text style={[type.small, { color: palette.textMuted, flexShrink: 1 }]}>
                       {t.note}
                     </Text>
                   ) : null}

@@ -184,8 +184,8 @@ export default function IncomeRulesScreen() {
           renderItem={(r) => (
             <Spread style={{ paddingVertical: spacing.sm }}>
               <View style={{ flex: 1, paddingRight: spacing.sm }}>
-                <Body numberOfLines={1}>{r.name}</Body>
-                <Body muted numberOfLines={1}>
+                <Body>{r.name}</Body>
+                <Body muted>
                   {tr.incomeKinds[r.kind]} · {formatMinor(r.defaultAmountMinor, r.currency)} · {tr.incomes.everyMonth(r.payDay)}
                 </Body>
               </View>

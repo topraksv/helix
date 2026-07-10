@@ -97,7 +97,7 @@ export default function CategoriesScreen() {
             ) : (
               <View style={{ paddingVertical: spacing.sm }}>
                 <Spread>
-                  <Body numberOfLines={2} style={{ flex: 1, paddingRight: spacing.sm }}>
+                  <Body style={{ flex: 1, paddingRight: spacing.sm }}>
                     {categoryIcon(c)} {c.name}
                   </Body>
                   <Row gap={spacing.sm}>
