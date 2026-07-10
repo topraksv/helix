@@ -16,6 +16,7 @@ import {
   FileDown,
   FileSpreadsheet,
   FileUp,
+  LayoutTemplate,
   LogOut,
   PiggyBank,
   ScanFace,
@@ -111,6 +112,7 @@ export default function SettingsScreen() {
       <SectionHeader>{tr.settings.workspaceSection}</SectionHeader>
       <Card>
         <ListRow icon={Columns3} title={tr.settings.categories} subtitle={tr.settings.categoriesDesc} chevron onPress={() => router.push("/settings/categories")} />
+        <ListRow icon={LayoutTemplate} title={tr.settings.template} subtitle={tr.settings.templateDesc} chevron onPress={() => router.push("/workspace-template")} />
         <ListRow icon={Calculator} title={tr.settings.computed} subtitle={tr.settings.computedDesc} chevron onPress={() => router.push("/settings/computed-columns")} />
         <ListRow icon={Users} title={tr.settings.persons} subtitle={tr.settings.personsDesc} chevron onPress={() => router.push("/settings/persons")} />
         <ListRow icon={Wallet} title={tr.settings.sources} subtitle={tr.settings.sourcesDesc} chevron onPress={() => router.push("/settings/payment-sources")} />

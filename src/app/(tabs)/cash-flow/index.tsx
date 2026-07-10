@@ -142,6 +142,11 @@ export default function CashflowScreen() {
 
   const orientation = mode === "columns" ? "monthsAsColumns" : "monthsAsRows";
   const showTable = mode !== "cards";
+  // In column-focused view the categories are rows, so the editor label flips.
+  const editLabel = orientation === "monthsAsColumns" ? tr.cashflow.editRows : tr.cashflow.editColumns;
+  // Open the column/row editor as a modal so closing returns to Mali Tablo
+  // (not into the Settings tab).
+  const editColumns = () => router.push("/columns-editor");
 
   return (
     <Screen title={tr.cashflow.title} right={yearSwitcher} maxWidth={wide ? 1200 : 760} scroll={false} padded>
@@ -153,12 +158,14 @@ export default function CashflowScreen() {
           <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
           <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
           <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
+          {showTable ? <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} /> : null}
         </Row>
       ) : (
         <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
           <View style={{ flex: 1 }}>
             <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
           </View>
+          {showTable ? <IconButton icon={Pencil} size={40} label={editLabel} onPress={editColumns} /> : null}
           <IconButton icon={CreditCard} size={40} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
           <IconButton icon={ChartNoAxesColumn} size={40} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
           <IconButton icon={CalendarPlus} size={40} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
@@ -180,12 +187,6 @@ export default function CashflowScreen() {
             value={mode}
             onChange={changeMode}
           />
-          {showTable ? (
-            <View style={{ alignSelf: "flex-end", marginTop: -spacing.xs, marginBottom: spacing.sm }}>
-              <Button icon={Pencil} size="sm" label={tr.cashflow.editColumns} variant="ghost" onPress={() => router.push("/settings/categories")} />
-            </View>
-          ) : null}
-
           {showTable ? (
             <View style={{ flex: 1 }} onLayout={(e) => setTableAreaH(e.nativeEvent.layout.height)}>
               {tableAreaH > 0 ? (
