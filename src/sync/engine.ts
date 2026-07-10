@@ -60,6 +60,14 @@ for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
   BOOLEAN_COLUMNS.set(table, booleanColumnsOf(table));
 }
 
+/** The known local columns of each table, used to reject anything the server
+ *  sends that this client's schema doesn't have (defense-in-depth + forward
+ *  compat: a new server column can't inject SQL or crash the pull merge). */
+const KNOWN_COLUMNS = new Map<SyncedTableName, Set<string>>();
+for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+  KNOWN_COLUMNS.set(table, new Set(Object.values(getTableColumns(SYNCED_TABLES[table])).map((c) => c.name)));
+}
+
 /** SQLite payload → PostgREST payload. */
 function toRemote(table: SyncedTableName, row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...row };
@@ -131,19 +139,29 @@ async function pullAndMerge(userId: string): Promise<void> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    const allowed = KNOWN_COLUMNS.get(table)!;
     const cursorRow = await sqlite.getFirstAsync<{ last_pulled_at: string }>(
       `SELECT last_pulled_at FROM sync_state WHERE table_name = ?`,
       [table] as never[],
     );
-    let cursor = cursorRow?.last_pulled_at ?? "1970-01-01T00:00:00.000Z";
+    // Cursor is a keyset on (updated_at, id) encoded as "ts|id"; a plain ISO
+    // string is the legacy form (id empty). A composite cursor is required so a
+    // page boundary that splits rows sharing one updated_at never skips them.
+    const raw = cursorRow?.last_pulled_at ?? "1970-01-01T00:00:00.000Z";
+    const sep = raw.indexOf("|");
+    let curTs = sep >= 0 ? raw.slice(0, sep) : raw;
+    let curId = sep >= 0 ? raw.slice(sep + 1) : "";
     for (;;) {
-      const { data, error } = await supabase
+      let query = supabase
         .from(table)
         .select("*")
-        .gt("updated_at", cursor)
         .order("updated_at", { ascending: true })
         .order("id", { ascending: true })
         .limit(PULL_PAGE);
+      query = curId
+        ? query.or(`updated_at.gt.${curTs},and(updated_at.eq.${curTs},id.gt.${curId})`)
+        : query.gt("updated_at", curTs);
+      const { data, error } = await query;
       if (error) throw new Error(`pull ${table}: ${error.message}`);
       if (!data || data.length === 0) break;
 
@@ -156,18 +174,23 @@ async function pullAndMerge(userId: string): Promise<void> {
           );
           const remoteWins = !local || Date.parse(remote.updated_at as string) >= Date.parse(local.updated_at);
           if (!remoteWins) continue;
-          const keys = Object.keys(remote);
+          // Only accept columns this client's schema knows (ignore any extra
+          // server columns) so the generated SQL is always well-formed.
+          const keys = Object.keys(remote).filter((k) => allowed.has(k));
+          if (!keys.includes("id")) continue;
           await sqlite.runAsync(
             `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})
              ON CONFLICT(id) DO UPDATE SET ${keys.filter((k) => k !== "id").map((k) => `${k} = excluded.${k}`).join(", ")}`,
             keys.map((k) => (remote[k] === undefined ? null : remote[k])) as never[],
           );
         }
-        cursor = new Date((data[data.length - 1] as { updated_at: string }).updated_at).toISOString();
+        const last = data[data.length - 1] as { updated_at: string; id: string };
+        curTs = new Date(last.updated_at).toISOString();
+        curId = last.id;
         await sqlite.runAsync(
           `INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)
            ON CONFLICT(table_name) DO UPDATE SET last_pulled_at = excluded.last_pulled_at`,
-          [table, cursor] as never[],
+          [table, `${curTs}|${curId}`] as never[],
         );
       });
       if (data.length < PULL_PAGE) break;
