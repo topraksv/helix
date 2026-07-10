@@ -67,6 +67,16 @@ function applyFeed(data: Record<string, FeedEntry>) {
   useMarkets.setState({ prices, status: "live" });
 }
 
+/** Harem sell ("satış") price in TRY for a currency, or null if not live yet.
+ *  Used to convert a foreign-currency amount to TRY at confirm time (we already
+ *  pull USDTRY/EURTRY from this feed — no separate FX call needed). */
+export function marketSellRateTry(currency: string): number | null {
+  const code = currency === "USD" ? "USDTRY" : currency === "EUR" ? "EURTRY" : null;
+  if (!code) return null;
+  const price = useMarkets.getState().prices[code];
+  return price && Number.isFinite(price.sellTry) && price.sellTry > 0 ? price.sellTry : null;
+}
+
 /** Idempotent: first caller opens the socket; it lives for the app session. */
 export function connectMarkets(): void {
   if (socket) return;
