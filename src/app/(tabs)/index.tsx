@@ -28,6 +28,7 @@ import { connectMarkets, MARKET_SYMBOLS, useMarkets } from "../../services/marke
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Badge, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
 import { Bars, Donut, SplitBar, useSeriesColors } from "../../ui/charts";
+import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../ui/theme";
@@ -234,7 +235,7 @@ export default function DashboardScreen() {
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
 
   return (
-    <Screen title={greeting()} subtitle={dateLabel(today)}>
+    <Screen title={greeting()} subtitle={dateLabel(today)} leading={<BrandMark size={40} />}>
       <FirstRunTour />
       {/* Catch-up banner */}
       {lastEntry.at != null && lastEntry.daysAgo != null && lastEntry.daysAgo >= 1 ? (
