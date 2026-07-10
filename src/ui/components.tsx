@@ -807,6 +807,31 @@ export function Badge({ text, tone = "muted" }: { text: string; tone?: "muted" |
   );
 }
 
+/** Shared action-slot width so a status pill and an action button form a
+ *  symmetric, equally sized pair in a list row (dashboard "Yaklaşan Ödemeler"). */
+export const STATUS_W = 88;
+
+/** A status pill sized to match a small Button (same height and corner), so a
+ *  status + action pair reads as one aligned unit. Fills the STATUS_W slot. */
+export function StatusPill({ label, color }: { label: string; color: string }) {
+  return (
+    <View
+      style={{
+        width: STATUS_W,
+        height: 36,
+        borderRadius: radius.sm + 2,
+        backgroundColor: color + "1F",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={[type.label, { color, fontSize: 13 }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 export function EmptyState({ icon: IconCmp, title, hint }: { icon?: LucideIcon; title: string; hint?: string }) {
   const { palette } = useTheme();
   return (
@@ -881,7 +906,7 @@ export function ListRow({
   iconColor,
   leading,
   title,
-  titleLines = 1,
+  titleLines,
   subtitle,
   right,
   onPress,
@@ -891,6 +916,8 @@ export function ListRow({
   iconColor?: string;
   leading?: ReactNode;
   title: string;
+  /** Optional hard cap on title lines. Undefined = wrap fully (never
+   *  ellipsize — the app-wide rule is that no text is hidden behind "…"). */
   titleLines?: number;
   subtitle?: string;
   right?: ReactNode;
@@ -920,7 +947,7 @@ export function ListRow({
           {title}
         </Text>
         {subtitle ? (
-          <Text style={[type.small, { color: palette.textMuted, marginTop: 1 }]} numberOfLines={2}>
+          <Text style={[type.small, { color: palette.textMuted, marginTop: 1 }]}>
             {subtitle}
           </Text>
         ) : null}

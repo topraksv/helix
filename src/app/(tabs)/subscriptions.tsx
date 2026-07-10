@@ -14,7 +14,7 @@ import { dateLabel, tr } from "../../i18n/tr";
 import { useSubscriptions, useUserId } from "../../data/hooks";
 import { softDelete, restoreRow } from "../../db/mutations";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
 import { spacing, useTheme } from "../../ui/theme";
@@ -65,15 +65,16 @@ export default function SubscriptionsScreen() {
         }
         onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })}
         right={
+          // alignItems:center (Row default) keeps the edit/delete controls
+          // vertically centred against the price column and the whole row.
           <Row gap={spacing.sm}>
-            {/* Price on top; the trial tag drops to its own line so it never
-                crowds the amount on a narrow phone screen. */}
-            <View style={{ alignItems: "flex-end", justifyContent: "center", gap: 3 }}>
+            {/* At most two lines (amount + /ay); the trial tag lives in the
+                subtitle so it never grows this column or crowds the amount. */}
+            <View style={{ alignItems: "flex-end", justifyContent: "center", gap: 2 }}>
               <Row gap={spacing.xs}>
                 {s.autoPay ? <Repeat size={13} color={palette.primary} /> : null}
                 <Amount minor={s.amountMinor} currency={s.currency} colorized={false} />
               </Row>
-              {inTrial ? <Badge text={tr.subs.trialBadge} tone="warning" /> : null}
               {s.intervalMonths > 1 ? (
                 <Body muted style={{ fontSize: 12 }}>
                   {tr.subs.perMonth(formatMinor(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))}

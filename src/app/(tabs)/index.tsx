@@ -26,7 +26,7 @@ import {
 import { confirmExpected, revertExpected } from "../../data/repo";
 import { connectMarkets, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
 import { Bars, Donut, SplitBar, useSeriesColors } from "../../ui/charts";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
@@ -324,9 +324,13 @@ export default function DashboardScreen() {
               title={nameOf(e)}
               subtitle={`${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
               right={
+                // The "Geciken" status and the confirm button are rendered as
+                // one symmetric pair — identical width and height, centred.
                 <Row gap={spacing.sm}>
-                  <Badge text={tr.dashboard.late} tone="negative" />
-                  <Button size="sm" label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid} variant="secondary" onPress={() => void confirm(e)} />
+                  <StatusPill label={tr.dashboard.late} color={palette.negative} />
+                  <View style={{ width: STATUS_W }}>
+                    <Button size="sm" label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid} variant="secondary" onPress={() => void confirm(e)} />
+                  </View>
                 </Row>
               }
             />
@@ -340,15 +344,17 @@ export default function DashboardScreen() {
               subtitle={`${u.typeLabel} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
               right={
                 u.kind === "expected" && u.date <= today && u.expectedId ? (
-                  <Button
-                    size="sm"
-                    label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
-                    variant="secondary"
-                    onPress={() => {
-                      const e = expected.find((x) => x.id === u.expectedId);
-                      if (e) void confirm(e);
-                    }}
-                  />
+                  <View style={{ width: STATUS_W }}>
+                    <Button
+                      size="sm"
+                      label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                      variant="secondary"
+                      onPress={() => {
+                        const e = expected.find((x) => x.id === u.expectedId);
+                        if (e) void confirm(e);
+                      }}
+                    />
+                  </View>
                 ) : undefined
               }
             />
