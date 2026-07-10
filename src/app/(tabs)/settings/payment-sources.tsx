@@ -107,8 +107,8 @@ export default function SourcesScreen() {
             <Row style={{ flex: 1 }}>
               <InitialsBadge name={s.name} size={32} />
               <View style={{ flex: 1 }}>
-                <Body numberOfLines={1}>{s.name}</Body>
-                <Body muted numberOfLines={1}>
+                <Body>{s.name}</Body>
+                <Body muted>
                   {TYPES.find((t) => t.value === s.type)?.label}
                   {s.dueDay ? ` · ${tr.sources.dueDay}: ${s.dueDay}` : ""}
                   {persons.length > 1 ? ` · ${persons.find((p) => p.id === s.personId)?.name ?? ""}` : ""}

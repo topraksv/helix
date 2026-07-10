@@ -67,7 +67,7 @@ export default function PersonsScreen() {
           ) : (
             <Spread style={{ paddingVertical: spacing.sm }}>
               <Row gap={spacing.sm} style={{ flex: 1, paddingRight: spacing.sm }}>
-                <Body numberOfLines={1}>{p.name}</Body>
+                <Body style={{ flexShrink: 1 }}>{p.name}</Body>
                 {p.isSelf ? <Badge text={tr.persons.selfBadge} tone="primary" /> : <Badge text={tr.installments.watchOnly} />}
               </Row>
               <Row gap={spacing.sm}>

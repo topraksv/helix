@@ -151,8 +151,8 @@ export default function AnalysisScreen() {
               <View key={t.id}>
                 <Spread style={{ paddingVertical: spacing.xs }}>
                   <View style={{ flex: 1, paddingRight: spacing.sm }}>
-                    <Body numberOfLines={1}>{catName(t.categoryId) || tr.common.none}</Body>
-                    <Body muted style={{ fontSize: 12 }} numberOfLines={1}>
+                    <Body>{catName(t.categoryId) || tr.common.none}</Body>
+                    <Body muted style={{ fontSize: 12 }}>
                       {dateLabel(t.effectiveDate)}
                       {t.note ? ` · ${t.note}` : ""}
                     </Body>

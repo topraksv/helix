@@ -261,7 +261,7 @@ export default function ComputedColumnsScreen() {
               <Spread>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1, paddingRight: spacing.sm }}>
                   <Calculator size={16} color={palette.textMuted} />
-                  <Body numberOfLines={2} style={{ flex: 1 }}>{c.name}</Body>
+                  <Body style={{ flex: 1 }}>{c.name}</Body>
                 </View>
                 <Row gap={spacing.sm}>
                   <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(c)} />
