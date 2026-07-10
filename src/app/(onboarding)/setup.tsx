@@ -124,7 +124,7 @@ export default function SetupScreen() {
           <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.personsHint}</Body>
           {persons.map((name, i) => (
             <Spread key={`${name}-${i}`} style={{ marginBottom: spacing.sm }}>
-              <Body>{name}{i === 0 ? ` — ${tr.persons.selfBadge}` : ""}</Body>
+              <Body>{name}{i === 0 ? ` · ${tr.persons.selfBadge}` : ""}</Body>
               {i > 0 ? (
                 <Button label={tr.common.delete} variant="ghost" onPress={() => setPersons(persons.filter((_, j) => j !== i))} />
               ) : null}

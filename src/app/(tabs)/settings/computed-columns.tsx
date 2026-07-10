@@ -136,7 +136,7 @@ export default function ComputedColumnsScreen() {
     if (editingId === c.id) resetForm();
     const snapshot = await softDelete(userId, "computed_columns", c.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${c.name} — ${tr.common.deleted}`, () => void restoreRow(userId, "computed_columns", snapshot));
+    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "computed_columns", snapshot));
   };
 
   const toggleVisible = async (id: string, show: boolean) => {

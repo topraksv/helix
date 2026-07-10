@@ -49,7 +49,7 @@ export default function SubscriptionsScreen() {
   const remove = async (id: string, name: string) => {
     const snapshot = await softDelete(userId, "subscriptions", id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${name} — ${tr.common.deleted}`, () => void restoreRow(userId, "subscriptions", snapshot));
+    if (snapshot) undo.show(`${name} · ${tr.common.deleted}`, () => void restoreRow(userId, "subscriptions", snapshot));
   };
 
   const renderSub = (s: (typeof subscriptions)[number]) => {

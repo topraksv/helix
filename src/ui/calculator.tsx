@@ -160,7 +160,7 @@ export function CalculatorPad({ onResult, resultLabel }: { onResult?: (major: nu
       {onResult ? (
         <View style={{ marginTop: spacing.lg }}>
           <Button
-            label={`${resultLabel ?? tr.calc.useResult} — ${formatMinor(Math.round(value * 100))}`}
+            label={`${resultLabel ?? tr.calc.useResult} · ${formatMinor(Math.round(value * 100))}`}
             onPress={() => onResult(value)}
             disabled={!Number.isFinite(value)}
           />

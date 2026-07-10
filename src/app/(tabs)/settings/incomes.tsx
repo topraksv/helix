@@ -107,7 +107,7 @@ export default function IncomeRulesScreen() {
   const remove = async (r: (typeof incomes)[number]) => {
     const snapshot = await softDelete(userId, "recurring_incomes", r.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${r.name} — ${tr.common.deleted}`, () => void restoreRow(userId, "recurring_incomes", snapshot));
+    if (snapshot) undo.show(`${r.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "recurring_incomes", snapshot));
   };
 
   return (
