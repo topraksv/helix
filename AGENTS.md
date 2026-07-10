@@ -39,6 +39,75 @@
 - Shared primitives live in `src/ui/components.tsx`; reuse them, don't restyle
   inline. Design tokens are in `src/ui/theme.ts`.
 
+## Directory layout
+
+Root holds only what tooling **requires** there (Metro, Babel, Expo, TS,
+ESLint, Drizzle, Vitest all resolve config from the project root) — don't try
+to "tidy" configs into subfolders, it breaks the build. Everything else is
+grouped:
+
+```
+src/app/        expo-router routes (file-based). (tabs)/ = tab screens,
+                (auth)/ + (onboarding)/ = pre-login, modals at the top level.
+src/ui/         shared visual primitives + design tokens (theme.ts). One
+                component built once, reused everywhere. Never inline-restyle.
+src/domain/     pure functions with unit tests (balance, installments,
+                analytics, dates, money, recurrence). No React, no I/O.
+src/db/         drizzle schema, async client, migrations.
+src/data/       hooks + repo (live queries, maintenance).
+src/sync/       Supabase outbox engine + status.
+src/services/   side-effecting integrations (fx, markets, notifications,
+                import/export).
+src/i18n/tr.ts  every user-facing string (Turkish). Code stays English.
+assets/brand/   the brand kit (symbols, lockups). assets/images/ = only the
+                icons app.json references (icon/favicon/splash/adaptive).
+tests/          vitest suites for src/domain.
+```
+
+## Design language
+
+The look is **Warm Organic Editorial / Vintage Botanical Modernism** (moved off
+the old indigo fintech palette 2026-07). Keep it; don't regress to indigo.
+
+- **Palette is locked** — never change these hexes (`src/ui/theme.ts`):
+  linen `#F3EFE0` (light bg), obsidian `#181817` (dark bg), ink `#1E1E1E`,
+  ivory `#F6F5F2`; terracotta/copper `#C9623F` (primary, both themes), sage
+  `#7D8370`, camel `#C5A07F`. Chart series in `src/ui/charts.tsx` (index 1 =
+  income/sage, index 5 = expense/brick).
+- **Typography:** headings and amounts are the serif **Fraunces**
+  (`@expo-google-fonts/fraunces`), body is **Inter**. Font tokens (`font.serif`
+  etc.) and `type.*` scales live in `theme.ts`. A 2.5 s font-load grace in
+  `_layout.tsx` falls back to system fonts (prevents the mobile-web white
+  screen).
+- **Motion:** `Animated.spring` only — `useSpringPress(0.96)` +
+  `AnimatedPressable` for press feedback, `FadeIn` for list transitions.
+  Interruptible, React-Compiler-safe (no manual memo on unstable deps).
+- **Radii/shadow:** soft — `radius` tokens 12–22, `cardShadow` very low opacity.
+- **Logo:** the botanical DNA-helix mark. `src/ui/brand.tsx` `BrandMark` renders
+  the theme-aware transparent symbol (`assets/brand/symbol-{light,dark}-t.png`);
+  full lockups in `assets/brand/` for future use. (`src/ui/logo.tsx` is
+  unrelated — it fetches subscription *merchant* favicons.)
+
+## UI/UX rules the user enforces (non-negotiable)
+
+The user is a visual perfectionist. Every UI package must satisfy these, and
+after finishing you must sweep the **whole** app for them, not just the
+reported items:
+
+- **Never truncate text with an ellipsis (`…`).** If it doesn't fit, wrap it,
+  shorten it, or change the layout — don't hide it behind `numberOfLines`.
+  Dates, labels, button text must always be fully readable.
+- **Vertically center every row control** (toggle / edit / delete) within its
+  row — `alignItems: "center"`, aligned with *all* the row's content, not just
+  the title.
+- **No static / special-cased columns.** Everything a user sees in a table must
+  be add/edit/delete-able by them; no bespoke per-column logic.
+- **Matching status chips share identical size and alignment** (equal
+  height/width, symmetric).
+- **Aggressively trim bottom safe-area padding** on mobile — no dead space at
+  the end of a scroll (use `Math.max(insets.bottom, …)`, but don't overshoot).
+- The **current month auto-focuses/centers** in tables.
+
 ## Before you commit
 
 Run all three; they must be clean:
