@@ -47,7 +47,7 @@ export default function PersonsScreen() {
       <Card>
         <Row>
           <View style={{ flex: 1 }}>
-            <Field value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
+            <Field noMargin value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
           </View>
           <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim()} />
         </Row>
