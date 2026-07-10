@@ -199,7 +199,7 @@ export const tr = {
   },
   subs: {
     title: "Abonelikler",
-    monthlyLoad: "Aylık Gerçek Yük",
+    monthlyLoad: "Aylık Maliyet",
     yearlyTotal: "Yıllık Toplam",
     add: "Abonelik Ekle",
     name: "Ad",
