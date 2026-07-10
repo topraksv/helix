@@ -5,10 +5,13 @@
 
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
-import { nowIso, readSetting, softDelete, writeRows, writeSetting, type RowWrite } from "../db/mutations";
+import { nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
 import { todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
+import { convertToTryMinor } from "../domain/fx";
 import { advanceDueDate } from "../domain/recurrence";
+import { lookupRate } from "../services/fx-fetch";
+import { marketSellRateTry } from "../services/markets";
 import { findAutoConfirmable, findLate, generateExpected } from "../domain/expected";
 import type { Minor } from "../domain/money";
 import { planImportCell, type ParsedSheet } from "../services/spreadsheet-import";
@@ -275,9 +278,8 @@ export async function updateInstallmentPlan(userId: string, planId: string, inpu
     `SELECT id, installment_no FROM transactions WHERE installment_plan_id = ? AND deleted_at IS NULL`,
     [planId] as never[],
   );
-  for (const t of existing) {
-    if (t.installment_no != null && !keepNos.has(t.installment_no)) await softDelete(userId, "transactions", t.id);
-  }
+  const drop = existing.filter((t) => t.installment_no != null && !keepNos.has(t.installment_no)).map((t) => t.id);
+  await softDeleteMany(userId, "transactions", drop);
 }
 
 /** Tombstone a plan together with its generated transactions. */
@@ -287,8 +289,8 @@ export async function deletePlan(userId: string, planId: string): Promise<void> 
     `SELECT id FROM transactions WHERE installment_plan_id = ? AND deleted_at IS NULL`,
     [planId] as never[],
   );
+  await softDeleteMany(userId, "transactions", txIds.map((t) => t.id));
   await softDelete(userId, "installment_plans", planId);
-  for (const { id } of txIds) await softDelete(userId, "transactions", id);
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +414,14 @@ export async function confirmExpected(
   const row = await getExpectedRow(expectedId);
   if (!row || row.status === "paid") return;
   const amount = opts.actualAmountMinor ?? row.amount_minor;
+  // Snapshot the TRY value at confirm time. For foreign-currency items convert
+  // with the Harem sell ("satış") price (already streamed), falling back to the
+  // cached TCMB rate; only if neither is available do we store the raw amount.
+  const amountTryMinor = ((): number => {
+    if (row.currency === "TRY") return amount;
+    const rate = marketSellRateTry(row.currency) ?? lookupRate(userId, row.currency)?.rate.rateTry ?? null;
+    return rate ? convertToTryMinor(amount, rate) : amount;
+  })();
   const txId = newId();
   const today = todayISO();
   const sqlite = await getSqliteAsync();
@@ -425,7 +435,7 @@ export async function confirmExpected(
         amountMinor: amount,
         currency: row.currency,
         fxRate: null,
-        amountTryMinor: amount, // non-TRY expected amounts are entered in TRY equivalents at confirm time
+        amountTryMinor,
         entryDate: today,
         effectiveDate: row.due_date <= today ? row.due_date : today,
         status: "realized",
@@ -512,6 +522,12 @@ export async function bulkMonthEntry(
   personId: string,
   entries: { categoryId: string; kind: "expense" | "income"; amountMinor: Minor; isInvestment?: boolean }[],
 ): Promise<void> {
+  const today = todayISO();
+  const effectiveDate = `${month}-15`; // mid-month anchor for aggregates
+  // A mid-month anchor in the current month can land in the future (before the
+  // 15th) — status must be derived from the date, or the row would be
+  // realized-but-future and vanish from both the balance and the cells.
+  const status = effectiveDate <= today ? "realized" : "pending";
   const writes: RowWrite[] = entries.map((e) => ({
     table: "transactions",
     row: {
@@ -521,9 +537,9 @@ export async function bulkMonthEntry(
       currency: "TRY",
       fxRate: null,
       amountTryMinor: e.amountMinor,
-      entryDate: todayISO(),
-      effectiveDate: `${month}-15`, // mid-month anchor for aggregates
-      status: "realized",
+      entryDate: today,
+      effectiveDate,
+      status,
       categoryId: e.categoryId,
       paymentSourceId: null,
       personId,
@@ -613,8 +629,8 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   if (req.mode === "replace") {
     for (const year of affectedYears) {
       const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
-      for (const id of prev?.transactions ?? []) await softDelete(userId, "transactions", id);
-      for (const id of prev?.cellNotes ?? []) await softDelete(userId, "cell_notes", id);
+      await softDeleteMany(userId, "transactions", prev?.transactions ?? []);
+      await softDeleteMany(userId, "cell_notes", prev?.cellNotes ?? []);
     }
   }
 
@@ -638,6 +654,11 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       const month = sheet.months[r];
       const year = yearOf(month);
       if (!yearAllowed(year)) continue;
+      // Anchor mid-month; derive status from the date so future months of the
+      // current year import as pending (visible + auto-realized later) instead
+      // of realized-but-future (which would be omitted from the ledger).
+      const effectiveDate = `${month}-15`;
+      const status: "realized" | "pending" = effectiveDate <= today ? "realized" : "pending";
       columnYearsUpdates.set(year, orderedCatIds); // each year shows its sheet's columns
       const batch = batchFor(year);
       for (let ci = 0; ci < active.length; ci++) {
@@ -662,8 +683,8 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
               fxRate: null,
               amountTryMinor: amount,
               entryDate: today,
-              effectiveDate: `${month}-15`,
-              status: "realized",
+              effectiveDate,
+              status,
               categoryId: catId,
               paymentSourceId: null,
               personId: req.selfId,

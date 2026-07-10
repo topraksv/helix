@@ -131,6 +131,27 @@ export async function softDelete(
   return previous;
 }
 
+/**
+ * Tombstone many rows of one table in a single atomic write (one transaction,
+ * one outbox flush) instead of N separate `softDelete` calls. Used by bulk
+ * cleanups (plan deletion, re-import replace) where per-row transactions are
+ * needlessly slow. No undo snapshot is returned — callers that need undo use
+ * the single-row `softDelete`.
+ */
+export async function softDeleteMany(userId: string, table: SyncedTableName, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const sqlite = await getSqliteAsync();
+  const writes: RowWrite[] = [];
+  for (const id of ids) {
+    const previous = await sqlite.getFirstAsync<Record<string, unknown>>(
+      `SELECT * FROM ${table} WHERE id = ? AND user_id = ?`,
+      [id, userId] as never[],
+    );
+    if (previous) writes.push({ table, row: { ...fromDbShape(table, previous), deletedAt: nowIso() } });
+  }
+  if (writes.length > 0) await writeRows(userId, writes);
+}
+
 /** Restore a snapshot captured before delete/edit (undo). */
 export async function restoreRow(
   userId: string,
