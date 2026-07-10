@@ -356,7 +356,7 @@ function MatrixTable({
   const fontSize = compact ? 12 : 13;
   // Reserve enough for the two-line hint below the table; the card clips
   // (overflow:hidden), so an under-estimate cut the hint in half on phones.
-  const HINT_H = 52;
+  const HINT_H = 30;
 
   // The parent measures the exact space above the tab bar (onLayout); pin the
   // table to it minus the hint row so the table — and its bottom hint — always
@@ -433,7 +433,7 @@ function MatrixTable({
         onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : undefined}
         height={tableHeight}
       />
-      <Text style={[type.small, { color: palette.textMuted, padding: spacing.sm, textAlign: "center" }]}>
+      <Text style={[type.small, { color: palette.textMuted, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, textAlign: "center" }]}>
         {isColumns ? tr.cashflow.monthTapHint : tr.cashflow.pinHint}
       </Text>
     </Card>
@@ -475,7 +475,7 @@ function MatrixCell({
           { fontSize, color: value == null || value === 0 ? palette.textMuted : value < 0 ? palette.negative : palette.text, textAlign: "right" },
         ]}
       >
-        {value == null || value === 0 ? "—" : formatMinor(value)}
+        {value == null || value === 0 ? "" : formatMinor(value)}
       </Text>
       {note ? <View style={{ position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: 3, backgroundColor: palette.warning }} /> : null}
     </Pressable>

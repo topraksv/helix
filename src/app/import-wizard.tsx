@@ -171,7 +171,7 @@ export default function ImportWizardModal() {
     return (
       <Screen>
         <EmptyState icon={CheckCircle2} title={tr.importer.doneTitle(doneCount)} hint={tr.importer.doneHint} />
-        <Button label={tr.common.done} onPress={() => router.back()} />
+        <Button label={tr.common.done} onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"))} />
       </Screen>
     );
   }
@@ -256,7 +256,7 @@ export default function ImportWizardModal() {
                           return (
                             <Text key={c.label} style={[type.amountSm, { color: palette.textMuted, width: 108, textAlign: "right" }]}>
                               {hasBreakdown(cell) ? <Text style={{ color: palette.primary }}>• </Text> : null}
-                              {cell.valueMinor != null ? formatMinor(cell.valueMinor) : "—"}
+                              {cell.valueMinor != null ? formatMinor(cell.valueMinor) : ""}
                             </Text>
                           );
                         })}
