@@ -259,6 +259,8 @@ function RootLayoutInner() {
           <Stack.Screen name="bulk-entry" options={{ presentation: "modal", title: tr.bulk.title }} />
           <Stack.Screen name="cell-editor" options={{ presentation: "modal", title: tr.cell.title }} />
           <Stack.Screen name="import-wizard" options={{ presentation: "modal", title: tr.importer.title }} />
+          <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title }} />
+          <Stack.Screen name="columns-editor" options={{ presentation: "modal", title: tr.settings.categories }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title }} />
         </Stack>
         <UndoSnackbar />

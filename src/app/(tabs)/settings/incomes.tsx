@@ -21,7 +21,7 @@ import { spacing } from "../../../ui/theme";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
 const KINDS: IncomeKind[] = ["salary", "rent", "allowance", "other"];
-const QUICK_DAYS = ["1", "5", "10", "15", "20", "25", "28"] as const;
+const QUICK_DAYS = ["1", "5", "10", "15", "25", "28"] as const;
 
 export default function IncomeRulesScreen() {
   const userId = useUserId();

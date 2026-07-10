@@ -101,13 +101,13 @@ function FormatGuide({ wide }: { wide: boolean }) {
       </View>
 
       <View style={{ flexDirection: wide ? "row" : "column", gap: spacing.xl }}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: wide ? 1 : undefined }}>
           <Text style={[type.label, { color: palette.text, marginBottom: spacing.sm }]}>{tr.importer.examplesTitle}</Text>
           <ExampleRow label={tr.importer.exMonthsLabel} value={tr.importer.exMonths} />
           <ExampleRow label={tr.importer.exAmountsLabel} value={tr.importer.exAmounts} />
           <ExampleRow label={tr.importer.exFormulaLabel} value={tr.importer.exFormula} />
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: wide ? 1 : undefined }}>
           <Text style={[type.label, { color: palette.text, marginBottom: spacing.sm }]}>{tr.importer.autoTitle}</Text>
           {[tr.importer.auto1, tr.importer.auto2, tr.importer.auto3].map((line) => (
             <View key={line} style={{ flexDirection: "row", marginBottom: spacing.xs }}>

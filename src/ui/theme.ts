@@ -25,42 +25,46 @@ export interface Palette {
   gradientTo: string;
 }
 
-// Warm Organic Editorial — linen paper, antique charcoal, terracotta accent,
-// with sage + camel secondaries. No pure #FFF / #000.
+// Warm Organic Editorial, aligned to Claude's design tokens: clay accent
+// (#d97757) over a warm gray ramp (oat cream in light, near-black #141413 in
+// dark). Sage/olive + amber secondaries carry the semantic roles.
+// All hexes below are Claude's exact design tokens (gray ramp, clay, error,
+// focus, extended-green/yellow). primarySoft is the one derived value (a clay
+// tint) because the codebase appends hex alpha to it.
 export const lightPalette: Palette = {
-  background: "#F3EFE0",
-  surface: "#FBF8EF",
-  surfaceAlt: "#ECE5D3",
-  border: "#E1D8C4",
-  text: "#1E1E1E",
-  textMuted: "#6E6656",
-  primary: "#C9623F",
-  primarySoft: "#F0E0D6",
-  onPrimary: "#F6F5F2",
-  positive: "#5F7A55",
-  negative: "#A8432B",
-  warning: "#A9772F",
-  focus: "#C9623F",
-  gradientFrom: "#C9623F",
-  gradientTo: "#B5754A",
+  background: "#faf9f5", // gray-050 (warm cream page)
+  surface: "#ffffff", // gray-000
+  surfaceAlt: "#f0eee6", // gray-150
+  border: "#e8e6dc", // gray-200
+  text: "#1a1918", // gray-900
+  textMuted: "#73726c", // gray-550
+  primary: "#d97757", // clay
+  primarySoft: "#f6e7df", // clay tint (derived)
+  onPrimary: "#ffffff",
+  positive: "#1e9f3c", // extended-green (light)
+  negative: "#bf4d43", // error
+  warning: "#98801f", // extended-yellow (light)
+  focus: "#2c84db", // color-focus
+  gradientFrom: "#d97757", // clay
+  gradientTo: "#c6613f", // clay-hover
 };
 
 export const darkPalette: Palette = {
-  background: "#181817",
-  surface: "#222221",
-  surfaceAlt: "#2B2B28",
-  border: "#34332F",
-  text: "#F6F5F2",
-  textMuted: "#A8A296",
-  primary: "#C9623F",
-  primarySoft: "#3A2A22",
-  onPrimary: "#F6F5F2",
-  positive: "#96A085",
-  negative: "#D97757",
-  warning: "#CBA15E",
-  focus: "#C9623F",
-  gradientFrom: "#C9623F",
-  gradientTo: "#8A5236",
+  background: "#141413", // bg-primary
+  surface: "#262624", // bg-tertiary (cards)
+  surfaceAlt: "#30302e", // gray-750
+  border: "#3d3d3a", // border-secondary
+  text: "#faf9f5", // fg-primary
+  textMuted: "#b0aea5", // fg-secondary
+  primary: "#d97757", // clay
+  primarySoft: "#3a2a22", // clay tint dark (derived)
+  onPrimary: "#ffffff",
+  positive: "#4dcb6b", // extended-green (dark)
+  negative: "#bf4d43", // error
+  warning: "#ffd014", // extended-yellow (dark)
+  focus: "#2c84db", // color-focus
+  gradientFrom: "#d97757", // clay
+  gradientTo: "#c46849", // clay-dark
 };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;

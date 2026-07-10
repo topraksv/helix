@@ -69,11 +69,18 @@ tests/          vitest suites for src/domain.
 The look is **Warm Organic Editorial / Vintage Botanical Modernism** (moved off
 the old indigo fintech palette 2026-07). Keep it; don't regress to indigo.
 
-- **Palette is locked** — never change these hexes (`src/ui/theme.ts`):
-  linen `#F3EFE0` (light bg), obsidian `#181817` (dark bg), ink `#1E1E1E`,
-  ivory `#F6F5F2`; terracotta/copper `#C9623F` (primary, both themes), sage
-  `#7D8370`, camel `#C5A07F`. Chart series in `src/ui/charts.tsx` (index 1 =
-  income/sage, index 5 = expense/brick).
+- **Palette (aligned to Claude's design tokens, 2026-07-10)** — the locked
+  hexes now live in `src/ui/theme.ts`: clay/terracotta `#d97757` (primary, both
+  themes) over a warm gray ramp — light bg cream `#faf9f5`, white surfaces
+  `#ffffff`, alt `#f0eee6`, border `#e8e6dc`, ink `#1a1918`; dark bg `#141413`,
+  surface `#262624`, alt `#30302e`, border `#3d3d3a`, text `#faf9f5`. Semantics:
+  positive olive (`#6c8352`/`#93a382`), negative brick (`#bf4d43`/`#cf5341`),
+  warning amber, focus blue `#2c84db`. Chart series in `src/ui/charts.tsx`
+  (index 1 = income/sage, index 5 = expense/brick) are a separate validated
+  categorical set. (Previous linen/`#C9623F` palette retired 2026-07-10 for the
+  Claude-token clay/warm-gray system; the *fonts* below are unchanged — Anthropic
+  Sans/Serif are proprietary, so Inter + Fraunces remain the closest shippable
+  match.)
 - **Typography:** headings and amounts are the serif **Fraunces**
   (`@expo-google-fonts/fraunces`), body is **Inter**. Font tokens (`font.serif`
   etc.) and `type.*` scales live in `theme.ts`. A 2.5 s font-load grace in
