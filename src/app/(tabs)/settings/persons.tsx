@@ -38,7 +38,7 @@ export default function PersonsScreen() {
   const remove = async (p: (typeof persons)[number]) => {
     const snapshot = await softDelete(userId, "persons", p.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${p.name} — ${tr.common.deleted}`, () => void restoreRow(userId, "persons", snapshot));
+    if (snapshot) undo.show(`${p.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "persons", snapshot));
   };
 
   return (

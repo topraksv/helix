@@ -72,7 +72,7 @@ export default function SourcesScreen() {
   const remove = async (s: (typeof sources)[number]) => {
     const snapshot = await softDelete(userId, "payment_sources", s.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${s.name} — ${tr.common.deleted}`, () => void restoreRow(userId, "payment_sources", snapshot));
+    if (snapshot) undo.show(`${s.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "payment_sources", snapshot));
   };
 
   return (

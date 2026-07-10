@@ -52,7 +52,7 @@ export default function CategoriesScreen() {
   const remove = async (c: (typeof categories)[number]) => {
     const snapshot = await softDelete(userId, "categories", c.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${c.name} — ${tr.common.deleted}`, () => void restoreRow(userId, "categories", snapshot));
+    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "categories", snapshot));
   };
 
   return (

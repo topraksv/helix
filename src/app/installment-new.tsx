@@ -108,7 +108,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       router.back();
     };
     if (Platform.OS === "web") {
-      if (window.confirm(`${existing!.title} — ${tr.common.delete}?`)) void run();
+      if (window.confirm(`${existing!.title} · ${tr.common.delete}?`)) void run();
     } else {
       Alert.alert(existing!.title, `${tr.common.delete}?`, [
         { text: tr.common.cancel, style: "cancel" },

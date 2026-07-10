@@ -83,7 +83,7 @@ export default function BulkEntryModal() {
       {rows.map((c) => (
         <MoneyField
           key={c.id}
-          label={`${categoryIcon(c)} ${c.name} — ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
+          label={`${categoryIcon(c)} ${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
           value={values[c.id]?.raw ?? ""}
           onChangeMinor={(raw, minor) => setValues((v) => ({ ...v, [c.id]: { raw, minor } }))}
         />
