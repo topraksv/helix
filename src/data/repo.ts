@@ -570,6 +570,57 @@ export async function runMaintenance(userId: string): Promise<void> {
     }
   }
 
+  // 0b) One-time migration: the credit-card installment column used to be a
+  // hard-coded, specially-managed column. Standardize the model — recreate it
+  // once as an ordinary (user editable/deletable) computed column, guarded by a
+  // synced flag so a later delete is never resurrected on any device.
+  const ccMigrated = await sqlite.getAllAsync<{ value: string }>(
+    `SELECT value FROM settings WHERE user_id = ? AND key = 'cc_column_migrated' AND deleted_at IS NULL`,
+    [userId] as never[],
+  );
+  if (ccMigrated.length === 0) {
+    const ccId = await deterministicId(naturalKeys.ccColumn(userId));
+    // Skip creation if that row already exists in any state (incl. a tombstone):
+    // never override a user's deletion, even in a pre-flag-sync race.
+    const already = await sqlite.getAllAsync<{ id: string }>(
+      `SELECT id FROM computed_columns WHERE user_id = ? AND id = ?`,
+      [userId, ccId] as never[],
+    );
+    if (already.length === 0) {
+      const oldSettings = await sqlite.getAllAsync<{ key: string; value: string }>(
+        `SELECT key, value FROM settings WHERE user_id = ? AND key IN ('cc_col_label','cc_col_hidden','computed_columns_hidden') AND deleted_at IS NULL`,
+        [userId] as never[],
+      );
+      const readJson = <T,>(key: string, fb: T): T => {
+        const r = oldSettings.find((x) => x.key === key);
+        if (!r) return fb;
+        try {
+          return JSON.parse(r.value) as T;
+        } catch {
+          return fb;
+        }
+      };
+      const label = readJson<string>("cc_col_label", "KK Taksit") || "KK Taksit";
+      await writeRows(
+        userId,
+        [
+          {
+            table: "computed_columns" as const,
+            row: { id: ccId, name: label, definition: JSON.stringify({ op: "cc_split", part: "installment" }), sortOrder: 0, deletedAt: null },
+          },
+        ],
+        false,
+      );
+      // Preserve the old visibility choice by carrying it into the standard
+      // computed-column hidden list.
+      if (readJson<boolean>("cc_col_hidden", false)) {
+        const hidden = readJson<string[]>("computed_columns_hidden", []);
+        if (!hidden.includes(ccId)) await writeSetting(userId, "computed_columns_hidden", [...hidden, ccId]);
+      }
+    }
+    await writeSetting(userId, "cc_column_migrated", true);
+  }
+
   // 1) §2.7 — pending transactions whose effective date arrived become realized.
   const due = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions WHERE user_id = ? AND status = 'pending' AND effective_date <= ? AND deleted_at IS NULL`,
