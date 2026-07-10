@@ -5,12 +5,14 @@
 
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
-import { nowIso, softDelete, writeRows, writeSetting, type RowWrite } from "../db/mutations";
+import { nowIso, readSetting, softDelete, writeRows, writeSetting, type RowWrite } from "../db/mutations";
 import { todayISO, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { advanceDueDate } from "../domain/recurrence";
 import { findAutoConfirmable, findLate, generateExpected } from "../domain/expected";
 import type { Minor } from "../domain/money";
+import { planImportCell, type ParsedSheet } from "../services/spreadsheet-import";
+import { suggestCategoryIcon } from "./category-icons";
 import type { ExpectedPaymentLike, PaymentSourceType, TransactionType } from "../domain/types";
 
 // ---------------------------------------------------------------------------
@@ -534,6 +536,180 @@ export async function bulkMonthEntry(
     },
   }));
   await writeRows(userId, writes);
+}
+
+// ---------------------------------------------------------------------------
+// Spreadsheet import (faithful, multi-year, per-year columns)
+// ---------------------------------------------------------------------------
+
+interface ImportBatch {
+  transactions: string[];
+  cellNotes: string[];
+}
+
+export interface ImportRequest {
+  /** Sheets the user chose to import (already picked from the workbook). */
+  sheets: ParsedSheet[];
+  /** Column labels to skip (by label, case-sensitive to the parsed label). */
+  excludedLabels: string[];
+  selfId: string;
+  /** How to treat a year that was already imported before. */
+  mode: "replace" | "add";
+}
+
+const importBatchKey = (year: number) => `import_batch:${year}`;
+const COLUMN_YEARS_KEY = "column_years";
+
+/** Years (of the given set) that already carry a prior import batch. */
+export async function importedYears(userId: string, years: number[]): Promise<number[]> {
+  const out: number[] = [];
+  for (const year of [...new Set(years)]) {
+    const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
+    if (prev && (prev.transactions?.length || prev.cellNotes?.length)) out.push(year);
+  }
+  return out;
+}
+
+/**
+ * Import parsed sheets 1:1 into the ledger. Categories are matched by name (or
+ * created as columns), each year records its own ordered column set
+ * (`column_years`), formula/comment breakdowns become itemized rows or a cell
+ * note (see `planImportCell`), and the earliest month's opening balance seeds
+ * the ledger anchor. Re-importing a year either replaces its prior batch or
+ * adds on top. Everything is additive elsewhere — existing manual rows are
+ * never touched.
+ */
+export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number }> {
+  const sqlite = await getSqliteAsync();
+  const existing = await sqlite.getAllAsync<{ id: string; name: string; sort_order: number }>(
+    `SELECT id, name, sort_order FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
+    [userId] as never[],
+  );
+  const idByName = new Map(existing.map((c) => [c.name.toLocaleLowerCase("tr-TR"), c.id]));
+  let sortSeed = existing.reduce((m, c) => Math.max(m, c.sort_order), -1) + 1;
+
+  const catWrites: RowWrite[] = [];
+  const ensureCategory = (label: string, kind: "expense" | "income"): string => {
+    const key = label.toLocaleLowerCase("tr-TR");
+    let id = idByName.get(key);
+    if (!id) {
+      id = newId();
+      idByName.set(key, id);
+      catWrites.push({
+        table: "categories",
+        row: { id, name: label, kind, icon: suggestCategoryIcon(label, kind), color: null, sortOrder: sortSeed++, isColumn: true, deletedAt: null },
+      });
+    }
+    return id;
+  };
+
+  // Replace mode: tombstone each affected year's prior import before rewriting.
+  const affectedYears = [...new Set(req.sheets.map((s) => s.year))];
+  if (req.mode === "replace") {
+    for (const year of affectedYears) {
+      const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
+      for (const id of prev?.transactions ?? []) await softDelete(userId, "transactions", id);
+      for (const id of prev?.cellNotes ?? []) await softDelete(userId, "cell_notes", id);
+    }
+  }
+
+  const txWrites: RowWrite[] = [];
+  const noteWrites: RowWrite[] = [];
+  const batchByYear = new Map<number, ImportBatch>();
+  const columnYearsUpdates = new Map<number, string[]>();
+  const today = todayISO();
+  let imported = 0;
+
+  for (const sheet of req.sheets) {
+    const active = sheet.columns.map((c, i) => ({ ...c, index: i })).filter((c) => !req.excludedLabels.includes(c.label));
+    const orderedCatIds = active.map((col) => ensureCategory(col.label, col.kindGuess));
+    columnYearsUpdates.set(sheet.year, orderedCatIds);
+    const batch = batchByYear.get(sheet.year) ?? { transactions: [], cellNotes: [] };
+
+    for (let r = 0; r < sheet.months.length; r++) {
+      const month = sheet.months[r];
+      for (let ci = 0; ci < active.length; ci++) {
+        const col = active[ci];
+        const catId = orderedCatIds[ci];
+        const plan = planImportCell(sheet.cells[r][col.index]);
+        if (!plan) continue;
+        for (const item of plan.items) {
+          const id = newId();
+          // Ledger keeps amounts positive; a negative cell flips the flow.
+          const negative = item.amountMinor < 0;
+          const baseType: TransactionType = col.isInvestment ? "transfer" : col.kindGuess;
+          const type: TransactionType = negative && baseType !== "transfer" ? (baseType === "expense" ? "income" : "expense") : baseType;
+          const amount = Math.abs(item.amountMinor);
+          txWrites.push({
+            table: "transactions",
+            row: {
+              id,
+              type,
+              amountMinor: amount,
+              currency: "TRY",
+              fxRate: null,
+              amountTryMinor: amount,
+              entryDate: today,
+              effectiveDate: `${month}-15`,
+              status: "realized",
+              categoryId: catId,
+              paymentSourceId: null,
+              personId: req.selfId,
+              installmentPlanId: null,
+              installmentNo: null,
+              subscriptionId: null,
+              isAggregate: item.isAggregate,
+              note: item.note,
+              deletedAt: null,
+            },
+          });
+          batch.transactions.push(id);
+          imported++;
+        }
+        if (plan.cellNote) {
+          const noteId = await deterministicId(naturalKeys.cellNote(userId, month, catId));
+          noteWrites.push({ table: "cell_notes", row: { id: noteId, month, categoryId: catId, body: plan.cellNote, deletedAt: null } });
+          batch.cellNotes.push(noteId);
+        }
+      }
+    }
+    batchByYear.set(sheet.year, batch);
+  }
+
+  const writes = [...catWrites, ...txWrites, ...noteWrites];
+  if (writes.length > 0) await writeRows(userId, writes);
+
+  // Per-year column membership (Excel order preserved).
+  const columnYears = (await readSetting<Record<string, string[]>>(userId, COLUMN_YEARS_KEY)) ?? {};
+  for (const [year, ids] of columnYearsUpdates) columnYears[String(year)] = ids;
+  await writeSetting(userId, COLUMN_YEARS_KEY, columnYears, true);
+
+  // Record batches (add mode keeps prior ids so a later replace still cleans up).
+  for (const [year, batch] of batchByYear) {
+    if (req.mode === "add") {
+      const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
+      batch.transactions = [...(prev?.transactions ?? []), ...batch.transactions];
+      batch.cellNotes = [...(prev?.cellNotes ?? []), ...batch.cellNotes];
+    }
+    await writeSetting(userId, importBatchKey(year), batch);
+  }
+
+  await seedOpeningFromImport(userId, req.sheets);
+  return { imported };
+}
+
+/** Seed the ledger opening balance from the earliest imported opening cell. */
+async function seedOpeningFromImport(userId: string, sheets: ParsedSheet[]): Promise<void> {
+  const withOpening = sheets
+    .filter((s) => s.openingBalance)
+    .sort((a, b) => a.openingBalance!.month.localeCompare(b.openingBalance!.month));
+  const earliest = withOpening[0];
+  if (!earliest) return;
+  const currentStart = await readSetting<string>(userId, "start_month");
+  if (!currentStart || earliest.openingBalance!.month < currentStart) {
+    await writeSetting(userId, "start_month", earliest.openingBalance!.month);
+    await writeSetting(userId, "opening_balance_minor", earliest.openingBalance!.minor);
+  }
 }
 
 // ---------------------------------------------------------------------------
