@@ -220,7 +220,7 @@ export default function AnalysisScreen() {
                       key={m}
                       style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.sm, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text }]}
                     >
-                      {v === 0 ? "—" : formatMinor(v)}
+                      {v === 0 ? "" : formatMinor(v)}
                     </Text>
                   );
                 }),

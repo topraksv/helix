@@ -72,7 +72,7 @@ export function Donut({ slices, size = 168 }: { slices: DonutSlice[]; size?: num
             })
           : null}
         <SvgText x={cx} y={cy + 5} textAnchor="middle" fontSize={13} fontWeight="600" fill={palette.text}>
-          {total > 0 ? formatMinor(total) : "—"}
+          {formatMinor(total)}
         </SvgText>
       </Svg>
       {/* Paired legend list: identity never color-alone (relief rule) */}
