@@ -384,8 +384,10 @@ export function Button({
         <>
           {IconCmp ? <IconCmp size={small ? 15 : 17} color={color} strokeWidth={2.2} /> : null}
           <Text
-            style={[type.label, { color, fontSize: small ? 13 : 15 }]}
-            numberOfLines={1}
+            style={[type.label, { color, fontSize: small ? 13 : 15, textAlign: "center" }]}
+            // Web ignores adjustsFontSizeToFit, so a hard line cap would
+            // ellipsize; let the label wrap there instead (never hide text).
+            numberOfLines={Platform.OS === "web" ? undefined : 1}
             adjustsFontSizeToFit
             minimumFontScale={0.85}
           >
@@ -616,7 +618,7 @@ export function Select<T extends string>({
           },
         ]}
       >
-        <Text style={[type.body, { color: current ? palette.text : palette.textMuted }]} numberOfLines={1}>
+        <Text style={[type.body, { color: current ? palette.text : palette.textMuted, flex: 1 }]} numberOfLines={Platform.OS === "web" ? undefined : 1}>
           {current?.label ?? placeholder ?? ""}
         </Text>
         <ChevronDown size={17} color={palette.textMuted} />
@@ -727,7 +729,8 @@ export function Segmented<T extends string>({
                 // never shift or look off-center when the thumb moves.
                 { color: selected ? palette.text : palette.textMuted, fontFamily: "Inter_600SemiBold", textAlign: "center" },
               ]}
-              numberOfLines={1}
+              // Web ignores adjustsFontSizeToFit — wrap rather than ellipsize.
+              numberOfLines={Platform.OS === "web" ? undefined : 1}
               adjustsFontSizeToFit
               minimumFontScale={0.75}
             >

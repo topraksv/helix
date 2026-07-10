@@ -161,6 +161,10 @@ export function StickyTable({
   height?: number;
 }) {
   const { palette } = useTheme();
+  // On web adjustsFontSizeToFit is a no-op, so a 2-line cap would ellipsize
+  // longer labels. Allow an extra line there (fits within the fixed row/header
+  // heights) so realistic category names wrap fully instead of being cut.
+  const labelLines = Platform.OS === "web" ? 3 : 2;
   const vRef = useRef<ScrollView>(null);
   const bodyHRef = useRef<ScrollView>(null);
   const headerHRef = useRef<ScrollView>(null);
@@ -225,7 +229,7 @@ export function StickyTable({
         <Pressable disabled={!labelAction} onPress={labelAction ? () => labelAction(c.key) : undefined}>
           <Text
             style={[type.label, { color: isCurrent ? palette.primary : palette.textMuted, textAlign: "center" }]}
-            numberOfLines={2}
+            numberOfLines={labelLines}
             adjustsFontSizeToFit
             minimumFontScale={0.8}
           >
@@ -252,7 +256,7 @@ export function StickyTable({
       <View style={{ flexDirection: "row", height: headerHeight, borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surfaceAlt }}>
         <View style={{ flexDirection: "row", width: leftWidth, borderRightWidth: 1, borderColor: palette.border }}>
           <View style={[{ width: headWidth }, cellCenter]}>
-            <Text style={[type.label, { color: palette.textMuted, textAlign: "center" }]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>
+            <Text style={[type.label, { color: palette.textMuted, textAlign: "center" }]} numberOfLines={labelLines} adjustsFontSizeToFit minimumFontScale={0.8}>
               {cornerLabel}
             </Text>
           </View>
@@ -295,7 +299,7 @@ export function StickyTable({
                 >
                   <Text
                     style={[type.label, { color: r.onLabelPress ? palette.primary : palette.text, textAlign: "center", fontFamily: r.labelHighlight ? "Inter_700Bold" : "Inter_600SemiBold" }]}
-                    numberOfLines={2}
+                    numberOfLines={labelLines}
                     adjustsFontSizeToFit
                     minimumFontScale={0.8}
                   >
@@ -358,7 +362,7 @@ function PinnedHeader({ label, width, onUnpin }: { label: string; width: number;
       style={{ width, justifyContent: "center", paddingHorizontal: spacing.sm, flexDirection: "row", alignItems: "center", gap: 4 }}
     >
       <Pin size={11} color={palette.primary} fill={palette.primary} />
-      <Text style={[type.label, { color: palette.primary, textAlign: "right", flex: 1 }]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>
+      <Text style={[type.label, { color: palette.primary, textAlign: "right", flex: 1 }]} numberOfLines={Platform.OS === "web" ? 3 : 2} adjustsFontSizeToFit minimumFontScale={0.8}>
         {label}
       </Text>
     </Pressable>
