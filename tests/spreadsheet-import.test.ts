@@ -5,6 +5,8 @@ import {
   parseSheet,
   parseSheetAmount,
   parseWorkbook,
+  planImportCell,
+  type CellData,
   type RawCell,
 } from "../src/services/spreadsheet-import";
 import * as XLSX from "xlsx";
@@ -150,6 +152,66 @@ describe("parseSheet — failures", () => {
   it("reports sheets with no month axis", () => {
     const r = parseSheet([row("A", "B"), row("x", 1)], "Yatırım");
     expect("reason" in r).toBe(true);
+  });
+});
+
+describe("planImportCell", () => {
+  const cd = (over: Partial<CellData>): CellData => ({
+    valueMinor: null,
+    formulaParts: null,
+    comment: null,
+    commentParts: null,
+    ...over,
+  });
+
+  it("skips empty and zero cells", () => {
+    expect(planImportCell(cd({ valueMinor: null }))).toBeNull();
+    expect(planImportCell(cd({ valueMinor: 0 }))).toBeNull();
+  });
+
+  it("splits a literal formula and labels parts from the comment", () => {
+    const plan = planImportCell(
+      cd({
+        valueMinor: 2048000,
+        formulaParts: [1200000, 848000],
+        comment: "Kira 12.000\nGözlük 8.480",
+        commentParts: [
+          { label: "Kira", amountMinor: 1200000 },
+          { label: "Gözlük", amountMinor: 848000 },
+        ],
+      }),
+    );
+    expect(plan).toEqual({
+      items: [
+        { amountMinor: 1200000, note: "Kira", isAggregate: false },
+        { amountMinor: 848000, note: "Gözlük", isAggregate: false },
+      ],
+      cellNote: null,
+    });
+  });
+
+  it("itemizes a formula without a comment, keeping any comment as a note", () => {
+    const plan = planImportCell(cd({ valueMinor: 120000, formulaParts: [50000, 70000] }));
+    expect(plan!.items.map((i) => i.amountMinor)).toEqual([50000, 70000]);
+    expect(plan!.items.every((i) => i.note === null && !i.isAggregate)).toBe(true);
+  });
+
+  it("itemizes labeled comment amounts that reconcile to the value", () => {
+    const plan = planImportCell(
+      cd({ valueMinor: 30000, commentParts: [{ label: "A", amountMinor: 10000 }, { label: "B", amountMinor: 20000 }] }),
+    );
+    expect(plan!.items).toEqual([
+      { amountMinor: 10000, note: "A", isAggregate: false },
+      { amountMinor: 20000, note: "B", isAggregate: false },
+    ]);
+  });
+
+  it("falls back to one aggregate row and parks a plain comment on the cell", () => {
+    const plan = planImportCell(cd({ valueMinor: 221676, comment: "beklenmedik masraf" }));
+    expect(plan).toEqual({
+      items: [{ amountMinor: 221676, note: null, isAggregate: true }],
+      cellNote: "beklenmedik masraf",
+    });
   });
 });
 

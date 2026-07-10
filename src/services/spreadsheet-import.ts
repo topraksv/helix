@@ -235,6 +235,46 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   };
 }
 
+export interface ImportItem {
+  amountMinor: Minor;
+  note: string | null;
+  /** true = one opaque monthly total; false = a real itemized part. */
+  isAggregate: boolean;
+}
+export interface CellPlan {
+  items: ImportItem[];
+  /** Comment to attach to the (month, category) cell, if it wasn't itemized. */
+  cellNote: string | null;
+}
+
+/**
+ * Decide how one cell becomes ledger rows: split a literal formula and/or a
+ * labeled comment into itemized line items, else keep one aggregate total and
+ * park any comment on the cell note. Returns null for empty/zero cells.
+ */
+export function planImportCell(cell: CellData): CellPlan | null {
+  const value = cell.valueMinor;
+  if (value == null || value === 0) return null;
+  const fp = cell.formulaParts;
+  const cp = cell.commentParts;
+  const labeled = cp && cp.every((p) => p.amountMinor != null) ? cp : null;
+
+  // 1) literal formula whose part count matches the comment lines → labeled items
+  if (fp && cp && cp.length === fp.length) {
+    return { items: fp.map((amt, i) => ({ amountMinor: amt, note: cp[i].label || null, isAggregate: false })), cellNote: null };
+  }
+  // 2) literal formula only → itemize (unlabeled); keep any comment as cell note
+  if (fp) {
+    return { items: fp.map((amt) => ({ amountMinor: amt, note: null, isAggregate: false })), cellNote: cell.comment };
+  }
+  // 3) labeled comment amounts that reconcile to the value → labeled items
+  if (labeled && labeled.reduce((s, p) => s + (p.amountMinor ?? 0), 0) === value) {
+    return { items: labeled.map((p) => ({ amountMinor: p.amountMinor!, note: p.label || null, isAggregate: false })), cellNote: null };
+  }
+  // 4) opaque monthly total → one aggregate row, comment (if any) → cell note
+  return { items: [{ amountMinor: value, note: null, isAggregate: true }], cellNote: cell.comment };
+}
+
 /** Convert a SheetJS worksheet into a dense grid of RawCells over its range. */
 export function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
   const ref = ws["!ref"];

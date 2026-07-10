@@ -32,6 +32,8 @@ export const naturalKeys = {
   expected: (userId: string, kind: string, refId: string, dueDate: string) =>
     `expected:${userId}:${kind}:${refId}:${dueDate}`,
   installmentTx: (planId: string, installmentNo: number) => `insttx:${planId}:${installmentNo}`,
+  /** One note per (month, category) cell — deterministic so re-import overwrites. */
+  cellNote: (userId: string, month: string, categoryId: string) => `cellnote:${userId}:${month}:${categoryId}`,
   /** The credit-card installment column, migrated from a hard-coded column to
    *  an ordinary computed column exactly once per account. */
   ccColumn: (userId: string) => `computed-cc-installment:${userId}`,

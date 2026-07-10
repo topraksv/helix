@@ -1,12 +1,11 @@
 /**
  * Spreadsheet import wizard: pick an .xlsx/.xlsm/.csv → preview the detected
- * months/columns per sheet → import as aggregate transactions (missing
- * categories are created as table columns). Covers "move my old Excel over 1:1",
- * including multi-year workbooks (one sheet per year).
+ * months/columns per sheet → import 1:1 into the Mali Tablo. Handles multi-year
+ * workbooks (one sheet per year, each keeping its own columns), formula/comment
+ * breakdowns, opening balance, and re-import of a year that already has data.
  *
- * NOTE: this is the PKG-1 baseline (multi-sheet parse + value import). The
- * richer write path (formula/comment split, per-year columns, opening balance,
- * re-import dedup) and the visual format guide land in later packages.
+ * NOTE: the richer visual format guide + per-sheet selection UI land in PKG 4;
+ * this wires the full write path (importSheets) with a minimal re-import prompt.
  */
 
 import React, { useState } from "react";
@@ -15,21 +14,17 @@ import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { CheckCircle2, FileSpreadsheet, Upload } from "lucide-react-native";
-import { newId } from "../db/ids";
-import { writeRows, type RowWrite } from "../db/mutations";
-import { bulkMonthEntry } from "../data/repo";
-import { useCategories, usePersons, useUserId } from "../data/hooks";
-import { suggestCategoryIcon } from "../data/category-icons";
+import { importSheets, importedYears } from "../data/repo";
+import { usePersons, useUserId } from "../data/hooks";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { parseWorkbookBytes, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, Card, ChipPicker, EmptyState, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, Card, ChipPicker, EmptyState, Row, Screen, SectionHeader } from "../ui/components";
 import { spacing, type, useTheme } from "../ui/theme";
 
 export default function ImportWizardModal() {
   const userId = useUserId();
-  const categories = useCategories();
   const persons = usePersons();
   const router = useRouter();
   const { palette } = useTheme();
@@ -37,10 +32,12 @@ export default function ImportWizardModal() {
   const [excluded, setExcluded] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reimportYears, setReimportYears] = useState<number[] | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
 
   const pick = async () => {
     setError(null);
+    setReimportYears(null);
     const picked = await DocumentPicker.getDocumentAsync({
       type: [
         "text/csv",
@@ -72,60 +69,31 @@ export default function ImportWizardModal() {
     }
   };
 
-  const runImport = async () => {
+  /** Tap "import" → ask first if any year already has an import batch. */
+  const startImport = async () => {
+    if (!workbook) return;
+    const years = [...new Set(workbook.sheets.map((s) => s.year))];
+    const already = await importedYears(userId, years);
+    if (already.length > 0) {
+      setReimportYears(already.sort());
+      return;
+    }
+    await doImport("add");
+  };
+
+  const doImport = async (mode: "replace" | "add") => {
     if (!workbook) return;
     const selfId = persons.find((p) => p.isSelf)?.id;
     if (!selfId) return;
+    setReimportYears(null);
     setBusy(true);
     try {
-      // Category ids are shared across sheets: same-named column in 2025 and
-      // 2026 maps to one category (matched case-insensitively).
-      const categoryIdByLabel = new Map<string, string>();
-      categories.forEach((c) => categoryIdByLabel.set(c.name.toLocaleLowerCase("tr-TR"), c.id));
-      const newCategories: RowWrite[] = [];
-      let sortSeed = categories.length;
-      let imported = 0;
-
-      for (const sheet of workbook.sheets) {
-        const active = sheet.columns
-          .map((c, i) => ({ ...c, index: i }))
-          .filter((c) => !excluded.includes(c.label));
-
-        for (const col of active) {
-          const key = col.label.toLocaleLowerCase("tr-TR");
-          if (categoryIdByLabel.has(key)) continue;
-          const id = newId();
-          categoryIdByLabel.set(key, id);
-          newCategories.push({
-            table: "categories",
-            row: {
-              id,
-              name: col.label,
-              kind: col.kindGuess,
-              icon: suggestCategoryIcon(col.label, col.kindGuess),
-              color: null,
-              sortOrder: sortSeed++,
-              isColumn: true,
-              deletedAt: null,
-            },
-          });
-        }
-        if (newCategories.length > 0) await writeRows(userId, newCategories.splice(0));
-
-        for (let r = 0; r < sheet.months.length; r++) {
-          const entries = active
-            .map((col) => ({
-              categoryId: categoryIdByLabel.get(col.label.toLocaleLowerCase("tr-TR"))!,
-              kind: col.kindGuess,
-              amountMinor: sheet.cells[r][col.index].valueMinor ?? 0,
-              isInvestment: col.isInvestment,
-            }))
-            .filter((e) => e.amountMinor !== 0);
-          if (entries.length === 0) continue;
-          await bulkMonthEntry(userId, sheet.months[r], selfId, entries);
-          imported += entries.length;
-        }
-      }
+      const { imported } = await importSheets(userId, {
+        sheets: workbook.sheets,
+        excludedLabels: excluded,
+        selfId,
+        mode,
+      });
       scheduleSync(userId);
       setDoneCount(imported);
     } catch (e) {
@@ -201,7 +169,22 @@ export default function ImportWizardModal() {
             </ScrollView>
           </Card>
 
-          <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void runImport()} loading={busy} />
+          {reimportYears ? (
+            <Card>
+              <Body style={{ marginBottom: spacing.sm }}>{tr.importer.reimportPrompt(reimportYears.join(", "))}</Body>
+              <Row gap={spacing.sm}>
+                <View style={{ flex: 1 }}>
+                  <Button label={tr.importer.reimportReplace} onPress={() => void doImport("replace")} loading={busy} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button label={tr.importer.reimportAdd} variant="secondary" onPress={() => void doImport("add")} loading={busy} />
+                </View>
+              </Row>
+              <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setReimportYears(null)} />
+            </Card>
+          ) : (
+            <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} />
+          )}
         </>
       ) : null}
     </Screen>
