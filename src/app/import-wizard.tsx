@@ -1,41 +1,52 @@
 /**
- * Spreadsheet import wizard: pick an .xlsx/.xlsm/.csv → see a visual format
- * guide → choose which sheets/columns to bring → import 1:1 into the Mali
- * Tablo. Handles multi-year workbooks (one sheet per year, each keeping its own
- * columns), formula/comment breakdowns, opening balance, and re-import of a
- * year that already has data. Parsing/mapping lives in
- * services/spreadsheet-import + data/repo; this screen only guides and confirms.
+ * Spreadsheet import wizard: pick an .xlsx/.xlsm/.csv → see a visual, example-
+ * rich format guide → choose which years/columns to bring → import 1:1 into the
+ * Mali Tablo. Handles multi-year workbooks (each year keeps its own columns),
+ * formula/comment breakdowns, opening balance, and re-import of a year that
+ * already has data. Parsing/mapping lives in services/spreadsheet-import +
+ * data/repo; this screen only guides and confirms.
  */
 
 import React, { useState } from "react";
-import { Platform, ScrollView, Text, View } from "react-native";
+import { Platform, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { CheckCircle2, FileSpreadsheet, Upload } from "lucide-react-native";
 import { importSheets, importedYears } from "../data/repo";
 import { usePersons, useUserId } from "../data/hooks";
+import { yearOf } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
 import { Body, Button, Card, ChipPicker, EmptyState, Row, Screen, SectionHeader } from "../ui/components";
-import { spacing, type, useTheme, type Palette } from "../ui/theme";
+import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 
 // --- visual format guide ---------------------------------------------------
-function MiniCell({ text, tone, palette }: { text?: string; tone: "month" | "head" | "data"; palette: Palette }) {
+function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
   const bg = tone === "month" ? palette.primarySoft : tone === "head" ? palette.surfaceAlt : palette.surface;
   const color = tone === "month" ? palette.primary : palette.textMuted;
   return (
-    <View style={{ width: 40, height: 22, borderWidth: 1, borderColor: palette.border, alignItems: "center", justifyContent: "center", backgroundColor: bg }}>
-      <Text style={{ fontSize: 9, color, fontFamily: "Inter_600SemiBold" }} numberOfLines={1}>
+    <View
+      style={{
+        width: big ? 74 : 46,
+        height: big ? 40 : 26,
+        borderWidth: 1,
+        borderColor: palette.border,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: bg,
+      }}
+    >
+      <Text style={{ fontSize: big ? 13 : 10, color, fontFamily: "Inter_600SemiBold" }} numberOfLines={1}>
         {text ?? "·"}
       </Text>
     </View>
   );
 }
 
-function SheetLayoutDiagram({ orientation, caption }: { orientation: "vertical" | "horizontal"; caption: string }) {
+function SheetLayoutDiagram({ orientation, caption, big }: { orientation: "vertical" | "horizontal"; caption: string; big: boolean }) {
   const { palette } = useTheme();
   const M = (text: string) => ({ text, tone: "month" as const });
   const H = (text: string) => ({ text, tone: "head" as const });
@@ -53,36 +64,59 @@ function SheetLayoutDiagram({ orientation, caption }: { orientation: "vertical" 
           [H("Maaş"), D, D],
         ];
   return (
-    <View style={{ alignItems: "center", gap: spacing.xs }}>
-      <View>
+    <View style={{ alignItems: "center", gap: spacing.sm }}>
+      <View style={{ borderRadius: radius.sm, overflow: "hidden" }}>
         {grid.map((r, ri) => (
           <View key={ri} style={{ flexDirection: "row" }}>
             {r.map((cell, ci) => (
-              <MiniCell key={ci} text={"text" in cell ? cell.text : undefined} tone={cell.tone} palette={palette} />
+              <MiniCell key={ci} text={"text" in cell ? cell.text : undefined} tone={cell.tone} palette={palette} big={big} />
             ))}
           </View>
         ))}
       </View>
-      <Text style={[type.small, { color: palette.textMuted }]}>{caption}</Text>
+      <Text style={[big ? type.body : type.small, { color: palette.text, textAlign: "center", fontFamily: "Inter_500Medium" }]}>{caption}</Text>
     </View>
   );
 }
 
-function FormatGuide() {
+function ExampleRow({ label, value }: { label: string; value: string }) {
+  const { palette } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", marginBottom: spacing.xs, flexWrap: "wrap" }}>
+      <Text style={[type.small, { color: palette.primary, fontFamily: "Inter_600SemiBold", width: 78 }]}>{label}</Text>
+      <Text style={[type.small, { color: palette.textMuted, flex: 1, minWidth: 180 }]}>{value}</Text>
+    </View>
+  );
+}
+
+function FormatGuide({ wide }: { wide: boolean }) {
   const { palette } = useTheme();
   return (
     <Card>
       <SectionHeader>{tr.importer.guideTitle}</SectionHeader>
-      <Row gap={spacing.xl} style={{ justifyContent: "center", flexWrap: "wrap", marginBottom: spacing.md }}>
-        <SheetLayoutDiagram orientation="vertical" caption={tr.importer.layoutVertical} />
-        <SheetLayoutDiagram orientation="horizontal" caption={tr.importer.layoutHorizontal} />
-      </Row>
-      {[tr.importer.guide1, tr.importer.guide2, tr.importer.guide3, tr.importer.guide4, tr.importer.guide5].map((line) => (
-        <View key={line} style={{ flexDirection: "row", marginBottom: spacing.xs }}>
-          <Text style={[type.small, { color: palette.primary, marginRight: spacing.xs }]}>•</Text>
-          <Text style={[type.small, { color: palette.textMuted, flex: 1 }]}>{line}</Text>
+      <Body muted style={{ marginBottom: spacing.lg }}>{tr.importer.guideLead}</Body>
+      <View style={{ flexDirection: wide ? "row" : "column", gap: spacing.xl, justifyContent: "center", alignItems: "center", marginBottom: spacing.xl }}>
+        <SheetLayoutDiagram orientation="vertical" caption={tr.importer.layoutVertical} big={wide} />
+        <SheetLayoutDiagram orientation="horizontal" caption={tr.importer.layoutHorizontal} big={wide} />
+      </View>
+
+      <View style={{ flexDirection: wide ? "row" : "column", gap: spacing.xl }}>
+        <View style={{ flex: 1 }}>
+          <Text style={[type.label, { color: palette.text, marginBottom: spacing.sm }]}>{tr.importer.examplesTitle}</Text>
+          <ExampleRow label={tr.importer.exMonthsLabel} value={tr.importer.exMonths} />
+          <ExampleRow label={tr.importer.exAmountsLabel} value={tr.importer.exAmounts} />
+          <ExampleRow label={tr.importer.exFormulaLabel} value={tr.importer.exFormula} />
         </View>
-      ))}
+        <View style={{ flex: 1 }}>
+          <Text style={[type.label, { color: palette.text, marginBottom: spacing.sm }]}>{tr.importer.autoTitle}</Text>
+          {[tr.importer.auto1, tr.importer.auto2, tr.importer.auto3].map((line) => (
+            <View key={line} style={{ flexDirection: "row", marginBottom: spacing.xs }}>
+              <Text style={[type.small, { color: palette.primary, marginRight: spacing.xs }]}>•</Text>
+              <Text style={[type.small, { color: palette.textMuted, flex: 1 }]}>{line}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
     </Card>
   );
 }
@@ -95,8 +129,10 @@ export default function ImportWizardModal() {
   const persons = usePersons();
   const router = useRouter();
   const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const wide = width >= 820;
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
-  const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
+  const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [excluded, setExcluded] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -131,19 +167,19 @@ export default function ImportWizardModal() {
         return;
       }
       setWorkbook(parsed);
-      setSelectedSheets(parsed.sheets.map((s) => s.sheetName));
+      setSelectedYears(yearsOf(parsed));
       setExcluded([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const selected = (workbook?.sheets ?? []).filter((s) => selectedSheets.includes(s.sheetName));
+  // Sheets that contribute at least one month in a selected year.
+  const activeSheets = (workbook?.sheets ?? []).filter((s) => s.months.some((m) => selectedYears.includes(yearOf(m))));
 
-  /** Tap "import" → ask first if any selected year already has an import batch. */
   const startImport = async () => {
-    if (selected.length === 0) return;
-    const already = await importedYears(userId, selected.map((s) => s.year));
+    if (selectedYears.length === 0) return;
+    const already = await importedYears(userId, selectedYears);
     if (already.length > 0) {
       setReimportYears(already.sort());
       return;
@@ -153,11 +189,17 @@ export default function ImportWizardModal() {
 
   const doImport = async (mode: "replace" | "add") => {
     const selfId = persons.find((p) => p.isSelf)?.id;
-    if (!selfId || selected.length === 0) return;
+    if (!selfId || selectedYears.length === 0) return;
     setReimportYears(null);
     setBusy(true);
     try {
-      const { imported } = await importSheets(userId, { sheets: selected, excludedLabels: excluded, selfId, mode });
+      const { imported } = await importSheets(userId, {
+        sheets: activeSheets,
+        excludedLabels: excluded,
+        selectedYears,
+        selfId,
+        mode,
+      });
       scheduleSync(userId);
       setDoneCount(imported);
     } catch (e) {
@@ -176,10 +218,11 @@ export default function ImportWizardModal() {
     );
   }
 
-  // Column toggles: union of the selected sheets' columns (first-seen kind).
+  const years = workbook ? yearsOf(workbook) : [];
+  // Column toggles: union of the active sheets' columns (first-seen kind).
   const unionColumns: { label: string; income: boolean }[] = [];
   const seenCol = new Set<string>();
-  for (const s of selected) {
+  for (const s of activeSheets) {
     for (const col of s.columns) {
       if (!seenCol.has(col.label)) {
         seenCol.add(col.label);
@@ -187,7 +230,7 @@ export default function ImportWizardModal() {
       }
     }
   }
-  const preview: ParsedSheet | undefined = selected[0];
+  const preview: ParsedSheet | undefined = activeSheets[0];
 
   return (
     <Screen>
@@ -203,17 +246,23 @@ export default function ImportWizardModal() {
 
       {!workbook ? (
         <View style={{ marginTop: spacing.md }}>
-          <FormatGuide />
+          <FormatGuide wide={wide} />
         </View>
       ) : (
         <>
-          {/* which sheets (years) to import */}
-          <SectionHeader>{tr.importer.sheetSelectTitle}</SectionHeader>
+          {/* which years to import */}
+          <SectionHeader>{tr.importer.yearSelectTitle}</SectionHeader>
           <ChipPicker
             multi
-            options={workbook.sheets.map((s) => ({ value: s.sheetName, label: tr.importer.sheetChip(s.sheetName, s.months.length, s.columns.length) }))}
-            values={selectedSheets}
-            onToggle={(name) => setSelectedSheets((xs) => (xs.includes(name) ? xs.filter((x) => x !== name) : [...xs, name]))}
+            options={years.map((y) => ({
+              value: String(y),
+              label: tr.importer.yearChip(y, monthCount(workbook, y)),
+            }))}
+            values={selectedYears.map(String)}
+            onToggle={(v) => {
+              const y = Number(v);
+              setSelectedYears((xs) => (xs.includes(y) ? xs.filter((x) => x !== y) : [...xs, y]));
+            }}
           />
           {workbook.unparsed.length > 0 ? (
             <Body muted style={{ marginBottom: spacing.md }}>
@@ -225,6 +274,7 @@ export default function ImportWizardModal() {
             <>
               {/* which columns */}
               <SectionHeader>{tr.importer.columnsTitle}</SectionHeader>
+              <Body muted style={{ marginBottom: spacing.sm }}>{tr.importer.columnsLead}</Body>
               <ChipPicker
                 multi
                 options={unionColumns.map((c) => ({ value: c.label, label: `${c.label}${c.income ? " ↑" : ""}` }))}
@@ -232,7 +282,7 @@ export default function ImportWizardModal() {
                 onToggle={(label) => setExcluded((xs) => (xs.includes(label) ? xs.filter((x) => x !== label) : [...xs, label]))}
               />
 
-              {/* preview grid (first selected sheet) */}
+              {/* preview grid (first active sheet) */}
               <Body muted style={{ marginBottom: spacing.sm }}>
                 {tr.importer.detected(preview.months.length, preview.columns.length)}
                 {preview.skippedColumns.length > 0 ? ` ${tr.importer.skipped(preview.skippedColumns.join(", "))}` : ""}
@@ -283,7 +333,7 @@ export default function ImportWizardModal() {
                   <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setReimportYears(null)} />
                 </Card>
               ) : (
-                <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} disabled={selected.length === 0} />
+                <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} disabled={selectedYears.length === 0} />
               )}
             </>
           ) : null}
@@ -291,4 +341,17 @@ export default function ImportWizardModal() {
       )}
     </Screen>
   );
+}
+
+/** Distinct years across every parsed sheet's months, ascending. */
+function yearsOf(wb: ParsedWorkbook): number[] {
+  const set = new Set<number>();
+  for (const s of wb.sheets) for (const m of s.months) set.add(yearOf(m));
+  return [...set].sort((a, b) => a - b);
+}
+
+function monthCount(wb: ParsedWorkbook, year: number): number {
+  let n = 0;
+  for (const s of wb.sheets) for (const m of s.months) if (yearOf(m) === year) n++;
+  return n;
 }
