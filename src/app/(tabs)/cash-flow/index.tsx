@@ -107,6 +107,12 @@ export default function CashflowScreen() {
     const active = categories.filter((c) => c.isColumn);
     if (!yearColIds) return active;
     const byId = new Map(categories.map((c) => [c.id, c]));
+    // Columns explicitly claimed by some year stay confined to those years; only
+    // unclaimed (manually added / template) columns bleed into the live year.
+    const claimed = new Set<string>();
+    Object.values(columnYears).forEach((ids) => ids.forEach((id) => claimed.add(id)));
+    const dataCats = new Set<string>();
+    bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) dataCats.add(cid); }));
     const seen = new Set<string>();
     const out: typeof active = [];
     for (const id of yearColIds) {
@@ -116,10 +122,9 @@ export default function CashflowScreen() {
         seen.add(id);
       }
     }
-    const dataCats = new Set<string>();
-    bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) dataCats.add(cid); }));
     for (const c of active) {
-      if (!seen.has(c.id) && (dataCats.has(c.id) || year === maxYear)) {
+      if (seen.has(c.id)) continue;
+      if (dataCats.has(c.id) || (year === maxYear && !claimed.has(c.id))) {
         out.push(c);
         seen.add(c.id);
       }
