@@ -108,6 +108,33 @@ reported items:
   the end of a scroll (use `Math.max(insets.bottom, …)`, but don't overshoot).
 - The **current month auto-focuses/centers** in tables.
 
+## Shipping updates (do this after every change — the agent owns it)
+
+Two separate targets. **Pushing to `main` only ships the web app.** The phone
+does NOT update by itself — you must publish the mobile OTA too, or the user
+keeps seeing the old version (this is a recurring confusion; own it).
+
+- **Web** — automatic: the `deploy-web` GitHub Action rebuilds and publishes to
+  Pages on every push to `main`. Nothing else to do.
+- **Mobile (JS/asset-only changes — the usual case)** — publish an EAS Update:
+  ```
+  export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+  npx eas-cli update --branch preview -m "<short summary>" --non-interactive
+  ```
+  The machine is logged in as `topraksv`; the installed build subscribes to the
+  **`preview`** branch (runtime `1.0.0`, from `runtimeVersion.policy:appVersion`).
+  Do this after the commit/push whenever app code changed. The phone applies it
+  on the **next cold start** (expo-updates downloads on launch, swaps in on the
+  launch after) — tell the user to fully close and reopen the app once.
+- **Native rebuild required** (not OTA-able) when: a native module / `app.json`
+  plugin is added, the app icon/splash/adaptive icon changes, the Expo SDK or
+  `runtimeVersion` bumps, or the free-Apple-ID signing has hit its 7-day expiry.
+  That is a local, user-machine step — the user runs
+  `npx expo run:ios --device` (their phone + Xcode; free Apple ID re-signs every
+  7 days). EAS Build can't do device builds on a free Apple ID, so don't push
+  users toward it; a local run build is the path. After a native rebuild, OTA
+  updates flow again as long as the runtime version matches.
+
 ## Before you commit
 
 Run all three; they must be clean:
