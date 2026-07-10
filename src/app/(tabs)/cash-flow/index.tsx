@@ -89,13 +89,43 @@ export default function CashflowScreen() {
     [sources],
   );
   const txLike = useMemo(() => toTxLike(allTx, persons), [allTx, persons]);
-  const columnCategories = categories.filter((c) => c.isColumn);
 
   // Year switcher bounds: back to the earliest data, forward only while there
   // is actual data (e.g. installments spilling into next year).
   const minYear = bundle ? yearOf(bundle.startMonth) : currentYear;
   const lastDataYear = allTx.length > 0 ? yearOf(allTx[allTx.length - 1].effectiveDate) : currentYear;
   const maxYear = Math.max(currentYear, lastDataYear);
+
+  // Per-year columns: an imported year (or one edited via `column_years`) shows
+  // exactly its recorded columns in order; other years fall back to all active
+  // columns. Self-heal without extra state: a column that gained data in the
+  // year surfaces automatically, and the live (max) year always shows every
+  // active column so newly added ones appear.
+  const columnYears = settingValue<Record<string, string[]>>(settings, "column_years", {});
+  const yearColIds = columnYears[String(year)];
+  const columnCategories = (() => {
+    const active = categories.filter((c) => c.isColumn);
+    if (!yearColIds) return active;
+    const byId = new Map(categories.map((c) => [c.id, c]));
+    const seen = new Set<string>();
+    const out: typeof active = [];
+    for (const id of yearColIds) {
+      const c = byId.get(id);
+      if (c && !seen.has(id)) {
+        out.push(c);
+        seen.add(id);
+      }
+    }
+    const dataCats = new Set<string>();
+    bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) dataCats.add(cid); }));
+    for (const c of active) {
+      if (!seen.has(c.id) && (dataCats.has(c.id) || year === maxYear)) {
+        out.push(c);
+        seen.add(c.id);
+      }
+    }
+    return out;
+  })();
 
   const yearSwitcher = (
     <Row gap={spacing.sm}>
