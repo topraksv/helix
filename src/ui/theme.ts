@@ -73,23 +73,28 @@ export const font = {
   semibold: "Inter_600SemiBold",
   bold: "Inter_700Bold",
   extrabold: "Inter_800ExtraBold",
+  // Editorial serif for headings + hero figures (Warm Organic aesthetic).
+  serifMedium: "Fraunces_500Medium",
+  serif: "Fraunces_600SemiBold",
+  serifBold: "Fraunces_700Bold",
 } as const;
 
 /**
  * Static font files carry one weight each, so tokens set fontFamily only —
- * never fontWeight (iOS would try to synthesize a second face).
+ * never fontWeight (iOS would try to synthesize a second face). Headings and
+ * the hero balance use the serif; body, labels and table figures stay Inter.
  */
 export const type = {
-  display: { fontSize: 34, fontFamily: font.extrabold, letterSpacing: -0.8 },
-  title: { fontSize: 24, fontFamily: font.bold, letterSpacing: -0.4 },
-  heading: { fontSize: 17, fontFamily: font.semibold, letterSpacing: -0.2 },
+  display: { fontSize: 34, fontFamily: font.serifBold, letterSpacing: -0.4 },
+  title: { fontSize: 25, fontFamily: font.serifBold, letterSpacing: -0.3 },
+  heading: { fontSize: 18, fontFamily: font.serif, letterSpacing: -0.1 },
   body: { fontSize: 15, fontFamily: font.regular },
   label: { fontSize: 13, fontFamily: font.medium },
   small: { fontSize: 12, fontFamily: font.regular },
   amountLg: {
-    fontSize: 32,
-    fontFamily: font.bold,
-    letterSpacing: -0.6,
+    fontSize: 33,
+    fontFamily: font.serifBold,
+    letterSpacing: -0.4,
     fontVariant: ["tabular-nums" as const],
   },
   amount: { fontSize: 15, fontFamily: font.semibold, fontVariant: ["tabular-nums" as const] },

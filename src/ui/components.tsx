@@ -8,7 +8,6 @@ import React, { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Easing,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -42,10 +41,12 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
  * on press and a gentle settle back, giving surfaces a native-iOS liveliness
  * without attention-grabbing motion. Returns a stable animated scale value.
  */
-function useSpringPress(pressedScale = 0.97) {
+function useSpringPress(pressedScale = 0.96) {
   const scale = useRef(new Animated.Value(1)).current;
+  // Interruptible by construction: each press starts a fresh spring from the
+  // current (possibly mid-flight) value, so reversing never glitches.
   const onPressIn = () => Animated.spring(scale, { toValue: pressedScale, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
-  const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 38, bounciness: 8 }).start();
+  const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 36, bounciness: 9 }).start();
   return { scale, onPressIn, onPressOut };
 }
 
@@ -57,20 +58,25 @@ function useSpringPress(pressedScale = 0.97) {
 export function FadeIn({ children, delay = 0, style }: { children: ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
   const [progress] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    Animated.timing(progress, {
+    // Spring-driven entrance (mass/stiffness feel) — weighted and organic
+    // rather than a fixed-duration curve, matching the app-wide motion system.
+    const anim = Animated.spring(progress, {
       toValue: 1,
-      duration: 220,
       delay,
-      easing: Easing.out(Easing.cubic),
       useNativeDriver: Platform.OS !== "web",
-    }).start();
+      damping: 18,
+      stiffness: 170,
+      mass: 1,
+    });
+    anim.start();
+    return () => anim.stop();
   }, [progress, delay]);
   return (
     <Animated.View
       style={[
         {
-          opacity: progress,
-          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+          opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }),
+          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
         },
         style,
       ]}
@@ -920,10 +926,22 @@ export function ListRow({
     </View>
   );
   if (!onPress) return content;
+  return <PressableRow onPress={onPress}>{content}</PressableRow>;
+}
+
+/** List row wrapper with the shared springy press feedback. */
+function PressableRow({ children, onPress }: { children: ReactNode; onPress: () => void }) {
+  const press = useSpringPress(0.98);
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
-      {content}
-    </Pressable>
+    <AnimatedPressable
+      accessibilityRole="button"
+      onPress={onPress}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={{ transform: [{ scale: press.scale }] }}
+    >
+      {children}
+    </AnimatedPressable>
   );
 }
 

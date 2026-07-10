@@ -5,6 +5,7 @@
   "author": "Ömer Toprak Şavlı",
   "license": "UNLICENSED",
   "dependencies": {
+    "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@supabase/supabase-js": "^2.110.0",
     "babel-preset-expo": "~54.0.10",
@@ -27,6 +28,7 @@
     "expo-splash-screen": "~31.0.13",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
+    "expo-updates": "~29.0.18",
     "lucide-react-native": "^1.23.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
