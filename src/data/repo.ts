@@ -6,7 +6,7 @@
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
 import { nowIso, readSetting, softDelete, writeRows, writeSetting, type RowWrite } from "../db/mutations";
-import { todayISO, type ISODate, type MonthKey } from "../domain/dates";
+import { todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { advanceDueDate } from "../domain/recurrence";
 import { findAutoConfirmable, findLate, generateExpected } from "../domain/expected";
@@ -552,6 +552,8 @@ export interface ImportRequest {
   sheets: ParsedSheet[];
   /** Column labels to skip (by label, case-sensitive to the parsed label). */
   excludedLabels: string[];
+  /** Only import months in these years; omit to import every year found. */
+  selectedYears?: number[];
   selfId: string;
   /** How to treat a year that was already imported before. */
   mode: "replace" | "add";
@@ -603,8 +605,11 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     return id;
   };
 
+  const selectedYears = req.selectedYears ? new Set(req.selectedYears) : null;
+  const yearAllowed = (y: number) => !selectedYears || selectedYears.has(y);
+
   // Replace mode: tombstone each affected year's prior import before rewriting.
-  const affectedYears = [...new Set(req.sheets.map((s) => s.year))];
+  const affectedYears = [...new Set(req.sheets.flatMap((s) => s.months.map(yearOf)))].filter(yearAllowed);
   if (req.mode === "replace") {
     for (const year of affectedYears) {
       const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
@@ -619,15 +624,22 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   const columnYearsUpdates = new Map<number, string[]>();
   const today = todayISO();
   let imported = 0;
+  const batchFor = (y: number): ImportBatch => {
+    let b = batchByYear.get(y);
+    if (!b) batchByYear.set(y, (b = { transactions: [], cellNotes: [] }));
+    return b;
+  };
 
   for (const sheet of req.sheets) {
     const active = sheet.columns.map((c, i) => ({ ...c, index: i })).filter((c) => !req.excludedLabels.includes(c.label));
     const orderedCatIds = active.map((col) => ensureCategory(col.label, col.kindGuess));
-    columnYearsUpdates.set(sheet.year, orderedCatIds);
-    const batch = batchByYear.get(sheet.year) ?? { transactions: [], cellNotes: [] };
 
     for (let r = 0; r < sheet.months.length; r++) {
       const month = sheet.months[r];
+      const year = yearOf(month);
+      if (!yearAllowed(year)) continue;
+      columnYearsUpdates.set(year, orderedCatIds); // each year shows its sheet's columns
+      const batch = batchFor(year);
       for (let ci = 0; ci < active.length; ci++) {
         const col = active[ci];
         const catId = orderedCatIds[ci];
@@ -673,7 +685,6 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         }
       }
     }
-    batchByYear.set(sheet.year, batch);
   }
 
   const writes = [...catWrites, ...txWrites, ...noteWrites];
@@ -694,14 +705,14 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     await writeSetting(userId, importBatchKey(year), batch);
   }
 
-  await seedOpeningFromImport(userId, req.sheets);
+  await seedOpeningFromImport(userId, req.sheets, yearAllowed);
   return { imported };
 }
 
 /** Seed the ledger opening balance from the earliest imported opening cell. */
-async function seedOpeningFromImport(userId: string, sheets: ParsedSheet[]): Promise<void> {
+async function seedOpeningFromImport(userId: string, sheets: ParsedSheet[], yearAllowed: (y: number) => boolean): Promise<void> {
   const withOpening = sheets
-    .filter((s) => s.openingBalance)
+    .filter((s) => s.openingBalance && yearAllowed(yearOf(s.openingBalance.month)))
     .sort((a, b) => a.openingBalance!.month.localeCompare(b.openingBalance!.month));
   const earliest = withOpening[0];
   if (!earliest) return;
