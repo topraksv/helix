@@ -93,8 +93,8 @@ export const tr = {
     inDays: (n: number) => (n === 0 ? "bugün" : n === 1 ? "yarın" : `${n} gün sonra`),
   },
   sync: {
-    errRls: "Eşitleme başarısız: bu cihazda başka bir hesaba ait eski kayıtlar bulundu. Çıkış yapıp yeniden giriş yapman sorunu çözer.",
-    errAuth: "Oturum süren dolmuş. Lütfen çıkış yapıp tekrar giriş yap.",
+    errRls: "Eşitlemede geçici bir uyum sorunu oluştu; birazdan otomatik olarak yeniden denenecek.",
+    errAuth: "Oturum yenileniyor; verilerin birazdan otomatik eşitlenecek.",
     errNetwork: "İnternet bağlantısı yok. Bağlanınca verilerin otomatik eşitlenecek.",
     errGeneric: "Şu an eşitleme yapılamadı; birazdan otomatik olarak tekrar denenecek.",
   },

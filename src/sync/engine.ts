@@ -11,12 +11,30 @@ import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
 
+const isAuthError = (raw: string) => /jwt|token|401|unauthorized|not authenticated/i.test(raw);
+
 /** Map a raw PostgREST/network error to a short, friendly Turkish message. */
 function friendlySyncError(raw: string): string {
   if (/row-level security|violates row-level|permission denied/i.test(raw)) return tr.sync.errRls;
-  if (/jwt|token|401|unauthorized|not authenticated/i.test(raw)) return tr.sync.errAuth;
+  if (isAuthError(raw)) return tr.sync.errAuth;
   if (/network|fetch|failed to fetch|timeout|offline/i.test(raw)) return tr.sync.errNetwork;
   return tr.sync.errGeneric;
+}
+
+/**
+ * Silently renew the access token. An expired JWT is the common cause of sync
+ * 401s (autoRefresh can lag after the app was backgrounded); refreshing and
+ * retrying recovers without ever asking the user to sign out and back in.
+ */
+async function tryRefreshSession(): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    return !error && !!data.session;
+  } catch {
+    return false;
+  }
 }
 
 const PULL_PAGE = 1000;
@@ -163,7 +181,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempt = 0;
 
-export async function syncNow(userId: string): Promise<void> {
+export async function syncNow(userId: string, allowRefresh = true): Promise<void> {
   const status = useSyncStatus.getState();
   if (!getSupabase()) {
     status.set({ state: "unconfigured" });
@@ -180,6 +198,13 @@ export async function syncNow(userId: string): Promise<void> {
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
     console.error("[sync]", raw);
+    // Expired token → refresh once and retry immediately, no user action.
+    if (allowRefresh && isAuthError(raw) && (await tryRefreshSession())) {
+      status.set({ state: "syncing" });
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => void syncNow(userId, false), 0);
+      return;
+    }
     status.set({ state: "error", error: friendlySyncError(raw) });
     // Exponential backoff retry: 5s, 10s, 20s… capped at 5 min.
     const delay = Math.min(5000 * 2 ** retryAttempt, 300_000);
