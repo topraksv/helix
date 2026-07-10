@@ -98,6 +98,7 @@ export function Screen({
   title,
   subtitle,
   right,
+  leading,
   maxWidth = 760,
 }: {
   children: ReactNode;
@@ -106,6 +107,8 @@ export function Screen({
   title?: string;
   subtitle?: string;
   right?: ReactNode;
+  /** Optional mark shown to the left of the title (e.g. the brand logo). */
+  leading?: ReactNode;
   maxWidth?: number;
 }) {
   const { palette } = useTheme();
@@ -115,7 +118,8 @@ export function Screen({
 
   const header =
     title != null ? (
-      <View style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
+      <View style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
+        {leading}
         <View style={{ flex: 1 }}>
           <Text style={[type.title, { color: palette.text }]}>{title}</Text>
           {subtitle ? (
