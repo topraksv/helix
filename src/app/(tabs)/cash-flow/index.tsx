@@ -48,8 +48,6 @@ export default function CashflowScreen() {
   const settings = useSettingsMap();
   const hiddenComputed = settingValue<string[]>(settings, "computed_columns_hidden", []);
   const visibleComputed = computed.filter((c) => !hiddenComputed.includes(c.id));
-  const ccLabel = settingValue<string>(settings, "cc_col_label", tr.cashflow.ccInstallments);
-  const ccHidden = settingValue<boolean>(settings, "cc_col_hidden", false);
   const sources = useSources();
   const persons = usePersons();
   const allTx = useAllTransactions();
@@ -159,8 +157,6 @@ export default function CashflowScreen() {
                   orientation={orientation}
                   compact={!wide}
                   measuredHeight={tableAreaH}
-                  ccLabel={ccLabel}
-                  ccHidden={ccHidden}
                   pinnedKey={pinnedKey}
                   onTogglePin={togglePin}
                 />
@@ -231,8 +227,6 @@ function MatrixTable({
   orientation,
   compact,
   measuredHeight,
-  ccLabel,
-  ccHidden,
   pinnedKey,
   onTogglePin,
 }: {
@@ -245,8 +239,6 @@ function MatrixTable({
   orientation: "monthsAsRows" | "monthsAsColumns";
   compact: boolean;
   measuredHeight: number;
-  ccLabel: string;
-  ccHidden: boolean;
   pinnedKey: string | null;
   onTogglePin: (key: string) => void;
 }) {
@@ -278,9 +270,6 @@ function MatrixTable({
 
   const columns: ColumnDef[] = useMemo(
     () => [
-      ...(ccHidden
-        ? []
-        : [{ key: "cc", label: ccLabel, categoryId: null, value: (m: MonthLedger) => ccByMonth.get(m.month)?.installmentMinor ?? 0, action: () => router.push("/cash-flow/installments") } as ColumnDef]),
       ...columnCategories.map<ColumnDef>((c) => ({ key: c.id, label: c.name, categoryId: c.id, value: (m) => m.byCategory.get(c.id) ?? 0 })),
       ...computedColumns.map<ColumnDef>((c) => ({
         key: c.id,
@@ -305,7 +294,7 @@ function MatrixTable({
       { key: "opening", label: tr.cashflow.opening, categoryId: null, value: (m) => m.openingMinor },
       { key: "closing", label: tr.cashflow.closing, categoryId: null, value: (m) => m.closingMinor },
     ],
-    [columnCategories, computedColumns, ccByMonth, router, ccLabel, ccHidden],
+    [columnCategories, computedColumns, ccByMonth],
   );
 
   const CELL_W = compact ? 104 : 128;

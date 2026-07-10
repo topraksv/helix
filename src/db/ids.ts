@@ -32,4 +32,7 @@ export const naturalKeys = {
   expected: (userId: string, kind: string, refId: string, dueDate: string) =>
     `expected:${userId}:${kind}:${refId}:${dueDate}`,
   installmentTx: (planId: string, installmentNo: number) => `insttx:${planId}:${installmentNo}`,
+  /** The credit-card installment column, migrated from a hard-coded column to
+   *  an ordinary computed column exactly once per account. */
+  ccColumn: (userId: string) => `computed-cc-installment:${userId}`,
 };

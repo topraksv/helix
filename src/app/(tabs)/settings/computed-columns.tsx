@@ -10,7 +10,8 @@ import { Pressable, Switch, Text, View } from "react-native";
 import { Calculator, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows, writeSetting } from "../../../db/mutations";
-import { settingValue, useCategories, useComputedColumns, useLedger, useSettingsMap, useUserId } from "../../../data/hooks";
+import { settingValue, toTxLike, useAllTransactions, useCategories, useComputedColumns, useLedger, usePersons, useSettingsMap, useSources, useUserId } from "../../../data/hooks";
+import { creditCardSplit } from "../../../domain/analytics";
 import { evaluateComputedColumn, parseDefinition, type ComputedColumnDefinition } from "../../../domain/computed-columns";
 import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
@@ -39,6 +40,9 @@ export default function ComputedColumnsScreen() {
   const { palette } = useTheme();
   const today = todayISO();
   const bundle = useLedger(yearOf(today));
+  const sources = useSources();
+  const allTx = useAllTransactions();
+  const persons = usePersons();
   const settings = useSettingsMap();
   const hidden = settingValue<string[]>(settings, HIDDEN_KEY, []);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -67,19 +71,21 @@ export default function ComputedColumnsScreen() {
     if (!definition || !bundle) return null;
     const month = bundle.yearMonths.find((m) => m.month === monthKeyOf(today));
     if (!month) return null;
+    const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
+    const cc = creditCardSplit(toTxLike(allTx, persons), creditCardIds, month.month, today);
     try {
       return evaluateComputedColumn(definition, {
         month: month.month,
         byCategory: month.byCategory,
         incomeMinor: month.incomeMinor,
         expenseMinor: month.expenseMinor,
-        ccSingleMinor: 0,
-        ccInstallmentMinor: 0,
+        ccSingleMinor: cc.singleMinor,
+        ccInstallmentMinor: cc.installmentMinor,
       });
     } catch {
       return null;
     }
-  }, [definition, bundle, today]);
+  }, [definition, bundle, today, sources, allTx, persons]);
 
   const valid = name.trim() !== "" && definition !== null;
 
