@@ -115,36 +115,4 @@ describe("computed columns", () => {
   });
 });
 
-describe("spreadsheet import parsing", async () => {
-  const { parseMonthLabel, parseSheet, parseSheetAmount } = await import("../src/services/spreadsheet-import");
-
-  it("parses month labels in common formats", () => {
-    expect(parseMonthLabel("Ocak 2025")).toBe("2025-01");
-    expect(parseMonthLabel("oca 25")).toBe("2025-01");
-    expect(parseMonthLabel("2025-03")).toBe("2025-03");
-    expect(parseMonthLabel("03.2025")).toBe("2025-03");
-    expect(parseMonthLabel("Toplam")).toBeNull();
-  });
-
-  it("parses sheet amounts in TR/EN/number forms", () => {
-    expect(parseSheetAmount(1234.5)).toBe(123450);
-    expect(parseSheetAmount("1.234,56")).toBe(123456);
-    expect(parseSheetAmount("1,234.56")).toBe(123456);
-    expect(parseSheetAmount("")).toBeNull();
-  });
-
-  it("normalizes months-as-columns sheets and skips balance columns", () => {
-    const sheet = parseSheet([
-      ["Kalem", "Ocak 2025", "Şubat 2025"],
-      ["Market", "1.000", "1.200"],
-      ["Maaş", "50.000", "50.000"],
-      ["Ay Başı Bakiye", "10.000", "12.000"],
-    ]);
-    expect(sheet).not.toBeNull();
-    expect(sheet!.months).toEqual(["2025-01", "2025-02"]);
-    expect(sheet!.columns.map((c) => c.label)).toEqual(["Market", "Maaş"]);
-    expect(sheet!.columns[1].kindGuess).toBe("income");
-    expect(sheet!.skippedColumns).toEqual(["Ay Başı Bakiye"]);
-    expect(sheet!.cells[0][0]).toBe(100000);
-  });
-});
+// (spreadsheet import parsing moved to tests/spreadsheet-import.test.ts)
