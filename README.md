@@ -1,21 +1,24 @@
 <div align="center">
 
-# Helix
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/horizontal-dark.png">
+  <img src="assets/brand/horizontal-light.png" alt="Helix" width="540">
+</picture>
 
-**Local-first personal finance for people who outgrew the spreadsheet.**
+<h3>Local-first personal finance for people who outgrew the spreadsheet.</h3>
 
 Monthly cash flow, installment tracking, and subscriptions in one app that
 works fully offline, syncs when you're back online, and never makes you wait
 for the network.
 
-[![Open the live app](https://img.shields.io/badge/▶_Open_the_live_web_app-000020?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
+[![Open the live web app](https://img.shields.io/badge/▶_Open_the_live_web_app-C9623F?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
 
-[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-000020?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
-[![React Native 0.81](https://img.shields.io/badge/React%20Native-0.81-61DAFB?logo=react&logoColor=white)](https://reactnative.dev)
-[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
-[![64 tests passing](https://img.shields.io/badge/tests-64%20passing-brightgreen)](tests/)
-[![Proprietary](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](#license)
+[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-181817?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
+[![React Native 0.81](https://img.shields.io/badge/React%20Native-0.81-181817?logo=react&logoColor=61DAFB)](https://reactnative.dev)
+[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-181817?logo=typescript&logoColor=3178C6)](https://www.typescriptlang.org)
+[![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-181817?logo=supabase&logoColor=3FCF8E)](https://supabase.com)
+[![64 tests passing](https://img.shields.io/badge/tests-64%20passing-7D8370)](tests/)
+[![Proprietary](https://img.shields.io/badge/license-proprietary-C5A07F)](#license)
 
 *iOS + Web from a single codebase.*
 
@@ -80,6 +83,30 @@ truth.
 | **Money** | Integer kuruş everywhere — no floats. FX: TCMB `today.xml` → Frankfurter fallback → cache; live gold/FX from the Harem Altın socket feed |
 | **Tables** | One cross-platform sticky-column matrix ([src/ui/sticky-table.tsx](src/ui/sticky-table.tsx)) — pinned first column + an optional pinned extra column, months-as-rows/columns pivot, identical on web and iOS |
 | **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics — covered by 64 unit tests, including a golden chain validated against the original spreadsheet |
+
+## The look
+
+Helix isn't styled like a fintech dashboard. Its design language is **Warm
+Organic Editorial** — a linen-and-ink palette, serif headlines, and a botanical
+double-helix mark, so your money feels less like a spreadsheet and more like a
+well-set page.
+
+![Linen](https://img.shields.io/badge/linen-F3EFE0?style=flat-square&labelColor=F3EFE0)
+![Obsidian](https://img.shields.io/badge/obsidian-181817?style=flat-square&labelColor=181817)
+![Terracotta](https://img.shields.io/badge/terracotta-C9623F?style=flat-square&labelColor=C9623F)
+![Sage](https://img.shields.io/badge/sage-7D8370?style=flat-square&labelColor=7D8370)
+![Camel](https://img.shields.io/badge/camel-C5A07F?style=flat-square&labelColor=C5A07F)
+
+- **Type** — [Fraunces](https://fonts.google.com/specimen/Fraunces) for headings
+  and figures, [Inter](https://fonts.google.com/specimen/Inter) for everything
+  else. Numbers read like a printed ledger.
+- **Motion** — spring physics only: every press, list change, and reveal eases
+  with an interruptible `Animated.spring`, never a linear tween.
+- **Light & dark** — one palette, both themes; the terracotta accent is shared,
+  the ground swaps from linen to obsidian.
+- **The mark** — a DNA helix wound with sage-and-terracotta foliage: *growth,
+  compounding, the double strand of income and expense.* Full brand kit in
+  [`assets/brand/`](assets/brand/).
 
 ## Screens
 
