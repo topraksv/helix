@@ -101,6 +101,16 @@ export const useSession = create<SessionStore>((set) => ({
         // offline sign-out still clears local session state
       }
     }
+    // Best practice for a finance app: leave no plaintext financial data on the
+    // device after an explicit sign-out. The cloud (RLS-scoped) is the source
+    // of truth, so the next sign-in re-hydrates via the initial pull. Clearing
+    // the owner marker keeps that first pull clean.
+    try {
+      await resetLocalWorkspace();
+    } catch {
+      // best-effort; a failed wipe still clears the session below
+    }
+    await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
     set({ userId: null, isOnlineSession: false });
   },

@@ -166,6 +166,21 @@ function RootLayoutInner() {
     if (result.success) setLocked(false);
   }, []);
 
+  // Re-arm the biometric gate whenever the app is backgrounded, so Face ID
+  // protects the data on every return — not only on a cold start. We listen for
+  // "background" (a real app switch) rather than "inactive" (which also fires
+  // for the Face ID overlay itself, which would loop the prompt).
+  useEffect(() => {
+    if (Platform.OS === "web" || !userId) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "background") return;
+      void kv.get("helix.biometric").then((v) => {
+        if (v === "true") setLocked(true);
+      });
+    });
+    return () => sub.remove();
+  }, [userId]);
+
   useEffect(() => {
     // Auto-prompt Face ID when the gate closes; setState happens only after
     // the async authentication resolves, not synchronously in the effect.
