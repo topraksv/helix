@@ -1,15 +1,16 @@
 /**
- * Brand logo chain (spec §2.4), derived from the subscription NAME alone:
- *   utility keyword → themed icon chip (electricity, water, internet…)
- *   known brand alias → simple-icons CDN
- *   optional domain → favicon
- *   otherwise → initials badge
- * Runtime fetch with graceful fallback; nothing bundled.
+ * Brand mark for a subscription, derived from its NAME alone and rendered
+ * FULLY LOCALLY — no network request ever leaves the device (privacy: the
+ * subscription list is sensitive and must not be sent to any favicon/CDN):
+ *   utility keyword  → themed lucide icon chip (electricity, water, internet…)
+ *   known brand      → a chip in the brand's accent colour with its monogram
+ *   otherwise        → deterministic-hue initials badge
+ * Brand accent colours are facts, not logo artwork, so nothing is bundled and
+ * no trademarked bitmap is reproduced.
  */
 
-import React, { useMemo, useState } from "react";
-import { View } from "react-native";
-import { Image } from "expo-image";
+import React, { useMemo } from "react";
+import { Text, View } from "react-native";
 import {
   Building2,
   Car,
@@ -42,113 +43,82 @@ const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
   { match: /çöp|belediye/i, icon: Trash2, color: "#5d6579" },
 ];
 
-/** Popular names whose simple-icons slug differs from a naive slugify. */
-const BRAND_ALIASES: Record<string, string> = {
-  hbo: "hbomax",
-  hbomax: "hbomax",
-  "hbo max": "hbomax",
-  blutv: "blutv",
-  exxen: "exxen",
-  prime: "primevideo",
-  "prime video": "primevideo",
-  "amazon prime": "primevideo",
-  chatgpt: "openai",
-  "youtube premium": "youtube",
-  "youtube music": "youtubemusic",
-  "google one": "google",
-  "apple music": "applemusic",
-  "apple tv": "appletv",
-  "apple tv+": "appletv",
-  icloud: "icloud",
-  "x premium": "x",
-  twitter: "x",
-  "disney+": "disneyplus",
-  disney: "disneyplus",
-  gain: "gain",
-  tabii: "tabii",
-  todtv: "todtv",
-  "amazon music": "amazonmusic",
-  deezer: "deezer",
-  tidal: "tidal",
-  duolingo: "duolingo",
-  notion: "notion",
-  dropbox: "dropbox",
-  "adobe creative cloud": "adobe",
-  adobe: "adobe",
-  canva: "canva",
-  linkedin: "linkedin",
-  "linkedin premium": "linkedin",
-  patreon: "patreon",
-  twitch: "twitch",
-  playstation: "playstation",
-  "playstation plus": "playstation",
-  "xbox game pass": "xbox",
-  xbox: "xbox",
-  steam: "steam",
-  nintendo: "nintendo",
-  github: "github",
-  "github copilot": "github",
-  medium: "medium",
-  audible: "audible",
-  storytel: "storytel",
+/**
+ * Accent colour + optional short monogram for well-known subscriptions, keyed
+ * by a normalised name. Matched on the whole trimmed name first, then on the
+ * first word, so "Netflix Premium" still resolves to Netflix.
+ */
+const BRAND: Record<string, { color: string; mark?: string }> = {
+  netflix: { color: "#e50914", mark: "N" },
+  spotify: { color: "#1db954", mark: "S" },
+  youtube: { color: "#ff0000", mark: "YT" },
+  "youtube premium": { color: "#ff0000", mark: "YT" },
+  "youtube music": { color: "#ff0000", mark: "YT" },
+  disney: { color: "#113ccf", mark: "D+" },
+  "disney+": { color: "#113ccf", mark: "D+" },
+  amazon: { color: "#ff9900", mark: "a" },
+  prime: { color: "#1a98ff", mark: "P" },
+  "prime video": { color: "#1a98ff", mark: "P" },
+  "amazon prime": { color: "#1a98ff", mark: "P" },
+  hbo: { color: "#002be7", mark: "M" },
+  "hbo max": { color: "#002be7", mark: "M" },
+  max: { color: "#002be7", mark: "M" },
+  "apple music": { color: "#fa243c", mark: "" },
+  "apple tv": { color: "#000000", mark: "TV" },
+  "apple tv+": { color: "#000000", mark: "TV" },
+  icloud: { color: "#3693f3", mark: "i" },
+  chatgpt: { color: "#10a37f", mark: "AI" },
+  openai: { color: "#10a37f", mark: "AI" },
+  x: { color: "#000000", mark: "X" },
+  twitter: { color: "#000000", mark: "X" },
+  "google one": { color: "#4285f4", mark: "G" },
+  twitch: { color: "#9146ff", mark: "T" },
+  steam: { color: "#1b2838", mark: "S" },
+  playstation: { color: "#003791", mark: "PS" },
+  "playstation plus": { color: "#003791", mark: "PS" },
+  xbox: { color: "#107c10", mark: "X" },
+  "xbox game pass": { color: "#107c10", mark: "X" },
+  nintendo: { color: "#e60012", mark: "N" },
+  github: { color: "#181717", mark: "GH" },
+  "github copilot": { color: "#181717", mark: "GH" },
+  notion: { color: "#111111", mark: "N" },
+  dropbox: { color: "#0061ff", mark: "D" },
+  adobe: { color: "#da1f26", mark: "A" },
+  canva: { color: "#00c4cc", mark: "C" },
+  linkedin: { color: "#0a66c2", mark: "in" },
+  "linkedin premium": { color: "#0a66c2", mark: "in" },
+  patreon: { color: "#f96854", mark: "P" },
+  audible: { color: "#f8991c", mark: "A" },
+  duolingo: { color: "#58cc02", mark: "D" },
+  deezer: { color: "#a238ff", mark: "D" },
+  tidal: { color: "#000000", mark: "T" },
+  blutv: { color: "#f8009e", mark: "blu" },
+  exxen: { color: "#00e0b8", mark: "e" },
+  tabii: { color: "#ff6600", mark: "t" },
+  gain: { color: "#7c4dff", mark: "G" },
+  todtv: { color: "#ed1c24", mark: "tod" },
+  storytel: { color: "#ff5a5f", mark: "S" },
 };
 
-/** Brands whose favicon domain isn't simply `<slug>.com`. */
-const DOMAIN_OVERRIDES: Record<string, string> = {
-  netflix: "netflix.com",
-  amazon: "amazon.com",
-  "amazon prime": "primevideo.com",
-  prime: "primevideo.com",
-  "prime video": "primevideo.com",
-  spotify: "spotify.com",
-  youtube: "youtube.com",
-  "youtube premium": "youtube.com",
-  "youtube music": "music.youtube.com",
-  disney: "disneyplus.com",
-  "disney+": "disneyplus.com",
-  hbo: "max.com",
-  "hbo max": "max.com",
-  chatgpt: "openai.com",
-  "google one": "one.google.com",
-  x: "x.com",
-  twitter: "x.com",
-  "apple music": "music.apple.com",
-  "apple tv": "tv.apple.com",
-  icloud: "icloud.com",
-  tabii: "tabii.com",
-  gain: "gain.tv",
-  exxen: "exxen.com",
-  blutv: "blutv.com",
-};
-
-function slugify(name: string): string {
-  return name
-    .toLocaleLowerCase("en-US")
-    .replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u")
-    .replace(/[^a-z0-9]/g, "");
+/** Perceived luminance → pick black or white ink for legible contrast. */
+function inkFor(hex: string): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? "#1a1918" : "#ffffff";
 }
 
 export function Logo({ name, domain, size = 36 }: { name: string; domain?: string | null; size?: number }) {
+  void domain; // kept for API compatibility; no remote favicon lookup anymore
   const { palette } = useTheme();
-  const [failed, setFailed] = useState(0);
 
   const utility = useMemo(() => UTILITY_ICONS.find((u) => u.match.test(name)), [name]);
-  const urls = useMemo(() => {
-    const list: string[] = [];
+  const brand = useMemo(() => {
     const key = name.trim().toLocaleLowerCase("tr-TR");
-    const alias = BRAND_ALIASES[key];
-    const slug = alias ?? slugify(name);
-    // 1) simple-icons: crisp, brand-coloured monochrome mark.
-    if (slug.length >= 3) list.push(`https://cdn.simpleicons.org/${slug}`);
-    // 2) a real favicon — covers the long tail with full-colour logos. Prefer
-    //    an explicit domain, then a known override, then the common `<slug>.com`.
-    const fav = (d: string) => `https://icons.duckduckgo.com/ip3/${d.replace(/^https?:\/\//, "").replace(/\/$/, "")}.ico`;
-    if (domain) list.push(fav(domain));
-    const override = DOMAIN_OVERRIDES[key];
-    if (override) list.push(fav(override));
-    else if (slug.length >= 3) list.push(fav(`${slug}.com`));
-    return list;
-  }, [name, domain]);
+    return BRAND[key] ?? BRAND[key.split(/\s+/)[0]] ?? null;
+  }, [name]);
 
   if (utility) {
     const IconCmp = utility.icon;
@@ -167,26 +137,29 @@ export function Logo({ name, domain, size = 36 }: { name: string; domain?: strin
       </View>
     );
   }
-  if (failed >= urls.length || urls.length === 0) return <InitialsBadge name={name} size={size} />;
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius.sm,
-        backgroundColor: palette.surfaceAlt,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Image
-        source={{ uri: urls[failed] }}
-        style={{ width: size * 0.7, height: size * 0.7 }}
-        contentFit="contain"
-        cachePolicy="disk"
-        onError={() => setFailed((f) => f + 1)}
-        accessibilityLabel={name}
-      />
-    </View>
-  );
+
+  if (brand) {
+    const ink = inkFor(brand.color);
+    const mark = brand.mark || name.trim().slice(0, 1).toLocaleUpperCase("tr-TR");
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius.sm,
+          backgroundColor: brand.color,
+          borderWidth: ink === "#1a1918" ? 1 : 0,
+          borderColor: palette.border,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text style={{ color: ink, fontSize: size * (mark.length > 2 ? 0.3 : 0.42), fontFamily: "Inter_700Bold" }}>
+          {mark}
+        </Text>
+      </View>
+    );
+  }
+
+  return <InitialsBadge name={name} size={size} />;
 }
