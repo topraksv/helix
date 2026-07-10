@@ -18,12 +18,14 @@ import {
   TextInput,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
   type StyleProp,
   type TextInputProps,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSegments } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { Calculator as CalculatorIcon, ChevronDown, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
@@ -114,7 +116,13 @@ export function Screen({
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const segments = useSegments();
   const wide = width > maxWidth + spacing.xl * 2;
+  // Tab scenes already sit above the tab bar, whose own height reserves the
+  // bottom safe-area inset — adding it again here just leaves dead space at the
+  // end of a scroll. Only modal / stack scenes (no tab bar under them) need it.
+  const inTabs = segments[0] === "(tabs)";
+  const bottomPad = inTabs ? spacing.lg : Math.max(insets.bottom, spacing.lg) + spacing.md;
 
   const header =
     title != null ? (
@@ -133,9 +141,7 @@ export function Screen({
   const inner: StyleProp<ViewStyle> = [
     padded && { paddingHorizontal: spacing.lg },
     { paddingTop: title ? Math.max(insets.top, spacing.lg) : spacing.lg },
-    // Consistent, modest bottom margin on every scroll screen (the tab bar is
-    // already excluded from the scene, so no need for a large reserve here).
-    { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.md },
+    { paddingBottom: bottomPad },
     wide && { width: "100%", maxWidth, alignSelf: "center" },
   ];
 
@@ -168,11 +174,13 @@ export function Card({
   children,
   style,
   onPress,
+  onLayout,
   padded = true,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
+  onLayout?: (e: LayoutChangeEvent) => void;
   padded?: boolean;
 }) {
   const { palette, scheme } = useTheme();
@@ -196,6 +204,7 @@ export function Card({
         onPress={onPress}
         onPressIn={press.onPressIn}
         onPressOut={press.onPressOut}
+        onLayout={onLayout}
         style={[base, style, { transform: [{ scale: press.scale }] }]}
         accessibilityRole="button"
       >
@@ -203,7 +212,7 @@ export function Card({
       </AnimatedPressable>
     );
   }
-  return <View style={[base, style]}>{children}</View>;
+  return <View style={[base, style]} onLayout={onLayout}>{children}</View>;
 }
 
 /** Gradient hero container (dashboard balance, auth brand panel). */

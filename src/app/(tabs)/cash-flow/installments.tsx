@@ -118,14 +118,16 @@ export default function InstallmentsScreen() {
       <Card>
         <Body muted>{tr.installments.thisMonthTotal}</Body>
         <Amount minor={monthTotals.total} large colorized={false} />
-        <Row gap={spacing.lg} style={{ marginTop: spacing.sm }}>
+        {/* Wrap instead of clipping: the two labels drop to separate lines on a
+            narrow phone rather than truncating "Değişken Harcama". */}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: spacing.lg, rowGap: spacing.xs, marginTop: spacing.sm }}>
           <Body muted>
             {tr.dashboard.fixed}: {formatMinor(monthTotals.fixed)}
           </Body>
           <Body muted>
             {tr.dashboard.variable}: {formatMinor(monthTotals.variable)}
           </Body>
-        </Row>
+        </View>
       </Card>
 
       <Button icon={Plus} label={tr.installments.newPlan} onPress={() => router.push("/installment-new")} />

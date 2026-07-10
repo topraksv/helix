@@ -58,6 +58,13 @@ export default function CashflowScreen() {
   const [mode, setMode] = useState<MatrixMode>("rows");
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [tableAreaH, setTableAreaH] = useState(0);
+  // Card view: scroll the current month into view on open (mirrors the table's
+  // current-month centering). Reset the one-shot flag whenever view/year flips.
+  const cardsScrollRef = React.useRef<ScrollView>(null);
+  const didFocusCards = React.useRef(false);
+  React.useEffect(() => {
+    didFocusCards.current = false;
+  }, [mode, year]);
 
   React.useEffect(() => {
     void kv.get("helix.matrix.mode").then((v) => {
@@ -163,7 +170,7 @@ export default function CashflowScreen() {
               ) : null}
             </View>
           ) : (
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView ref={cardsScrollRef} showsVerticalScrollIndicator={false}>
               {bundle.yearMonths.map((m) => {
                 const isCurrent = m.month === monthKeyOf(todayISO());
                 return (
@@ -171,6 +178,18 @@ export default function CashflowScreen() {
                     key={m.month}
                     onPress={() => router.push(`/cash-flow/${m.month}`)}
                     style={isCurrent ? { borderWidth: 1.5, borderColor: palette.primary } : undefined}
+                    onLayout={
+                      isCurrent
+                        ? (e) => {
+                            if (didFocusCards.current) return;
+                            didFocusCards.current = true;
+                            const y = e.nativeEvent.layout.y;
+                            requestAnimationFrame(() =>
+                              cardsScrollRef.current?.scrollTo({ y: Math.max(0, y - spacing.lg), animated: false }),
+                            );
+                          }
+                        : undefined
+                    }
                   >
                     <Spread>
                       <Text style={[type.heading, { color: isCurrent ? palette.primary : palette.text }]}>{monthLabel(m.month)}</Text>
@@ -300,7 +319,9 @@ function MatrixTable({
   const CELL_W = compact ? 104 : 128;
   const HEAD_W = compact ? 80 : 132;
   const fontSize = compact ? 12 : 13;
-  const HINT_H = 34;
+  // Reserve enough for the two-line hint below the table; the card clips
+  // (overflow:hidden), so an under-estimate cut the hint in half on phones.
+  const HINT_H = 52;
 
   // The parent measures the exact space above the tab bar (onLayout); pin the
   // table to it minus the hint row so the table — and its bottom hint — always
