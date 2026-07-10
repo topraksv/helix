@@ -68,8 +68,15 @@ export default function CellEditorModal() {
     try {
       const today = todayISO();
       const inMonth = today >= firstDayOf(month!) && today <= lastDayOf(month!);
+      // A negative amount flips the flow (an expense cell entered as "-500"
+      // records income, and vice-versa) — mirrors the importer so the sign is
+      // never silently dropped. Transfers keep their direction.
+      const negative = entryMinor < 0;
+      const baseType = category.name.toLocaleLowerCase("tr-TR").includes("yatırım") ? "transfer" : category.kind;
+      const type = negative && baseType !== "transfer" ? (baseType === "expense" ? "income" : "expense") : baseType;
+      const hasExpr = entryRaw.includes("+") || entryRaw.trim().slice(1).includes("-");
       await addTransaction(userId, {
-        type: category.name.toLocaleLowerCase("tr-TR").includes("yatırım") ? "transfer" : category.kind,
+        type,
         amountMinor: Math.abs(entryMinor),
         currency: "TRY",
         fxRate: null,
@@ -78,8 +85,8 @@ export default function CellEditorModal() {
         categoryId: category.id,
         paymentSourceId: null,
         personId: selfId,
-        note: entryRaw.includes("+") || entryRaw.includes("-") ? entryRaw.trim() : null,
-        isAggregate: entryRaw.includes("+") || entryRaw.includes("-"),
+        note: hasExpr ? entryRaw.trim() : null,
+        isAggregate: hasExpr,
       });
       scheduleSync(userId);
       setEntryRaw("");
