@@ -29,7 +29,7 @@ import { useSegments } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { Calculator as CalculatorIcon, ChevronDown, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
-import { formatMinor, parseTRAmountToMinor } from "../domain/money";
+import { formatMinor, formatTRInputLive, parseTRAmountToMinor } from "../domain/money";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 
 function lightTap() {
@@ -522,15 +522,21 @@ export function MoneyField({
   const { palette } = useTheme();
   const [focused, setFocused] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
-  const minor = value.trim() === "" ? null : parseTRAmountToMinor(value);
+  // Display is always the live-grouped form; parsing accepts both grouped and
+  // ungrouped so an initial "15000,00" still shows as "15.000,00".
+  const display = formatTRInputLive(value);
+  const minor = value.trim() === "" ? null : parseTRAmountToMinor(display);
   const invalid = value.trim() !== "" && minor === null;
   return (
     <View style={{ marginBottom: spacing.md }}>
       {label ? <Label>{label}</Label> : null}
       <View>
         <TextInput
-          value={value}
-          onChangeText={(raw) => onChangeMinor(raw, raw.trim() === "" ? null : parseTRAmountToMinor(raw))}
+          value={display}
+          onChangeText={(raw) => {
+            const formatted = formatTRInputLive(raw);
+            onChangeMinor(formatted, formatted.trim() === "" ? null : parseTRAmountToMinor(formatted));
+          }}
           keyboardType="decimal-pad"
           inputMode="decimal"
           placeholder={placeholder}

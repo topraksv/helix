@@ -253,7 +253,7 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<void
     await pushOutbox(userId);
     await pullAndMerge(userId);
     retryAttempt = 0;
-    status.set({ state: "idle", lastSyncAt: new Date().toISOString(), error: null });
+    status.set({ state: "idle", lastSyncAt: new Date().toISOString(), error: null, hasSyncedUser: userId });
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
     console.error("[sync]", raw);

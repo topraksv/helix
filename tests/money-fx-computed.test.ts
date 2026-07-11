@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMinor, parseAmountExpression, parseTRAmountToMinor } from "../src/domain/money";
+import { formatMinor, formatTRInputLive, parseAmountExpression, parseTRAmountToMinor } from "../src/domain/money";
 import { convertToTryMinor, pickRate } from "../src/domain/fx";
 import {
   evaluateComputedColumn,
@@ -44,6 +44,27 @@ describe("TR money formatting/parsing", () => {
     expect(parseAmountExpression("99999999999999999999+1")).toBeNull();
     // sanity: a large but safe amount still parses
     expect(parseTRAmountToMinor("999999999999")).toBe(99999999999900);
+  });
+
+  it("live-formats input with TR thousands separators, kuruş optional", () => {
+    expect(formatTRInputLive("15000")).toBe("15.000");
+    expect(formatTRInputLive("1234567")).toBe("1.234.567");
+    expect(formatTRInputLive("1234,5")).toBe("1.234,5");
+    expect(formatTRInputLive("1234,567")).toBe("1.234,56"); // max 2 kuruş
+    expect(formatTRInputLive("300")).toBe("300");
+    expect(formatTRInputLive("")).toBe("");
+    expect(formatTRInputLive("-2024,99")).toBe("-2.024,99");
+    expect(formatTRInputLive("007")).toBe("7"); // drop leading zeros
+    expect(formatTRInputLive("0,5")).toBe("0,5"); // keep a lone zero
+    expect(formatTRInputLive(",5")).toBe("0,5");
+    expect(formatTRInputLive("₺ 1.250,50")).toBe("1.250,50"); // idempotent on formatted
+  });
+
+  it("live-format output is always parseable back to minor units", () => {
+    for (const raw of ["15000", "1234,5", "1.250,50", "9999999", "42,9"]) {
+      const formatted = formatTRInputLive(raw);
+      expect(parseTRAmountToMinor(formatted)).not.toBeNull();
+    }
   });
 });
 

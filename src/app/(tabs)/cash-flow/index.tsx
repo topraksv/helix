@@ -9,7 +9,7 @@
 import React, { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowDownRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, Plus } from "lucide-react-native";
+import { ArrowDownRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus } from "lucide-react-native";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
@@ -130,6 +130,7 @@ export default function CashflowScreen() {
           <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
           <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
           {showTable ? <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} /> : null}
+          <Button icon={PiggyBank} size="sm" label={tr.cashflow.openingLink} variant="ghost" onPress={() => router.push("/settings/opening-balance")} />
         </Row>
       ) : (
         <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
@@ -140,11 +141,15 @@ export default function CashflowScreen() {
           <IconButton icon={CreditCard} size={40} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
           <IconButton icon={ChartNoAxesColumn} size={40} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
           <IconButton icon={CalendarPlus} size={40} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
+          <IconButton icon={PiggyBank} size={40} label={tr.cashflow.openingLink} onPress={() => router.push("/settings/opening-balance")} />
         </Row>
       )}
 
       {!bundle ? (
-        <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
+        <View style={{ gap: spacing.md }}>
+          <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
+          <Button icon={PiggyBank} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/settings/opening-balance")} />
+        </View>
       ) : (
         <View style={{ flex: 1 }}>
           {/* Full-width segmented so the month-orientation labels never clip
@@ -333,10 +338,17 @@ function MatrixTable({
   // (overflow:hidden), so an under-estimate cut the hint in half on phones.
   const HINT_H = 30;
 
-  // The parent measures the exact space above the tab bar (onLayout); pin the
-  // table to it minus the hint row so the table — and its bottom hint — always
-  // sit fully above the footer, on every platform.
-  const tableHeight = compact ? Math.max(240, measuredHeight - HINT_H) : undefined;
+  // Size the table to its natural content (StickyTable's fixed header/row
+  // heights) but never taller than the space measured above the tab bar. When
+  // there are few items (e.g. a short column-focused view) the table shrinks
+  // instead of stretching to a fixed height with dead space; with many rows it
+  // caps at the available height and scrolls inside.
+  const ROW_H = 52;
+  const HEADER_H = 56;
+  const rowCount = orientation === "monthsAsRows" ? months.length : columns.length;
+  const naturalTableH = HEADER_H + rowCount * ROW_H + spacing.sm;
+  const availTableH = Math.max(160, measuredHeight - HINT_H);
+  const tableHeight = Math.min(naturalTableH, availTableH);
 
   // Category cells open the editor; derived columns may carry their own action.
   const pressFor = (c: ColumnDef, month: MonthKey): (() => void) | undefined =>
@@ -345,6 +357,19 @@ function MatrixTable({
   const cell = (value: number | null, note: string | undefined, onPress: (() => void) | undefined, highlighted: boolean) => (
     <MatrixCell value={value} note={note} onPress={onPress} highlighted={highlighted} fontSize={fontSize} />
   );
+
+  // Tapping a category/computed column opens its month-by-month breakdown.
+  // Opening/closing balances are derived summaries — intentionally not tappable.
+  const openBreakdown = (key: string) => {
+    const col = columns.find((c) => c.key === key);
+    if (!col || col.key === "opening" || col.key === "closing") return;
+    router.push({
+      pathname: "/cash-flow/item",
+      params: { col: col.categoryId ?? col.key, label: col.label, year: String(year), kind: col.categoryId ? "category" : "computed" },
+    });
+  };
+  const breakdownFor = (key: string): (() => void) | undefined =>
+    key === "opening" || key === "closing" ? undefined : () => openBreakdown(key);
 
   let cornerLabel: string;
   let stickyColumns: StickyColumn[];
@@ -376,6 +401,7 @@ function MatrixTable({
     stickyRows = columns.map((c) => ({
       key: c.key,
       label: c.label,
+      onLabelPress: breakdownFor(c.key),
       cells: months.map((slot) =>
         cell(
           slot.data ? c.value(slot.data) : null,
@@ -393,7 +419,7 @@ function MatrixTable({
   const focusMonth = yearOf(currentMonth) === year ? currentMonth : undefined;
 
   return (
-    <Card padded={false} style={compact ? { height: measuredHeight } : { flex: 1 }}>
+    <Card padded={false} style={{ alignSelf: "stretch" }}>
       <StickyTable
         cornerLabel={cornerLabel}
         columns={stickyColumns}
@@ -405,7 +431,7 @@ function MatrixTable({
         focusRowKey={isColumns ? undefined : focusMonth}
         pinnedKey={validPin}
         onTogglePin={onTogglePin}
-        onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : undefined}
+        onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : openBreakdown}
         height={tableHeight}
       />
       <Text style={[type.small, { color: palette.textMuted, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, textAlign: "center" }]}>

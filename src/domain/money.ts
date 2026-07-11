@@ -77,6 +77,26 @@ export function parseTRAmountToMinor(input: string): Minor | null {
 }
 
 /**
+ * Live-format a raw money input as the user types: group the integer part with
+ * TR thousands separators (`15000` → `15.000`) and keep at most one decimal
+ * comma with two kuruş digits (`1234,5` → `1.234,5`). Kuruş stay optional — no
+ * comma is inserted unless the user types one. The result is always parseable
+ * by `parseTRAmountToMinor`, so callers can store it directly.
+ */
+export function formatTRInputLive(raw: string): string {
+  const negative = raw.trim().startsWith("-");
+  const cleaned = raw.replace(/[^\d,]/g, "");
+  const firstComma = cleaned.indexOf(",");
+  let intDigits = (firstComma === -1 ? cleaned : cleaned.slice(0, firstComma)).replace(/\D/g, "");
+  const frac = firstComma === -1 ? null : cleaned.slice(firstComma + 1).replace(/\D/g, "").slice(0, 2);
+  intDigits = intDigits.replace(/^0+(?=\d)/, ""); // drop leading zeros, keep a lone 0
+  const grouped = intDigits === "" ? "" : intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  let out = frac === null ? grouped : `${grouped === "" ? "0" : grouped},${frac}`;
+  if (out === "") return negative ? "-" : "";
+  return negative ? `-${out}` : out;
+}
+
+/**
  * Parse a spreadsheet-style sum ("300+400+500", "+300+1.250,50-100") into
  * minor units. Single plain amounts parse too. Null for anything else.
  */

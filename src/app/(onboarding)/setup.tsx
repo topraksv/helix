@@ -1,19 +1,24 @@
 import React, { useState } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { seedWorkspace, TEMPLATE_CATEGORIES } from "../../data/repo";
+import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
+import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Pencil, Trash2 } from "lucide-react-native";
+import { seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
+import { importBundle } from "../../services/export-import";
 import { useSession } from "../../auth/session";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
-import { Body, Button, Card, ChipPicker, Field, Heading, IconButton, MoneyField, Row, Screen, Segmented, Spread } from "../../ui/components";
+import { Body, Button, Card, ChipPicker, Field, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "../../ui/components";
 import { appAlert } from "../../ui/dialog";
 import { BrandMark } from "../../ui/brand";
 import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
 import { spacing, type, useTheme } from "../../ui/theme";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
+const ALL_TEMPLATES: TemplateCategory[] = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
+const templateLabel = (c: TemplateCategory) => `${c.icon ?? ""} ${c.name}`.trim();
 
 interface DraftSource {
   name: string;
@@ -21,11 +26,15 @@ interface DraftSource {
   personIndex: number;
 }
 
+type HistoryChoice = "manual" | "excel" | "json" | "later";
+
 export default function SetupScreen() {
   const { userId } = useSession();
   const router = useRouter();
   const { palette } = useTheme();
-  const [template, setTemplate] = useState<"excel" | "blank">("blank");
+  // Template: all recommended categories pre-selected; the user unticks the
+  // ones they don't want. Extras start unselected.
+  const [selectedTemplate, setSelectedTemplate] = useState<string[]>(TEMPLATE_CATEGORIES.map((c) => c.name));
   const [startMonth, setStartMonth] = useState(monthKeyOf(todayISO()));
   const [openingRaw, setOpeningRaw] = useState("");
   const [openingMinor, setOpeningMinor] = useState<number | null>(0);
@@ -35,20 +44,69 @@ export default function SetupScreen() {
   const [newSource, setNewSource] = useState("");
   const [newSourceType, setNewSourceType] = useState<PaymentSourceType>("credit_card");
   const [newSourcePerson, setNewSourcePerson] = useState(0);
+  const [editingSource, setEditingSource] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const finish = async (goHistory: boolean) => {
-    if (!userId) return;
+  const toggleTemplate = (name: string) =>
+    setSelectedTemplate((xs) => (xs.includes(name) ? xs.filter((x) => x !== name) : [...xs, name]));
+
+  const resetSourceForm = () => {
+    setNewSource("");
+    setNewSourceType("credit_card");
+    setNewSourcePerson(0);
+    setEditingSource(null);
+  };
+
+  const submitSource = () => {
+    const draft: DraftSource = { name: newSource.trim(), type: newSourceType, personIndex: newSourcePerson };
+    if (editingSource != null) {
+      setSources((xs) => xs.map((s, i) => (i === editingSource ? draft : s)));
+    } else {
+      setSources((xs) => [...xs, draft]);
+    }
+    resetSourceForm();
+  };
+
+  const editSource = (i: number) => {
+    const s = sources[i];
+    setNewSource(s.name);
+    setNewSourceType(s.type);
+    setNewSourcePerson(Math.min(s.personIndex, persons.length - 1));
+    setEditingSource(i);
+  };
+
+  const importJsonBackup = async () => {
+    const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
+    if (picked.canceled || !picked.assets[0] || !userId) return;
+    const content = await new File(picked.assets[0].uri).text();
+    await importBundle(userId, JSON.parse(content));
+  };
+
+  const finish = async (choice: HistoryChoice) => {
+    if (!userId || busy) return;
     setBusy(true);
     try {
       await seedWorkspace(userId, {
-        template,
+        templateCategories: ALL_TEMPLATES.filter((c) => selectedTemplate.includes(c.name)),
         startMonth,
         openingBalanceMinor: openingMinor ?? 0,
         persons: persons.map((name, i) => ({ name, isSelf: i === 0 })),
         sources: sources.map((src) => ({ name: src.name, type: src.type, personIndex: src.personIndex })),
       });
-      router.replace(goHistory ? "/bulk-entry" : "/(tabs)");
+      if (choice === "json") {
+        try {
+          await importJsonBackup();
+        } catch (e) {
+          void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+        }
+        router.replace("/(tabs)");
+      } else if (choice === "manual") {
+        router.replace("/bulk-entry");
+      } else if (choice === "excel") {
+        router.replace("/import-wizard");
+      } else {
+        router.replace("/(tabs)");
+      }
     } catch (e) {
       void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {
@@ -69,33 +127,22 @@ export default function SetupScreen() {
 
         <Card>
           <Heading>1 · {tr.onboarding.templateTitle}</Heading>
-          <Segmented
-            options={[
-              { value: "blank", label: tr.onboarding.templateBlank },
-              { value: "excel", label: tr.onboarding.templateExcel },
-            ]}
-            value={template}
-            onChange={setTemplate}
+          <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.templateHint}</Body>
+          <ChipPicker
+            multi
+            options={TEMPLATE_CATEGORIES.map((c) => ({ value: c.name, label: templateLabel(c) }))}
+            values={selectedTemplate}
+            onToggle={toggleTemplate}
           />
-          <Body muted>
-            {template === "excel" ? tr.onboarding.templateExcelDesc : tr.onboarding.templateBlankDesc}
-          </Body>
-          {template === "excel" ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md }}>
-              {TEMPLATE_CATEGORIES.map((c) => (
-                <View
-                  key={c.name}
-                  style={{
-                    backgroundColor: palette.surfaceAlt,
-                    borderRadius: 999,
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.xs + 2,
-                  }}
-                >
-                  <Text style={[type.small, { color: palette.text }]}>{c.icon} {c.name}</Text>
-                </View>
-              ))}
-            </View>
+          <Body muted style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>{tr.onboarding.templateExtraHint}</Body>
+          <ChipPicker
+            multi
+            options={TEMPLATE_EXTRA_CATEGORIES.map((c) => ({ value: c.name, label: templateLabel(c) }))}
+            values={selectedTemplate}
+            onToggle={toggleTemplate}
+          />
+          {selectedTemplate.length === 0 ? (
+            <Body muted style={{ fontSize: 12 }}>{tr.onboarding.templateBlankNote}</Body>
           ) : null}
         </Card>
 
@@ -122,16 +169,16 @@ export default function SetupScreen() {
           <Heading>3 · {tr.onboarding.personsTitle}</Heading>
           <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.personsHint}</Body>
           {persons.map((name, i) => (
-            <Spread key={`${name}-${i}`} style={{ marginBottom: spacing.sm }}>
+            <Spread key={`${name}-${i}`} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
               <Body>{name}{i === 0 ? ` · ${tr.persons.selfBadge}` : ""}</Body>
               {i > 0 ? (
-                <Button label={tr.common.delete} variant="ghost" onPress={() => setPersons(persons.filter((_, j) => j !== i))} />
+                <IconButton icon={Trash2} tone="danger" label={tr.common.delete} onPress={() => setPersons(persons.filter((_, j) => j !== i))} />
               ) : null}
             </Spread>
           ))}
-          <Row>
+          <Row style={{ alignItems: "center" }}>
             <View style={{ flex: 1 }}>
-              <Field value={newPerson} onChangeText={setNewPerson} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
+              <Field noMargin value={newPerson} onChangeText={setNewPerson} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
             </View>
             <Button
               label={tr.onboarding.addPerson}
@@ -149,11 +196,25 @@ export default function SetupScreen() {
           <Heading>4 · {tr.onboarding.sourcesTitle}</Heading>
           <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.sourcesHint}</Body>
           {sources.map((src, i) => (
-            <Spread key={`${src.name}-${i}`} style={{ marginBottom: spacing.sm }}>
-              <Body>
-                {src.name} · {SOURCE_TYPES.find((t) => t.value === src.type)?.label} · {persons[src.personIndex]}
-              </Body>
-              <Button label={tr.common.delete} variant="ghost" onPress={() => setSources(sources.filter((_, j) => j !== i))} />
+            <Spread key={`${src.name}-${i}`} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
+              <View style={{ flex: 1, paddingRight: spacing.sm }}>
+                <Body>
+                  {src.name} · {SOURCE_TYPES.find((t) => t.value === src.type)?.label}
+                  {persons.length > 1 ? ` · ${persons[src.personIndex]}` : ""}
+                </Body>
+              </View>
+              <Row gap={spacing.sm} style={{ alignItems: "center" }}>
+                <IconButton icon={Pencil} label={tr.common.edit} onPress={() => editSource(i)} />
+                <IconButton
+                  icon={Trash2}
+                  tone="danger"
+                  label={tr.common.delete}
+                  onPress={() => {
+                    setSources(sources.filter((_, j) => j !== i));
+                    if (editingSource === i) resetSourceForm();
+                  }}
+                />
+              </Row>
             </Spread>
           ))}
           <Field value={newSource} onChangeText={setNewSource} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
@@ -169,22 +230,27 @@ export default function SetupScreen() {
               onChange={(v) => setNewSourcePerson(Number(v))}
             />
           ) : null}
-          <Button
-            label={tr.onboarding.addSource}
-            variant="secondary"
-            disabled={!newSource.trim()}
-            onPress={() => {
-              setSources([...sources, { name: newSource.trim(), type: newSourceType, personIndex: newSourcePerson }]);
-              setNewSource("");
-            }}
-          />
+          <Row gap={spacing.sm} style={{ alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                label={editingSource != null ? tr.onboarding.updateSource : tr.onboarding.addSource}
+                variant="secondary"
+                disabled={!newSource.trim()}
+                onPress={submitSource}
+              />
+            </View>
+            {editingSource != null ? <Button label={tr.common.cancel} variant="ghost" onPress={resetSourceForm} /> : null}
+          </Row>
         </Card>
 
         <Card>
           <Heading>5 · {tr.onboarding.historyPrompt}</Heading>
-          <View style={{ gap: spacing.sm }}>
-            <Button label={tr.onboarding.historyYes} onPress={() => void finish(true)} loading={busy} />
-            <Button label={tr.onboarding.historyLater} variant="secondary" onPress={() => void finish(false)} disabled={busy} />
+          <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.historyHint}</Body>
+          <ListRow icon={CalendarPlus} title={tr.onboarding.historyManual} subtitle={tr.onboarding.historyManualDesc} chevron onPress={() => void finish("manual")} />
+          <ListRow icon={FileSpreadsheet} title={tr.onboarding.historyExcel} subtitle={tr.onboarding.historyExcelDesc} chevron onPress={() => void finish("excel")} />
+          <ListRow icon={FileUp} title={tr.onboarding.historyJson} subtitle={tr.onboarding.historyJsonDesc} chevron onPress={() => void finish("json")} />
+          <View style={{ marginTop: spacing.md }}>
+            <Button label={tr.onboarding.historyLater} variant="secondary" onPress={() => void finish("later")} loading={busy} />
           </View>
         </Card>
       </View>

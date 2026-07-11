@@ -55,24 +55,58 @@ async function setAsideCorruptDb(): Promise<void> {
   }
 }
 
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Open the database, tolerating two transient failure modes seen at launch:
+ *   • "not a database" — a corrupt header; move it aside once and recreate.
+ *   • an OPFS access-handle still held by the *previous* page's sqlite worker
+ *     on web (the exclusive SyncAccessHandle hasn't been released yet). This
+ *     surfaced as the intermittent "Tekrar dene" screen that a plain refresh
+ *     often couldn't clear ("only got in by luck"). Back off briefly and retry
+ *     a few times before giving up so the lock has time to release.
+ */
+async function openWithRetry(): Promise<SQLiteDatabase> {
+  const maxAttempts = 6;
+  let lastErr: unknown;
+  let recoveredCorrupt = false;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await open();
+    } catch (e) {
+      lastErr = e;
+      if (String(e).includes("not a database") && !recoveredCorrupt) {
+        recoveredCorrupt = true;
+        await setAsideCorruptDb();
+        continue; // retry immediately after moving the corrupt file aside
+      }
+      await delay(150 * (attempt + 1)); // ~150ms → ~750ms backoff for a held lock
+    }
+  }
+  throw lastErr;
+}
+
 export function getSqliteAsync(): Promise<SQLiteDatabase> {
   if (!handle) {
-    handle = (async () => {
-      try {
-        return await open();
-      } catch (e) {
-        // "not a database" = corrupt header (e.g. an old build's reload killed
-        // the worker mid-create). Set the file aside and recreate.
-        if (!String(e).includes("not a database")) throw e;
-        await setAsideCorruptDb();
-        return open();
-      }
-    })();
+    handle = openWithRetry();
     handle.catch(() => {
       handle = null; // allow a later retry instead of caching the failure
     });
   }
   return handle;
+}
+
+// Web: release the OPFS access handle when the page goes away so the next load
+// (or a refresh) can immediately re-acquire it instead of racing a still-open
+// worker. Best-effort — the page is unloading, so we don't await.
+if (Platform.OS === "web" && typeof window !== "undefined") {
+  const closeDb = () => {
+    const current = handle;
+    handle = null;
+    void current?.then((db) => db.closeAsync()).catch(() => {});
+  };
+  window.addEventListener("pagehide", closeDb);
+  window.addEventListener("beforeunload", closeDb);
 }
 
 /** sqlite-proxy expects raw value arrays; expo-sqlite provides them directly. */

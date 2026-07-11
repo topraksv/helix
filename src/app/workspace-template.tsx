@@ -12,12 +12,14 @@ import { useRouter } from "expo-router";
 import { CheckCircle2 } from "lucide-react-native";
 import { newId } from "../db/ids";
 import { writeRows, type RowWrite } from "../db/mutations";
-import { TEMPLATE_CATEGORIES } from "../data/repo";
+import { TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES } from "../data/repo";
 import { useCategories, useUserId } from "../data/hooks";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Body, Button, ChipPicker, EmptyState, Screen, SectionHeader } from "../ui/components";
 import { spacing } from "../ui/theme";
+
+const ALL_TEMPLATES = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
 
 const norm = (s: string) => s.toLocaleLowerCase("tr-TR");
 const chip = (c: (typeof TEMPLATE_CATEGORIES)[number]) =>
@@ -31,8 +33,8 @@ export default function WorkspaceTemplateModal() {
   const [busy, setBusy] = useState(false);
 
   const existing = new Set(categories.map((c) => norm(c.name)));
-  const missing = TEMPLATE_CATEGORIES.filter((c) => !existing.has(norm(c.name)));
-  const have = TEMPLATE_CATEGORIES.filter((c) => existing.has(norm(c.name)));
+  const missing = ALL_TEMPLATES.filter((c) => !existing.has(norm(c.name)));
+  const have = ALL_TEMPLATES.filter((c) => existing.has(norm(c.name)));
   const selected = missing.filter((c) => !excluded.includes(c.name));
 
   const add = async () => {
