@@ -337,6 +337,10 @@ function MatrixTable({
   // Reserve enough for the two-line hint below the table; the card clips
   // (overflow:hidden), so an under-estimate cut the hint in half on phones.
   const HINT_H = 30;
+  // Breathing room between the bottom hint and the tab bar so the two never
+  // crowd each other (the card is content-sized, so this leaves a real gap
+  // below it before the footer).
+  const FOOTER_GAP = spacing.lg;
 
   // Size the table to its natural content (StickyTable's fixed header/row
   // heights) but never taller than the space measured above the tab bar. When
@@ -347,7 +351,7 @@ function MatrixTable({
   const HEADER_H = 56;
   const rowCount = orientation === "monthsAsRows" ? months.length : columns.length;
   const naturalTableH = HEADER_H + rowCount * ROW_H + spacing.sm;
-  const availTableH = Math.max(160, measuredHeight - HINT_H);
+  const availTableH = Math.max(160, measuredHeight - HINT_H - FOOTER_GAP);
   const tableHeight = Math.min(naturalTableH, availTableH);
 
   // Category cells open the editor; derived columns may carry their own action.
