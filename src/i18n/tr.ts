@@ -24,6 +24,11 @@ export const tr = {
     signUpFailed: "Kayıt oluşturulamadı",
     invalidBackupFile: "Geçersiz yedek dosyası",
     workspaceResetFailed: "Cihazdaki önceki hesabın verileri temizlenemedi; giriş yapılamadı. Lütfen tekrar dene.",
+    fxUnavailable: "Döviz kuru henüz alınamadı. İnternete bağlanınca tekrar dene.",
+    saveFailed: "Kaydedilemedi. Lütfen tekrar dene.",
+    appCrashed: "Beklenmeyen bir sorun oluştu.",
+    appCrashedHint: "Uygulama bu ekranı gösteremedi. Yeniden dene; sorun sürerse uygulamayı kapatıp aç.",
+    importInvalidRows: (n: number) => `${n} geçersiz kayıt atlandı.`,
   },
   placeholders: {
     computedColumnName: "Ör. Sabit Giderler Toplamı",
@@ -54,6 +59,9 @@ export const tr = {
     signOutPendingWarn: (n: number) =>
       `${n} kayıt henüz buluta eşitlenmedi. Şimdi çıkarsan bu kayıtlar kalıcı olarak silinir. Yine de çıkmak istiyor musun?`,
     signOutAnyway: "Yine de Çık",
+    signOutLocalTitle: "Tüm veriler silinecek",
+    signOutLocalWarn:
+      "Bu cihaz buluta bağlı değil; verilerin yalnızca burada saklanıyor. Çıkarsan tüm verilerin kalıcı olarak silinir ve geri getirilemez. Önce 'Yedek Oluştur' ile dışa aktarmanı öneririz.",
   },
   lock: { title: "Kilidi Aç", prompt: "Devam etmek için kimliğini doğrula", button: "Face ID ile Aç" },
   onboarding: {

@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { CheckCircle2, Plus } from "lucide-react-native";
-import { confirmExpected, revertExpected, skipExpected } from "../data/repo";
+import { confirmExpected, FxRateUnavailableError, revertExpected, skipExpected } from "../data/repo";
 import {
   useLastEntryInfo,
   usePendingExpected,
@@ -19,6 +19,7 @@ import { formatMinor, parseTRAmountToMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Badge, Body, Button, Card, EmptyState, Field, Row, Screen, Spread } from "../ui/components";
+import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
 import { spacing } from "../ui/theme";
 
@@ -61,6 +62,12 @@ export default function CatchUpScreen() {
       setEditing(null);
       setAmountRaw("");
       undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+    } catch (err) {
+      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
+      else {
+        console.error("[reconcile.confirm]", err);
+        void appAlert(tr.errors.saveFailed);
+      }
     } finally {
       setConfirmingId(null);
     }

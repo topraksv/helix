@@ -5,6 +5,7 @@
  */
 
 import { Platform } from "react-native";
+import { getTableColumns } from "drizzle-orm";
 import { File, Paths } from "expo-file-system";
 import { getSqliteAsync } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
@@ -93,31 +94,54 @@ export async function saveTextFile(filename: string, content: string, mime: stri
 }
 
 /**
- * Import a JSON bundle: newer rows win per id (same LWW rule as sync), so a
- * restore never clobbers fresher local edits.
+ * A restore file is untrusted input (hand-edited or from an old/other build).
+ * Reject a row whose integer columns aren't safe integers — otherwise a value
+ * like `amount_minor: "abc"` or `NaN` is written verbatim and later throws in
+ * `assertMinor`/`formatMinor` at render time, crashing the screen.
  */
-export async function importBundle(userId: string, bundle: ExportBundle): Promise<{ imported: number }> {
+function isValidImportRow(table: SyncedTableName, raw: Record<string, unknown>): boolean {
+  if (typeof raw.id !== "string" || raw.id.length === 0) return false;
+  for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
+    const value = raw[column.name];
+    if (value == null) continue;
+    if (column.columnType === "SQLiteInteger" && !Number.isSafeInteger(value)) return false;
+  }
+  return true;
+}
+
+/**
+ * Import a JSON bundle: newer rows win per id (same LWW rule as sync), so a
+ * restore never clobbers fresher local edits. Rows that fail validation are
+ * skipped (and counted) rather than written, so a corrupt backup can't crash
+ * the app on the next render.
+ */
+export async function importBundle(userId: string, bundle: ExportBundle): Promise<{ imported: number; skipped: number }> {
   if (bundle.version !== EXPORT_VERSION || typeof bundle.tables !== "object") {
     throw new Error(tr.errors.invalidBackupFile);
   }
   const sqlite = await getSqliteAsync();
   let imported = 0;
+  let skipped = 0;
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     const rows = bundle.tables[table];
     if (!Array.isArray(rows)) continue;
     const writes = [] as { table: SyncedTableName; row: Record<string, unknown> }[];
     for (const raw of rows) {
-      if (!raw || typeof raw !== "object" || typeof raw.id !== "string") continue;
+      if (!raw || typeof raw !== "object") continue;
+      if (!isValidImportRow(table, raw as Record<string, unknown>)) {
+        skipped++;
+        continue;
+      }
       const local = await sqlite.getFirstAsync<{ updated_at: string }>(
         `SELECT updated_at FROM ${table} WHERE id = ?`,
-        [raw.id] as never[],
+        [(raw as { id: string }).id] as never[],
       );
-      const incoming = Date.parse(String(raw.updated_at ?? 0));
+      const incoming = Date.parse(String((raw as { updated_at?: unknown }).updated_at ?? 0));
       if (local && Date.parse(local.updated_at) >= incoming) continue;
-      writes.push({ table, row: { ...fromDbShape(table, raw), userId } });
+      writes.push({ table, row: { ...fromDbShape(table, raw as Record<string, unknown>), userId } });
       imported++;
     }
     if (writes.length > 0) await writeRows(userId, writes, false);
   }
-  return { imported };
+  return { imported, skipped };
 }

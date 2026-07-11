@@ -17,6 +17,8 @@ import { readSetting } from "../db/mutations";
 interface LiveResult<T> {
   data: T[];
   updatedAt: Date | undefined;
+  /** Last query error, if the most recent run failed (cleared on success). */
+  error?: string;
 }
 
 /**
@@ -45,12 +47,19 @@ export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: re
         (data) => {
           if (cancelled) return;
           attempt = 0;
-          setState({ data, updatedAt: new Date() });
+          setState({ data, updatedAt: new Date(), error: undefined });
         },
         (error) => {
-          if (cancelled || attempt >= 6) return;
-          console.error("[live-query]", String(error));
-          timer = setTimeout(run, 250 * 2 ** attempt++);
+          if (cancelled) return;
+          // Keep retrying with capped backoff instead of giving up. Abandoning
+          // after N tries left screens frozen on empty data forever (a wedged
+          // sqlite worker never recovered, and route guards that key off this
+          // query showed a permanent blank screen). Surface the error too, so
+          // callers can render a retry affordance rather than nothing.
+          if (attempt < 3) console.error("[live-query]", String(error));
+          setState((prev) => ({ ...prev, error: String(error) }));
+          const delay = Math.min(250 * 2 ** attempt++, 5000);
+          timer = setTimeout(run, delay);
         },
       );
     };

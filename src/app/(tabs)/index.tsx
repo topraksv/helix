@@ -12,8 +12,6 @@ import { formatMinor } from "../../domain/money";
 import { dateLabel, monthLabel, tr } from "../../i18n/tr";
 import {
   daysBetween,
-  toTxLike,
-  useAllTransactions,
   useCategories,
   useLastEntryInfo,
   useLedger,
@@ -23,8 +21,11 @@ import {
   useSubscriptions,
   useUserId,
 } from "../../data/hooks";
-import { confirmExpected, revertExpected } from "../../data/repo";
-import { connectMarkets, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
+import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
+import { connectMarkets, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
+import { convertToTryMinor } from "../../domain/fx";
+import { lookupRate } from "../../services/fx-fetch";
+import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
 import { Bars, Donut, SplitBar, useSeriesColors } from "../../ui/charts";
@@ -102,7 +103,6 @@ export default function DashboardScreen() {
   const bundle = useLedger(year);
   const categories = useCategories();
   const persons = usePersons();
-  const allTx = useAllTransactions();
   const expected = usePendingExpected();
   const subscriptions = useSubscriptions();
   const incomes = useRecurringIncomes();
@@ -115,7 +115,9 @@ export default function DashboardScreen() {
 
   // No manual useMemo here: the React Compiler (enabled app-wide) memoizes
   // these derivations automatically and bails out when useMemo is hand-rolled.
-  const txLike = toTxLike(allTx, persons);
+  // Reuse the ledger's already-built txLike instead of running a second
+  // full-table live query (useAllTransactions) + toTxLike on the same data.
+  const txLike = bundle?.txLike ?? [];
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
 
   const pendingItems = expected.filter((e) => e.status === "pending" || e.status === "late");
@@ -124,6 +126,17 @@ export default function DashboardScreen() {
   const catName = (id: string | null) => categories.find((c) => c.id === id)?.name;
   const nameOf = (e: (typeof expected)[number]) =>
     subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
+  // Convert an expected amount to TRY minor for projections using the best
+  // available rate (live Harem → cached TCMB). Returns null when no rate is
+  // known — such an item is left out of the projection rather than counted at
+  // its raw foreign value (which would silently distort the figure). Foreign
+  // subscriptions were previously dropped entirely; now they count when a rate
+  // exists (the common USD/EUR case, once TCMB has been cached).
+  const expectedTryMinor = (currency: string, amountMinor: number): number | null => {
+    if (currency === "TRY") return amountMinor;
+    const rateTry = marketSellRateTry(currency) ?? lookupRate(userId, currency)?.rate.rateTry ?? null;
+    return rateTry == null ? null : convertToTryMinor(amountMinor, rateTry);
+  };
   // Upcoming = the next ~31 days of everything you'll pay/receive on a fixed
   // schedule: subscriptions + recurring incomes (expected items) AND your own
   // future-dated one-off entries (a bill you scheduled ahead). A month-wide
@@ -176,8 +189,8 @@ export default function DashboardScreen() {
   const monthEnd = lastDayOf(month);
   const remainingFixedMinor =
     pendingItems
-      .filter((e) => e.direction === "out" && e.currency === "TRY" && e.dueDate >= today && e.dueDate <= monthEnd)
-      .reduce((sum, e) => sum + e.amountMinor, 0) +
+      .filter((e) => e.direction === "out" && e.dueDate >= today && e.dueDate <= monthEnd)
+      .reduce((sum, e) => sum + (expectedTryMinor(e.currency, e.amountMinor) ?? 0), 0) +
     txLike
       .filter((t) => t.personIsSelf && t.type === "expense" && t.status === "pending" && t.effectiveDate >= today && t.effectiveDate <= monthEnd)
       .reduce((sum, t) => sum + t.amountTryMinor, 0);
@@ -192,8 +205,11 @@ export default function DashboardScreen() {
             .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate > today)
             .map((t) => ({ direction: (t.type === "income" ? "in" : "out") as "in" | "out", amountTryMinor: t.amountTryMinor, date: t.effectiveDate })),
           ...pendingItems
-            .filter((e) => e.currency === "TRY" && e.dueDate >= today)
-            .map((e) => ({ direction: e.direction, amountTryMinor: e.amountMinor, date: e.dueDate })),
+            .filter((e) => e.dueDate >= today)
+            .flatMap((e) => {
+              const m = expectedTryMinor(e.currency, e.amountMinor);
+              return m == null ? [] : [{ direction: e.direction, amountTryMinor: m, date: e.dueDate }];
+            }),
         ],
         lastDayOf(month),
       )
@@ -235,6 +251,14 @@ export default function DashboardScreen() {
       });
       scheduleSync(userId);
       undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+    } catch (err) {
+      // Foreign-currency item confirmed before any FX rate was cached: tell the
+      // user to retry online instead of writing a corrupt TRY amount.
+      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
+      else {
+        console.error("[confirm]", err);
+        void appAlert(tr.errors.saveFailed);
+      }
     } finally {
       setConfirmingId(null);
     }

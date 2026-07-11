@@ -72,7 +72,18 @@ export default function SettingsScreen() {
     if (signingOut) return;
     setSigningOut(true);
     try {
-      if (isSupabaseConfigured && (await pendingOutboxCount()) > 0) {
+      // Local-only mode (no Supabase): sign-out wipes the device with NO cloud
+      // to restore from. Make the permanent loss explicit before proceeding.
+      if (!isSupabaseConfigured) {
+        const proceed = await appConfirm(tr.auth.signOutLocalTitle, tr.auth.signOutLocalWarn, {
+          confirmLabel: tr.auth.signOutAnyway,
+          danger: true,
+        });
+        if (!proceed) return;
+        await signOut();
+        return;
+      }
+      if ((await pendingOutboxCount()) > 0) {
         await syncNow(userId);
       }
       const pending = await pendingOutboxCount();
@@ -116,7 +127,11 @@ export default function SettingsScreen() {
     try {
       const content = await new File(picked.assets[0].uri).text();
       const result = await importBundle(userId, JSON.parse(content));
-      notify(tr.settings.importSuccess(result.imported));
+      const message =
+        result.skipped > 0
+          ? `${tr.settings.importSuccess(result.imported)} ${tr.errors.importInvalidRows(result.skipped)}`
+          : tr.settings.importSuccess(result.imported);
+      notify(message);
       void syncNow(userId);
     } catch (e) {
       notify(`⚠ ${e instanceof Error ? e.message : String(e)}`);

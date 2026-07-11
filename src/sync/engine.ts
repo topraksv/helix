@@ -174,11 +174,20 @@ async function pullAndMerge(userId: string): Promise<void> {
       await sqlite.withTransactionAsync(async () => {
         for (const remoteRaw of data) {
           const remote = toLocal(table, remoteRaw as Record<string, unknown>);
+          // An unparseable server timestamp can't participate in LWW; skip it
+          // explicitly (and loudly) instead of relying on a NaN comparison
+          // silently evaluating false — otherwise the row would never sync and
+          // no one would know why.
+          const remoteUpdated = Date.parse(remote.updated_at as string);
+          if (!Number.isFinite(remoteUpdated)) {
+            console.warn(`[sync] ${table} ${String(remote.id)}: unparseable updated_at, skipped`);
+            continue;
+          }
           const local = await sqlite.getFirstAsync<{ updated_at: string }>(
             `SELECT updated_at FROM ${table} WHERE id = ?`,
             [remote.id] as never[],
           );
-          const remoteWins = !local || Date.parse(remote.updated_at as string) >= Date.parse(local.updated_at);
+          const remoteWins = !local || remoteUpdated >= Date.parse(local.updated_at);
           if (!remoteWins) continue;
           // Only accept columns this client's schema knows (ignore any extra
           // server columns) so the generated SQL is always well-formed.

@@ -93,4 +93,25 @@ export function connectMarkets(): void {
   socket.on("connect_error", () => {
     if (useMarkets.getState().status !== "live") useMarkets.setState({ status: "error" });
   });
+  // A dropped connection must flip us OUT of "live" — otherwise the last prices
+  // keep showing as if they were current long after the feed stopped. socket.io
+  // auto-reconnects; the next `price_changed` restores "live".
+  socket.on("disconnect", () => {
+    useMarkets.setState({ status: "error" });
+  });
+}
+
+/**
+ * Tear down the feed (close socket, drop listeners, reset state). Called on
+ * sign-out so a signed-out session never keeps a live financial-data stream
+ * open (battery/data), and so the next sign-in starts clean.
+ */
+export function disconnectMarkets(): void {
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+    socket = null;
+  }
+  lastApplied = 0;
+  useMarkets.setState({ prices: {}, status: "idle" });
 }

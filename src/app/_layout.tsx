@@ -31,6 +31,7 @@ import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
 import { DialogHost } from "../ui/dialog";
+import { ErrorBoundary } from "../ui/error-boundary";
 import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
 
@@ -263,6 +264,7 @@ function RootLayoutInner() {
     <ThemeContext.Provider value={theme}>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <View style={{ flex: 1, backgroundColor: theme.palette.background }}>
+        <ErrorBoundary>
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: theme.palette.surface },
@@ -287,6 +289,7 @@ function RootLayoutInner() {
           <Stack.Screen name="columns-editor" options={{ presentation: "modal", title: tr.settings.categories }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title }} />
         </Stack>
+        </ErrorBoundary>
         <UndoSnackbar />
         <DialogHost />
       </View>
