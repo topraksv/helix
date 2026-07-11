@@ -14,7 +14,7 @@ export const placeholderPools = {
   income: ["Maaş", "Kira geliri", "Freelance", "Prim", "Burs"],
   source: ["Banka kartım", "Kredi kartım", "Nakit", "Dijital cüzdan", "Ortak hesap"],
   note: ["Market alışverişi", "Doğum günü hediyesi", "Yıllık ödeme", "Arkadaşlarla yemek", "İade bekleniyor"],
-  amount: ["1.250", "300", "89,90", "15.000", "2.500", "49,99", "750", "12.400"],
+  amount: ["400+500", "15.000", "1.250,50", "89,90", "300+150", "2.500", "12.400", "49,99", "1.000+250+90"],
 } as const;
 
 const ROTATE_MS = 4000;

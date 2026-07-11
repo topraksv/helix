@@ -29,7 +29,7 @@ import { useSegments } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { Calculator as CalculatorIcon, ChevronDown, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
-import { formatMinor, formatTRInputLive, parseTRAmountToMinor } from "../domain/money";
+import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 
 function lightTap() {
@@ -507,25 +507,30 @@ export function Field({
   );
 }
 
-/** TR money input ("1.234,56") with a popup calculator; reports minor units. */
+/** TR money input ("1.234,56") with a popup calculator; reports minor units.
+ *  Parses sum expressions too ("400+500" → 900); pass `expression` to surface a
+ *  keyboard with +/- operators (otherwise a clean decimal pad). */
 export function MoneyField({
   label,
   value,
   onChangeMinor,
   placeholder = "0,00",
+  expression = false,
 }: {
   label?: string;
   value: string;
   onChangeMinor: (raw: string, minor: number | null) => void;
   placeholder?: string;
+  expression?: boolean;
 }) {
   const { palette } = useTheme();
   const [focused, setFocused] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
-  // Display is always the live-grouped form; parsing accepts both grouped and
-  // ungrouped so an initial "15000,00" still shows as "15.000,00".
-  const display = formatTRInputLive(value);
-  const minor = value.trim() === "" ? null : parseTRAmountToMinor(display);
+  // Display is the live-grouped form; parsing accepts single amounts and sums
+  // ("400+500"), grouped or ungrouped, so an initial "15000,00" shows as
+  // "15.000,00" and a typed sum evaluates.
+  const display = formatMoneyInputLive(value);
+  const minor = value.trim() === "" ? null : parseAmountExpression(display);
   const invalid = value.trim() !== "" && minor === null;
   return (
     <View style={{ marginBottom: spacing.md }}>
@@ -534,11 +539,11 @@ export function MoneyField({
         <TextInput
           value={display}
           onChangeText={(raw) => {
-            const formatted = formatTRInputLive(raw);
-            onChangeMinor(formatted, formatted.trim() === "" ? null : parseTRAmountToMinor(formatted));
+            const formatted = formatMoneyInputLive(raw);
+            onChangeMinor(formatted, formatted.trim() === "" ? null : parseAmountExpression(formatted));
           }}
-          keyboardType="decimal-pad"
-          inputMode="decimal"
+          keyboardType={expression ? "numbers-and-punctuation" : "decimal-pad"}
+          inputMode={expression ? "text" : "decimal"}
           placeholder={placeholder}
           placeholderTextColor={palette.textMuted}
           onFocus={() => setFocused(true)}
@@ -571,7 +576,7 @@ export function MoneyField({
           onClose={() => setCalcOpen(false)}
           onResult={(major) => {
             const raw = (Math.round(major * 100) / 100).toFixed(2).replace(".", ",");
-            onChangeMinor(raw, parseTRAmountToMinor(raw));
+            onChangeMinor(raw, parseAmountExpression(raw));
           }}
         />
       ) : null}

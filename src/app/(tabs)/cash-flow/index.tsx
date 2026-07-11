@@ -35,7 +35,7 @@ import {
 import type { MonthLedger } from "../../../domain/balance";
 import { kv } from "../../../lib/kv";
 import { Amount, Button, Card, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
-import { StickyTable, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
+import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
 
 type MatrixMode = "cards" | "rows" | "columns";
@@ -347,10 +347,8 @@ function MatrixTable({
   // there are few items (e.g. a short column-focused view) the table shrinks
   // instead of stretching to a fixed height with dead space; with many rows it
   // caps at the available height and scrolls inside.
-  const ROW_H = 52;
-  const HEADER_H = 56;
   const rowCount = orientation === "monthsAsRows" ? months.length : columns.length;
-  const naturalTableH = HEADER_H + rowCount * ROW_H + spacing.sm;
+  const naturalTableH = STICKY_HEADER_HEIGHT + rowCount * STICKY_ROW_HEIGHT + spacing.sm;
   const availTableH = Math.max(160, measuredHeight - HINT_H - FOOTER_GAP);
   const tableHeight = Math.min(naturalTableH, availTableH);
 

@@ -137,9 +137,19 @@ function RootLayoutInner() {
 
   // On a fresh device an already-onboarded account's `onboarded` flag arrives
   // only with the first sync pull; until then the local query returns false.
-  // Hold (blank) instead of flashing the onboarding screen for online sessions
-  // whose initial pull hasn't landed yet.
-  const awaitingFirstPull = !!userId && isOnlineSession && hasSyncedUser !== userId;
+  // Hold (spinner) instead of flashing the onboarding screen for online
+  // sessions whose initial pull hasn't landed yet. A timeout caps the hold so a
+  // persistently failing sync can never strand the user on a spinner — after it
+  // we let the normal guard proceed (at worst a recoverable onboarding screen).
+  const [firstPullTimedOut, setFirstPullTimedOut] = useState(false);
+  const pullPending = !!userId && isOnlineSession && hasSyncedUser !== userId;
+  useEffect(() => {
+    setFirstPullTimedOut(false);
+    if (!pullPending) return;
+    const t = setTimeout(() => setFirstPullTimedOut(true), 15000);
+    return () => clearTimeout(t);
+  }, [pullPending, userId]);
+  const awaitingFirstPull = pullPending && !firstPullTimedOut;
 
   const scheme: "light" | "dark" =
     themePref === "system" ? (systemScheme === "dark" ? "dark" : "light") : themePref;
