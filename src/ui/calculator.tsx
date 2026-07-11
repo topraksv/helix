@@ -90,6 +90,11 @@ const KEYS: string[][] = [
 export function CalculatorPad({ onResult, resultLabel }: { onResult?: (major: number) => void; resultLabel?: string }) {
   const { palette, scheme } = useTheme();
   const { state, press, value, text } = useCalculator();
+  // Live preview of the pending operation before "=" is pressed (3 × 5 → = 15).
+  const preview =
+    state.op != null && state.current !== "" && state.accumulator != null
+      ? apply(state.accumulator, toNumber(state.current), state.op)
+      : null;
 
   const keyStyle = (key: string) => {
     const isOp = ["÷", "×", "-", "+", "="].includes(key);
@@ -121,6 +126,11 @@ export function CalculatorPad({ onResult, resultLabel }: { onResult?: (major: nu
         <Text style={[type.amountLg, { color: palette.text }]} numberOfLines={1} adjustsFontSizeToFit>
           {text}
         </Text>
+        {preview != null ? (
+          <Text style={[type.small, { color: palette.textMuted }]} numberOfLines={1}>
+            = {new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}
+          </Text>
+        ) : null}
       </View>
       {/* keys */}
       <View style={{ gap: spacing.sm }}>

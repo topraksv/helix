@@ -195,6 +195,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       <MoneyField
         label={`${tr.tx.amount} · ${currency}`}
         value={amountRaw}
+        placeholder={useRotatingPlaceholder(placeholderPools.amount, { prefix: false })}
         onChangeMinor={(raw, minor) => {
           setAmountRaw(raw);
           setAmountMinor(minor);

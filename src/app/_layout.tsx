@@ -22,16 +22,18 @@ import {
 import { Fraunces_500Medium, Fraunces_600SemiBold, Fraunces_700Bold } from "@expo-google-fonts/fraunces";
 import { migrateDb } from "../db/migrate";
 import { useSession } from "../auth/session";
-import { useOnboarded } from "../data/hooks";
+import { useAccountFrozen, useOnboarded } from "../data/hooks";
 import { runMaintenance } from "../data/repo";
 import { loadRateCache, refreshRates } from "../services/fx-fetch";
 import { rescheduleAll } from "../services/notifications";
 import { syncNow } from "../sync/engine";
+import { useSyncStatus } from "../sync/status";
 import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
 import { DialogHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
+import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
 
@@ -125,11 +127,19 @@ export default function RootLayout() {
 function RootLayoutInner() {
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
-  const { userId, ready, bootstrap } = useSession();
+  const { userId, ready, bootstrap, isOnlineSession } = useSession();
   const [locked, setLocked] = useState<boolean | null>(null);
   const onboarded = useOnboarded(userId);
+  const frozen = useAccountFrozen(userId);
+  const hasSyncedUser = useSyncStatus((s) => s.hasSyncedUser);
   const segments = useSegments();
   const router = useRouter();
+
+  // On a fresh device an already-onboarded account's `onboarded` flag arrives
+  // only with the first sync pull; until then the local query returns false.
+  // Hold (blank) instead of flashing the onboarding screen for online sessions
+  // whose initial pull hasn't landed yet.
+  const awaitingFirstPull = !!userId && isOnlineSession && hasSyncedUser !== userId;
 
   const scheme: "light" | "dark" =
     themePref === "system" ? (systemScheme === "dark" ? "dark" : "light") : themePref;
@@ -226,11 +236,11 @@ function RootLayoutInner() {
     const inAuth = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "(onboarding)";
     if (!userId && !inAuth) router.replace("/(auth)/sign-in");
-    else if (userId && onboarded === false && !inOnboarding) router.replace("/(onboarding)/setup");
+    else if (userId && onboarded === false && !awaitingFirstPull && !inOnboarding) router.replace("/(onboarding)/setup");
     else if (userId && onboarded === true && (inAuth || inOnboarding || (segments as string[]).length === 0)) {
       router.replace("/(tabs)");
     }
-  }, [ready, locked, userId, onboarded, segments, router]);
+  }, [ready, locked, userId, onboarded, awaitingFirstPull, segments, router]);
 
   if (!ready || locked === null) {
     return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
@@ -245,6 +255,17 @@ function RootLayoutInner() {
             <Button label={tr.lock.button} onPress={() => void unlock()} />
           </View>
         </Screen>
+      </ThemeContext.Provider>
+    );
+  }
+
+  // Frozen account: block everything behind the reactivation gate. Only applies
+  // to a signed-in, onboarded user (frozen is null when signed out).
+  if (userId && onboarded === true && frozen === true) {
+    return (
+      <ThemeContext.Provider value={theme}>
+        <FrozenGate />
+        <DialogHost />
       </ThemeContext.Provider>
     );
   }

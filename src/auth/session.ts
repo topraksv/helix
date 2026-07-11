@@ -8,7 +8,9 @@
 import { create } from "zustand";
 import { getSupabase, isSupabaseConfigured } from "../sync/supabase";
 import { resetLocalWorkspace } from "../db/mutations";
+import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { cancelSync } from "../sync/engine";
+import { useSyncStatus } from "../sync/status";
 import { disconnectMarkets } from "../services/markets";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
@@ -60,6 +62,24 @@ interface SessionStore {
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
+  /** Permanently delete all data (cloud + this device) and sign out. Returns a
+   *  user-facing error string when the cloud wipe could not complete. */
+  deleteAccount: () => Promise<string | null>;
+}
+
+/**
+ * Delete every synced row this user owns from the cloud (RLS also scopes it,
+ * but we filter by user_id explicitly). Throws on the first failing table so
+ * the caller can surface that the wipe was incomplete rather than sign the user
+ * out believing their data is gone.
+ */
+async function deleteAllCloudData(userId: string): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    const { error } = await supabase.from(table).delete().eq("user_id", userId);
+    if (error) throw new Error(`${table}: ${error.message}`);
+  }
 }
 
 export const useSession = create<SessionStore>((set) => ({
@@ -114,6 +134,11 @@ export const useSession = create<SessionStore>((set) => ({
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
+    // A brand-new account has no cloud data to pull, so mark its initial pull
+    // as done: the route guard must send it straight to onboarding instead of
+    // holding on the "awaiting first pull" gate (which exists only to avoid
+    // flashing onboarding to an EXISTING account whose data is still syncing).
+    useSyncStatus.getState().set({ hasSyncedUser: data.user.id });
     set({ userId: data.user.id, isOnlineSession: true });
     return null;
   },
@@ -124,6 +149,9 @@ export const useSession = create<SessionStore>((set) => ({
     // stream survives the session.
     cancelSync();
     disconnectMarkets();
+    // Clear the "initial pull done" marker so a later sign-in on this device
+    // waits for its own first pull before deciding onboarded-vs-onboarding.
+    useSyncStatus.getState().set({ hasSyncedUser: null, lastSyncAt: null });
     const supabase = getSupabase();
     if (supabase) {
       try {
@@ -144,5 +172,42 @@ export const useSession = create<SessionStore>((set) => ({
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
     set({ userId: null, isOnlineSession: false });
+  },
+
+  deleteAccount: async () => {
+    const state = useSession.getState();
+    const userId = state.userId;
+    if (!userId) return null;
+    // Wipe the cloud first: if it fails (offline), abort before touching local
+    // data so we never report "deleted" while the rows still live in the cloud.
+    if (isSupabaseConfigured) {
+      try {
+        await deleteAllCloudData(userId);
+      } catch (e) {
+        return `${tr.account.deleteCloudFailed} (${e instanceof Error ? e.message : String(e)})`;
+      }
+    }
+    // Cloud is clear (or local-only mode): stop timers/streams, wipe the device,
+    // and end the session.
+    cancelSync();
+    disconnectMarkets();
+    useSyncStatus.getState().set({ hasSyncedUser: null, lastSyncAt: null });
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // offline sign-out still clears local session state
+      }
+    }
+    try {
+      await resetLocalWorkspace();
+    } catch {
+      // best-effort; the cloud is already gone and the session is cleared below
+    }
+    await kv.remove(LOCAL_OWNER_KEY);
+    await kv.remove(LAST_USER_KEY);
+    set({ userId: null, isOnlineSession: false });
+    return null;
   },
 }));

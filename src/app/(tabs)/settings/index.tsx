@@ -20,6 +20,8 @@ import {
   LogOut,
   PiggyBank,
   ScanFace,
+  Snowflake,
+  Trash2,
   Users,
   Wallet,
 } from "lucide-react-native";
@@ -28,7 +30,7 @@ import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
 import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
 import { buildExportBundle, buildTransactionsCsv, importBundle, saveTextFile } from "../../../services/export-import";
 import { rescheduleAll } from "../../../services/notifications";
-import { syncNow } from "../../../sync/engine";
+import { scheduleSync, syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalThemePreference } from "../../_layout";
@@ -42,7 +44,7 @@ import type { ThemePreference } from "../../../ui/theme";
 
 export default function SettingsScreen() {
   const userId = useUserId();
-  const { signOut } = useSession();
+  const { signOut, deleteAccount } = useSession();
   const settings = useSettingsMap();
   const sync = useSyncStatus();
   const router = useRouter();
@@ -138,20 +140,56 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleFreeze = async () => {
+    const ok = await appConfirm(tr.account.freezeConfirmTitle, tr.account.freezeConfirmBody, {
+      confirmLabel: tr.account.freezeConfirm,
+      danger: true,
+    });
+    if (!ok) return;
+    await writeSetting(userId, "account_frozen", true);
+    scheduleSync(userId);
+  };
+
+  const [deleting, setDeleting] = useState(false);
+  const handleDeleteAccount = async () => {
+    if (deleting) return;
+    const ok1 = await appConfirm(tr.account.deleteConfirm1Title, tr.account.deleteConfirm1Body, {
+      confirmLabel: tr.common.delete,
+      danger: true,
+    });
+    if (!ok1) return;
+    const ok2 = await appConfirm(tr.account.deleteConfirm2Title, tr.account.deleteConfirm2Body, {
+      confirmLabel: tr.account.deleteConfirm,
+      danger: true,
+    });
+    if (!ok2) return;
+    setDeleting(true);
+    try {
+      const err = await deleteAccount();
+      if (err) void appAlert(err, tr.errors.title);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const syncStateColor =
     sync.state === "idle" ? palette.positive : sync.state === "error" ? palette.negative : palette.warning;
 
   return (
     <Screen title={tr.settings.title}>
+      <SectionHeader>{tr.settings.setupSection}</SectionHeader>
+      <Card>
+        <ListRow icon={LayoutTemplate} title={tr.settings.template} subtitle={tr.settings.templateDesc} chevron onPress={() => router.push("/workspace-template")} />
+        <ListRow icon={PiggyBank} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />
+      </Card>
+
       <SectionHeader>{tr.settings.workspaceSection}</SectionHeader>
       <Card>
         <ListRow icon={Columns3} title={tr.settings.categories} subtitle={tr.settings.categoriesDesc} chevron onPress={() => router.push("/settings/categories")} />
-        <ListRow icon={LayoutTemplate} title={tr.settings.template} subtitle={tr.settings.templateDesc} chevron onPress={() => router.push("/workspace-template")} />
         <ListRow icon={Calculator} title={tr.settings.computed} subtitle={tr.settings.computedDesc} chevron onPress={() => router.push("/settings/computed-columns")} />
-        <ListRow icon={Users} title={tr.settings.persons} subtitle={tr.settings.personsDesc} chevron onPress={() => router.push("/settings/persons")} />
         <ListRow icon={Wallet} title={tr.settings.sources} subtitle={tr.settings.sourcesDesc} chevron onPress={() => router.push("/settings/payment-sources")} />
+        <ListRow icon={Users} title={tr.settings.persons} subtitle={tr.settings.personsDesc} chevron onPress={() => router.push("/settings/persons")} />
         <ListRow icon={Banknote} title={tr.settings.incomeRules} subtitle={tr.settings.incomeRulesDesc} chevron onPress={() => router.push("/settings/incomes")} />
-        <ListRow icon={PiggyBank} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />
       </Card>
 
       <SectionHeader>{tr.settings.appSection}</SectionHeader>
@@ -243,7 +281,19 @@ export default function SettingsScreen() {
 
       <Card>
         <ListRow icon={BookOpen} title={tr.tour.replay} subtitle={tr.tour.replayDesc} chevron onPress={() => setTourOpen(true)} />
-        <ListRow icon={LogOut} iconColor={palette.negative} title={tr.auth.signOut} onPress={() => void handleSignOut()} />
+      </Card>
+
+      <SectionHeader>{tr.account.section}</SectionHeader>
+      <Card>
+        <ListRow icon={LogOut} title={tr.auth.signOut} onPress={() => void handleSignOut()} />
+        <ListRow icon={Snowflake} title={tr.account.freeze} subtitle={tr.account.freezeDesc} onPress={() => void handleFreeze()} />
+        <ListRow
+          icon={Trash2}
+          iconColor={palette.negative}
+          title={tr.account.delete}
+          subtitle={tr.account.deleteDesc}
+          onPress={() => void handleDeleteAccount()}
+        />
       </Card>
       {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}
 

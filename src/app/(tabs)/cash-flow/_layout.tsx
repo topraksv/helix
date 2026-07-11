@@ -18,6 +18,7 @@ export default function CashflowLayout() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="[month]" options={{ title: tr.cashflow.monthDetail }} />
+      <Stack.Screen name="item" options={{ title: tr.cashflow.monthDetail }} />
       <Stack.Screen name="analytics" options={{ title: tr.analysis.title }} />
       <Stack.Screen name="installments" options={{ title: tr.installments.title }} />
     </Stack>

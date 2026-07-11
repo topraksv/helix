@@ -22,19 +22,47 @@ import type { ExpectedPaymentLike, PaymentSourceType, TransactionType } from "..
 // Onboarding seed
 // ---------------------------------------------------------------------------
 
-/** Excel-like default template. Pure template content — fully editable later. */
-export const TEMPLATE_CATEGORIES: { name: string; kind: "expense" | "income"; isColumn: boolean; icon?: string }[] = [
-  { name: "Kredi Kartı Tek Çekim", kind: "expense", isColumn: true, icon: "💳" },
-  { name: "Ev Kredisi", kind: "expense", isColumn: true, icon: "🏠" },
-  { name: "Fatura ve Abonelikler", kind: "expense", isColumn: true, icon: "🧾" },
-  { name: "Yatırım", kind: "expense", isColumn: true, icon: "📈" },
+export interface TemplateCategory {
+  name: string;
+  kind: "expense" | "income";
+  isColumn: boolean;
+  icon?: string;
+}
+
+/**
+ * Starter category set offered on first run. Broad, everyday items that fit
+ * most people (no assumptions like a mortgage or a car) — all fully editable
+ * and deletable later. Extra, less-universal examples live in
+ * `TEMPLATE_EXTRA_CATEGORIES` and are offered separately.
+ */
+export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
+  { name: "Kredi Kartı", kind: "expense", isColumn: true, icon: "💳" },
+  { name: "Faturalar", kind: "expense", isColumn: true, icon: "🧾" },
+  { name: "Market", kind: "expense", isColumn: true, icon: "🛒" },
+  { name: "Araç & Yakıt", kind: "expense", isColumn: true, icon: "⛽" },
+  { name: "Kira", kind: "expense", isColumn: true, icon: "🏠" },
+  { name: "Ulaşım", kind: "expense", isColumn: true, icon: "🚌" },
+  { name: "Sağlık", kind: "expense", isColumn: true, icon: "🩺" },
+  { name: "Eğlence", kind: "expense", isColumn: true, icon: "🎬" },
   { name: "Ek Giderler", kind: "expense", isColumn: true, icon: "🧺" },
   { name: "Maaş", kind: "income", isColumn: true, icon: "💰" },
   { name: "Ek Gelirler", kind: "income", isColumn: true, icon: "➕" },
 ];
 
+/** Less-universal example columns, offered as optional extras (not default). */
+export const TEMPLATE_EXTRA_CATEGORIES: TemplateCategory[] = [
+  { name: "Ev Kredisi", kind: "expense", isColumn: true, icon: "🏦" },
+  { name: "Araç Kredisi", kind: "expense", isColumn: true, icon: "🚗" },
+  { name: "Yatırım", kind: "expense", isColumn: true, icon: "📈" },
+  { name: "Abonelikler", kind: "expense", isColumn: true, icon: "🔁" },
+  { name: "Giyim", kind: "expense", isColumn: true, icon: "👕" },
+  { name: "Eğitim", kind: "expense", isColumn: true, icon: "🎓" },
+  { name: "Kira Geliri", kind: "income", isColumn: true, icon: "🏘️" },
+];
+
 export interface SeedInput {
-  template: "excel" | "blank";
+  /** Template categories to create; empty = start blank. */
+  templateCategories: TemplateCategory[];
   startMonth: MonthKey;
   openingBalanceMinor: Minor;
   persons: { name: string; isSelf: boolean }[];
@@ -70,14 +98,12 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
       },
     });
   });
-  if (input.template === "excel") {
-    TEMPLATE_CATEGORIES.forEach((c, i) => {
-      writes.push({
-        table: "categories",
-        row: { id: newId(), name: c.name, kind: c.kind, icon: c.icon ?? null, color: null, sortOrder: i, isColumn: c.isColumn, deletedAt: null },
-      });
+  input.templateCategories.forEach((c, i) => {
+    writes.push({
+      table: "categories",
+      row: { id: newId(), name: c.name, kind: c.kind, icon: c.icon ?? null, color: null, sortOrder: i, isColumn: c.isColumn, deletedAt: null },
     });
-  }
+  });
   await writeRows(userId, writes);
   await writeSetting(userId, "start_month", input.startMonth);
   await writeSetting(userId, "opening_balance_minor", input.openingBalanceMinor);
@@ -811,55 +837,23 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     }
   }
 
-  // 0b) One-time migration: the credit-card installment column used to be a
-  // hard-coded, specially-managed column. Standardize the model — recreate it
-  // once as an ordinary (user editable/deletable) computed column, guarded by a
-  // synced flag so a later delete is never resurrected on any device.
-  const ccMigrated = await sqlite.getAllAsync<{ value: string }>(
-    `SELECT value FROM settings WHERE user_id = ? AND key = 'cc_column_migrated' AND deleted_at IS NULL`,
+  // 0b) One-time removal: the auto-created "KK Taksit" (credit-card installment
+  // split) computed column is no longer wanted — it renders a derived column
+  // that isn't a real category and confused users. Tombstone the deterministic
+  // cc column once, guarded by a synced flag so it never resurrects on any
+  // device. A user's own manually-created computed columns are untouched.
+  const ccRemoved = await sqlite.getAllAsync<{ value: string }>(
+    `SELECT value FROM settings WHERE user_id = ? AND key = 'cc_column_removed' AND deleted_at IS NULL`,
     [userId] as never[],
   );
-  if (ccMigrated.length === 0) {
+  if (ccRemoved.length === 0) {
     const ccId = await deterministicId(naturalKeys.ccColumn(userId));
-    // Skip creation if that row already exists in any state (incl. a tombstone):
-    // never override a user's deletion, even in a pre-flag-sync race.
-    const already = await sqlite.getAllAsync<{ id: string }>(
-      `SELECT id FROM computed_columns WHERE user_id = ? AND id = ?`,
+    const live = await sqlite.getAllAsync<{ id: string }>(
+      `SELECT id FROM computed_columns WHERE user_id = ? AND id = ? AND deleted_at IS NULL`,
       [userId, ccId] as never[],
     );
-    if (already.length === 0) {
-      const oldSettings = await sqlite.getAllAsync<{ key: string; value: string }>(
-        `SELECT key, value FROM settings WHERE user_id = ? AND key IN ('cc_col_label','cc_col_hidden','computed_columns_hidden') AND deleted_at IS NULL`,
-        [userId] as never[],
-      );
-      const readJson = <T,>(key: string, fb: T): T => {
-        const r = oldSettings.find((x) => x.key === key);
-        if (!r) return fb;
-        try {
-          return JSON.parse(r.value) as T;
-        } catch {
-          return fb;
-        }
-      };
-      const label = readJson<string>("cc_col_label", "KK Taksit") || "KK Taksit";
-      await writeRows(
-        userId,
-        [
-          {
-            table: "computed_columns" as const,
-            row: { id: ccId, name: label, definition: JSON.stringify({ op: "cc_split", part: "installment" }), sortOrder: 0, deletedAt: null },
-          },
-        ],
-        false,
-      );
-      // Preserve the old visibility choice by carrying it into the standard
-      // computed-column hidden list.
-      if (readJson<boolean>("cc_col_hidden", false)) {
-        const hidden = readJson<string[]>("computed_columns_hidden", []);
-        if (!hidden.includes(ccId)) await writeSetting(userId, "computed_columns_hidden", [...hidden, ccId]);
-      }
-    }
-    await writeSetting(userId, "cc_column_migrated", true);
+    if (live.length > 0) await softDelete(userId, "computed_columns", ccId);
+    await writeSetting(userId, "cc_column_removed", true);
   }
 
   // 1) §2.7 — pending transactions whose effective date arrived become realized.

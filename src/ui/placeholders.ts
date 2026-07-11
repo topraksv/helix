@@ -14,17 +14,23 @@ export const placeholderPools = {
   income: ["Maaş", "Kira geliri", "Freelance", "Prim", "Burs"],
   source: ["Banka kartım", "Kredi kartım", "Nakit", "Dijital cüzdan", "Ortak hesap"],
   note: ["Market alışverişi", "Doğum günü hediyesi", "Yıllık ödeme", "Arkadaşlarla yemek", "İade bekleniyor"],
+  amount: ["1.250", "300", "89,90", "15.000", "2.500", "49,99", "750", "12.400"],
 } as const;
 
 const ROTATE_MS = 4000;
 
-/** A placeholder from the pool that starts at a random spot and keeps cycling. */
-export function useRotatingPlaceholder(pool: readonly string[]): string {
+/**
+ * A placeholder from the pool that starts at a random spot and keeps cycling.
+ * Amount fields pass `prefix: false` so the example reads as a bare number
+ * ("1.250") instead of "Ör. 1.250".
+ */
+export function useRotatingPlaceholder(pool: readonly string[], opts?: { prefix?: boolean }): string {
   const [start] = useState(() => Math.floor(Math.random() * pool.length));
   const [offset, setOffset] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setOffset((o) => o + 1), ROTATE_MS);
     return () => clearInterval(timer);
   }, []);
-  return `Ör. ${pool[(start + offset) % pool.length]}`;
+  const sample = pool[(start + offset) % pool.length];
+  return opts?.prefix === false ? sample : `Ör. ${sample}`;
 }

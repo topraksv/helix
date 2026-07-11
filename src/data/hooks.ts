@@ -255,6 +255,29 @@ export function useOnboarded(userId: string | null): boolean | null {
   }
 }
 
+/**
+ * Live "account frozen" flag. Synced setting so a freeze on one device gates
+ * every device. `null` while still resolving (or signed out) so the gate never
+ * flashes before the real value is known.
+ */
+export function useAccountFrozen(userId: string | null): boolean | null {
+  const res = useLive(
+    getDb()
+      .select()
+      .from(s.settings)
+      .where(and(eq(s.settings.userId, userId ?? ""), eq(s.settings.key, "account_frozen"), isNull(s.settings.deletedAt))),
+    [userId],
+    ["settings"],
+  );
+  if (!userId) return null;
+  if (res.updatedAt == null) return null;
+  try {
+    return JSON.parse(res.data[0]?.value ?? "false") === true;
+  } catch {
+    return false;
+  }
+}
+
 export function useSettingsMap(): Map<string, string> {
   const userId = useUserId();
   const rows = useLive(
