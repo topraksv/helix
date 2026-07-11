@@ -278,7 +278,13 @@ function RootLayoutInner() {
   const inOnboarding = segments[0] === "(onboarding)";
   const blocked = inAuth ? !!userId && onboarded === true : inOnboarding ? !userId : !userId || onboarded !== true;
   if (blocked) {
-    return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
+    // While an existing account's first pull is still landing, show a spinner
+    // rather than a bare background so the hold never reads as a white screen.
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}>
+        {awaitingFirstPull ? <ActivityIndicator color={theme.palette.primary} /> : null}
+      </View>
+    );
   }
 
   return (
