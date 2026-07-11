@@ -25,9 +25,25 @@ export interface GeneratedInstallment {
   status: TransactionStatus;
 }
 
+/**
+ * Upper bound on a plan's installment count. Even a 30-year mortgage is 360
+ * months; anything past this is a typo or corrupt input, and materializing it
+ * would write thousands of rows in one transaction and freeze the UI. Callers
+ * (forms) also validate, but the engine refuses out-of-range counts outright.
+ */
+export const MAX_INSTALLMENT_COUNT = 600;
+
+/** True when a count is a sane, materializable installment count. */
+export function isValidInstallmentCount(count: number): boolean {
+  return Number.isInteger(count) && count >= 1 && count <= MAX_INSTALLMENT_COUNT;
+}
+
 /** Monthly amounts for a plan: split total (card) or fixed monthly (loan). */
 export function planAmounts(plan: Pick<InstallmentPlanLike, "totalAmountMinor" | "monthlyAmountMinor" | "installmentCount">): Minor[] {
   const { totalAmountMinor, monthlyAmountMinor, installmentCount } = plan;
+  if (!isValidInstallmentCount(installmentCount)) {
+    throw new Error(`Installment count out of range (1–${MAX_INSTALLMENT_COUNT}): ${installmentCount}`);
+  }
   if (totalAmountMinor != null) return splitIntoInstallments(totalAmountMinor, installmentCount);
   if (monthlyAmountMinor != null) return Array.from({ length: installmentCount }, () => monthlyAmountMinor);
   throw new Error("Plan needs either totalAmountMinor or monthlyAmountMinor");

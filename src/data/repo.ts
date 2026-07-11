@@ -384,6 +384,19 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
 // Expected payments: confirm / skip / revert
 // ---------------------------------------------------------------------------
 
+/**
+ * Thrown when a foreign-currency item is confirmed but no FX rate is available
+ * yet (no live Harem price and nothing cached from TCMB). Storing the raw
+ * foreign amount as if it were TRY would silently corrupt the balance, so the
+ * confirm is refused instead — the caller retries once a rate is known.
+ */
+export class FxRateUnavailableError extends Error {
+  constructor(public readonly currency: string) {
+    super(`No FX rate available for ${currency}`);
+    this.name = "FxRateUnavailableError";
+  }
+}
+
 interface ExpectedRow {
   id: string;
   direction: "in" | "out";
@@ -416,11 +429,14 @@ export async function confirmExpected(
   const amount = opts.actualAmountMinor ?? row.amount_minor;
   // Snapshot the TRY value at confirm time. For foreign-currency items convert
   // with the Harem sell ("satış") price (already streamed), falling back to the
-  // cached TCMB rate; only if neither is available do we store the raw amount.
+  // cached TCMB rate. If NEITHER is available we must not store the raw foreign
+  // amount as TRY (that silently corrupts the balance) — refuse the confirm so
+  // the caller can retry once a rate is known.
   const amountTryMinor = ((): number => {
     if (row.currency === "TRY") return amount;
     const rate = marketSellRateTry(row.currency) ?? lookupRate(userId, row.currency)?.rate.rateTry ?? null;
-    return rate ? convertToTryMinor(amount, rate) : amount;
+    if (rate == null) throw new FxRateUnavailableError(row.currency);
+    return convertToTryMinor(amount, rate);
   })();
   // Deterministic id: a double-tap (or two devices auto-confirming the same
   // item) upserts the same transaction row instead of creating a duplicate.
@@ -950,11 +966,18 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   for (const item of findAutoConfirmable(pendingLike, autoPayIds, today)) {
     if (selfPersonId) {
       const sub = subs.find((s) => s.id === item.refId);
-      await confirmExpected(userId, item.id, {
-        personId: (sub?.person_id as string) ?? selfPersonId,
-        categoryId: (sub?.category_id as string | null) ?? null,
-        auto: true,
-      });
+      try {
+        await confirmExpected(userId, item.id, {
+          personId: (sub?.person_id as string) ?? selfPersonId,
+          categoryId: (sub?.category_id as string | null) ?? null,
+          auto: true,
+        });
+      } catch (e) {
+        // A missing FX rate must not abort the whole maintenance pass — leave
+        // the item pending and auto-confirm it on a later run once a rate is
+        // cached. Re-throw anything unexpected.
+        if (!(e instanceof FxRateUnavailableError)) throw e;
+      }
     }
   }
   const stillPending = pendingLike.filter((p) => !autoPayIds.has(p.refId) || p.kind !== "subscription");

@@ -996,18 +996,6 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
   );
 }
 
-/** Compact stat block (label over value) used in hero/summary rows. */
-export function StatTile({ label, minor, currency = "TRY", tone }: { label: string; minor: number; currency?: string; tone?: "positive" | "negative" }) {
-  const { palette } = useTheme();
-  const color = tone === "positive" ? palette.positive : tone === "negative" ? palette.negative : palette.text;
-  return (
-    <View style={{ flex: 1, backgroundColor: palette.surface, borderRadius: radius.md, padding: spacing.md }}>
-      <Text style={[type.small, { color: palette.textMuted, marginBottom: 2 }]}>{label}</Text>
-      <Text style={[type.amount, { color, fontSize: 16 }]}>{formatMinor(minor, currency)}</Text>
-    </View>
-  );
-}
-
 /** Initials avatar with a deterministic hue from the name (logo fallback). */
 export function InitialsBadge({ name, size = 36 }: { name: string; size?: number }) {
   let hash = 0;

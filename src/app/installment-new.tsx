@@ -6,7 +6,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { createInstallmentPlan, deletePlan, updateInstallmentPlan } from "../data/repo";
 import { useCategories, usePersons, usePlans, useSources, useUserId } from "../data/hooks";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
-import { deriveStartMonth } from "../domain/installments";
+import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react-native";
@@ -56,8 +56,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
     title.trim() !== "" &&
     amountMinor != null &&
     amountMinor > 0 &&
-    Number.isInteger(count) &&
-    count >= 1 &&
+    isValidInstallmentCount(count) &&
     Number.isInteger(paid) &&
     paid >= 0 &&
     paid < count &&
@@ -94,7 +93,8 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       scheduleSync(userId);
       router.back();
     } catch (e) {
-      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+      console.error("[installment.save]", e);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
     } finally {
       setBusy(false);
     }

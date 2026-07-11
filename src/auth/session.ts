@@ -9,6 +9,7 @@ import { create } from "zustand";
 import { getSupabase, isSupabaseConfigured } from "../sync/supabase";
 import { resetLocalWorkspace } from "../db/mutations";
 import { cancelSync } from "../sync/engine";
+import { disconnectMarkets } from "../services/markets";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 
@@ -119,8 +120,10 @@ export const useSession = create<SessionStore>((set) => ({
 
   signOut: async () => {
     // Stop any scheduled sync/retry so a stale timer never fires for this
-    // account after the wipe below.
+    // account after the wipe below, and close the live market feed so no
+    // stream survives the session.
     cancelSync();
+    disconnectMarkets();
     const supabase = getSupabase();
     if (supabase) {
       try {

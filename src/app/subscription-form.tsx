@@ -108,7 +108,8 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       scheduleSync(userId);
       router.back();
     } catch (e) {
-      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+      console.error("[subscription.save]", e);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
     } finally {
       setBusy(false);
     }

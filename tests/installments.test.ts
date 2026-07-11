@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { deriveStartMonth, generateSchedule, planProgress } from "../src/domain/installments";
+import {
+  deriveStartMonth,
+  generateSchedule,
+  isValidInstallmentCount,
+  MAX_INSTALLMENT_COUNT,
+  planAmounts,
+  planProgress,
+} from "../src/domain/installments";
 import { splitIntoInstallments } from "../src/domain/money";
 import type { InstallmentPlanLike } from "../src/domain/types";
 
@@ -38,6 +45,25 @@ describe("splitIntoInstallments", () => {
   it("rejects non-integer amounts and invalid counts", () => {
     expect(() => splitIntoInstallments(100.5, 3)).toThrow();
     expect(() => splitIntoInstallments(100_00, 0)).toThrow();
+  });
+});
+
+describe("installment count bounds (DoS guard)", () => {
+  it("accepts sane counts and rejects out-of-range ones", () => {
+    expect(isValidInstallmentCount(1)).toBe(true);
+    expect(isValidInstallmentCount(360)).toBe(true);
+    expect(isValidInstallmentCount(MAX_INSTALLMENT_COUNT)).toBe(true);
+    expect(isValidInstallmentCount(0)).toBe(false);
+    expect(isValidInstallmentCount(MAX_INSTALLMENT_COUNT + 1)).toBe(false);
+    expect(isValidInstallmentCount(9999)).toBe(false);
+    expect(isValidInstallmentCount(2.5)).toBe(false);
+  });
+
+  // Regression: an unbounded count (e.g. 9999) would materialize thousands of
+  // rows in one transaction and freeze the UI. The engine now refuses it.
+  it("planAmounts throws on an absurd count instead of allocating it", () => {
+    expect(() => planAmounts({ totalAmountMinor: 600_00, monthlyAmountMinor: null, installmentCount: 9999 })).toThrow();
+    expect(() => generateSchedule(plan({ installmentCount: 100_000 }), "2026-07-05")).toThrow();
   });
 });
 

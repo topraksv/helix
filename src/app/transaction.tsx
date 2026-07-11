@@ -10,7 +10,7 @@ import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
-import { deriveStartMonth } from "../domain/installments";
+import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, SUPPORTED_CURRENCIES } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
 import { tr } from "../i18n/tr";
@@ -76,8 +76,17 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   }, [entryType]);
 
   const rate = useMemo(() => lookupRate(userId, currency), [userId, currency]);
+  // Editing a foreign-currency row must NOT silently re-price it at today's
+  // rate — the transaction's TRY value was snapshotted when it occurred. So
+  // when the currency is unchanged from the stored row, keep its original
+  // fxRate; only a fresh entry or a currency change uses the live rate.
+  const editingSameCurrency = isEdit && existing?.currency === currency && currency !== "TRY";
+  const historicalRateTry =
+    editingSameCurrency && existing?.fxRate ? Number(existing.fxRate) : null;
+  const effectiveRateTry: number | null =
+    currency === "TRY" ? 1 : (historicalRateTry ?? rate?.rate.rateTry ?? null);
   const tryMinor =
-    amountMinor == null ? null : currency === "TRY" ? amountMinor : rate ? convertToTryMinor(amountMinor, rate.rate.rateTry) : null;
+    amountMinor == null || effectiveRateTry == null ? null : convertToTryMinor(amountMinor, effectiveRateTry);
 
   const kindForCategories = entryType === "income" ? "income" : "expense";
   const categoryOptions = categories
@@ -87,7 +96,8 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
   const count = Number(countStr);
   const paid = Number(paidStr);
-  const installmentValid = !installment || (Number.isInteger(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
+  const installmentValid =
+    !installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
   const canSave = amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid;
 
   const fail = (msg: string) => void appAlert(msg, tr.errors.title);
@@ -97,7 +107,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     setBusy(true);
     try {
       assertISODate(dateStr);
-      const fxRate = currency === "TRY" ? null : String(rate!.rate.rateTry);
+      const fxRate = currency === "TRY" ? null : String(effectiveRateTry);
       if (isEdit) {
         await updateTransaction(userId, existing as unknown as Record<string, unknown>, {
           type: entryType,
@@ -132,7 +142,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           personIsSelf: person.isSelf,
           categoryId,
           note: note.trim() || null,
-          tryFactor: currency === "TRY" ? 1 : rate!.rate.rateTry,
+          tryFactor: currency === "TRY" ? 1 : effectiveRateTry!,
         });
       } else {
         await addTransaction(userId, {
@@ -158,7 +168,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         router.back();
       }
     } catch (e) {
-      fail(e instanceof Error ? e.message : String(e));
+      // Never surface a raw engine error (English, technical) to the user.
+      console.error("[transaction.save]", e);
+      fail(tr.errors.saveFailed);
     } finally {
       setBusy(false);
     }
@@ -205,7 +217,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       {currency !== "TRY" ? (
         <View style={{ marginBottom: spacing.md }}>
           {tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinor(tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
-          {rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
+          {!historicalRateTry && rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
         </View>
       ) : null}
 
