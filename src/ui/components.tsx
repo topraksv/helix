@@ -835,9 +835,17 @@ export function StatusPill({ label, color }: { label: string; color: string }) {
         backgroundColor: color + "1F",
         alignItems: "center",
         justifyContent: "center",
+        paddingHorizontal: spacing.xs,
       }}
     >
-      <Text style={[type.label, { color, fontSize: 13 }]} numberOfLines={1}>
+      <Text
+        style={[type.label, { color, fontSize: 13, textAlign: "center" }]}
+        // Never ellipsize (app-wide rule): shrink to fit on native; web
+        // ignores adjustsFontSizeToFit, so let the label wrap there instead.
+        numberOfLines={Platform.OS === "web" ? undefined : 1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
         {label}
       </Text>
     </View>

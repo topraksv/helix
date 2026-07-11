@@ -32,6 +32,10 @@ export const naturalKeys = {
   expected: (userId: string, kind: string, refId: string, dueDate: string) =>
     `expected:${userId}:${kind}:${refId}:${dueDate}`,
   installmentTx: (planId: string, installmentNo: number) => `insttx:${planId}:${installmentNo}`,
+  /** The transaction created by confirming an expected item. Deterministic so
+   *  a double-tap or two devices confirming concurrently converge on ONE
+   *  transaction instead of duplicating the payment. */
+  confirmTx: (expectedId: string) => `confirmtx:${expectedId}`,
   /** One note per (month, category) cell — deterministic so re-import overwrites. */
   cellNote: (userId: string, month: string, categoryId: string) => `cellnote:${userId}:${month}:${categoryId}`,
   /** The credit-card installment column, migrated from a hard-coded column to

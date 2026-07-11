@@ -21,10 +21,15 @@ interface LiveResult<T> {
 
 /**
  * Live query over the async driver: runs the drizzle query, then re-runs it
- * (debounced) whenever any local table changes. Failures are logged and
+ * (debounced) whenever a relevant local table changes. Failures are logged and
  * retried with backoff instead of silently freezing screens on empty data.
+ *
+ * `tables` scopes invalidation: only change events for those tables re-run the
+ * query, so one write no longer re-executes every mounted live query (a
+ * dashboard mounts ~10). Omit it to re-run on any change (safe fallback, also
+ * used when the platform doesn't report the changed table).
  */
-export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[]): LiveResult<T> {
+export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly string[]): LiveResult<T> {
   const [state, setState] = useState<LiveResult<T>>({ data: [], updatedAt: undefined });
 
   // The builder object is recreated every render, but it only *changes*
@@ -55,7 +60,11 @@ export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[]): LiveResult
       if (timer) clearTimeout(timer);
       timer = setTimeout(run, 60); // coalesce bursts of change events
     };
-    const listener = addDatabaseChangeListener(schedule);
+    const listener = addDatabaseChangeListener((event) => {
+      // Unknown table (or platform without table info) → conservative re-run.
+      if (tables && event?.tableName && !tables.includes(event.tableName)) return;
+      schedule();
+    });
     return () => {
       cancelled = true;
       listener.remove();
@@ -78,6 +87,7 @@ export function usePersons() {
   return useLive(
     getDb().select().from(s.persons).where(and(eq(s.persons.userId, userId), isNull(s.persons.deletedAt))),
     [userId],
+    ["persons"],
   ).data;
 }
 
@@ -90,6 +100,7 @@ export function useCategories() {
       .where(and(eq(s.categories.userId, userId), isNull(s.categories.deletedAt)))
       .orderBy(asc(s.categories.sortOrder)),
     [userId],
+    ["categories"],
   ).data;
 }
 
@@ -101,6 +112,7 @@ export function useSources() {
       .from(s.paymentSources)
       .where(and(eq(s.paymentSources.userId, userId), isNull(s.paymentSources.deletedAt))),
     [userId],
+    ["payment_sources"],
   ).data;
 }
 
@@ -112,6 +124,7 @@ export function useSubscriptions() {
       .from(s.subscriptions)
       .where(and(eq(s.subscriptions.userId, userId), isNull(s.subscriptions.deletedAt))),
     [userId],
+    ["subscriptions"],
   ).data;
 }
 
@@ -123,6 +136,7 @@ export function usePlans() {
       .from(s.installmentPlans)
       .where(and(eq(s.installmentPlans.userId, userId), isNull(s.installmentPlans.deletedAt))),
     [userId],
+    ["installment_plans"],
   ).data;
 }
 
@@ -134,6 +148,7 @@ export function useRecurringIncomes() {
       .from(s.recurringIncomes)
       .where(and(eq(s.recurringIncomes.userId, userId), isNull(s.recurringIncomes.deletedAt))),
     [userId],
+    ["recurring_incomes"],
   ).data;
 }
 
@@ -146,6 +161,7 @@ export function useComputedColumns() {
       .where(and(eq(s.computedColumns.userId, userId), isNull(s.computedColumns.deletedAt)))
       .orderBy(asc(s.computedColumns.sortOrder)),
     [userId],
+    ["computed_columns"],
   ).data;
 }
 
@@ -158,6 +174,7 @@ export function usePendingExpected() {
       .where(and(eq(s.expectedPayments.userId, userId), isNull(s.expectedPayments.deletedAt)))
       .orderBy(asc(s.expectedPayments.dueDate)),
     [userId],
+    ["expected_payments"],
   ).data;
 }
 
@@ -177,6 +194,7 @@ export function useTransactionsBetween(from: string, to: string) {
       )
       .orderBy(asc(s.transactions.effectiveDate)),
     [userId, from, to],
+    ["transactions"],
   ).data;
 }
 
@@ -189,6 +207,7 @@ export function useAllTransactions() {
       .where(and(eq(s.transactions.userId, userId), isNull(s.transactions.deletedAt)))
       .orderBy(asc(s.transactions.effectiveDate)),
     [userId],
+    ["transactions"],
   ).data;
 }
 
@@ -200,6 +219,7 @@ export function useAdjustments() {
       .from(s.balanceAdjustments)
       .where(and(eq(s.balanceAdjustments.userId, userId), isNull(s.balanceAdjustments.deletedAt))),
     [userId],
+    ["balance_adjustments"],
   ).data;
 }
 
@@ -215,6 +235,7 @@ export function useOnboarded(userId: string | null): boolean | null {
       .from(s.settings)
       .where(and(eq(s.settings.userId, userId ?? ""), eq(s.settings.key, "onboarded"), isNull(s.settings.deletedAt))),
     [userId],
+    ["settings"],
   );
   if (!userId) return null;
   if (res.updatedAt == null) return null; // first query still in flight
@@ -230,6 +251,7 @@ export function useSettingsMap(): Map<string, string> {
   const rows = useLive(
     getDb().select().from(s.settings).where(and(eq(s.settings.userId, userId), isNull(s.settings.deletedAt))),
     [userId],
+    ["settings"],
   ).data;
   return useMemo(() => new Map(rows.map((r) => [r.key, r.value])), [rows]);
 }

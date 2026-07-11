@@ -68,7 +68,9 @@ export async function buildTransactionsCsv(userId: string): Promise<string> {
       safeCell(r.note),
     ].join(";"),
   );
-  return [header, ...lines].join("\n");
+  // UTF-8 BOM: without it, Excel on Windows opens the file as ANSI and mangles
+  // Turkish characters (ğ/ş/İ…) in category and person names.
+  return "\ufeff" + [header, ...lines].join("\n");
 }
 
 /** Write content to a shareable file (native) or trigger a download (web). Returns the file path or null on web. */

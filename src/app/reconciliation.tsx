@@ -34,6 +34,9 @@ export default function CatchUpScreen() {
   const today = todayISO();
   const [editing, setEditing] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
+  // One confirmation at a time (spinner on the active button) — a double-tap
+  // must not submit the same expected item twice.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const items = expected
@@ -44,18 +47,23 @@ export default function CatchUpScreen() {
     subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
 
   const confirm = async (e: (typeof expected)[number], actual?: number) => {
-    if (!selfPersonId) return;
-    const sub = subscriptions.find((s) => s.id === e.refId);
-    const income = incomes.find((i) => i.id === e.refId);
-    await confirmExpected(userId, e.id, {
-      personId: sub?.personId ?? income?.personId ?? selfPersonId,
-      categoryId: sub?.categoryId ?? income?.categoryId ?? null,
-      actualAmountMinor: actual,
-    });
-    scheduleSync(userId);
-    setEditing(null);
-    setAmountRaw("");
-    undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+    if (!selfPersonId || confirmingId) return;
+    setConfirmingId(e.id);
+    try {
+      const sub = subscriptions.find((s) => s.id === e.refId);
+      const income = incomes.find((i) => i.id === e.refId);
+      await confirmExpected(userId, e.id, {
+        personId: sub?.personId ?? income?.personId ?? selfPersonId,
+        categoryId: sub?.categoryId ?? income?.categoryId ?? null,
+        actualAmountMinor: actual,
+      });
+      scheduleSync(userId);
+      setEditing(null);
+      setAmountRaw("");
+      undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+    } finally {
+      setConfirmingId(null);
+    }
   };
 
   return (
@@ -98,7 +106,8 @@ export default function CatchUpScreen() {
                         const minor = parseTRAmountToMinor(amountRaw);
                         if (minor != null && minor > 0) void confirm(e, minor);
                       }}
-                      disabled={parseTRAmountToMinor(amountRaw) == null}
+                      loading={confirmingId === e.id}
+                      disabled={parseTRAmountToMinor(amountRaw) == null || confirmingId != null}
                     />
                   </View>
                   <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditing(null)} />
@@ -109,6 +118,8 @@ export default function CatchUpScreen() {
                 <View style={{ flex: 1 }}>
                   <Button
                     label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                    loading={confirmingId === e.id}
+                    disabled={confirmingId != null}
                     onPress={() => void confirm(e)}
                   />
                 </View>

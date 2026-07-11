@@ -56,10 +56,15 @@ function applyFeed(data: Record<string, FeedEntry>) {
   for (const { code } of MARKET_SYMBOLS) {
     const entry = data[code];
     if (!entry) continue;
+    const buyTry = Number(entry.alis);
+    const sellTry = Number(entry.satis);
+    // A malformed feed value must never render as "NaN ₺" — keep the previous
+    // price (or the card's unavailable state) instead.
+    if (!Number.isFinite(buyTry) || !Number.isFinite(sellTry)) continue;
     prices[code] = {
       code,
-      buyTry: Number(entry.alis),
-      sellTry: Number(entry.satis),
+      buyTry,
+      sellTry,
       direction: entry.dir?.satis_dir === "up" ? "up" : entry.dir?.satis_dir === "down" ? "down" : "",
       at: entry.tarih,
     };

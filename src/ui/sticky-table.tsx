@@ -176,6 +176,7 @@ export function StickyTable({
   const pinnedIndex = pinnedKey ? columns.findIndex((c) => c.key === pinnedKey) : -1;
   const pinnedCol = pinnedIndex >= 0 ? columns[pinnedIndex] : null;
   const scrollCols = columns.filter((_, i) => i !== pinnedIndex);
+  const colIndexByKey = new Map(columns.map((c, i) => [c.key, i]));
   const cellCenter = { justifyContent: "center" as const, paddingHorizontal: spacing.sm };
   const leftWidth = headWidth + (pinnedCol ? cellWidth : 0);
 
@@ -333,7 +334,7 @@ export function StickyTable({
                   }}
                 >
                   {scrollCols.map((c) => {
-                    const idx = columns.findIndex((x) => x.key === c.key);
+                    const idx = colIndexByKey.get(c.key)!;
                     return (
                       <View
                         key={c.key}

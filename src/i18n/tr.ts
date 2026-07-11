@@ -18,10 +18,12 @@ export const tr = {
     pickDate: "Tarih Seç",
   },
   errors: {
+    title: "Hata",
     database: "Veritabanı hatası",
     supabaseNotConfigured: "Supabase yapılandırılmadı",
     signUpFailed: "Kayıt oluşturulamadı",
     invalidBackupFile: "Geçersiz yedek dosyası",
+    workspaceResetFailed: "Cihazdaki önceki hesabın verileri temizlenemedi; giriş yapılamadı. Lütfen tekrar dene.",
   },
   placeholders: {
     computedColumnName: "Ör. Sabit Giderler Toplamı",
@@ -40,6 +42,18 @@ export const tr = {
     haveAccount: "Zaten hesabın var mı?",
     signInAction: "Giriş yap",
     offlineNote: "Verilerin cihazında saklanır, internet yokken de çalışır.",
+    errInvalidCredentials: "E-posta veya şifre hatalı.",
+    errUserExists: "Bu e-posta ile zaten bir hesap var; giriş yapmayı dene.",
+    errRateLimit: "Çok fazla deneme yapıldı. Biraz bekleyip tekrar dene.",
+    errNetwork: "İnternete bağlanılamadı. Bağlantını kontrol edip tekrar dene.",
+    errWeakPassword: "Şifre çok zayıf; en az 6 karakter kullan.",
+    errEmailNotConfirmed: "E-posta adresin henüz doğrulanmamış; gelen kutunu kontrol et.",
+    errInvalidEmail: "Geçerli bir e-posta adresi gir.",
+    errGeneric: "İşlem tamamlanamadı. Lütfen tekrar dene.",
+    signOutPendingTitle: "Gönderilmemiş kayıtlar var",
+    signOutPendingWarn: (n: number) =>
+      `${n} kayıt henüz buluta eşitlenmedi. Şimdi çıkarsan bu kayıtlar kalıcı olarak silinir. Yine de çıkmak istiyor musun?`,
+    signOutAnyway: "Yine de Çık",
   },
   lock: { title: "Kilidi Aç", prompt: "Devam etmek için kimliğini doğrula", button: "Face ID ile Aç" },
   onboarding: {

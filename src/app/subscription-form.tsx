@@ -1,7 +1,7 @@
 /** Subscription add/edit modal. Price edits append to price_history (spec §3.1). */
 
 import React, { useMemo, useState } from "react";
-import { Alert, Platform, Switch, View } from "react-native";
+import { Switch, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { upsertSubscription } from "../data/repo";
 import { useCategories, usePersons, useSources, useSubscriptions, useUserId } from "../data/hooks";
@@ -12,6 +12,7 @@ import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
 import { Body, Button, ChipPicker, Field, Label, MoneyField, Screen, Segmented, Spread } from "../ui/components";
+import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
@@ -107,9 +108,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       scheduleSync(userId);
       router.back();
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (Platform.OS === "web") window.alert(message);
-      else Alert.alert("Hata", message);
+      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {
       setBusy(false);
     }

@@ -8,11 +8,14 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { getSqliteAsync } from "../db/client";
 import { readSetting } from "../db/mutations";
-import { todayISO } from "../domain/dates";
+import { addDaysISO, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 
 const HORIZON_DAYS = 30;
+/** iOS keeps at most 64 pending local notifications and silently drops the
+ *  rest; schedule the soonest ones only — the next app open replans anyway. */
+const MAX_SCHEDULED = 60;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -41,9 +44,7 @@ interface PlannedNotification {
 export async function planNotifications(userId: string): Promise<PlannedNotification[]> {
   const sqlite = await getSqliteAsync();
   const today = todayISO();
-  const horizon = new Date(`${today}T00:00:00`);
-  horizon.setDate(horizon.getDate() + HORIZON_DAYS);
-  const horizonIso = horizon.toISOString().slice(0, 10);
+  const horizonIso = addDaysISO(today, HORIZON_DAYS);
   const reminderDays = (await readSetting<number>(userId, "reminder_days")) ?? 3;
   const planned: PlannedNotification[] = [];
 
@@ -78,9 +79,7 @@ export async function planNotifications(userId: string): Promise<PlannedNotifica
       continue;
     }
     // early "is the money ready" reminder
-    const early = new Date(`${e.due_date}T00:00:00`);
-    early.setDate(early.getDate() - reminderDays);
-    const earlyIso = early.toISOString().slice(0, 10);
+    const earlyIso = addDaysISO(e.due_date, -reminderDays);
     if (earlyIso > today) {
       planned.push({ date: earlyIso, title: tr.notif.upcomingTitle, body: tr.notif.upcoming(name, dateLabel(e.due_date), amount) });
     }
@@ -121,12 +120,16 @@ export async function rescheduleAll(userId: string): Promise<void> {
   const granted = await ensurePermission();
   if (!granted) return;
   await Notifications.cancelAllScheduledNotificationsAsync();
-  for (const n of await planNotifications(userId)) {
-    const fireAt = new Date(`${n.date}T09:00:00`);
-    if (fireAt.getTime() <= Date.now()) continue;
+  const now = Date.now();
+  const upcoming = (await planNotifications(userId))
+    .map((n) => ({ ...n, fireAt: new Date(`${n.date}T09:00:00`) }))
+    .filter((n) => n.fireAt.getTime() > now)
+    .sort((a, b) => a.fireAt.getTime() - b.fireAt.getTime())
+    .slice(0, MAX_SCHEDULED);
+  for (const n of upcoming) {
     await Notifications.scheduleNotificationAsync({
       content: { title: n.title, body: n.body },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireAt },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: n.fireAt },
     });
   }
 }

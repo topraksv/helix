@@ -30,6 +30,7 @@ import { syncNow } from "../sync/engine";
 import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
+import { DialogHost } from "../ui/dialog";
 import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
 
@@ -192,9 +193,17 @@ function RootLayoutInner() {
   }, [ready]);
 
   // Opportunistic background work on open + foreground (never blocks UI).
+  // Throttled: on web, "active" fires on every tab focus — rapid tab switches
+  // must not re-run the full maintenance + FX + sync pass each time. The
+  // throttle is per-user so an account switch always gets its initial pass.
+  const lastKickAt = React.useRef(0);
+  const lastKickUser = React.useRef<string | null>(null);
   useEffect(() => {
     if (!ready || !userId || locked !== false) return;
     const kick = () => {
+      if (lastKickUser.current === userId && Date.now() - lastKickAt.current < 60_000) return;
+      lastKickUser.current = userId;
+      lastKickAt.current = Date.now();
       void runMaintenance(userId)
         .then(() => rescheduleAll(userId))
         .catch((e) => console.warn("maintenance failed", e));
@@ -279,6 +288,7 @@ function RootLayoutInner() {
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title }} />
         </Stack>
         <UndoSnackbar />
+        <DialogHost />
       </View>
     </ThemeContext.Provider>
   );

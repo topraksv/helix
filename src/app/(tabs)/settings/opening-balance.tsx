@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from "react";
-import { Platform, Alert, View } from "react-native";
+import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { writeSetting } from "../../../db/mutations";
@@ -16,6 +16,7 @@ import { addMonthsToKey, monthKeyOf, todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { Body, Button, Card, Heading, IconButton, MoneyField, Screen, Spread } from "../../../ui/components";
+import { appAlert } from "../../../ui/dialog";
 import { spacing } from "../../../ui/theme";
 
 export default function OpeningBalanceScreen() {
@@ -42,9 +43,7 @@ export default function OpeningBalanceScreen() {
       scheduleSync(userId);
       router.back();
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (Platform.OS === "web") window.alert(message);
-      else Alert.alert("Hata", message);
+      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {
       setBusy(false);
     }

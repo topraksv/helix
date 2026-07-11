@@ -5,7 +5,7 @@
 
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
-import { nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
+import { fromDbShape, nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
 import { todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { convertToTryMinor } from "../domain/fx";
@@ -422,7 +422,9 @@ export async function confirmExpected(
     const rate = marketSellRateTry(row.currency) ?? lookupRate(userId, row.currency)?.rate.rateTry ?? null;
     return rate ? convertToTryMinor(amount, rate) : amount;
   })();
-  const txId = newId();
+  // Deterministic id: a double-tap (or two devices auto-confirming the same
+  // item) upserts the same transaction row instead of creating a duplicate.
+  const txId = await deterministicId(naturalKeys.confirmTx(row.id));
   const today = todayISO();
   const sqlite = await getSqliteAsync();
 
@@ -479,7 +481,7 @@ export async function confirmExpected(
       writes.push({
         table: "subscriptions",
         row: {
-          ...dbToCamel(sub),
+          ...fromDbShape("subscriptions", sub),
           nextDueDate: next,
         },
       });
@@ -494,7 +496,7 @@ export async function skipExpected(userId: string, expectedId: string): Promise<
   await writeRows(userId, [
     {
       table: "expected_payments",
-      row: { ...dbToCamel(row as unknown as Record<string, unknown>), status: "skipped" },
+      row: { ...fromDbShape("expected_payments", row as unknown as Record<string, unknown>), status: "skipped" },
     },
   ]);
 }
@@ -507,7 +509,7 @@ export async function revertExpected(userId: string, expectedId: string): Promis
   await writeRows(userId, [
     {
       table: "expected_payments",
-      row: { ...dbToCamel(row as unknown as Record<string, unknown>), status: "pending", paidAt: null, transactionId: null, autoConfirmed: false },
+      row: { ...fromDbShape("expected_payments", row as unknown as Record<string, unknown>), status: "pending", paidAt: null, transactionId: null, autoConfirmed: false },
     },
   ]);
 }
@@ -748,7 +750,22 @@ async function seedOpeningFromImport(userId: string, sheets: ParsedSheet[], year
 // Daily maintenance: §2.7 date flips, expected generation, late marking, auto-pay
 // ---------------------------------------------------------------------------
 
+let maintenanceRunning = false;
+
 export async function runMaintenance(userId: string): Promise<void> {
+  // Single-instance guard: rapid foreground/background cycles must not run
+  // two maintenance passes concurrently (both could auto-confirm the same
+  // expected item before either write commits).
+  if (maintenanceRunning) return;
+  maintenanceRunning = true;
+  try {
+    await runMaintenanceInner(userId);
+  } finally {
+    maintenanceRunning = false;
+  }
+}
+
+async function runMaintenanceInner(userId: string): Promise<void> {
   const today = todayISO();
   const sqlite = await getSqliteAsync();
 
@@ -769,7 +786,7 @@ export async function runMaintenance(userId: string): Promise<void> {
         if (refs.length > 0) {
           await writeRows(
             userId,
-            refs.map((row) => ({ table, row: { ...dbToCamel(row), personId: keepId } })),
+            refs.map((row) => ({ table, row: { ...fromDbShape(table, row), personId: keepId } })),
             false,
           );
         }
@@ -837,7 +854,7 @@ export async function runMaintenance(userId: string): Promise<void> {
   if (due.length > 0) {
     await writeRows(
       userId,
-      due.map((row) => ({ table: "transactions" as const, row: { ...dbToCamel(row), status: "realized" } })),
+      due.map((row) => ({ table: "transactions" as const, row: { ...fromDbShape("transactions", row), status: "realized" } })),
       false,
     );
   }
@@ -948,7 +965,7 @@ export async function runMaintenance(userId: string): Promise<void> {
       userId,
       late.map((l) => ({
         table: "expected_payments" as const,
-        row: { ...dbToCamel(byId.get(l.id) as unknown as Record<string, unknown>), status: "late" },
+        row: { ...fromDbShape("expected_payments", byId.get(l.id) as unknown as Record<string, unknown>), status: "late" },
       })),
       false,
     );
@@ -956,12 +973,6 @@ export async function runMaintenance(userId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-
-/** snake_case row → camelCase (local helper; column names are 1:1 snake/camel). */
-function dbToCamel(row: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(row)) {
-    out[key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())] = value;
-  }
-  return out;
-}
+// (snake_case → camelCase mapping lives in db/mutations.ts `fromDbShape`,
+// which is schema-aware — a column whose name isn't a 1:1 snake/camel match
+// can never silently produce a wrong field.)

@@ -51,6 +51,7 @@ export default function MonthDetailScreen() {
       .from(s.cellNotes)
       .where(and(eq(s.cellNotes.userId, userId), eq(s.cellNotes.month, month!), isNull(s.cellNotes.deletedAt))),
     [userId, month],
+    ["cell_notes"],
   ).data;
 
   const removeTx = async (id: string) => {

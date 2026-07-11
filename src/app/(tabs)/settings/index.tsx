@@ -1,7 +1,7 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
 import React, { useState } from "react";
-import { Alert, Platform, Switch, View } from "react-native";
+import { Platform, Switch, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
@@ -25,7 +25,7 @@ import {
 } from "lucide-react-native";
 import { useSession } from "../../../auth/session";
 import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
-import { writeSetting } from "../../../db/mutations";
+import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
 import { buildExportBundle, buildTransactionsCsv, importBundle, saveTextFile } from "../../../services/export-import";
 import { rescheduleAll } from "../../../services/notifications";
 import { syncNow } from "../../../sync/engine";
@@ -36,6 +36,7 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../lib/kv";
 import { tr } from "../../../i18n/tr";
 import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented } from "../../../ui/components";
+import { appAlert, appConfirm } from "../../../ui/dialog";
 import { spacing, useTheme } from "../../../ui/theme";
 import type { ThemePreference } from "../../../ui/theme";
 
@@ -60,7 +61,33 @@ export default function SettingsScreen() {
     void kv.get("helix.biometric").then((v) => setBiometric(v === "true"));
   }, []);
 
-  const notify = (msg: string) => (Platform.OS === "web" ? window.alert(msg) : Alert.alert(tr.app.name, msg));
+  const notify = (msg: string) => void appAlert(msg);
+
+  // Signing out wipes the local workspace (finance data must not linger on a
+  // shared device). Before that wipe: flush the outbox with a final sync, and
+  // if rows still couldn't be pushed (offline), make the user consciously
+  // accept the loss instead of discovering it later.
+  const [signingOut, setSigningOut] = useState(false);
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      if (isSupabaseConfigured && (await pendingOutboxCount()) > 0) {
+        await syncNow(userId);
+      }
+      const pending = await pendingOutboxCount();
+      if (pending > 0) {
+        const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending), {
+          confirmLabel: tr.auth.signOutAnyway,
+          danger: true,
+        });
+        if (!proceed) return;
+      }
+      await signOut();
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   const exportJson = async () => {
     const bundle = await buildExportBundle(userId);
@@ -82,15 +109,7 @@ export default function SettingsScreen() {
   };
 
   const importJson = async () => {
-    const proceed =
-      Platform.OS === "web"
-        ? window.confirm(tr.settings.importConfirm)
-        : await new Promise<boolean>((resolve) =>
-            Alert.alert(tr.settings.import, tr.settings.importConfirm, [
-              { text: tr.common.cancel, onPress: () => resolve(false), style: "cancel" },
-              { text: tr.common.confirm, onPress: () => resolve(true) },
-            ]),
-          );
+    const proceed = await appConfirm(tr.settings.import, tr.settings.importConfirm);
     if (!proceed) return;
     const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
@@ -209,7 +228,7 @@ export default function SettingsScreen() {
 
       <Card>
         <ListRow icon={BookOpen} title={tr.tour.replay} subtitle={tr.tour.replayDesc} chevron onPress={() => setTourOpen(true)} />
-        <ListRow icon={LogOut} iconColor={palette.negative} title={tr.auth.signOut} onPress={() => void signOut()} />
+        <ListRow icon={LogOut} iconColor={palette.negative} title={tr.auth.signOut} onPress={() => void handleSignOut()} />
       </Card>
       {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}
 

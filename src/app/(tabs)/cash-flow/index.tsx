@@ -15,6 +15,7 @@ import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
 import { creditCardSplit } from "../../../domain/analytics";
 import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
+import { resolveYearColumns } from "../../../domain/year-columns";
 import { makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { monthLabel, tr } from "../../../i18n/tr";
@@ -96,41 +97,11 @@ export default function CashflowScreen() {
   const lastDataYear = allTx.length > 0 ? yearOf(allTx[allTx.length - 1].effectiveDate) : currentYear;
   const maxYear = Math.max(currentYear, lastDataYear);
 
-  // Per-year columns: an imported year (or one edited via `column_years`) shows
-  // exactly its recorded columns in order; other years fall back to all active
-  // columns. Self-heal without extra state: a column that gained data in the
-  // year surfaces automatically, and the live (max) year always shows every
-  // active column so newly added ones appear.
+  // Per-year columns (see domain/year-columns.ts for the resolution rules).
   const columnYears = settingValue<Record<string, string[]>>(settings, "column_years", {});
-  const yearColIds = columnYears[String(year)];
-  const columnCategories = (() => {
-    const active = categories.filter((c) => c.isColumn);
-    if (!yearColIds) return active;
-    const byId = new Map(categories.map((c) => [c.id, c]));
-    // Columns explicitly claimed by some year stay confined to those years; only
-    // unclaimed (manually added / template) columns bleed into the live year.
-    const claimed = new Set<string>();
-    Object.values(columnYears).forEach((ids) => ids.forEach((id) => claimed.add(id)));
-    const dataCats = new Set<string>();
-    bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) dataCats.add(cid); }));
-    const seen = new Set<string>();
-    const out: typeof active = [];
-    for (const id of yearColIds) {
-      const c = byId.get(id);
-      if (c && !seen.has(id)) {
-        out.push(c);
-        seen.add(id);
-      }
-    }
-    for (const c of active) {
-      if (seen.has(c.id)) continue;
-      if (dataCats.has(c.id) || (year === maxYear && !claimed.has(c.id))) {
-        out.push(c);
-        seen.add(c.id);
-      }
-    }
-    return out;
-  })();
+  const dataCats = new Set<string>();
+  bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) dataCats.add(cid); }));
+  const columnCategories = resolveYearColumns(categories, columnYears, year, maxYear, dataCats);
 
   const yearSwitcher = (
     <Row gap={spacing.sm}>
@@ -262,7 +233,9 @@ interface ColumnDef {
   label: string;
   /** Category columns open the cell editor; derived columns are read-only. */
   categoryId: string | null;
-  value: (m: MonthLedger) => number;
+  /** null = not computable (e.g. a broken computed-column definition) — the
+   *  cell renders empty instead of a misleading 0. */
+  value: (m: MonthLedger) => number | null;
   /** Optional action for derived columns (e.g. cc split → Taksitler screen). */
   action?: () => void;
 }
@@ -306,6 +279,7 @@ function MatrixTable({
   const cellNotes = useLive(
     getDb().select().from(s.cellNotes).where(and(eq(s.cellNotes.userId, userId), isNull(s.cellNotes.deletedAt))),
     [userId],
+    ["cell_notes"],
   ).data;
   const noteByCell = useMemo(() => new Map(cellNotes.map((n) => [`${n.month}:${n.categoryId}`, n.body])), [cellNotes]);
 
@@ -342,7 +316,7 @@ function MatrixTable({
               ccInstallmentMinor: cc?.installmentMinor ?? 0,
             });
           } catch {
-            return 0;
+            return null; // broken definition → empty cell, not a fake 0
           }
         },
       })),
