@@ -56,6 +56,7 @@ export default function CellEditorModal() {
         ),
       ),
     [userId, month, categoryId],
+    ["cell_notes"],
   ).data[0];
 
   const entryMinor = parseAmountExpression(entryRaw);

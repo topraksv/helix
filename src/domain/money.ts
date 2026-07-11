@@ -69,6 +69,10 @@ export function parseTRAmountToMinor(input: string): Minor | null {
   if (!/^\d{1,3}(\.\d{3})*(,\d{1,2})?$|^\d+(,\d{1,2})?$/.test(body)) return null;
   const [intPart, fracPart = ""] = body.replace(/\./g, "").split(",");
   const minor = Number(intPart) * 100 + Number((fracPart + "00").slice(0, 2));
+  // Beyond safe-integer range the arithmetic is no longer exact — treat it as
+  // invalid input rather than storing a corrupted amount (assertMinor would
+  // otherwise throw at display time).
+  if (!Number.isSafeInteger(minor)) return null;
   return negative ? -minor : minor;
 }
 
@@ -88,5 +92,5 @@ export function parseAmountExpression(input: string): Minor | null {
     if (minor == null) return null;
     total += sign * minor;
   }
-  return total;
+  return Number.isSafeInteger(total) ? total : null;
 }

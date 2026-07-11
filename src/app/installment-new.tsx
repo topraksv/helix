@@ -1,7 +1,7 @@
 /** New / edit installment plan or loan (also supports mid-progress "4/6 paid" entry). */
 
 import React, { useState } from "react";
-import { Alert, Platform, View } from "react-native";
+import { View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { createInstallmentPlan, deletePlan, updateInstallmentPlan } from "../data/repo";
 import { useCategories, usePersons, usePlans, useSources, useUserId } from "../data/hooks";
@@ -11,6 +11,7 @@ import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react-native";
 import { Body, Button, ChipPicker, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
@@ -93,28 +94,23 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       scheduleSync(userId);
       router.back();
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (Platform.OS === "web") window.alert(message);
-      else Alert.alert("Hata", message);
+      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {
       setBusy(false);
     }
   };
 
   const confirmDelete = () => {
-    const run = async () => {
+    void (async () => {
+      const ok = await appConfirm(existing!.title, `${tr.common.delete}?`, {
+        confirmLabel: tr.common.delete,
+        danger: true,
+      });
+      if (!ok) return;
       await deletePlan(userId, existing!.id);
       scheduleSync(userId);
       router.back();
-    };
-    if (Platform.OS === "web") {
-      if (window.confirm(`${existing!.title} · ${tr.common.delete}?`)) void run();
-    } else {
-      Alert.alert(existing!.title, `${tr.common.delete}?`, [
-        { text: tr.common.cancel, style: "cancel" },
-        { text: tr.common.delete, style: "destructive", onPress: () => void run() },
-      ]);
-    }
+    })();
   };
 
   return (

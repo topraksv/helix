@@ -87,7 +87,13 @@ function toRemote(table: SyncedTableName, row: Record<string, unknown>): Record<
 function toLocal(table: SyncedTableName, row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...row };
   for (const key of ["created_at", "updated_at", "deleted_at", "paid_at", "canceled_at"]) {
-    if (out[key]) out[key] = new Date(out[key] as string).toISOString();
+    if (out[key]) {
+      // Guard against an unparseable server timestamp: `new Date(bad)
+      // .toISOString()` throws, which would fail the whole pull into a retry
+      // loop. Keep the raw value instead — the LWW compare then skips the row.
+      const parsed = Date.parse(out[key] as string);
+      if (Number.isFinite(parsed)) out[key] = new Date(parsed).toISOString();
+    }
   }
   for (const col of BOOLEAN_COLUMNS.get(table)!) {
     if (col in out && out[col] !== null) out[col] = out[col] ? 1 : 0;
@@ -200,9 +206,24 @@ async function pullAndMerge(userId: string): Promise<void> {
 }
 
 let syncing = false;
+let rerunRequested = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempt = 0;
+
+/**
+ * Stop every scheduled/pending sync (debounce + retry timers). Called on
+ * sign-out so a backoff retry never fires for the previous account after the
+ * local workspace has been wiped.
+ */
+export function cancelSync(): void {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  if (retryTimer) clearTimeout(retryTimer);
+  debounceTimer = null;
+  retryTimer = null;
+  retryAttempt = 0;
+  rerunRequested = false;
+}
 
 export async function syncNow(userId: string, allowRefresh = true): Promise<void> {
   const status = useSyncStatus.getState();
@@ -210,7 +231,13 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<void
     status.set({ state: "unconfigured" });
     return;
   }
-  if (syncing) return; // single-instance guard
+  if (syncing) {
+    // A write landed while a sync is in flight: remember it and run one more
+    // pass right after, so the outbox never sits silently until the next
+    // app-foreground (the status would otherwise show "idle" while rows wait).
+    rerunRequested = true;
+    return;
+  }
   syncing = true;
   status.set({ state: "syncing" });
   try {
@@ -236,6 +263,11 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<void
     retryTimer = setTimeout(() => void syncNow(userId), delay);
   } finally {
     syncing = false;
+    if (rerunRequested) {
+      rerunRequested = false;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => void syncNow(userId), 250);
+    }
   }
 }
 

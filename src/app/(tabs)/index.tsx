@@ -220,16 +220,24 @@ export default function DashboardScreen() {
       : null;
   const thisMonthNet = trendMonths.find((m) => m.month === month);
 
+  // One confirmation at a time: the button shows a spinner while the write is
+  // in flight, so a double-tap can't submit the same expected item twice.
+  const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
   const confirm = async (e: (typeof expected)[number]) => {
-    if (!selfPersonId) return;
-    const sub = subscriptions.find((s) => s.id === e.refId);
-    const income = incomes.find((i) => i.id === e.refId);
-    await confirmExpected(userId, e.id, {
-      personId: sub?.personId ?? income?.personId ?? selfPersonId,
-      categoryId: sub?.categoryId ?? income?.categoryId ?? null,
-    });
-    scheduleSync(userId);
-    undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+    if (!selfPersonId || confirmingId) return;
+    setConfirmingId(e.id);
+    try {
+      const sub = subscriptions.find((s) => s.id === e.refId);
+      const income = incomes.find((i) => i.id === e.refId);
+      await confirmExpected(userId, e.id, {
+        personId: sub?.personId ?? income?.personId ?? selfPersonId,
+        categoryId: sub?.categoryId ?? income?.categoryId ?? null,
+      });
+      scheduleSync(userId);
+      undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+    } finally {
+      setConfirmingId(null);
+    }
   };
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
@@ -329,7 +337,14 @@ export default function DashboardScreen() {
                 <Row gap={spacing.sm}>
                   <StatusPill label={tr.dashboard.late} color={palette.negative} />
                   <View style={{ width: STATUS_W }}>
-                    <Button size="sm" label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid} variant="secondary" onPress={() => void confirm(e)} />
+                    <Button
+                      size="sm"
+                      label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                      variant="secondary"
+                      loading={confirmingId === e.id}
+                      disabled={confirmingId != null}
+                      onPress={() => void confirm(e)}
+                    />
                   </View>
                 </Row>
               }
@@ -349,6 +364,8 @@ export default function DashboardScreen() {
                       size="sm"
                       label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                       variant="secondary"
+                      loading={confirmingId === u.expectedId}
+                      disabled={confirmingId != null}
                       onPress={() => {
                         const e = expected.find((x) => x.id === u.expectedId);
                         if (e) void confirm(e);

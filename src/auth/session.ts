@@ -8,6 +8,7 @@
 import { create } from "zustand";
 import { getSupabase, isSupabaseConfigured } from "../sync/supabase";
 import { resetLocalWorkspace } from "../db/mutations";
+import { cancelSync } from "../sync/engine";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 
@@ -17,21 +18,37 @@ const LOCAL_OWNER_KEY = "helix.local_owner";
 /** Local-only workspace id used when Supabase is not configured (dev/offline-only mode). */
 const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 
+/** Supabase auth errors arrive in English; map them to the Turkish UI. */
+function friendlyAuthError(raw: string): string {
+  if (/invalid login credentials|invalid_credentials/i.test(raw)) return tr.auth.errInvalidCredentials;
+  if (/already registered|already exists/i.test(raw)) return tr.auth.errUserExists;
+  if (/rate limit|too many/i.test(raw)) return tr.auth.errRateLimit;
+  if (/network|fetch|timeout/i.test(raw)) return tr.auth.errNetwork;
+  if (/password should be|weak password/i.test(raw)) return tr.auth.errWeakPassword;
+  if (/email not confirmed/i.test(raw)) return tr.auth.errEmailNotConfirmed;
+  if (/invalid.*email|email.*invalid|validate email/i.test(raw)) return tr.auth.errInvalidEmail;
+  return tr.auth.errGeneric;
+}
+
 /**
  * Ensure the local DB belongs to `userId`. If a different account previously
  * used this device, wipe the local workspace so its rows never sync under the
  * new session; the cloud re-hydrates the incoming account's data on next pull.
+ * Returns a user-facing error when the wipe fails — the sign-in must NOT
+ * proceed then, or the previous account's data would remain readable (and the
+ * owner marker would go stale).
  */
-async function ensureWorkspaceFor(userId: string): Promise<void> {
+async function ensureWorkspaceFor(userId: string): Promise<string | null> {
   const owner = await kv.get(LOCAL_OWNER_KEY);
   if (owner && owner !== userId) {
     try {
       await resetLocalWorkspace();
     } catch {
-      // best-effort; a stale owner is corrected below regardless
+      return tr.errors.workspaceResetFailed;
     }
   }
   if (owner !== userId) await kv.set(LOCAL_OWNER_KEY, userId);
+  return null;
 }
 
 interface SessionStore {
@@ -73,8 +90,12 @@ export const useSession = create<SessionStore>((set) => ({
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return error.message;
-    await ensureWorkspaceFor(data.user.id);
+    if (error) return friendlyAuthError(error.message);
+    const wsError = await ensureWorkspaceFor(data.user.id);
+    if (wsError) {
+      await supabase.auth.signOut().catch(() => {});
+      return wsError;
+    }
     await kv.set(LAST_USER_KEY, data.user.id);
     set({ userId: data.user.id, isOnlineSession: true });
     return null;
@@ -84,15 +105,22 @@ export const useSession = create<SessionStore>((set) => ({
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
     const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) return error.message;
+    if (error) return friendlyAuthError(error.message);
     if (!data.user) return tr.errors.signUpFailed;
-    await ensureWorkspaceFor(data.user.id);
+    const wsError = await ensureWorkspaceFor(data.user.id);
+    if (wsError) {
+      await supabase.auth.signOut().catch(() => {});
+      return wsError;
+    }
     await kv.set(LAST_USER_KEY, data.user.id);
     set({ userId: data.user.id, isOnlineSession: true });
     return null;
   },
 
   signOut: async () => {
+    // Stop any scheduled sync/retry so a stale timer never fires for this
+    // account after the wipe below.
+    cancelSync();
     const supabase = getSupabase();
     if (supabase) {
       try {

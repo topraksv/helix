@@ -105,13 +105,25 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
     for (const { table, dbRow } of entries) {
       const { sql, args } = upsertSql(table, dbRow);
       await sqlite.runAsync(sql, args as never[]);
+      // On an idempotency-key collision (two writes to the same row within the
+      // same millisecond) the payload must be REPLACED, not ignored — otherwise
+      // the stale first snapshot gets pushed and LWW echoes it back over the
+      // newer local value.
       await sqlite.runAsync(
-        `INSERT OR IGNORE INTO outbox (table_name, row_id, op, payload, idempotency_key, created_at)
-         VALUES (?, ?, 'upsert', ?, ?, ?)`,
+        `INSERT INTO outbox (table_name, row_id, op, payload, idempotency_key, created_at)
+         VALUES (?, ?, 'upsert', ?, ?, ?)
+         ON CONFLICT(idempotency_key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`,
         [table, String(dbRow.id), JSON.stringify(dbRow), `${dbRow.id}:${dbRow.updated_at}`, nowIso()] as never[],
       );
     }
   });
+}
+
+/** Rows still waiting to be pushed to the cloud (sign-out safety check). */
+export async function pendingOutboxCount(): Promise<number> {
+  const sqlite = await getSqliteAsync();
+  const row = await sqlite.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM outbox`, [] as never[]);
+  return row?.n ?? 0;
 }
 
 /** Tombstone delete. Returns the previous row snapshot for undo. */

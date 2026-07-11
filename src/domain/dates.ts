@@ -96,3 +96,14 @@ export function isAfter(a: ISODate, b: ISODate): boolean {
 export function todayISO(now: Date = new Date()): ISODate {
   return makeISODate(now.getFullYear(), now.getMonth() + 1, now.getDate());
 }
+
+/**
+ * Add days to a local-date ISO string, timezone-safely. Anchoring at UTC noon
+ * keeps the arithmetic away from midnight, so no local↔UTC conversion can
+ * shift the calendar day (the classic `toISOString().slice(0,10)` off-by-one).
+ */
+export function addDaysISO(date: ISODate, delta: number): ISODate {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}

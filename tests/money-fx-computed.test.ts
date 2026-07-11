@@ -38,6 +38,13 @@ describe("TR money formatting/parsing", () => {
     expect(parseTRAmountToMinor("abc")).toBeNull();
     expect(parseTRAmountToMinor("12,345")).toBeNull(); // 3 decimal digits
   });
+
+  it("rejects amounts beyond the safe-integer range", () => {
+    expect(parseTRAmountToMinor("99999999999999999999")).toBeNull();
+    expect(parseAmountExpression("99999999999999999999+1")).toBeNull();
+    // sanity: a large but safe amount still parses
+    expect(parseTRAmountToMinor("999999999999")).toBe(99999999999900);
+  });
 });
 
 describe("FX", () => {

@@ -2,7 +2,7 @@
  *  Excel row — one total per category, saved as aggregate transactions. */
 
 import React, { useMemo, useState } from "react";
-import { Alert, Platform, View } from "react-native";
+import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";
 import { useCategories, usePersons, useUserId } from "../data/hooks";
@@ -11,6 +11,7 @@ import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { Body, Button, Heading, IconButton, MoneyField, Screen, Spread } from "../ui/components";
+import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 
@@ -58,9 +59,7 @@ export default function BulkEntryModal() {
       setValues({});
       setMonth(addMonthsToKey(month, -1)); // convenient: walk backwards month by month
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (Platform.OS === "web") window.alert(message);
-      else Alert.alert("Hata", message);
+      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {
       setBusy(false);
     }

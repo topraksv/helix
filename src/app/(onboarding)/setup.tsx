@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, Platform, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { seedWorkspace, TEMPLATE_CATEGORIES } from "../../data/repo";
@@ -8,6 +8,7 @@ import { addMonthsToKey, monthKeyOf, todayISO } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
 import { Body, Button, Card, ChipPicker, Field, Heading, IconButton, MoneyField, Row, Screen, Segmented, Spread } from "../../ui/components";
+import { appAlert } from "../../ui/dialog";
 import { BrandMark } from "../../ui/brand";
 import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
 import { spacing, type, useTheme } from "../../ui/theme";
@@ -49,9 +50,7 @@ export default function SetupScreen() {
       });
       router.replace(goHistory ? "/bulk-entry" : "/(tabs)");
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (Platform.OS === "web") window.alert(message);
-      else Alert.alert("Hata", message);
+      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {
       setBusy(false);
     }

@@ -14,6 +14,7 @@
 import { deleteDatabaseAsync, openDatabaseAsync, type SQLiteBindParams, type SQLiteDatabase } from "expo-sqlite";
 import { drizzle } from "drizzle-orm/sqlite-proxy";
 import { Platform } from "react-native";
+import { Directory, File, Paths } from "expo-file-system";
 import * as schema from "./schema";
 
 export const DB_NAME = "helix.db";
@@ -28,16 +29,42 @@ async function open(): Promise<SQLiteDatabase> {
   return db;
 }
 
+/**
+ * Move a corrupt database aside instead of deleting it. On native the file is
+ * renamed (`helix.corrupt-<ts>.db`) so the data can still be recovered by
+ * hand — a permanent loss otherwise in local-only (unsynced) mode. Orphan
+ * WAL/SHM files are removed so they can't attach to the fresh database. Web's
+ * OPFS backend exposes no rename here, so delete remains the only option
+ * (sync re-hydrates from the cloud on the next pull).
+ */
+async function setAsideCorruptDb(): Promise<void> {
+  if (Platform.OS === "web") {
+    await deleteDatabaseAsync(DB_NAME);
+    return;
+  }
+  try {
+    const dir = new Directory(Paths.document, "SQLite");
+    const main = new File(dir, DB_NAME);
+    if (main.exists) main.move(new File(dir, `helix.corrupt-${Date.now()}.db`));
+    for (const suffix of ["-wal", "-shm"]) {
+      const side = new File(dir, `${DB_NAME}${suffix}`);
+      if (side.exists) side.delete();
+    }
+  } catch {
+    await deleteDatabaseAsync(DB_NAME); // fall back to the old behavior
+  }
+}
+
 export function getSqliteAsync(): Promise<SQLiteDatabase> {
   if (!handle) {
     handle = (async () => {
       try {
         return await open();
       } catch (e) {
-        // "not a database" = corrupt OPFS header (e.g. an old build's reload
-        // killed the worker mid-create). Nothing readable to save — recreate.
+        // "not a database" = corrupt header (e.g. an old build's reload killed
+        // the worker mid-create). Set the file aside and recreate.
         if (!String(e).includes("not a database")) throw e;
-        await deleteDatabaseAsync(DB_NAME);
+        await setAsideCorruptDb();
         return open();
       }
     })();

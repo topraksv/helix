@@ -2,7 +2,7 @@
  *  future-dated payments (§2.7) and inline installment plan creation. */
 
 import React, { useMemo, useState } from "react";
-import { Alert, Platform, View } from "react-native";
+import { View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { addTransaction, createInstallmentPlan, updateTransaction } from "../data/repo";
 import { useAllTransactions, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
@@ -15,6 +15,7 @@ import { lookupRate, SUPPORTED_CURRENCIES } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
 import { tr } from "../i18n/tr";
 import { Badge, Body, Button, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented } from "../ui/components";
+import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { kv } from "../lib/kv";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -89,7 +90,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const installmentValid = !installment || (Number.isInteger(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
   const canSave = amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid;
 
-  const fail = (msg: string) => (Platform.OS === "web" ? window.alert(msg) : Alert.alert("Hata", msg));
+  const fail = (msg: string) => void appAlert(msg, tr.errors.title);
 
   const save = async (thenNew: boolean) => {
     if (!canSave || !personId) return;
