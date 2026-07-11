@@ -97,6 +97,23 @@ export function formatTRInputLive(raw: string): string {
 }
 
 /**
+ * Live-format a money input that may also be a sum expression. A single amount
+ * is grouped like `formatTRInputLive`; an expression (an operator beyond a
+ * leading minus, e.g. `400+500`) keeps its operators and groups each term
+ * (`1250+500` → `1.250+500`) so the field stays readable while `parseAmount-
+ * Expression` evaluates it.
+ */
+export function formatMoneyInputLive(raw: string): string {
+  const compact = raw.replace(/[₺\s]/g, "");
+  const hasOperator = /.[+-]/.test(compact); // an operator not at position 0
+  if (!hasOperator) return formatTRInputLive(raw);
+  return compact
+    .split(/([+-])/)
+    .map((part) => (part === "+" || part === "-" || part === "" ? part : formatTRInputLive(part)))
+    .join("");
+}
+
+/**
  * Parse a spreadsheet-style sum ("300+400+500", "+300+1.250,50-100") into
  * minor units. Single plain amounts parse too. Null for anything else.
  */

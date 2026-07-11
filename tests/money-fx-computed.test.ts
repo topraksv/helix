@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMinor, formatTRInputLive, parseAmountExpression, parseTRAmountToMinor } from "../src/domain/money";
+import { formatMinor, formatMoneyInputLive, formatTRInputLive, parseAmountExpression, parseTRAmountToMinor } from "../src/domain/money";
 import { convertToTryMinor, pickRate } from "../src/domain/fx";
 import {
   evaluateComputedColumn,
@@ -65,6 +65,18 @@ describe("TR money formatting/parsing", () => {
       const formatted = formatTRInputLive(raw);
       expect(parseTRAmountToMinor(formatted)).not.toBeNull();
     }
+  });
+
+  it("expression-aware live format groups each term and keeps operators", () => {
+    expect(formatMoneyInputLive("400+500")).toBe("400+500");
+    expect(formatMoneyInputLive("1250+500")).toBe("1.250+500");
+    expect(formatMoneyInputLive("15000")).toBe("15.000"); // single amount still grouped
+    expect(formatMoneyInputLive("1000+250+90")).toBe("1.000+250+90");
+    expect(formatMoneyInputLive("-400")).toBe("-400"); // leading minus is not an operator
+    expect(formatMoneyInputLive("1.250,50-250,50")).toBe("1.250,50-250,50");
+    // and the grouped expression still evaluates
+    expect(parseAmountExpression(formatMoneyInputLive("400+500"))).toBe(90000);
+    expect(parseAmountExpression(formatMoneyInputLive("1250+500"))).toBe(175000);
   });
 });
 

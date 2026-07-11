@@ -16,6 +16,10 @@ import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, ty
 import { Pin } from "lucide-react-native";
 import { spacing, type, useTheme } from "./theme";
 
+/** Default fixed metrics; exported so callers can size a table to its content. */
+export const STICKY_ROW_HEIGHT = 52;
+export const STICKY_HEADER_HEIGHT = 56;
+
 export interface StickyColumn {
   key: string;
   label: string;
@@ -129,8 +133,8 @@ export function StickyTable({
   rows,
   headWidth = 116,
   cellWidth = 120,
-  rowHeight = 52,
-  headerHeight = 56,
+  rowHeight = STICKY_ROW_HEIGHT,
+  headerHeight = STICKY_HEADER_HEIGHT,
   pinnedKey,
   onTogglePin,
   onColumnPress,

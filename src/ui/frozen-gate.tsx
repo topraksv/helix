@@ -17,10 +17,11 @@ import { useUserId } from "../data/hooks";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 import { Body, Button, Field, Screen, Title } from "./components";
-import { spacing } from "./theme";
+import { spacing, useTheme } from "./theme";
 
 export function FrozenGate() {
   const userId = useUserId();
+  const { palette } = useTheme();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,12 +68,14 @@ export function FrozenGate() {
       }
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
-        setError(tr.account.reactivateWrongPassword);
+        // A network failure here (offline) is not a wrong password — say so, and
+        // point to biometrics which work offline on a phone.
+        setError(/network|fetch|timeout/i.test(signInError.message) ? tr.account.reactivateOffline : tr.account.reactivateWrongPassword);
         return;
       }
       await clearFrozen();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(/network|fetch|timeout/i.test(String(e)) ? tr.account.reactivateOffline : tr.errors.saveFailed);
     } finally {
       setBusy(false);
     }
@@ -82,7 +85,7 @@ export function FrozenGate() {
     <Screen scroll={false}>
       <View style={{ flex: 1, justifyContent: "center", gap: spacing.lg }}>
         <View style={{ alignItems: "center", gap: spacing.md }}>
-          <ShieldCheck size={48} color="#d97757" />
+          <ShieldCheck size={48} color={palette.primary} />
           <Title>{tr.account.frozenTitle}</Title>
           <Body muted style={{ textAlign: "center" }}>{tr.account.frozenBody}</Body>
         </View>
