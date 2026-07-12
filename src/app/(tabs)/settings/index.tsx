@@ -16,7 +16,6 @@ import {
   FileDown,
   FileSpreadsheet,
   FileUp,
-  LayoutTemplate,
   LogOut,
   PiggyBank,
   ScanFace,
@@ -197,9 +196,8 @@ export default function SettingsScreen() {
 
   return (
     <Screen title={tr.settings.title}>
-      <SectionHeader>{tr.settings.setupSection}</SectionHeader>
+      <SectionHeader>{tr.settings.balanceSection}</SectionHeader>
       <Card>
-        <ListRow icon={LayoutTemplate} title={tr.settings.template} subtitle={tr.settings.templateDesc} chevron onPress={() => router.push("/workspace-template")} />
         <ListRow icon={PiggyBank} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />
       </Card>
 

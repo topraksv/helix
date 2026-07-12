@@ -321,12 +321,13 @@ export const tr = {
   },
   settings: {
     title: "Ayarlar",
-    setupSection: "Şablon ve Başlangıç",
+    balanceSection: "Bakiye",
     workspaceSection: "Çalışma Alanı",
     appSection: "Uygulama",
     dataSection: "Veri ve Yedekleme",
     categories: "Kalemler ve Kolonlar",
     categoriesDesc: "Mali Tablo'daki gelir-gider kalemlerini ekle, düzenle ve sırala.",
+    addSuggested: "Önerilen Kalem Ekle",
     computed: "Hesaplanan Kolonlar",
     computedDesc: "Seçtiğin kalemleri toplayan ya da farkını alan, kendi hesapladığın kolonlar.",
     persons: "Kişiler",
@@ -370,7 +371,7 @@ export const tr = {
     templateDesc: "İlk kurulumda sunulan sık kullanılan kalemleri incele; eksik olanları tek dokunuşla ekle.",
   },
   template: {
-    title: "Hazır Şablon",
+    title: "Önerilen Kalemler",
     intro: "Çoğu kişinin kullandığı gelir-gider kalemleri burada. Sende olmayanları seçip ekleyebilirsin; mevcut kalemlerine dokunmayız.",
     toAddTitle: "Eklenebilecek kalemler",
     haveTitle: "Zaten sende olanlar",
