@@ -9,7 +9,7 @@
  */
 
 import { getTableColumns } from "drizzle-orm";
-import { getDb, getSqliteAsync } from "./client";
+import { getDb, getSqliteAsync, withTransaction } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
 import { deterministicId, naturalKeys } from "./ids";
 
@@ -31,7 +31,7 @@ export function nowIso(): string {
  */
 export async function resetLocalWorkspace(): Promise<void> {
   const sqlite = await getSqliteAsync();
-  await sqlite.withTransactionAsync(async () => {
+  await withTransaction(async () => {
     for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
       await sqlite.runAsync(`DELETE FROM ${table}`, [] as never[]);
     }
@@ -101,7 +101,7 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
   }
 
   const sqlite = await getSqliteAsync();
-  await sqlite.withTransactionAsync(async () => {
+  await withTransaction(async () => {
     for (const { table, dbRow } of entries) {
       const { sql, args } = upsertSql(table, dbRow);
       await sqlite.runAsync(sql, args as never[]);

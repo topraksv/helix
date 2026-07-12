@@ -109,6 +109,30 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
   window.addEventListener("beforeunload", closeDb);
 }
 
+/**
+ * Serialize every DB transaction through one queue. expo-sqlite's async driver
+ * shares a single connection, and two overlapping `withTransactionAsync` calls
+ * issue nested BEGINs → "cannot start a transaction within a transaction",
+ * which wedged the worker (this surfaced as an infinite re-render / white
+ * screen right after sign-in, when maintenance + the initial sync pull ran at
+ * once). Callers MUST route transactions through here rather than calling
+ * `db.withTransactionAsync` directly. Tasks never nest (no task opens another
+ * transaction), so this can't deadlock.
+ */
+let txChain: Promise<void> = Promise.resolve();
+export async function withTransaction(task: () => Promise<void>): Promise<void> {
+  const prev = txChain;
+  let release!: () => void;
+  txChain = new Promise<void>((resolve) => (release = resolve));
+  try {
+    await prev;
+    const db = await getSqliteAsync();
+    await db.withTransactionAsync(task);
+  } finally {
+    release();
+  }
+}
+
 /** sqlite-proxy expects raw value arrays; expo-sqlite provides them directly. */
 async function exec(
   sql: string,
