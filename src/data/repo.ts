@@ -107,6 +107,13 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
   await writeRows(userId, writes);
   await writeSetting(userId, "start_month", input.startMonth);
   await writeSetting(userId, "opening_balance_minor", input.openingBalanceMinor);
+  // NB: does NOT mark onboarded — the setup screen seeds first (so history can
+  // be imported into a real workspace) and calls finalizeOnboarding() only when
+  // the user taps "save & start". See setup.tsx.
+}
+
+/** Mark onboarding complete → the route guard lets the user into the app. */
+export async function finalizeOnboarding(userId: string): Promise<void> {
   await writeSetting(userId, "onboarded", true);
 }
 

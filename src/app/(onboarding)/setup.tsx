@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Pencil, Trash2 } from "lucide-react-native";
-import { seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
+import { finalizeOnboarding, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle } from "../../services/export-import";
 import { useSession } from "../../auth/session";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../../domain/dates";
@@ -26,15 +26,15 @@ interface DraftSource {
   personIndex: number;
 }
 
-type HistoryChoice = "manual" | "excel" | "json" | "later";
+type HistoryChoice = "manual" | "excel" | "json";
 
 export default function SetupScreen() {
   const { userId } = useSession();
   const router = useRouter();
   const { palette } = useTheme();
-  // Template: all recommended categories pre-selected; the user unticks the
-  // ones they don't want. Extras start unselected.
-  const [selectedTemplate, setSelectedTemplate] = useState<string[]>(TEMPLATE_CATEGORIES.map((c) => c.name));
+  // Template: every recommended category is shown and pre-selected; the user
+  // unticks the ones they don't want.
+  const [selectedTemplate, setSelectedTemplate] = useState<string[]>(ALL_TEMPLATES.map((c) => c.name));
   const [startMonth, setStartMonth] = useState(monthKeyOf(todayISO()));
   const [openingRaw, setOpeningRaw] = useState("");
   const [openingMinor, setOpeningMinor] = useState<number | null>(0);
@@ -45,6 +45,7 @@ export default function SetupScreen() {
   const [newSourceType, setNewSourceType] = useState<PaymentSourceType>("credit_card");
   const [newSourcePerson, setNewSourcePerson] = useState(0);
   const [editingSource, setEditingSource] = useState<number | null>(null);
+  const [seeded, setSeeded] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const toggleTemplate = (name: string) =>
@@ -82,31 +83,52 @@ export default function SetupScreen() {
     await importBundle(userId, JSON.parse(content));
   };
 
-  const finish = async (choice: HistoryChoice) => {
+  // Seed the workspace exactly once (persons/sources/categories/opening). The
+  // importers below need a real workspace to write into, so seeding happens
+  // before them — but onboarding is finalized only by "save & start", so the
+  // user can import, come back here, review, and then commit.
+  const ensureSeeded = async (): Promise<boolean> => {
+    if (!userId) return false;
+    if (seeded) return true;
+    await seedWorkspace(userId, {
+      templateCategories: ALL_TEMPLATES.filter((c) => selectedTemplate.includes(c.name)),
+      startMonth,
+      openingBalanceMinor: openingMinor ?? 0,
+      persons: persons.map((name, i) => ({ name, isSelf: i === 0 })),
+      sources: sources.map((src) => ({ name: src.name, type: src.type, personIndex: src.personIndex })),
+    });
+    setSeeded(true);
+    return true;
+  };
+
+  const openImporter = async (choice: HistoryChoice) => {
     if (!userId || busy) return;
     setBusy(true);
     try {
-      await seedWorkspace(userId, {
-        templateCategories: ALL_TEMPLATES.filter((c) => selectedTemplate.includes(c.name)),
-        startMonth,
-        openingBalanceMinor: openingMinor ?? 0,
-        persons: persons.map((name, i) => ({ name, isSelf: i === 0 })),
-        sources: sources.map((src) => ({ name: src.name, type: src.type, personIndex: src.personIndex })),
-      });
-      if (choice === "json") {
+      if (!(await ensureSeeded())) return;
+      if (choice === "manual") router.push("/bulk-entry");
+      else if (choice === "excel") router.push("/import-wizard");
+      else if (choice === "json") {
         try {
           await importJsonBackup();
         } catch (e) {
           void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
         }
-        router.replace("/(tabs)");
-      } else if (choice === "manual") {
-        router.replace("/bulk-entry");
-      } else if (choice === "excel") {
-        router.replace("/import-wizard");
-      } else {
-        router.replace("/(tabs)");
       }
+    } catch (e) {
+      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const commit = async () => {
+    if (!userId || busy) return;
+    setBusy(true);
+    try {
+      await ensureSeeded();
+      await finalizeOnboarding(userId);
+      router.replace("/(tabs)");
     } catch (e) {
       void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {
@@ -130,14 +152,7 @@ export default function SetupScreen() {
           <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.templateHint}</Body>
           <ChipPicker
             multi
-            options={TEMPLATE_CATEGORIES.map((c) => ({ value: c.name, label: templateLabel(c) }))}
-            values={selectedTemplate}
-            onToggle={toggleTemplate}
-          />
-          <Body muted style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>{tr.onboarding.templateExtraHint}</Body>
-          <ChipPicker
-            multi
-            options={TEMPLATE_EXTRA_CATEGORIES.map((c) => ({ value: c.name, label: templateLabel(c) }))}
+            options={ALL_TEMPLATES.map((c) => ({ value: c.name, label: templateLabel(c) }))}
             values={selectedTemplate}
             onToggle={toggleTemplate}
           />
@@ -246,13 +261,14 @@ export default function SetupScreen() {
         <Card>
           <Heading>5 · {tr.onboarding.historyPrompt}</Heading>
           <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.historyHint}</Body>
-          <ListRow icon={CalendarPlus} title={tr.onboarding.historyManual} subtitle={tr.onboarding.historyManualDesc} chevron onPress={() => void finish("manual")} />
-          <ListRow icon={FileSpreadsheet} title={tr.onboarding.historyExcel} subtitle={tr.onboarding.historyExcelDesc} chevron onPress={() => void finish("excel")} />
-          <ListRow icon={FileUp} title={tr.onboarding.historyJson} subtitle={tr.onboarding.historyJsonDesc} chevron onPress={() => void finish("json")} />
-          <View style={{ marginTop: spacing.md }}>
-            <Button label={tr.onboarding.historyLater} variant="secondary" onPress={() => void finish("later")} loading={busy} />
-          </View>
+          <ListRow icon={CalendarPlus} title={tr.onboarding.historyManual} subtitle={tr.onboarding.historyManualDesc} chevron onPress={() => void openImporter("manual")} />
+          <ListRow icon={FileSpreadsheet} title={tr.onboarding.historyExcel} subtitle={tr.onboarding.historyExcelDesc} chevron onPress={() => void openImporter("excel")} />
+          <ListRow icon={FileUp} title={tr.onboarding.historyJson} subtitle={tr.onboarding.historyJsonDesc} chevron onPress={() => void openImporter("json")} />
+          {seeded ? <Body muted style={{ fontSize: 12, marginTop: spacing.sm }}>{tr.onboarding.historySeeded}</Body> : null}
         </Card>
+
+        <Button label={tr.onboarding.finishStart} onPress={() => void commit()} loading={busy} />
+        <View style={{ height: spacing.xl }} />
       </View>
     </Screen>
   );

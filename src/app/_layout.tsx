@@ -126,7 +126,7 @@ export default function RootLayout() {
 function RootLayoutInner() {
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
-  const { userId, ready, bootstrap, isOnlineSession, isNewSignup } = useSession();
+  const { userId, ready, bootstrap, isOnlineSession, isNewSignup, isFreezing } = useSession();
   const [locked, setLocked] = useState<boolean | null>(null);
   const onboarded = useOnboarded(userId);
   const frozen = useAccountFrozen(userId);
@@ -251,8 +251,12 @@ function RootLayoutInner() {
     if (userId && onboarded === null) return;
     const inAuth = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "(onboarding)";
+    // Setup can seed the workspace then push an importer (Excel / bulk history)
+    // BEFORE marking onboarded, so those routes are allowed while onboarded is
+    // still false; closing them returns to the onboarding screen.
+    const inSetupHelper = segments[0] === "import-wizard" || segments[0] === "bulk-entry";
     if (!userId && !inAuth) router.replace("/(auth)/sign-in");
-    else if (userId && onboarded === false && !awaitingFirstPull && !inOnboarding) router.replace("/(onboarding)/setup");
+    else if (userId && onboarded === false && !awaitingFirstPull && !inOnboarding && !inSetupHelper) router.replace("/(onboarding)/setup");
     else if (userId && onboarded === true && (inAuth || inOnboarding || (segments as string[]).length === 0)) {
       router.replace("/(tabs)");
     }
@@ -276,8 +280,9 @@ function RootLayoutInner() {
   }
 
   // Frozen account: block everything behind the reactivation gate. Only applies
-  // to a signed-in, onboarded user (frozen is null when signed out).
-  if (userId && onboarded === true && frozen === true) {
+  // to a signed-in, onboarded user (frozen is null when signed out); suppressed
+  // on the device that is mid-freeze (it's about to sign out to the login page).
+  if (userId && onboarded === true && frozen === true && !isFreezing) {
     return (
       <ThemeContext.Provider value={theme}>
         <FrozenGate />
@@ -292,9 +297,12 @@ function RootLayoutInner() {
   // fragile on the web sqlite worker.
   const inAuth = segments[0] === "(auth)";
   const inOnboarding = segments[0] === "(onboarding)";
+  // Importers launched from onboarding (workspace seeded, not yet finalized)
+  // must render even though onboarded is still false.
+  const inSetupHelper = segments[0] === "import-wizard" || segments[0] === "bulk-entry";
   const blocked = inAuth
     ? !!userId && (onboarded === true || awaitingFirstPull)
-    : inOnboarding
+    : inOnboarding || inSetupHelper
       ? !userId
       : !userId || onboarded !== true;
   if (blocked) {
