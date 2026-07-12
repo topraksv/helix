@@ -105,6 +105,8 @@ export function CalculatorPad({ onResult, resultLabel }: { onResult?: (major: nu
     };
   };
 
+  // Fixed-height display with three stable rows (operand line · main · preview)
+  // so typing an operator or seeing the live preview never resizes the box.
   return (
     <View>
       {/* display */}
@@ -113,24 +115,22 @@ export function CalculatorPad({ onResult, resultLabel }: { onResult?: (major: nu
           backgroundColor: palette.surfaceAlt,
           borderRadius: radius.md,
           paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.lg,
+          paddingVertical: spacing.md,
           marginBottom: spacing.md,
+          height: 128,
+          justifyContent: "center",
           alignItems: "flex-end",
         }}
       >
-        {state.op ? (
-          <Text style={[type.small, { color: palette.textMuted }]}>
-            {new Intl.NumberFormat("tr-TR").format(state.accumulator ?? 0)} {state.op}
-          </Text>
-        ) : null}
+        <Text style={[type.small, { color: palette.textMuted, height: 18 }]} numberOfLines={1}>
+          {state.op ? `${new Intl.NumberFormat("tr-TR").format(state.accumulator ?? 0)} ${state.op}` : " "}
+        </Text>
         <Text style={[type.amountLg, { color: palette.text }]} numberOfLines={1} adjustsFontSizeToFit>
           {text}
         </Text>
-        {preview != null ? (
-          <Text style={[type.small, { color: palette.textMuted }]} numberOfLines={1}>
-            = {new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}
-          </Text>
-        ) : null}
+        <Text style={[type.small, { color: preview != null ? palette.primary : "transparent", height: 18 }]} numberOfLines={1}>
+          {preview != null ? `= ${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}` : " "}
+        </Text>
       </View>
       {/* keys */}
       <View style={{ gap: spacing.sm }}>

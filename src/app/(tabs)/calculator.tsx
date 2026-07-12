@@ -2,17 +2,18 @@
 
 import React from "react";
 import { View } from "react-native";
-import { Card, Screen, SectionHeader } from "../../ui/components";
+import { Card, Screen, Title } from "../../ui/components";
 import { CalculatorPad } from "../../ui/calculator";
 import { CurrencyConverter } from "../../ui/currency-converter";
 import { tr } from "../../i18n/tr";
+import { spacing } from "../../ui/theme";
 
 export default function CalculatorScreen() {
   return (
     <Screen title={tr.calc.title}>
       <CalculatorPad />
-      <View style={{ height: 8 }} />
-      <SectionHeader>{tr.calc.converterTitle}</SectionHeader>
+      <View style={{ height: spacing.xl }} />
+      <Title>{tr.calc.converterTitle}</Title>
       <Card>
         <CurrencyConverter />
       </Card>
