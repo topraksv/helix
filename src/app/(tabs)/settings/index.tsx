@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Platform, Switch, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -16,6 +16,7 @@ import {
   FileDown,
   FileSpreadsheet,
   FileUp,
+  KeyRound,
   LogOut,
   PiggyBank,
   ScanFace,
@@ -37,13 +38,13 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../lib/kv";
 import { tr } from "../../../i18n/tr";
 import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented } from "../../../ui/components";
-import { appAlert, appConfirm } from "../../../ui/dialog";
+import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { spacing, useTheme } from "../../../ui/theme";
 import type { ThemePreference } from "../../../ui/theme";
 
 export default function SettingsScreen() {
   const userId = useUserId();
-  const { signOut, deleteAccount } = useSession();
+  const { signOut, deleteAccount, verifyPassword } = useSession();
   const settings = useSettingsMap();
   const sync = useSyncStatus();
   const router = useRouter();
@@ -139,6 +140,24 @@ export default function SettingsScreen() {
     }
   };
 
+  // Re-auth gate for sensitive actions. Only meaningful with a cloud account;
+  // local-only mode has no password, so it passes through.
+  const confirmWithPassword = async (message: string, confirmLabel: string): Promise<boolean> => {
+    if (!isSupabaseConfigured) return true;
+    const pw = await appPrompt(tr.account.confirmPasswordTitle, message, {
+      secure: true,
+      placeholder: tr.auth.password,
+      confirmLabel,
+      danger: true,
+    });
+    if (pw == null) return false;
+    if (!(await verifyPassword(pw))) {
+      void appAlert(tr.account.wrongPassword, tr.errors.title);
+      return false;
+    }
+    return true;
+  };
+
   const [freezing, setFreezing] = useState(false);
   const handleFreeze = async () => {
     if (freezing) return;
@@ -147,6 +166,7 @@ export default function SettingsScreen() {
       danger: true,
     });
     if (!ok) return;
+    if (!(await confirmWithPassword(tr.account.freezePasswordBody, tr.account.freezeConfirm))) return;
     setFreezing(true);
     // Suppress the frozen gate on THIS device while we write the flag + push +
     // sign out (otherwise it flashes before the sign-out lands).
@@ -177,11 +197,8 @@ export default function SettingsScreen() {
       danger: true,
     });
     if (!ok1) return;
-    const ok2 = await appConfirm(tr.account.deleteConfirm2Title, tr.account.deleteConfirm2Body, {
-      confirmLabel: tr.account.deleteConfirm,
-      danger: true,
-    });
-    if (!ok2) return;
+    // Final gate: verify the password (replaces the old "are you sure?" step).
+    if (!(await confirmWithPassword(tr.account.deletePasswordBody, tr.account.deleteConfirm))) return;
     setDeleting(true);
     try {
       const err = await deleteAccount();
@@ -303,6 +320,11 @@ export default function SettingsScreen() {
 
       <SectionHeader>{tr.account.section}</SectionHeader>
       <Card>
+        {/* `as Href`: expo-router typegen only refreshes the route-literal union
+            on `expo start`, so a freshly added route isn't in it yet. */}
+        {isSupabaseConfigured ? (
+          <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
+        ) : null}
         <ListRow icon={LogOut} title={tr.auth.signOut} onPress={() => void handleSignOut()} />
         <ListRow icon={Snowflake} title={tr.account.freeze} subtitle={tr.account.freezeDesc} onPress={() => void handleFreeze()} />
         <ListRow

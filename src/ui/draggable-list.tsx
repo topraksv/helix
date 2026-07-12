@@ -26,12 +26,17 @@ export function DraggableList<T>({
   keyExtractor,
   onReorder,
   renderRow,
+  onDragStateChange,
 }: {
   items: T[];
   keyExtractor: (item: T) => string;
   /** Called with the new key order when a drag completes. */
   onReorder: (orderedKeys: string[]) => void;
   renderRow: (item: T, handle: DragHandle) => React.ReactNode;
+  /** Fires true when a drag starts and false when it ends, so the caller can
+   *  freeze the surrounding ScrollView (otherwise it steals the vertical pan
+   *  and the row never moves). */
+  onDragStateChange?: (dragging: boolean) => void;
 }) {
   const [order, setOrder] = useState<T[]>(items);
   const draggingRef = useRef(false);
@@ -60,6 +65,7 @@ export function DraggableList<T>({
     curIndex.current = idx;
     dragY.setValue(0);
     setActiveKey(key);
+    onDragStateChange?.(true);
   };
   api.current.move = (dy: number) => {
     if (!draggingRef.current) return;
@@ -81,6 +87,7 @@ export function DraggableList<T>({
     draggingRef.current = false;
     setActiveKey(null);
     dragY.setValue(0);
+    onDragStateChange?.(false);
     onReorder(orderRef.current.map(keyExtractor));
   };
 
@@ -127,8 +134,13 @@ function DraggableRow({
 }) {
   const pan = useRef(
     PanResponder.create({
+      // Capture the gesture on the grip before any ancestor ScrollView can, so
+      // the vertical drag reorders the row instead of scrolling the page.
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => api.current.begin(itemKey),
       onPanResponderMove: (_e, g) => api.current.move(g.dy),
       onPanResponderRelease: () => api.current.end(),
