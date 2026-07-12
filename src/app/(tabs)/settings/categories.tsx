@@ -3,13 +3,14 @@
 
 import React, { useState } from "react";
 import { Switch, View } from "react-native";
+import { useRouter } from "expo-router";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
 import { useCategories, useUserId } from "../../../data/hooks";
 import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Pencil, Trash2 } from "lucide-react-native";
+import { LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
 import { Body, Button, Card, CardList, Field, Heading, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -17,6 +18,7 @@ import { spacing } from "../../../ui/theme";
 
 export default function CategoriesScreen() {
   const userId = useUserId();
+  const router = useRouter();
   const categories = useCategories();
   const undo = useUndo();
   const [name, setName] = useState("");
@@ -69,6 +71,13 @@ export default function CategoriesScreen() {
           onChange={setKind}
         />
         <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim()} />
+        <Button
+          icon={LayoutTemplate}
+          variant="ghost"
+          size="sm"
+          label={tr.settings.addSuggested}
+          onPress={() => router.push("/workspace-template")}
+        />
       </Card>
 
       {(["expense", "income"] as const).map((k) => (
