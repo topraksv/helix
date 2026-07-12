@@ -8,7 +8,6 @@
 import { create } from "zustand";
 import { getSupabase, isSupabaseConfigured } from "../sync/supabase";
 import { resetLocalWorkspace, writeSetting } from "../db/mutations";
-import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { cancelSync } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { disconnectMarkets } from "../services/markets";
@@ -72,21 +71,6 @@ interface SessionStore {
   /** Permanently delete all data (cloud + this device) and sign out. Returns a
    *  user-facing error string when the cloud wipe could not complete. */
   deleteAccount: () => Promise<string | null>;
-}
-
-/**
- * Delete every synced row this user owns from the cloud (RLS also scopes it,
- * but we filter by user_id explicitly). Throws on the first failing table so
- * the caller can surface that the wipe was incomplete rather than sign the user
- * out believing their data is gone.
- */
-async function deleteAllCloudData(userId: string): Promise<void> {
-  const supabase = getSupabase();
-  if (!supabase) return;
-  for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-    const { error } = await supabase.from(table).delete().eq("user_id", userId);
-    if (error) throw new Error(`${table}: ${error.message}`);
-  }
 }
 
 export const useSession = create<SessionStore>((set) => ({
@@ -187,16 +171,25 @@ export const useSession = create<SessionStore>((set) => ({
     const state = useSession.getState();
     const userId = state.userId;
     if (!userId) return null;
-    // Wipe the cloud first: if it fails (offline), abort before touching local
-    // data so we never report "deleted" while the rows still live in the cloud.
+    // Erase the cloud account FIRST: if it fails (offline / RPC missing), abort
+    // before touching local data so we never report "deleted" while it lives on.
+    //
+    // We delete the auth.users identity via the delete_own_account() RPC. Its
+    // ON DELETE CASCADE removes every app row in the same server-side
+    // transaction. This is what actually frees the e-mail for re-registration
+    // and invalidates the credentials — deleting only the app tables (the old
+    // behavior) left auth.users intact, so re-signup hit "already registered"
+    // and the deleted account could still sign in.
     if (isSupabaseConfigured) {
-      try {
-        await deleteAllCloudData(userId);
-      } catch (e) {
-        return `${tr.account.deleteCloudFailed} (${e instanceof Error ? e.message : String(e)})`;
+      const supabase = getSupabase();
+      if (supabase) {
+        const { error } = await supabase.rpc("delete_own_account");
+        if (error) {
+          return `${tr.account.deleteCloudFailed} (${error.message})`;
+        }
       }
     }
-    // Cloud is clear (or local-only mode): stop timers/streams, wipe the device,
+    // Cloud is erased (or local-only mode): stop timers/streams, wipe the device,
     // and end the session.
     cancelSync();
     disconnectMarkets();

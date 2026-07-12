@@ -11,7 +11,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { writeSetting } from "../db/mutations";
 import { settingValue, useSettingsMap, useUserId } from "../data/hooks";
 import { scheduleSync } from "../sync/engine";
-import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
+import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { Body, Button, Card, Heading, IconButton, MoneyField, Screen, Spread } from "./components";
@@ -57,7 +57,12 @@ export function OpeningBalanceEditor() {
         <Spread style={{ marginBottom: spacing.lg }}>
           <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, -1))} />
           <Heading style={{ marginVertical: 0 }}>{monthLabel(startMonth)}</Heading>
-          <IconButton icon={ChevronRight} label={tr.onboarding.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, 1))} />
+          <IconButton
+            icon={ChevronRight}
+            label={tr.onboarding.startMonth}
+            disabled={isCurrentOrFutureMonth(startMonth)}
+            onPress={() => setStartMonth(addMonthsToKey(startMonth, 1))}
+          />
         </Spread>
         <MoneyField
           label={tr.onboarding.openingBalance}

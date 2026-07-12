@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";
 import { useCategories, usePersons, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
-import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
+import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { Body, Button, Heading, IconButton, MoneyField, Screen, Spread } from "../ui/components";
@@ -75,7 +75,7 @@ export default function BulkEntryModal() {
           icon={ChevronRight}
           label={tr.bulk.month}
           onPress={() => setMonth(addMonthsToKey(month, 1))}
-          disabled={month >= monthKeyOf(todayISO())}
+          disabled={isCurrentOrFutureMonth(month)}
         />
       </Spread>
 

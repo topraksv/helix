@@ -123,6 +123,13 @@ export function Screen({
   // end of a scroll. Only modal / stack scenes (no tab bar under them) need it.
   const inTabs = segments[0] === "(tabs)";
   const bottomPad = inTabs ? spacing.lg : Math.max(insets.bottom, spacing.lg) + spacing.md;
+  // Content must clear the status bar / Dynamic Island on headerless full
+  // screens. Titled screens already inset the top; the auth + onboarding
+  // screens run with `headerShown: false` and no title, so they need it too
+  // (otherwise the welcome header slid under the Dynamic Island). Modal/stack
+  // screens keep the flat pad — their native header already reserves the inset,
+  // so adding it here would double-pad them.
+  const needsTopInset = title != null || segments[0] === "(auth)" || segments[0] === "(onboarding)";
 
   const header =
     title != null ? (
@@ -140,7 +147,7 @@ export function Screen({
 
   const inner: StyleProp<ViewStyle> = [
     padded && { paddingHorizontal: spacing.lg },
-    { paddingTop: title ? Math.max(insets.top, spacing.lg) : spacing.lg },
+    { paddingTop: needsTopInset ? Math.max(insets.top, spacing.lg) : spacing.lg },
     { paddingBottom: bottomPad },
     wide && { width: "100%", maxWidth, alignSelf: "center" },
   ];
