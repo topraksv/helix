@@ -191,8 +191,10 @@ export function Logo({ name, domain, size = 36 }: { name: string; domain?: strin
         <Image
           source={{ uri: `https://www.google.com/s2/favicons?domain=${faviconDomain}&sz=64` }}
           onError={() => setImgFailed(true)}
-          style={{ width: size * 0.72, height: size * 0.72 }}
-          resizeMode="contain"
+          // Fill the whole frame instead of floating at 72% inside it, which
+          // left a ring of the theme surface colour showing around the mark.
+          style={{ width: size, height: size }}
+          resizeMode="cover"
         />
       </View>
     );

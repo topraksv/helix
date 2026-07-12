@@ -98,6 +98,17 @@ export function todayISO(now: Date = new Date()): ISODate {
 }
 
 /**
+ * A start/entry month may never sit in the future: the current calendar month
+ * is the latest allowed value. Shared by the onboarding + opening-balance
+ * start-month pickers and the bulk-entry month stepper so the "no future
+ * month" upper bound stays consistent with the "past entry" rule. MonthKeys are
+ * `YYYY-MM` strings, which compare correctly with `>=`.
+ */
+export function isCurrentOrFutureMonth(month: MonthKey, today: ISODate = todayISO()): boolean {
+  return month >= monthKeyOf(today);
+}
+
+/**
  * Add days to a local-date ISO string, timezone-safely. Anchoring at UTC noon
  * keeps the arithmetic away from midnight, so no local↔UTC conversion can
  * shift the calendar day (the classic `toISOString().slice(0,10)` off-by-one).

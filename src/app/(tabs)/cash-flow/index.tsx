@@ -413,6 +413,7 @@ function MatrixTable({
     stickyRows = columns.map((c) => ({
       key: c.key,
       label: c.label,
+      icon: c.computed ? Sigma : undefined,
       onLabelPress: breakdownFor(c.key),
       cells: months.map((slot) =>
         cell(

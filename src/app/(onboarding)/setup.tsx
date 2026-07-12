@@ -7,7 +7,7 @@ import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Penci
 import { finalizeOnboarding, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle } from "../../services/export-import";
 import { useSession } from "../../auth/session";
-import { addMonthsToKey, monthKeyOf, todayISO } from "../../domain/dates";
+import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
 import { Body, Button, Card, ChipPicker, Field, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "../../ui/components";
@@ -40,6 +40,8 @@ export default function SetupScreen() {
   const [openingMinor, setOpeningMinor] = useState<number | null>(0);
   const [persons, setPersons] = useState<string[]>([tr.onboarding.me]);
   const [newPerson, setNewPerson] = useState("");
+  const [editingPerson, setEditingPerson] = useState<number | null>(null);
+  const [editPersonName, setEditPersonName] = useState("");
   const [sources, setSources] = useState<DraftSource[]>([]);
   const [newSource, setNewSource] = useState("");
   const [newSourceType, setNewSourceType] = useState<PaymentSourceType>("credit_card");
@@ -76,13 +78,6 @@ export default function SetupScreen() {
     setEditingSource(i);
   };
 
-  const importJsonBackup = async () => {
-    const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
-    if (picked.canceled || !picked.assets[0] || !userId) return;
-    const content = await new File(picked.assets[0].uri).text();
-    await importBundle(userId, JSON.parse(content));
-  };
-
   // Seed the workspace exactly once (persons/sources/categories/opening). The
   // importers below need a real workspace to write into, so seeding happens
   // before them — but onboarding is finalized only by "save & start", so the
@@ -103,17 +98,25 @@ export default function SetupScreen() {
 
   const openImporter = async (choice: HistoryChoice) => {
     if (!userId || busy) return;
-    setBusy(true);
     try {
-      if (!(await ensureSeeded())) return;
-      if (choice === "manual") router.push("/bulk-entry");
-      else if (choice === "excel") router.push("/import-wizard");
-      else if (choice === "json") {
-        try {
-          await importJsonBackup();
-        } catch (e) {
-          void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
-        }
+      if (choice === "json") {
+        // Pick the file FIRST, and only enter the loading state around the real
+        // work (seed + import) — never around the picker itself. The document
+        // picker's promise can fail to settle when the OS file dialog is
+        // dismissed, and wrapping it in `busy` left the finish button's spinner
+        // stuck forever (P1-1). Picking first also means only a real, processed
+        // backup seeds the workspace and shows the "prepared" note (P1-2).
+        const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
+        if (picked.canceled || !picked.assets[0]) return;
+        setBusy(true);
+        await ensureSeeded();
+        const content = await new File(picked.assets[0].uri).text();
+        await importBundle(userId, JSON.parse(content));
+      } else {
+        setBusy(true);
+        if (!(await ensureSeeded())) return;
+        if (choice === "manual") router.push("/bulk-entry");
+        else router.push("/import-wizard");
       }
     } catch (e) {
       void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
@@ -128,10 +131,15 @@ export default function SetupScreen() {
     try {
       await ensureSeeded();
       await finalizeOnboarding(userId);
-      router.replace("/(tabs)");
+      // Navigation is driven by the root route guard once the live `onboarded`
+      // flag flips true (mirrors the sign-in screen). Replacing to "/(tabs)"
+      // here fired while `onboarded` was still false in React state, so the
+      // guard immediately redirected back to /(onboarding)/setup AND blanked the
+      // Stack — the (tabs)→blank→setup→(tabs) bounce white-screened on iOS
+      // (React #185). Keep the button in its loading state until the guard
+      // unmounts this screen; only clear `busy` on failure.
     } catch (e) {
       void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
-    } finally {
       setBusy(false);
     }
   };
@@ -167,7 +175,12 @@ export default function SetupScreen() {
           <Spread style={{ marginBottom: spacing.md }}>
             <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, -1))} />
             <Heading>{monthLabel(startMonth)}</Heading>
-            <IconButton icon={ChevronRight} label={tr.onboarding.startMonth} onPress={() => setStartMonth(addMonthsToKey(startMonth, 1))} />
+            <IconButton
+              icon={ChevronRight}
+              label={tr.onboarding.startMonth}
+              disabled={isCurrentOrFutureMonth(startMonth)}
+              onPress={() => setStartMonth(addMonthsToKey(startMonth, 1))}
+            />
           </Spread>
           <MoneyField
             label={tr.onboarding.openingBalance}
@@ -183,14 +196,43 @@ export default function SetupScreen() {
         <Card>
           <Heading>3 · {tr.onboarding.personsTitle}</Heading>
           <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.personsHint}</Body>
-          {persons.map((name, i) => (
-            <Spread key={`${name}-${i}`} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
-              <Body>{name}{i === 0 ? ` · ${tr.persons.selfBadge}` : ""}</Body>
-              {i > 0 ? (
-                <IconButton icon={Trash2} tone="danger" label={tr.common.delete} onPress={() => setPersons(persons.filter((_, j) => j !== i))} />
-              ) : null}
-            </Spread>
-          ))}
+          {persons.map((name, i) =>
+            editingPerson === i ? (
+              <Row key={`edit-${i}`} gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
+                <View style={{ flex: 1 }}>
+                  <Field noMargin value={editPersonName} onChangeText={setEditPersonName} autoFocus />
+                </View>
+                <Button
+                  label={tr.common.save}
+                  variant="secondary"
+                  disabled={!editPersonName.trim()}
+                  onPress={() => {
+                    setPersons(persons.map((p, j) => (j === i ? editPersonName.trim() : p)));
+                    setEditingPerson(null);
+                  }}
+                />
+                <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingPerson(null)} />
+              </Row>
+            ) : (
+              <Spread key={`${name}-${i}`} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
+                <Body style={{ flex: 1, paddingRight: spacing.sm }}>{name}{i === 0 ? ` · ${tr.persons.selfBadge}` : ""}</Body>
+                <Row gap={spacing.sm} style={{ alignItems: "center" }}>
+                  <IconButton icon={Pencil} label={tr.common.edit} onPress={() => { setEditingPerson(i); setEditPersonName(name); }} />
+                  {i > 0 ? (
+                    <IconButton
+                      icon={Trash2}
+                      tone="danger"
+                      label={tr.common.delete}
+                      onPress={() => {
+                        setPersons(persons.filter((_, j) => j !== i));
+                        if (editingPerson === i) setEditingPerson(null);
+                      }}
+                    />
+                  ) : null}
+                </Row>
+              </Spread>
+            ),
+          )}
           <Row style={{ alignItems: "center" }}>
             <View style={{ flex: 1 }}>
               <Field noMargin value={newPerson} onChangeText={setNewPerson} placeholder={useRotatingPlaceholder(placeholderPools.person)} />

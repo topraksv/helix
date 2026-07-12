@@ -27,6 +27,7 @@ import { runMaintenance } from "../data/repo";
 import { loadRateCache, refreshRates } from "../services/fx-fetch";
 import { rescheduleAll } from "../services/notifications";
 import { syncNow } from "../sync/engine";
+import { useSyncStatus } from "../sync/status";
 import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
@@ -141,15 +142,26 @@ function RootLayoutInner() {
   // so it can't drive a re-render loop. A brand-new signup skips the grace
   // (isNewSignup) and reaches onboarding immediately.
   const [pullGrace, setPullGrace] = useState(false);
+  const lastSyncAt = useSyncStatus((st) => st.lastSyncAt);
   useEffect(() => {
     if (userId && isOnlineSession && !isNewSignup) {
       setPullGrace(true);
+      // 8 s is only a fallback cap for an offline / erroring first sync; the
+      // effect below lifts the hold the instant the pull actually lands.
       const t = setTimeout(() => setPullGrace(false), 8000);
       return () => clearTimeout(t);
     }
     setPullGrace(false);
     return undefined;
   }, [userId, isOnlineSession, isNewSignup]);
+  // Lift the grace the moment the first sync pass completes (the onboarded flag
+  // and any cloud data have landed) instead of blindly waiting the full 8 s.
+  // For an account with no cloud data this ends the post-login hold in a few
+  // hundred ms rather than seconds. lastSyncAt is reset to null on sign-out, so
+  // it is always null again by the next sign-in.
+  useEffect(() => {
+    if (lastSyncAt) setPullGrace(false);
+  }, [lastSyncAt]);
   const awaitingFirstPull = pullGrace && onboarded === false;
 
   const scheme: "light" | "dark" =

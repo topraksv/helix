@@ -10,7 +10,7 @@ import { useCategories, useUserId } from "../../../data/hooks";
 import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
+import { ChevronDown, ChevronUp, LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
 import { Body, Button, Card, CardList, Field, Heading, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -48,6 +48,27 @@ export default function CategoriesScreen() {
 
   const update = async (c: (typeof categories)[number], patch: Partial<(typeof categories)[number]>) => {
     await writeRows(userId, [{ table: "categories", row: { ...c, ...patch } }]);
+    scheduleSync(userId);
+  };
+
+  // Reorder a category within its kind group (which is what the Mali Tablo
+  // matrix renders as its column/row order). `sortOrder` is a synced column, so
+  // the new order propagates to every device — consistent with how the rest of
+  // the workspace syncs (there is no device-local ordering pref here). We
+  // reassign the group's items onto their own existing sortOrder slots in the
+  // new order, so the other kind's rows keep their positions untouched.
+  const move = async (c: (typeof categories)[number], dir: -1 | 1) => {
+    const group = categories.filter((x) => x.kind === c.kind); // already sortOrder-sorted
+    const idx = group.findIndex((x) => x.id === c.id);
+    const j = idx + dir;
+    if (j < 0 || j >= group.length) return;
+    const slots = group.map((x) => x.sortOrder);
+    const reordered = [...group];
+    [reordered[idx], reordered[j]] = [reordered[j], reordered[idx]];
+    await writeRows(
+      userId,
+      reordered.map((cat, k) => ({ table: "categories", row: { ...cat, sortOrder: slots[k] } })),
+    );
     scheduleSync(userId);
   };
 
@@ -109,7 +130,17 @@ export default function CategoriesScreen() {
                   <Body style={{ flex: 1, paddingRight: spacing.sm }}>
                     {categoryIcon(c)} {c.name}
                   </Body>
-                  <Row gap={spacing.sm}>
+                  <Row gap={spacing.xs} style={{ alignItems: "center" }}>
+                    {(() => {
+                      const group = categories.filter((x) => x.kind === c.kind);
+                      const gi = group.findIndex((x) => x.id === c.id);
+                      return (
+                        <>
+                          <IconButton icon={ChevronUp} size={32} label={tr.common.moveUp} disabled={gi <= 0} onPress={() => void move(c, -1)} />
+                          <IconButton icon={ChevronDown} size={32} label={tr.common.moveDown} disabled={gi >= group.length - 1} onPress={() => void move(c, 1)} />
+                        </>
+                      );
+                    })()}
                     <IconButton
                       icon={Pencil}
                       size={32}

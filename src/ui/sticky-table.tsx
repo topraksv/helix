@@ -31,6 +31,9 @@ export interface StickyRow {
   key: string;
   /** Sticky first-column label. */
   label: string;
+  /** Optional marker icon shown top-left of the label (e.g. a computed row).
+   *  Mirrors StickyColumn.icon so the two orientations look identical. */
+  icon?: LucideIcon;
   onLabelPress?: () => void;
   labelHighlight?: boolean;
   rowHighlight?: boolean;
@@ -222,8 +225,11 @@ export function StickyTable({
   };
 
   // When a header has both a tap action (open month) and pin, the label opens
-  // and a small pin icon (top-right) toggles the fixed column; otherwise the
-  // whole header runs the single action. Labels are centred either way.
+  // and a small pin icon (centred directly BELOW the label) toggles the fixed
+  // column; otherwise the whole header runs the single action. Centring the pin
+  // under its own label keeps it unambiguously tied to this column — an
+  // absolute top-right pin sat on the column boundary and read as the
+  // neighbouring column's marker.
   const headerCell = (c: StickyColumn) => {
     const isCurrent = c.key === currentColumnKey;
     const both = !!onColumnPress && !!onTogglePin;
@@ -231,7 +237,7 @@ export function StickyTable({
     return (
       <View
         key={c.key}
-        style={{ width: cellWidth, height: headerHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", paddingHorizontal: spacing.sm }}
+        style={{ width: cellWidth, height: headerHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", alignItems: "center", paddingHorizontal: spacing.sm }}
       >
         <Pressable disabled={!labelAction} onPress={labelAction ? () => labelAction(c.key) : undefined}>
           <Text
@@ -248,7 +254,7 @@ export function StickyTable({
             onPress={() => onTogglePin!(c.key)}
             hitSlop={8}
             accessibilityRole="button"
-            style={{ position: "absolute", top: 4, right: 4, padding: 2 }}
+            style={{ marginTop: 3, padding: 2 }}
           >
             <Pin size={11} color={palette.textMuted} />
           </Pressable>
@@ -317,6 +323,11 @@ export function StickyTable({
                   >
                     {r.label}
                   </Text>
+                  {r.icon ? (
+                    <View style={{ position: "absolute", top: 4, left: 4 }}>
+                      <r.icon size={11} color={palette.textMuted} strokeWidth={2.2} />
+                    </View>
+                  ) : null}
                 </Pressable>
                 {pinnedCol ? <View style={{ width: cellWidth, justifyContent: "center" }}>{r.cells[pinnedIndex]}</View> : null}
               </View>
