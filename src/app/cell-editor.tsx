@@ -15,11 +15,12 @@ import { newId } from "../db/ids";
 import { restoreRow, writeRows } from "../db/mutations";
 import { addTransaction, deleteTransaction } from "../data/repo";
 import { useCategories, useLive, usePersons, useTransactionsBetween, useUserId } from "../data/hooks";
-import { firstDayOf, lastDayOf, todayISO } from "../domain/dates";
+import { firstDayOf, lastDayOf, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor, parseAmountExpression } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Amount, Badge, Body, Button, Divider, EmptyState, Field, IconButton, Row, Screen, SectionHeader, Spread } from "../ui/components";
+import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
 
@@ -135,7 +136,7 @@ export default function CellEditorModal() {
       <Field
         value={entryRaw}
         onChangeText={setEntryRaw}
-        placeholder={tr.cell.quickEntryPlaceholder}
+        placeholder={useRotatingPlaceholder(placeholderPools.amount)}
         keyboardType="numbers-and-punctuation"
         inputMode="text"
         autoCapitalize="none"
@@ -193,7 +194,7 @@ export default function CellEditorModal() {
             <Spread style={{ paddingVertical: spacing.sm }}>
               <View style={{ flex: 1 }}>
                 <Body>
-                  {dateLabel(t.effectiveDate)}
+                  {t.isAggregate ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
                   {t.installmentNo ? `  ·  ${t.installmentNo}. taksit` : ""}
                 </Body>
                 <Row gap={spacing.sm} style={{ marginTop: 2 }}>

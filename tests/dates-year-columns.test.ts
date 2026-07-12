@@ -30,9 +30,19 @@ describe("resolveYearColumns", () => {
     expect(resolveYearColumns(cats, {}, 2026, 2026, new Set())).toEqual([cat("a"), cat("b")]);
   });
 
-  it("shows exactly the recorded columns in order for a recorded year", () => {
+  it("shows exactly the recorded columns for a recorded year, ordered by sortOrder", () => {
     const cats = [cat("a"), cat("b"), cat("c")];
+    // Membership is {a, c} (from column_years), but the DISPLAY order follows
+    // the category order (sortOrder), so reordering columns reflects in the
+    // table — NOT the stored column_years order (which would be ["c","a"]).
     const out = resolveYearColumns(cats, { "2025": ["c", "a"] }, 2025, 2026, new Set());
+    expect(out.map((c) => c.id)).toEqual(["a", "c"]);
+  });
+
+  it("reordering categories (sortOrder) reorders a recorded year's columns", () => {
+    // Same membership, categories now in a different order → columns follow it.
+    const reordered = [cat("c"), cat("b"), cat("a")];
+    const out = resolveYearColumns(reordered, { "2025": ["a", "c"] }, 2025, 2026, new Set());
     expect(out.map((c) => c.id)).toEqual(["c", "a"]);
   });
 

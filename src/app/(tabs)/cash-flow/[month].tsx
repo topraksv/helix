@@ -10,7 +10,7 @@ import * as s from "../../../db/schema";
 import { newId } from "../../../db/ids";
 import { restoreRow, writeRows } from "../../../db/mutations";
 import { deleteTransaction } from "../../../data/repo";
-import { firstDayOf, lastDayOf, yearOf } from "../../../domain/dates";
+import { firstDayOf, lastDayOf, monthKeyOf, yearOf } from "../../../domain/dates";
 import { useCategories, useLedger, useLive, usePersons, useTransactionsBetween, useUserId } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
@@ -107,8 +107,8 @@ export default function MonthDetailScreen() {
           <Card key={categoryId}>
             <Pressable onPress={() => setExpanded(open ? null : categoryId)} accessibilityRole="button">
               <Spread>
-                <Row gap={spacing.sm} style={{ flex: 1 }}>
-                  <Heading style={{ marginVertical: 0 }}>
+                <Row gap={spacing.sm} style={{ flex: 1, paddingRight: spacing.md }}>
+                  <Heading style={{ marginVertical: 0, flexShrink: 1 }}>
                     {category ? `${categoryIcon(category)} ` : ""}
                     {title}
                   </Heading>
@@ -127,7 +127,7 @@ export default function MonthDetailScreen() {
                     <Spread style={{ paddingVertical: spacing.sm }}>
                       <View style={{ flex: 1 }}>
                         <Body>
-                          {dateLabel(t.effectiveDate)}
+                          {t.isAggregate ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
                           {t.installmentNo ? `  ·  ${t.installmentNo}. taksit` : ""}
                           {t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : ""}
                           {!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : ""}

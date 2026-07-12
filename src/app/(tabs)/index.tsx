@@ -169,7 +169,10 @@ export default function DashboardScreen() {
         date: e.dueDate,
       })),
     ...txLike
-      .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate > today && daysBetween(today, t.effectiveDate) <= 31)
+      // Aggregates are whole-month totals (bulk / cell entries anchored to a
+      // nominal mid-month day), NOT scheduled individual payments — they must
+      // never appear as "upcoming payments".
+      .filter((t) => t.personIsSelf && !t.isAggregate && t.status === "pending" && t.effectiveDate > today && daysBetween(today, t.effectiveDate) <= 31)
       .map((t) => ({
         key: t.id,
         kind: "tx" as const,
