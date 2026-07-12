@@ -130,7 +130,7 @@ export default function CashflowScreen() {
           <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
           <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
           {showTable ? <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} /> : null}
-          <Button icon={PiggyBank} size="sm" label={tr.cashflow.openingLink} variant="ghost" onPress={() => router.push("/settings/opening-balance")} />
+          <Button icon={PiggyBank} size="sm" label={tr.cashflow.openingLink} variant="ghost" onPress={() => router.push("/opening-balance")} />
         </Row>
       ) : (
         <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
@@ -141,14 +141,14 @@ export default function CashflowScreen() {
           <IconButton icon={CreditCard} size={40} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
           <IconButton icon={ChartNoAxesColumn} size={40} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
           <IconButton icon={CalendarPlus} size={40} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
-          <IconButton icon={PiggyBank} size={40} label={tr.cashflow.openingLink} onPress={() => router.push("/settings/opening-balance")} />
+          <IconButton icon={PiggyBank} size={40} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
         </Row>
       )}
 
       {!bundle ? (
         <View style={{ gap: spacing.md }}>
           <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
-          <Button icon={PiggyBank} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/settings/opening-balance")} />
+          <Button icon={PiggyBank} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />
         </View>
       ) : (
         <View style={{ flex: 1 }}>
@@ -352,14 +352,6 @@ function MatrixTable({
   const availTableH = Math.max(160, measuredHeight - HINT_H - FOOTER_GAP);
   const tableHeight = Math.min(naturalTableH, availTableH);
 
-  // Category cells open the editor; derived columns may carry their own action.
-  const pressFor = (c: ColumnDef, month: MonthKey): (() => void) | undefined =>
-    c.categoryId ? () => router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId! } }) : c.action;
-
-  const cell = (value: number | null, note: string | undefined, onPress: (() => void) | undefined, highlighted: boolean) => (
-    <MatrixCell value={value} note={note} onPress={onPress} highlighted={highlighted} fontSize={fontSize} />
-  );
-
   // Tapping a category/computed column opens its month-by-month breakdown.
   // Opening/closing balances are derived summaries — intentionally not tappable.
   const openBreakdown = (key: string) => {
@@ -370,6 +362,21 @@ function MatrixTable({
       params: { col: col.categoryId ?? col.key, label: col.label, year: String(year), kind: col.categoryId ? "category" : "computed" },
     });
   };
+
+  // Category cells open the month's cell editor; computed columns are derived
+  // (no transactions to edit) so their cells open the breakdown — the same as
+  // tapping their header — so no visible cell is ever a dead tap. Opening/
+  // closing stay non-interactive by design.
+  const pressFor = (c: ColumnDef, month: MonthKey): (() => void) | undefined => {
+    if (c.categoryId) return () => router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId! } });
+    if (c.action) return c.action;
+    if (c.key === "opening" || c.key === "closing") return undefined;
+    return () => openBreakdown(c.key); // computed column cell → its breakdown
+  };
+
+  const cell = (value: number | null, note: string | undefined, onPress: (() => void) | undefined, highlighted: boolean) => (
+    <MatrixCell value={value} note={note} onPress={onPress} highlighted={highlighted} fontSize={fontSize} />
+  );
   const breakdownFor = (key: string): (() => void) | undefined =>
     key === "opening" || key === "closing" ? undefined : () => openBreakdown(key);
 
