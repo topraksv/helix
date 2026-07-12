@@ -13,7 +13,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
-import { Pin } from "lucide-react-native";
+import { Pin, type LucideIcon } from "lucide-react-native";
 import { spacing, type, useTheme } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
@@ -23,6 +23,8 @@ export const STICKY_HEADER_HEIGHT = 56;
 export interface StickyColumn {
   key: string;
   label: string;
+  /** Optional marker icon shown top-left of the header (e.g. a computed column). */
+  icon?: LucideIcon;
 }
 
 export interface StickyRow {
@@ -250,6 +252,11 @@ export function StickyTable({
           >
             <Pin size={11} color={palette.textMuted} />
           </Pressable>
+        ) : null}
+        {c.icon ? (
+          <View style={{ position: "absolute", top: 4, left: 4 }}>
+            <c.icon size={11} color={palette.textMuted} strokeWidth={2.2} />
+          </View>
         ) : null}
       </View>
     );

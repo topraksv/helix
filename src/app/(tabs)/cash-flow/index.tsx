@@ -9,7 +9,7 @@
 import React, { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowDownRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus } from "lucide-react-native";
+import { ArrowDownRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
@@ -238,6 +238,8 @@ interface ColumnDef {
   label: string;
   /** Category columns open the cell editor; derived columns are read-only. */
   categoryId: string | null;
+  /** True for user-defined computed (formula) columns — marked with an icon. */
+  computed?: boolean;
   /** null = not computable (e.g. a broken computed-column definition) — the
    *  cell renders empty instead of a misleading 0. */
   value: (m: MonthLedger) => number | null;
@@ -309,6 +311,7 @@ function MatrixTable({
         key: c.id,
         label: c.name,
         categoryId: null,
+        computed: true,
         value: (m) => {
           const cc = ccByMonth.get(m.month);
           try {
@@ -387,7 +390,7 @@ function MatrixTable({
 
   if (orientation === "monthsAsRows") {
     cornerLabel = tr.cashflow.monthHeader;
-    stickyColumns = columns.map((c) => ({ key: c.key, label: c.label }));
+    stickyColumns = columns.map((c) => ({ key: c.key, label: c.label, icon: c.computed ? Sigma : undefined }));
     stickyRows = months.map((slot) => ({
       key: slot.month,
       label: compact ? monthLabel(slot.month).split(" ")[0] : monthLabel(slot.month),

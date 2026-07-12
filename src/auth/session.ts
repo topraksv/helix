@@ -7,7 +7,7 @@
 
 import { create } from "zustand";
 import { getSupabase, isSupabaseConfigured } from "../sync/supabase";
-import { resetLocalWorkspace } from "../db/mutations";
+import { resetLocalWorkspace, writeSetting } from "../db/mutations";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { cancelSync } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
@@ -62,6 +62,9 @@ interface SessionStore {
    *  pull) so the route guard sends it straight to onboarding instead of
    *  holding for a first pull. Sign-in / bootstrap clear it. */
   isNewSignup: boolean;
+  /** Set while a "freeze" is in progress (write flag → push → sign out) so the
+   *  guard doesn't flash the frozen gate on the initiating device. */
+  isFreezing: boolean;
   bootstrap: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
@@ -91,6 +94,7 @@ export const useSession = create<SessionStore>((set) => ({
   ready: false,
   isOnlineSession: false,
   isNewSignup: false,
+  isFreezing: false,
 
   bootstrap: async () => {
     if (!isSupabaseConfigured) {
@@ -123,6 +127,10 @@ export const useSession = create<SessionStore>((set) => ({
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
+    // Signing in IS the password check, so it unfreezes a frozen account: clear
+    // the synced flag (a newer LWW write than the freeze) so the reactivation
+    // gate never reappears after a successful login.
+    await writeSetting(data.user.id, "account_frozen", false).catch(() => {});
     set({ userId: data.user.id, isOnlineSession: true, isNewSignup: false });
     return null;
   },
@@ -172,7 +180,7 @@ export const useSession = create<SessionStore>((set) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
-    set({ userId: null, isOnlineSession: false, isNewSignup: false });
+    set({ userId: null, isOnlineSession: false, isNewSignup: false, isFreezing: false });
   },
 
   deleteAccount: async () => {
@@ -208,7 +216,7 @@ export const useSession = create<SessionStore>((set) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
-    set({ userId: null, isOnlineSession: false, isNewSignup: false });
+    set({ userId: null, isOnlineSession: false, isNewSignup: false, isFreezing: false });
     return null;
   },
 }));

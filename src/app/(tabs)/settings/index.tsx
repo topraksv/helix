@@ -140,14 +140,34 @@ export default function SettingsScreen() {
     }
   };
 
+  const [freezing, setFreezing] = useState(false);
   const handleFreeze = async () => {
+    if (freezing) return;
     const ok = await appConfirm(tr.account.freezeConfirmTitle, tr.account.freezeConfirmBody, {
       confirmLabel: tr.account.freezeConfirm,
       danger: true,
     });
     if (!ok) return;
-    await writeSetting(userId, "account_frozen", true);
-    scheduleSync(userId);
+    setFreezing(true);
+    // Suppress the frozen gate on THIS device while we write the flag + push +
+    // sign out (otherwise it flashes before the sign-out lands).
+    useSession.setState({ isFreezing: true });
+    try {
+      await writeSetting(userId, "account_frozen", true);
+      if (isSupabaseConfigured) {
+        // Push the flag to the cloud, then sign out to the login screen. Data is
+        // preserved (it lives in the cloud); logging back in re-hydrates it and
+        // clears the freeze. A different account can be used from here too.
+        await syncNow(userId).catch(() => {});
+        await signOut(); // resets isFreezing
+      } else {
+        // Local-only (no cloud): keep the session and lock in place via the gate.
+        scheduleSync(userId);
+        useSession.setState({ isFreezing: false });
+      }
+    } finally {
+      setFreezing(false);
+    }
   };
 
   const [deleting, setDeleting] = useState(false);

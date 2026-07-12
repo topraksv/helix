@@ -9,8 +9,8 @@
  * no trademarked bitmap is reproduced.
  */
 
-import React, { useMemo } from "react";
-import { Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Image, Text, View } from "react-native";
 import {
   Building2,
   Car,
@@ -100,6 +100,67 @@ const BRAND: Record<string, { color: string; mark?: string }> = {
   storytel: { color: "#ff5a5f", mark: "S" },
 };
 
+/**
+ * Known brand → website domain, so we can fetch the real favicon. Only generic
+ * brand domains are ever requested (never the user's own data), and a failed
+ * fetch falls back to the local chip — so nothing breaks offline.
+ */
+const BRAND_DOMAIN: Record<string, string> = {
+  netflix: "netflix.com",
+  spotify: "spotify.com",
+  youtube: "youtube.com",
+  disney: "disneyplus.com",
+  "disney+": "disneyplus.com",
+  amazon: "amazon.com",
+  prime: "primevideo.com",
+  "prime video": "primevideo.com",
+  "amazon prime": "primevideo.com",
+  hbo: "max.com",
+  "hbo max": "max.com",
+  max: "max.com",
+  "apple music": "music.apple.com",
+  "apple tv": "tv.apple.com",
+  "apple tv+": "tv.apple.com",
+  icloud: "icloud.com",
+  chatgpt: "openai.com",
+  openai: "openai.com",
+  twitter: "x.com",
+  x: "x.com",
+  "google one": "one.google.com",
+  twitch: "twitch.tv",
+  steam: "steampowered.com",
+  playstation: "playstation.com",
+  "playstation plus": "playstation.com",
+  xbox: "xbox.com",
+  "xbox game pass": "xbox.com",
+  nintendo: "nintendo.com",
+  github: "github.com",
+  "github copilot": "github.com",
+  notion: "notion.so",
+  dropbox: "dropbox.com",
+  adobe: "adobe.com",
+  canva: "canva.com",
+  linkedin: "linkedin.com",
+  "linkedin premium": "linkedin.com",
+  patreon: "patreon.com",
+  audible: "audible.com",
+  duolingo: "duolingo.com",
+  deezer: "deezer.com",
+  tidal: "tidal.com",
+  blutv: "blutv.com",
+  exxen: "exxen.com",
+  tabii: "tabii.com",
+  gain: "gain.tv",
+  storytel: "storytel.com",
+};
+
+/** Resolve the domain to fetch a favicon from (explicit override or a brand). */
+function domainFor(name: string, override?: string | null): string | null {
+  if (override && override.trim()) return override.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const key = name.trim().toLocaleLowerCase("tr-TR");
+  return BRAND_DOMAIN[key] ?? BRAND_DOMAIN[key.split(/\s+/)[0]] ?? null;
+}
+
 /** Perceived luminance → pick black or white ink for legible contrast. */
 function inkFor(hex: string): string {
   const h = hex.replace("#", "");
@@ -111,14 +172,31 @@ function inkFor(hex: string): string {
 }
 
 export function Logo({ name, domain, size = 36 }: { name: string; domain?: string | null; size?: number }) {
-  void domain; // kept for API compatibility; no remote favicon lookup anymore
   const { palette } = useTheme();
+  const [imgFailed, setImgFailed] = useState(false);
 
   const utility = useMemo(() => UTILITY_ICONS.find((u) => u.match.test(name)), [name]);
   const brand = useMemo(() => {
     const key = name.trim().toLocaleLowerCase("tr-TR");
     return BRAND[key] ?? BRAND[key.split(/\s+/)[0]] ?? null;
   }, [name]);
+  // A utility (electricity/water/…) keeps its themed icon; otherwise, if we can
+  // resolve a domain, fetch the real favicon and fall back to the local chip on
+  // any error (offline, unknown host).
+  const faviconDomain = useMemo(() => (utility ? null : domainFor(name, domain)), [utility, name, domain]);
+
+  if (faviconDomain && !imgFailed) {
+    return (
+      <View style={{ width: size, height: size, borderRadius: radius.sm, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: palette.border }}>
+        <Image
+          source={{ uri: `https://www.google.com/s2/favicons?domain=${faviconDomain}&sz=64` }}
+          onError={() => setImgFailed(true)}
+          style={{ width: size * 0.72, height: size * 0.72 }}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  }
 
   if (utility) {
     const IconCmp = utility.icon;
