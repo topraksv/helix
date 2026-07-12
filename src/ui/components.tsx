@@ -96,6 +96,7 @@ export function FadeIn({ children, delay = 0, style }: { children: ReactNode; de
 export function Screen({
   children,
   scroll = true,
+  scrollEnabled = true,
   padded = true,
   title,
   subtitle,
@@ -105,6 +106,8 @@ export function Screen({
 }: {
   children: ReactNode;
   scroll?: boolean;
+  /** Temporarily freeze vertical scrolling (e.g. during a drag reorder). */
+  scrollEnabled?: boolean;
   padded?: boolean;
   title?: string;
   subtitle?: string;
@@ -167,7 +170,7 @@ export function Screen({
       style={{ flex: 1, backgroundColor: palette.background }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={inner} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={inner} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
         <FadeIn>
           {header}
           {children}

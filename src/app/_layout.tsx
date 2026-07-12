@@ -31,7 +31,7 @@ import { useSyncStatus } from "../sync/status";
 import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
-import { DialogHost } from "../ui/dialog";
+import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar } from "../ui/undo";
@@ -354,12 +354,14 @@ function RootLayoutInner() {
           <Stack.Screen name="import-wizard" options={{ presentation: "modal", title: tr.importer.title }} />
           <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title }} />
           <Stack.Screen name="opening-balance" options={{ presentation: "modal", title: tr.settings.opening }} />
+          <Stack.Screen name="account-security" options={{ presentation: "modal", title: tr.account.security }} />
           <Stack.Screen name="columns-editor" options={{ presentation: "modal", title: tr.settings.categories }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title }} />
         </Stack>
         </ErrorBoundary>
         <UndoSnackbar />
         <DialogHost />
+        <PromptHost />
       </View>
     </ThemeContext.Provider>
   );

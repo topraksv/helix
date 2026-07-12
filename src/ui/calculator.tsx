@@ -4,8 +4,8 @@
  * with TR-formatted display; no eval, no surprises.
  */
 
-import React, { useState } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Modal, Platform, Pressable, Text, View } from "react-native";
 import { Delete } from "lucide-react-native";
 import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
@@ -87,9 +87,71 @@ const KEYS: string[][] = [
   ["0", ","],
 ];
 
-export function CalculatorPad({ onResult, resultLabel }: { onResult?: (major: number) => void; resultLabel?: string }) {
+// A stack of the mounted keyboard-listening calculators, so only the topmost
+// (e.g. the popup opened over the tab calculator) responds to a keypress.
+const kbStack: object[] = [];
+
+export function CalculatorPad({
+  onResult,
+  resultLabel,
+  onEscape,
+}: {
+  onResult?: (major: number) => void;
+  resultLabel?: string;
+  /** Escape key handler (popup passes its close); otherwise Escape clears. */
+  onEscape?: () => void;
+}) {
   const { palette, scheme } = useTheme();
   const { state, press, value, text } = useCalculator();
+
+  // Physical-keyboard support on web (desktop): map number/operator keys to the
+  // same `press()` the on-screen keys use. Reads live values through refs so the
+  // window listener is attached once and never goes stale.
+  const pressRef = useRef(press);
+  pressRef.current = press;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onResultRef = useRef(onResult);
+  onResultRef.current = onResult;
+  const onEscapeRef = useRef(onEscape);
+  onEscapeRef.current = onEscape;
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const token = {};
+    kbStack.push(token);
+    const onKey = (e: KeyboardEvent) => {
+      if (kbStack[kbStack.length - 1] !== token) return; // only the topmost calc
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const k = e.key;
+      const p = pressRef.current;
+      if (/^[0-9]$/.test(k)) p(k);
+      else if (k === "." || k === ",") p(",");
+      else if (k === "+") p("+");
+      else if (k === "-") p("-");
+      else if (k === "*" || k === "x" || k === "X") p("×");
+      else if (k === "/") p("÷");
+      else if (k === "Enter" || k === "=") {
+        if (stateRef.current.op != null) p("=");
+        else if (onResultRef.current) onResultRef.current(valueRef.current);
+        else p("=");
+      } else if (k === "Backspace") p("⌫");
+      else if (k === "Escape") {
+        if (onEscapeRef.current) onEscapeRef.current();
+        else p("C");
+      } else if (k === "c" || k === "C" || k === "Delete") p("C");
+      else return; // leave keys we don't handle to the browser
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      const i = kbStack.indexOf(token);
+      if (i >= 0) kbStack.splice(i, 1);
+    };
+  }, []);
   // Live preview of the pending operation before "=" is pressed (3 × 5 → = 15).
   const preview =
     state.op != null && state.current !== "" && state.accumulator != null
@@ -192,6 +254,7 @@ export function CalculatorModal({ onClose, onResult }: { onClose: () => void; on
         <Pressable onPress={() => {}} style={{ width: "100%", maxWidth: 340 }}>
           <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
             <CalculatorPad
+              onEscape={onClose}
               onResult={(v) => {
                 onResult(v);
                 onClose();

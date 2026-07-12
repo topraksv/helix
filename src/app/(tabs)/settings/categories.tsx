@@ -27,6 +27,9 @@ export default function CategoriesScreen() {
   const [kind, setKind] = useState<"expense" | "income">("expense");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  // Freeze the screen's scroll while a row is being dragged, so the vertical
+  // drag reorders instead of scrolling the page.
+  const [dragging, setDragging] = useState(false);
 
   const add = async () => {
     await writeRows(userId, [
@@ -79,7 +82,7 @@ export default function CategoriesScreen() {
   };
 
   return (
-    <Screen>
+    <Screen scrollEnabled={!dragging}>
       <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.categoriesDesc}</Body>
       <Card>
         <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.category)} />
@@ -112,6 +115,7 @@ export default function CategoriesScreen() {
               items={group}
               keyExtractor={(c) => c.id}
               onReorder={(ids) => void applyOrder(k, ids)}
+              onDragStateChange={setDragging}
               renderRow={(c, handle) =>
                 editingId === c.id ? (
                   <View>

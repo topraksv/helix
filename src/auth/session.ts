@@ -55,6 +55,8 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
 
 interface SessionStore {
   userId: string | null;
+  /** Signed-in account e-mail (for re-auth prompts and the account screen). */
+  email: string | null;
   ready: boolean;
   isOnlineSession: boolean;
   /** True only for the session created by a fresh sign-UP (no cloud data to
@@ -71,10 +73,20 @@ interface SessionStore {
   /** Permanently delete all data (cloud + this device) and sign out. Returns a
    *  user-facing error string when the cloud wipe could not complete. */
   deleteAccount: () => Promise<string | null>;
+  /** Re-authenticate the current account to confirm a sensitive action
+   *  (delete / freeze / credential change). True when the password is correct. */
+  verifyPassword: (password: string) => Promise<boolean>;
+  /** Request an e-mail change (Supabase confirms via a link). Returns an error
+   *  string, or null on success. */
+  changeEmail: (newEmail: string) => Promise<string | null>;
+  /** Set a new password (the session is fresh from a prior verifyPassword).
+   *  Returns an error string, or null on success. */
+  changePassword: (newPassword: string) => Promise<string | null>;
 }
 
 export const useSession = create<SessionStore>((set) => ({
   userId: null,
+  email: null,
   ready: false,
   isOnlineSession: false,
   isNewSignup: false,
@@ -90,7 +102,7 @@ export const useSession = create<SessionStore>((set) => ({
       const { data } = await supabase.auth.getSession();
       if (data.session?.user) {
         await kv.set(LAST_USER_KEY, data.session.user.id);
-        set({ userId: data.session.user.id, ready: true, isOnlineSession: true, isNewSignup: false });
+        set({ userId: data.session.user.id, email: data.session.user.email ?? null, ready: true, isOnlineSession: true, isNewSignup: false });
         return;
       }
     } catch {
@@ -115,7 +127,7 @@ export const useSession = create<SessionStore>((set) => ({
     // the synced flag (a newer LWW write than the freeze) so the reactivation
     // gate never reappears after a successful login.
     await writeSetting(data.user.id, "account_frozen", false).catch(() => {});
-    set({ userId: data.user.id, isOnlineSession: true, isNewSignup: false });
+    set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: false });
     return null;
   },
 
@@ -134,7 +146,7 @@ export const useSession = create<SessionStore>((set) => ({
     // A brand-new account has no cloud data to pull → go straight to onboarding
     // (isNewSignup), skipping the "await first pull" hold used for existing
     // accounts syncing onto a fresh device.
-    set({ userId: data.user.id, isOnlineSession: true, isNewSignup: true });
+    set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: true });
     return null;
   },
 
@@ -164,7 +176,7 @@ export const useSession = create<SessionStore>((set) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
-    set({ userId: null, isOnlineSession: false, isNewSignup: false, isFreezing: false });
+    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false });
   },
 
   deleteAccount: async () => {
@@ -209,7 +221,35 @@ export const useSession = create<SessionStore>((set) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
-    set({ userId: null, isOnlineSession: false, isNewSignup: false, isFreezing: false });
+    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false });
+    return null;
+  },
+
+  verifyPassword: async (password) => {
+    const supabase = getSupabase();
+    const email = useSession.getState().email;
+    if (!supabase || !email) return false;
+    // Re-authenticate with the current e-mail: a successful sign-in confirms
+    // the password. It re-issues tokens for the same account (no identity
+    // change), which is exactly the "recent login" Supabase wants before a
+    // sensitive credential update.
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return !error;
+  },
+
+  changeEmail: async (newEmail) => {
+    const supabase = getSupabase();
+    if (!supabase) return tr.errors.supabaseNotConfigured;
+    const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
+    if (error) return friendlyAuthError(error.message);
+    return null;
+  },
+
+  changePassword: async (newPassword) => {
+    const supabase = getSupabase();
+    if (!supabase) return tr.errors.supabaseNotConfigured;
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return friendlyAuthError(error.message);
     return null;
   },
 }));

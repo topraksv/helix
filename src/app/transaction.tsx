@@ -98,7 +98,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const paid = Number(paidStr);
   const installmentValid =
     !installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
-  const canSave = amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid;
+  // A category is mandatory for every entry (no "uncategorized" rows).
+  const canSave =
+    amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid && categoryId != null;
 
   const fail = (msg: string) => void appAlert(msg, tr.errors.title);
 
@@ -223,12 +225,15 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         </View>
       ) : null}
 
+      <Label>{tr.tx.category}</Label>
       {categoryOptions.length > 0 ? (
-        <>
-          <Label>{tr.tx.category}</Label>
-          <ChipPicker options={categoryOptions} value={categoryId} onChange={setCategoryId} />
-        </>
-      ) : null}
+        <ChipPicker options={categoryOptions} value={categoryId} onChange={setCategoryId} />
+      ) : (
+        <View style={{ marginBottom: spacing.md }}>
+          <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.categoryRequiredEmpty}</Body>
+          <Button size="sm" variant="secondary" label={tr.settings.categories} onPress={() => router.push("/columns-editor")} />
+        </View>
+      )}
 
       {sources.length > 0 && entryType !== "income" ? (
         <>
