@@ -8,6 +8,11 @@
  * - the live (max) year always shows every active column so newly added ones
  *   appear — but columns explicitly claimed by some year stay confined to
  *   those years (only unclaimed manual/template columns bleed into it).
+ *
+ * `column_years` decides column MEMBERSHIP per year; the DISPLAY order always
+ * follows the caller's category order (sortOrder), so reordering columns in
+ * settings is reflected 1:1 in the table for every year — including imported
+ * ones (whose columns start in Excel order because that's the seed sortOrder).
  */
 
 export interface YearColumnCategory {
@@ -26,25 +31,21 @@ export function resolveYearColumns<T extends YearColumnCategory>(
   const yearColIds = columnYears[String(year)];
   if (!yearColIds) return active;
 
-  const byId = new Map(categories.map((c) => [c.id, c]));
   const claimed = new Set<string>();
   for (const ids of Object.values(columnYears)) for (const id of ids) claimed.add(id);
 
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const id of yearColIds) {
-    const c = byId.get(id);
-    if (c && !seen.has(id)) {
-      out.push(c);
-      seen.add(id);
-    }
-  }
+  // Membership (unchanged from before): columns recorded for this year that
+  // still exist, plus any active column that gained data in the year
+  // (self-heal) and — on the live year — unclaimed columns.
+  const existingIds = new Set(categories.map((c) => c.id));
+  const member = new Set<string>();
+  for (const id of yearColIds) if (existingIds.has(id)) member.add(id);
   for (const c of active) {
-    if (seen.has(c.id)) continue;
-    if (dataCategoryIds.has(c.id) || (year === maxYear && !claimed.has(c.id))) {
-      out.push(c);
-      seen.add(c.id);
-    }
+    if (member.has(c.id)) continue;
+    if (dataCategoryIds.has(c.id) || (year === maxYear && !claimed.has(c.id))) member.add(c.id);
   }
-  return out;
+
+  // Display order = the caller's category order (sortOrder), so reordering
+  // columns in settings is reflected 1:1 in the table for every year.
+  return categories.filter((c) => member.has(c.id));
 }

@@ -2,7 +2,7 @@
  *  column visibility all belong to the user (nothing is hardcoded). */
 
 import React, { useState } from "react";
-import { Switch, View } from "react-native";
+import { StyleSheet, Switch, View } from "react-native";
 import { useRouter } from "expo-router";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
@@ -10,17 +10,19 @@ import { useCategories, useUserId } from "../../../data/hooks";
 import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { ChevronDown, ChevronUp, LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
-import { Body, Button, Card, CardList, Field, Heading, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { GripVertical, LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
+import { Body, Button, Card, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { DraggableList } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
-import { spacing } from "../../../ui/theme";
+import { spacing, useTheme } from "../../../ui/theme";
 
 export default function CategoriesScreen() {
   const userId = useUserId();
   const router = useRouter();
   const categories = useCategories();
   const undo = useUndo();
+  const { palette } = useTheme();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"expense" | "income">("expense");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -51,24 +53,22 @@ export default function CategoriesScreen() {
     scheduleSync(userId);
   };
 
-  // Reorder a category within its kind group (which is what the Mali Tablo
+  // Commit a drag reorder within a kind group (which is what the Mali Tablo
   // matrix renders as its column/row order). `sortOrder` is a synced column, so
   // the new order propagates to every device — consistent with how the rest of
   // the workspace syncs (there is no device-local ordering pref here). We
-  // reassign the group's items onto their own existing sortOrder slots in the
-  // new order, so the other kind's rows keep their positions untouched.
-  const move = async (c: (typeof categories)[number], dir: -1 | 1) => {
-    const group = categories.filter((x) => x.kind === c.kind); // already sortOrder-sorted
-    const idx = group.findIndex((x) => x.id === c.id);
-    const j = idx + dir;
-    if (j < 0 || j >= group.length) return;
+  // reassign the group's own existing sortOrder slots onto the new order, so
+  // the other kind's rows keep their positions untouched.
+  const applyOrder = async (kind: "expense" | "income", orderedIds: string[]) => {
+    const group = categories.filter((x) => x.kind === kind); // sortOrder-sorted
     const slots = group.map((x) => x.sortOrder);
-    const reordered = [...group];
-    [reordered[idx], reordered[j]] = [reordered[j], reordered[idx]];
-    await writeRows(
-      userId,
-      reordered.map((cat, k) => ({ table: "categories", row: { ...cat, sortOrder: slots[k] } })),
-    );
+    const byId = new Map(group.map((c) => [c.id, c]));
+    const writes = orderedIds.flatMap((id, k) => {
+      const c = byId.get(id);
+      return c ? [{ table: "categories" as const, row: { ...c, sortOrder: slots[k] } }] : [];
+    });
+    if (writes.length === 0) return;
+    await writeRows(userId, writes);
     scheduleSync(userId);
   };
 
@@ -101,67 +101,84 @@ export default function CategoriesScreen() {
         />
       </Card>
 
-      {(["expense", "income"] as const).map((k) => (
-        <CardList
-          key={k}
-          items={categories.filter((c) => c.kind === k)}
-          keyExtractor={(c) => c.id}
-          header={<Heading style={{ marginTop: 0 }}>{k === "expense" ? tr.settings.kindExpense : tr.settings.kindIncome}</Heading>}
-          renderItem={(c) =>
-            editingId === c.id ? (
-              <Row style={{ paddingVertical: spacing.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Field noMargin value={editName} onChangeText={setEditName} autoFocus />
-                </View>
-                <Button
-                  label={tr.common.save}
-                  variant="secondary"
-                  disabled={!editName.trim()}
-                  onPress={() => {
-                    void update(c, { name: editName.trim() });
-                    setEditingId(null);
-                  }}
-                />
-                <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
-              </Row>
-            ) : (
-              <View style={{ paddingVertical: spacing.sm }}>
-                <Spread>
-                  <Body style={{ flex: 1, paddingRight: spacing.sm }}>
-                    {categoryIcon(c)} {c.name}
-                  </Body>
-                  <Row gap={spacing.xs} style={{ alignItems: "center" }}>
-                    {(() => {
-                      const group = categories.filter((x) => x.kind === c.kind);
-                      const gi = group.findIndex((x) => x.id === c.id);
-                      return (
-                        <>
-                          <IconButton icon={ChevronUp} size={32} label={tr.common.moveUp} disabled={gi <= 0} onPress={() => void move(c, -1)} />
-                          <IconButton icon={ChevronDown} size={32} label={tr.common.moveDown} disabled={gi >= group.length - 1} onPress={() => void move(c, 1)} />
-                        </>
-                      );
-                    })()}
-                    <IconButton
-                      icon={Pencil}
-                      size={32}
-                      label={tr.common.edit}
-                      onPress={() => {
-                        setEditingId(c.id);
-                        setEditName(c.name);
-                      }}
-                    />
-                    <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
-                  </Row>
-                </Spread>
-                <Spread style={{ marginTop: spacing.xs }}>
-                  <Body muted style={{ fontSize: 12 }}>{tr.settings.columnVisible}</Body>
-                  <Switch value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
-                </Spread>
-              </View>
-            )
-          }
-        />
-      ))}
+      {(["expense", "income"] as const).map((k) => {
+        const group = categories.filter((c) => c.kind === k);
+        if (group.length === 0) return null;
+        return (
+          <Card key={k}>
+            <Heading style={{ marginTop: 0 }}>{k === "expense" ? tr.settings.kindExpense : tr.settings.kindIncome}</Heading>
+            <Body muted style={{ fontSize: 12, marginBottom: spacing.xs }}>{tr.settings.reorderHint}</Body>
+            <DraggableList
+              items={group}
+              keyExtractor={(c) => c.id}
+              onReorder={(ids) => void applyOrder(k, ids)}
+              renderRow={(c, handle) =>
+                editingId === c.id ? (
+                  <View>
+                    <Row style={{ paddingVertical: spacing.sm }}>
+                      <View style={{ flex: 1 }}>
+                        <Field noMargin value={editName} onChangeText={setEditName} autoFocus />
+                      </View>
+                      <Button
+                        label={tr.common.save}
+                        variant="secondary"
+                        disabled={!editName.trim()}
+                        onPress={() => {
+                          void update(c, { name: editName.trim() });
+                          setEditingId(null);
+                        }}
+                      />
+                      <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
+                    </Row>
+                    <Divider />
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      paddingVertical: spacing.sm,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderColor: palette.border,
+                      backgroundColor: handle.active ? palette.surfaceAlt : palette.surface,
+                    }}
+                  >
+                    <Spread>
+                      <Row gap={spacing.sm} style={{ flex: 1, alignItems: "center", paddingRight: spacing.sm }}>
+                        <View
+                          {...handle.panHandlers}
+                          accessibilityRole="adjustable"
+                          accessibilityLabel={tr.settings.reorderHandle}
+                          style={{ padding: 4, marginLeft: -4 }}
+                        >
+                          <GripVertical size={18} color={palette.textMuted} />
+                        </View>
+                        <Body style={{ flex: 1 }}>
+                          {categoryIcon(c)} {c.name}
+                        </Body>
+                      </Row>
+                      <Row gap={spacing.sm} style={{ alignItems: "center" }}>
+                        <IconButton
+                          icon={Pencil}
+                          size={32}
+                          label={tr.common.edit}
+                          onPress={() => {
+                            setEditingId(c.id);
+                            setEditName(c.name);
+                          }}
+                        />
+                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
+                      </Row>
+                    </Spread>
+                    <Spread style={{ marginTop: spacing.xs }}>
+                      <Body muted style={{ fontSize: 12 }}>{tr.settings.columnVisible}</Body>
+                      <Switch value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
+                    </Spread>
+                  </View>
+                )
+              }
+            />
+          </Card>
+        );
+      })}
     </Screen>
   );
 }

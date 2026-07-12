@@ -225,11 +225,9 @@ export function StickyTable({
   };
 
   // When a header has both a tap action (open month) and pin, the label opens
-  // and a small pin icon (centred directly BELOW the label) toggles the fixed
-  // column; otherwise the whole header runs the single action. Centring the pin
-  // under its own label keeps it unambiguously tied to this column — an
-  // absolute top-right pin sat on the column boundary and read as the
-  // neighbouring column's marker.
+  // and a small pin icon (top-right) toggles the fixed column; otherwise the
+  // whole header runs the single action. The computed-column marker sits
+  // bottom-right so the two markers never share a corner.
   const headerCell = (c: StickyColumn) => {
     const isCurrent = c.key === currentColumnKey;
     const both = !!onColumnPress && !!onTogglePin;
@@ -237,7 +235,7 @@ export function StickyTable({
     return (
       <View
         key={c.key}
-        style={{ width: cellWidth, height: headerHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", alignItems: "center", paddingHorizontal: spacing.sm }}
+        style={{ width: cellWidth, height: headerHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", paddingHorizontal: spacing.sm }}
       >
         <Pressable disabled={!labelAction} onPress={labelAction ? () => labelAction(c.key) : undefined}>
           <Text
@@ -254,13 +252,13 @@ export function StickyTable({
             onPress={() => onTogglePin!(c.key)}
             hitSlop={8}
             accessibilityRole="button"
-            style={{ marginTop: 3, padding: 2 }}
+            style={{ position: "absolute", top: 4, right: 4, padding: 2 }}
           >
             <Pin size={11} color={palette.textMuted} />
           </Pressable>
         ) : null}
         {c.icon ? (
-          <View style={{ position: "absolute", top: 4, left: 4 }}>
+          <View style={{ position: "absolute", bottom: 4, right: 4 }}>
             <c.icon size={11} color={palette.textMuted} strokeWidth={2.2} />
           </View>
         ) : null}
@@ -324,7 +322,7 @@ export function StickyTable({
                     {r.label}
                   </Text>
                   {r.icon ? (
-                    <View style={{ position: "absolute", top: 4, left: 4 }}>
+                    <View style={{ position: "absolute", bottom: 4, right: 4 }}>
                       <r.icon size={11} color={palette.textMuted} strokeWidth={2.2} />
                     </View>
                   ) : null}

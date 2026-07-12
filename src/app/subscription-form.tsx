@@ -17,8 +17,6 @@ import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
 
-const QUICK_DAYS = ["1", "5", "10", "15", "20", "25", "28"] as const;
-
 export default function SubscriptionFormModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const subscriptions = useSubscriptions();
@@ -156,11 +154,6 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       ) : null}
 
       <Label>{tr.subs.billingDay}</Label>
-      <ChipPicker
-        options={QUICK_DAYS.map((d) => ({ value: d, label: d }))}
-        value={(QUICK_DAYS as readonly string[]).includes(billingDayStr) ? (billingDayStr as (typeof QUICK_DAYS)[number]) : null}
-        onChange={setBillingDayStr}
-      />
       <Field value={billingDayStr} onChangeText={setBillingDayStr} keyboardType="number-pad" placeholder={tr.subs.billingDay} />
       <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.billingDayHint}</Body>
 
