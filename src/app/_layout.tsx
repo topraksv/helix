@@ -27,7 +27,6 @@ import { runMaintenance } from "../data/repo";
 import { loadRateCache, refreshRates } from "../services/fx-fetch";
 import { rescheduleAll } from "../services/notifications";
 import { syncNow } from "../sync/engine";
-import { useSyncStatus } from "../sync/status";
 import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
@@ -127,29 +126,31 @@ export default function RootLayout() {
 function RootLayoutInner() {
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
-  const { userId, ready, bootstrap, isOnlineSession } = useSession();
+  const { userId, ready, bootstrap, isOnlineSession, isNewSignup } = useSession();
   const [locked, setLocked] = useState<boolean | null>(null);
   const onboarded = useOnboarded(userId);
   const frozen = useAccountFrozen(userId);
-  const hasSyncedUser = useSyncStatus((s) => s.hasSyncedUser);
   const segments = useSegments();
   const router = useRouter();
 
   // On a fresh device an already-onboarded account's `onboarded` flag arrives
-  // only with the first sync pull; until then the local query returns false.
-  // Hold (spinner) instead of flashing the onboarding screen for online
-  // sessions whose initial pull hasn't landed yet. A timeout caps the hold so a
-  // persistently failing sync can never strand the user on a spinner — after it
-  // we let the normal guard proceed (at worst a recoverable onboarding screen).
-  const [firstPullTimedOut, setFirstPullTimedOut] = useState(false);
-  const pullPending = !!userId && isOnlineSession && hasSyncedUser !== userId;
+  // only with the first sync pull; until then the local query returns false and
+  // the guard would flash the onboarding screen. Give an online (non-signup)
+  // session a bounded grace to let that first pull land before allowing the
+  // onboarding redirect. This is a plain timer (no external-store subscription),
+  // so it can't drive a re-render loop. A brand-new signup skips the grace
+  // (isNewSignup) and reaches onboarding immediately.
+  const [pullGrace, setPullGrace] = useState(false);
   useEffect(() => {
-    setFirstPullTimedOut(false);
-    if (!pullPending) return;
-    const t = setTimeout(() => setFirstPullTimedOut(true), 15000);
-    return () => clearTimeout(t);
-  }, [pullPending, userId]);
-  const awaitingFirstPull = pullPending && !firstPullTimedOut;
+    if (userId && isOnlineSession && !isNewSignup) {
+      setPullGrace(true);
+      const t = setTimeout(() => setPullGrace(false), 8000);
+      return () => clearTimeout(t);
+    }
+    setPullGrace(false);
+    return undefined;
+  }, [userId, isOnlineSession, isNewSignup]);
+  const awaitingFirstPull = pullGrace && onboarded === false;
 
   const scheme: "light" | "dark" =
     themePref === "system" ? (systemScheme === "dark" ? "dark" : "light") : themePref;
@@ -225,12 +226,17 @@ function RootLayoutInner() {
       if (lastKickUser.current === userId && Date.now() - lastKickAt.current < 60_000) return;
       lastKickUser.current = userId;
       lastKickAt.current = Date.now();
+      // Run maintenance BEFORE sync (not concurrently): maintenance writes land
+      // in the outbox first, so the initial pull/push runs once instead of being
+      // re-triggered mid-flight by those writes. All DB transactions are
+      // serialized (see db/client withTransaction), but sequencing here also
+      // avoids a rerun storm right after sign-in.
       void runMaintenance(userId)
         .then(() => rescheduleAll(userId))
-        .catch((e) => console.warn("maintenance failed", e));
+        .catch((e) => console.warn("maintenance failed", e))
+        .finally(() => void syncNow(userId));
       void loadRateCache(userId).catch(() => {});
       void refreshRates(userId).catch(() => {});
-      void syncNow(userId);
     };
     kick();
     const sub = AppState.addEventListener("change", (state) => {
@@ -286,7 +292,11 @@ function RootLayoutInner() {
   // fragile on the web sqlite worker.
   const inAuth = segments[0] === "(auth)";
   const inOnboarding = segments[0] === "(onboarding)";
-  const blocked = inAuth ? !!userId && onboarded === true : inOnboarding ? !userId : !userId || onboarded !== true;
+  const blocked = inAuth
+    ? !!userId && (onboarded === true || awaitingFirstPull)
+    : inOnboarding
+      ? !userId
+      : !userId || onboarded !== true;
   if (blocked) {
     // While an existing account's first pull is still landing, show a spinner
     // rather than a bare background so the hold never reads as a white screen.

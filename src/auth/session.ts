@@ -58,6 +58,10 @@ interface SessionStore {
   userId: string | null;
   ready: boolean;
   isOnlineSession: boolean;
+  /** True only for the session created by a fresh sign-UP (no cloud data to
+   *  pull) so the route guard sends it straight to onboarding instead of
+   *  holding for a first pull. Sign-in / bootstrap clear it. */
+  isNewSignup: boolean;
   bootstrap: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
@@ -86,6 +90,7 @@ export const useSession = create<SessionStore>((set) => ({
   userId: null,
   ready: false,
   isOnlineSession: false,
+  isNewSignup: false,
 
   bootstrap: async () => {
     if (!isSupabaseConfigured) {
@@ -97,14 +102,14 @@ export const useSession = create<SessionStore>((set) => ({
       const { data } = await supabase.auth.getSession();
       if (data.session?.user) {
         await kv.set(LAST_USER_KEY, data.session.user.id);
-        set({ userId: data.session.user.id, ready: true, isOnlineSession: true });
+        set({ userId: data.session.user.id, ready: true, isOnlineSession: true, isNewSignup: false });
         return;
       }
     } catch {
       // offline — fall through to the persisted user id
     }
     const lastUser = await kv.get(LAST_USER_KEY);
-    set({ userId: lastUser, ready: true, isOnlineSession: false });
+    set({ userId: lastUser, ready: true, isOnlineSession: false, isNewSignup: false });
   },
 
   signIn: async (email, password) => {
@@ -118,7 +123,7 @@ export const useSession = create<SessionStore>((set) => ({
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
-    set({ userId: data.user.id, isOnlineSession: true });
+    set({ userId: data.user.id, isOnlineSession: true, isNewSignup: false });
     return null;
   },
 
@@ -134,12 +139,10 @@ export const useSession = create<SessionStore>((set) => ({
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
-    // A brand-new account has no cloud data to pull, so mark its initial pull
-    // as done: the route guard must send it straight to onboarding instead of
-    // holding on the "awaiting first pull" gate (which exists only to avoid
-    // flashing onboarding to an EXISTING account whose data is still syncing).
-    useSyncStatus.getState().set({ hasSyncedUser: data.user.id });
-    set({ userId: data.user.id, isOnlineSession: true });
+    // A brand-new account has no cloud data to pull → go straight to onboarding
+    // (isNewSignup), skipping the "await first pull" hold used for existing
+    // accounts syncing onto a fresh device.
+    set({ userId: data.user.id, isOnlineSession: true, isNewSignup: true });
     return null;
   },
 
@@ -149,9 +152,7 @@ export const useSession = create<SessionStore>((set) => ({
     // stream survives the session.
     cancelSync();
     disconnectMarkets();
-    // Clear the "initial pull done" marker so a later sign-in on this device
-    // waits for its own first pull before deciding onboarded-vs-onboarding.
-    useSyncStatus.getState().set({ hasSyncedUser: null, lastSyncAt: null });
+    useSyncStatus.getState().set({ lastSyncAt: null });
     const supabase = getSupabase();
     if (supabase) {
       try {
@@ -171,7 +172,7 @@ export const useSession = create<SessionStore>((set) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
-    set({ userId: null, isOnlineSession: false });
+    set({ userId: null, isOnlineSession: false, isNewSignup: false });
   },
 
   deleteAccount: async () => {
@@ -191,7 +192,7 @@ export const useSession = create<SessionStore>((set) => ({
     // and end the session.
     cancelSync();
     disconnectMarkets();
-    useSyncStatus.getState().set({ hasSyncedUser: null, lastSyncAt: null });
+    useSyncStatus.getState().set({ lastSyncAt: null });
     const supabase = getSupabase();
     if (supabase) {
       try {
@@ -207,7 +208,7 @@ export const useSession = create<SessionStore>((set) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
-    set({ userId: null, isOnlineSession: false });
+    set({ userId: null, isOnlineSession: false, isNewSignup: false });
     return null;
   },
 }));

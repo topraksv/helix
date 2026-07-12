@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { useRouter } from "expo-router";
 import { AlertCircle, CloudOff } from "lucide-react-native";
 import { useSession } from "../../auth/session";
 import { isSupabaseConfigured } from "../../sync/supabase";
@@ -16,7 +15,6 @@ export default function SignInScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { signIn, signUp } = useSession();
-  const router = useRouter();
   const { palette } = useTheme();
 
   const emailValid = /.+@.+\..+/.test(email.trim());
@@ -28,8 +26,10 @@ export default function SignInScreen() {
     setError(null);
     const err = mode === "signIn" ? await signIn(email.trim(), password) : await signUp(email.trim(), password);
     setBusy(false);
+    // On success, let the root route guard navigate (it keys off userId +
+    // onboarded). Replacing to "/" here landed on a length-0 route that made the
+    // guard's "(tabs)" redirect loop (React error #185 → white screen).
     if (err) setError(err);
-    else router.replace("/");
   };
 
   const switchMode = () => {

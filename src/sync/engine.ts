@@ -5,7 +5,7 @@
  */
 
 import { getTableColumns } from "drizzle-orm";
-import { getSqliteAsync } from "../db/client";
+import { getSqliteAsync, withTransaction } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
@@ -171,7 +171,7 @@ async function pullAndMerge(userId: string): Promise<void> {
       if (error) throw new Error(`pull ${table}: ${error.message}`);
       if (!data || data.length === 0) break;
 
-      await sqlite.withTransactionAsync(async () => {
+      await withTransaction(async () => {
         for (const remoteRaw of data) {
           const remote = toLocal(table, remoteRaw as Record<string, unknown>);
           // An unparseable server timestamp can't participate in LWW; skip it
@@ -253,7 +253,7 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<void
     await pushOutbox(userId);
     await pullAndMerge(userId);
     retryAttempt = 0;
-    status.set({ state: "idle", lastSyncAt: new Date().toISOString(), error: null, hasSyncedUser: userId });
+    status.set({ state: "idle", lastSyncAt: new Date().toISOString(), error: null });
   } catch (e) {
     const raw = e instanceof Error ? e.message : String(e);
     console.error("[sync]", raw);

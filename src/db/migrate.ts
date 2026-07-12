@@ -5,7 +5,7 @@
  * migrator continue seamlessly.
  */
 
-import { getSqliteAsync } from "./client";
+import { getSqliteAsync, withTransaction } from "./client";
 import migrations from "./migrations/migrations";
 
 export async function migrateDb(): Promise<void> {
@@ -22,7 +22,7 @@ export async function migrateDb(): Promise<void> {
     if (entry.when <= appliedUpTo) continue;
     const sqlBundle = migrations.migrations[`m${String(entry.idx).padStart(4, "0")}` as keyof typeof migrations.migrations];
     if (!sqlBundle) throw new Error(`Missing migration: ${entry.tag}`);
-    await db.withTransactionAsync(async () => {
+    await withTransaction(async () => {
       for (const statement of sqlBundle.split("--> statement-breakpoint")) {
         await db.execAsync(statement);
       }
