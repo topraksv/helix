@@ -221,6 +221,34 @@ export async function deleteTransaction(userId: string, id: string) {
   return softDelete(userId, "transactions", id);
 }
 
+/**
+ * Reconcile to a real-world balance WITHOUT rewriting history. Stores the
+ * difference between the target and the currently-computed balance as one
+ * balance adjustment dated today, so every prior month's chain (and the opening
+ * balance) is untouched — only today onward shifts by the delta.
+ *
+ * `computedNowMinor` is the balance the caller currently shows (it already
+ * includes any earlier same-day adjustment). The adjustment row is keyed by day
+ * so repeated corrections converge on the target instead of stacking: we back
+ * out today's existing adjustment before computing the new delta.
+ */
+export async function setCurrentBalance(userId: string, targetMinor: Minor, computedNowMinor: Minor): Promise<void> {
+  const today = todayISO();
+  const id = await deterministicId(naturalKeys.balanceAdjustment(userId, today));
+  const sqlite = await getSqliteAsync();
+  const prev = await sqlite.getFirstAsync<{ amount_minor: number }>(
+    `SELECT amount_minor FROM balance_adjustments WHERE id = ? AND deleted_at IS NULL`,
+    [id] as never[],
+  );
+  const prevAmount = prev?.amount_minor ?? 0;
+  // computedNow already contains prevAmount; the new adjustment must make the
+  // total land on target: (computedNow - prevAmount) + delta = target.
+  const delta = targetMinor - (computedNowMinor - prevAmount);
+  await writeRows(userId, [
+    { table: "balance_adjustments", row: { id, date: today, amountMinor: delta, note: null, deletedAt: null } },
+  ]);
+}
+
 /** How many live transactions reference a category — for a warn-before-delete
  *  confirmation (deleting a category leaves its rows uncategorized, not lost). */
 export async function countTransactionsForCategory(userId: string, categoryId: string): Promise<number> {

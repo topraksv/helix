@@ -252,7 +252,8 @@ export default function SetupScreen() {
           </Spread>
           <MoneyField
             label={tr.onboarding.openingBalance}
-            value={openingRaw}
+            value={hasImport ? "" : openingRaw}
+            disabled={hasImport}
             onChangeMinor={(raw, minor) => {
               setOpeningRaw(raw);
               setOpeningMinor(minor);
