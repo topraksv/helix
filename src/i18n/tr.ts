@@ -289,6 +289,10 @@ export const tr = {
     deleteBody: (count: number) => `Bu plan ve ona bağlı ${count} taksit kaydı kalıcı olarak silinecek. Geri alınamaz.`,
     nthInstallment: (n: number) => `${n}. taksit`,
     defaultTitle: (amount: string) => `${amount} taksitli harcama`,
+    allCards: "Tüm kartlar",
+    thisMonthInstallment: (n: number, total: number) => `Bu ay ${n}/${total}. taksit`,
+    noneThisMonth: "Bu ay ödenecek taksit yok",
+    noneThisMonthHint: "Bu ayda aktif taksit veya kredi taksiti bulunmuyor. Ay/kart seçimini değiştirebilirsin.",
   },
   subs: {
     title: "Abonelikler",

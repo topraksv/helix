@@ -1,22 +1,22 @@
-/** Installments & loans: per-card grouping, n/m progress, this-month total
- *  obligation (spec §3.2), watch-only section for payer-other plans (§2.8). */
+/** Installments & loans, viewed one MONTH at a time: step through months and
+ *  filter by card to see exactly which installments fall due that month. A plan
+ *  that has no payment in the selected month (finished, or not yet started) is
+ *  hidden — each month shows only its own live installments (spec §3.2, §2.8). */
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronRight, CreditCard, Plus } from "lucide-react-native";
 import { planProgress, type GeneratedInstallment } from "../../../domain/installments";
-import { firstDayOf, lastDayOf, monthKeyOf, todayISO } from "../../../domain/dates";
-import { formatMinor } from "../../../domain/money";
+import { monthKeyOf, todayISO } from "../../../domain/dates";
 import { monthLabel, tr } from "../../../i18n/tr";
 import {
-  toTxLike,
-  useAllTransactions,
   usePersons,
   usePlans,
   useSources,
+  useAllTransactions,
 } from "../../../data/hooks";
-import { Amount, Badge, Body, Button, Card, CardList, EmptyState, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, EmptyState, MonthStepper, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { spacing, useTheme } from "../../../ui/theme";
 
 export default function InstallmentsScreen() {
@@ -26,8 +26,8 @@ export default function InstallmentsScreen() {
   const allTx = useAllTransactions();
   const router = useRouter();
   const { palette } = useTheme();
-  const today = todayISO();
-  const month = monthKeyOf(today);
+  const [viewMonth, setViewMonth] = useState(monthKeyOf(todayISO()));
+  const [cardFilter, setCardFilter] = useState<string | null>(null);
 
   const selfIds = useMemo(() => new Set(persons.filter((p) => p.isSelf).map((p) => p.id)), [persons]);
   const sourceName = useMemo(() => new Map(sources.map((s) => [s.id, s.name])), [sources]);
@@ -51,33 +51,34 @@ export default function InstallmentsScreen() {
     return map;
   }, [allTx]);
 
-  const txLike = useMemo(() => toTxLike(allTx, persons), [allTx, persons]);
-  // This screen is about installments & loans, so the header total must be the
-  // installment/loan obligation this month — not every expense (which made a
-  // plain grocery expense read as a "liability").
-  const monthObligationMinor = useMemo(
-    () =>
-      txLike
-        .filter(
-          (t) =>
-            t.personIsSelf &&
-            t.type === "expense" &&
-            t.installmentPlanId != null &&
-            t.effectiveDate >= firstDayOf(month) &&
-            t.effectiveDate <= lastDayOf(month),
-        )
-        .reduce((sum, t) => sum + t.amountTryMinor, 0),
-    [txLike, month],
-  );
+  // The one installment (if any) a plan pays in the viewed month.
+  const itemInMonth = (planId: string) => itemsByPlan.get(planId)?.find((it) => it.month === viewMonth);
 
-  const hasItems = (p: (typeof plans)[number]) => (itemsByPlan.get(p.id)?.length ?? 0) > 0;
-  const selfPlans = plans.filter((p) => selfIds.has(p.personId) && hasItems(p));
-  const otherPlans = plans.filter((p) => !selfIds.has(p.personId) && hasItems(p));
+  // Cards that actually carry an installment this month — the filter never
+  // offers a card with nothing to show. (Plain derivation; the React Compiler
+  // memoizes it — a manual useMemo over the itemInMonth closure would bail out.)
+  const cardIdsThisMonth = new Set<string>();
+  for (const p of plans) {
+    if (p.paymentSourceId && itemInMonth(p.id)) cardIdsThisMonth.add(p.paymentSourceId);
+  }
+  const cardOptions = [
+    { value: "" as string, label: tr.installments.allCards },
+    ...[...cardIdsThisMonth].map((id) => ({ value: id, label: sourceName.get(id) ?? tr.installments.noSource })),
+  ];
+
+  const matchesCard = (p: (typeof plans)[number]) => cardFilter == null || p.paymentSourceId === cardFilter;
+  const activeThisMonth = (p: (typeof plans)[number]) => itemInMonth(p.id) != null && matchesCard(p);
+  const selfPlans = plans.filter((p) => selfIds.has(p.personId) && activeThisMonth(p));
+  const otherPlans = plans.filter((p) => !selfIds.has(p.personId) && activeThisMonth(p));
+
+  // Header total = what this month's shown installments actually cost.
+  const monthObligationMinor = selfPlans.reduce((sum, p) => sum + (itemInMonth(p.id)?.amountMinor ?? 0), 0);
 
   const renderPlan = (plan: (typeof plans)[number], watchedBy?: string) => {
     const items = itemsByPlan.get(plan.id) ?? [];
     const progress = planProgress(items);
     const finished = progress.remaining === 0;
+    const thisMonth = itemInMonth(plan.id);
     return (
       <Pressable
         accessibilityRole="button"
@@ -92,9 +93,9 @@ export default function InstallmentsScreen() {
               {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
             </Row>
             <Body muted style={{ marginTop: 2 }}>
-              {sourceName.get(plan.paymentSourceId ?? "") ?? tr.installments.noSource} · {tr.installments.progress(progress.paid, progress.total)}
-              {finished ? ` · ${tr.installments.finished}` : ` · ${tr.installments.remaining(progress.remaining, formatMinor(progress.monthlyMinor))}`}
-              {` · ${tr.installments.endsAt(monthLabel(progress.endMonth))}`}
+              {sourceName.get(plan.paymentSourceId ?? "") ?? tr.installments.noSource}
+              {thisMonth ? ` · ${tr.installments.thisMonthInstallment(thisMonth.installmentNo, progress.total)}` : ""}
+              {` · ${tr.installments.progress(progress.paid, progress.total)}`}
             </Body>
             {/* progress track */}
             <View style={{ height: 6, borderRadius: 3, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
@@ -109,7 +110,7 @@ export default function InstallmentsScreen() {
             </View>
           </View>
           <Row gap={spacing.xs}>
-            {finished ? <Badge text="✓" tone="positive" /> : <Amount minor={progress.remainingMinor} colorized={false} />}
+            {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} /> : null}
             <ChevronRight size={16} color={palette.textMuted} />
           </Row>
         </Spread>
@@ -117,18 +118,28 @@ export default function InstallmentsScreen() {
     );
   };
 
+  const nothingThisMonth = selfPlans.length === 0 && otherPlans.length === 0;
+
   return (
     <Screen>
+      <MonthStepper value={viewMonth} onChange={setViewMonth} />
+
       <Card>
-        <Body muted>{tr.installments.thisMonthTotal}</Body>
+        <Body muted>{tr.installments.thisMonthTotal} · {monthLabel(viewMonth)}</Body>
         <Amount minor={monthObligationMinor} large colorized={false} />
       </Card>
+
+      {cardOptions.length > 1 ? (
+        <ChipPicker options={cardOptions} value={cardFilter ?? ""} onChange={(v) => setCardFilter(v === "" ? null : v)} />
+      ) : null}
 
       <Button icon={Plus} label={tr.installments.newPlan} onPress={() => router.push("/installment-new")} />
       <View style={{ height: spacing.lg }} />
 
-      {selfPlans.length === 0 && otherPlans.length === 0 ? (
+      {plans.length === 0 ? (
         <EmptyState icon={CreditCard} title={tr.installments.emptyTitle} hint={tr.installments.emptyHint} />
+      ) : nothingThisMonth ? (
+        <EmptyState icon={CreditCard} title={tr.installments.noneThisMonth} hint={tr.installments.noneThisMonthHint} />
       ) : null}
 
       <CardList items={selfPlans} keyExtractor={(p) => p.id} renderItem={(p) => renderPlan(p)} />
