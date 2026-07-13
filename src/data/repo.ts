@@ -699,6 +699,21 @@ export async function importedYears(userId: string, years: number[]): Promise<nu
 }
 
 /**
+ * True when a spreadsheet import has written at least one year's batch. Read
+ * from persisted settings (not a live query) so onboarding can decide — at the
+ * exact moment it commits — whether the workbook already governs the columns,
+ * without racing the reactive `import_batch` live query.
+ */
+export async function hasImportedData(userId: string): Promise<boolean> {
+  const sqlite = await getSqliteAsync();
+  const row = await sqlite.getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM settings WHERE user_id = ? AND key LIKE 'import_batch:%' AND deleted_at IS NULL`,
+    [userId] as never[],
+  );
+  return (row?.n ?? 0) > 0;
+}
+
+/**
  * Import parsed sheets 1:1 into the ledger. Categories are matched by name (or
  * created as columns), each year records its own ordered column set
  * (`column_years`), formula/comment breakdowns become itemized rows or a cell

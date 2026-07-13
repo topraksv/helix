@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Pencil, Trash2 } from "lucide-react-native";
-import { finalizeOnboarding, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
+import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle } from "../../services/export-import";
 import { useSession } from "../../auth/session";
 import { useSettingsMap } from "../../data/hooks";
@@ -108,10 +108,29 @@ export default function SetupScreen() {
   // the workspace or dropping edits made after the first seed. Onboarding is
   // finalized only by "save & start", so the user can import, come back, review,
   // and then commit.
-  const ensureSeeded = async (): Promise<boolean> => {
+  // Whether to seed the pre-ticked template categories. A spreadsheet/JSON
+  // import brings its own columns, so seeding defaults beside them creates the
+  // duplicate/stray columns the user sees. When `includeTemplates` isn't given
+  // (the commit path), decide from PERSISTED import state — not the reactive
+  // `hasImport` live query, which can still be false when commit fires right
+  // after returning from the wizard, letting all 18 defaults slip through.
+  const ensureSeeded = async (includeTemplates?: boolean): Promise<boolean> => {
     if (!userId) return false;
+    let include: boolean;
+    if (includeTemplates !== undefined) {
+      include = includeTemplates; // openImporter is explicit (false for imports)
+    } else {
+      // Commit path. Seed the user's selected templates, UNLESS a spreadsheet
+      // import governs the columns. If the import landed but the reactive
+      // auto-clear hasn't yet dropped the pre-ticked defaults (live-query lag),
+      // seed none — otherwise all 18 defaults leak in beside the imported
+      // columns. Once the clear has run, `selectedTemplate` holds only what the
+      // user re-ticked afterwards, so those are honoured.
+      const imported = await hasImportedData(userId);
+      include = imported ? importClearedRef.current : true;
+    }
     await seedWorkspace(userId, {
-      templateCategories: ALL_TEMPLATES.filter((c) => selectedTemplate.includes(c.name)),
+      templateCategories: include ? ALL_TEMPLATES.filter((c) => selectedTemplate.includes(c.name)) : [],
       startMonth,
       openingBalanceMinor: openingMinor ?? 0,
       persons: persons.map((name, i) => ({ name, isSelf: i === 0 })),
@@ -134,12 +153,14 @@ export default function SetupScreen() {
         const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
         if (picked.canceled || !picked.assets[0]) return;
         setBusy(true);
-        await ensureSeeded();
+        await ensureSeeded(false); // the backup defines the categories
         const content = await new File(picked.assets[0].uri).text();
         await importBundle(userId, JSON.parse(content));
       } else {
         setBusy(true);
-        if (!(await ensureSeeded())) return;
+        // Manual history writes into the selected templates; a spreadsheet import
+        // brings its own columns, so don't pre-seed defaults beside them.
+        if (!(await ensureSeeded(choice === "manual"))) return;
         if (choice === "manual") router.push("/bulk-entry");
         else router.push("/import-wizard");
       }
