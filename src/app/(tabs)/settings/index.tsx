@@ -16,7 +16,6 @@ import {
   FileDown,
   FileSpreadsheet,
   FileUp,
-  Image,
   KeyRound,
   LogOut,
   PiggyBank,
@@ -55,7 +54,6 @@ export default function SettingsScreen() {
   const [tourOpen, setTourOpen] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
-  const fetchLogos = settingValue<boolean>(settings, "fetch_logos", true);
   const [reminderStr, setReminderStr] = useState(String(reminderDays));
 
   React.useEffect(() => {
@@ -281,13 +279,6 @@ export default function SettingsScreen() {
           right={<Toggle value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
         />
         <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.settings.showPendingHint}</Body>
-        <ListRow
-          icon={Image}
-          title={tr.settings.fetchLogos}
-          titleLines={2}
-          right={<Toggle value={fetchLogos} onValueChange={(v) => void writeSetting(userId, "fetch_logos", v)} />}
-        />
-        <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.settings.fetchLogosHint}</Body>
       </Card>
 
       <SectionHeader>{tr.settings.dataSection}</SectionHeader>
