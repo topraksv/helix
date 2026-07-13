@@ -28,8 +28,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { Calculator as CalculatorIcon, ChevronDown, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
+import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
+import { addMonthsToKey, type MonthKey } from "../domain/dates";
+import { monthLabel, tr } from "../i18n/tr";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 
 function lightTap() {
@@ -454,6 +456,33 @@ export function IconButton({
     >
       <IconCmp size={size * 0.5} color={color} strokeWidth={2.2} />
     </Pressable>
+  );
+}
+
+/**
+ * Month navigator: ‹ Temmuz 2026 › — reused by the transaction form (which
+ * month an entry belongs to), the installments view and anywhere a period is
+ * stepped. `min`/`max` (inclusive) disable stepping past a bound.
+ */
+export function MonthStepper({
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  value: MonthKey;
+  onChange: (m: MonthKey) => void;
+  min?: MonthKey;
+  max?: MonthKey;
+}) {
+  const canPrev = !min || value > min;
+  const canNext = !max || value < max;
+  return (
+    <Spread style={{ marginBottom: spacing.md }}>
+      <IconButton icon={ChevronLeft} label={tr.common.previous} disabled={!canPrev} onPress={() => onChange(addMonthsToKey(value, -1))} />
+      <Heading style={{ marginVertical: 0 }}>{monthLabel(value)}</Heading>
+      <IconButton icon={ChevronRight} label={tr.common.next} disabled={!canNext} onPress={() => onChange(addMonthsToKey(value, 1))} />
+    </Spread>
   );
 }
 
