@@ -84,6 +84,23 @@ export function generateExpected(
   return drafts.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
+/**
+ * The ledger (effective) date to stamp on the transaction created when an
+ * expected item is confirmed.
+ *
+ * - Without a manual `paidOn`: the due date once it has passed, otherwise today
+ *   (a not-yet-due auto-confirm realizes as of today, never in the future).
+ * - With a manual `paidOn`: that day wins, so a user who paid early ("due the
+ *   15th, paid the 12th") records the payment on the real day and it becomes a
+ *   realized flow there. A *future* `paidOn` is rejected — you cannot have
+ *   already paid a bill on a day that hasn't arrived — and falls back to the
+ *   default.
+ */
+export function confirmEffectiveDate(dueDate: ISODate, today: ISODate, paidOn?: ISODate | null): ISODate {
+  if (paidOn && paidOn <= today) return paidOn;
+  return dueDate <= today ? dueDate : today;
+}
+
 /** Items whose due date passed without confirmation become late. */
 export function findLate(expected: ExpectedPaymentLike[], today: ISODate): ExpectedPaymentLike[] {
   return expected.filter((e) => e.status === "pending" && e.dueDate < today);

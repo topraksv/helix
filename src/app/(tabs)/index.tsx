@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronRight, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { distributionForRange, fixedVsVariable } from "../../domain/analytics";
 import { projectedBalance } from "../../domain/balance";
-import { firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf } from "../../domain/dates";
+import { firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { dateLabel, monthLabel, tr } from "../../i18n/tr";
 import {
@@ -29,6 +29,7 @@ import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
 import { Bars, Donut, SplitBar, useSeriesColors } from "../../ui/charts";
+import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
@@ -232,10 +233,17 @@ export default function DashboardScreen() {
       : null;
   const thisMonthNet = trendMonths.find((m) => m.month === month);
 
+  // Marking an expected item paid picks the day it was actually paid. This lets
+  // the user record an early/manual payment ("due the 15th, I paid it on the
+  // 12th") — the amount then becomes a realized expense on that day and drops
+  // out of the month-end forecast, instead of staying a projected future flow.
+  // Default: the due date if it has already passed, else today.
+  const [paying, setPaying] = React.useState<(typeof expected)[number] | null>(null);
+  const defaultPaidDate = (dueDate: string): ISODate => (dueDate <= today ? (dueDate as ISODate) : today);
   // One confirmation at a time: the button shows a spinner while the write is
   // in flight, so a double-tap can't submit the same expected item twice.
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
-  const confirm = async (e: (typeof expected)[number]) => {
+  const confirm = async (e: (typeof expected)[number], paidOn: ISODate) => {
     if (!selfPersonId || confirmingId) return;
     setConfirmingId(e.id);
     try {
@@ -244,6 +252,7 @@ export default function DashboardScreen() {
       await confirmExpected(userId, e.id, {
         personId: sub?.personId ?? income?.personId ?? selfPersonId,
         categoryId: sub?.categoryId ?? income?.categoryId ?? null,
+        paidOn,
       });
       scheduleSync(userId);
       undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
@@ -265,6 +274,16 @@ export default function DashboardScreen() {
   return (
     <Screen title={greeting()} subtitle={dateLabel(today)} leading={<BrandMark size={40} />}>
       <FirstRunTour />
+      {/* "When did you pay?" — records the actual paid day for an expected item,
+          so an early/manual payment realizes on that date. Future days disabled. */}
+      {paying ? (
+        <CalendarSheet
+          value={defaultPaidDate(paying.dueDate)}
+          max={today}
+          onSelect={(iso) => void confirm(paying, iso)}
+          onClose={() => setPaying(null)}
+        />
+      ) : null}
       {/* Catch-up banner */}
       {lastEntry.at != null && lastEntry.daysAgo != null && lastEntry.daysAgo >= 1 ? (
         <Pressable onPress={() => router.push("/reconciliation")} accessibilityRole="button">
@@ -380,7 +399,7 @@ export default function DashboardScreen() {
                       variant="secondary"
                       loading={confirmingId === e.id}
                       disabled={confirmingId != null}
-                      onPress={() => void confirm(e)}
+                      onPress={() => setPaying(e)}
                     />
                   </View>
                 </Row>
@@ -395,7 +414,7 @@ export default function DashboardScreen() {
               title={u.name}
               subtitle={`${u.typeLabel} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
               right={
-                u.kind === "expected" && u.date <= today && u.expectedId ? (
+                u.kind === "expected" && u.expectedId ? (
                   <View style={{ width: STATUS_W }}>
                     <Button
                       size="sm"
@@ -405,7 +424,7 @@ export default function DashboardScreen() {
                       disabled={confirmingId != null}
                       onPress={() => {
                         const e = expected.find((x) => x.id === u.expectedId);
-                        if (e) void confirm(e);
+                        if (e) setPaying(e);
                       }}
                     />
                   </View>

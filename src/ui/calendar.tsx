@@ -28,10 +28,13 @@ export function CalendarSheet({
   value,
   onSelect,
   onClose,
+  max,
 }: {
   value: ISODate | null;
   onSelect: (iso: ISODate) => void;
   onClose: () => void;
+  /** Latest selectable day (inclusive). Days after it render disabled. */
+  max?: ISODate;
 }) {
   const { palette } = useTheme();
   const today = todayISO();
@@ -66,10 +69,12 @@ export function CalendarSheet({
                 const iso: ISODate = `${month}-${String(day).padStart(2, "0")}`;
                 const selected = iso === value;
                 const isToday = iso === today;
+                const disabled = max != null && iso > max;
                 return (
                   <Pressable
                     key={iso}
                     accessibilityRole="button"
+                    disabled={disabled}
                     onPress={() => {
                       onSelect(iso);
                       onClose();
@@ -86,6 +91,7 @@ export function CalendarSheet({
                         backgroundColor: selected ? palette.primary : "transparent",
                         borderWidth: isToday && !selected ? 1.5 : 0,
                         borderColor: palette.primary,
+                        opacity: disabled ? 0.3 : 1,
                       }}
                     >
                       <Text
