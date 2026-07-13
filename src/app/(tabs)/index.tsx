@@ -2,7 +2,7 @@
  *  upcoming/late expected items with confirm, distribution, trend. */
 
 import React, { useEffect } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronRight, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { distributionForRange, fixedVsVariable } from "../../domain/analytics";
@@ -32,7 +32,7 @@ import { Bars, Donut, SplitBar, useSeriesColors } from "../../ui/charts";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
-import { radius, spacing, type, useTheme } from "../../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 
 function MarketsCard() {
   const { palette } = useTheme();
@@ -189,36 +189,27 @@ export default function DashboardScreen() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 12);
 
-  // One honest number: everything still owed on a fixed schedule this month —
-  // unpaid subscriptions plus installments/future-dated expenses due by month end.
+  // Everything still to happen between today and month end, as ONE flow set, so
+  // the month-end forecast and its breakdown reconcile exactly:
+  //   forecast = current balance + incoming − outgoing.
+  // Installment tx are already pending transactions, so expected items cover only
+  // subs/incomes → no double count. Pending (not yet realized) items from today
+  // onward are what isn't in the actual balance yet.
   const monthEnd = lastDayOf(month);
-  const remainingFixedMinor =
-    pendingItems
-      .filter((e) => e.direction === "out" && e.dueDate >= today && e.dueDate <= monthEnd)
-      .reduce((sum, e) => sum + (expectedTryMinor(e.currency, e.amountMinor) ?? 0), 0) +
-    txLike
-      .filter((t) => t.personIsSelf && t.type === "expense" && t.status === "pending" && t.effectiveDate >= today && t.effectiveDate <= monthEnd)
-      .reduce((sum, t) => sum + t.amountTryMinor, 0);
-
-  // Future pending transactions + unpaid expected items (installment tx are
-  // already pending transactions, so expected covers only subs/incomes → no double count).
-  const projected = bundle
-    ? projectedBalance(
-        bundle.actualBalanceMinor,
-        [
-          ...txLike
-            .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate > today)
-            .map((t) => ({ direction: (t.type === "income" ? "in" : "out") as "in" | "out", amountTryMinor: t.amountTryMinor, date: t.effectiveDate })),
-          ...pendingItems
-            .filter((e) => e.dueDate >= today)
-            .flatMap((e) => {
-              const m = expectedTryMinor(e.currency, e.amountMinor);
-              return m == null ? [] : [{ direction: e.direction, amountTryMinor: m, date: e.dueDate }];
-            }),
-        ],
-        lastDayOf(month),
-      )
-    : null;
+  const monthEndFlows = [
+    ...txLike
+      .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate >= today && t.effectiveDate <= monthEnd)
+      .map((t) => ({ direction: (t.type === "income" ? "in" : "out") as "in" | "out", amountTryMinor: t.amountTryMinor, date: t.effectiveDate })),
+    ...pendingItems
+      .filter((e) => e.dueDate >= today && e.dueDate <= monthEnd)
+      .flatMap((e) => {
+        const m = expectedTryMinor(e.currency, e.amountMinor);
+        return m == null ? [] : [{ direction: e.direction, amountTryMinor: m, date: e.dueDate }];
+      }),
+  ];
+  const incomingMinor = monthEndFlows.filter((f) => f.direction === "in").reduce((sum, f) => sum + f.amountTryMinor, 0);
+  const remainingFixedMinor = monthEndFlows.filter((f) => f.direction === "out").reduce((sum, f) => sum + f.amountTryMinor, 0);
+  const projected = bundle ? projectedBalance(bundle.actualBalanceMinor, monthEndFlows, monthEnd) : null;
 
   const dist = distributionForRange(txLike, firstDayOf(month), lastDayOf(month), today);
   const fv = fixedVsVariable(txLike, firstDayOf(month), lastDayOf(month), today);
@@ -326,15 +317,32 @@ export default function DashboardScreen() {
         </HeroCard>
       ) : null}
 
-      {/* Remaining fixed spend this month — one honest figure */}
-      {bundle && remainingFixedMinor > 0 ? (
+      {/* Month-end forecast, shown as a plain waterfall so the number is obvious:
+          current balance + what's still coming in − what's still going out. */}
+      {bundle && projected != null && (incomingMinor > 0 || remainingFixedMinor > 0) ? (
         <Card>
+          <Body muted>{tr.dashboard.forecastTitle}</Body>
+          <Body muted style={{ fontSize: 11, marginTop: 2, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
+          <Spread style={{ marginBottom: spacing.xs }}>
+            <Body muted>{tr.dashboard.forecastCurrent}</Body>
+            <Amount minor={bundle.actualBalanceMinor} />
+          </Spread>
+          {incomingMinor > 0 ? (
+            <Spread style={{ marginBottom: spacing.xs }}>
+              <Body muted>{tr.dashboard.forecastIncoming}</Body>
+              <Amount minor={incomingMinor} />
+            </Spread>
+          ) : null}
+          {remainingFixedMinor > 0 ? (
+            <Spread style={{ marginBottom: spacing.xs }}>
+              <Body muted>{tr.dashboard.forecastOutgoing}</Body>
+              <Amount minor={-remainingFixedMinor} />
+            </Spread>
+          ) : null}
+          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.sm }} />
           <Spread>
-            <View style={{ flex: 1, paddingRight: spacing.md }}>
-              <Body muted>{tr.dashboard.remainingFixed}</Body>
-              <Body muted style={{ fontSize: 11, marginTop: 2 }}>{tr.dashboard.remainingFixedHint}</Body>
-            </View>
-            <Amount minor={-remainingFixedMinor} />
+            <Body style={{ fontFamily: font.semibold }}>{tr.dashboard.forecastResult}</Body>
+            <Amount minor={projected} />
           </Spread>
         </Card>
       ) : null}

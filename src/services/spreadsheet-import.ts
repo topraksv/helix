@@ -34,6 +34,9 @@ export interface ParsedColumn {
   label: string;
   kindGuess: "expense" | "income";
   isInvestment: boolean;
+  /** Payment day pulled off the header ("Elektrik 06" → 6); null if none. Used
+   *  to place the month's row on its real due day instead of a flat 15th. */
+  dueDay: number | null;
 }
 
 export interface ParsedSheet {
@@ -58,6 +61,10 @@ export interface UnparsedSheet {
 export interface ParsedWorkbook {
   sheets: ParsedSheet[];
   unparsed: UnparsedSheet[];
+  /** Card/section names the workbook marks "ℹ️ informational — not in totals"
+   *  (e.g. a family member's card). Their installments are tracked but excluded
+   *  from the ledger so they don't wrongly hit the balance. */
+  informationalCards: string[];
 }
 
 /** Minimal cell shape mirroring SheetJS ({ v: value, f: formula, c: comments }). */
@@ -75,6 +82,35 @@ const BALANCE_HINTS = /bakiye|devir|kalan|toplam|\bnet\b|eldeki|ay ba[sş]|birik
 const OPENING_HINTS = /ay ba[sş]|eldeki|devir|a[çc][ıi]l[ıi][sş]/i;
 const INCOME_HINTS = /maa[sş]|gelir|prim|kira geliri|burs|ek gelir/i;
 const INVESTMENT_HINTS = /yat[ıi]r[ıi]m/i;
+
+/**
+ * Pull a trailing payment day (or a range → its deadline) off a column header:
+ *   "Elektrik 06"        → { label: "Elektrik", dueDay: 6 }
+ *   "Kira 05-15"         → { label: "Kira", dueDay: 15 }
+ *   "Abonelik (15-20)"   → { label: "Abonelik", dueDay: 20 }
+ *   "Ev Kredisi"         → unchanged, dueDay null
+ * Conservative: only fires when the number is a valid day (1–31) AND the
+ * remaining label still contains a letter, so a label that merely ends in a
+ * number is never mangled.
+ */
+export function extractDueDay(label: string): { label: string; dueDay: number | null } {
+  const trimmed = label.trim();
+  const hasLetter = (s: string) => /[a-zçğıöşü]/i.test(s);
+  // range "05-15" / "(15-20)" → the later day is the deadline
+  let m = /^(.+?)\s+\(?(\d{1,2})\s*[-–]\s*(\d{1,2})\)?$/.exec(trimmed);
+  if (m) {
+    const a = Number(m[2]);
+    const b = Number(m[3]);
+    if (a >= 1 && a <= 31 && b >= 1 && b <= 31 && hasLetter(m[1])) return { label: m[1].trim(), dueDay: Math.max(a, b) };
+  }
+  // single trailing day, optionally parenthesised
+  m = /^(.+?)\s+\(?(\d{1,2})\)?$/.exec(trimmed);
+  if (m) {
+    const day = Number(m[2]);
+    if (day >= 1 && day <= 31 && hasLetter(m[1])) return { label: m[1].trim(), dueDay: day };
+  }
+  return { label: trimmed, dueDay: null };
+}
 
 /** "Ocak 2025" | "Oca 25" | "2025-01" | "01.2025" | Date → "2025-01" | null */
 export function parseMonthLabel(value: unknown): MonthKey | null {
@@ -177,6 +213,11 @@ function rowIsBlank(row: RawCell[]): boolean {
  */
 export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | UnparsedSheet {
   const fail = (reason: string): UnparsedSheet => ({ sheetName, reason });
+  // An "Yatırım" (investment) sheet holds holdings/quantities ("24gr altın",
+  // "760$"), not income/expense rows. Parsing it as a ledger produces junk
+  // columns ("Altın", "*Üstteki tabloda…*") and inflates a year's month count.
+  // It is skipped here; investments get their own home later.
+  if (/^\s*yat[ıi]r[ıi]m/i.test(sheetName)) return fail(tr.importer.reasonInvestmentSheet);
   if (grid.length < 2) return fail(tr.importer.reasonTooSmall);
 
   const firstColMonths = grid.filter((r) => parseMonthLabel(r[0]?.v) != null).length;
@@ -211,11 +252,15 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
     }
   });
 
-  const columns: ParsedColumn[] = keepIdx.map((i) => ({
-    label: header[i],
-    kindGuess: INCOME_HINTS.test(header[i]) ? "income" : "expense",
-    isInvestment: INVESTMENT_HINTS.test(header[i]),
-  }));
+  const columns: ParsedColumn[] = keepIdx.map((i) => {
+    const { label, dueDay } = extractDueDay(header[i]);
+    return {
+      label,
+      kindGuess: INCOME_HINTS.test(label) ? "income" : "expense",
+      isInvestment: INVESTMENT_HINTS.test(label),
+      dueDay,
+    };
+  });
   const cells: CellData[][] = body.map((r) => keepIdx.map((i) => toCellData(r[i + 1])));
 
   let openingBalance: ParsedSheet["openingBalance"] = null;
@@ -275,6 +320,66 @@ export function planImportCell(cell: CellData): CellPlan | null {
   return { items: [{ amountMinor: value, note: null, isAggregate: true }], cellNote: cell.comment };
 }
 
+// --- installment comment parsing -------------------------------------------
+// A "…Taksitli…" column can store each month's active card installments in the
+// cell COMMENT, grouped by card under a banner line and one line per item:
+// "<name>   <monthly amount>   <paid>/<total>". Two banner styles occur — an
+// "═══ Card ═══" box and a "----- Card -----" rule — and the paid/total may be
+// parenthesised "(6/9)". We reconstruct real installment plans from these so
+// they schedule themselves instead of landing as one opaque monthly total.
+
+/** One installment line recovered from a card-grouped comment. */
+export interface InstallmentNote {
+  /** Card / bank section it sits under (becomes a payment source). "" if none. */
+  card: string;
+  /** Item label. */
+  name: string;
+  /** Per-installment (monthly) amount in minor units, always positive. */
+  monthlyMinor: Minor;
+  /** This month's installment number (1-based) and the plan's total count. */
+  paidNo: number;
+  total: number;
+}
+
+const SECTION_BANNER = /^[═=\-–—_*·•]{2,}\s*(.+?)\s*[═=\-–—_*·•]{2,}$/;
+// Trailing "(paid)/(total)" — anchored at the end, parens optional.
+const INSTALLMENT_TAIL = /\(?\s*(\d{1,3})\s*\/\s*(\d{1,3})\s*\)?\.?\s*$/;
+
+/**
+ * Split a card-grouped installment comment into its individual installment
+ * lines. Parsing is done by anchored-tail match + a whitespace split (NOT one
+ * greedy regex) — a real workbook has long, irregular comment lines and a
+ * backtracking pattern ("<name>\s{2,}<amt>\s+<n>/<m>") caused catastrophic
+ * ReDoS on them, hanging the whole import.
+ */
+export function parseInstallmentComment(comment: string): InstallmentNote[] {
+  const notes: InstallmentNote[] = [];
+  let card = "";
+  for (const raw of comment.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === "") continue;
+    const sec = SECTION_BANNER.exec(line);
+    if (sec) {
+      card = sec[1].replace(/ℹ️|ℹ/g, "").trim();
+      continue;
+    }
+    const tail = INSTALLMENT_TAIL.exec(line);
+    if (!tail) continue;
+    const paidNo = Number(tail[1]);
+    const total = Number(tail[2]);
+    if (total < 1 || total > 600 || paidNo < 1 || paidNo > total) continue;
+    // Everything before the "n/m": "<name>  <amount>" — amount is the last token.
+    const parts = line.slice(0, tail.index).trim().split(/\s+/);
+    if (parts.length < 2) continue;
+    const amount = parseSheetAmount(parts[parts.length - 1]);
+    if (amount == null || amount <= 0) continue; // skip refunds/negatives + unparseable
+    const name = parts.slice(0, -1).join(" ").trim();
+    if (name === "") continue;
+    notes.push({ card, name, monthlyMinor: amount, paidNo, total });
+  }
+  return notes;
+}
+
 /** Convert a SheetJS worksheet into a dense grid of RawCells over its range. */
 export function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
   const ref = ws["!ref"];
@@ -298,12 +403,23 @@ export function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
 export function parseWorkbook(wb: XLSX.WorkBook): ParsedWorkbook {
   const sheets: ParsedSheet[] = [];
   const unparsed: UnparsedSheet[] = [];
+  const informational = new Set<string>();
   for (const name of wb.SheetNames) {
-    const result = parseSheet(worksheetToRawGrid(wb.Sheets[name]), name);
+    const grid = worksheetToRawGrid(wb.Sheets[name]);
+    for (const row of grid) {
+      for (const cell of row) {
+        const s = typeof cell?.v === "string" ? cell.v : "";
+        if (s.includes("ℹ️") || s.includes("ℹ")) {
+          const label = s.replace(/ℹ️|ℹ/g, "").trim();
+          if (label) informational.add(label);
+        }
+      }
+    }
+    const result = parseSheet(grid, name);
     if ("year" in result) sheets.push(result);
     else unparsed.push(result);
   }
-  return { sheets, unparsed };
+  return { sheets, unparsed, informationalCards: [...informational] };
 }
 
 /** Decode uploaded bytes (xlsx/xlsm/csv/ods) and parse all sheets. */

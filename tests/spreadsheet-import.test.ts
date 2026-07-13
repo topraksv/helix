@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractDueDay,
   parseFormulaLiterals,
+  parseInstallmentComment,
   parseMonthLabel,
   parseSheet,
   parseSheetAmount,
@@ -90,13 +92,13 @@ describe("parseSheet — contiguous block", () => {
     const grid = [
       ...sheet2026(),
       row(), // blank separator
-      row("Ay", "Maximum Gold", "WorldEko"),
+      row("Ay", "Kart A", "Kart B"),
       row("2026 Nisan", 11801.43, 4202.74),
       row("2026 Mayıs", 13897.22, 4202.74),
     ];
     const s = asSheet(parseSheet(grid, "2026"));
     expect(s.months).toEqual(["2026-01", "2026-02", "2026-03"]); // summary table excluded
-    expect(s.columns.some((col) => col.label === "Maximum Gold")).toBe(false);
+    expect(s.columns.some((col) => col.label === "Kart A")).toBe(false);
   });
 });
 
@@ -252,5 +254,89 @@ describe("parseWorkbook — multi-sheet, different columns per year", () => {
     // 2026 has no "İnternet Abonelikleri"; 2025 does — columns differ per year.
     expect(y2026.columns.some((col) => col.label === "İnternet Abonelikleri")).toBe(false);
     expect(y2025.columns.map((col) => col.label)).toContain("İnternet Abonelikleri");
+  });
+});
+
+// --- installment comment parsing (item 8) ----------------------------------
+// Fictional template data — mirrors the comment SHAPE only, no real records.
+describe("parseInstallmentComment", () => {
+  it("splits a ═-banner card comment into per-item installments", () => {
+    const comment = [
+      "══════ Kart A ══════",
+      "Robot Süpürge           2.777,67  3/9",
+      "Spor Ayakkabı              828,36   1/3",
+      "Gözlük                   1.766,67   1/6",
+      "",
+      "══════ Kart B ══════",
+      "Lambader                   299,00   7/7",
+      "Kışlık Mont              139,33   2/6",
+      "",
+      "══════ Kart C ══════",
+      "Dizüstü Bilgisayar    16.000,00   3/3",
+    ].join("\n");
+    const notes = parseInstallmentComment(comment);
+    expect(notes).toHaveLength(6);
+    expect(notes[0]).toEqual({ card: "Kart A", name: "Robot Süpürge", monthlyMinor: 277767, paidNo: 3, total: 9 });
+    expect(notes[4]).toEqual({ card: "Kart B", name: "Kışlık Mont", monthlyMinor: 13933, paidNo: 2, total: 6 });
+    expect(notes[5]).toEqual({ card: "Kart C", name: "Dizüstü Bilgisayar", monthlyMinor: 1600000, paidNo: 3, total: 3 });
+  });
+
+  it("handles parenthesised counts and the dashed-banner (bank) style", () => {
+    const comment = [
+      "-------Banka X-----------",
+      "Spor Mont              2.000,00   (5/9)",
+      "Tişört                   192,50   (5/6)",
+    ].join("\n");
+    const notes = parseInstallmentComment(comment);
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toEqual({ card: "Banka X", name: "Spor Mont", monthlyMinor: 200000, paidNo: 5, total: 9 });
+  });
+
+  it("skips junk amounts, negatives, and non-installment lines", () => {
+    const comment = [
+      "══════ Kart A ══════",
+      "Çeşitli   1324-66-81-172   1/6", // unparseable amount → skip
+      "İade Çanta     -2.024,99   (2/2)", // negative → skip
+      "Oyuncak               410,50   2/3", // valid
+    ].join("\n");
+    const notes = parseInstallmentComment(comment);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toEqual({ card: "Kart A", name: "Oyuncak", monthlyMinor: 41050, paidNo: 2, total: 3 });
+  });
+
+  it("returns nothing for a plain bill breakdown (no N/M lines)", () => {
+    const comment = [
+      "══════ Faturalar ══════",
+      "Elektrik                                436,30",
+      "Doğalgaz                           2.218,00",
+      "  ├ Abonelik 1 (799,99)",
+      "  └ Abonelik 2 (99,99)",
+    ].join("\n");
+    expect(parseInstallmentComment(comment)).toEqual([]);
+  });
+
+  it("strips the ℹ️ marker from an informational card banner", () => {
+    const comment = ["══════ Aile Kartı ℹ️ ══════", "Spor Mont          2.000,00   (5/9)"].join("\n");
+    expect(parseInstallmentComment(comment)[0].card).toBe("Aile Kartı");
+  });
+});
+
+// --- due-day extraction from column headers (item 7) -----------------------
+describe("extractDueDay", () => {
+  it("pulls a trailing day off a bill column", () => {
+    expect(extractDueDay("Elektrik 06")).toEqual({ label: "Elektrik", dueDay: 6 });
+    expect(extractDueDay("Kira 11")).toEqual({ label: "Kira", dueDay: 11 });
+    expect(extractDueDay("İnternet 22")).toEqual({ label: "İnternet", dueDay: 22 });
+  });
+
+  it("uses the later day of a range as the deadline", () => {
+    expect(extractDueDay("KK Taksit 05-15")).toEqual({ label: "KK Taksit", dueDay: 15 });
+    expect(extractDueDay("Youtube/Amazon/Spotify (15-20)")).toEqual({ label: "Youtube/Amazon/Spotify", dueDay: 20 });
+  });
+
+  it("leaves labels without a day (or an out-of-range number) untouched", () => {
+    expect(extractDueDay("Ev Kredisi")).toEqual({ label: "Ev Kredisi", dueDay: null });
+    expect(extractDueDay("Araba/ Ulaşım")).toEqual({ label: "Araba/ Ulaşım", dueDay: null });
+    expect(extractDueDay("2024 Bütçe")).toEqual({ label: "2024 Bütçe", dueDay: null }); // 2024 > 31
   });
 });

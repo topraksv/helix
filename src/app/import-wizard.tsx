@@ -199,6 +199,7 @@ export default function ImportWizardModal() {
         selectedYears,
         selfId,
         mode,
+        informationalCards: workbook?.informationalCards ?? [],
       });
       scheduleSync(userId);
       setDoneCount(imported);

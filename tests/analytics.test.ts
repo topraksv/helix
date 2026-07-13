@@ -17,7 +17,7 @@ describe("categoryMonthMatrix + YTD", () => {
     tx({ type: "expense", amountTryMinor: 150_00, effectiveDate: "2026-02-10", categoryId: "kk" }),
     tx({ type: "expense", amountTryMinor: 50_00, effectiveDate: "2026-02-11", categoryId: "market" }),
     tx({ type: "expense", amountTryMinor: 999_00, effectiveDate: "2025-12-31", categoryId: "kk" }), // previous year
-    tx({ type: "expense", amountTryMinor: 77_00, effectiveDate: "2026-03-01", categoryId: "kk", personIsSelf: false }), // Betül
+    tx({ type: "expense", amountTryMinor: 77_00, effectiveDate: "2026-03-01", categoryId: "kk", personIsSelf: false }), // watch-only person
     tx({ type: "expense", amountTryMinor: 40_00, effectiveDate: "2026-01-15", categoryId: "kk", isAggregate: true }), // bulk history entry
   ];
 
