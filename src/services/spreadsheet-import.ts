@@ -15,7 +15,7 @@
 import * as XLSX from "xlsx";
 import { tr } from "../i18n/tr";
 import type { MonthKey } from "../domain/dates";
-import { yearOf } from "../domain/dates";
+import { addMonthsToKey, yearOf } from "../domain/dates";
 import { roundHalfAwayFromZero, type Minor } from "../domain/money";
 
 /** One spreadsheet cell, with its value plus any formula/comment metadata. */
@@ -378,6 +378,64 @@ export function parseInstallmentComment(comment: string): InstallmentNote[] {
     notes.push({ card, name, monthlyMinor: amount, paidNo, total });
   }
   return notes;
+}
+
+/** A deduplicated installment plan ready to materialize (card → payment source,
+ *  columnLabel → the ledger category it belongs under). */
+export interface ImportInstallmentPlanSpec {
+  card: string;
+  name: string;
+  monthlyMinor: Minor;
+  total: number;
+  startMonth: MonthKey;
+  columnLabel: string;
+}
+
+/**
+ * Reconstruct the distinct installment plans across a workbook's "…Taksitli…"
+ * columns. Pure (no DB) so it is thoroughly unit-testable:
+ *  - a plan appears once per month it is active → deduped by
+ *    (name, monthly, count, start), NOT by card, so a purchase tracked under a
+ *    card's renamed forms collapses to one plan instead of double-counting.
+ *  - the start month is derived from paid/total and is invariant across mentions.
+ *  - the first mention wins the card (earliest processed sheet/month).
+ *  - cards flagged informational ("ℹ️ not in totals") are excluded.
+ *  - excluded columns and non-selected years are skipped.
+ */
+export function collectInstallmentPlans(
+  sheets: ParsedSheet[],
+  opts: { excludedLabels?: string[]; informationalCards?: string[]; yearAllowed?: (y: number) => boolean } = {},
+): ImportInstallmentPlanSpec[] {
+  const excluded = new Set(opts.excludedLabels ?? []);
+  const informational = new Set((opts.informationalCards ?? []).map((n) => n.toLocaleLowerCase("tr-TR")));
+  const allow = opts.yearAllowed ?? (() => true);
+  const byKey = new Map<string, ImportInstallmentPlanSpec>();
+  for (const sheet of sheets) {
+    sheet.columns.forEach((col, index) => {
+      if (excluded.has(col.label) || !/taksit/i.test(col.label)) return;
+      for (let r = 0; r < sheet.months.length; r++) {
+        const month = sheet.months[r];
+        if (!allow(yearOf(month))) continue;
+        const comment = sheet.cells[r]?.[index]?.comment;
+        if (!comment) continue;
+        for (const note of parseInstallmentComment(comment)) {
+          if (!note.card || informational.has(note.card.toLocaleLowerCase("tr-TR"))) continue;
+          const startMonth = addMonthsToKey(month, -(note.paidNo - 1));
+          const key = `${note.name.toLocaleLowerCase("tr-TR")}|${note.monthlyMinor}|${note.total}|${startMonth}`;
+          if (!byKey.has(key)) {
+            byKey.set(key, { card: note.card, name: note.name, monthlyMinor: note.monthlyMinor, total: note.total, startMonth, columnLabel: col.label });
+          }
+        }
+      }
+    });
+  }
+  return [...byKey.values()];
+}
+
+/** True when a "…Taksitli…" cell carries reconstructable installment lines (so
+ *  the importer materializes plans from it instead of one opaque aggregate). */
+export function isInstallmentCell(columnLabel: string, comment: string | null): boolean {
+  return /taksit/i.test(columnLabel) && comment != null && parseInstallmentComment(comment).length > 0;
 }
 
 /** Convert a SheetJS worksheet into a dense grid of RawCells over its range. */

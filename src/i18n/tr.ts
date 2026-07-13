@@ -164,8 +164,6 @@ export const tr = {
     trendNet: (v: string) => `Bu ay net: ${v}`,
     fixedVsVariable: "Sabit / Değişken",
     fixed: "Sabit Yükümlülük", variable: "Değişken Harcama",
-    remainingFixed: "Bu ay kalan sabit gider",
-    remainingFixedHint: "Ay sonuna dek ödemen gereken abonelik, taksit ve ileri tarihli giderlerin toplamı.",
     forecastTitle: "Ay Sonu Öngörüsü",
     forecastHint: "Bugünden ay sonuna kadar bekleyen gelir ve giderlerle cebinde kalacak tahmini tutar.",
     forecastCurrent: "Şu anki bakiye",
