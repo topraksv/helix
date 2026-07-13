@@ -11,7 +11,7 @@ import { formatMinor } from "../../domain/money";
 import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { dateLabel, tr } from "../../i18n/tr";
-import { settingValue, useSettingsMap, useSubscriptions, useUserId } from "../../data/hooks";
+import { useSubscriptions, useUserId } from "../../data/hooks";
 import { softDelete, restoreRow } from "../../db/mutations";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
@@ -29,8 +29,6 @@ export default function SubscriptionsScreen() {
   // Re-render when FX rates land after a cold start so foreign-currency totals
   // settle on the real TRY value instead of the raw amount.
   const fxVersion = useFxRates();
-  const settings = useSettingsMap();
-  const allowRemoteLogos = settingValue<boolean>(settings, "fetch_logos", true);
 
   const { active, passive, monthlyLoadTry, yearlyTry } = useMemo(() => {
     const activeSubs = subscriptions.filter((s) => s.isActive);
@@ -63,7 +61,7 @@ export default function SubscriptionsScreen() {
     return (
       <ListRow
         key={s.id}
-        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} allowRemote={allowRemoteLogos} />}
+        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} />}
         title={s.name}
         subtitle={
           (s.isActive ? tr.subs.nextDue(dateLabel(s.nextDueDate)) : tr.subs.canceled) +

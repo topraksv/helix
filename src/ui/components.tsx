@@ -14,7 +14,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -1027,19 +1026,51 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
   );
 }
 
-/** Themed on/off switch — the single toggle used everywhere, tinted with the
- *  design-token primary so it belongs to the palette (RN's bare Switch defaults
- *  to the platform green, which sat outside the warm-organic system). */
-export function Toggle({ value, onValueChange }: { value: boolean; onValueChange: (v: boolean) => void }) {
+/**
+ * Themed on/off toggle — a hand-built pill (not RN's bare `Switch`) so it looks
+ * identical on iOS, Android and web and belongs to the warm-organic system. The
+ * platform Switch renders the OS green on web/Android and ignored our track
+ * tint; this animates its own track colour (border → clay) and springs the
+ * thumb across, matching the app's motion language.
+ */
+const TOGGLE_W = 46;
+const TOGGLE_H = 28;
+const TOGGLE_PAD = 3;
+const TOGGLE_THUMB = TOGGLE_H - TOGGLE_PAD * 2;
+export function Toggle({ value, onValueChange, disabled }: { value: boolean; onValueChange: (v: boolean) => void; disabled?: boolean }) {
   const { palette } = useTheme();
+  const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.spring(progress, { toValue: value ? 1 : 0, useNativeDriver: false, speed: 20, bounciness: 6 }).start();
+  }, [value, progress]);
+  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.border, palette.primary] });
+  const thumbX = progress.interpolate({ inputRange: [0, 1], outputRange: [TOGGLE_PAD, TOGGLE_W - TOGGLE_THUMB - TOGGLE_PAD] });
   return (
-    <Switch
-      value={value}
-      onValueChange={onValueChange}
-      trackColor={{ true: palette.primary, false: palette.border }}
-      thumbColor="#ffffff"
-      ios_backgroundColor={palette.border}
-    />
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled }}
+      hitSlop={10}
+      disabled={disabled}
+      onPress={() => onValueChange(!value)}
+      style={{ opacity: disabled ? 0.5 : 1 }}
+    >
+      <Animated.View style={{ width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2, backgroundColor: trackColor, justifyContent: "center" }}>
+        <Animated.View
+          style={{
+            width: TOGGLE_THUMB,
+            height: TOGGLE_THUMB,
+            borderRadius: TOGGLE_THUMB / 2,
+            backgroundColor: "#ffffff",
+            transform: [{ translateX: thumbX }],
+            shadowColor: "#000",
+            shadowOpacity: 0.18,
+            shadowRadius: 2,
+            shadowOffset: { width: 0, height: 1 },
+            elevation: 2,
+          }}
+        />
+      </Animated.View>
+    </Pressable>
   );
 }
 

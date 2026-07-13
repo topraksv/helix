@@ -275,6 +275,16 @@ export default function ImportWizardModal() {
               {/* which columns */}
               <SectionHeader>{tr.importer.columnsTitle}</SectionHeader>
               <Body muted style={{ marginBottom: spacing.sm }}>{tr.importer.columnsLead}</Body>
+              <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
+                <Button label={tr.common.selectAll} variant="ghost" size="sm" disabled={excluded.length === 0} onPress={() => setExcluded([])} />
+                <Button
+                  label={tr.common.clearAll}
+                  variant="ghost"
+                  size="sm"
+                  disabled={excluded.length >= unionColumns.length}
+                  onPress={() => setExcluded(unionColumns.map((c) => c.label))}
+                />
+              </Row>
               <ChipPicker
                 multi
                 options={unionColumns.map((c) => ({ value: c.label, label: `${c.label}${c.income ? " ↑" : ""}` }))}
@@ -350,8 +360,11 @@ function yearsOf(wb: ParsedWorkbook): number[] {
   return [...set].sort((a, b) => a - b);
 }
 
+// Distinct months in a year — a year has at most 12. Summing raw month cells
+// across sheets double-counted when two sheets overlapped a year (a summary
+// tab, or a workbook that repeats months), showing nonsense like "2026 · 24 ay".
 function monthCount(wb: ParsedWorkbook, year: number): number {
-  let n = 0;
-  for (const s of wb.sheets) for (const m of s.months) if (yearOf(m) === year) n++;
-  return n;
+  const seen = new Set<string>();
+  for (const s of wb.sheets) for (const m of s.months) if (yearOf(m) === year) seen.add(m);
+  return seen.size;
 }

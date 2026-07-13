@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
@@ -7,6 +7,7 @@ import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Penci
 import { finalizeOnboarding, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle } from "../../services/export-import";
 import { useSession } from "../../auth/session";
+import { useSettingsMap } from "../../data/hooks";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
@@ -32,6 +33,17 @@ export default function SetupScreen() {
   const { userId } = useSession();
   const router = useRouter();
   const { palette } = useTheme();
+  // Detect a completed spreadsheet import (each imported year writes an
+  // `import_batch:<year>` setting). When present, the workbook governs the
+  // categories AND the opening balance, so the template + opening-balance
+  // inputs become redundant — we clear the pre-ticked template once and tell
+  // the user, instead of silently seeding duplicate/empty columns on top.
+  const settings = useSettingsMap();
+  const importedYears = [...settings.keys()]
+    .filter((k) => k.startsWith("import_batch:"))
+    .map((k) => k.slice("import_batch:".length))
+    .sort();
+  const hasImport = importedYears.length > 0;
   // Template: every recommended category is shown and pre-selected; the user
   // unticks the ones they don't want.
   const [selectedTemplate, setSelectedTemplate] = useState<string[]>(ALL_TEMPLATES.map((c) => c.name));
@@ -49,6 +61,17 @@ export default function SetupScreen() {
   const [editingSource, setEditingSource] = useState<number | null>(null);
   const [seeded, setSeeded] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Once an import lands, drop the pre-selected template so we don't seed empty
+  // template columns beside the imported ones. Guarded so the user can still
+  // re-tick extras afterwards without them being wiped again.
+  const importClearedRef = useRef(false);
+  useEffect(() => {
+    if (hasImport && !importClearedRef.current) {
+      importClearedRef.current = true;
+      setSelectedTemplate([]);
+    }
+  }, [hasImport]);
 
   const toggleTemplate = (name: string) =>
     setSelectedTemplate((xs) => (xs.includes(name) ? xs.filter((x) => x !== name) : [...xs, name]));
@@ -157,9 +180,31 @@ export default function SetupScreen() {
           </View>
         </Row>
 
+        {hasImport ? (
+          <Card style={{ borderColor: palette.positive, backgroundColor: palette.positive + "14" }}>
+            <Body style={{ color: palette.positive }}>{tr.onboarding.importedBanner(importedYears.join(", "))}</Body>
+          </Card>
+        ) : null}
+
         <Card>
           <Heading>1 · {tr.onboarding.templateTitle}</Heading>
-          <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.templateHint}</Body>
+          <Body muted style={{ marginBottom: spacing.sm }}>{hasImport ? tr.onboarding.importedTemplateNote : tr.onboarding.templateHint}</Body>
+          <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
+            <Button
+              label={tr.common.selectAll}
+              variant="ghost"
+              size="sm"
+              disabled={selectedTemplate.length === ALL_TEMPLATES.length}
+              onPress={() => setSelectedTemplate(ALL_TEMPLATES.map((c) => c.name))}
+            />
+            <Button
+              label={tr.common.clearAll}
+              variant="ghost"
+              size="sm"
+              disabled={selectedTemplate.length === 0}
+              onPress={() => setSelectedTemplate([])}
+            />
+          </Row>
           <ChipPicker
             multi
             options={ALL_TEMPLATES.map((c) => ({ value: c.name, label: templateLabel(c) }))}
@@ -192,7 +237,7 @@ export default function SetupScreen() {
               setOpeningMinor(minor);
             }}
           />
-          <Body muted>{tr.onboarding.openingHint}</Body>
+          <Body muted>{hasImport ? tr.onboarding.importedOpeningNote : tr.onboarding.openingHint}</Body>
         </Card>
 
         <Card>
