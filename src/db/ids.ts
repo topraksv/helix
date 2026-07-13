@@ -47,6 +47,16 @@ export const naturalKeys = {
   confirmTx: (expectedId: string) => `confirmtx:${expectedId}`,
   /** One note per (month, category) cell — deterministic so re-import overwrites. */
   cellNote: (userId: string, month: string, categoryId: string) => `cellnote:${userId}:${month}:${categoryId}`,
+  /** A payment source (card) created from a spreadsheet import, keyed by name so
+   *  the same card mentioned across many months/years converges to one source. */
+  importSource: (userId: string, name: string) => `impsource:${userId}:${name.toLocaleLowerCase("tr-TR")}`,
+  /** An installment plan reconstructed from an import comment. Keyed by
+   *  (item, monthly amount, count, start) — deliberately NOT by card, because the
+   *  same purchase can be tracked under a card's evolving names across years (a
+   *  card gets renamed); keying on the card would double-count it. So the same
+   *  plan, whatever card names it appears under, collapses to one. */
+  importInstallmentPlan: (userId: string, name: string, monthlyMinor: number, total: number, startMonth: string) =>
+    `impplan:${userId}:${name.toLocaleLowerCase("tr-TR")}:${monthlyMinor}:${total}:${startMonth}`,
   /** The credit-card installment column, migrated from a hard-coded column to
    *  an ordinary computed column exactly once per account. */
   ccColumn: (userId: string) => `computed-cc-installment:${userId}`,

@@ -6,7 +6,7 @@
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
 import { fromDbShape, nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
-import { todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
+import { addMonthsToKey, clampDayToMonth, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { convertToTryMinor } from "../domain/fx";
 import { advanceDueDate } from "../domain/recurrence";
@@ -14,7 +14,7 @@ import { lookupRate } from "../services/fx-fetch";
 import { marketSellRateTry } from "../services/markets";
 import { findAutoConfirmable, findLate, generateExpected } from "../domain/expected";
 import type { Minor } from "../domain/money";
-import { planImportCell, type ParsedSheet } from "../services/spreadsheet-import";
+import { parseInstallmentComment, planImportCell, type ParsedSheet } from "../services/spreadsheet-import";
 import { suggestCategoryIcon } from "./category-icons";
 import type { ExpectedPaymentLike, PaymentSourceType, TransactionType } from "../domain/types";
 
@@ -260,8 +260,11 @@ export interface NewPlan {
  * their id is deterministic and their realized/pending status is derived from
  * the date, so regenerating on edit reproduces the same paid/unpaid split.
  */
-async function writePlanWithSchedule(userId: string, planId: string, input: NewPlan): Promise<Set<number>> {
-  const today = todayISO();
+/** Build (but don't write) the plan row + one deterministic transaction per
+ *  scheduled month. Extracted so a bulk import can batch many plans into ONE
+ *  write instead of a DB transaction per plan (that was minutes for ~100 plans).
+ *  The per-installment ids are hashed in parallel. */
+async function buildPlanRows(planId: string, input: NewPlan, today: ISODate): Promise<{ rows: RowWrite[]; keepNos: Set<number> }> {
   const schedule = generateSchedule(
     {
       id: planId,
@@ -276,32 +279,28 @@ async function writePlanWithSchedule(userId: string, planId: string, input: NewP
     },
     today,
   );
-  const writes: RowWrite[] = [
-    {
-      table: "installment_plans",
-      row: {
-        id: planId,
-        title: input.title,
-        kind: input.kind,
-        totalAmountMinor: input.totalAmountMinor,
-        monthlyAmountMinor: input.monthlyAmountMinor,
-        installmentCount: input.installmentCount,
-        currency: input.currency,
-        startMonth: input.startMonth,
-        dueDay: input.dueDay,
-        paymentSourceId: input.paymentSourceId,
-        personId: input.personId,
-        categoryId: input.categoryId,
-        note: input.note,
-        deletedAt: null,
-      },
+  const planRow: RowWrite = {
+    table: "installment_plans",
+    row: {
+      id: planId,
+      title: input.title,
+      kind: input.kind,
+      totalAmountMinor: input.totalAmountMinor,
+      monthlyAmountMinor: input.monthlyAmountMinor,
+      installmentCount: input.installmentCount,
+      currency: input.currency,
+      startMonth: input.startMonth,
+      dueDay: input.dueDay,
+      paymentSourceId: input.paymentSourceId,
+      personId: input.personId,
+      categoryId: input.categoryId,
+      note: input.note,
+      deletedAt: null,
     },
-  ];
-  const keepNos = new Set<number>();
-  for (const item of schedule) {
-    keepNos.add(item.installmentNo);
-    writes.push({
-      table: "transactions",
+  };
+  const txRows: RowWrite[] = await Promise.all(
+    schedule.map(async (item) => ({
+      table: "transactions" as const,
       row: {
         id: await deterministicId(naturalKeys.installmentTx(planId, item.installmentNo)),
         type: "expense",
@@ -322,9 +321,14 @@ async function writePlanWithSchedule(userId: string, planId: string, input: NewP
         note: null,
         deletedAt: null,
       },
-    });
-  }
-  await writeRows(userId, writes);
+    })),
+  );
+  return { rows: [planRow, ...txRows], keepNos: new Set(schedule.map((s) => s.installmentNo)) };
+}
+
+async function writePlanWithSchedule(userId: string, planId: string, input: NewPlan): Promise<Set<number>> {
+  const { rows, keepNos } = await buildPlanRows(planId, input, todayISO());
+  await writeRows(userId, rows);
   return keepNos;
 }
 
@@ -672,6 +676,20 @@ export interface ImportRequest {
   selfId: string;
   /** How to treat a year that was already imported before. */
   mode: "replace" | "add";
+  /** Card/section names flagged "ℹ️ informational" in the workbook — their
+   *  installments are skipped (they must not hit the balance). */
+  informationalCards?: string[];
+}
+
+/** A card installment reconstructed from import comments, deduped across the
+ *  many months it appears in (its start month is invariant, so the key is too). */
+interface ImportInstallmentSpec {
+  card: string;
+  name: string;
+  monthlyMinor: Minor;
+  total: number;
+  startMonth: MonthKey;
+  categoryId: string;
 }
 
 const importBatchKey = (year: number) => `import_batch:${year}`;
@@ -704,6 +722,14 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   );
   const idByName = new Map(existing.map((c) => [c.name.toLocaleLowerCase("tr-TR"), c.id]));
   let sortSeed = existing.reduce((m, c) => Math.max(m, c.sort_order), -1) + 1;
+  // Query payment sources up front too, so the whole import — categories, rows,
+  // reconstructed installment cards + plans — flushes in ONE writeRows. A read
+  // issued AFTER a multi-thousand-row write starved the sqlite worker and hung.
+  const existingSources = await sqlite.getAllAsync<{ id: string; name: string }>(
+    `SELECT id, name FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`,
+    [userId] as never[],
+  );
+  const sourceIdByName = new Map(existingSources.map((s) => [s.name.toLocaleLowerCase("tr-TR"), s.id]));
 
   const catWrites: RowWrite[] = [];
   const ensureCategory = (label: string, kind: "expense" | "income"): string => {
@@ -745,6 +771,14 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     return b;
   };
 
+  // Installment plans reconstructed from "…Taksitli…" column comments. The same
+  // plan appears in every month it is active, so we dedupe by a deterministic id
+  // (its start month is invariant across mentions). Cards flagged informational
+  // ("ℹ️ not in totals") are skipped so they never hit the balance.
+  const installmentPlans = new Map<string, ImportInstallmentSpec>();
+  const cardNames = new Set<string>();
+  const informational = new Set((req.informationalCards ?? []).map((n) => n.toLocaleLowerCase("tr-TR")));
+
   for (const sheet of req.sheets) {
     const active = sheet.columns.map((c, i) => ({ ...c, index: i })).filter((c) => !req.excludedLabels.includes(c.label));
     const orderedCatIds = active.map((col) => ensureCategory(col.label, col.kindGuess));
@@ -753,17 +787,41 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       const month = sheet.months[r];
       const year = yearOf(month);
       if (!yearAllowed(year)) continue;
-      // Anchor mid-month; derive status from the date so future months of the
-      // current year import as pending (visible + auto-realized later) instead
-      // of realized-but-future (which would be omitted from the ledger).
-      const effectiveDate = `${month}-15`;
-      const status: "realized" | "pending" = effectiveDate <= today ? "realized" : "pending";
       columnYearsUpdates.set(year, orderedCatIds); // each year shows its sheet's columns
       const batch = batchFor(year);
       for (let ci = 0; ci < active.length; ci++) {
         const col = active[ci];
         const catId = orderedCatIds[ci];
-        const plan = planImportCell(sheet.cells[r][col.index]);
+        // Place the row on the column's real due day when the header carried one
+        // ("Elektrik 06" → the 6th); otherwise anchor mid-month. Status derives
+        // from the date so future months import as pending (visible + realized
+        // later) instead of realized-but-future (omitted from the ledger).
+        const effectiveDate = clampDayToMonth(year, monthOf(month), col.dueDay ?? 15);
+        const status: "realized" | "pending" = effectiveDate <= today ? "realized" : "pending";
+        // A "Taksitli Harcamalar" cell stores its card installments in the
+        // comment. Turn each line into a real plan (self-scheduling), instead of
+        // one flat monthly aggregate on the 15th, and skip the cell's aggregate.
+        const cellData = sheet.cells[r][col.index];
+        if (/taksit/i.test(col.label) && cellData.comment) {
+          const notes = parseInstallmentComment(cellData.comment);
+          if (notes.length > 0) {
+            for (const note of notes) {
+              if (!note.card || informational.has(note.card.toLocaleLowerCase("tr-TR"))) continue;
+              const startMonth = addMonthsToKey(month, -(note.paidNo - 1));
+              // Dedupe on a cheap string key first (the plan appears in every
+              // month it is active); the deterministic id is hashed once per
+              // unique plan at write time, not once per mention. First mention
+              // wins the card (a plan may be tracked under a renamed card later).
+              const key = `${note.name.toLocaleLowerCase("tr-TR")}|${note.monthlyMinor}|${note.total}|${startMonth}`;
+              if (!installmentPlans.has(key)) {
+                cardNames.add(note.card);
+                installmentPlans.set(key, { card: note.card, name: note.name, monthlyMinor: note.monthlyMinor, total: note.total, startMonth, categoryId: catId });
+              }
+            }
+            continue; // installment cell handled by plans; no aggregate/cell note
+          }
+        }
+        const plan = planImportCell(cellData);
         if (!plan) continue;
         for (const item of plan.items) {
           const id = newId();
@@ -807,7 +865,48 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     }
   }
 
-  const writes = [...catWrites, ...txWrites, ...noteWrites];
+  // Reconstructed installment cards → payment sources (create/match by name),
+  // then each plan's rows. All built in memory and flushed with the ledger rows
+  // in ONE write (deterministic ids → re-import converges, no dups).
+  const sourceWrites: RowWrite[] = [];
+  for (const card of cardNames) {
+    const key = card.toLocaleLowerCase("tr-TR");
+    if (sourceIdByName.has(key)) continue;
+    const id = await deterministicId(naturalKeys.importSource(userId, card));
+    sourceIdByName.set(key, id);
+    sourceWrites.push({
+      table: "payment_sources",
+      row: {
+        id, name: card, type: "credit_card", personId: req.selfId, dueDay: null, statementDay: null,
+        color: null, logoSource: "initials", logoRef: null, isActive: true, deletedAt: null,
+      },
+    });
+  }
+  const planRowBatches = await Promise.all(
+    [...installmentPlans.values()].map(async (spec) => {
+      const planId = await deterministicId(naturalKeys.importInstallmentPlan(userId, spec.name, spec.monthlyMinor, spec.total, spec.startMonth));
+      return buildPlanRows(planId, {
+        title: spec.name,
+        kind: "card_installment",
+        totalAmountMinor: null,
+        monthlyAmountMinor: spec.monthlyMinor,
+        installmentCount: spec.total,
+        currency: "TRY",
+        fxRate: null,
+        startMonth: spec.startMonth,
+        dueDay: null,
+        paymentSourceId: sourceIdByName.get(spec.card.toLocaleLowerCase("tr-TR")) ?? null,
+        personId: req.selfId,
+        personIsSelf: true,
+        categoryId: spec.categoryId,
+        note: null,
+        tryFactor: 1,
+      }, today);
+    }),
+  );
+  imported += installmentPlans.size;
+
+  const writes = [...catWrites, ...sourceWrites, ...txWrites, ...noteWrites, ...planRowBatches.flatMap((b) => b.rows)];
   if (writes.length > 0) await writeRows(userId, writes);
 
   // Per-year column membership (Excel order preserved).
