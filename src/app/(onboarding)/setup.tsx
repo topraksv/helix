@@ -78,13 +78,15 @@ export default function SetupScreen() {
     setEditingSource(i);
   };
 
-  // Seed the workspace exactly once (persons/sources/categories/opening). The
-  // importers below need a real workspace to write into, so seeding happens
-  // before them — but onboarding is finalized only by "save & start", so the
-  // user can import, come back here, review, and then commit.
+  // Seed the workspace (persons/sources/categories/opening) from the CURRENT
+  // form values. `seedWorkspace` is idempotent (deterministic ids), so calling
+  // it again — when an importer is opened, and again on commit — upserts the
+  // same rows and re-applies the latest opening balance instead of duplicating
+  // the workspace or dropping edits made after the first seed. Onboarding is
+  // finalized only by "save & start", so the user can import, come back, review,
+  // and then commit.
   const ensureSeeded = async (): Promise<boolean> => {
     if (!userId) return false;
-    if (seeded) return true;
     await seedWorkspace(userId, {
       templateCategories: ALL_TEMPLATES.filter((c) => selectedTemplate.includes(c.name)),
       startMonth,

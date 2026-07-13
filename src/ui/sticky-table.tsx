@@ -250,11 +250,12 @@ export function StickyTable({
         {both ? (
           <Pressable
             onPress={() => onTogglePin!(c.key)}
-            hitSlop={8}
+            hitSlop={16}
             accessibilityRole="button"
-            style={{ position: "absolute", top: 4, right: 4, padding: 2 }}
+            accessibilityLabel={c.label}
+            style={{ position: "absolute", top: 2, right: 2, padding: 6 }}
           >
-            <Pin size={11} color={palette.textMuted} />
+            <Pin size={12} color={palette.textMuted} />
           </Pressable>
         ) : null}
         {c.icon ? (

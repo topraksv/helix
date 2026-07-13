@@ -171,7 +171,19 @@ function inkFor(hex: string): string {
   return lum > 0.62 ? "#1a1918" : "#ffffff";
 }
 
-export function Logo({ name, domain, size = 36 }: { name: string; domain?: string | null; size?: number }) {
+export function Logo({
+  name,
+  domain,
+  size = 36,
+  allowRemote = true,
+}: {
+  name: string;
+  domain?: string | null;
+  size?: number;
+  /** When false, never fetch a remote favicon (privacy) — fall back to the
+   *  local brand chip / initials. Controlled by a settings toggle. */
+  allowRemote?: boolean;
+}) {
   const { palette } = useTheme();
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -181,9 +193,9 @@ export function Logo({ name, domain, size = 36 }: { name: string; domain?: strin
     return BRAND[key] ?? BRAND[key.split(/\s+/)[0]] ?? null;
   }, [name]);
   // A utility (electricity/water/…) keeps its themed icon; otherwise, if we can
-  // resolve a domain, fetch the real favicon and fall back to the local chip on
-  // any error (offline, unknown host).
-  const faviconDomain = useMemo(() => (utility ? null : domainFor(name, domain)), [utility, name, domain]);
+  // resolve a domain AND remote logos are allowed, fetch the real favicon and
+  // fall back to the local chip on any error (offline, unknown host).
+  const faviconDomain = useMemo(() => (utility || !allowRemote ? null : domainFor(name, domain)), [utility, allowRemote, name, domain]);
 
   if (faviconDomain && !imgFailed) {
     return (

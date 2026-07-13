@@ -26,10 +26,20 @@ export function OpeningBalanceEditor() {
   const currentStart = settingValue<string>(settings, "start_month", monthKeyOf(todayISO()));
   const currentOpening = settingValue<number>(settings, "opening_balance_minor", 0);
 
-  const [startMonth, setStartMonth] = useState(currentStart);
-  const [openingRaw, setOpeningRaw] = useState((currentOpening / 100).toFixed(2).replace(".", ","));
-  const [openingMinor, setOpeningMinor] = useState<number | null>(currentOpening);
+  // Settings load async: the live query returns an empty map (→ default 0) on
+  // the first render and only fills a moment later. Freezing state from that
+  // first render pinned the field to 0 and let a straight "save" wipe the real
+  // opening balance. Instead keep the fields PRISTINE-mirroring the live value
+  // until the user actually edits, then let the draft take over. `null` = pristine.
+  const [draftStart, setDraftStart] = useState<string | null>(null);
+  const [draftRaw, setDraftRaw] = useState<string | null>(null);
+  const [draftMinor, setDraftMinor] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const startMonth = draftStart ?? currentStart;
+  const openingRaw = draftRaw ?? (currentOpening / 100).toFixed(2).replace(".", ",");
+  const openingMinor = draftRaw === null ? currentOpening : draftMinor;
+  const setStartMonth = (m: string) => setDraftStart(m);
 
   const dirty = openingMinor !== currentOpening || startMonth !== currentStart;
   const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"));
@@ -68,8 +78,8 @@ export function OpeningBalanceEditor() {
           label={tr.onboarding.openingBalance}
           value={openingRaw}
           onChangeMinor={(raw, minor) => {
-            setOpeningRaw(raw);
-            setOpeningMinor(minor);
+            setDraftRaw(raw);
+            setDraftMinor(minor);
           }}
         />
         <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>

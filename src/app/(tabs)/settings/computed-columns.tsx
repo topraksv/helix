@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { Pressable, Switch, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Calculator, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows, writeSetting } from "../../../db/mutations";
@@ -17,7 +17,7 @@ import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, Label, Row, Screen, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, Label, Row, Screen, Spread, Toggle } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
@@ -51,6 +51,7 @@ export default function ComputedColumnsScreen() {
   const [plus, setPlus] = useState<string[]>([]);
   const [minus, setMinus] = useState<string[]>([]);
   const [ccPart, setCcPart] = useState<"single" | "installment">("single");
+  const [busy, setBusy] = useState(false);
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -99,22 +100,27 @@ export default function ComputedColumnsScreen() {
   };
 
   const save = async () => {
-    if (!valid) return;
-    const existing = editingId ? columns.find((c) => c.id === editingId) : null;
-    await writeRows(userId, [
-      {
-        table: "computed_columns",
-        row: {
-          id: editingId ?? newId(),
-          name: name.trim(),
-          definition: JSON.stringify(definition),
-          sortOrder: existing?.sortOrder ?? columns.length,
-          deletedAt: null,
+    if (busy || !valid) return;
+    setBusy(true);
+    try {
+      const existing = editingId ? columns.find((c) => c.id === editingId) : null;
+      await writeRows(userId, [
+        {
+          table: "computed_columns",
+          row: {
+            id: editingId ?? newId(),
+            name: name.trim(),
+            definition: JSON.stringify(definition),
+            sortOrder: existing?.sortOrder ?? columns.length,
+            deletedAt: null,
+          },
         },
-      },
-    ]);
-    scheduleSync(userId);
-    resetForm();
+      ]);
+      scheduleSync(userId);
+      resetForm();
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Load an existing column back into the form for editing.
@@ -240,12 +246,12 @@ export default function ComputedColumnsScreen() {
         {editingId ? (
           <Row>
             <View style={{ flex: 1 }}>
-              <Button label={tr.computed.saveEdit} onPress={() => void save()} disabled={!valid} />
+              <Button label={tr.computed.saveEdit} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
             </View>
             <Button variant="ghost" label={tr.computed.cancelEdit} onPress={resetForm} />
           </Row>
         ) : (
-          <Button icon={Plus} label={tr.computed.addAction} onPress={() => void save()} disabled={!valid} />
+          <Button icon={Plus} label={tr.computed.addAction} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
         )}
       </Card>
 
@@ -270,7 +276,7 @@ export default function ComputedColumnsScreen() {
               </Spread>
               <Spread style={{ marginTop: spacing.xs }}>
                 <Body muted style={{ fontSize: 12 }}>{tr.computed.showInTable}</Body>
-                <Switch value={visible} onValueChange={(v) => void toggleVisible(c.id, v)} />
+                <Toggle value={visible} onValueChange={(v) => void toggleVisible(c.id, v)} />
               </Spread>
             </View>
           );

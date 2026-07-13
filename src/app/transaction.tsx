@@ -11,7 +11,7 @@ import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
-import { lookupRate, SUPPORTED_CURRENCIES } from "../services/fx-fetch";
+import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
 import { tr } from "../i18n/tr";
 import { Badge, Body, Button, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented } from "../ui/components";
@@ -42,6 +42,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const persons = usePersons();
   const router = useRouter();
   const isEdit = existing != null;
+  // Opened as a router modal normally, but a web deep-link to /transaction has
+  // no back stack — fall back to a real screen so "save" always closes it.
+  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"));
 
   const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? "expense");
   const [amountRaw, setAmountRaw] = useState(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");
@@ -75,7 +78,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryType]);
 
-  const rate = useMemo(() => lookupRate(userId, currency), [userId, currency]);
+  const fxVersion = useFxRates();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rate = useMemo(() => lookupRate(userId, currency), [userId, currency, fxVersion]);
   // Editing a foreign-currency row must NOT silently re-price it at today's
   // rate — the transaction's TRY value was snapshotted when it occurred. So
   // when the currency is unchanged from the stored row, keep its original
@@ -124,20 +129,23 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           note: note.trim() || null,
         });
         scheduleSync(userId);
-        router.back();
+        close();
         return;
       }
       if (installment) {
         const person = persons.find((p) => p.id === personId)!;
         await createInstallmentPlan(userId, {
-          title: note.trim() || `${formatMinor(amountMinor!, currency)} taksitli harcama`,
+          title: note.trim() || tr.installments.defaultTitle(formatMinor(amountMinor!, currency)),
           kind: "card_installment",
           totalAmountMinor: amountMinor!,
           monthlyAmountMinor: null,
           installmentCount: count,
           currency,
           fxRate,
-          startMonth: paid > 0 ? deriveStartMonth(paid, monthKeyOf(todayISO())) : monthKeyOf(dateStr),
+          startMonth:
+            paid > 0
+              ? deriveStartMonth(paid, monthKeyOf(todayISO()), sources.find((s) => s.id === sourceId)?.dueDay ?? null, todayISO())
+              : monthKeyOf(dateStr),
           dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
           paymentSourceId: sourceId,
           personId,
@@ -167,7 +175,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         setAmountMinor(null);
         setNote("");
       } else {
-        router.back();
+        close();
       }
     } catch (e) {
       // Never surface a raw engine error (English, technical) to the user.

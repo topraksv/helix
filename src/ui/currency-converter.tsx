@@ -9,7 +9,7 @@ import React, { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { ArrowDownUp } from "lucide-react-native";
 import { formatMinor, roundHalfAwayFromZero } from "../domain/money";
-import { loadRateCache, lookupRate, SUPPORTED_CURRENCIES, type Currency } from "../services/fx-fetch";
+import { loadRateCache, lookupRate, SUPPORTED_CURRENCIES, useFxRates, type Currency } from "../services/fx-fetch";
 import { useUserId } from "../data/hooks";
 import { tr } from "../i18n/tr";
 import { Badge, Body, Label, MoneyField, Segmented } from "./components";
@@ -22,11 +22,13 @@ export function CurrencyConverter() {
   const [minor, setMinor] = useState<number | null>(null);
   const [from, setFrom] = useState<Currency>("USD");
   const [to, setTo] = useState<Currency>("TRY");
-  // FX rates live in a module cache filled on app open; refresh on mount and
-  // re-render once loaded so this screen shows a value without a full reload.
-  const [, setTick] = useState(0);
+  // FX rates live in a module cache filled on app open. Subscribe to the cache
+  // version so a background refresh landing after mount re-renders this screen
+  // (a cold start otherwise left it on "rate unavailable"); also kick a load in
+  // case the cache is empty.
+  useFxRates();
   useEffect(() => {
-    void loadRateCache(userId).then(() => setTick((t) => t + 1));
+    void loadRateCache(userId);
   }, [userId]);
 
   const rateFrom = lookupRate(userId, from);

@@ -14,6 +14,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -366,6 +367,9 @@ export function Button({
     <AnimatedPressable
       accessibilityRole="button"
       disabled={disabled || loading}
+      // A small button's visual height stays compact (36) to fit inline rows,
+      // but hitSlop lifts its effective touch target to the ~44pt minimum.
+      hitSlop={small ? 8 : undefined}
       onPressIn={press.onPressIn}
       onPressOut={press.onPressOut}
       onPress={() => {
@@ -639,7 +643,12 @@ export function Select<T extends string>({
           },
         ]}
       >
-        <Text style={[type.body, { color: current ? palette.text : palette.textMuted, flex: 1 }]} numberOfLines={Platform.OS === "web" ? undefined : 1}>
+        <Text
+          style={[type.body, { color: current ? palette.text : palette.textMuted, flex: 1 }]}
+          numberOfLines={Platform.OS === "web" ? undefined : 1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
           {current?.label ?? placeholder ?? ""}
         </Text>
         <ChevronDown size={17} color={palette.textMuted} />
@@ -795,14 +804,15 @@ export function ChipPicker<T extends string>({
             }}
             accessibilityRole="button"
             accessibilityState={{ selected }}
+            hitSlop={4}
             style={{
-              paddingVertical: spacing.sm,
+              paddingVertical: spacing.sm + 2,
               paddingHorizontal: spacing.md + 2,
               borderRadius: radius.full,
               borderWidth: 1.5,
               borderColor: selected ? palette.primary : palette.border,
               backgroundColor: selected ? palette.primarySoft : palette.surface,
-              minHeight: 38,
+              minHeight: 44,
               justifyContent: "center",
             }}
           >
@@ -1014,6 +1024,22 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
     >
       {children}
     </AnimatedPressable>
+  );
+}
+
+/** Themed on/off switch — the single toggle used everywhere, tinted with the
+ *  design-token primary so it belongs to the palette (RN's bare Switch defaults
+ *  to the platform green, which sat outside the warm-organic system). */
+export function Toggle({ value, onValueChange }: { value: boolean; onValueChange: (v: boolean) => void }) {
+  const { palette } = useTheme();
+  return (
+    <Switch
+      value={value}
+      onValueChange={onValueChange}
+      trackColor={{ true: palette.primary, false: palette.border }}
+      thumbColor="#ffffff"
+      ios_backgroundColor={palette.border}
+    />
   );
 }
 

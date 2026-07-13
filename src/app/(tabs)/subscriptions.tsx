@@ -9,9 +9,9 @@ import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
 import { todayISO } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { convertToTryMinor } from "../../domain/fx";
-import { lookupRate } from "../../services/fx-fetch";
+import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { dateLabel, tr } from "../../i18n/tr";
-import { useSubscriptions, useUserId } from "../../data/hooks";
+import { settingValue, useSettingsMap, useSubscriptions, useUserId } from "../../data/hooks";
 import { softDelete, restoreRow } from "../../db/mutations";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
@@ -26,6 +26,11 @@ export default function SubscriptionsScreen() {
   const undo = useUndo();
   const today = todayISO();
   const { palette } = useTheme();
+  // Re-render when FX rates land after a cold start so foreign-currency totals
+  // settle on the real TRY value instead of the raw amount.
+  const fxVersion = useFxRates();
+  const settings = useSettingsMap();
+  const allowRemoteLogos = settingValue<boolean>(settings, "fetch_logos", true);
 
   const { active, passive, monthlyLoadTry, yearlyTry } = useMemo(() => {
     const activeSubs = subscriptions.filter((s) => s.isActive);
@@ -44,7 +49,8 @@ export default function SubscriptionsScreen() {
       monthlyLoadTry: monthly,
       yearlyTry: monthly * 12,
     };
-  }, [subscriptions, userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscriptions, userId, fxVersion]);
 
   const remove = async (id: string, name: string) => {
     const snapshot = await softDelete(userId, "subscriptions", id);
@@ -57,7 +63,7 @@ export default function SubscriptionsScreen() {
     return (
       <ListRow
         key={s.id}
-        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} />}
+        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} allowRemote={allowRemoteLogos} />}
         title={s.name}
         subtitle={
           (s.isActive ? tr.subs.nextDue(dateLabel(s.nextDueDate)) : tr.subs.canceled) +

@@ -28,6 +28,15 @@ export const naturalKeys = {
   setting: (userId: string, key: string) => `setting:${userId}:${key}`,
   /** Exactly one "self" person per account; every device converges on this id. */
   selfPerson: (userId: string) => `person-self:${userId}`,
+  /** Onboarding-seeded rows use deterministic ids so re-entering setup (e.g.
+   *  after a reload, or opening an importer then committing) upserts the same
+   *  rows instead of duplicating the whole workspace. Watch-only persons are
+   *  keyed by their slot; the self person keeps `selfPerson` above. */
+  onboardingPerson: (userId: string, index: number) => `person-onboarding:${userId}:${index}`,
+  onboardingSource: (userId: string, index: number) => `source-onboarding:${userId}:${index}`,
+  /** Template categories are keyed by (lowercased) name — the template names are
+   *  fixed and unique, so a re-seed converges and a later import matches by name. */
+  seedCategory: (userId: string, name: string) => `category-seed:${userId}:${name.toLocaleLowerCase("tr-TR")}`,
   fxRate: (userId: string, currency: string, rateDate: string) => `fx:${userId}:${currency}:${rateDate}`,
   expected: (userId: string, kind: string, refId: string, dueDate: string) =>
     `expected:${userId}:${kind}:${refId}:${dueDate}`,

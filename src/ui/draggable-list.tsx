@@ -27,6 +27,7 @@ export function DraggableList<T>({
   onReorder,
   renderRow,
   onDragStateChange,
+  disabled = false,
 }: {
   items: T[];
   keyExtractor: (item: T) => string;
@@ -37,6 +38,9 @@ export function DraggableList<T>({
    *  freeze the surrounding ScrollView (otherwise it steals the vertical pan
    *  and the row never moves). */
   onDragStateChange?: (dragging: boolean) => void;
+  /** Freeze dragging entirely (e.g. while a row is in inline-edit mode, when
+   *  its taller height would corrupt the fixed-row-height drag math). */
+  disabled?: boolean;
 }) {
   const [order, setOrder] = useState<T[]>(items);
   const draggingRef = useRef(false);
@@ -57,7 +61,10 @@ export function DraggableList<T>({
   // Latest callbacks in a ref so the per-row PanResponder (created once) always
   // calls the current closures instead of stale first-render ones.
   const api = useRef({ begin: (_k: string) => {}, move: (_dy: number) => {}, end: () => {} });
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
   api.current.begin = (key: string) => {
+    if (disabledRef.current) return;
     const idx = orderRef.current.findIndex((it) => keyExtractor(it) === key);
     if (idx < 0 || rowH.current <= 0) return;
     draggingRef.current = true;
