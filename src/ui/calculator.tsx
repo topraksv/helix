@@ -18,6 +18,8 @@ interface CalcState {
   current: string; // digits being typed, "" = show accumulator
   accumulator: number | null;
   op: Op | null;
+  /** Set after an illegal operation (÷0); display shows an error until cleared. */
+  error?: boolean;
 }
 
 const INITIAL: CalcState = { current: "0", accumulator: null, op: null };
@@ -26,7 +28,7 @@ function apply(a: number, b: number, op: Op): number {
   if (op === "+") return a + b;
   if (op === "-") return a - b;
   if (op === "×") return a * b;
-  return b === 0 ? 0 : a / b;
+  return a / b; // callers guard b === 0 (÷0 → error state, never 0)
 }
 
 function toNumber(s: string): number {
@@ -47,6 +49,8 @@ export function useCalculator() {
   const press = (key: string) => {
     setState((s) => {
       if (key === "C") return INITIAL;
+      // After an error, the next keypress (other than C) starts fresh.
+      if (s.error) s = INITIAL;
       if (key === "⌫") {
         if (s.current === "") return s;
         const next = s.current.slice(0, -1);
@@ -62,12 +66,15 @@ export function useCalculator() {
       }
       if (key === "+" || key === "-" || key === "×" || key === "÷") {
         const operand = s.current !== "" ? toNumber(s.current) : (s.accumulator ?? 0);
-        const acc = s.op != null && s.current !== "" && s.accumulator != null ? apply(s.accumulator, operand, s.op) : operand;
+        const chaining = s.op != null && s.current !== "" && s.accumulator != null;
+        if (chaining && s.op === "÷" && operand === 0) return { ...INITIAL, error: true };
+        const acc = chaining ? apply(s.accumulator!, operand, s.op!) : operand;
         return { current: "", accumulator: acc, op: key };
       }
       if (key === "=") {
         if (s.op == null || s.accumulator == null) return s;
         const operand = s.current !== "" ? toNumber(s.current) : s.accumulator;
+        if (s.op === "÷" && operand === 0) return { ...INITIAL, error: true };
         const result = apply(s.accumulator, operand, s.op);
         return { current: String(result).replace(".", ","), accumulator: null, op: null };
       }
@@ -75,8 +82,9 @@ export function useCalculator() {
     });
   };
 
-  const value = state.current !== "" ? toNumber(state.current) : (state.accumulator ?? 0);
-  return { state, press, value, text: display(state) };
+  // An error state has no usable value; NaN disables "use result".
+  const value = state.error ? NaN : state.current !== "" ? toNumber(state.current) : (state.accumulator ?? 0);
+  return { state, press, value, text: state.error ? tr.calc.error : display(state) };
 }
 
 const KEYS: string[][] = [

@@ -271,6 +271,10 @@ export const tr = {
     editHint: "Değişiklikler aylara dağılımı yeniden hesaplar; ödenmiş görünen aylar tarihe göre korunur.",
     delete: "Bu planı sil",
     tapToEdit: "Düzenlemek için dokun",
+    noSource: "Ödeme yöntemi yok",
+    deleteBody: (count: number) => `Bu plan ve ona bağlı ${count} taksit kaydı kalıcı olarak silinecek. Geri alınamaz.`,
+    nthInstallment: (n: number) => `${n}. taksit`,
+    defaultTitle: (amount: string) => `${amount} taksitli harcama`,
   },
   subs: {
     title: "Abonelikler",
@@ -378,8 +382,13 @@ export const tr = {
     syncUnconfiguredHint: "Bulut senkronu yapılandırılmadı; veriler yalnız bu cihazda.",
     syncExplain: "Verilerin cihazında güvenle saklanır; internet olduğunda otomatik yedeklenir ve aynı hesapla girdiğin tüm cihazlarda güncel kalır.",
     columnVisible: "Tabloda göster",
+    deleteCategoryTitle: "Kalemi sil",
+    deleteCategoryBody: (count: number) =>
+      `Bu kaleme bağlı ${count} kayıt var. Kalemi silersen bu kayıtlar silinmez; “Kategorisiz” olarak Mali Tablo'da görünmeye devam eder ve bakiyeni etkiler.`,
     showPending: "İleri Tarihli İşlemler Tabloda Görünsün",
     showPendingHint: "Kapatırsan gelecek tarihli kayıtlar hücrelerde gizlenir; bakiye zaten günü gelince etkilenir.",
+    fetchLogos: "Abonelik Logolarını İnternetten Getir",
+    fetchLogosHint: "Açıkken abonelik adından logo aramak için bir web servisine istek gider. Kapatırsan logolar yalnız baş harften oluşur ve dışarıya istek gitmez.",
     isColumnHint: "Mali tabloda kolon olarak görünsün",
     kindExpense: "Gider", kindIncome: "Gelir",
     addCategory: "Kategori Ekle",
@@ -456,6 +465,7 @@ export const tr = {
     swap: "Para birimlerini değiştir",
     enterAmount: "Çevirmek için bir tutar gir.",
     rateMissing: "Kur bilgisi henüz alınamadı. İnternete bağlanınca güncellenir.",
+    error: "Hata",
   },
   tour: {
     s1Title: "Bütçe Özeti",

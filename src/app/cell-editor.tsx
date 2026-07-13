@@ -195,7 +195,7 @@ export default function CellEditorModal() {
               <View style={{ flex: 1 }}>
                 <Body>
                   {t.isAggregate ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
-                  {t.installmentNo ? `  ·  ${t.installmentNo}. taksit` : ""}
+                  {t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : ""}
                 </Body>
                 <Row gap={spacing.sm} style={{ marginTop: 2 }}>
                   {t.isAggregate ? <Badge text={tr.bulk.aggregateBadge} /> : null}

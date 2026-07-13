@@ -3,8 +3,9 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { createInstallmentPlan, deletePlan, updateInstallmentPlan } from "../data/repo";
+import { countInstallmentsForPlan, createInstallmentPlan, deletePlan, updateInstallmentPlan } from "../data/repo";
 import { useCategories, usePersons, usePlans, useSources, useUserId } from "../data/hooks";
+import { categoryIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { formatMinor } from "../domain/money";
@@ -32,6 +33,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
   const categories = useCategories();
   const router = useRouter();
   const isEdit = existing != null;
+  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow/installments"));
 
   const [kind, setKind] = useState<"card_installment" | "loan">(existing?.kind ?? "card_installment");
   const existingAmountMinor = existing ? (existing.kind === "loan" ? existing.monthlyAmountMinor : existing.totalAmountMinor) : null;
@@ -64,7 +66,10 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
 
   // On a new plan, "already paid N" back-derives the start month; on edit the
   // start month is edited directly.
-  const resolvedStart = !isEdit && usePaidDerive && paid > 0 ? deriveStartMonth(paid, monthKeyOf(todayISO())) : startMonth;
+  const resolvedStart =
+    !isEdit && usePaidDerive && paid > 0
+      ? deriveStartMonth(paid, monthKeyOf(todayISO()), sources.find((s) => s.id === sourceId)?.dueDay ?? null, todayISO())
+      : startMonth;
 
   const save = async () => {
     if (!valid || !personId) return;
@@ -91,7 +96,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       if (isEdit) await updateInstallmentPlan(userId, existing!.id, input);
       else await createInstallmentPlan(userId, input);
       scheduleSync(userId);
-      router.back();
+      close();
     } catch (e) {
       console.error("[installment.save]", e);
       void appAlert(tr.errors.saveFailed, tr.errors.title);
@@ -102,14 +107,17 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
 
   const confirmDelete = () => {
     void (async () => {
-      const ok = await appConfirm(existing!.title, `${tr.common.delete}?`, {
+      // Deleting a plan tombstones every generated installment and can't be
+      // undone, so the confirmation spells out how many records go with it.
+      const count = await countInstallmentsForPlan(userId, existing!.id);
+      const ok = await appConfirm(existing!.title, tr.installments.deleteBody(count), {
         confirmLabel: tr.common.delete,
         danger: true,
       });
       if (!ok) return;
       await deletePlan(userId, existing!.id);
       scheduleSync(userId);
-      router.back();
+      close();
     })();
   };
 
@@ -174,7 +182,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       ) : null}
       <Label>{tr.tx.category}</Label>
       <ChipPicker
-        options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name }))}
+        options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }))}
         value={categoryId}
         onChange={setCategoryId}
       />

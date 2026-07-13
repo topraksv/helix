@@ -36,6 +36,7 @@ export default function IncomeRulesScreen() {
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
   const [payDayStr, setPayDayStr] = useState("15");
+  const [busy, setBusy] = useState(false);
   // persons/categories load async (live queries) — derive the defaults.
   const [personChoice, setPersonChoice] = useState<string | null>(null);
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
@@ -79,29 +80,34 @@ export default function IncomeRulesScreen() {
   };
 
   const save = async () => {
-    if (!valid || !personId) return;
-    const existing = editingId ? incomes.find((r) => r.id === editingId) : null;
-    await writeRows(userId, [
-      {
-        table: "recurring_incomes",
-        row: {
-          ...(existing ?? { note: null }),
-          id: editingId ?? newId(),
-          name: effectiveName.trim(),
-          kind,
-          defaultAmountMinor: amountMinor!,
-          currency: "TRY",
-          payDay,
-          personId,
-          categoryId,
-          isActive: existing ? existing.isActive : true,
-          deletedAt: null,
+    if (busy || !valid || !personId) return;
+    setBusy(true);
+    try {
+      const existing = editingId ? incomes.find((r) => r.id === editingId) : null;
+      await writeRows(userId, [
+        {
+          table: "recurring_incomes",
+          row: {
+            ...(existing ?? { note: null }),
+            id: editingId ?? newId(),
+            name: effectiveName.trim(),
+            kind,
+            defaultAmountMinor: amountMinor!,
+            currency: "TRY",
+            payDay,
+            personId,
+            categoryId,
+            isActive: existing ? existing.isActive : true,
+            deletedAt: null,
+          },
         },
-      },
-    ]);
-    await runMaintenance(userId); // (re)generate this month's expected income immediately
-    scheduleSync(userId);
-    resetForm();
+      ]);
+      await runMaintenance(userId); // (re)generate this month's expected income immediately
+      scheduleSync(userId);
+      resetForm();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const remove = async (r: (typeof incomes)[number]) => {
@@ -166,12 +172,12 @@ export default function IncomeRulesScreen() {
         {editingId ? (
           <Row>
             <View style={{ flex: 1 }}>
-              <Button label={tr.common.save} onPress={() => void save()} disabled={!valid} />
+              <Button label={tr.common.save} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
             </View>
             <Button label={tr.common.cancel} variant="ghost" onPress={resetForm} />
           </Row>
         ) : (
-          <Button label={tr.settings.addIncomeRule} onPress={() => void save()} disabled={!valid} />
+          <Button label={tr.settings.addIncomeRule} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
         )}
       </Card>
 

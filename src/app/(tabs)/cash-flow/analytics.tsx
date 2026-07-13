@@ -48,6 +48,10 @@ export default function AnalysisScreen() {
   const txLike = toTxLike(allTx, persons);
   const matrix = categoryRangeMatrix(txLike, startMonth, endMonth, today);
 
+  // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
+  // back arrow can't wander into empty years forever.
+  const minYear = allTx.length > 0 ? yearOf(allTx[0].effectiveDate) : currentYear;
+
   const rows = categories
     .map((c) => ({ category: c, data: matrix.get(c.id) }))
     .filter((r) => r.data && r.data.ytdMinor !== 0)
@@ -124,7 +128,7 @@ export default function AnalysisScreen() {
         </View>
         {period === "year" ? (
           <Row gap={spacing.sm}>
-            <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} />
+            <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={year <= minYear} />
             <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
             <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= currentYear} />
           </Row>

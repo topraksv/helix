@@ -1,7 +1,7 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
 import React, { useState } from "react";
-import { Platform, Switch, View } from "react-native";
+import { Platform, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
@@ -16,6 +16,7 @@ import {
   FileDown,
   FileSpreadsheet,
   FileUp,
+  Image,
   KeyRound,
   LogOut,
   PiggyBank,
@@ -37,7 +38,7 @@ import { setGlobalThemePreference } from "../../_layout";
 import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../lib/kv";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented } from "../../../ui/components";
+import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { spacing, useTheme } from "../../../ui/theme";
 import type { ThemePreference } from "../../../ui/theme";
@@ -54,6 +55,7 @@ export default function SettingsScreen() {
   const [tourOpen, setTourOpen] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
+  const fetchLogos = settingValue<boolean>(settings, "fetch_logos", true);
   const [reminderStr, setReminderStr] = useState(String(reminderDays));
 
   React.useEffect(() => {
@@ -262,7 +264,7 @@ export default function SettingsScreen() {
             icon={ScanFace}
             title={tr.settings.biometric}
             right={
-              <Switch
+              <Toggle
                 value={biometric}
                 onValueChange={(v) => {
                   setBiometric(v);
@@ -276,9 +278,16 @@ export default function SettingsScreen() {
           icon={CalendarClock}
           title={tr.settings.showPending}
           titleLines={2}
-          right={<Switch value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
+          right={<Toggle value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
         />
         <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.settings.showPendingHint}</Body>
+        <ListRow
+          icon={Image}
+          title={tr.settings.fetchLogos}
+          titleLines={2}
+          right={<Toggle value={fetchLogos} onValueChange={(v) => void writeSetting(userId, "fetch_logos", v)} />}
+        />
+        <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.settings.fetchLogosHint}</Body>
       </Card>
 
       <SectionHeader>{tr.settings.dataSection}</SectionHeader>

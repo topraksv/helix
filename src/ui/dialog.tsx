@@ -28,14 +28,21 @@ interface DialogRequest {
   resolve: (ok: boolean) => void;
 }
 
-const useDialogStore = create<{ current: DialogRequest | null }>(() => ({ current: null }));
+// A single-slot store dropped the second of two overlapping dialogs (its
+// promise never resolved, hanging the awaiting flow). Queue instead: show one
+// at a time, advancing to the next when the current one closes.
+const useDialogStore = create<{ current: DialogRequest | null; queue: DialogRequest[] }>(() => ({ current: null, queue: [] }));
+
+function enqueueDialog(request: DialogRequest) {
+  const { current, queue } = useDialogStore.getState();
+  if (current) useDialogStore.setState({ queue: [...queue, request] });
+  else useDialogStore.setState({ current: request });
+}
 
 /** One-button themed alert. Resolves when dismissed. */
 export function appAlert(message: string, title: string = tr.app.name): Promise<void> {
   return new Promise((resolve) => {
-    useDialogStore.setState({
-      current: { title, message, confirmLabel: tr.common.done, cancelLabel: null, danger: false, resolve: () => resolve() },
-    });
+    enqueueDialog({ title, message, confirmLabel: tr.common.done, cancelLabel: null, danger: false, resolve: () => resolve() });
   });
 }
 
@@ -46,15 +53,13 @@ export function appConfirm(
   opts?: { confirmLabel?: string; cancelLabel?: string; danger?: boolean },
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    useDialogStore.setState({
-      current: {
-        title,
-        message,
-        confirmLabel: opts?.confirmLabel ?? tr.common.confirm,
-        cancelLabel: opts?.cancelLabel ?? tr.common.cancel,
-        danger: opts?.danger ?? false,
-        resolve,
-      },
+    enqueueDialog({
+      title,
+      message,
+      confirmLabel: opts?.confirmLabel ?? tr.common.confirm,
+      cancelLabel: opts?.cancelLabel ?? tr.common.cancel,
+      danger: opts?.danger ?? false,
+      resolve,
     });
   });
 }
@@ -172,7 +177,9 @@ export function DialogHost() {
   if (!current) return null;
 
   const close = (ok: boolean) => {
-    useDialogStore.setState({ current: null });
+    const { queue } = useDialogStore.getState();
+    const [next, ...rest] = queue;
+    useDialogStore.setState({ current: next ?? null, queue: rest });
     current.resolve(ok);
   };
 

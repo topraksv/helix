@@ -102,6 +102,10 @@ export default function CashflowScreen() {
   const dataCats = new Set<string>();
   bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) dataCats.add(cid); }));
   const columnCategories = resolveYearColumns(categories, columnYears, year, maxYear, dataCats);
+  // Every live category id — used to surface an "uncategorized" column for
+  // amounts whose category was deleted, so that money never silently vanishes
+  // from the table (it still counts toward the balance either way).
+  const liveCategoryIds = useMemo(() => new Set(categories.map((c) => c.id)), [categories]);
 
   const yearSwitcher = (
     <Row gap={spacing.sm}>
@@ -172,6 +176,7 @@ export default function CashflowScreen() {
                   columnCategories={columnCategories}
                   computedColumns={visibleComputed}
                   creditCardIds={creditCardIds}
+                  liveCategoryIds={liveCategoryIds}
                   txLike={txLike}
                   orientation={orientation}
                   compact={!wide}
@@ -258,6 +263,7 @@ function MatrixTable({
   columnCategories,
   computedColumns,
   creditCardIds,
+  liveCategoryIds,
   txLike,
   orientation,
   compact,
@@ -270,6 +276,7 @@ function MatrixTable({
   columnCategories: ReturnType<typeof useCategories>;
   computedColumns: ReturnType<typeof useComputedColumns>;
   creditCardIds: Set<string>;
+  liveCategoryIds: Set<string>;
   txLike: ReturnType<typeof toTxLike>;
   orientation: "monthsAsRows" | "monthsAsColumns";
   compact: boolean;
@@ -304,6 +311,17 @@ function MatrixTable({
     return map;
   }, [bundle.yearMonths, txLike, creditCardIds, today]);
 
+  // Sum of amounts booked to a category that no longer exists (deleted) — kept
+  // visible so deleting a category never makes its money disappear from the table.
+  const uncategorizedValue = (m: MonthLedger): number => {
+    let sum = 0;
+    m.byCategory.forEach((v, cid) => {
+      if (!liveCategoryIds.has(cid)) sum += v;
+    });
+    return sum;
+  };
+  const hasUncategorized = bundle.yearMonths.some((m) => uncategorizedValue(m) !== 0);
+
   const columns: ColumnDef[] = useMemo(
     () => [
       ...columnCategories.map<ColumnDef>((c) => ({ key: c.id, label: c.name, categoryId: c.id, value: (m) => m.byCategory.get(c.id) ?? 0 })),
@@ -328,10 +346,14 @@ function MatrixTable({
           }
         },
       })),
+      ...(hasUncategorized
+        ? [{ key: "__uncategorized", label: tr.common.none, categoryId: null, value: uncategorizedValue } as ColumnDef]
+        : []),
       { key: "opening", label: tr.cashflow.opening, categoryId: null, value: (m) => m.openingMinor },
       { key: "closing", label: tr.cashflow.closing, categoryId: null, value: (m) => m.closingMinor },
     ],
-    [columnCategories, computedColumns, ccByMonth],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [columnCategories, computedColumns, ccByMonth, hasUncategorized, liveCategoryIds],
   );
 
   const CELL_W = compact ? 104 : 128;
@@ -359,7 +381,7 @@ function MatrixTable({
   // Opening/closing balances are derived summaries — intentionally not tappable.
   const openBreakdown = (key: string) => {
     const col = columns.find((c) => c.key === key);
-    if (!col || col.key === "opening" || col.key === "closing") return;
+    if (!col || col.key === "opening" || col.key === "closing" || col.key === "__uncategorized") return;
     router.push({
       pathname: "/cash-flow/item",
       params: { col: col.categoryId ?? col.key, label: col.label, year: String(year), kind: col.categoryId ? "category" : "computed" },
@@ -373,7 +395,7 @@ function MatrixTable({
   const pressFor = (c: ColumnDef, month: MonthKey): (() => void) | undefined => {
     if (c.categoryId) return () => router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId! } });
     if (c.action) return c.action;
-    if (c.key === "opening" || c.key === "closing") return undefined;
+    if (c.key === "opening" || c.key === "closing" || c.key === "__uncategorized") return undefined;
     return () => openBreakdown(c.key); // computed column cell → its breakdown
   };
 
@@ -381,7 +403,7 @@ function MatrixTable({
     <MatrixCell value={value} note={note} onPress={onPress} highlighted={highlighted} fontSize={fontSize} />
   );
   const breakdownFor = (key: string): (() => void) | undefined =>
-    key === "opening" || key === "closing" ? undefined : () => openBreakdown(key);
+    key === "opening" || key === "closing" || key === "__uncategorized" ? undefined : () => openBreakdown(key);
 
   let cornerLabel: string;
   let stickyColumns: StickyColumn[];

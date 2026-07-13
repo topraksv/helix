@@ -2,16 +2,18 @@
  *  column visibility all belong to the user (nothing is hardcoded). */
 
 import React, { useState } from "react";
-import { StyleSheet, Switch, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
 import { useCategories, useUserId } from "../../../data/hooks";
+import { countTransactionsForCategory } from "../../../data/repo";
 import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
+import { appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
 import { GripVertical, LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
-import { Body, Button, Card, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { Body, Button, Card, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
 import { DraggableList } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -25,6 +27,7 @@ export default function CategoriesScreen() {
   const { palette } = useTheme();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"expense" | "income">("expense");
+  const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   // Freeze the screen's scroll while a row is being dragged, so the vertical
@@ -32,23 +35,29 @@ export default function CategoriesScreen() {
   const [dragging, setDragging] = useState(false);
 
   const add = async () => {
-    await writeRows(userId, [
-      {
-        table: "categories",
-        row: {
-          id: newId(),
-          name: name.trim(),
-          kind,
-          icon: suggestCategoryIcon(name.trim(), kind),
-          color: null,
-          sortOrder: categories.length,
-          isColumn: true,
-          deletedAt: null,
+    if (adding || !name.trim()) return;
+    setAdding(true);
+    try {
+      await writeRows(userId, [
+        {
+          table: "categories",
+          row: {
+            id: newId(),
+            name: name.trim(),
+            kind,
+            icon: suggestCategoryIcon(name.trim(), kind),
+            color: null,
+            sortOrder: categories.length,
+            isColumn: true,
+            deletedAt: null,
+          },
         },
-      },
-    ]);
-    scheduleSync(userId);
-    setName("");
+      ]);
+      scheduleSync(userId);
+      setName("");
+    } finally {
+      setAdding(false);
+    }
   };
 
   const update = async (c: (typeof categories)[number], patch: Partial<(typeof categories)[number]>) => {
@@ -76,6 +85,16 @@ export default function CategoriesScreen() {
   };
 
   const remove = async (c: (typeof categories)[number]) => {
+    // A category with records is never a one-tap delete: warn with the count so
+    // the user knows the rows survive (as "uncategorized") rather than vanishing.
+    const usage = await countTransactionsForCategory(userId, c.id);
+    if (usage > 0) {
+      const ok = await appConfirm(tr.settings.deleteCategoryTitle, tr.settings.deleteCategoryBody(usage), {
+        confirmLabel: tr.common.delete,
+        danger: true,
+      });
+      if (!ok) return;
+    }
     const snapshot = await softDelete(userId, "categories", c.id);
     scheduleSync(userId);
     if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "categories", snapshot));
@@ -94,7 +113,7 @@ export default function CategoriesScreen() {
           value={kind}
           onChange={setKind}
         />
-        <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim()} />
+        <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
         <Button
           icon={LayoutTemplate}
           variant="ghost"
@@ -116,6 +135,7 @@ export default function CategoriesScreen() {
               keyExtractor={(c) => c.id}
               onReorder={(ids) => void applyOrder(k, ids)}
               onDragStateChange={setDragging}
+              disabled={editingId != null}
               renderRow={(c, handle) =>
                 editingId === c.id ? (
                   <View>
@@ -174,7 +194,7 @@ export default function CategoriesScreen() {
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>
                       <Body muted style={{ fontSize: 12 }}>{tr.settings.columnVisible}</Body>
-                      <Switch value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
+                      <Toggle value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
                     </Spread>
                   </View>
                 )

@@ -1,17 +1,18 @@
 /** Subscription add/edit modal. Price edits append to price_history (spec §3.1). */
 
 import React, { useMemo, useState } from "react";
-import { Switch, View } from "react-native";
+import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { upsertSubscription } from "../data/repo";
 import { useCategories, usePersons, useSources, useSubscriptions, useUserId } from "../data/hooks";
+import { categoryIcon } from "../data/category-icons";
 import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
-import { Body, Button, ChipPicker, Field, Label, MoneyField, Screen, Segmented, Spread } from "../ui/components";
+import { Body, Button, ChipPicker, Field, Label, MoneyField, Screen, Segmented, Spread, Toggle } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -37,6 +38,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const sources = useSources();
   const persons = usePersons();
   const router = useRouter();
+  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/subscriptions"));
 
   const [name, setName] = useState(existing?.name ?? "");
   const [amountRaw, setAmountRaw] = useState(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");
@@ -108,7 +110,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         note: note.trim() || null,
       });
       scheduleSync(userId);
-      router.back();
+      close();
     } catch (e) {
       console.error("[subscription.save]", e);
       void appAlert(tr.errors.saveFailed, tr.errors.title);
@@ -170,7 +172,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         <>
           <Label>{tr.tx.category}</Label>
           <ChipPicker
-            options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name }))}
+            options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }))}
             value={categoryId}
             onChange={setCategoryId}
           />
@@ -194,7 +196,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           <Body>{tr.subs.trialToggle}</Body>
           <Body muted style={{ fontSize: 12 }}>{tr.subs.trialToggleHint}</Body>
         </View>
-        <Switch value={isTrial} onValueChange={setIsTrial} />
+        <Toggle value={isTrial} onValueChange={setIsTrial} />
       </Spread>
       {isTrial ? <DateField label={tr.subs.trialDate} value={trialDate} onChange={setTrialDate} /> : null}
       <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={tr.common.optionalHint} />
@@ -204,11 +206,11 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           <Body>{tr.subs.autoPay}</Body>
           <Body muted>{tr.subs.autoPayHint}</Body>
         </View>
-        <Switch value={autoPay} onValueChange={setAutoPay} />
+        <Toggle value={autoPay} onValueChange={setAutoPay} />
       </Spread>
       <Spread style={{ marginBottom: spacing.lg }}>
         <Body>{tr.common.active}</Body>
-        <Switch value={isActive} onValueChange={setIsActive} />
+        <Toggle value={isActive} onValueChange={setIsActive} />
       </Spread>
 
       {existing && amountMinor != null && amountMinor !== existing.amountMinor ? (

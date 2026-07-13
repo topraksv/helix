@@ -28,6 +28,7 @@ export default function SourcesScreen() {
   const [personChoice, setPersonChoice] = useState<string | null>(null);
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [dueDayStr, setDueDayStr] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const dueDay = dueDayStr.trim() === "" ? null : Number(dueDayStr);
   const dueDayValid = dueDay === null || (Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31);
@@ -49,24 +50,29 @@ export default function SourcesScreen() {
   };
 
   const save = async () => {
-    if (!personId) return;
-    const existing = editingId ? sources.find((s) => s.id === editingId) : null;
-    await writeRows(userId, [
-      {
-        table: "payment_sources",
-        row: {
-          ...(existing ?? { statementDay: null, color: null, logoSource: "initials", logoRef: null, isActive: true }),
-          id: editingId ?? newId(),
-          name: name.trim(),
-          type: sourceType,
-          personId,
-          dueDay,
-          deletedAt: null,
+    if (busy || !name.trim() || !personId || !dueDayValid) return;
+    setBusy(true);
+    try {
+      const existing = editingId ? sources.find((s) => s.id === editingId) : null;
+      await writeRows(userId, [
+        {
+          table: "payment_sources",
+          row: {
+            ...(existing ?? { statementDay: null, color: null, logoSource: "initials", logoRef: null, isActive: true }),
+            id: editingId ?? newId(),
+            name: name.trim(),
+            type: sourceType,
+            personId,
+            dueDay,
+            deletedAt: null,
+          },
         },
-      },
-    ]);
-    scheduleSync(userId);
-    resetForm();
+      ]);
+      scheduleSync(userId);
+      resetForm();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const remove = async (s: (typeof sources)[number]) => {
@@ -90,12 +96,12 @@ export default function SourcesScreen() {
         {editingId ? (
           <Row>
             <View style={{ flex: 1 }}>
-              <Button label={tr.common.save} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid} />
+              <Button label={tr.common.save} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid || busy} loading={busy} />
             </View>
             <Button label={tr.common.cancel} variant="ghost" onPress={resetForm} />
           </Row>
         ) : (
-          <Button label={tr.common.add} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid} />
+          <Button label={tr.common.add} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid || busy} loading={busy} />
         )}
       </Card>
 

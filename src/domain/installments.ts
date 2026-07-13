@@ -70,12 +70,27 @@ export function generateSchedule(plan: InstallmentPlanLike, today: ISODate): Gen
 }
 
 /**
- * Derive the start month for "n of m already paid" entry. Assumes the next
- * unpaid installment belongs to `referenceMonth` (the month the user is in).
+ * Derive the start month for "n of m already paid" entry so that EXACTLY
+ * `paidCount` installments auto-realize (spec §2.7: realized ⇔ effectiveDate ≤
+ * today). The next unpaid installment (number paidCount+1) is placed in the
+ * first month whose due date is still in the future: the current month when its
+ * due day hasn't passed, otherwise next month. Without this, a plan with a due
+ * day already elapsed this month silently realized one extra installment (a
+ * "2 of 6" entry showed as 3 of 6 and under-counted the remaining balance).
  */
-export function deriveStartMonth(paidCount: number, referenceMonth: MonthKey): MonthKey {
+export function deriveStartMonth(
+  paidCount: number,
+  referenceMonth: MonthKey,
+  dueDay: number | null = 1,
+  today?: ISODate,
+): MonthKey {
   if (paidCount < 0) throw new Error("paidCount cannot be negative");
-  return addMonthsToKey(referenceMonth, -paidCount);
+  const day = dueDay ?? 1;
+  const refDue = clampDayToMonth(yearOf(referenceMonth), monthOf(referenceMonth), day);
+  // If this month's installment would already be past due (auto-realized), the
+  // next unpaid one belongs to next month; otherwise it is this month's.
+  const nextUnpaidMonth = today != null && refDue <= today ? addMonthsToKey(referenceMonth, 1) : referenceMonth;
+  return addMonthsToKey(nextUnpaidMonth, -paidCount);
 }
 
 export interface PlanProgress {

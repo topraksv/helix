@@ -128,7 +128,7 @@ export default function MonthDetailScreen() {
                       <View style={{ flex: 1 }}>
                         <Body>
                           {t.isAggregate ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
-                          {t.installmentNo ? `  ·  ${t.installmentNo}. taksit` : ""}
+                          {t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : ""}
                           {t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : ""}
                           {!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : ""}
                         </Body>

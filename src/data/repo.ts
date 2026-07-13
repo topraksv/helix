@@ -69,21 +69,32 @@ export interface SeedInput {
   sources: { name: string; type: PaymentSourceType; personIndex: number; dueDay?: number | null }[];
 }
 
+/**
+ * Seed (or re-seed) the onboarding workspace. Fully idempotent: every seeded
+ * row gets a DETERMINISTIC id (self person, watch-only persons by slot, sources
+ * by slot, template categories by name), so re-entering setup — after a reload,
+ * or opening an importer then committing — upserts the same rows instead of
+ * duplicating the whole workspace (the old `newId()` seed multiplied everything
+ * on every re-run). The opening balance / start month are applied through the
+ * earlier-wins rule so a re-seed on commit never clobbers an earlier ledger
+ * anchor set by an Excel import.
+ */
 export async function seedWorkspace(userId: string, input: SeedInput): Promise<void> {
   const writes: RowWrite[] = [];
-  // The self person gets a deterministic id so double-taps and multi-device
-  // seeds converge on one row instead of duplicating "me".
   const personIds = await Promise.all(
-    input.persons.map((p) => (p.isSelf ? deterministicId(naturalKeys.selfPerson(userId)) : Promise.resolve(newId()))),
+    input.persons.map((p, i) =>
+      p.isSelf ? deterministicId(naturalKeys.selfPerson(userId)) : deterministicId(naturalKeys.onboardingPerson(userId, i)),
+    ),
   );
   input.persons.forEach((p, i) => {
     writes.push({ table: "persons", row: { id: personIds[i], name: p.name, isSelf: p.isSelf, deletedAt: null } });
   });
+  const sourceIds = await Promise.all(input.sources.map((_, i) => deterministicId(naturalKeys.onboardingSource(userId, i))));
   input.sources.forEach((s, i) => {
     writes.push({
       table: "payment_sources",
       row: {
-        id: newId(),
+        id: sourceIds[i],
         name: s.name,
         type: s.type,
         personId: personIds[s.personIndex] ?? personIds[0],
@@ -98,18 +109,33 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
       },
     });
   });
+  const categoryIds = await Promise.all(
+    input.templateCategories.map((c) => deterministicId(naturalKeys.seedCategory(userId, c.name))),
+  );
   input.templateCategories.forEach((c, i) => {
     writes.push({
       table: "categories",
-      row: { id: newId(), name: c.name, kind: c.kind, icon: c.icon ?? null, color: null, sortOrder: i, isColumn: c.isColumn, deletedAt: null },
+      row: { id: categoryIds[i], name: c.name, kind: c.kind, icon: c.icon ?? null, color: null, sortOrder: i, isColumn: c.isColumn, deletedAt: null },
     });
   });
   await writeRows(userId, writes);
-  await writeSetting(userId, "start_month", input.startMonth);
-  await writeSetting(userId, "opening_balance_minor", input.openingBalanceMinor);
+  await applyOnboardingBalance(userId, input.startMonth, input.openingBalanceMinor);
   // NB: does NOT mark onboarded — the setup screen seeds first (so history can
   // be imported into a real workspace) and calls finalizeOnboarding() only when
   // the user taps "save & start". See setup.tsx.
+}
+
+/**
+ * Write the onboarding opening balance + start month, but never overwrite an
+ * EARLIER anchor already set (e.g. by an Excel import that seeded the ledger
+ * from an earlier year). The ledger back-anchors to the earliest data, so the
+ * earliest start wins; for the same-or-later month the form value is authoritative.
+ */
+export async function applyOnboardingBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
+  const currentStart = await readSetting<string>(userId, "start_month");
+  if (currentStart && startMonth > currentStart) return; // keep the earlier imported anchor
+  await writeSetting(userId, "start_month", startMonth);
+  await writeSetting(userId, "opening_balance_minor", openingBalanceMinor);
 }
 
 /** Mark onboarding complete → the route guard lets the user into the app. */
@@ -192,6 +218,17 @@ export async function updateTransaction(
 
 export async function deleteTransaction(userId: string, id: string) {
   return softDelete(userId, "transactions", id);
+}
+
+/** How many live transactions reference a category — for a warn-before-delete
+ *  confirmation (deleting a category leaves its rows uncategorized, not lost). */
+export async function countTransactionsForCategory(userId: string, categoryId: string): Promise<number> {
+  const sqlite = await getSqliteAsync();
+  const row = await sqlite.getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM transactions WHERE user_id = ? AND category_id = ? AND deleted_at IS NULL`,
+    [userId, categoryId] as never[],
+  );
+  return row?.n ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -289,6 +326,17 @@ async function writePlanWithSchedule(userId: string, planId: string, input: NewP
   }
   await writeRows(userId, writes);
   return keepNos;
+}
+
+/** Live installment transactions belonging to a plan — for a warn-before-delete
+ *  count (deleting a plan tombstones all of them; the action has no undo). */
+export async function countInstallmentsForPlan(userId: string, planId: string): Promise<number> {
+  const sqlite = await getSqliteAsync();
+  const row = await sqlite.getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM transactions WHERE user_id = ? AND installment_plan_id = ? AND deleted_at IS NULL`,
+    [userId, planId] as never[],
+  );
+  return row?.n ?? 0;
 }
 
 /** Create the plan and materialize one transaction per month (deterministic ids). */

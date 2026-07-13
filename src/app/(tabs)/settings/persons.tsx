@@ -18,6 +18,7 @@ export default function PersonsScreen() {
   const persons = usePersons();
   const undo = useUndo();
   const [name, setName] = useState("");
+  const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
@@ -28,11 +29,17 @@ export default function PersonsScreen() {
   };
 
   const add = async () => {
-    await writeRows(userId, [
-      { table: "persons", row: { id: newId(), name: name.trim(), isSelf: persons.length === 0, deletedAt: null } },
-    ]);
-    scheduleSync(userId);
-    setName("");
+    if (adding || !name.trim()) return;
+    setAdding(true);
+    try {
+      await writeRows(userId, [
+        { table: "persons", row: { id: newId(), name: name.trim(), isSelf: persons.length === 0, deletedAt: null } },
+      ]);
+      scheduleSync(userId);
+      setName("");
+    } finally {
+      setAdding(false);
+    }
   };
 
   const remove = async (p: (typeof persons)[number]) => {
@@ -49,7 +56,7 @@ export default function PersonsScreen() {
           <View style={{ flex: 1 }}>
             <Field noMargin value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
           </View>
-          <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim()} />
+          <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
         </Row>
       </Card>
       <CardList

@@ -4,6 +4,8 @@
  * fx_rates table; lookups fall back to the last known rate with a stale flag.
  */
 
+import { Platform } from "react-native";
+import { create } from "zustand";
 import { deterministicId, naturalKeys } from "../db/ids";
 import { writeRows } from "../db/mutations";
 import { getSqliteAsync } from "../db/client";
@@ -47,13 +49,25 @@ async function fetchFromFrankfurter(): Promise<{ currency: string; rateTry: numb
 /** Fetch and cache today's rates. Failing silently is fine — cache covers it. */
 export async function refreshRates(userId: string): Promise<boolean> {
   let rates: { currency: string; rateTry: number }[];
-  try {
-    rates = await fetchFromTcmb();
-  } catch {
+  // TCMB's today.xml sends no CORS headers, so on web it always fails with a
+  // noisy console error — use only the CORS-enabled Frankfurter (ECB) feed
+  // there. Native has no CORS restriction, so it prefers TCMB with Frankfurter
+  // as a fallback.
+  if (Platform.OS === "web") {
     try {
       rates = await fetchFromFrankfurter();
     } catch {
       return false;
+    }
+  } else {
+    try {
+      rates = await fetchFromTcmb();
+    } catch {
+      try {
+        rates = await fetchFromFrankfurter();
+      } catch {
+        return false;
+      }
     }
   }
   const rateDate = todayISO();
@@ -78,9 +92,20 @@ export async function refreshRates(userId: string): Promise<boolean> {
 /**
  * Rates are read during render (entry forms, subscription totals), so lookups
  * stay synchronous against an in-memory snapshot loaded at boot and refreshed
- * after every fetch.
+ * after every fetch. A zustand version counter makes the cache REACTIVE: a
+ * background refresh (which lands after a screen has already mounted) bumps the
+ * version so subscribers re-render and re-read the now-populated rates. Without
+ * this the converter/entry preview stayed on "rate unavailable" forever after a
+ * cold start, because the module cache updated silently.
  */
 let rateCache: FxRate[] = [];
+
+export const useFxCacheVersion = create<{ version: number }>(() => ({ version: 0 }));
+
+/** Subscribe a component to rate-cache updates (re-renders when rates load). */
+export function useFxRates(): number {
+  return useFxCacheVersion((s) => s.version);
+}
 
 export async function loadRateCache(userId: string): Promise<void> {
   const sqlite = await getSqliteAsync();
@@ -90,6 +115,7 @@ export async function loadRateCache(userId: string): Promise<void> {
     [userId] as never[],
   );
   rateCache = rows.map((r) => ({ currency: r.currency, rateDate: r.rate_date, rateTry: Number(r.rate_try) }));
+  useFxCacheVersion.setState((s) => ({ version: s.version + 1 }));
 }
 
 /** Cached rate lookup for entry forms; null when nothing cached yet. */

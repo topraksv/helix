@@ -79,14 +79,27 @@ describe("generateSchedule", () => {
     expect(items.map((i) => i.month)).toEqual(["2026-11", "2026-12", "2027-01", "2027-02"]);
   });
 
-  it("auto-realizes past installments for a mid-progress plan (4/6 paid)", () => {
-    const startMonth = deriveStartMonth(4, "2026-07");
-    expect(startMonth).toBe("2026-03");
+  it("realizes exactly the paid count for a mid-progress plan (4/6 paid)", () => {
+    // Due day (1st) has already passed this month, so the next unpaid
+    // installment belongs to next month — keeping the realized count at 4.
+    const startMonth = deriveStartMonth(4, "2026-07", 1, "2026-07-05");
+    expect(startMonth).toBe("2026-04");
     const items = generateSchedule(plan({ startMonth }), "2026-07-05");
     expect(items.map((i) => i.status)).toEqual([
+      "realized", "realized", "realized", "realized", // Apr–Jul (4 paid)
+      "pending", "pending", // Aug, Sep
+    ]);
+  });
+
+  it("keeps this month's installment pending when its due day is still ahead", () => {
+    // Due day (20th) is later this month, so the 4th (current-month) installment
+    // is the next unpaid one and stays pending — still exactly 4 realized.
+    const startMonth = deriveStartMonth(4, "2026-07", 20, "2026-07-05");
+    expect(startMonth).toBe("2026-03");
+    const items = generateSchedule(plan({ startMonth, dueDay: 20 }), "2026-07-05");
+    expect(items.map((i) => i.status)).toEqual([
       "realized", "realized", "realized", "realized", // Mar–Jun
-      "realized", // Jul 1 <= Jul 5 → this month's already effective
-      "pending", // Aug
+      "pending", "pending", // Jul (20th > 5th), Aug
     ]);
   });
 

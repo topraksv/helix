@@ -32,6 +32,16 @@ export default function Root({ children }: PropsWithChildren) {
               "*{box-sizing:border-box;}",
           }}
         />
+        {/* Register the offline service worker only under the deployed /helix/
+            base (skips the dev server at the root). Network-first for HTML, so
+            updates always land online; the cache only rescues a cold offline start. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "if('serviceWorker' in navigator && location.pathname.indexOf('/helix/')===0){" +
+              "window.addEventListener('load',function(){navigator.serviceWorker.register('/helix/sw.js',{scope:'/helix/'}).catch(function(){});});}",
+          }}
+        />
       </head>
       <body>{children}</body>
     </html>

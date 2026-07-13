@@ -24,7 +24,7 @@ import {
 import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
 import { connectMarkets, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
-import { lookupRate } from "../../services/fx-fetch";
+import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
@@ -112,6 +112,8 @@ export default function DashboardScreen() {
   const undo = useUndo();
   const { width } = useWindowDimensions();
   const { palette } = useTheme();
+  // Re-render when FX rates land so foreign-currency projections settle.
+  useFxRates();
 
   // No manual useMemo here: the React Compiler (enabled app-wide) memoizes
   // these derivations automatically and bails out when useMemo is hand-rolled.
