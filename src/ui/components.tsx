@@ -558,12 +558,14 @@ export function MoneyField({
   onChangeMinor,
   placeholder = "0,00",
   expression = false,
+  disabled = false,
 }: {
   label?: string;
   value: string;
   onChangeMinor: (raw: string, minor: number | null) => void;
   placeholder?: string;
   expression?: boolean;
+  disabled?: boolean;
 }) {
   const { palette } = useTheme();
   const [focused, setFocused] = useState(false);
@@ -580,6 +582,7 @@ export function MoneyField({
       <View>
         <TextInput
           value={display}
+          editable={!disabled}
           onChangeText={(raw) => {
             const formatted = formatMoneyInputLive(raw);
             onChangeMinor(formatted, formatted.trim() === "" ? null : parseAmountExpression(formatted));
@@ -592,7 +595,7 @@ export function MoneyField({
           onBlur={() => setFocused(false)}
           style={{
             backgroundColor: palette.surfaceAlt,
-            color: invalid ? palette.negative : palette.text,
+            color: invalid ? palette.negative : disabled ? palette.textMuted : palette.text,
             borderRadius: radius.sm,
             borderWidth: 1.5,
             borderColor: invalid ? palette.negative : focused ? palette.focus : "transparent",
@@ -602,16 +605,19 @@ export function MoneyField({
             fontSize: 17,
             fontFamily: "Inter_600SemiBold",
             fontVariant: ["tabular-nums"],
+            opacity: disabled ? 0.6 : 1,
           }}
         />
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setCalcOpen(true)}
-          hitSlop={8}
-          style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
-        >
-          <CalculatorIcon size={18} color={palette.textMuted} />
-        </Pressable>
+        {disabled ? null : (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setCalcOpen(true)}
+            hitSlop={8}
+            style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
+          >
+            <CalculatorIcon size={18} color={palette.textMuted} />
+          </Pressable>
+        )}
       </View>
       {calcOpen ? (
         <LazyCalculatorModal

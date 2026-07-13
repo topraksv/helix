@@ -47,6 +47,10 @@ export const naturalKeys = {
   confirmTx: (expectedId: string) => `confirmtx:${expectedId}`,
   /** One note per (month, category) cell — deterministic so re-import overwrites. */
   cellNote: (userId: string, month: string, categoryId: string) => `cellnote:${userId}:${month}:${categoryId}`,
+  /** The "set current balance" reconciliation adjustment for a given day —
+   *  deterministic so re-correcting the same day updates one row instead of
+   *  stacking a new adjustment each time. */
+  balanceAdjustment: (userId: string, date: string) => `baladj:${userId}:${date}`,
   /** A payment source (card) created from a spreadsheet import, keyed by name so
    *  the same card mentioned across many months/years converges to one source. */
   importSource: (userId: string, name: string) => `impsource:${userId}:${name.toLocaleLowerCase("tr-TR")}`,
