@@ -4,7 +4,7 @@
 import React, { useEffect } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronRight, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { distributionForRange, fixedVsVariable } from "../../domain/analytics";
 import { projectedBalance } from "../../domain/balance";
 import { firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
@@ -13,7 +13,6 @@ import { dateLabel, monthLabel, tr } from "../../i18n/tr";
 import {
   daysBetween,
   useCategories,
-  useLastEntryInfo,
   useLedger,
   usePendingExpected,
   usePersons,
@@ -107,7 +106,6 @@ export default function DashboardScreen() {
   const expected = usePendingExpected();
   const subscriptions = useSubscriptions();
   const incomes = useRecurringIncomes();
-  const lastEntry = useLastEntryInfo();
   const router = useRouter();
   const colors = useSeriesColors();
   const undo = useUndo();
@@ -210,6 +208,7 @@ export default function DashboardScreen() {
   ];
   const incomingMinor = monthEndFlows.filter((f) => f.direction === "in").reduce((sum, f) => sum + f.amountTryMinor, 0);
   const remainingFixedMinor = monthEndFlows.filter((f) => f.direction === "out").reduce((sum, f) => sum + f.amountTryMinor, 0);
+  const hasForecast = incomingMinor > 0 || remainingFixedMinor > 0;
   const projected = bundle ? projectedBalance(bundle.actualBalanceMinor, monthEndFlows, monthEnd) : null;
 
   const dist = distributionForRange(txLike, firstDayOf(month), lastDayOf(month), today);
@@ -238,6 +237,7 @@ export default function DashboardScreen() {
   // 12th") — the amount then becomes a realized expense on that day and drops
   // out of the month-end forecast, instead of staying a projected future flow.
   // Default: the due date if it has already passed, else today.
+  const [showForecast, setShowForecast] = React.useState(false);
   const [paying, setPaying] = React.useState<(typeof expected)[number] | null>(null);
   const defaultPaidDate = (dueDate: string): ISODate => (dueDate <= today ? (dueDate as ISODate) : today);
   // One confirmation at a time: the button shows a spinner while the write is
@@ -284,14 +284,17 @@ export default function DashboardScreen() {
           onClose={() => setPaying(null)}
         />
       ) : null}
-      {/* Catch-up banner */}
-      {lastEntry.at != null && lastEntry.daysAgo != null && lastEntry.daysAgo >= 1 ? (
+      {/* Reconciliation nudge — shown only when payments are actually overdue and
+          awaiting confirmation (not on a stale "days since last entry" timer, which
+          lingered even with nothing to do). Derived from live data, so it clears
+          itself the moment the last item is confirmed. */}
+      {late.length > 0 ? (
         <Pressable onPress={() => router.push("/reconciliation")} accessibilityRole="button">
           <Card style={{ backgroundColor: palette.warning + "14", borderWidth: 0 }}>
             <Row>
               <History size={20} color={palette.warning} />
               <View style={{ flex: 1 }}>
-                <Body>{tr.dashboard.lastEntry(dateLabel(lastEntry.at), tr.dashboard.daysAgo(lastEntry.daysAgo))}</Body>
+                <Body>{tr.dashboard.pendingConfirm(late.length)}</Body>
                 <Body muted>{tr.dashboard.catchUp}</Body>
               </View>
               <ChevronRight size={18} color={palette.textMuted} />
@@ -300,7 +303,9 @@ export default function DashboardScreen() {
         </Pressable>
       ) : null}
 
-      {/* Hero balance */}
+      {/* Hero balance + a single month-end forecast line (tap to expand the
+          breakdown). One representation of the projected number, not the old
+          hero-chip AND a duplicate card. */}
       {bundle ? (
         <HeroCard>
           <Text style={[type.label, { color: "rgba(255,255,255,0.75)", textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
@@ -309,8 +314,10 @@ export default function DashboardScreen() {
           <Text style={[type.amountLg, { color: "#FFFFFF", fontSize: 38, marginTop: spacing.xs }]}>
             {formatMinor(bundle.actualBalanceMinor)}
           </Text>
-          {projected != null && projectedDelta != null ? (
-            <View
+          {hasForecast && projected != null ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setShowForecast((v) => !v)}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -323,25 +330,25 @@ export default function DashboardScreen() {
                 paddingVertical: spacing.xs + 2,
               }}
             >
-              {projectedDelta >= 0 ? (
+              {projectedDelta != null && projectedDelta >= 0 ? (
                 <TrendingUp size={14} color="#FFFFFF" />
               ) : (
                 <TrendingDown size={14} color="#FFFFFF" />
               )}
               <Text style={[type.amountSm, { color: "#FFFFFF" }]}>
-                {tr.dashboard.projectedBalance} · {formatMinor(projected)}
+                {tr.dashboard.forecastToggle} · {formatMinor(projected)}
               </Text>
-            </View>
+              {showForecast ? <ChevronUp size={15} color="#FFFFFF" /> : <ChevronDown size={15} color="#FFFFFF" />}
+            </Pressable>
           ) : null}
         </HeroCard>
       ) : null}
 
-      {/* Month-end forecast, shown as a plain waterfall so the number is obvious:
-          current balance + what's still coming in − what's still going out. */}
-      {bundle && projected != null && (incomingMinor > 0 || remainingFixedMinor > 0) ? (
+      {/* Breakdown, revealed on demand: current balance + what's still coming in
+          − what's still going out = the month-end estimate. */}
+      {bundle && showForecast && hasForecast && projected != null ? (
         <Card>
-          <Body muted>{tr.dashboard.forecastTitle}</Body>
-          <Body muted style={{ fontSize: 11, marginTop: 2, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
+          <Body muted style={{ fontSize: 12, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
           <Spread style={{ marginBottom: spacing.xs }}>
             <Body muted>{tr.dashboard.forecastCurrent}</Body>
             <Amount minor={bundle.actualBalanceMinor} />
