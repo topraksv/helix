@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectInstallmentPlans,
   extractDueDay,
+  isInstallmentCell,
   parseFormulaLiterals,
   parseInstallmentComment,
   parseMonthLabel,
@@ -9,6 +11,7 @@ import {
   parseWorkbook,
   planImportCell,
   type CellData,
+  type ParsedSheet,
   type RawCell,
 } from "../src/services/spreadsheet-import";
 import * as XLSX from "xlsx";
@@ -338,5 +341,94 @@ describe("extractDueDay", () => {
     expect(extractDueDay("Ev Kredisi")).toEqual({ label: "Ev Kredisi", dueDay: null });
     expect(extractDueDay("Araba/ Ulaşım")).toEqual({ label: "Araba/ Ulaşım", dueDay: null });
     expect(extractDueDay("2024 Bütçe")).toEqual({ label: "2024 Bütçe", dueDay: null }); // 2024 > 31
+  });
+});
+
+// --- installment plan collection across a workbook (item 8 wiring) ----------
+// Fictional template data; asserts the dedup / start-month / merge rules that a
+// real one-shot migration depends on.
+const col = (label: string) => ({ label, kindGuess: "expense" as const, isInvestment: false, dueDay: null });
+const cell = (comment: string | null): CellData => ({ valueMinor: 100, formulaParts: null, comment, commentParts: null });
+/** One-taksit-column sheet: [month, comment] rows. */
+const taksitSheet = (name: string, rows: [string, string | null][], label = "KK Taksitli Harcamalar"): ParsedSheet => ({
+  sheetName: name,
+  year: Number(rows[0][0].slice(0, 4)),
+  months: rows.map((r) => r[0]),
+  columns: [col(label)],
+  cells: rows.map((r) => [cell(r[1])]),
+  skippedColumns: [],
+  openingBalance: null,
+});
+
+describe("collectInstallmentPlans", () => {
+  it("dedupes a plan seen in every active month to ONE, with an invariant start", () => {
+    const sheet = taksitSheet("2026", [
+      ["2026-01", "══ Kart A ══\nRobot Süpürge  2.777,67  3/9"],
+      ["2026-02", "══ Kart A ══\nRobot Süpürge  2.777,67  4/9"],
+      ["2026-03", "══ Kart A ══\nRobot Süpürge  2.777,67  5/9"],
+    ]);
+    const plans = collectInstallmentPlans([sheet]);
+    expect(plans).toHaveLength(1);
+    expect(plans[0]).toEqual({
+      card: "Kart A",
+      name: "Robot Süpürge",
+      monthlyMinor: 277767,
+      total: 9,
+      startMonth: "2025-11", // 2026-01 minus (3-1)
+      columnLabel: "KK Taksitli Harcamalar",
+    });
+  });
+
+  it("merges the same purchase tracked under a renamed card (first card wins)", () => {
+    const older = taksitSheet("2025", [["2025-12", "-- Kart Eski --\nDizüstü  2.000,00  1/6"]]);
+    const newer = taksitSheet("2026", [["2026-01", "══ Kart Yeni ══\nDizüstü  2.000,00  2/6"]]);
+    // processed in workbook order → 2026 sheet first here
+    const plans = collectInstallmentPlans([newer, older]);
+    expect(plans).toHaveLength(1);
+    expect(plans[0].card).toBe("Kart Yeni"); // first mention wins
+    expect(plans[0].startMonth).toBe("2025-12");
+  });
+
+  it("keeps genuinely different purchases (name/amount/count/start) separate", () => {
+    const sheet = taksitSheet("2026", [
+      ["2026-01", "══ Kart A ══\nMobilya  500,00  1/3\nMobilya  900,00  1/3"], // same name, different amount
+    ]);
+    expect(collectInstallmentPlans([sheet])).toHaveLength(2);
+  });
+
+  it("excludes cards flagged informational", () => {
+    const sheet = taksitSheet("2026", [
+      ["2026-01", "══ Kart A ══\nÜrün  100,00  1/3\n══ Aile Kartı ══\nHediye  200,00  1/3"],
+    ]);
+    const plans = collectInstallmentPlans([sheet], { informationalCards: ["Aile Kartı"] });
+    expect(plans).toHaveLength(1);
+    expect(plans[0].card).toBe("Kart A");
+  });
+
+  it("skips excluded columns and non-selected years", () => {
+    const sheet = taksitSheet("2026", [
+      ["2025-06", "══ Kart A ══\nEski  100,00  1/3"],
+      ["2026-06", "══ Kart A ══\nYeni  200,00  1/3"],
+    ]);
+    expect(collectInstallmentPlans([sheet], { excludedLabels: ["KK Taksitli Harcamalar"] })).toHaveLength(0);
+    const only2026 = collectInstallmentPlans([sheet], { yearAllowed: (y) => y === 2026 });
+    expect(only2026.map((p) => p.name)).toEqual(["Yeni"]);
+  });
+
+  it("ignores non-installment columns even if a comment looks similar", () => {
+    const sheet: ParsedSheet = {
+      ...taksitSheet("2026", [["2026-01", "══ Kart A ══\nFatura  100,00  1/3"]]),
+      columns: [col("Faturalar")], // not a "…Taksitli…" column
+    };
+    expect(collectInstallmentPlans([sheet])).toHaveLength(0);
+  });
+});
+
+describe("isInstallmentCell", () => {
+  it("is true only for a taksit column whose comment has installment lines", () => {
+    expect(isInstallmentCell("KK Taksitli Harcamalar", "══ Kart A ══\nÜrün  100,00  1/3")).toBe(true);
+    expect(isInstallmentCell("Faturalar", "══ Kart A ══\nÜrün  100,00  1/3")).toBe(false); // wrong column
+    expect(isInstallmentCell("KK Taksitli Harcamalar", "Elektrik 436,30")).toBe(false); // no N/M
+    expect(isInstallmentCell("KK Taksitli Harcamalar", null)).toBe(false);
   });
 });

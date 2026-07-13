@@ -6,7 +6,7 @@
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
 import { fromDbShape, nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
-import { addMonthsToKey, clampDayToMonth, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
+import { clampDayToMonth, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { convertToTryMinor } from "../domain/fx";
 import { advanceDueDate } from "../domain/recurrence";
@@ -14,7 +14,7 @@ import { lookupRate } from "../services/fx-fetch";
 import { marketSellRateTry } from "../services/markets";
 import { findAutoConfirmable, findLate, generateExpected } from "../domain/expected";
 import type { Minor } from "../domain/money";
-import { parseInstallmentComment, planImportCell, type ParsedSheet } from "../services/spreadsheet-import";
+import { collectInstallmentPlans, isInstallmentCell, planImportCell, type ParsedSheet } from "../services/spreadsheet-import";
 import { suggestCategoryIcon } from "./category-icons";
 import type { ExpectedPaymentLike, PaymentSourceType, TransactionType } from "../domain/types";
 
@@ -681,17 +681,6 @@ export interface ImportRequest {
   informationalCards?: string[];
 }
 
-/** A card installment reconstructed from import comments, deduped across the
- *  many months it appears in (its start month is invariant, so the key is too). */
-interface ImportInstallmentSpec {
-  card: string;
-  name: string;
-  monthlyMinor: Minor;
-  total: number;
-  startMonth: MonthKey;
-  categoryId: string;
-}
-
 const importBatchKey = (year: number) => `import_batch:${year}`;
 const COLUMN_YEARS_KEY = "column_years";
 
@@ -771,14 +760,6 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     return b;
   };
 
-  // Installment plans reconstructed from "…Taksitli…" column comments. The same
-  // plan appears in every month it is active, so we dedupe by a deterministic id
-  // (its start month is invariant across mentions). Cards flagged informational
-  // ("ℹ️ not in totals") are skipped so they never hit the balance.
-  const installmentPlans = new Map<string, ImportInstallmentSpec>();
-  const cardNames = new Set<string>();
-  const informational = new Set((req.informationalCards ?? []).map((n) => n.toLocaleLowerCase("tr-TR")));
-
   for (const sheet of req.sheets) {
     const active = sheet.columns.map((c, i) => ({ ...c, index: i })).filter((c) => !req.excludedLabels.includes(c.label));
     const orderedCatIds = active.map((col) => ensureCategory(col.label, col.kindGuess));
@@ -798,29 +779,11 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         // later) instead of realized-but-future (omitted from the ledger).
         const effectiveDate = clampDayToMonth(year, monthOf(month), col.dueDay ?? 15);
         const status: "realized" | "pending" = effectiveDate <= today ? "realized" : "pending";
-        // A "Taksitli Harcamalar" cell stores its card installments in the
-        // comment. Turn each line into a real plan (self-scheduling), instead of
-        // one flat monthly aggregate on the 15th, and skip the cell's aggregate.
+        // A "…Taksitli…" cell stores its card installments in the comment; those
+        // become real self-scheduling plans (collected separately, below), so the
+        // cell's aggregate/cell-note is skipped to avoid double-counting.
         const cellData = sheet.cells[r][col.index];
-        if (/taksit/i.test(col.label) && cellData.comment) {
-          const notes = parseInstallmentComment(cellData.comment);
-          if (notes.length > 0) {
-            for (const note of notes) {
-              if (!note.card || informational.has(note.card.toLocaleLowerCase("tr-TR"))) continue;
-              const startMonth = addMonthsToKey(month, -(note.paidNo - 1));
-              // Dedupe on a cheap string key first (the plan appears in every
-              // month it is active); the deterministic id is hashed once per
-              // unique plan at write time, not once per mention. First mention
-              // wins the card (a plan may be tracked under a renamed card later).
-              const key = `${note.name.toLocaleLowerCase("tr-TR")}|${note.monthlyMinor}|${note.total}|${startMonth}`;
-              if (!installmentPlans.has(key)) {
-                cardNames.add(note.card);
-                installmentPlans.set(key, { card: note.card, name: note.name, monthlyMinor: note.monthlyMinor, total: note.total, startMonth, categoryId: catId });
-              }
-            }
-            continue; // installment cell handled by plans; no aggregate/cell note
-          }
-        }
+        if (isInstallmentCell(col.label, cellData.comment)) continue;
         const plan = planImportCell(cellData);
         if (!plan) continue;
         for (const item of plan.items) {
@@ -865,25 +828,31 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     }
   }
 
-  // Reconstructed installment cards → payment sources (create/match by name),
-  // then each plan's rows. All built in memory and flushed with the ledger rows
-  // in ONE write (deterministic ids → re-import converges, no dups).
+  // Reconstruct installment plans from the "…Taksitli…" comments (deduped across
+  // the months they appear in), create/match a payment source per card, then
+  // build each plan's rows. Everything is flushed with the ledger rows in ONE
+  // write below (deterministic ids → re-import converges, no dups).
+  const planSpecs = collectInstallmentPlans(req.sheets, {
+    excludedLabels: req.excludedLabels,
+    informationalCards: req.informationalCards,
+    yearAllowed,
+  });
   const sourceWrites: RowWrite[] = [];
-  for (const card of cardNames) {
-    const key = card.toLocaleLowerCase("tr-TR");
+  for (const spec of planSpecs) {
+    const key = spec.card.toLocaleLowerCase("tr-TR");
     if (sourceIdByName.has(key)) continue;
-    const id = await deterministicId(naturalKeys.importSource(userId, card));
+    const id = await deterministicId(naturalKeys.importSource(userId, spec.card));
     sourceIdByName.set(key, id);
     sourceWrites.push({
       table: "payment_sources",
       row: {
-        id, name: card, type: "credit_card", personId: req.selfId, dueDay: null, statementDay: null,
+        id, name: spec.card, type: "credit_card", personId: req.selfId, dueDay: null, statementDay: null,
         color: null, logoSource: "initials", logoRef: null, isActive: true, deletedAt: null,
       },
     });
   }
   const planRowBatches = await Promise.all(
-    [...installmentPlans.values()].map(async (spec) => {
+    planSpecs.map(async (spec) => {
       const planId = await deterministicId(naturalKeys.importInstallmentPlan(userId, spec.name, spec.monthlyMinor, spec.total, spec.startMonth));
       return buildPlanRows(planId, {
         title: spec.name,
@@ -898,13 +867,13 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         paymentSourceId: sourceIdByName.get(spec.card.toLocaleLowerCase("tr-TR")) ?? null,
         personId: req.selfId,
         personIsSelf: true,
-        categoryId: spec.categoryId,
+        categoryId: idByName.get(spec.columnLabel.toLocaleLowerCase("tr-TR")) ?? null,
         note: null,
         tryFactor: 1,
       }, today);
     }),
   );
-  imported += installmentPlans.size;
+  imported += planSpecs.length;
 
   const writes = [...catWrites, ...sourceWrites, ...txWrites, ...noteWrites, ...planRowBatches.flatMap((b) => b.rows)];
   if (writes.length > 0) await writeRows(userId, writes);
