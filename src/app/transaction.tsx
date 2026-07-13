@@ -8,13 +8,13 @@ import { addTransaction, createInstallmentPlan, updateTransaction } from "../dat
 import { useAllTransactions, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
-import { assertISODate, monthKeyOf, todayISO } from "../domain/dates";
+import { assertISODate, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
-import { tr } from "../i18n/tr";
-import { Badge, Body, Button, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented } from "../ui/components";
+import { monthLabel, tr } from "../i18n/tr";
+import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { kv } from "../lib/kv";
@@ -57,6 +57,11 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   // even when the modal mounts before the first query resolves.
   const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? null);
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
+  // When did it happen? New entries default to "month only" (dateless) — the
+  // month is what matters, a specific day is optional. An existing dateless row
+  // (isAggregate) reopens in month mode; a dated row in day mode.
+  const [dateMode, setDateMode] = useState<"month" | "day">(existing ? (existing.isAggregate ? "month" : "day") : "month");
+  const [monthKey, setMonthKey] = useState<MonthKey>(monthKeyOf(existing?.effectiveDate ?? todayISO()));
   const [dateStr, setDateStr] = useState(existing?.effectiveDate ?? todayISO());
   const [note, setNote] = useState(existing?.note ?? "");
   const [installment, setInstallment] = useState(false);
@@ -98,7 +103,12 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     .filter((c) => c.kind === kindForCategories)
     .map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }));
 
-  const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+  // Resolve the two date modes to one effective date + a dateless flag. Month
+  // mode anchors to the first of the month and marks the row dateless (shown by
+  // month, kept out of "upcoming"); day mode uses the exact day.
+  const dateless = dateMode === "month";
+  const effectiveDate = dateless ? (`${monthKey}-01` as string) : dateStr;
+  const dateValid = dateless || /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
   const count = Number(countStr);
   const paid = Number(paidStr);
   const installmentValid =
@@ -113,7 +123,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     if (!canSave || !personId) return;
     setBusy(true);
     try {
-      assertISODate(dateStr);
+      assertISODate(effectiveDate);
       const fxRate = currency === "TRY" ? null : String(effectiveRateTry);
       if (isEdit) {
         await updateTransaction(userId, existing as unknown as Record<string, unknown>, {
@@ -122,7 +132,8 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           currency,
           fxRate,
           amountTryMinor: tryMinor!,
-          effectiveDate: dateStr,
+          effectiveDate,
+          isAggregate: dateless,
           categoryId,
           paymentSourceId: sourceId,
           personId,
@@ -145,7 +156,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           startMonth:
             paid > 0
               ? deriveStartMonth(paid, monthKeyOf(todayISO()), sources.find((s) => s.id === sourceId)?.dueDay ?? null, todayISO())
-              : monthKeyOf(dateStr),
+              : dateless ? monthKey : monthKeyOf(dateStr),
           dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
           paymentSourceId: sourceId,
           personId,
@@ -161,7 +172,8 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           currency,
           fxRate,
           amountTryMinor: tryMinor!,
-          effectiveDate: dateStr,
+          effectiveDate,
+          isAggregate: dateless,
           categoryId,
           paymentSourceId: sourceId,
           personId,
@@ -257,10 +269,30 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         </>
       ) : null}
 
-      <DateField label={tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
-      <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
-        {dateValid && dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
-      </Body>
+      <Label>{tr.tx.whenLabel}</Label>
+      <Segmented
+        options={[
+          { value: "month", label: tr.tx.monthOnly },
+          { value: "day", label: tr.tx.specificDay },
+        ]}
+        value={dateMode}
+        onChange={setDateMode}
+      />
+      {dateless ? (
+        <>
+          <MonthStepper value={monthKey} onChange={setMonthKey} />
+          <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
+            {tr.tx.monthOnlyHint(monthLabel(monthKey))}
+          </Body>
+        </>
+      ) : (
+        <>
+          <DateField label={tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
+          <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
+            {dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
+          </Body>
+        </>
+      )}
 
       {!isEdit && entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
         <View style={{ marginVertical: spacing.md }}>

@@ -6,7 +6,7 @@
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
 import { fromDbShape, nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
-import { clampDayToMonth, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
+import { todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { convertToTryMinor } from "../domain/fx";
 import { advanceDueDate } from "../domain/recurrence";
@@ -192,6 +192,7 @@ export interface TransactionPatch {
   fxRate: string | null;
   amountTryMinor: Minor;
   effectiveDate: ISODate;
+  isAggregate?: boolean;
   categoryId: string | null;
   paymentSourceId: string | null;
   personId: string;
@@ -776,11 +777,13 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       for (let ci = 0; ci < active.length; ci++) {
         const col = active[ci];
         const catId = orderedCatIds[ci];
-        // Place the row on the column's real due day when the header carried one
-        // ("Elektrik 06" → the 6th); otherwise anchor mid-month. Status derives
-        // from the date so future months import as pending (visible + realized
-        // later) instead of realized-but-future (omitted from the ledger).
-        const effectiveDate = clampDayToMonth(year, monthOf(month), col.dueDay ?? 15);
+        // Excel cells carry no day — only a month. Anchor every imported row to
+        // the FIRST of its month and mark it dateless (isAggregate below), so the
+        // current month reads as realized (counts in the balance + this month's
+        // analytics) instead of a mid-month future date that stays pending and
+        // pollutes "upcoming payments". Status still derives from the date, so a
+        // genuinely future month imports as pending (shown, realized on arrival).
+        const effectiveDate = `${month}-01`;
         const status: "realized" | "pending" = effectiveDate <= today ? "realized" : "pending";
         // A "…Taksitli…" cell stores its card installments in the comment; those
         // become real self-scheduling plans (collected separately, below), so the
@@ -814,7 +817,9 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
               installmentPlanId: null,
               installmentNo: null,
               subscriptionId: null,
-              isAggregate: item.isAggregate,
+              // Every imported row is dateless (month-level): shown by month and
+              // never surfaced as an upcoming payment, whatever the cell shape.
+              isAggregate: true,
               note: item.note,
               deletedAt: null,
             },
