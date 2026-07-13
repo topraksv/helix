@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  confirmEffectiveDate,
   findAutoConfirmable,
   findLate,
   generateExpected,
@@ -118,5 +119,44 @@ describe("reminder window", () => {
     expect(isDueWithin(expected({ dueDate: "2026-07-09" }), "2026-07-05", 3)).toBe(false);
     expect(isDueWithin(expected({ dueDate: "2026-07-05" }), "2026-07-05", 0)).toBe(true);
     expect(isDueWithin(expected({ dueDate: "2026-07-04" }), "2026-07-05", 3)).toBe(false); // past → late, not upcoming
+  });
+});
+
+describe("confirmEffectiveDate", () => {
+  it("uses the due date once it has passed", () => {
+    expect(confirmEffectiveDate("2026-07-10", "2026-07-15")).toBe("2026-07-10");
+  });
+
+  it("uses today for a not-yet-due item (never a future ledger date)", () => {
+    expect(confirmEffectiveDate("2026-07-20", "2026-07-15")).toBe("2026-07-15");
+  });
+
+  it("uses today when due exactly today", () => {
+    expect(confirmEffectiveDate("2026-07-15", "2026-07-15")).toBe("2026-07-15");
+  });
+
+  it("honours a manual early paidOn (due the 15th, paid the 12th)", () => {
+    // The core B1 case: a bill due in the future, paid early — it must realize
+    // on the day it was actually paid, not the due date and not today.
+    expect(confirmEffectiveDate("2026-07-15", "2026-07-13", "2026-07-12")).toBe("2026-07-12");
+  });
+
+  it("honours a manual paidOn that differs from an already-passed due date", () => {
+    expect(confirmEffectiveDate("2026-07-10", "2026-07-15", "2026-07-12")).toBe("2026-07-12");
+  });
+
+  it("accepts a paidOn equal to today", () => {
+    expect(confirmEffectiveDate("2026-07-20", "2026-07-15", "2026-07-15")).toBe("2026-07-15");
+  });
+
+  it("rejects a future paidOn and falls back to the default", () => {
+    // You cannot have already paid a bill on a day that hasn't arrived.
+    expect(confirmEffectiveDate("2026-07-20", "2026-07-15", "2026-07-18")).toBe("2026-07-15");
+    expect(confirmEffectiveDate("2026-07-10", "2026-07-15", "2026-07-18")).toBe("2026-07-10");
+  });
+
+  it("ignores a null/undefined paidOn", () => {
+    expect(confirmEffectiveDate("2026-07-20", "2026-07-15", null)).toBe("2026-07-15");
+    expect(confirmEffectiveDate("2026-07-20", "2026-07-15", undefined)).toBe("2026-07-15");
   });
 });

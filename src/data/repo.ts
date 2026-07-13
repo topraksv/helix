@@ -12,7 +12,7 @@ import { convertToTryMinor } from "../domain/fx";
 import { advanceDueDate } from "../domain/recurrence";
 import { lookupRate } from "../services/fx-fetch";
 import { marketSellRateTry } from "../services/markets";
-import { findAutoConfirmable, findLate, generateExpected } from "../domain/expected";
+import { confirmEffectiveDate, findAutoConfirmable, findLate, generateExpected } from "../domain/expected";
 import type { Minor } from "../domain/money";
 import { collectInstallmentPlans, isInstallmentCell, planImportCell, type ParsedSheet } from "../services/spreadsheet-import";
 import { suggestCategoryIcon } from "./category-icons";
@@ -507,7 +507,7 @@ async function getExpectedRow(id: string): Promise<ExpectedRow | null> {
 export async function confirmExpected(
   userId: string,
   expectedId: string,
-  opts: { actualAmountMinor?: Minor; categoryId?: string | null; personId: string; auto?: boolean },
+  opts: { actualAmountMinor?: Minor; categoryId?: string | null; personId: string; auto?: boolean; paidOn?: ISODate | null },
 ): Promise<void> {
   const row = await getExpectedRow(expectedId);
   if (!row || row.status === "paid") return;
@@ -527,6 +527,9 @@ export async function confirmExpected(
   // item) upserts the same transaction row instead of creating a duplicate.
   const txId = await deterministicId(naturalKeys.confirmTx(row.id));
   const today = todayISO();
+  // Ledger-affecting date: due date (once passed) / today, unless the user
+  // recorded a manual/early payment via `paidOn`. See confirmEffectiveDate.
+  const effectiveDate = confirmEffectiveDate(row.due_date, today, opts.paidOn);
   const sqlite = await getSqliteAsync();
 
   const writes: RowWrite[] = [
@@ -540,7 +543,7 @@ export async function confirmExpected(
         fxRate: null,
         amountTryMinor,
         entryDate: today,
-        effectiveDate: row.due_date <= today ? row.due_date : today,
+        effectiveDate,
         status: "realized",
         categoryId: opts.categoryId ?? null,
         paymentSourceId: null,
