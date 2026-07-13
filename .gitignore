@@ -10,6 +10,12 @@ dist-local/
 web-build/
 expo-env.d.ts
 
+# local test artifacts / scratch (headless screenshots, browser profiles, sample sheets)
+vshots/
+profile-*/
+*.xlsm
+*.xlsx
+
 # Native
 .kotlin/
 *.orig.*
