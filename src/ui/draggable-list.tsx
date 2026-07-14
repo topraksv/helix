@@ -13,6 +13,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, View, type GestureResponderHandlers, type LayoutChangeEvent } from "react-native";
+import { mediumTap, selectionTap } from "./haptics";
 
 export interface DragHandle {
   /** Spread onto the grip element to make it the drag initiator. */
@@ -72,6 +73,7 @@ export function DraggableList<T>({
     curIndex.current = idx;
     dragY.setValue(0);
     setActiveKey(key);
+    mediumTap(); // picked the row up
     onDragStateChange?.(true);
   };
   api.current.move = (dy: number) => {
@@ -85,6 +87,7 @@ export function DraggableList<T>({
       next.splice(target, 0, moved);
       curIndex.current = target;
       setOrder(next);
+      selectionTap(); // crossed into a new slot
     }
     // Keep the floating row under the finger even though its flow slot changed.
     dragY.setValue((startIndex.current - curIndex.current) * H + dy);

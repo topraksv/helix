@@ -11,6 +11,8 @@ import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 import { Button, FadeIn } from "./components";
+import { lightTap } from "./haptics";
+import { pushOverlay } from "./keyboard";
 
 type Op = "+" | "-" | "×" | "÷";
 
@@ -212,7 +214,10 @@ export function CalculatorPad({
                 <Pressable
                   key={key}
                   accessibilityRole="button"
-                  onPress={() => press(key)}
+                  onPress={() => {
+                    lightTap();
+                    press(key);
+                  }}
                   style={({ pressed }) => [
                     {
                       flex: key === "0" ? 2.09 : 1,
@@ -253,6 +258,7 @@ export function CalculatorPad({
 /** Popup calculator for amount fields; result flows back into the field. */
 export function CalculatorModal({ onClose, onResult }: { onClose: () => void; onResult: (major: number) => void }) {
   const { palette } = useTheme();
+  useEffect(() => pushOverlay(), []); // suppress form Enter-submit while open
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <Pressable

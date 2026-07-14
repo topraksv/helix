@@ -14,6 +14,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
 import { Pin, type LucideIcon } from "lucide-react-native";
+import { lightTap } from "./haptics";
 import { spacing, type, useTheme } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
@@ -237,7 +238,7 @@ export function StickyTable({
         key={c.key}
         style={{ width: cellWidth, height: headerHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", paddingHorizontal: spacing.sm }}
       >
-        <Pressable disabled={!labelAction} onPress={labelAction ? () => labelAction(c.key) : undefined}>
+        <Pressable disabled={!labelAction} onPress={labelAction ? () => { lightTap(); labelAction(c.key); } : undefined}>
           <Text
             style={[type.label, { color: isCurrent ? palette.primary : palette.textMuted, textAlign: "center" }]}
             numberOfLines={labelLines}
@@ -249,7 +250,7 @@ export function StickyTable({
         </Pressable>
         {both ? (
           <Pressable
-            onPress={() => onTogglePin!(c.key)}
+            onPress={() => { lightTap(); onTogglePin!(c.key); }}
             hitSlop={16}
             accessibilityRole="button"
             accessibilityLabel={c.label}
@@ -310,7 +311,7 @@ export function StickyTable({
               >
                 <Pressable
                   disabled={!r.onLabelPress}
-                  onPress={r.onLabelPress}
+                  onPress={r.onLabelPress ? () => { lightTap(); r.onLabelPress!(); } : undefined}
                   accessibilityRole={r.onLabelPress ? "link" : undefined}
                   style={[{ width: headWidth }, cellCenter]}
                 >
@@ -380,7 +381,7 @@ function PinnedHeader({ label, width, onUnpin }: { label: string; width: number;
   return (
     <Pressable
       disabled={!onUnpin}
-      onPress={onUnpin}
+      onPress={onUnpin ? () => { lightTap(); onUnpin(); } : undefined}
       style={{ width, justifyContent: "center", paddingHorizontal: spacing.sm, flexDirection: "row", alignItems: "center", gap: 4 }}
     >
       <Pin size={11} color={palette.primary} fill={palette.primary} />

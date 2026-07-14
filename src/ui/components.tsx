@@ -26,17 +26,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
-import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
+import { lightTap, selectionTap } from "./haptics";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
-
-function lightTap() {
-  if (Platform.OS === "ios") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-}
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -770,7 +766,7 @@ export function Segmented<T extends string>({
           <Pressable
             key={option.value}
             onPress={() => {
-              lightTap();
+              selectionTap();
               onChange(option.value);
             }}
             accessibilityRole="button"
@@ -832,7 +828,7 @@ export function ChipPicker<T extends string>({
           <Pressable
             key={option.value}
             onPress={() => {
-              lightTap();
+              selectionTap();
               if (multi) onToggle?.(option.value);
               else onChange?.(option.value);
             }}
