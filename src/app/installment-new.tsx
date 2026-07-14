@@ -12,6 +12,7 @@ import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react-native";
 import { Body, Button, ChipPicker, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { scheduleSync } from "../sync/engine";
@@ -120,6 +121,8 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       close();
     })();
   };
+
+  useSubmitOnEnter(() => void save(), valid && !busy);
 
   return (
     <Screen>

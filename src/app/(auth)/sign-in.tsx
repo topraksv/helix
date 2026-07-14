@@ -4,6 +4,7 @@ import { AlertCircle, CloudOff } from "lucide-react-native";
 import { useSession } from "../../auth/session";
 import { isSupabaseConfigured } from "../../sync/supabase";
 import { Body, Button, Field, Screen } from "../../ui/components";
+import { useSubmitOnEnter } from "../../ui/keyboard";
 import { BrandMark } from "../../ui/brand";
 import { radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
@@ -36,6 +37,8 @@ export default function SignInScreen() {
     setError(null);
     setMode(mode === "signIn" ? "signUp" : "signIn");
   };
+
+  useSubmitOnEnter(() => void submit(), canSubmit);
 
   return (
     <Screen scroll maxWidth={440}>

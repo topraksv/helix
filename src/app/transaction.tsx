@@ -15,6 +15,7 @@ import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fet
 import { scheduleSync } from "../sync/engine";
 import { monthLabel, tr } from "../i18n/tr";
 import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented } from "../ui/components";
+import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { kv } from "../lib/kv";
@@ -197,6 +198,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       setBusy(false);
     }
   };
+
+  // Desktop: Enter saves (unless the note textarea or a popup has focus).
+  useSubmitOnEnter(() => void save(false), canSave && !busy);
 
   return (
     <Screen>

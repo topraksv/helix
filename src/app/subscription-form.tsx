@@ -13,6 +13,7 @@ import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
 import { Body, Button, ChipPicker, Field, Label, MoneyField, Screen, Segmented, Spread, Toggle } from "../ui/components";
+import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -118,6 +119,8 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       setBusy(false);
     }
   };
+
+  useSubmitOnEnter(() => void save(), valid && !busy);
 
   const namePlaceholder = useRotatingPlaceholder(placeholderPools.subscription);
   return (
