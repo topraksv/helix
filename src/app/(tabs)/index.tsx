@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { distributionForRange, fixedVsVariable } from "../../domain/analytics";
 import { projectedBalance } from "../../domain/balance";
-import { firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
+import { clampDayToMonth, firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { dateLabel, monthLabel, tr } from "../../i18n/tr";
 import {
@@ -17,6 +17,7 @@ import {
   usePendingExpected,
   usePersons,
   useRecurringIncomes,
+  useSources,
   useSubscriptions,
   useUserId,
 } from "../../data/hooks";
@@ -106,6 +107,7 @@ export default function DashboardScreen() {
   const expected = usePendingExpected();
   const subscriptions = useSubscriptions();
   const incomes = useRecurringIncomes();
+  const sources = useSources();
   const router = useRouter();
   const colors = useSeriesColors();
   const undo = useUndo();
@@ -170,10 +172,19 @@ export default function DashboardScreen() {
         date: e.dueDate,
       })),
     ...txLike
-      // Aggregates are whole-month totals (bulk / cell entries anchored to a
-      // nominal mid-month day), NOT scheduled individual payments — they must
-      // never appear as "upcoming payments".
-      .filter((t) => t.personIsSelf && !t.isAggregate && t.status === "pending" && t.effectiveDate > today && daysBetween(today, t.effectiveDate) <= 31)
+      // Aggregates are whole-month totals (bulk / cell entries), and installment
+      // rows belong to a card statement (handled per-card below) — neither is a
+      // standalone scheduled payment, so keep both out of the individual list.
+      // What remains: genuine future-dated one-off entries the user scheduled.
+      .filter(
+        (t) =>
+          t.personIsSelf &&
+          !t.isAggregate &&
+          t.installmentPlanId == null &&
+          t.status === "pending" &&
+          t.effectiveDate > today &&
+          daysBetween(today, t.effectiveDate) <= 31,
+      )
       .map((t) => ({
         key: t.id,
         kind: "tx" as const,
@@ -184,6 +195,32 @@ export default function DashboardScreen() {
         currency: "TRY",
         date: t.effectiveDate,
       })),
+    // One consolidated statement per credit card — you pay the card once, not
+    // each purchase. Only for cards that HAVE a due day; a card with no known
+    // due date shows nothing (never a fabricated "in N days"). The amount is the
+    // card's next unpaid statement month (its earliest pending installments).
+    ...sources
+      .filter((s) => s.type === "credit_card" && s.dueDay != null)
+      .flatMap((card) => {
+        const charges = txLike.filter(
+          (t) => t.personIsSelf && t.paymentSourceId === card.id && t.type === "expense" && t.status === "pending" && t.effectiveDate > today,
+        );
+        if (charges.length === 0) return [];
+        const statementMonth = charges.reduce((m, t) => (monthKeyOf(t.effectiveDate) < m ? monthKeyOf(t.effectiveDate) : m), monthKeyOf(charges[0].effectiveDate));
+        const total = charges.filter((t) => monthKeyOf(t.effectiveDate) === statementMonth).reduce((sum, t) => sum + t.amountTryMinor, 0);
+        const dueDate = clampDayToMonth(yearOf(statementMonth), monthOf(statementMonth), card.dueDay!);
+        if (dueDate < today || daysBetween(today, dueDate) > 45) return [];
+        return [{
+          key: `card-${card.id}`,
+          kind: "tx" as const,
+          direction: "out" as const,
+          name: card.name,
+          typeLabel: tr.dashboard.cardStatement,
+          amountMinor: total,
+          currency: "TRY",
+          date: dueDate,
+        }];
+      }),
   ]
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 12);

@@ -156,6 +156,7 @@ export const tr = {
     upcoming: "Yaklaşan Ödemeler",
     upcomingHint: "Otomatik ödeme olsun olmasın, önümüzdeki günlerde ödeyeceklerin: abonelikler, düzenli gelirler ve ileri tarihli işlemler.",
     scheduledTx: "İleri tarihli işlem",
+    cardStatement: "Kredi kartı ödemesi",
     late: "Geciken",
     expectedIncome: "Beklenen Gelir",
     markPaid: "Ödendi",
