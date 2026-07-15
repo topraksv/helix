@@ -10,9 +10,10 @@ describe("standalone upcoming transactions", () => {
       tx({ id: "cash-bill", type: "expense", amountTryMinor: 10_00, status: "pending", effectiveDate: "2026-07-20" }),
       tx({ id: "card-single", type: "expense", amountTryMinor: 20_00, status: "pending", effectiveDate: "2026-07-20", paymentSourceId: "card-1" }),
       tx({ id: "card-installment", type: "expense", amountTryMinor: 30_00, status: "pending", effectiveDate: "2026-07-21", paymentSourceId: "card-1", installmentPlanId: "plan-1" }),
+      tx({ id: "bank-loan", type: "expense", amountTryMinor: 35_00, status: "pending", effectiveDate: "2026-07-21", paymentSourceId: "bank-1", installmentPlanId: "plan-2" }),
       tx({ id: "aggregate", type: "expense", amountTryMinor: 40_00, status: "pending", effectiveDate: "2026-07-22", isAggregate: true }),
     ];
-    expect(standaloneUpcomingTransactions(rows, new Set(["card-1"]), TODAY).map((row) => row.id)).toEqual(["cash-bill"]);
+    expect(standaloneUpcomingTransactions(rows, new Set(["card-1"]), TODAY).map((row) => row.id)).toEqual(["cash-bill", "bank-loan"]);
   });
 });
 

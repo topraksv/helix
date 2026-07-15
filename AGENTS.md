@@ -68,6 +68,8 @@ agent-to-agent communication that did not occur.
   expenses are installment/subscription-linked, and ordinary expenses default
   to variable. Upcoming card charges collapse into one dated statement per
   card; cards without a real due day never get a synthetic payment date.
+  Non-card loan/installment rows remain standalone obligations on their real
+  scheduled dates.
 - **Current-balance reconciliation uses `balance_adjustments`.** It replaces one
   deterministic row per day; never rewrite the opening/start month to match a
   current balance. Adjustments are separate from income/expense analytics,

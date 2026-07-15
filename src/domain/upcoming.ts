@@ -22,8 +22,9 @@ function daysBetween(a: ISODate, b: ISODate): number {
 
 /**
  * A credit-card charge is never a standalone upcoming payment: the user pays
- * one statement per card. Aggregates and installment rows are likewise not
- * one-off obligations.
+ * one statement per card. Month-only aggregates have no real due date. A
+ * non-card loan/installment still is a standalone obligation and keeps its
+ * explicitly scheduled effective date.
  */
 export function standaloneUpcomingTransactions(
   transactions: TxLike[],
@@ -35,7 +36,6 @@ export function standaloneUpcomingTransactions(
     (tx) =>
       tx.personIsSelf &&
       !tx.isAggregate &&
-      tx.installmentPlanId == null &&
       (tx.paymentSourceId == null || !creditCardIds.has(tx.paymentSourceId)) &&
       tx.status === "pending" &&
       tx.effectiveDate > today &&
