@@ -20,10 +20,11 @@ lags behind them.
 
 ## Active working tree
 
-The repository-wide remediation requested on 2026-07-15 is in progress. Package
-1 closes the critical account-switch/freeze data-loss findings. Remaining audit
-items below are being completed as separately verified and shipped packages.
-Always re-check `git status`; Git remains authoritative.
+The repository-wide remediation requested on 2026-07-15 is in progress. The
+account lifecycle, sync ordering, financial classification, import/restore,
+derived obligations/references and credit-card statement packages are shipped.
+Remaining audit items below are being completed as separately verified and
+shipped packages. Always re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -84,7 +85,7 @@ diff and running checks proportionate to the change.
 
 ### 2026-07-15 — Codex (credit-card statement periods package)
 
-- Base `7dc353b`, branch `main`; package verification/shipping is in progress.
+- Base `7dc353b`, branch `main`; shipped as `79a6a21`.
 - Added synced, immutable card statement periods plus separate purchase and
   ledger-effective dates. New/onboarding/imported cards require cut-off and due
   days in both UI and repository validation. Single charges, installments and
@@ -99,8 +100,13 @@ diff and running checks proportionate to the change.
   links. JSON backup validation, CSV export, Excel cycle capture, statement
   history UI and shared date display were updated. Pure cycle/date tests cover
   cut-off boundaries, cross-month due dates and short months.
-- Current checks: typecheck, 19 files/173 tests and Expo lint pass. Static export,
-  Playwright, migration publish, commit/push/web/OTA remain to be recorded.
+- Typecheck, 19 files/173 tests, Expo lint and static export passed. Playwright
+  rendered the exported sign-in route at 320/390/1280 px without browser errors
+  or horizontal overflow. Supabase migrations 2–4 were applied and the linked
+  local/remote migration histories match.
+- Pushed to `main`; GitHub web run `29441674489` succeeded and production
+  payment-source settings returned HTTP 200. EAS preview update group
+  `439e0192-2dc5-4277-a35e-6aa2e84b7957` was published for iOS and Android.
 
 ### 2026-07-15 — Codex (expected lifecycle and references package)
 
