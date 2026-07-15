@@ -38,6 +38,7 @@ export interface TxLike {
   id: string;
   type: TransactionType;
   amountTryMinor: Minor;
+  purchaseDate?: ISODate | null;
   effectiveDate: ISODate;
   status: TransactionStatus;
   categoryId: string | null;
@@ -47,8 +48,17 @@ export interface TxLike {
   paymentSourceId: string | null;
   personIsSelf: boolean;
   installmentPlanId: string | null;
+  cardStatementId?: string | null;
   subscriptionId: string | null;
   isAggregate: boolean;
+}
+
+export interface CardStatementLike {
+  id: string;
+  paymentSourceId: string;
+  periodMonth: MonthKey;
+  statementDate: ISODate;
+  dueDate: ISODate;
 }
 
 export interface AdjustmentLike {

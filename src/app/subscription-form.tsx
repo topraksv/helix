@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
+import { CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
 import { useCategories, usePersons, useSources, useSubscriptions, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
 import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
@@ -71,6 +71,11 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const billingDay = Number(billingDayStr);
   const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);
   const trialValid = !isTrial || trialDate != null;
+  const selectedSource = sources.find((source) => source.id === sourceId);
+  const sourceValid = !selectedSource || selectedSource.type !== "credit_card" || Boolean(
+    selectedSource.statementDay != null && selectedSource.statementDay >= 1 && selectedSource.statementDay <= 31 &&
+    selectedSource.dueDay != null && selectedSource.dueDay >= 1 && selectedSource.dueDay <= 31
+  );
   const baseValid =
     name.trim() !== "" &&
     amountMinor != null &&
@@ -81,7 +86,8 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     Number.isInteger(intervalMonths) &&
     intervalMonths >= 1 &&
     trialValid &&
-    personId != null;
+    personId != null &&
+    sourceValid;
   const expenseCategories = categories.filter((category) => category.kind === "expense");
   const selectedCategoryId = expenseCategories.some((category) => category.id === categoryId) ? categoryId : null;
 
@@ -140,7 +146,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       await persist(selectedCategoryId);
     } catch (e) {
       console.error("[subscription.save]", e);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
+      void appAlert(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed, tr.errors.title);
     } finally {
       finishSave();
     }
@@ -247,6 +253,12 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         <>
           <Label>{tr.tx.source}</Label>
           <ChipPicker options={sources.map((s) => ({ value: s.id, label: s.name }))} value={sourceId} onChange={setSourceId} />
+          {!sourceValid ? (
+            <>
+              <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
+              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/(tabs)/settings/payment-sources")} />
+            </>
+          ) : null}
         </>
       ) : null}
       {persons.length > 1 ? (

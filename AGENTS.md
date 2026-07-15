@@ -91,8 +91,11 @@ agent-to-agent communication that did not occur.
 - **Analytics follows transaction type, not category appearance.** Expenses
   alone feed expense totals/distribution; transfers stay separate. Fixed
   expenses are installment/subscription-linked, and ordinary expenses default
-  to variable. Upcoming card charges collapse into one dated statement per
-  card; cards without a real due day never get a synthetic payment date.
+  to variable. Credit cards require both statement and due days. Purchases keep
+  their real `purchase_date`, belong to a persisted `credit_card_statements`
+  period, and affect the ledger only on that statement's `due_date`. Upcoming
+  charges collapse by the persisted statement; incomplete/ambiguous legacy
+  rows never get a synthetic payment date.
   Non-card loan/installment rows remain standalone obligations on their real
   scheduled dates.
 - **Current-balance reconciliation uses `balance_adjustments`.** It replaces one

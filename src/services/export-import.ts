@@ -28,12 +28,14 @@ export async function buildExportBundle(userId: string): Promise<ExportBundle> {
 export async function buildTransactionsCsv(userId: string): Promise<string> {
   const sqlite = await getSqliteAsync();
   const rows = await sqlite.getAllAsync<Record<string, unknown>>(
-    `SELECT t.effective_date, t.entry_date, t.type, t.status, t.amount_minor, t.currency, t.amount_try_minor,
-            c.name as category, ps.name as source, p.name as person, t.installment_no, t.is_aggregate, t.note
+    `SELECT t.purchase_date, t.effective_date, t.entry_date, t.type, t.status, t.amount_minor, t.currency, t.amount_try_minor,
+            c.name as category, ps.name as source, p.name as person, t.installment_no, t.is_aggregate, t.note,
+            cs.period_month, cs.statement_date
      FROM transactions t
      LEFT JOIN categories c ON c.id = t.category_id
      LEFT JOIN payment_sources ps ON ps.id = t.payment_source_id
      LEFT JOIN persons p ON p.id = t.person_id
+     LEFT JOIN credit_card_statements cs ON cs.id = t.card_statement_id AND cs.deleted_at IS NULL
      WHERE t.user_id = ? AND t.deleted_at IS NULL
      ORDER BY t.effective_date`,
     [userId] as never[],
@@ -44,10 +46,13 @@ export async function buildTransactionsCsv(userId: string): Promise<string> {
     const s = String(v ?? "").replace(/[\n;]/g, " ");
     return /^[=+@\t-]/.test(s) ? `'${s}` : s;
   };
-  const header = "tarih;giris_tarihi;tur;durum;tutar;para_birimi;tutar_try;kategori;kaynak;kisi;taksit_no;toplu;not";
+  const header = "harcama_tarihi;odeme_tarihi;ekstre_donemi;ekstre_kesim_tarihi;giris_tarihi;tur;durum;tutar;para_birimi;tutar_try;kategori;kaynak;kisi;taksit_no;toplu;not";
   const lines = rows.map((r) =>
     [
+      r.purchase_date ?? "",
       r.effective_date,
+      r.period_month ?? "",
+      r.statement_date ?? "",
       r.entry_date,
       r.type,
       r.status,

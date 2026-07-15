@@ -27,3 +27,9 @@ cross UI, local DB, and sync, so they are verified by hand before a release.
 11. **Backup:** export JSON → import into a clean install → data matches 1:1.
 12. **Theme/notifications:** walk every screen in dark and light theme; grant notification
     permission and verify an upcoming-payment notification is scheduled (Settings → lead days).
+13. **Credit-card statements:** create a card with cut-off 25 / due 5 → add
+    purchases on the 25th and 26th → verify they land in consecutive statement
+    periods and affect the ledger on 5 August / 5 September, not on purchase
+    day. The dashboard must show one total per persisted statement. Edit the
+    card cycle and confirm old periods/dates stay unchanged. A legacy card with
+    missing dates must block new charges without inventing an upcoming date.

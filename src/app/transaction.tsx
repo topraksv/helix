@@ -3,17 +3,18 @@
 
 import React, { useMemo, useState } from "react";
 import { View } from "react-native";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { addTransaction, createInstallmentPlan, updateTransaction } from "../data/repo";
+import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
 import { useAllTransactions, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
+import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
 import { formatMinor } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
-import { monthLabel, tr } from "../i18n/tr";
+import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
@@ -33,6 +34,9 @@ export default function TransactionModal() {
   // Editing: wait for the row to load, then key by id so state initializers
   // see the real values.
   if (id && !existing) return <Screen scroll={false}>{null}</Screen>;
+  if (existing?.installmentPlanId) {
+    return <Redirect href={{ pathname: "/installment-new", params: { id: existing.installmentPlanId } }} />;
+  }
   return <TransactionForm key={existing?.id ?? "new"} existing={existing} />;
 }
 
@@ -63,8 +67,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   // month is what matters, a specific day is optional. An existing dateless row
   // (isAggregate) reopens in month mode; a dated row in day mode.
   const [dateMode, setDateMode] = useState<"month" | "day">(existing ? (existing.isAggregate ? "month" : "day") : "month");
-  const [monthKey, setMonthKey] = useState<MonthKey>(monthKeyOf(existing?.effectiveDate ?? todayISO()));
-  const [dateStr, setDateStr] = useState(existing?.effectiveDate ?? todayISO());
+  const initialOccurrenceDate = existing?.purchaseDate ?? existing?.effectiveDate ?? todayISO();
+  const [monthKey, setMonthKey] = useState<MonthKey>(monthKeyOf(initialOccurrenceDate));
+  const [dateStr, setDateStr] = useState(initialOccurrenceDate);
   const [note, setNote] = useState(existing?.note ?? "");
   const [installment, setInstallment] = useState(false);
   const [countStr, setCountStr] = useState("2");
@@ -110,10 +115,17 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     .filter((c) => c.kind === kindForCategories)
     .map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }));
 
+  const selectedSource = sources.find((source) => source.id === sourceId);
+  const isCreditCardExpense = entryType === "expense" && selectedSource?.type === "credit_card";
+  const cardCycle = selectedSource
+    ? { statementDay: selectedSource.statementDay, dueDay: selectedSource.dueDay }
+    : { statementDay: null, dueDay: null };
+  const cardCycleValid = !isCreditCardExpense || isValidCardCycle(cardCycle);
+
   // Resolve the two date modes to one effective date + a dateless flag. Month
   // mode anchors to the first of the month and marks the row dateless (shown by
   // month, kept out of "upcoming"); day mode uses the exact day.
-  const dateless = dateMode === "month";
+  const dateless = dateMode === "month" && !isCreditCardExpense;
   const effectiveDate = dateless ? (`${monthKey}-01` as string) : dateStr;
   const dateValid = dateless || /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
   const count = Number(countStr);
@@ -122,7 +134,12 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     !installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
   // A category is mandatory for every entry (no "uncategorized" rows).
   const canSave =
-    amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid && categoryId != null && !(installment && isReversal);
+    amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid && categoryId != null &&
+    cardCycleValid && !(installment && isReversal);
+
+  const cardStatementPreview = isCreditCardExpense && isValidCardCycle(cardCycle) && dateValid
+    ? statementForPurchase(dateStr, cardCycle)
+    : null;
 
   const fail = (msg: string) => void appAlert(msg, tr.errors.title);
 
@@ -163,7 +180,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           startMonth:
             paid > 0
               ? deriveStartMonth(paid, monthKeyOf(todayISO()), sources.find((s) => s.id === sourceId)?.dueDay ?? null, todayISO())
-              : dateless ? monthKey : monthKeyOf(dateStr),
+              : cardStatementPreview ? monthKeyOf(cardStatementPreview.dueDate) : dateless ? monthKey : monthKeyOf(dateStr),
           dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
           paymentSourceId: sourceId,
           personId,
@@ -200,7 +217,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     } catch (e) {
       // Never surface a raw engine error (English, technical) to the user.
       console.error("[transaction.save]", e);
-      fail(tr.errors.saveFailed);
+      fail(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed);
     } finally {
       setBusy(false);
     }
@@ -299,15 +316,17 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         </>
       ) : null}
 
-      <Label>{tr.tx.whenLabel}</Label>
-      <Segmented
-        options={[
-          { value: "month", label: tr.tx.monthOnly },
-          { value: "day", label: tr.tx.specificDay },
-        ]}
-        value={dateMode}
-        onChange={setDateMode}
-      />
+      <Label>{isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.whenLabel}</Label>
+      {!isCreditCardExpense ? (
+        <Segmented
+          options={[
+            { value: "month", label: tr.tx.monthOnly },
+            { value: "day", label: tr.tx.specificDay },
+          ]}
+          value={dateMode}
+          onChange={setDateMode}
+        />
+      ) : null}
       {dateless ? (
         <>
           <MonthStepper value={monthKey} onChange={setMonthKey} />
@@ -317,10 +336,16 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         </>
       ) : (
         <>
-          <DateField label={tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
+          <DateField label={isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
           <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
-            {dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
+            {cardStatementPreview
+              ? tr.tx.cardPurchaseHint(dateLabel(cardStatementPreview.statementDate), dateLabel(cardStatementPreview.dueDate))
+              : isCreditCardExpense ? tr.tx.cardCycleMissing
+              : dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
           </Body>
+          {isCreditCardExpense && !cardCycleValid ? (
+            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/(tabs)/settings/payment-sources")} />
+          ) : null}
         </>
       )}
 

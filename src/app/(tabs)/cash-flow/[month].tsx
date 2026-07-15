@@ -10,12 +10,13 @@ import * as s from "../../../db/schema";
 import { newId } from "../../../db/ids";
 import { restoreRow, writeRows } from "../../../db/mutations";
 import { deleteTransaction } from "../../../data/repo";
-import { firstDayOf, lastDayOf, monthKeyOf, yearOf } from "../../../domain/dates";
+import { firstDayOf, lastDayOf, yearOf } from "../../../domain/dates";
 import { useCategories, useLedger, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../../../data/hooks";
 import { installmentDisplayTitle } from "../../../domain/installments";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
+import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
-import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
+import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
@@ -149,7 +150,7 @@ export default function MonthDetailScreen() {
                       <View style={{ flex: 1 }}>
                         {installmentTitle ? <Body style={{ fontFamily: "Inter_500Medium" }}>{installmentTitle}</Body> : null}
                         <Body muted={installmentTitle != null}>
-                          {t.isAggregate || t.installmentPlanId ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
+                          {transactionDateText(t)}
                           {t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : ""}
                           {t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : ""}
                           {!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : ""}

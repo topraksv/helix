@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { countInstallmentsForPlan, createInstallmentPlan, deletePlan, updateInstallmentPlan } from "../data/repo";
+import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
 import { useCategories, usePersons, usePlans, useSources, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
@@ -52,6 +52,15 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
   const [busy, setBusy] = useState(false);
+  const selectedSource = sources.find((source) => source.id === sourceId);
+  const cardSourceValid = kind !== "card_installment" || Boolean(
+    selectedSource?.type === "credit_card" &&
+    selectedSource.statementDay != null && selectedSource.statementDay >= 1 && selectedSource.statementDay <= 31 &&
+    selectedSource.dueDay != null && selectedSource.dueDay >= 1 && selectedSource.dueDay <= 31
+  );
+  const sourceOptions = kind === "card_installment"
+    ? sources.filter((source) => source.type === "credit_card")
+    : sources;
 
   const count = Number(countStr);
   const paid = Number(paidStr);
@@ -63,7 +72,8 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
     Number.isInteger(paid) &&
     paid >= 0 &&
     paid < count &&
-    personId != null;
+    personId != null &&
+    cardSourceValid;
 
   // On a new plan, "already paid N" back-derives the start month; on edit the
   // start month is edited directly.
@@ -100,7 +110,14 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       close();
     } catch (e) {
       console.error("[installment.save]", e);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
+      void appAlert(
+        e instanceof CreditCardCycleRequiredError
+          ? tr.sources.cycleRequired
+          : e instanceof InstallmentHistoryConflictError
+            ? tr.installments.historyConflict
+            : tr.errors.saveFailed,
+        tr.errors.title,
+      );
     } finally {
       setBusy(false);
     }
@@ -174,7 +191,13 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       {sources.length > 0 ? (
         <>
           <Label>{tr.tx.source}</Label>
-          <ChipPicker options={sources.map((s) => ({ value: s.id, label: s.name }))} value={sourceId} onChange={setSourceId} />
+          <ChipPicker options={sourceOptions.map((s) => ({ value: s.id, label: s.name }))} value={sourceId} onChange={setSourceId} />
+          {kind === "card_installment" && !cardSourceValid ? (
+            <>
+              <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
+              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/(tabs)/settings/payment-sources")} />
+            </>
+          ) : null}
         </>
       ) : null}
       {persons.length > 1 ? (

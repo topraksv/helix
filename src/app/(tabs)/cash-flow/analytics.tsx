@@ -9,7 +9,8 @@ import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
-import { dateLabel, tr } from "../../../i18n/tr";
+import { transactionDateText } from "../../../ui/transaction-date";
+import { tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
@@ -177,7 +178,7 @@ export default function AnalysisScreen() {
                   <View style={{ flex: 1, paddingRight: spacing.sm }}>
                     <Body>{catName(t.categoryId) || tr.common.none}</Body>
                     <Body muted style={{ fontSize: 12 }}>
-                      {dateLabel(t.effectiveDate)}
+                      {transactionDateText(t)}
                       {t.note ? ` · ${t.note}` : ""}
                     </Body>
                   </View>

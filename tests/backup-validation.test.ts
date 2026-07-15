@@ -25,6 +25,17 @@ const transaction = {
   is_aggregate: 0,
   note: null,
 };
+const statement = {
+  id: "statement-1",
+  user_id: "source-user",
+  created_at: timestamp,
+  updated_at: timestamp,
+  deleted_at: null,
+  payment_source_id: "card-1",
+  period_month: "2026-07",
+  statement_date: "2026-07-25",
+  due_date: "2026-08-05",
+};
 
 describe("backup validation", () => {
   it("accepts a complete exported row", () => {
@@ -35,6 +46,12 @@ describe("backup validation", () => {
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: Number.MAX_SAFE_INTEGER + 1 })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, type: "refund" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, effective_date: "2026-02-31" })).toBe(false);
+  });
+
+  it("validates persisted statement months and dates", () => {
+    expect(isValidImportRow("credit_card_statements", statement)).toBe(true);
+    expect(isValidImportRow("credit_card_statements", { ...statement, period_month: "2026-13" })).toBe(false);
+    expect(isValidImportRow("credit_card_statements", { ...statement, due_date: "2026-02-30" })).toBe(false);
   });
 
   it("rejects one invalid row before returning any restore plan", () => {

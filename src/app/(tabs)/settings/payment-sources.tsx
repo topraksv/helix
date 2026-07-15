@@ -1,20 +1,22 @@
-/** Payment source management: cards / cash / bank, per-person, due day. */
+/** Payment source management: cards / cash / bank, per-person, card cycle. */
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { newId } from "../../../db/ids";
-import { restoreRow, writeRows } from "../../../db/mutations";
-import { usePersons, useSources, useUserId } from "../../../data/hooks";
+import { restoreRow } from "../../../db/mutations";
+import { useAllTransactions, useCreditCardStatements, usePersons, useSources, useUserId } from "../../../data/hooks";
 import {
+  CreditCardCycleRequiredError,
   deleteUnreferencedPaymentSource,
   paymentSourceReferenceUsage,
   reassignAndDeletePaymentSource,
   ReferencedRecordError,
+  upsertPaymentSource,
   type PaymentSourceReferenceUsage,
 } from "../../../data/repo";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../../domain/types";
+import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
+import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
-import { tr } from "../../../i18n/tr";
 import { Pencil, Trash2 } from "lucide-react-native";
 import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, InitialsBadge, Label, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
@@ -28,6 +30,8 @@ const NO_SOURCE = "__none__";
 export default function SourcesScreen() {
   const userId = useUserId();
   const sources = useSources();
+  const statements = useCreditCardStatements();
+  const transactions = useAllTransactions();
   const persons = usePersons();
   const undo = useUndo();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -37,12 +41,16 @@ export default function SourcesScreen() {
   const [personChoice, setPersonChoice] = useState<string | null>(null);
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [dueDayStr, setDueDayStr] = useState("");
+  const [statementDayStr, setStatementDayStr] = useState("");
   const [busy, setBusy] = useState(false);
   const [resolving, setResolving] = useState<{ source: (typeof sources)[number]; usage: PaymentSourceReferenceUsage } | null>(null);
   const [replacementChoice, setReplacementChoice] = useState<string>(NO_SOURCE);
 
   const dueDay = dueDayStr.trim() === "" ? null : Number(dueDayStr);
-  const dueDayValid = dueDay === null || (Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31);
+  const statementDay = statementDayStr.trim() === "" ? null : Number(statementDayStr);
+  const validDay = (day: number | null) => day != null && Number.isInteger(day) && day >= 1 && day <= 31;
+  const cycleValid = sourceType !== "credit_card" || (validDay(statementDay) && validDay(dueDay));
+  const formValid = Boolean(name.trim() && personId && cycleValid);
 
   const resetForm = () => {
     setEditingId(null);
@@ -50,6 +58,19 @@ export default function SourcesScreen() {
     setSourceType("credit_card");
     setPersonChoice(null);
     setDueDayStr("");
+    setStatementDayStr("");
+  };
+
+  const eligibleReplacements = (sourceId: string, usage: PaymentSourceReferenceUsage) => {
+    const cardRequired = usage.cardInstallmentPlans > 0;
+    return sources.filter((source) =>
+      source.id !== sourceId &&
+      (!cardRequired || (
+        source.type === "credit_card" &&
+        source.statementDay != null && source.statementDay >= 1 && source.statementDay <= 31 &&
+        source.dueDay != null && source.dueDay >= 1 && source.dueDay <= 31
+      )),
+    );
   };
 
   const startEdit = (src: (typeof sources)[number]) => {
@@ -58,29 +79,28 @@ export default function SourcesScreen() {
     setSourceType(src.type);
     setPersonChoice(src.personId);
     setDueDayStr(src.dueDay != null ? String(src.dueDay) : "");
+    setStatementDayStr(src.statementDay != null ? String(src.statementDay) : "");
   };
 
   const save = async () => {
-    if (busy || !name.trim() || !personId || !dueDayValid) return;
+    if (busy || !formValid || !personId) return;
     setBusy(true);
     try {
-      const existing = editingId ? sources.find((s) => s.id === editingId) : null;
-      await writeRows(userId, [
-        {
-          table: "payment_sources",
-          row: {
-            ...(existing ?? { statementDay: null, color: null, logoSource: "initials", logoRef: null, isActive: true }),
-            id: editingId ?? newId(),
-            name: name.trim(),
-            type: sourceType,
-            personId,
-            dueDay,
-            deletedAt: null,
-          },
-        },
-      ]);
+      await upsertPaymentSource(userId, {
+        id: editingId ?? undefined,
+        name,
+        type: sourceType,
+        personId,
+        dueDay,
+        statementDay,
+      });
       scheduleSync(userId);
       resetForm();
+    } catch (error) {
+      void appAlert(
+        error instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed,
+        tr.errors.title,
+      );
     } finally {
       setBusy(false);
     }
@@ -93,7 +113,7 @@ export default function SourcesScreen() {
       const usage = await paymentSourceReferenceUsage(userId, s.id);
       if (usage.total > 0) {
         setResolving({ source: s, usage });
-        setReplacementChoice(sources.find((source) => source.id !== s.id)?.id ?? NO_SOURCE);
+        setReplacementChoice(eligibleReplacements(s.id, usage)[0]?.id ?? NO_SOURCE);
         return;
       }
       if (!(await appConfirm(s.name, tr.references.deleteUnusedSource, { confirmLabel: tr.common.delete, danger: true }))) return;
@@ -134,8 +154,11 @@ export default function SourcesScreen() {
       scheduleSync(userId);
       setResolving(null);
       setReplacementChoice(NO_SOURCE);
-    } catch {
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    } catch (error) {
+      void appAlert(
+        error instanceof CreditCardCycleRequiredError ? tr.references.cardReplacementRequired : tr.errors.saveFailed,
+        tr.errors.title,
+      );
     } finally {
       setBusy(false);
     }
@@ -148,6 +171,11 @@ export default function SourcesScreen() {
         [tr.references.subscriptions, resolving.usage.subscriptions],
       ].filter(([, count]) => Number(count) > 0)
     : [];
+  const editingStatements = editingId
+    ? statements.filter((statement) => statement.paymentSourceId === editingId).sort((a, b) => b.dueDate.localeCompare(a.dueDate))
+    : [];
+  const replacementOptions = resolving ? eligibleReplacements(resolving.source.id, resolving.usage) : [];
+  const cardReplacementRequired = Boolean(resolving && resolving.usage.cardInstallmentPlans > 0);
 
   return (
     <Screen>
@@ -159,19 +187,49 @@ export default function SourcesScreen() {
           <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         ) : null}
         {sourceType === "credit_card" ? (
-          <Field label={tr.sources.dueDay} placeholder={tr.common.optionalHint} value={dueDayStr} onChangeText={setDueDayStr} keyboardType="number-pad" />
+          <>
+            <Row>
+              <View style={{ flex: 1 }}>
+                <Field label={tr.sources.statementDay} placeholder={tr.sources.dayPlaceholder} value={statementDayStr} onChangeText={setStatementDayStr} keyboardType="number-pad" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label={tr.sources.dueDay} placeholder={tr.sources.dayPlaceholder} value={dueDayStr} onChangeText={setDueDayStr} keyboardType="number-pad" />
+              </View>
+            </Row>
+            <Body muted style={{ marginBottom: spacing.md }}>{tr.sources.cycleHint}</Body>
+          </>
         ) : null}
         {editingId ? (
           <Row>
             <View style={{ flex: 1 }}>
-              <Button label={tr.common.save} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid || busy} loading={busy} />
+              <Button label={tr.common.save} onPress={() => void save()} disabled={!formValid || busy} loading={busy} />
             </View>
             <Button label={tr.common.cancel} variant="ghost" onPress={resetForm} />
           </Row>
         ) : (
-          <Button label={tr.common.add} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid || busy} loading={busy} />
+          <Button label={tr.common.add} onPress={() => void save()} disabled={!formValid || busy} loading={busy} />
         )}
       </Card>
+
+      {editingId && sourceType === "credit_card" && editingStatements.length > 0 ? (
+        <Card>
+          <Label>{tr.sources.statementHistory}</Label>
+          {editingStatements.map((statement) => {
+            const amount = transactions
+              .filter((transaction) => transaction.cardStatementId === statement.id)
+              .reduce((sum, transaction) => sum + transaction.amountTryMinor, 0);
+            return (
+              <Spread key={statement.id} style={{ paddingVertical: spacing.xs, alignItems: "center" }}>
+                <View style={{ flex: 1, paddingRight: spacing.md }}>
+                  <Body>{monthLabel(statement.periodMonth)}</Body>
+                  <Body muted>{tr.sources.statementDates(dateLabel(statement.statementDate), dateLabel(statement.dueDate))}</Body>
+                </View>
+                <Body>{formatMinor(amount)}</Body>
+              </Spread>
+            );
+          })}
+        </Card>
+      ) : null}
 
       {resolving ? (
         <Card>
@@ -184,17 +242,23 @@ export default function SourcesScreen() {
             </Spread>
           ))}
           <Body style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>{tr.references.chooseSource}</Body>
+          {cardReplacementRequired ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.references.cardReplacementRequired}</Body> : null}
           <ChipPicker
             options={[
-              { value: NO_SOURCE, label: tr.references.noSource },
-              ...sources.filter((source) => source.id !== resolving.source.id).map((source) => ({ value: source.id, label: source.name })),
+              ...(!cardReplacementRequired ? [{ value: NO_SOURCE, label: tr.references.noSource }] : []),
+              ...replacementOptions.map((source) => ({ value: source.id, label: source.name })),
             ]}
             value={replacementChoice}
             onChange={setReplacementChoice}
           />
           <Row>
             <View style={{ flex: 1 }}>
-              <Button label={tr.references.reassignAndDelete} onPress={() => void reassign()} disabled={busy} loading={busy} />
+              <Button
+                label={tr.references.reassignAndDelete}
+                onPress={() => void reassign()}
+                disabled={busy || (cardReplacementRequired && replacementChoice === NO_SOURCE)}
+                loading={busy}
+              />
             </View>
             <Button label={tr.common.cancel} variant="ghost" onPress={() => setResolving(null)} disabled={busy} />
           </Row>
@@ -212,7 +276,9 @@ export default function SourcesScreen() {
                 <Body>{s.name}</Body>
                 <Body muted>
                   {TYPES.find((t) => t.value === s.type)?.label}
-                  {s.dueDay ? ` · ${tr.sources.dueDay}: ${s.dueDay}` : ""}
+                  {s.type === "credit_card" && s.statementDay && s.dueDay
+                    ? ` · ${tr.sources.statementDay}: ${s.statementDay} · ${tr.sources.dueDay}: ${s.dueDay}`
+                    : s.type === "credit_card" ? ` · ${tr.sources.cycleMissing}` : ""}
                   {persons.length > 1 ? ` · ${persons.find((p) => p.id === s.personId)?.name ?? ""}` : ""}
                 </Body>
               </View>

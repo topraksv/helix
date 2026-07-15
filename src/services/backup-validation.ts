@@ -15,6 +15,8 @@ export interface ExportBundle {
 const DATE_COLUMNS = new Set([
   "entry_date",
   "effective_date",
+  "purchase_date",
+  "statement_date",
   "next_due_date",
   "canceled_at",
   "trial_end_date",
@@ -62,6 +64,7 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
   }
   if ("start_month" in raw && !isMonthKey(raw.start_month)) return false;
   if ("month" in raw && !isMonthKey(raw.month)) return false;
+  if ("period_month" in raw && !isMonthKey(raw.period_month)) return false;
   for (const key of ["due_day", "statement_day", "billing_day", "pay_day"]) {
     const value = raw[key];
     if (value != null && (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 31)) return false;

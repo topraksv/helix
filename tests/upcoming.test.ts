@@ -20,17 +20,21 @@ describe("standalone upcoming transactions", () => {
 describe("upcoming card statements", () => {
   it("creates one statement per card and sums only the earliest pending month", () => {
     const rows = [
-      tx({ type: "expense", status: "pending", effectiveDate: "2026-07-20", paymentSourceId: "card-1", amountTryMinor: 100_00 }),
-      tx({ type: "expense", status: "pending", effectiveDate: "2026-07-25", paymentSourceId: "card-1", amountTryMinor: 250_00 }),
-      tx({ type: "expense", status: "pending", effectiveDate: "2026-08-20", paymentSourceId: "card-1", amountTryMinor: 999_00 }),
+      tx({ type: "expense", status: "pending", effectiveDate: "2026-07-28", paymentSourceId: "card-1", cardStatementId: "st-1", amountTryMinor: 100_00 }),
+      tx({ type: "expense", status: "pending", effectiveDate: "2026-07-28", paymentSourceId: "card-1", cardStatementId: "st-1", amountTryMinor: 250_00 }),
+      tx({ type: "expense", status: "pending", effectiveDate: "2026-08-28", paymentSourceId: "card-1", cardStatementId: "st-2", amountTryMinor: 999_00 }),
     ];
-    expect(upcomingCardStatements(rows, [{ id: "card-1", name: "Kartım", dueDay: 28 }], TODAY)).toEqual([
+    const statements = [
+      { id: "st-1", paymentSourceId: "card-1", periodMonth: "2026-07", statementDate: "2026-07-20", dueDate: "2026-07-28" },
+      { id: "st-2", paymentSourceId: "card-1", periodMonth: "2026-08", statementDate: "2026-08-20", dueDate: "2026-08-28" },
+    ];
+    expect(upcomingCardStatements(rows, [{ id: "card-1", name: "Kartım" }], statements, TODAY)).toEqual([
       { cardId: "card-1", cardName: "Kartım", amountMinor: 350_00, dueDate: "2026-07-28" },
     ]);
   });
 
-  it("shows nothing when a card has no real due date", () => {
+  it("shows nothing without a persisted real statement", () => {
     const rows = [tx({ type: "expense", amountTryMinor: 10_00, status: "pending", effectiveDate: "2026-07-20", paymentSourceId: "card-1" })];
-    expect(upcomingCardStatements(rows, [{ id: "card-1", name: "Kartım", dueDay: null }], TODAY)).toEqual([]);
+    expect(upcomingCardStatements(rows, [{ id: "card-1", name: "Kartım" }], [], TODAY)).toEqual([]);
   });
 });

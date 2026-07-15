@@ -1,13 +1,12 @@
 /** Pure rules for the dashboard's upcoming-payment list. */
 
-import { clampDayToMonth, monthKeyOf, monthOf, yearOf, type ISODate } from "./dates";
-import type { TxLike } from "./types";
+import type { ISODate } from "./dates";
+import type { CardStatementLike, TxLike } from "./types";
 import { financialFlow } from "./transactions";
 
 export interface CardDueSource {
   id: string;
   name: string;
-  dueDay: number | null;
 }
 
 export interface UpcomingCardStatement {
@@ -45,46 +44,47 @@ export function standaloneUpcomingTransactions(
 }
 
 /**
- * Collapse every card's earliest pending statement month into exactly one
- * payment. Cards without a real due day are omitted; no synthetic date is
- * invented from today's date.
+ * Collapse every card's earliest persisted, pending statement into exactly one
+ * payment. Unlinked legacy charges are omitted: no synthetic date is invented
+ * from today's date or a nominal card day.
  */
 export function upcomingCardStatements(
   transactions: TxLike[],
   cards: CardDueSource[],
+  statements: CardStatementLike[],
   today: ISODate,
   horizonDays = 45,
 ): UpcomingCardStatement[] {
   return cards.flatMap((card) => {
-    if (card.dueDay == null) return [];
-    const charges = transactions.filter(
-      (tx) =>
-        tx.personIsSelf &&
-        tx.paymentSourceId === card.id &&
-        financialFlow(tx).type === "expense" &&
-        tx.status === "pending" &&
-        tx.effectiveDate > today,
-    );
-    if (charges.length === 0) return [];
-
-    const statementMonth = charges.reduce(
-      (earliest, tx) => (monthKeyOf(tx.effectiveDate) < earliest ? monthKeyOf(tx.effectiveDate) : earliest),
-      monthKeyOf(charges[0].effectiveDate),
-    );
-    const dueDate = clampDayToMonth(yearOf(statementMonth), monthOf(statementMonth), card.dueDay);
-    const distance = daysBetween(today, dueDate);
-    if (distance < 0 || distance > horizonDays) return [];
-    const amountMinor = charges
-      .filter((tx) => monthKeyOf(tx.effectiveDate) === statementMonth)
-      .reduce((sum, tx) => sum + financialFlow(tx).amountTryMinor, 0);
-    if (amountMinor <= 0) return [];
+    const candidates = statements
+      .filter((statement) => statement.paymentSourceId === card.id && statement.dueDate >= today)
+      .map((statement) => ({
+        statement,
+        amountMinor: transactions
+          .filter(
+            (tx) =>
+              tx.personIsSelf &&
+              tx.paymentSourceId === card.id &&
+              tx.cardStatementId === statement.id &&
+              financialFlow(tx).type === "expense" &&
+              tx.status === "pending",
+          )
+          .reduce((sum, tx) => sum + financialFlow(tx).amountTryMinor, 0),
+      }))
+      .filter(({ statement, amountMinor }) => {
+        const distance = daysBetween(today, statement.dueDate);
+        return amountMinor > 0 && distance >= 0 && distance <= horizonDays;
+      })
+      .sort((a, b) => a.statement.dueDate.localeCompare(b.statement.dueDate));
+    const next = candidates[0];
+    if (!next) return [];
 
     return [
       {
         cardId: card.id,
         cardName: card.name,
-        amountMinor,
-        dueDate,
+        amountMinor: next.amountMinor,
+        dueDate: next.statement.dueDate,
       },
     ];
   });

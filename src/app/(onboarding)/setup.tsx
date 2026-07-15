@@ -25,6 +25,8 @@ interface DraftSource {
   name: string;
   type: PaymentSourceType;
   personIndex: number;
+  statementDay: number | null;
+  dueDay: number | null;
 }
 
 type HistoryChoice = "manual" | "excel" | "json";
@@ -58,6 +60,8 @@ export default function SetupScreen() {
   const [newSource, setNewSource] = useState("");
   const [newSourceType, setNewSourceType] = useState<PaymentSourceType>("credit_card");
   const [newSourcePerson, setNewSourcePerson] = useState(0);
+  const [newSourceStatementDay, setNewSourceStatementDay] = useState("");
+  const [newSourceDueDay, setNewSourceDueDay] = useState("");
   const [editingSource, setEditingSource] = useState<number | null>(null);
   const [seeded, setSeeded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -80,11 +84,19 @@ export default function SetupScreen() {
     setNewSource("");
     setNewSourceType("credit_card");
     setNewSourcePerson(0);
+    setNewSourceStatementDay("");
+    setNewSourceDueDay("");
     setEditingSource(null);
   };
 
   const submitSource = () => {
-    const draft: DraftSource = { name: newSource.trim(), type: newSourceType, personIndex: newSourcePerson };
+    const draft: DraftSource = {
+      name: newSource.trim(),
+      type: newSourceType,
+      personIndex: newSourcePerson,
+      statementDay: newSourceType === "credit_card" ? Number(newSourceStatementDay) : null,
+      dueDay: newSourceType === "credit_card" ? Number(newSourceDueDay) : null,
+    };
     if (editingSource != null) {
       setSources((xs) => xs.map((s, i) => (i === editingSource ? draft : s)));
     } else {
@@ -98,6 +110,8 @@ export default function SetupScreen() {
     setNewSource(s.name);
     setNewSourceType(s.type);
     setNewSourcePerson(Math.min(s.personIndex, persons.length - 1));
+    setNewSourceStatementDay(s.statementDay == null ? "" : String(s.statementDay));
+    setNewSourceDueDay(s.dueDay == null ? "" : String(s.dueDay));
     setEditingSource(i);
   };
 
@@ -134,7 +148,13 @@ export default function SetupScreen() {
       startMonth,
       openingBalanceMinor: openingMinor ?? 0,
       persons: persons.map((name, i) => ({ name, isSelf: i === 0 })),
-      sources: sources.map((src) => ({ name: src.name, type: src.type, personIndex: src.personIndex })),
+      sources: sources.map((src) => ({
+        name: src.name,
+        type: src.type,
+        personIndex: src.personIndex,
+        statementDay: src.statementDay,
+        dueDay: src.dueDay,
+      })),
     });
     setSeeded(true);
     return true;
@@ -330,6 +350,7 @@ export default function SetupScreen() {
               <View style={{ flex: 1, paddingRight: spacing.sm }}>
                 <Body>
                   {src.name} · {SOURCE_TYPES.find((t) => t.value === src.type)?.label}
+                  {src.type === "credit_card" ? ` · ${src.statementDay}/${src.dueDay}` : ""}
                   {persons.length > 1 ? ` · ${persons[src.personIndex]}` : ""}
                 </Body>
               </View>
@@ -353,6 +374,31 @@ export default function SetupScreen() {
             value={newSourceType}
             onChange={setNewSourceType}
           />
+          {newSourceType === "credit_card" ? (
+            <>
+              <Row>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label={tr.sources.statementDay}
+                    value={newSourceStatementDay}
+                    onChangeText={setNewSourceStatementDay}
+                    placeholder={tr.sources.dayPlaceholder}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label={tr.sources.dueDay}
+                    value={newSourceDueDay}
+                    onChangeText={setNewSourceDueDay}
+                    placeholder={tr.sources.dayPlaceholder}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </Row>
+              <Body muted style={{ marginBottom: spacing.md }}>{tr.sources.cycleHint}</Body>
+            </>
+          ) : null}
           {persons.length > 1 ? (
             <ChipPicker
               options={persons.map((p, i) => ({ value: String(i) as never, label: `${tr.sources.owner}: ${p}` }))}
@@ -365,7 +411,14 @@ export default function SetupScreen() {
               <Button
                 label={editingSource != null ? tr.onboarding.updateSource : tr.onboarding.addSource}
                 variant="secondary"
-                disabled={!newSource.trim()}
+                disabled={
+                  !newSource.trim() ||
+                  (newSourceType === "credit_card" &&
+                    ![newSourceStatementDay, newSourceDueDay].every((value) => {
+                      const day = Number(value);
+                      return value.trim() !== "" && Number.isInteger(day) && day >= 1 && day <= 31;
+                    }))
+                }
                 onPress={submitSource}
               />
             </View>
