@@ -11,8 +11,8 @@ import { formatMinor } from "../../domain/money";
 import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { dateLabel, tr } from "../../i18n/tr";
-import { useSubscriptions, useUserId } from "../../data/hooks";
-import { softDelete, restoreRow } from "../../db/mutations";
+import { usePersons, useSubscriptions, useUserId } from "../../data/hooks";
+import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
 import { Logo } from "../../ui/logo";
@@ -22,6 +22,7 @@ import { spacing, useTheme } from "../../ui/theme";
 export default function SubscriptionsScreen() {
   const userId = useUserId();
   const subscriptions = useSubscriptions();
+  const persons = usePersons();
   const router = useRouter();
   const undo = useUndo();
   const today = todayISO();
@@ -30,30 +31,42 @@ export default function SubscriptionsScreen() {
   // settle on the real TRY value instead of the raw amount.
   const fxVersion = useFxRates();
 
-  const { active, passive, monthlyLoadTry, yearlyTry } = useMemo(() => {
+  const { active, watched, passive, monthlyLoadTry, yearlyTry, watchedMonthlyLoadTry, watchedYearlyTry } = useMemo(() => {
     const activeSubs = subscriptions.filter((s) => s.isActive);
+    const selfIds = new Set(persons.filter((person) => person.isSelf).map((person) => person.id));
     const toTry = (amountMinor: number, currency: string) => {
       if (currency === "TRY") return amountMinor;
       const rate = lookupRate(userId, currency);
       return rate ? convertToTryMinor(amountMinor, rate.rate.rateTry) : amountMinor;
     };
-    const monthly = activeSubs.reduce(
+    const personalActive = activeSubs.filter((subscription) => selfIds.has(subscription.personId));
+    const watchedActive = activeSubs.filter((subscription) => !selfIds.has(subscription.personId));
+    const load = (rows: typeof activeSubs) => rows.reduce(
       (sum, s) => sum + normalizedMonthlyLoadMinor(toTry(s.amountMinor, s.currency), s.intervalMonths),
       0,
     );
+    const monthly = load(personalActive);
+    const watchedMonthly = load(watchedActive);
     return {
-      active: activeSubs,
+      active: personalActive,
+      watched: watchedActive,
       passive: subscriptions.filter((s) => !s.isActive),
       monthlyLoadTry: monthly,
       yearlyTry: monthly * 12,
+      watchedMonthlyLoadTry: watchedMonthly,
+      watchedYearlyTry: watchedMonthly * 12,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subscriptions, userId, fxVersion]);
+  }, [subscriptions, persons, userId, fxVersion]);
 
   const remove = async (id: string, name: string) => {
-    const snapshot = await softDelete(userId, "subscriptions", id);
+    const snapshot = await deleteSubscriptionWithExpected(userId, id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${name} · ${tr.common.deleted}`, () => void restoreRow(userId, "subscriptions", snapshot), "warning");
+    if (snapshot) {
+      undo.show(`${name} · ${tr.common.deleted}`, () => {
+        void restoreDeletedRule(userId, snapshot).then(() => scheduleSync(userId));
+      }, "warning");
+    }
   };
 
   const renderSub = (s: (typeof subscriptions)[number]) => {
@@ -108,16 +121,38 @@ export default function SubscriptionsScreen() {
         </Spread>
       </Card>
 
+      {watched.length > 0 ? (
+        <Card>
+          <Spread>
+            <View>
+              <Body muted>{tr.subs.watchedMonthlyLoad}</Body>
+              <Amount minor={watchedMonthlyLoadTry} large colorized={false} />
+            </View>
+            <View style={{ alignItems: "flex-end" }}>
+              <Body muted>{tr.subs.watchedYearlyTotal}</Body>
+              <Amount minor={watchedYearlyTry} colorized={false} />
+            </View>
+          </Spread>
+          <Body muted style={{ marginTop: spacing.sm }}>{tr.subs.watchedBalanceHint}</Body>
+        </Card>
+      ) : null}
+
       <Button icon={Plus} label={tr.subs.add} onPress={() => router.push("/subscription-form")} />
       <View style={{ height: spacing.lg }} />
 
-      {active.length === 0 && passive.length === 0 ? (
+      {active.length === 0 && watched.length === 0 && passive.length === 0 ? (
         <EmptyState icon={RefreshCw} title={tr.subs.emptyTitle} hint={tr.subs.emptyHint} />
       ) : null}
       {active.length > 0 ? (
         <>
           <SectionHeader>{tr.common.active}</SectionHeader>
           <Card>{active.map(renderSub)}</Card>
+        </>
+      ) : null}
+      {watched.length > 0 ? (
+        <>
+          <SectionHeader>{tr.subs.watchedSection}</SectionHeader>
+          <Card>{watched.map(renderSub)}</Card>
         </>
       ) : null}
       {passive.length > 0 ? (

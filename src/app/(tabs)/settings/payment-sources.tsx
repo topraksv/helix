@@ -3,8 +3,15 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { newId } from "../../../db/ids";
-import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
+import { restoreRow, writeRows } from "../../../db/mutations";
 import { usePersons, useSources, useUserId } from "../../../data/hooks";
+import {
+  deleteUnreferencedPaymentSource,
+  paymentSourceReferenceUsage,
+  reassignAndDeletePaymentSource,
+  ReferencedRecordError,
+  type PaymentSourceReferenceUsage,
+} from "../../../data/repo";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../../domain/types";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
@@ -13,8 +20,10 @@ import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, InitialsBa
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
+import { appAlert, appConfirm } from "../../../ui/dialog";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
+const NO_SOURCE = "__none__";
 
 export default function SourcesScreen() {
   const userId = useUserId();
@@ -29,6 +38,8 @@ export default function SourcesScreen() {
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [dueDayStr, setDueDayStr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resolving, setResolving] = useState<{ source: (typeof sources)[number]; usage: PaymentSourceReferenceUsage } | null>(null);
+  const [replacementChoice, setReplacementChoice] = useState<string>(NO_SOURCE);
 
   const dueDay = dueDayStr.trim() === "" ? null : Number(dueDayStr);
   const dueDayValid = dueDay === null || (Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31);
@@ -76,10 +87,67 @@ export default function SourcesScreen() {
   };
 
   const remove = async (s: (typeof sources)[number]) => {
-    const snapshot = await softDelete(userId, "payment_sources", s.id);
-    scheduleSync(userId);
-    if (snapshot) undo.show(`${s.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "payment_sources", snapshot), "warning");
+    if (busy) return;
+    setBusy(true);
+    try {
+      const usage = await paymentSourceReferenceUsage(userId, s.id);
+      if (usage.total > 0) {
+        setResolving({ source: s, usage });
+        setReplacementChoice(sources.find((source) => source.id !== s.id)?.id ?? NO_SOURCE);
+        return;
+      }
+      if (!(await appConfirm(s.name, tr.references.deleteUnusedSource, { confirmLabel: tr.common.delete, danger: true }))) return;
+      const snapshot = await deleteUnreferencedPaymentSource(userId, s.id);
+      scheduleSync(userId);
+      if (snapshot) {
+        undo.show(`${s.name} · ${tr.common.deleted}`, () => {
+          void restoreRow(userId, "payment_sources", snapshot).then(() => scheduleSync(userId));
+        }, "warning");
+      }
+    } catch (error) {
+      if (error instanceof ReferencedRecordError) {
+        const usage = await paymentSourceReferenceUsage(userId, s.id);
+        setResolving({ source: s, usage });
+      } else {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
+      }
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const reassign = async () => {
+    if (!resolving || busy) return;
+    const replacementId = replacementChoice === NO_SOURCE ? null : replacementChoice;
+    const replacementName = replacementId
+      ? sources.find((source) => source.id === replacementId)?.name ?? tr.references.noSource
+      : tr.references.noSource;
+    const confirmed = await appConfirm(
+      resolving.source.name,
+      tr.references.reassignSourceConfirm(resolving.usage.total, replacementName),
+      { confirmLabel: tr.references.reassignAndDelete, danger: true },
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    try {
+      await reassignAndDeletePaymentSource(userId, resolving.source.id, replacementId);
+      scheduleSync(userId);
+      setResolving(null);
+      setReplacementChoice(NO_SOURCE);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const usageRows = resolving
+    ? [
+        [tr.references.installmentPlans, resolving.usage.installmentPlans],
+        [tr.references.transactions, resolving.usage.transactions],
+        [tr.references.subscriptions, resolving.usage.subscriptions],
+      ].filter(([, count]) => Number(count) > 0)
+    : [];
 
   return (
     <Screen>
@@ -104,6 +172,34 @@ export default function SourcesScreen() {
           <Button label={tr.common.add} onPress={() => void save()} disabled={!name.trim() || !personId || !dueDayValid || busy} loading={busy} />
         )}
       </Card>
+
+      {resolving ? (
+        <Card>
+          <Body style={{ marginBottom: spacing.xs }}>{tr.references.sourceInUse(resolving.source.name)}</Body>
+          <Body muted style={{ marginBottom: spacing.md }}>{tr.references.resolveBeforeDelete}</Body>
+          {usageRows.map(([label, count]) => (
+            <Spread key={String(label)} style={{ marginBottom: spacing.xs }}>
+              <Body muted>{label}</Body>
+              <Body>{String(count)}</Body>
+            </Spread>
+          ))}
+          <Body style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>{tr.references.chooseSource}</Body>
+          <ChipPicker
+            options={[
+              { value: NO_SOURCE, label: tr.references.noSource },
+              ...sources.filter((source) => source.id !== resolving.source.id).map((source) => ({ value: source.id, label: source.name })),
+            ]}
+            value={replacementChoice}
+            onChange={setReplacementChoice}
+          />
+          <Row>
+            <View style={{ flex: 1 }}>
+              <Button label={tr.references.reassignAndDelete} onPress={() => void reassign()} disabled={busy} loading={busy} />
+            </View>
+            <Button label={tr.common.cancel} variant="ghost" onPress={() => setResolving(null)} disabled={busy} />
+          </Row>
+        </Card>
+      ) : null}
 
       <CardList
         items={sources}

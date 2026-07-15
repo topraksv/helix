@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 17 files, 161 tests passing
+- Test baseline: 17 files, 164 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -47,22 +47,20 @@ These are static-analysis findings from the 2026-07-15 repository review. They
 have not yet been implemented or runtime-reproduced; verify each against the
 current code before fixing it.
 
-1. Editing/deleting subscriptions or recurring incomes does not reconcile their
-   already-generated `expected_payments`, leaving stale or orphaned items.
-2. Cell-note editors use random ids despite the existing deterministic natural
+1. Cell-note editors use random ids despite the existing deterministic natural
    key. The month-detail pseudo-category `uncategorized` can also be written into
    a UUID-shaped remote `category_id`.
-3. `Logo` claims fully local rendering but defaults to Google's favicon service;
+2. `Logo` claims fully local rendering but defaults to Google's favicon service;
    no settings toggle currently supplies `allowRemote=false`.
-4. Several `numberOfLines` uses, special/non-editable table columns, trailing
+3. Several `numberOfLines` uses, special/non-editable table columns, trailing
    dividers, and manual derivation memos conflict with the UI/Compiler rules in
    `AGENTS.md` and need an app-wide sweep.
-5. Foreign subscription totals fall back to treating an unavailable FX amount
-   as TRY; person/source deletion can leave orphan references. JSON restore now
-   validates types/enums/date ranges before an atomic write, but relational
-   integrity is still part of the later data-integrity package.
-6. Onboarding person deletion does not remap draft source `personIndex` values.
-7. README/testing counts and the README palette are stale; web HTML language is
+4. Foreign subscription totals fall back to treating an unavailable FX amount
+   as TRY. JSON restore now validates types/enums/date ranges before an atomic
+   write, but full relational validation is still part of the later
+   data-integrity package.
+5. Onboarding person deletion does not remap draft source `personIndex` values.
+6. README/testing counts and the README palette are stale; web HTML language is
     `en`, and Android biometric permissions are duplicated in `app.json`.
 
 ## Handoff update contract
@@ -84,6 +82,26 @@ diff and running checks proportionate to the change.
 
 ## Recent handoffs
 
+### 2026-07-15 — Codex (expected lifecycle and references package)
+
+- Base `8e76ffb`, branch `main`.
+- Watch-only subscriptions/incomes no longer generate dashboard obligations;
+  maintenance tombstones legacy unpaid watch-only derivatives. Personal and
+  watched subscription/installment totals now render separately and watched
+  totals explicitly stay outside balance/analytics.
+- Subscription/income upserts atomically reconcile today's/future pending rows,
+  preserve overdue obligations for active rules and preserve paid/skipped
+  history. Inactive/delete flows remove unpaid derivatives; undo restores the
+  root and exact expected snapshots. Expected lookup is user-scoped, state
+  transitions are guarded and paid undo tombstones its transaction atomically.
+  Trial schedules cannot charge before the trial boundary.
+- Person/payment-source deletion now blocks on live references, shows per-domain
+  counts and offers explicit reassignment (or nullable source clearing). Root
+  tombstones and every referencing row move in one `writeRows`; duplicate-self
+  maintenance repair is atomic too.
+- Typecheck, 17 files/164 tests and Expo lint pass. Static export, browser smoke
+  and shipping follow this package's commit.
+
 ### 2026-07-15 — Codex (atomic import and restore package)
 
 - Base `a1e9b39`, branch `main`.
@@ -98,8 +116,11 @@ diff and running checks proportionate to the change.
   atomically. Batch v2 owns plan/generated-row ids; deterministic detection
   safely upgrades legacy import batches. Category matching normalizes whitespace
   and includes category kind; add-mode column membership is a union.
-- Typecheck, 17 files/161 tests and Expo lint pass. Static export, browser smoke
-  and shipping follow this package's commit.
+- Typecheck, 17 files/161 tests, Expo lint, static export and Playwright sign-in
+  smoke at 320/390/1280 px passed. Shipped as `8e76ffb`: GitHub web run
+  `29431713083` succeeded and EAS preview update group
+  `a56c022b-6cff-46c9-aae4-8ea3d82ec260` was published after transient DNS
+  upload retries.
 
 ### 2026-07-15 — Codex (financial classification package)
 

@@ -65,6 +65,13 @@ agent-to-agent communication that did not occur.
   one `writeRows`; Excel replace builds old tombstones, new rows, import-batch
   metadata, column membership and opening settings into that same transaction.
   Keep file/row/cell limits and import batch ownership intact.
+- **Expected payments are derived lifecycle rows.** Rule edits reconcile only
+  unpaid derivatives; paid/skipped history is immutable. Watch-only rules never
+  create balance-affecting expected rows. Deleting a subscription/income rule
+  and its pending/late rows is one write and undo restores the same snapshot.
+- **Referenced persons/payment sources cannot be directly deleted.** Count and
+  show live usages, then require an explicit atomic reassignment (a payment
+  source may be cleared because its references are nullable) before tombstoning.
 - **Every authenticated background task is session-scoped.** Auth activates an
   epoch with `startSyncSession`; sign-out/account deletion awaits
   `stopSyncSession`. Maintenance, FX, notifications, or any other async work
