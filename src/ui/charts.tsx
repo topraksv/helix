@@ -36,14 +36,19 @@ export interface DonutSlice {
 export function Donut({
   slices,
   supplementalSlices = [],
+  totalMinor,
   size = 168,
 }: {
   slices: DonutSlice[];
   supplementalSlices?: DonutSlice[];
+  /** Optional net total shown in the center. Arc geometry still uses positive
+   *  slices, allowing negative refund rows to remain supplemental. */
+  totalMinor?: number;
   size?: number;
 }) {
   const { palette } = useTheme();
-  const total = slices.reduce((sum, s) => sum + s.valueMinor, 0);
+  const arcTotal = slices.reduce((sum, s) => sum + Math.max(s.valueMinor, 0), 0);
+  const displayTotal = totalMinor ?? arcTotal;
   const r = size / 2 - 14;
   const cx = size / 2;
   const cy = size / 2;
@@ -53,7 +58,7 @@ export function Donut({
     .filter((s) => s.valueMinor > 0)
     .reduce<(DonutSlice & { path: string; sweep: number })[]>((acc, s) => {
       const start = -90 + acc.reduce((deg, a) => deg + a.sweep, 0);
-      const sweep = total > 0 ? (s.valueMinor / total) * 360 : 0;
+      const sweep = arcTotal > 0 ? (s.valueMinor / arcTotal) * 360 : 0;
       return [...acc, { ...s, path: describeArc(cx, cy, r, start, start + sweep), sweep }];
     }, []);
 
@@ -84,7 +89,7 @@ export function Donut({
             })
           : null}
         <SvgText x={cx} y={cy + 5} textAnchor="middle" fontSize={13} fontWeight="600" fill={palette.text}>
-          {formatMinor(total)}
+          {formatMinor(displayTotal)}
         </SvgText>
       </Svg>
       {/* Paired legend list: identity never color-alone (relief rule) */}
@@ -100,7 +105,7 @@ export function Donut({
               >
                 {supplemental
                   ? formatMinor(s.valueMinor)
-                  : `${total > 0 ? `%${Math.round((s.valueMinor / total) * 100)}` : ""} · ${formatMinor(s.valueMinor)}`}
+                  : `${arcTotal > 0 ? `%${Math.round((s.valueMinor / arcTotal) * 100)}` : ""} · ${formatMinor(s.valueMinor)}`}
               </Text>
             </View>
           );
@@ -259,7 +264,7 @@ export function Bars({
 /** Two-part proportional bar (fixed vs variable) with 2px gap + labels. */
 export function SplitBar({ parts }: { parts: { label: string; valueMinor: number; color: string }[] }) {
   const { palette } = useTheme();
-  const total = parts.reduce((sum, p) => sum + p.valueMinor, 0);
+  const total = parts.reduce((sum, p) => sum + Math.max(p.valueMinor, 0), 0);
   return (
     <View style={{ gap: spacing.sm }}>
       <View style={{ flexDirection: "row", height: 14, borderRadius: 4, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>

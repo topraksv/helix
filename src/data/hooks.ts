@@ -302,8 +302,10 @@ export function settingValue<T>(map: Map<string, string>, key: string, fallback:
 export function toTxLike(
   rows: (typeof s.transactions.$inferSelect)[],
   persons: (typeof s.persons.$inferSelect)[],
+  categories: (typeof s.categories.$inferSelect)[],
 ): TxLike[] {
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
+  const categoryKinds = new Map(categories.map((category) => [category.id, category.kind]));
   return rows.map((r) => ({
     id: r.id,
     type: r.type,
@@ -311,6 +313,7 @@ export function toTxLike(
     effectiveDate: r.effectiveDate,
     status: r.status,
     categoryId: r.categoryId,
+    categoryKind: r.categoryId ? categoryKinds.get(r.categoryId) ?? null : null,
     paymentSourceId: r.paymentSourceId,
     personIsSelf: selfIds.has(r.personId),
     installmentPlanId: r.installmentPlanId,
@@ -331,6 +334,7 @@ export interface LedgerBundle {
 export function useLedger(year: number): LedgerBundle | null {
   const settings = useSettingsMap();
   const persons = usePersons();
+  const categories = useCategories();
   const transactions = useAllTransactions();
   const adjustments = useAdjustments();
 
@@ -340,7 +344,7 @@ export function useLedger(year: number): LedgerBundle | null {
     const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
     const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
     const today = todayISO();
-    const txLike = toTxLike(transactions, persons);
+    const txLike = toTxLike(transactions, persons, categories);
     const adj = adjustments.map((a) => ({ date: a.date, amountMinor: a.amountMinor }));
 
     // Extend the ledger back to the earliest recorded data so history entered
@@ -377,7 +381,7 @@ export function useLedger(year: number): LedgerBundle | null {
       actualBalanceMinor,
       txLike,
     };
-  }, [settings, persons, transactions, adjustments, year]);
+  }, [settings, persons, categories, transactions, adjustments, year]);
 }
 
 /** Days between two ISO dates (b − a). */

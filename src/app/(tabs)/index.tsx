@@ -26,6 +26,7 @@ import {
 import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
 import { connectMarkets, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
+import { projectedTransactionFlow } from "../../domain/transactions";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
@@ -177,16 +178,19 @@ export default function DashboardScreen() {
         date: e.dueDate,
       })),
     ...standaloneUpcomingTransactions(txLike, creditCardIds, today)
-      .map((t) => ({
-        key: t.id,
-        kind: "tx" as const,
-        direction: (t.type === "income" ? "in" : "out") as "in" | "out",
-        name: catName(t.categoryId) ?? tr.dashboard.scheduledTx,
-        typeLabel: tr.dashboard.scheduledTx,
-        amountMinor: t.amountTryMinor,
-        currency: "TRY",
-        date: t.effectiveDate,
-      })),
+      .map((t) => {
+        const flow = projectedTransactionFlow(t);
+        return {
+          key: t.id,
+          kind: "tx" as const,
+          direction: flow.direction,
+          name: catName(t.categoryId) ?? tr.dashboard.scheduledTx,
+          typeLabel: tr.dashboard.scheduledTx,
+          amountMinor: flow.amountTryMinor,
+          currency: "TRY",
+          date: t.effectiveDate,
+        };
+      }),
     // One consolidated statement per credit card — you pay the card once, not
     // each purchase. Only for cards that HAVE a due day; a card with no known
     // due date shows nothing (never a fabricated "in N days"). The amount is the
@@ -219,7 +223,7 @@ export default function DashboardScreen() {
   const monthEndFlows = [
     ...txLike
       .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate >= today && t.effectiveDate <= monthEnd)
-      .map((t) => ({ direction: (t.type === "income" ? "in" : "out") as "in" | "out", amountTryMinor: t.amountTryMinor, date: t.effectiveDate })),
+      .map((t) => ({ ...projectedTransactionFlow(t), date: t.effectiveDate })),
     ...pendingItems
       .filter((e) => e.dueDate >= today && e.dueDate <= monthEnd)
       .flatMap((e) => {
@@ -237,16 +241,25 @@ export default function DashboardScreen() {
 
   const donutEntries = [...dist.expenseByCategory.entries()]
     .map(([id, v]) => ({ label: categories.find((c) => c.id === id)?.name ?? tr.common.none, valueMinor: v }))
-    .concat(dist.uncategorizedExpenseMinor > 0 ? [{ label: tr.common.none, valueMinor: dist.uncategorizedExpenseMinor }] : [])
+    .concat(dist.uncategorizedExpenseMinor !== 0 ? [{ label: tr.common.none, valueMinor: dist.uncategorizedExpenseMinor }] : [])
     .sort((a, b) => b.valueMinor - a.valueMinor);
-  const donutRest = donutEntries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
+  const positiveDonutEntries = donutEntries.filter((entry) => entry.valueMinor > 0);
+  const refundEntries = donutEntries.filter((entry) => entry.valueMinor < 0);
+  const donutRest = positiveDonutEntries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
   const donutSlices = [
-    ...donutEntries.slice(0, 7).map((e, i) => ({ ...e, color: colors[i % colors.length] })),
+    ...positiveDonutEntries.slice(0, 7).map((e, i) => ({ ...e, color: colors[i % colors.length] })),
     ...(donutRest > 0 ? [{ label: tr.common.other, valueMinor: donutRest, color: colors[7] }] : []),
   ];
-  const donutSupplemental = dist.transferTotalMinor > 0
-    ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: palette.textMuted }]
-    : [];
+  const donutSupplemental = [
+    ...refundEntries.map((entry) => ({
+      label: tr.dashboard.refundAside(entry.label),
+      valueMinor: entry.valueMinor,
+      color: palette.positive,
+    })),
+    ...(dist.transferTotalMinor !== 0
+      ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: palette.textMuted }]
+      : []),
+  ];
 
   const trendMonths = bundle ? bundle.ledger.filter((m) => yearOf(m.month) === year && m.month <= month) : [];
   // Grouped income-vs-expense bars read far clearer than three overlapping
@@ -488,12 +501,12 @@ export default function DashboardScreen() {
           <Heading style={{ marginTop: 0 }}>
             {tr.dashboard.distribution} · {monthLabel(month)}
           </Heading>
-          <Donut slices={donutSlices} supplementalSlices={donutSupplemental} />
+          <Donut slices={donutSlices} supplementalSlices={donutSupplemental} totalMinor={dist.expenseTotalMinor} />
         </Card>
       ) : null}
 
       {/* Fixed vs variable */}
-      {fv.fixedMinor + fv.variableMinor > 0 ? (
+      {fv.fixedMinor !== 0 || fv.variableMinor !== 0 ? (
         <Card>
           <Heading style={{ marginTop: 0 }}>{tr.dashboard.fixedVsVariable}</Heading>
           <SplitBar

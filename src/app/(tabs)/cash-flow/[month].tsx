@@ -13,6 +13,7 @@ import { deleteTransaction } from "../../../data/repo";
 import { firstDayOf, lastDayOf, monthKeyOf, yearOf } from "../../../domain/dates";
 import { useCategories, useLedger, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../../../data/hooks";
 import { installmentDisplayTitle } from "../../../domain/installments";
+import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { categoryIcon } from "../../../data/category-icons";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
@@ -108,7 +109,7 @@ export default function MonthDetailScreen() {
         const category = categories.find((c) => c.id === categoryId);
         const title = category?.name ?? tr.common.none;
         const selfSum = txs.filter((t) => selfIds.has(t.personId)).reduce(
-          (sum, t) => sum + (t.type === "income" ? t.amountTryMinor : -t.amountTryMinor),
+          (sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null),
           0,
         );
         const note = cellNotes.find((n) => n.categoryId === categoryId);
@@ -157,7 +158,7 @@ export default function MonthDetailScreen() {
                         {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
                       </View>
                       <Row gap={spacing.sm}>
-                        <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
+                        <Amount minor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)} />
                         <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })} />
                         <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void removeTx(t.id)} />
                       </Row>

@@ -72,7 +72,11 @@ agent-to-agent communication that did not occur.
   row and never silently discard malformed/foreign outbox data—quarantine it
   in `sync_dead_letters`.
 - **Money is integer minor units** (kuruş) everywhere; format only at the edge
-  with `formatMinor`. Dates are `YYYY-MM-DD` ISO strings, months `YYYY-MM`.
+  with `formatMinor`. Transaction reversals/refunds keep their original type
+  and category with signed negative `amount_minor`/`amount_try_minor`; every
+  other amount is positive. Income/expense categories must match transaction
+  type; transfers use an expense-kind category. Dates are `YYYY-MM-DD` ISO
+  strings, months `YYYY-MM`.
 - **Analytics follows transaction type, not category appearance.** Expenses
   alone feed expense totals/distribution; transfers stay separate. Fixed
   expenses are installment/subscription-linked, and ordinary expenses default

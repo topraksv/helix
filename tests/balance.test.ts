@@ -192,6 +192,7 @@ describe("pending rows in table cells (display-only)", async () => {
   const pendingTx = {
     id: "t1", type: "expense" as const, amountTryMinor: 50_00, effectiveDate: "2026-08-05",
     status: "pending" as const, categoryId: "cat", paymentSourceId: null, personIsSelf: true,
+    categoryKind: "expense" as const,
     installmentPlanId: null, subscriptionId: null, isAggregate: false,
   };
 
@@ -209,7 +210,7 @@ describe("resolveLedgerAnchor (prior-year history)", async () => {
   const { resolveLedgerAnchor } = await import("../src/domain/balance");
   const tx = (id: string, date: string, amt: number, type: "income" | "expense" = "expense") => ({
     id, type, amountTryMinor: amt, effectiveDate: date, status: "realized" as const,
-    categoryId: "c", paymentSourceId: null, personIsSelf: true,
+    categoryId: "c", categoryKind: type, paymentSourceId: null, personIsSelf: true,
     installmentPlanId: null, subscriptionId: null, isAggregate: false,
   });
 

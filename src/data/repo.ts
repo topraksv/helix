@@ -6,7 +6,7 @@
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
 import { fromDbShape, nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
-import { todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
+import { isCurrentOrFutureMonth, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { convertToTryMinor } from "../domain/fx";
 import { advanceDueDate } from "../domain/recurrence";
@@ -19,6 +19,7 @@ import { suggestCategoryIcon } from "./category-icons";
 import type { ExpectedPaymentLike, PaymentSourceType, TransactionType } from "../domain/types";
 import { findSubscriptionCategory } from "../domain/subscriptions";
 import { reconciliationDelta } from "../domain/balance";
+import { categoryAcceptsTransaction } from "../domain/transactions";
 
 // ---------------------------------------------------------------------------
 // Onboarding seed
@@ -156,7 +157,7 @@ export interface NewTransaction {
   fxRate: string | null;
   amountTryMinor: Minor;
   effectiveDate: ISODate;
-  categoryId: string | null;
+  categoryId: string;
   paymentSourceId: string | null;
   personId: string;
   note: string | null;
@@ -164,7 +165,41 @@ export interface NewTransaction {
   subscriptionId?: string | null;
 }
 
+function assertSignedTransactionAmounts(amountMinor: Minor, amountTryMinor: Minor): void {
+  if (
+    !Number.isSafeInteger(amountMinor) ||
+    !Number.isSafeInteger(amountTryMinor) ||
+    amountMinor === 0 ||
+    amountTryMinor === 0 ||
+    Math.sign(amountMinor) !== Math.sign(amountTryMinor)
+  ) {
+    throw new Error("Invalid signed transaction amount");
+  }
+}
+
+async function assertTransactionCategory(
+  userId: string,
+  type: TransactionType,
+  categoryId: string | null,
+  required: boolean,
+): Promise<void> {
+  if (!categoryId) {
+    if (required) throw new Error("Transaction category is required");
+    return;
+  }
+  const sqlite = await getSqliteAsync();
+  const category = await sqlite.getFirstAsync<{ kind: "expense" | "income" }>(
+    `SELECT kind FROM categories WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [categoryId, userId] as never[],
+  );
+  if (!category || !categoryAcceptsTransaction(type, category.kind)) {
+    throw new Error("Transaction type and category do not match");
+  }
+}
+
 export async function addTransaction(userId: string, input: NewTransaction): Promise<string> {
+  assertSignedTransactionAmounts(input.amountMinor, input.amountTryMinor);
+  await assertTransactionCategory(userId, input.type, input.categoryId, true);
   const today = todayISO();
   const id = newId();
   await writeRows(userId, [
@@ -195,7 +230,7 @@ export interface TransactionPatch {
   amountTryMinor: Minor;
   effectiveDate: ISODate;
   isAggregate?: boolean;
-  categoryId: string | null;
+  categoryId: string;
   paymentSourceId: string | null;
   personId: string;
   note: string | null;
@@ -207,6 +242,8 @@ export async function updateTransaction(
   existing: Record<string, unknown>,
   patch: TransactionPatch,
 ): Promise<void> {
+  assertSignedTransactionAmounts(patch.amountMinor, patch.amountTryMinor);
+  await assertTransactionCategory(userId, patch.type, patch.categoryId, true);
   await writeRows(userId, [
     {
       table: "transactions",
@@ -375,6 +412,7 @@ async function buildPlanRows(planId: string, input: NewPlan, today: ISODate): Pr
 }
 
 async function writePlanWithSchedule(userId: string, planId: string, input: NewPlan): Promise<Set<number>> {
+  await assertTransactionCategory(userId, "expense", input.categoryId, false);
   const { rows, keepNos } = await buildPlanRows(planId, input, todayISO());
   await writeRows(userId, rows);
   return keepNos;
@@ -621,12 +659,18 @@ export async function confirmExpected(
   // cached TCMB rate. If NEITHER is available we must not store the raw foreign
   // amount as TRY (that silently corrupts the balance) — refuse the confirm so
   // the caller can retry once a rate is known.
-  const amountTryMinor = ((): number => {
-    if (row.currency === "TRY") return amount;
-    const rate = marketSellRateTry(row.currency) ?? lookupRate(userId, row.currency)?.rate.rateTry ?? null;
-    if (rate == null) throw new FxRateUnavailableError(row.currency);
-    return convertToTryMinor(amount, rate);
-  })();
+  const appliedRate = row.currency === "TRY"
+    ? null
+    : marketSellRateTry(row.currency) ?? lookupRate(userId, row.currency)?.rate.rateTry ?? null;
+  if (row.currency !== "TRY" && appliedRate == null) throw new FxRateUnavailableError(row.currency);
+  const amountTryMinor = appliedRate == null ? amount : convertToTryMinor(amount, appliedRate);
+  assertSignedTransactionAmounts(amount, amountTryMinor);
+  await assertTransactionCategory(
+    userId,
+    row.direction === "in" ? "income" : "expense",
+    opts.categoryId ?? null,
+    false,
+  );
   // Deterministic id: a double-tap (or two devices auto-confirming the same
   // item) upserts the same transaction row instead of creating a duplicate.
   const txId = await deterministicId(naturalKeys.confirmTx(row.id));
@@ -644,7 +688,7 @@ export async function confirmExpected(
         type: row.direction === "in" ? "income" : "expense",
         amountMinor: amount,
         currency: row.currency,
-        fxRate: null,
+        fxRate: appliedRate == null ? null : String(appliedRate),
         amountTryMinor,
         entryDate: today,
         effectiveDate,
@@ -732,12 +776,15 @@ export async function bulkMonthEntry(
   personId: string,
   entries: { categoryId: string; kind: "expense" | "income"; amountMinor: Minor; isInvestment?: boolean }[],
 ): Promise<void> {
+  if (isCurrentOrFutureMonth(month)) throw new Error("Bulk history accepts past months only");
+  await Promise.all(
+    entries.map((entry) =>
+      assertTransactionCategory(userId, entry.isInvestment ? "transfer" : entry.kind, entry.categoryId, true),
+    ),
+  );
   const today = todayISO();
   const effectiveDate = `${month}-15`; // mid-month anchor for aggregates
-  // A mid-month anchor in the current month can land in the future (before the
-  // 15th) — status must be derived from the date, or the row would be
-  // realized-but-future and vanish from both the balance and the cells.
-  const status = effectiveDate <= today ? "realized" : "pending";
+  const status = "realized" as const;
   const writes: RowWrite[] = entries.map((e) => ({
     table: "transactions",
     row: {
@@ -912,16 +959,16 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         if (!plan) continue;
         for (const item of plan.items) {
           const id = newId();
-          // Ledger keeps amounts positive; a negative cell flips the flow.
-          const negative = item.amountMinor < 0;
+          // Keep reversals signed in their original category. A refund reduces
+          // expense distribution instead of masquerading as income under an
+          // expense category.
           const baseType: TransactionType = col.isInvestment ? "transfer" : col.kindGuess;
-          const type: TransactionType = negative && baseType !== "transfer" ? (baseType === "expense" ? "income" : "expense") : baseType;
-          const amount = Math.abs(item.amountMinor);
+          const amount = item.amountMinor;
           txWrites.push({
             table: "transactions",
             row: {
               id,
-              type,
+              type: baseType,
               amountMinor: amount,
               currency: "TRY",
               fxRate: null,
@@ -1086,7 +1133,35 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     }
   }
 
-  // 0b) One-time removal: the auto-created "KK Taksit" (credit-card installment
+  // 0b) Repair legacy type/category mismatches without changing cash balance.
+  // Older import/editor code represented an expense refund as income +100 in
+  // the expense category. Canonical form is expense -100: same +100 balance
+  // effect, but every category/chart can now net the refund consistently.
+  const mismatched = await sqlite.getAllAsync<Record<string, unknown> & { category_kind: "expense" | "income" }>(
+    `SELECT t.*, c.kind AS category_kind
+     FROM transactions t
+     JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id
+     WHERE t.user_id = ? AND t.deleted_at IS NULL
+       AND t.type != 'transfer' AND t.type != c.kind`,
+    [userId] as never[],
+  );
+  if (mismatched.length > 0) {
+    await writeRows(
+      userId,
+      mismatched.map((row) => ({
+        table: "transactions" as const,
+        row: {
+          ...fromDbShape("transactions", row),
+          type: row.category_kind,
+          amountMinor: -(row.amount_minor as number),
+          amountTryMinor: -(row.amount_try_minor as number),
+        },
+      })),
+      false,
+    );
+  }
+
+  // 0c) One-time removal: the auto-created "KK Taksit" (credit-card installment
   // split) computed column is no longer wanted — it renders a derived column
   // that isn't a real category and confused users. Tombstone the deterministic
   // cc column once, guarded by a synced flag so it never resurrects on any

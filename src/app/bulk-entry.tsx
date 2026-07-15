@@ -75,7 +75,7 @@ export default function BulkEntryModal() {
           icon={ChevronRight}
           label={tr.bulk.month}
           onPress={() => setMonth(addMonthsToKey(month, 1))}
-          disabled={isCurrentOrFutureMonth(month)}
+          disabled={isCurrentOrFutureMonth(addMonthsToKey(month, 1))}
         />
       </Spread>
 
