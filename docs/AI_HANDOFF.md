@@ -13,7 +13,7 @@ lags behind them.
   12-item recovery task started; use `git log -1` for the resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 13 files, 145 tests passing
+- Test baseline: 13 files, 147 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
 
@@ -182,6 +182,28 @@ diff and running checks proportionate to the change.
   `29407342257` completed successfully, production returned HTTP 200, and EAS
   `preview` update group `a19b7bb8-9d0d-487c-ab4f-01e667cda956` published for
   iOS and Android.
+
+### 2026-07-15 — Codex (balance reconciliation completion)
+
+- Base `0491cf7`, branch `main`.
+- Preserved Claude's `04d09b9` design: today's deterministic
+  `balance_adjustments` row stores real minus computed balance, so neither the
+  configured opening nor earlier months are rewritten and analytics remains
+  free of fake income/expense.
+- Completed the missing product surface: live adjustments are listed with date,
+  note and amount in the editor, can be tombstoned with undo, and also appear as
+  a separate line in the affected month summary. Re-correcting the same day
+  replaces one row; returning to the unadjusted total tombstones the zero row.
+- Prevented the async ledger's pre-load state from appearing as a real zero.
+  Repo lookup now scopes by user. Because payment sources have no independent
+  opening/current balances in the data model, reconciliation intentionally
+  targets the aggregate Helix balance and the UI states that limitation.
+- Checks: typecheck, 13 files/147 tests, Expo lint and static web export pass.
+  Tests cover same-day convergence, zero removal math, signed adjustments, and
+  exact preservation of January/opening/all months before the correction. Playwright
+  sign-in regression passed at 320/390/1280 px without overflow or browser
+  errors; the protected balance screen still lacks a repository E2E credential.
+- Commit/push/web/OTA state is pending at this note's write time.
 
 ### 2026-07-15 — Codex
 

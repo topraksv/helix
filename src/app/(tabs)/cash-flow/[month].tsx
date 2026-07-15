@@ -88,6 +88,12 @@ export default function MonthDetailScreen() {
               <Amount minor={-ledgerMonth.transferMinor} />
             </Spread>
           ) : null}
+          {ledgerMonth.adjustmentMinor !== 0 ? (
+            <Spread style={{ marginTop: spacing.xs }}>
+              <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.adjustment}</Body>
+              <Amount minor={ledgerMonth.adjustmentMinor} />
+            </Spread>
+          ) : null}
           <Divider />
           <Spread>
             <Heading style={{ marginVertical: 0 }}>{tr.cashflow.closing}</Heading>

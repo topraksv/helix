@@ -23,6 +23,17 @@ export function balanceEffect(tx: TxLike): Minor {
   return tx.type === "income" ? tx.amountTryMinor : -tx.amountTryMinor;
 }
 
+/** Replacement value for today's deterministic reconciliation row. The
+ * displayed balance already includes the existing row, so remove that effect
+ * before measuring the new delta. */
+export function reconciliationDelta(
+  targetMinor: Minor,
+  computedNowMinor: Minor,
+  existingAdjustmentMinor: Minor = 0,
+): Minor {
+  return targetMinor - (computedNowMinor - existingAdjustmentMinor);
+}
+
 export interface MonthLedger {
   month: MonthKey;
   openingMinor: Minor;

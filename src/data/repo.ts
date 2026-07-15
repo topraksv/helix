@@ -18,6 +18,7 @@ import { collectInstallmentPlans, isInstallmentCell, planImportCell, type Parsed
 import { suggestCategoryIcon } from "./category-icons";
 import type { ExpectedPaymentLike, PaymentSourceType, TransactionType } from "../domain/types";
 import { findSubscriptionCategory } from "../domain/subscriptions";
+import { reconciliationDelta } from "../domain/balance";
 
 // ---------------------------------------------------------------------------
 // Onboarding seed
@@ -233,20 +234,37 @@ export async function deleteTransaction(userId: string, id: string) {
  * so repeated corrections converge on the target instead of stacking: we back
  * out today's existing adjustment before computing the new delta.
  */
-export async function setCurrentBalance(userId: string, targetMinor: Minor, computedNowMinor: Minor): Promise<void> {
+export async function setCurrentBalance(
+  userId: string,
+  targetMinor: Minor,
+  computedNowMinor: Minor,
+  note: string | null = null,
+): Promise<void> {
   const today = todayISO();
   const id = await deterministicId(naturalKeys.balanceAdjustment(userId, today));
   const sqlite = await getSqliteAsync();
-  const prev = await sqlite.getFirstAsync<{ amount_minor: number }>(
-    `SELECT amount_minor FROM balance_adjustments WHERE id = ? AND deleted_at IS NULL`,
-    [id] as never[],
+  const prev = await sqlite.getFirstAsync<{ amount_minor: number; created_at: string }>(
+    `SELECT amount_minor, created_at FROM balance_adjustments WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [id, userId] as never[],
   );
   const prevAmount = prev?.amount_minor ?? 0;
   // computedNow already contains prevAmount; the new adjustment must make the
   // total land on target: (computedNow - prevAmount) + delta = target.
-  const delta = targetMinor - (computedNowMinor - prevAmount);
+  const delta = reconciliationDelta(targetMinor, computedNowMinor, prevAmount);
   await writeRows(userId, [
-    { table: "balance_adjustments", row: { id, date: today, amountMinor: delta, note: null, deletedAt: null } },
+    {
+      table: "balance_adjustments",
+      row: {
+        id,
+        date: today,
+        amountMinor: delta,
+        note,
+        createdAt: prev?.created_at,
+        // Returning exactly to the unadjusted balance removes the reconciliation
+        // from the live ledger instead of leaving a meaningless zero row.
+        deletedAt: delta === 0 ? nowIso() : null,
+      },
+    },
   ]);
 }
 
