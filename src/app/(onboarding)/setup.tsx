@@ -5,7 +5,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Pencil, Trash2 } from "lucide-react-native";
 import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
-import { importBundle } from "../../services/export-import";
+import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/export-import";
 import { useSession } from "../../auth/session";
 import { useSettingsMap } from "../../data/hooks";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../../domain/dates";
@@ -152,10 +152,14 @@ export default function SetupScreen() {
         // backup seeds the workspace and shows the "prepared" note (P1-2).
         const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
         if (picked.canceled || !picked.assets[0]) return;
+        if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
         setBusy(true);
-        await ensureSeeded(false); // the backup defines the categories
         const content = await new File(picked.assets[0].uri).text();
-        await importBundle(userId, JSON.parse(content));
+        // Validate and restore the complete workspace atomically. Seeding first
+        // would leave a partial starter workspace behind when a corrupt backup
+        // is rejected or the restore write fails.
+        await importBundle(userId, parseExportBundleText(content));
+        setSeeded(true);
       } else {
         setBusy(true);
         // Manual history writes into the selected templates; a spreadsheet import

@@ -6,7 +6,7 @@
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
 import { fromDbShape, nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
-import { isCurrentOrFutureMonth, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
+import { addMonthsToKey, isCurrentOrFutureMonth, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { convertToTryMinor } from "../domain/fx";
 import { advanceDueDate } from "../domain/recurrence";
@@ -816,8 +816,10 @@ export async function bulkMonthEntry(
 // ---------------------------------------------------------------------------
 
 interface ImportBatch {
+  version?: 2;
   transactions: string[];
   cellNotes: string[];
+  installmentPlans?: string[];
 }
 
 export interface ImportRequest {
@@ -838,12 +840,126 @@ export interface ImportRequest {
 const importBatchKey = (year: number) => `import_batch:${year}`;
 const COLUMN_YEARS_KEY = "column_years";
 
+function parseImportBatch(value: string): ImportBatch | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<ImportBatch>;
+    if (!Array.isArray(parsed.transactions) || !Array.isArray(parsed.cellNotes)) return null;
+    return {
+      version: parsed.version === 2 ? 2 : undefined,
+      transactions: parsed.transactions.filter((id): id is string => typeof id === "string"),
+      cellNotes: parsed.cellNotes.filter((id): id is string => typeof id === "string"),
+      installmentPlans: Array.isArray(parsed.installmentPlans)
+        ? parsed.installmentPlans.filter((id): id is string => typeof id === "string")
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function importBatchMap(userId: string): Promise<Map<number, ImportBatch>> {
+  const sqlite = await getSqliteAsync();
+  const rows = await sqlite.getAllAsync<{ key: string; value: string }>(
+    `SELECT key, value FROM settings WHERE user_id = ? AND key LIKE 'import_batch:%' AND deleted_at IS NULL`,
+    [userId] as never[],
+  );
+  const result = new Map<number, ImportBatch>();
+  for (const row of rows) {
+    const year = Number(row.key.slice("import_batch:".length));
+    const batch = parseImportBatch(row.value);
+    if (Number.isInteger(year) && batch) result.set(year, batch);
+  }
+  // Batch v1 did not record reconstructed plans or their generated rows. A
+  // deterministic-id check identifies those legacy imported plans without
+  // ever touching user-created UUIDv7 plans, then reconstructs ownership so a
+  // first v2 replacement can clean them safely.
+  if ([...result.values()].some((batch) => batch.version !== 2)) {
+    const plans = await sqlite.getAllAsync<{
+      id: string;
+      title: string;
+      monthly_amount_minor: number | null;
+      installment_count: number;
+      start_month: MonthKey;
+    }>(
+      `SELECT id, title, monthly_amount_minor, installment_count, start_month
+       FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`,
+      [userId] as never[],
+    );
+    const importedPlanIds = new Set<string>();
+    for (const plan of plans) {
+      if (plan.monthly_amount_minor == null) continue;
+      const expectedId = await deterministicId(
+        naturalKeys.importInstallmentPlan(userId, plan.title, plan.monthly_amount_minor, plan.installment_count, plan.start_month),
+      );
+      if (expectedId !== plan.id) continue;
+      importedPlanIds.add(plan.id);
+      const startYear = yearOf(plan.start_month);
+      const endYear = yearOf(addMonthsToKey(plan.start_month, plan.installment_count - 1));
+      for (const [year, batch] of result) {
+        if (year >= startYear && year <= endYear) batch.installmentPlans = [...new Set([...(batch.installmentPlans ?? []), plan.id])];
+      }
+    }
+    if (importedPlanIds.size > 0) {
+      const generated = await sqlite.getAllAsync<{ id: string; installment_plan_id: string }>(
+        `SELECT id, installment_plan_id FROM transactions
+         WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL`,
+        [userId] as never[],
+      );
+      const byPlan = new Map<string, string[]>();
+      for (const row of generated) {
+        if (!importedPlanIds.has(row.installment_plan_id)) continue;
+        const ids = byPlan.get(row.installment_plan_id) ?? [];
+        ids.push(row.id);
+        byPlan.set(row.installment_plan_id, ids);
+      }
+      for (const batch of result.values()) {
+        const ids = (batch.installmentPlans ?? []).flatMap((planId) => byPlan.get(planId) ?? []);
+        batch.transactions = [...new Set([...batch.transactions, ...ids])];
+      }
+    }
+  }
+  return result;
+}
+
+async function settingWrite(userId: string, key: string, value: unknown): Promise<RowWrite> {
+  return {
+    table: "settings",
+    row: {
+      id: await deterministicId(naturalKeys.setting(userId, key)),
+      key,
+      value: JSON.stringify(value),
+      deletedAt: null,
+    },
+  };
+}
+
+async function tombstoneImportRows(
+  userId: string,
+  table: "transactions" | "cell_notes" | "installment_plans",
+  ids: Iterable<string>,
+): Promise<RowWrite[]> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return [];
+  const sqlite = await getSqliteAsync();
+  const writes: RowWrite[] = [];
+  for (let offset = 0; offset < unique.length; offset += 400) {
+    const chunk = unique.slice(offset, offset + 400);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const rows = await sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM ${table} WHERE user_id = ? AND id IN (${placeholders})`,
+      [userId, ...chunk] as never[],
+    );
+    writes.push(...rows.map((row) => ({ table, row: { ...fromDbShape(table, row), deletedAt: nowIso() } })));
+  }
+  return writes;
+}
+
 /** Years (of the given set) that already carry a prior import batch. */
 export async function importedYears(userId: string, years: number[]): Promise<number[]> {
   const out: number[] = [];
   for (const year of [...new Set(years)]) {
     const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
-    if (prev && (prev.transactions?.length || prev.cellNotes?.length)) out.push(year);
+    if (prev && (prev.transactions?.length || prev.cellNotes?.length || prev.installmentPlans?.length)) out.push(year);
   }
   return out;
 }
@@ -874,11 +990,13 @@ export async function hasImportedData(userId: string): Promise<boolean> {
  */
 export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number }> {
   const sqlite = await getSqliteAsync();
-  const existing = await sqlite.getAllAsync<{ id: string; name: string; sort_order: number }>(
-    `SELECT id, name, sort_order FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
+  const existing = await sqlite.getAllAsync<{ id: string; name: string; kind: "expense" | "income"; sort_order: number }>(
+    `SELECT id, name, kind, sort_order FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
     [userId] as never[],
   );
-  const idByName = new Map(existing.map((c) => [c.name.toLocaleLowerCase("tr-TR"), c.id]));
+  const normalizedName = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
+  const categoryKey = (name: string, kind: "expense" | "income") => `${normalizedName(name)}|${kind}`;
+  const idByNameAndKind = new Map(existing.map((c) => [categoryKey(c.name, c.kind), c.id]));
   let sortSeed = existing.reduce((m, c) => Math.max(m, c.sort_order), -1) + 1;
   // Query payment sources up front too, so the whole import — categories, rows,
   // reconstructed installment cards + plans — flushes in ONE writeRows. A read
@@ -887,18 +1005,19 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     `SELECT id, name FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`,
     [userId] as never[],
   );
-  const sourceIdByName = new Map(existingSources.map((s) => [s.name.toLocaleLowerCase("tr-TR"), s.id]));
+  const sourceIdByName = new Map(existingSources.map((s) => [normalizedName(s.name), s.id]));
 
   const catWrites: RowWrite[] = [];
   const ensureCategory = (label: string, kind: "expense" | "income"): string => {
-    const key = label.toLocaleLowerCase("tr-TR");
-    let id = idByName.get(key);
+    const cleanLabel = label.trim();
+    const key = categoryKey(cleanLabel, kind);
+    let id = idByNameAndKind.get(key);
     if (!id) {
       id = newId();
-      idByName.set(key, id);
+      idByNameAndKind.set(key, id);
       catWrites.push({
         table: "categories",
-        row: { id, name: label, kind, icon: suggestCategoryIcon(label, kind), color: null, sortOrder: sortSeed++, isColumn: true, deletedAt: null },
+        row: { id, name: cleanLabel, kind, icon: suggestCategoryIcon(cleanLabel, kind), color: null, sortOrder: sortSeed++, isColumn: true, deletedAt: null },
       });
     }
     return id;
@@ -907,14 +1026,31 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   const selectedYears = req.selectedYears ? new Set(req.selectedYears) : null;
   const yearAllowed = (y: number) => !selectedYears || selectedYears.has(y);
 
-  // Replace mode: tombstone each affected year's prior import before rewriting.
   const affectedYears = [...new Set(req.sheets.flatMap((s) => s.months.map(yearOf)))].filter(yearAllowed);
+  const priorBatches = await importBatchMap(userId);
+  const cleanupWrites: RowWrite[] = [];
+  // Build the replacement cleanup first, but don't mutate anything yet. Rows
+  // still owned by an unaffected year's batch are protected. Cleanup + new
+  // import + batch/settings metadata are committed by one writeRows below.
   if (req.mode === "replace") {
-    for (const year of affectedYears) {
-      const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
-      await softDeleteMany(userId, "transactions", prev?.transactions ?? []);
-      await softDeleteMany(userId, "cell_notes", prev?.cellNotes ?? []);
+    const affected = new Set(affectedYears);
+    const protectedTransactions = new Set<string>();
+    const protectedNotes = new Set<string>();
+    const protectedPlans = new Set<string>();
+    for (const [year, batch] of priorBatches) {
+      if (affected.has(year)) continue;
+      batch.transactions.forEach((id) => protectedTransactions.add(id));
+      batch.cellNotes.forEach((id) => protectedNotes.add(id));
+      batch.installmentPlans?.forEach((id) => protectedPlans.add(id));
     }
+    const oldTransactions = affectedYears.flatMap((year) => priorBatches.get(year)?.transactions ?? []).filter((id) => !protectedTransactions.has(id));
+    const oldNotes = affectedYears.flatMap((year) => priorBatches.get(year)?.cellNotes ?? []).filter((id) => !protectedNotes.has(id));
+    const oldPlans = affectedYears.flatMap((year) => priorBatches.get(year)?.installmentPlans ?? []).filter((id) => !protectedPlans.has(id));
+    cleanupWrites.push(
+      ...(await tombstoneImportRows(userId, "transactions", oldTransactions)),
+      ...(await tombstoneImportRows(userId, "cell_notes", oldNotes)),
+      ...(await tombstoneImportRows(userId, "installment_plans", oldPlans)),
+    );
   }
 
   const txWrites: RowWrite[] = [];
@@ -925,7 +1061,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   let imported = 0;
   const batchFor = (y: number): ImportBatch => {
     let b = batchByYear.get(y);
-    if (!b) batchByYear.set(y, (b = { transactions: [], cellNotes: [] }));
+    if (!b) batchByYear.set(y, (b = { version: 2, transactions: [], cellNotes: [], installmentPlans: [] }));
     return b;
   };
 
@@ -937,7 +1073,8 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       const month = sheet.months[r];
       const year = yearOf(month);
       if (!yearAllowed(year)) continue;
-      columnYearsUpdates.set(year, orderedCatIds); // each year shows its sheet's columns
+      const priorColumns = columnYearsUpdates.get(year) ?? [];
+      columnYearsUpdates.set(year, [...new Set([...priorColumns, ...orderedCatIds])]);
       const batch = batchFor(year);
       for (let ci = 0; ci < active.length; ci++) {
         const col = active[ci];
@@ -1012,7 +1149,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   });
   const sourceWrites: RowWrite[] = [];
   for (const spec of planSpecs) {
-    const key = spec.card.toLocaleLowerCase("tr-TR");
+    const key = normalizedName(spec.card);
     if (sourceIdByName.has(key)) continue;
     const id = await deterministicId(naturalKeys.importSource(userId, spec.card));
     sourceIdByName.set(key, id);
@@ -1027,7 +1164,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   const planRowBatches = await Promise.all(
     planSpecs.map(async (spec) => {
       const planId = await deterministicId(naturalKeys.importInstallmentPlan(userId, spec.name, spec.monthlyMinor, spec.total, spec.startMonth));
-      return buildPlanRows(planId, {
+      const built = await buildPlanRows(planId, {
         title: spec.name,
         kind: "card_installment",
         totalAmountMinor: null,
@@ -1037,51 +1174,85 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         fxRate: null,
         startMonth: spec.startMonth,
         dueDay: null,
-        paymentSourceId: sourceIdByName.get(spec.card.toLocaleLowerCase("tr-TR")) ?? null,
+        paymentSourceId: sourceIdByName.get(normalizedName(spec.card)) ?? null,
         personId: req.selfId,
         personIsSelf: true,
-        categoryId: idByName.get(spec.columnLabel.toLocaleLowerCase("tr-TR")) ?? null,
+        categoryId:
+          idByNameAndKind.get(categoryKey(spec.columnLabel, "expense")) ??
+          idByNameAndKind.get(categoryKey(spec.columnLabel, "income")) ??
+          null,
         note: null,
         tryFactor: 1,
       }, today);
+      return { ...built, planId, spec };
     }),
   );
+  for (const built of planRowBatches) {
+    const startYear = yearOf(built.spec.startMonth);
+    const endYear = yearOf(addMonthsToKey(built.spec.startMonth, built.spec.total - 1));
+    for (const year of affectedYears) {
+      if (year < startYear || year > endYear) continue;
+      const batch = batchFor(year);
+      batch.installmentPlans!.push(built.planId);
+      batch.transactions.push(
+        ...built.rows.filter((row) => row.table === "transactions").map((row) => String(row.row.id)),
+      );
+    }
+  }
   imported += planSpecs.length;
 
-  const writes = [...catWrites, ...sourceWrites, ...txWrites, ...noteWrites, ...planRowBatches.flatMap((b) => b.rows)];
-  if (writes.length > 0) await writeRows(userId, writes);
-
-  // Per-year column membership (Excel order preserved).
+  // Settings and data are part of the SAME transaction as replacement
+  // tombstones. The persisted batch can therefore never claim a half-import.
+  const metadataWrites: RowWrite[] = [];
   const columnYears = (await readSetting<Record<string, string[]>>(userId, COLUMN_YEARS_KEY)) ?? {};
-  for (const [year, ids] of columnYearsUpdates) columnYears[String(year)] = ids;
-  await writeSetting(userId, COLUMN_YEARS_KEY, columnYears, true);
+  for (const [year, ids] of columnYearsUpdates) {
+    columnYears[String(year)] = req.mode === "add"
+      ? [...new Set([...(columnYears[String(year)] ?? []), ...ids])]
+      : ids;
+  }
+  metadataWrites.push(await settingWrite(userId, COLUMN_YEARS_KEY, columnYears));
 
   // Record batches (add mode keeps prior ids so a later replace still cleans up).
-  for (const [year, batch] of batchByYear) {
+  for (const year of affectedYears) {
+    const batch = batchByYear.get(year) ?? { version: 2 as const, transactions: [], cellNotes: [], installmentPlans: [] };
     if (req.mode === "add") {
-      const prev = await readSetting<ImportBatch>(userId, importBatchKey(year));
-      batch.transactions = [...(prev?.transactions ?? []), ...batch.transactions];
-      batch.cellNotes = [...(prev?.cellNotes ?? []), ...batch.cellNotes];
+      const prev = priorBatches.get(year);
+      batch.transactions = [...new Set([...(prev?.transactions ?? []), ...batch.transactions])];
+      batch.cellNotes = [...new Set([...(prev?.cellNotes ?? []), ...batch.cellNotes])];
+      batch.installmentPlans = [...new Set([...(prev?.installmentPlans ?? []), ...(batch.installmentPlans ?? [])])];
     }
-    await writeSetting(userId, importBatchKey(year), batch);
+    metadataWrites.push(await settingWrite(userId, importBatchKey(year), batch));
   }
 
-  await seedOpeningFromImport(userId, req.sheets, yearAllowed);
+  metadataWrites.push(...(await openingWritesFromImport(userId, req.sheets, yearAllowed)));
+  const writes = [
+    ...cleanupWrites,
+    ...catWrites,
+    ...sourceWrites,
+    ...txWrites,
+    ...noteWrites,
+    ...planRowBatches.flatMap((b) => b.rows),
+    ...metadataWrites,
+  ];
+  if (writes.length > 0) await writeRows(userId, writes);
   return { imported };
 }
 
 /** Seed the ledger opening balance from the earliest imported opening cell. */
-async function seedOpeningFromImport(userId: string, sheets: ParsedSheet[], yearAllowed: (y: number) => boolean): Promise<void> {
+async function openingWritesFromImport(userId: string, sheets: ParsedSheet[], yearAllowed: (y: number) => boolean): Promise<RowWrite[]> {
   const withOpening = sheets
     .filter((s) => s.openingBalance && yearAllowed(yearOf(s.openingBalance.month)))
     .sort((a, b) => a.openingBalance!.month.localeCompare(b.openingBalance!.month));
   const earliest = withOpening[0];
-  if (!earliest) return;
+  if (!earliest) return [];
   const currentStart = await readSetting<string>(userId, "start_month");
   if (!currentStart || earliest.openingBalance!.month < currentStart) {
-    await writeSetting(userId, "start_month", earliest.openingBalance!.month);
-    await writeSetting(userId, "opening_balance_minor", earliest.openingBalance!.minor);
+    return [
+      await settingWrite(userId, "start_month", earliest.openingBalance!.month),
+      await settingWrite(userId, "opening_balance_minor", earliest.openingBalance!.minor),
+    ];
   }
+  return [];
 }
 
 // ---------------------------------------------------------------------------

@@ -45,6 +45,8 @@ describe("parseMonthLabel", () => {
     expect(parseMonthLabel("Oca'25")).toBe("2025-01");
     expect(parseMonthLabel("2025-03")).toBe("2025-03");
     expect(parseMonthLabel("01.2024")).toBe("2024-01");
+    expect(parseMonthLabel("2025-13")).toBeNull();
+    expect(parseMonthLabel("00.2025")).toBeNull();
     expect(parseMonthLabel(new Date(2025, 4, 15))).toBe("2025-05");
     expect(parseMonthLabel("Güncel Bakiye")).toBeNull();
     expect(parseMonthLabel("")).toBeNull();
@@ -59,6 +61,7 @@ describe("parseSheetAmount", () => {
     expect(parseSheetAmount("-₺43.754,43")).toBe(-4375443);
     expect(parseSheetAmount("-")).toBeNull();
     expect(parseSheetAmount(null)).toBeNull();
+    expect(parseSheetAmount(Number.MAX_SAFE_INTEGER)).toBeNull();
   });
 });
 
