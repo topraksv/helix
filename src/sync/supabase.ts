@@ -9,6 +9,11 @@ import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 const CHUNK = 1900;
+const MAX_AUTH_CHUNKS = 64;
+
+async function deleteChunks(key: string, count: number): Promise<void> {
+  for (let i = 0; i < count; i++) await SecureStore.deleteItemAsync(`${key}.${i}`);
+}
 
 const secureChunkedStorage = {
   async getItem(key: string): Promise<string | null> {
@@ -23,8 +28,10 @@ const secureChunkedStorage = {
     return parts.join("");
   },
   async setItem(key: string, value: string): Promise<void> {
+    const previousCount = Number(await SecureStore.getItemAsync(`${key}.n`)) || 0;
     if (value.length <= CHUNK) {
       await SecureStore.setItemAsync(key, value);
+      await deleteChunks(key, previousCount);
       await SecureStore.deleteItemAsync(`${key}.n`);
       return;
     }
@@ -34,13 +41,14 @@ const secureChunkedStorage = {
     }
     await SecureStore.setItemAsync(`${key}.n`, String(count));
     await SecureStore.deleteItemAsync(key);
+    for (let i = count; i < previousCount; i++) await SecureStore.deleteItemAsync(`${key}.${i}`);
   },
   async removeItem(key: string): Promise<void> {
     const countRaw = await SecureStore.getItemAsync(`${key}.n`);
-    if (countRaw) {
-      for (let i = 0; i < Number(countRaw); i++) await SecureStore.deleteItemAsync(`${key}.${i}`);
-      await SecureStore.deleteItemAsync(`${key}.n`);
-    }
+    // The bounded fallback also removes legacy orphan chunks left by older
+    // short-token overwrites that deleted `.n` before deleting `.0…n`.
+    await deleteChunks(key, Math.max(Number(countRaw) || 0, MAX_AUTH_CHUNKS));
+    await SecureStore.deleteItemAsync(`${key}.n`);
     await SecureStore.deleteItemAsync(key);
   },
 };

@@ -15,7 +15,7 @@ import {
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
 import { resetLocalWorkspace, writeSetting } from "../db/mutations";
-import { cancelSync } from "../sync/engine";
+import { startSyncSession, stopSyncSession } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { disconnectMarkets } from "../services/markets";
 import { kv } from "../lib/kv";
@@ -52,6 +52,7 @@ function friendlyAuthError(raw: string): string {
 async function ensureWorkspaceFor(userId: string): Promise<string | null> {
   const owner = await kv.get(LOCAL_OWNER_KEY);
   if (owner && owner !== userId) {
+    await stopSyncSession();
     try {
       await resetLocalWorkspace();
     } catch {
@@ -86,7 +87,9 @@ interface SessionStore {
   preparePasswordRecovery: (url: string | null) => Promise<"ready" | "expired" | "invalid">;
   /** Update the password from the recovery session and end that session. */
   completePasswordRecovery: (newPassword: string) => Promise<string | null>;
-  signOut: () => Promise<void>;
+  /** Wipe local finance data and end the session. Returns an error if the wipe
+   *  failed; in that case the authenticated session remains active. */
+  signOut: () => Promise<string | null>;
   /** Permanently delete all data (cloud + this device) and sign out. Returns a
    *  user-facing error string when the cloud wipe could not complete. */
   deleteAccount: () => Promise<string | null>;
@@ -101,7 +104,7 @@ interface SessionStore {
   changePassword: (newPassword: string) => Promise<string | null>;
 }
 
-export const useSession = create<SessionStore>((set) => ({
+export const useSession = create<SessionStore>((set, get) => ({
   userId: null,
   email: null,
   ready: false,
@@ -112,6 +115,12 @@ export const useSession = create<SessionStore>((set) => ({
 
   bootstrap: async () => {
     if (!isSupabaseConfigured) {
+      const wsError = await ensureWorkspaceFor(LOCAL_USER_ID);
+      if (wsError) {
+        set({ userId: null, ready: true, isOnlineSession: false });
+        return;
+      }
+      startSyncSession(LOCAL_USER_ID);
       set({ userId: LOCAL_USER_ID, ready: true, isOnlineSession: false });
       return;
     }
@@ -119,6 +128,12 @@ export const useSession = create<SessionStore>((set) => ({
     try {
       const { data } = await supabase.auth.getSession();
       if (data.session?.user) {
+        const wsError = await ensureWorkspaceFor(data.session.user.id);
+        if (wsError) {
+          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+          set({ userId: null, ready: true, isOnlineSession: false });
+          return;
+        }
         await kv.set(LAST_USER_KEY, data.session.user.id);
         await seedCurrentLogin(
           kv,
@@ -126,6 +141,7 @@ export const useSession = create<SessionStore>((set) => ({
           data.session.user.last_sign_in_at ?? new Date().toISOString(),
         );
         const previousLoginAt = await loadPreviousLogin(kv, data.session.user.id);
+        startSyncSession(data.session.user.id);
         set({ userId: data.session.user.id, email: data.session.user.email ?? null, ready: true, isOnlineSession: true, isNewSignup: false, previousLoginAt });
         return;
       }
@@ -133,7 +149,15 @@ export const useSession = create<SessionStore>((set) => ({
       // offline — fall through to the persisted user id
     }
     const lastUser = await kv.get(LAST_USER_KEY);
+    if (lastUser) {
+      const wsError = await ensureWorkspaceFor(lastUser);
+      if (wsError) {
+        set({ userId: null, ready: true, isOnlineSession: false, isNewSignup: false, previousLoginAt: null });
+        return;
+      }
+    }
     const previousLoginAt = lastUser ? await loadPreviousLogin(kv, lastUser) : null;
+    if (lastUser) startSyncSession(lastUser);
     set({ userId: lastUser, ready: true, isOnlineSession: false, isNewSignup: false, previousLoginAt });
   },
 
@@ -157,6 +181,7 @@ export const useSession = create<SessionStore>((set) => ({
     // the synced flag (a newer LWW write than the freeze) so the reactivation
     // gate never reappears after a successful login.
     await writeSetting(data.user.id, "account_frozen", false).catch(() => {});
+    startSyncSession(data.user.id);
     set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: false, previousLoginAt });
     return null;
   },
@@ -177,6 +202,7 @@ export const useSession = create<SessionStore>((set) => ({
     // A brand-new account has no cloud data to pull → go straight to onboarding
     // (isNewSignup), skipping the "await first pull" hold used for existing
     // accounts syncing onto a fresh device.
+    startSyncSession(data.user.id);
     set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: true, previousLoginAt: null });
     return null;
   },
@@ -226,26 +252,21 @@ export const useSession = create<SessionStore>((set) => ({
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return friendlyAuthError(error.message);
     clearPasswordRecoveryDetected();
-    if (useSession.getState().userId) await useSession.getState().signOut();
+    if (get().userId) {
+      const signOutError = await get().signOut();
+      if (signOutError) return signOutError;
+    }
     else await supabase.auth.signOut({ scope: "local" }).catch(() => {});
     return null;
   },
 
   signOut: async () => {
-    // Stop any scheduled sync/retry so a stale timer never fires for this
-    // account after the wipe below, and close the live market feed so no
-    // stream survives the session.
-    cancelSync();
+    const userId = get().userId;
+    // Abort scheduled/network work and wait for registered maintenance tasks.
+    // The database cannot be wiped while an old user task can still write.
+    await stopSyncSession(userId ?? undefined);
     disconnectMarkets();
     useSyncStatus.getState().set({ lastSyncAt: null });
-    const supabase = getSupabase();
-    if (supabase) {
-      try {
-        await supabase.auth.signOut();
-      } catch {
-        // offline sign-out still clears local session state
-      }
-    }
     // Best practice for a finance app: leave no plaintext financial data on the
     // device after an explicit sign-out. The cloud (RLS-scoped) is the source
     // of truth, so the next sign-in re-hydrates via the initial pull. Clearing
@@ -253,17 +274,30 @@ export const useSession = create<SessionStore>((set) => ({
     try {
       await resetLocalWorkspace();
     } catch {
-      // best-effort; a failed wipe still clears the session below
+      if (userId) startSyncSession(userId);
+      return tr.errors.workspaceResetFailed;
+    }
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // Ensure local credentials are removed even when global revocation is
+        // unavailable. The already-wiped device must still complete sign-out.
+        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      }
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
     set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
+    return null;
   },
 
   deleteAccount: async () => {
-    const state = useSession.getState();
+    const state = get();
     const userId = state.userId;
     if (!userId) return null;
+    await stopSyncSession(userId);
     // Erase the cloud account FIRST: if it fails (offline / RPC missing), abort
     // before touching local data so we never report "deleted" while it lives on.
     //
@@ -278,13 +312,13 @@ export const useSession = create<SessionStore>((set) => ({
       if (supabase) {
         const { error } = await supabase.rpc("delete_own_account");
         if (error) {
+          startSyncSession(userId);
           return `${tr.account.deleteCloudFailed} (${error.message})`;
         }
       }
     }
     // Cloud is erased (or local-only mode): stop timers/streams, wipe the device,
     // and end the session.
-    cancelSync();
     disconnectMarkets();
     useSyncStatus.getState().set({ lastSyncAt: null });
     const supabase = getSupabase();
@@ -298,7 +332,10 @@ export const useSession = create<SessionStore>((set) => ({
     try {
       await resetLocalWorkspace();
     } catch {
-      // best-effort; the cloud is already gone and the session is cleared below
+      // The cloud identity is already gone, so keep the local owner marker and
+      // surface an actionable error. A future account cannot open this
+      // workspace: ensureWorkspaceFor will retry the wipe first.
+      return tr.errors.workspaceResetFailed;
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
@@ -308,7 +345,7 @@ export const useSession = create<SessionStore>((set) => ({
 
   verifyPassword: async (password) => {
     const supabase = getSupabase();
-    const email = useSession.getState().email;
+    const email = get().email;
     if (!supabase || !email) return false;
     // Re-authenticate with the current e-mail: a successful sign-in confirms
     // the password. It re-issues tokens for the same account (no identity

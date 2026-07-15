@@ -61,6 +61,11 @@ agent-to-agent communication that did not occur.
   earliest data and the opening balance is back-computed.
 - **Every user write goes through `writeRows`** (outbox + `last_entry_at` +
   atomic). Deletes are tombstones (`softDelete`), never hard deletes.
+- **Every authenticated background task is session-scoped.** Auth activates an
+  epoch with `startSyncSession`; sign-out/account deletion awaits
+  `stopSyncSession`. Maintenance, FX, notifications, or any other async work
+  that can outlive a render must run through `runSyncSessionTask`. A late
+  response from user A must never write after user B becomes active.
 - **Money is integer minor units** (kuruş) everywhere; format only at the edge
   with `formatMinor`. Dates are `YYYY-MM-DD` ISO strings, months `YYYY-MM`.
 - **Analytics follows transaction type, not category appearance.** Expenses
