@@ -133,6 +133,7 @@ function RootLayoutInner() {
   const frozen = useAccountFrozen(userId);
   const segments = useSegments();
   const router = useRouter();
+  const inRecovery = segments[0] === "(auth)" && (segments as string[])[1] === "reset-password";
 
   // On a fresh device an already-onboarded account's `onboarded` flag arrives
   // only with the first sync pull; until then the local query returns false and
@@ -268,11 +269,11 @@ function RootLayoutInner() {
     // still false; closing them returns to the onboarding screen.
     const inSetupHelper = segments[0] === "import-wizard" || segments[0] === "bulk-entry";
     if (!userId && !inAuth) router.replace("/(auth)/sign-in");
-    else if (userId && onboarded === false && !awaitingFirstPull && !inOnboarding && !inSetupHelper) router.replace("/(onboarding)/setup");
-    else if (userId && onboarded === true && (inAuth || inOnboarding || (segments as string[]).length === 0)) {
+    else if (userId && onboarded === false && !awaitingFirstPull && !inRecovery && !inOnboarding && !inSetupHelper) router.replace("/(onboarding)/setup");
+    else if (userId && onboarded === true && !inRecovery && (inAuth || inOnboarding || (segments as string[]).length === 0)) {
       router.replace("/(tabs)");
     }
-  }, [ready, locked, userId, onboarded, awaitingFirstPull, segments, router]);
+  }, [ready, locked, userId, onboarded, awaitingFirstPull, inRecovery, segments, router]);
 
   if (!ready || locked === null) {
     return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
@@ -294,7 +295,7 @@ function RootLayoutInner() {
   // Frozen account: block everything behind the reactivation gate. Only applies
   // to a signed-in, onboarded user (frozen is null when signed out); suppressed
   // on the device that is mid-freeze (it's about to sign out to the login page).
-  if (userId && onboarded === true && frozen === true && !isFreezing) {
+  if (userId && onboarded === true && frozen === true && !isFreezing && !inRecovery) {
     return (
       <ThemeContext.Provider value={theme}>
         <FrozenGate />
@@ -312,7 +313,9 @@ function RootLayoutInner() {
   // Importers launched from onboarding (workspace seeded, not yet finalized)
   // must render even though onboarded is still false.
   const inSetupHelper = segments[0] === "import-wizard" || segments[0] === "bulk-entry";
-  const blocked = inAuth
+  const blocked = inRecovery
+    ? false
+    : inAuth
     ? !!userId && (onboarded === true || awaitingFirstPull)
     : inOnboarding || inSetupHelper
       ? !userId
@@ -345,6 +348,7 @@ function RootLayoutInner() {
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
           <Stack.Screen name="transaction" options={{ presentation: "modal", title: tr.tx.new }} />
           <Stack.Screen name="installment-new" options={{ presentation: "modal", title: tr.installments.newPlan }} />

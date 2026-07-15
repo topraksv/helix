@@ -47,6 +47,26 @@ export const tr = {
     signUpAction: "Kayıt ol",
     haveAccount: "Zaten hesabın var mı?",
     signInAction: "Giriş yap",
+    forgotPassword: "Şifremi unuttum",
+    forgotTitle: "Şifreni yenile",
+    forgotSubtitle: "E-posta adresini yaz; güvenli şifre yenileme bağlantısını gönderelim.",
+    sendResetLink: "Yenileme Bağlantısı Gönder",
+    resetSent: "Bu adresle bir hesap varsa şifre yenileme bağlantısı gönderildi. Gelen kutunu ve gereksiz klasörünü kontrol et.",
+    rememberedPassword: "Şifreni hatırladın mı?",
+    backToSignIn: "Girişe Dön",
+    resetTitle: "Yeni şifreni belirle",
+    resetSubtitle: "Hesabın için en az 6 karakterli yeni bir şifre oluştur.",
+    newPassword: "Yeni şifre",
+    confirmNewPassword: "Yeni şifreyi doğrula",
+    passwordsMismatch: "Şifreler aynı değil",
+    resetSave: "Şifreyi Yenile",
+    resetSuccessTitle: "Şifren yenilendi",
+    resetSuccessBody: "Yeni şifrenle güvenle giriş yapabilirsin.",
+    resetExpiredTitle: "Bağlantının süresi dolmuş",
+    resetExpiredBody: "Güvenliğin için yenileme bağlantıları sınırlı süre geçerlidir. Giriş ekranından yeni bir bağlantı iste.",
+    resetInvalidTitle: "Bağlantı kullanılamıyor",
+    resetInvalidBody: "Bu bağlantı geçersiz veya daha önce kullanılmış olabilir. Giriş ekranından yeni bir bağlantı iste.",
+    requestNewLink: "Yeni Bağlantı İste",
     offlineNote: "Verilerin cihazında saklanır, internet yokken de çalışır.",
     errInvalidCredentials: "E-posta veya şifre hatalı.",
     errUserExists: "Bu e-posta ile zaten bir hesap var; giriş yapmayı dene.",
@@ -149,6 +169,7 @@ export const tr = {
     actualBalance: "Güncel Bakiye",
     projectedBalance: "Ay Sonu Öngörüsü",
     lastEntry: (d: string, ago: string) => `Son giriş: ${d} · ${ago}`,
+    lastLogin: (d: string) => `Önceki başarılı giriş: ${d}`,
     pendingConfirm: (n: number) => (n === 1 ? "1 ödeme onay bekliyor" : `${n} ödeme onay bekliyor`),
     catchUp: "Onay bekleyen ödemeleri gözden geçir",
     forecastToggle: "Ay sonu tahmini",
@@ -576,4 +597,13 @@ export function monthLabel(monthKey: string): string {
 export function dateLabel(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${Number(d)} ${tr.months[Number(m) - 1]} ${y}`;
+}
+
+export function dateTimeLabel(iso: string): string {
+  const value = new Date(iso);
+  if (Number.isNaN(value.getTime())) return iso;
+  return new Intl.DateTimeFormat("tr-TR", {
+    dateStyle: "long",
+    timeStyle: "short",
+  }).format(value);
 }
