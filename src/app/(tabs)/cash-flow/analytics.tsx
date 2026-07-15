@@ -47,14 +47,15 @@ export default function AnalysisScreen() {
   // and bails out when it finds hand-rolled memoization on unstable deps.
   const txLike = toTxLike(allTx, persons);
   const categoryKind = new Map(categories.map((category) => [category.id, category.kind]));
-  // A category carried by a transfer (or a legacy type/category mismatch) is
-  // presentation metadata, not income/expense analytics.
-  const analyticsTx = txLike.filter((tx) => {
+  // Category detail rows require the stored category kind to match. Aggregate
+  // income/expense charts below still trust the transaction type so legacy
+  // mismatches cannot make real money disappear from the period total.
+  const categoryMatrixTx = txLike.filter((tx) => {
     if (tx.type === "transfer") return false;
     if (!tx.categoryId) return true;
     return categoryKind.get(tx.categoryId) === tx.type;
   });
-  const matrix = categoryRangeMatrix(analyticsTx, startMonth, endMonth, today);
+  const matrix = categoryRangeMatrix(categoryMatrixTx, startMonth, endMonth, today);
 
   // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
   // back arrow can't wander into empty years forever.
@@ -95,7 +96,10 @@ export default function AnalysisScreen() {
 
   // Chart data: pie = expense-category shares over the window; bars = monthly
   // income vs expense, or the filtered category's month-by-month values.
-  const periodDistribution = distributionForRange(analyticsTx, firstDayOf(startMonth), lastDayOf(endMonth), today);
+  // Transaction type is authoritative for income/expense totals. Keep legacy
+  // rows whose category kind is stale in the distribution instead of silently
+  // dropping real spending; only the category-detail matrix needs kind parity.
+  const periodDistribution = distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today);
   const expenseRows = [...periodDistribution.expenseByCategory.entries()]
     .map(([categoryId, valueMinor]) => ({
       label: categories.find((category) => category.id === categoryId)?.name ?? tr.common.none,
@@ -117,7 +121,7 @@ export default function AnalysisScreen() {
   const barGroups = monthKeys.map((m) => {
     const label = tr.months[monthOf(m) - 1].slice(0, 3);
     if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
-    const distribution = distributionForRange(analyticsTx, firstDayOf(m), lastDayOf(m), today);
+    const distribution = distributionForRange(txLike, firstDayOf(m), lastDayOf(m), today);
     return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor] };
   });
   const barSeries = categoryFilter
