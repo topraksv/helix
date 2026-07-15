@@ -28,8 +28,20 @@ export interface DonutSlice {
   color: string;
 }
 
-/** Donut with 2px surface gaps between segments + paired legend list. */
-export function Donut({ slices, size = 168 }: { slices: DonutSlice[]; size?: number }) {
+/**
+ * Donut with 2px surface gaps and a paired legend. Supplemental rows share the
+ * exact legend hierarchy but are excluded from the arcs, total and percentages
+ * (for example investments/transfers shown beside, never as, expenses).
+ */
+export function Donut({
+  slices,
+  supplementalSlices = [],
+  size = 168,
+}: {
+  slices: DonutSlice[];
+  supplementalSlices?: DonutSlice[];
+  size?: number;
+}) {
   const { palette } = useTheme();
   const total = slices.reduce((sum, s) => sum + s.valueMinor, 0);
   const r = size / 2 - 14;
@@ -77,17 +89,22 @@ export function Donut({ slices, size = 168 }: { slices: DonutSlice[]; size?: num
       </Svg>
       {/* Paired legend list: identity never color-alone (relief rule) */}
       <View style={{ flex: 1, minWidth: 160, gap: 6 }}>
-        {slices.map((s, i) => (
-          <View key={`${s.label}-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: s.color }} />
-            <Text style={[type.small, { color: palette.text, flex: 1 }]}>
-              {s.label}
-            </Text>
-            <Text style={[type.small, { color: palette.textMuted, fontVariant: ["tabular-nums"] }]}>
-              {total > 0 ? `%${Math.round((s.valueMinor / total) * 100)}` : ""} · {formatMinor(s.valueMinor)}
-            </Text>
-          </View>
-        ))}
+        {[...slices, ...supplementalSlices].map((s, i) => {
+          const supplemental = i >= slices.length;
+          return (
+            <View key={`${s.label}-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: s.color }} />
+              <Text style={[type.small, { color: palette.text, flex: 1 }]}>{s.label}</Text>
+              <Text
+                style={[type.small, { color: palette.textMuted, fontVariant: ["tabular-nums"] }]}
+              >
+                {supplemental
+                  ? formatMinor(s.valueMinor)
+                  : `${total > 0 ? `%${Math.round((s.valueMinor / total) * 100)}` : ""} · ${formatMinor(s.valueMinor)}`}
+              </Text>
+            </View>
+          );
+        })}
       </View>
     </View>
   );

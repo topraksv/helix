@@ -9,26 +9,21 @@ lags behind them.
 
 - Updated: 2026-07-15 (Europe/Istanbul)
 - Branch: `main`
-- Review base: `e22b792` (`origin/main` was at the same commit before this
-  documentation task; use `git log -1` for the resulting HEAD)
+- Review base: `77a7487` (`origin/main` was at the same commit when the current
+  12-item recovery task started; use `git log -1` for the resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 9 files, 124 tests passing
-- This handoff/protocol task changes documentation only. A push to `main` may
-  still run the Pages workflow, but no mobile OTA or native build is required.
+- Test baseline: 10 files, 132 tests passing
+- Static web export passed; headless Playwright rendered the exported sign-in
+  route at 320, 390 and 1280 px without horizontal overflow or browser errors.
 
 ## Active working tree
 
-The following pre-existing, user-owned UI changes were present before the
-continuity protocol was added. Do not overwrite or fold them into unrelated
-work without inspecting the live diff first:
-
-- `src/app/(tabs)/cash-flow/[month].tsx`
-- `src/app/(tabs)/cash-flow/index.tsx`
-- `src/app/(tabs)/index.tsx`
-
-They adjust cash-flow/dashboard wrapping and investment presentation. Always
-re-check `git status` because this list is a snapshot, not a lock.
+The three pre-existing cash-flow/dashboard UI edits have been understood and
+completed in the finance presentation package: mobile card wrapping was kept,
+while investment/transfer was moved into a supplemental donut legend row so it
+does not corrupt expense totals. Always re-check `git status`; the remaining
+12-item recovery task continues in subsequent packages.
 
 ## Current architecture summary
 
@@ -58,9 +53,10 @@ current code before fixing it.
    pull LWW may then reject legitimate remote updates while advancing its cursor.
 3. Editing/deleting subscriptions or recurring incomes does not reconcile their
    already-generated `expected_payments`, leaving stale or orphaned items.
-4. Transaction type changes do not guarantee that the selected category belongs
-   to the new type; analytics also aggregates by category without respecting the
-   transaction type, so transfers or mismatched categories can be misclassified.
+4. Transaction type changes still do not guarantee that the selected category
+   belongs to the new type. Analytics now excludes transfers and the analysis
+   screen rejects legacy type/category mismatches, but the editor invariant
+   remains to be enforced separately.
 5. Cell-note editors use random ids despite the existing deterministic natural
    key. The month-detail pseudo-category `uncategorized` can also be written into
    a UUID-shaped remote `category_id`.
@@ -94,6 +90,27 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-15 — Codex (finance recovery package)
+
+- Base `77a7487`, branch `main`; preserved and completed Claude's three-file
+  unstaged cash-flow/dashboard work instead of resetting it.
+- Consolidated every card's earliest pending statement into one dated upcoming
+  payment and excluded all card charges from the standalone list; no due day
+  means no entry.
+- Made expense distribution type-based and mathematically complete, including a
+  safe categoryless bucket; transfer shares the legend hierarchy but is excluded
+  from arcs, percentages and expense totals. Analysis charts use the same rule.
+- Confirmed fixed expenses are installment/subscription-linked and ordinary
+  expenses are variable; transfer/income/pending/watch-only rows are excluded.
+- Made mobile month cards responsive with a common income/expense/transfer
+  hierarchy. Installments now show month-only dates and share plan→note→generic
+  title fallback across the installment and ledger screens.
+- Checks: typecheck, 10 files/132 tests, Expo lint, static Expo web export and
+  Playwright at 320/390/1280 px passed. Authenticated finance-route Playwright
+  still needs a valid test session; the repo contains no E2E credential/flow.
+- Commit/push/web/OTA state is pending at this note's write time; verify Git and
+  EAS before treating the package as shipped.
 
 ### 2026-07-15 — Codex
 

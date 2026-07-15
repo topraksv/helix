@@ -37,7 +37,9 @@ export function categoryRangeMatrix(
 ): Map<string, CategoryYearRow> {
   const rows = new Map<string, CategoryYearRow>();
   for (const tx of transactions) {
-    if (!countsTowardBalance(tx, today) || !tx.categoryId) continue;
+    // Transfers move money rather than earn/spend it. A transfer can still
+    // carry a category for display, but must never inflate category analytics.
+    if (!countsTowardBalance(tx, today) || tx.type === "transfer" || !tx.categoryId) continue;
     const month = monthKeyOf(tx.effectiveDate);
     if (month < start || month > end) continue;
     let row = rows.get(tx.categoryId);
@@ -67,6 +69,8 @@ export function cumulativeSeries(
 export interface Distribution {
   /** Spending per category — expenses only. */
   expenseByCategory: Map<string, Minor>;
+  /** Legacy expenses whose category is missing or was deleted. */
+  uncategorizedExpenseMinor: Minor;
   expenseTotalMinor: Minor;
   /** Transfers (e.g. Yatırım) reported separately, never mixed into spending. */
   transferTotalMinor: Minor;
@@ -81,6 +85,7 @@ export function distributionForRange(
 ): Distribution {
   const expenseByCategory = new Map<string, Minor>();
   let expenseTotal = 0;
+  let uncategorizedExpense = 0;
   let transferTotal = 0;
   let incomeTotal = 0;
   for (const tx of transactions) {
@@ -90,7 +95,7 @@ export function distributionForRange(
       expenseTotal += tx.amountTryMinor;
       if (tx.categoryId) {
         expenseByCategory.set(tx.categoryId, (expenseByCategory.get(tx.categoryId) ?? 0) + tx.amountTryMinor);
-      }
+      } else uncategorizedExpense += tx.amountTryMinor;
     } else if (tx.type === "transfer") {
       transferTotal += tx.amountTryMinor;
     } else {
@@ -99,6 +104,7 @@ export function distributionForRange(
   }
   return {
     expenseByCategory,
+    uncategorizedExpenseMinor: uncategorizedExpense,
     expenseTotalMinor: expenseTotal,
     transferTotalMinor: transferTotal,
     incomeTotalMinor: incomeTotal,

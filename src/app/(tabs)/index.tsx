@@ -7,8 +7,9 @@ import { useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { distributionForRange, fixedVsVariable } from "../../domain/analytics";
 import { projectedBalance } from "../../domain/balance";
-import { clampDayToMonth, firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
+import { firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
+import { standaloneUpcomingTransactions, upcomingCardStatements } from "../../domain/upcoming";
 import { dateLabel, monthLabel, tr } from "../../i18n/tr";
 import {
   daysBetween,
@@ -122,6 +123,7 @@ export default function DashboardScreen() {
   // full-table live query (useAllTransactions) + toTxLike on the same data.
   const txLike = bundle?.txLike ?? [];
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
+  const creditCardIds = new Set(sources.filter((source) => source.type === "credit_card").map((source) => source.id));
 
   const pendingItems = expected.filter((e) => e.status === "pending" || e.status === "late");
   const late = pendingItems.filter((e) => e.status === "late" || (e.status === "pending" && e.dueDate < today));
@@ -171,20 +173,7 @@ export default function DashboardScreen() {
         currency: e.currency,
         date: e.dueDate,
       })),
-    ...txLike
-      // Aggregates are whole-month totals (bulk / cell entries), and installment
-      // rows belong to a card statement (handled per-card below) — neither is a
-      // standalone scheduled payment, so keep both out of the individual list.
-      // What remains: genuine future-dated one-off entries the user scheduled.
-      .filter(
-        (t) =>
-          t.personIsSelf &&
-          !t.isAggregate &&
-          t.installmentPlanId == null &&
-          t.status === "pending" &&
-          t.effectiveDate > today &&
-          daysBetween(today, t.effectiveDate) <= 31,
-      )
+    ...standaloneUpcomingTransactions(txLike, creditCardIds, today)
       .map((t) => ({
         key: t.id,
         kind: "tx" as const,
@@ -199,28 +188,20 @@ export default function DashboardScreen() {
     // each purchase. Only for cards that HAVE a due day; a card with no known
     // due date shows nothing (never a fabricated "in N days"). The amount is the
     // card's next unpaid statement month (its earliest pending installments).
-    ...sources
-      .filter((s) => s.type === "credit_card" && s.dueDay != null)
-      .flatMap((card) => {
-        const charges = txLike.filter(
-          (t) => t.personIsSelf && t.paymentSourceId === card.id && t.type === "expense" && t.status === "pending" && t.effectiveDate > today,
-        );
-        if (charges.length === 0) return [];
-        const statementMonth = charges.reduce((m, t) => (monthKeyOf(t.effectiveDate) < m ? monthKeyOf(t.effectiveDate) : m), monthKeyOf(charges[0].effectiveDate));
-        const total = charges.filter((t) => monthKeyOf(t.effectiveDate) === statementMonth).reduce((sum, t) => sum + t.amountTryMinor, 0);
-        const dueDate = clampDayToMonth(yearOf(statementMonth), monthOf(statementMonth), card.dueDay!);
-        if (dueDate < today || daysBetween(today, dueDate) > 45) return [];
-        return [{
-          key: `card-${card.id}`,
+    ...upcomingCardStatements(
+      txLike,
+      sources.filter((source) => source.type === "credit_card"),
+      today,
+    ).map((statement) => ({
+          key: `card-${statement.cardId}`,
           kind: "tx" as const,
           direction: "out" as const,
-          name: card.name,
+          name: statement.cardName,
           typeLabel: tr.dashboard.cardStatement,
-          amountMinor: total,
+          amountMinor: statement.amountMinor,
           currency: "TRY",
-          date: dueDate,
-        }];
-      }),
+          date: statement.dueDate,
+        })),
   ]
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 12);
@@ -253,12 +234,16 @@ export default function DashboardScreen() {
 
   const donutEntries = [...dist.expenseByCategory.entries()]
     .map(([id, v]) => ({ label: categories.find((c) => c.id === id)?.name ?? tr.common.none, valueMinor: v }))
+    .concat(dist.uncategorizedExpenseMinor > 0 ? [{ label: tr.common.none, valueMinor: dist.uncategorizedExpenseMinor }] : [])
     .sort((a, b) => b.valueMinor - a.valueMinor);
   const donutRest = donutEntries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
   const donutSlices = [
     ...donutEntries.slice(0, 7).map((e, i) => ({ ...e, color: colors[i % colors.length] })),
     ...(donutRest > 0 ? [{ label: tr.common.other, valueMinor: donutRest, color: colors[7] }] : []),
   ];
+  const donutSupplemental = dist.transferTotalMinor > 0
+    ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: palette.textMuted }]
+    : [];
 
   const trendMonths = bundle ? bundle.ledger.filter((m) => yearOf(m.month) === year && m.month <= month) : [];
   // Grouped income-vs-expense bars read far clearer than three overlapping
@@ -487,17 +472,12 @@ export default function DashboardScreen() {
       <MarketsCard />
 
       {/* Expense distribution */}
-      {donutSlices.length > 0 ? (
+      {donutSlices.length > 0 || donutSupplemental.length > 0 ? (
         <Card>
           <Heading style={{ marginTop: 0 }}>
             {tr.dashboard.distribution} · {monthLabel(month)}
           </Heading>
-          <Donut slices={donutSlices} />
-          {dist.transferTotalMinor > 0 ? (
-            <Body muted style={{ marginTop: spacing.sm }}>
-              {tr.dashboard.investmentAside}: {formatMinor(dist.transferTotalMinor)}
-            </Body>
-          ) : null}
+          <Donut slices={donutSlices} supplementalSlices={donutSupplemental} />
         </Card>
       ) : null}
 

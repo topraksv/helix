@@ -7,7 +7,7 @@ import React, { useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronRight, CreditCard, Plus } from "lucide-react-native";
-import { planProgress, type GeneratedInstallment } from "../../../domain/installments";
+import { installmentDisplayTitle, planProgress, type GeneratedInstallment } from "../../../domain/installments";
 import { monthKeyOf, todayISO } from "../../../domain/dates";
 import { monthLabel, tr } from "../../../i18n/tr";
 import {
@@ -32,6 +32,10 @@ export default function InstallmentsScreen() {
   const selfIds = useMemo(() => new Set(persons.filter((p) => p.isSelf).map((p) => p.id)), [persons]);
   const sourceName = useMemo(() => new Map(sources.map((s) => [s.id, s.name])), [sources]);
   const personName = useMemo(() => new Map(persons.map((p) => [p.id, p.name])), [persons]);
+  const noteByPlan = new Map<string, string>();
+  for (const tx of allTx) {
+    if (tx.installmentPlanId && tx.note && !noteByPlan.has(tx.installmentPlanId)) noteByPlan.set(tx.installmentPlanId, tx.note);
+  }
 
   const itemsByPlan = useMemo(() => {
     const map = new Map<string, GeneratedInstallment[]>();
@@ -88,7 +92,9 @@ export default function InstallmentsScreen() {
         <Spread style={{ paddingVertical: spacing.sm }}>
           <View style={{ flex: 1, paddingRight: spacing.md }}>
             <Row gap={spacing.sm}>
-              <Body style={{ fontFamily: "Inter_500Medium" }}>{plan.title}</Body>
+              <Body style={{ fontFamily: "Inter_500Medium" }}>
+                {installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}
+              </Body>
               {plan.kind === "loan" ? <Badge text={tr.installments.loan} /> : null}
               {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
             </Row>

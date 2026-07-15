@@ -11,7 +11,8 @@ import { newId } from "../../../db/ids";
 import { restoreRow, writeRows } from "../../../db/mutations";
 import { deleteTransaction } from "../../../data/repo";
 import { firstDayOf, lastDayOf, monthKeyOf, yearOf } from "../../../domain/dates";
-import { useCategories, useLedger, useLive, usePersons, useTransactionsBetween, useUserId } from "../../../data/hooks";
+import { useCategories, useLedger, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../../../data/hooks";
+import { installmentDisplayTitle } from "../../../domain/installments";
 import { categoryIcon } from "../../../data/category-icons";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
@@ -24,6 +25,7 @@ export default function MonthDetailScreen() {
   const userId = useUserId();
   const categories = useCategories();
   const persons = usePersons();
+  const plans = usePlans();
   const transactions = useTransactionsBetween(firstDayOf(month!), lastDayOf(month!));
   const bundle = useLedger(yearOf(month!));
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -33,6 +35,7 @@ export default function MonthDetailScreen() {
   const ledgerMonth = bundle?.ledger.find((m) => m.month === month);
   const personName = useMemo(() => new Map(persons.map((p) => [p.id, p.name])), [persons]);
   const selfIds = useMemo(() => new Set(persons.filter((p) => p.isSelf).map((p) => p.id)), [persons]);
+  const planTitle = new Map(plans.map((plan) => [plan.id, plan.title]));
 
   const byCategory = useMemo(() => {
     const map = new Map<string, typeof transactions>();
@@ -80,7 +83,7 @@ export default function MonthDetailScreen() {
           </Spread>
           {ledgerMonth.transferMinor !== 0 ? (
             <Spread style={{ marginTop: spacing.xs }}>
-              <Body muted>{tr.cashflow.transfer}</Body>
+              <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.transfer}</Body>
               <Amount minor={-ledgerMonth.transferMinor} />
             </Spread>
           ) : null}
@@ -122,17 +125,22 @@ export default function MonthDetailScreen() {
             </Pressable>
             {open ? (
               <View style={{ marginTop: spacing.md }}>
-                {txs.map((t) => (
+                {txs.map((t, index) => {
+                  const installmentTitle = t.installmentPlanId
+                    ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)
+                    : null;
+                  return (
                   <View key={t.id}>
                     <Spread style={{ paddingVertical: spacing.sm }}>
                       <View style={{ flex: 1 }}>
-                        <Body>
-                          {t.isAggregate ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
+                        {installmentTitle ? <Body style={{ fontFamily: "Inter_500Medium" }}>{installmentTitle}</Body> : null}
+                        <Body muted={installmentTitle != null}>
+                          {t.isAggregate || t.installmentPlanId ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
                           {t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : ""}
                           {t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : ""}
                           {!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : ""}
                         </Body>
-                        {t.note ? <Text style={[type.small, { color: palette.textMuted }]}>{t.note}</Text> : null}
+                        {t.note && t.note !== installmentTitle ? <Text style={[type.small, { color: palette.textMuted }]}>{t.note}</Text> : null}
                         {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
                       </View>
                       <Row gap={spacing.sm}>
@@ -141,9 +149,10 @@ export default function MonthDetailScreen() {
                         <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void removeTx(t.id)} />
                       </Row>
                     </Spread>
-                    <Divider />
+                    {index < txs.length - 1 ? <Divider /> : null}
                   </View>
-                ))}
+                  );
+                })}
                 <CellNoteEditor userId={userId} month={month!} categoryId={categoryId} existing={note} />
               </View>
             ) : null}

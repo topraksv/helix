@@ -63,6 +63,11 @@ agent-to-agent communication that did not occur.
   atomic). Deletes are tombstones (`softDelete`), never hard deletes.
 - **Money is integer minor units** (kuruş) everywhere; format only at the edge
   with `formatMinor`. Dates are `YYYY-MM-DD` ISO strings, months `YYYY-MM`.
+- **Analytics follows transaction type, not category appearance.** Expenses
+  alone feed expense totals/distribution; transfers stay separate. Fixed
+  expenses are installment/subscription-linked, and ordinary expenses default
+  to variable. Upcoming card charges collapse into one dated statement per
+  card; cards without a real due day never get a synthetic payment date.
 - **UI strings live only in `src/i18n/tr.ts`.** Code is English, UI is Turkish.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint
