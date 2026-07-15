@@ -17,6 +17,7 @@ import type { Minor } from "../domain/money";
 import { collectInstallmentPlans, isInstallmentCell, planImportCell, type ParsedSheet } from "../services/spreadsheet-import";
 import { suggestCategoryIcon } from "./category-icons";
 import type { ExpectedPaymentLike, PaymentSourceType, TransactionType } from "../domain/types";
+import { findSubscriptionCategory } from "../domain/subscriptions";
 
 // ---------------------------------------------------------------------------
 // Onboarding seed
@@ -421,7 +422,7 @@ export interface SubscriptionInput {
   billingDay: number;
   nextDueDate: ISODate;
   paymentSourceId: string | null;
-  categoryId: string | null;
+  categoryId: string;
   personId: string;
   isActive: boolean;
   trialEndDate: ISODate | null;
@@ -430,9 +431,65 @@ export interface SubscriptionInput {
   note: string | null;
 }
 
-export async function upsertSubscription(userId: string, input: SubscriptionInput): Promise<string> {
-  const id = input.id ?? newId();
+export class SubscriptionCategoryRequiredError extends Error {
+  constructor() {
+    super("Subscription category is required");
+    this.name = "SubscriptionCategoryRequiredError";
+  }
+}
+
+/**
+ * Reuse the live "Abonelikler" expense category or create/revive its
+ * deterministic seed row. Repeated taps and multiple devices converge on one
+ * id instead of multiplying categories.
+ */
+export async function ensureSubscriptionCategory(
+  userId: string,
+  categoryName: string,
+): Promise<string> {
   const sqlite = await getSqliteAsync();
+  const categories = await sqlite.getAllAsync<{
+    id: string;
+    name: string;
+    kind: "expense" | "income";
+    deleted_at: string | null;
+  }>(`SELECT id, name, kind, deleted_at FROM categories WHERE user_id = ?`, [userId] as never[]);
+  const existing = findSubscriptionCategory(
+    categories.map((category) => ({ ...category, deletedAt: category.deleted_at })),
+    categoryName,
+  );
+  if (existing) return existing.id;
+
+  const id = await deterministicId(naturalKeys.seedCategory(userId, categoryName));
+  const maxOrder = await sqlite.getFirstAsync<{ max_order: number | null }>(
+    `SELECT MAX(sort_order) AS max_order FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
+    [userId] as never[],
+  );
+  await writeRows(userId, [{
+    table: "categories",
+    row: {
+      id,
+      name: categoryName,
+      kind: "expense",
+      icon: "🔁",
+      color: null,
+      sortOrder: (maxOrder?.max_order ?? -1) + 1,
+      isColumn: true,
+      deletedAt: null,
+    },
+  }]);
+  return id;
+}
+
+export async function upsertSubscription(userId: string, input: SubscriptionInput): Promise<string> {
+  const sqlite = await getSqliteAsync();
+  if (!input.categoryId) throw new SubscriptionCategoryRequiredError();
+  const category = await sqlite.getFirstAsync<{ id: string }>(
+    `SELECT id FROM categories WHERE id = ? AND user_id = ? AND kind = 'expense' AND deleted_at IS NULL`,
+    [input.categoryId, userId] as never[],
+  );
+  if (!category) throw new SubscriptionCategoryRequiredError();
+  const id = input.id ?? newId();
   const writes: RowWrite[] = [];
   if (input.id) {
     const prev = await sqlite.getFirstAsync<{ amount_minor: number; currency: string }>(
