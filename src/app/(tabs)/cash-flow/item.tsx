@@ -15,6 +15,7 @@ import { formatMinor } from "../../../domain/money";
 import {
   toTxLike,
   useAllTransactions,
+  useCategories,
   useComputedColumns,
   useLedger,
   usePersons,
@@ -33,6 +34,7 @@ export default function ItemBreakdownScreen() {
   const computed = useComputedColumns();
   const sources = useSources();
   const persons = usePersons();
+  const categories = useCategories();
   const allTx = useAllTransactions();
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
@@ -41,7 +43,7 @@ export default function ItemBreakdownScreen() {
     () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
     [sources],
   );
-  const txLike = useMemo(() => toTxLike(allTx, persons), [allTx, persons]);
+  const txLike = useMemo(() => toTxLike(allTx, persons, categories), [allTx, persons, categories]);
 
   // Value of this column for a given month: a category reads its bucket; a
   // computed column is evaluated the same way the matrix does (with the

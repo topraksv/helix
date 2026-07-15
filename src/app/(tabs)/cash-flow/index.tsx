@@ -112,7 +112,7 @@ export default function CashflowScreen() {
     () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
     [sources],
   );
-  const txLike = useMemo(() => toTxLike(allTx, persons), [allTx, persons]);
+  const txLike = useMemo(() => toTxLike(allTx, persons, categories), [allTx, persons, categories]);
 
   // Year switcher bounds: back to the earliest data, forward only while there
   // is actual data (e.g. installments spilling into next year).

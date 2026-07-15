@@ -2,6 +2,7 @@
 
 import { clampDayToMonth, monthKeyOf, monthOf, yearOf, type ISODate } from "./dates";
 import type { TxLike } from "./types";
+import { financialFlow } from "./transactions";
 
 export interface CardDueSource {
   id: string;
@@ -60,7 +61,7 @@ export function upcomingCardStatements(
       (tx) =>
         tx.personIsSelf &&
         tx.paymentSourceId === card.id &&
-        tx.type === "expense" &&
+        financialFlow(tx).type === "expense" &&
         tx.status === "pending" &&
         tx.effectiveDate > today,
     );
@@ -73,14 +74,16 @@ export function upcomingCardStatements(
     const dueDate = clampDayToMonth(yearOf(statementMonth), monthOf(statementMonth), card.dueDay);
     const distance = daysBetween(today, dueDate);
     if (distance < 0 || distance > horizonDays) return [];
+    const amountMinor = charges
+      .filter((tx) => monthKeyOf(tx.effectiveDate) === statementMonth)
+      .reduce((sum, tx) => sum + financialFlow(tx).amountTryMinor, 0);
+    if (amountMinor <= 0) return [];
 
     return [
       {
         cardId: card.id,
         cardName: card.name,
-        amountMinor: charges
-          .filter((tx) => monthKeyOf(tx.effectiveDate) === statementMonth)
-          .reduce((sum, tx) => sum + tx.amountTryMinor, 0),
+        amountMinor,
         dueDate,
       },
     ];

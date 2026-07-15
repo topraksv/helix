@@ -13,6 +13,7 @@
 import { monthKeyOf, monthRange, type ISODate, type MonthKey } from "./dates";
 import type { Minor } from "./money";
 import type { AdjustmentLike, TxLike } from "./types";
+import { financialFlow, signedBalanceEffect } from "./transactions";
 
 export function countsTowardBalance(tx: TxLike, today: ISODate): boolean {
   return tx.status === "realized" && tx.effectiveDate <= today && tx.personIsSelf;
@@ -20,7 +21,7 @@ export function countsTowardBalance(tx: TxLike, today: ISODate): boolean {
 
 /** Signed effect of a transaction on the cash balance. */
 export function balanceEffect(tx: TxLike): Minor {
-  return tx.type === "income" ? tx.amountTryMinor : -tx.amountTryMinor;
+  return signedBalanceEffect(tx);
 }
 
 /** Replacement value for today's deterministic reconciliation row. The
@@ -129,16 +130,17 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
     let transfer = 0;
     const byCategory = new Map<string, Minor>();
     for (const tx of byMonth.get(month) ?? []) {
-      if (tx.type === "income") income += tx.amountTryMinor;
-      else if (tx.type === "expense") expense += tx.amountTryMinor;
-      else transfer += tx.amountTryMinor;
+      const flow = financialFlow(tx);
+      if (flow.type === "income") income += flow.amountTryMinor;
+      else if (flow.type === "expense") expense += flow.amountTryMinor;
+      else transfer += flow.amountTryMinor;
       if (tx.categoryId) {
-        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + tx.amountTryMinor);
+        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
       }
     }
     for (const tx of pendingByMonth.get(month) ?? []) {
       if (tx.categoryId) {
-        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + tx.amountTryMinor);
+        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + financialFlow(tx).amountTryMinor);
       }
     }
     const adjustment = adjustmentByMonth.get(month) ?? 0;

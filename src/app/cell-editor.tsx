@@ -18,6 +18,7 @@ import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, u
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO } from "../domain/dates";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinor, parseAmountExpression } from "../domain/money";
+import { signedBalanceEffectOf } from "../domain/transactions";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Amount, Badge, Body, Button, Divider, EmptyState, Field, IconButton, Row, Screen, SectionHeader, Spread } from "../ui/components";
@@ -45,7 +46,7 @@ export default function CellEditorModal() {
   const cellTx = transactions.filter((t) => t.categoryId === categoryId);
   const selfSum = cellTx
     .filter((t) => selfIds.has(t.personId))
-    .reduce((sum, t) => sum + (t.type === "income" ? t.amountTryMinor : -t.amountTryMinor), 0);
+    .reduce((sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null), 0);
 
   const note = useLive(
     getDb()
@@ -73,19 +74,18 @@ export default function CellEditorModal() {
     try {
       const today = todayISO();
       const inMonth = today >= firstDayOf(month!) && today <= lastDayOf(month!);
-      // A negative amount flips the flow (an expense cell entered as "-500"
-      // records income, and vice-versa) — mirrors the importer so the sign is
-      // never silently dropped. Transfers keep their direction.
-      const negative = entryMinor < 0;
+      // A negative amount is a reversal of this category: an expense refund
+      // reduces spending, an income correction reduces income, and an
+      // investment withdrawal reduces the transfer total without changing the
+      // category/type invariant.
       const baseType = category.name.toLocaleLowerCase("tr-TR").includes("yatırım") ? "transfer" : category.kind;
-      const type = negative && baseType !== "transfer" ? (baseType === "expense" ? "income" : "expense") : baseType;
       const hasExpr = entryRaw.includes("+") || entryRaw.trim().slice(1).includes("-");
       await addTransaction(userId, {
-        type,
-        amountMinor: Math.abs(entryMinor),
+        type: baseType,
+        amountMinor: entryMinor,
         currency: "TRY",
         fxRate: null,
-        amountTryMinor: Math.abs(entryMinor),
+        amountTryMinor: entryMinor,
         effectiveDate: inMonth ? today : `${month}-15`,
         categoryId: category.id,
         paymentSourceId: null,
@@ -216,7 +216,7 @@ export default function CellEditorModal() {
                 </Row>
               </View>
               <Row gap={spacing.sm}>
-                <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
+                <Amount minor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)} />
                 <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })} />
                 <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void removeTx(t.id)} />
               </Row>

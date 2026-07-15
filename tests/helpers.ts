@@ -8,6 +8,7 @@ export function tx(overrides: Partial<TxLike> & Pick<TxLike, "type" | "amountTry
     id: `tx-${++txCounter}`,
     status: "realized",
     categoryId: null,
+    categoryKind: null,
     paymentSourceId: null,
     personIsSelf: true,
     installmentPlanId: null,

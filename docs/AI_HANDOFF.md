@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 15 files, 153 tests passing
+- Test baseline: 16 files, 157 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -49,23 +49,19 @@ current code before fixing it.
 
 1. Editing/deleting subscriptions or recurring incomes does not reconcile their
    already-generated `expected_payments`, leaving stale or orphaned items.
-2. Transaction type changes still do not guarantee that the selected category
-   belongs to the new type. Aggregate analytics trust transaction type so stale
-   category kinds cannot hide money; category-detail rows require kind parity.
-   The editor invariant remains to be enforced separately.
-3. Cell-note editors use random ids despite the existing deterministic natural
+2. Cell-note editors use random ids despite the existing deterministic natural
    key. The month-detail pseudo-category `uncategorized` can also be written into
    a UUID-shaped remote `category_id`.
-4. `Logo` claims fully local rendering but defaults to Google's favicon service;
+3. `Logo` claims fully local rendering but defaults to Google's favicon service;
    no settings toggle currently supplies `allowRemote=false`.
-5. Several `numberOfLines` uses, special/non-editable table columns, trailing
+4. Several `numberOfLines` uses, special/non-editable table columns, trailing
    dividers, and manual derivation memos conflict with the UI/Compiler rules in
    `AGENTS.md` and need an app-wide sweep.
-6. Foreign subscription totals fall back to treating an unavailable FX amount
+5. Foreign subscription totals fall back to treating an unavailable FX amount
    as TRY; JSON restore validation does not validate enums, ranges, dates, or
    relational integrity; person/source deletion can leave orphan references.
-7. Onboarding person deletion does not remap draft source `personIndex` values.
-8. README/testing counts and the README palette are stale; web HTML language is
+6. Onboarding person deletion does not remap draft source `personIndex` values.
+7. README/testing counts and the README palette are stale; web HTML language is
     `en`, and Android biometric permissions are duplicated in `app.json`.
 
 ## Handoff update contract
@@ -87,6 +83,21 @@ diff and running checks proportionate to the change.
 
 ## Recent handoffs
 
+### 2026-07-15 — Codex (financial classification package)
+
+- Base `95edde9`, branch `main`.
+- Canonical refunds/reversals now keep the original category/type and store a
+  signed negative amount. A shared domain normalizer gives legacy mismatches the
+  same cash effect immediately; maintenance persists their equivalent canonical
+  form without changing any balance.
+- Transaction UI/repository enforce category-kind parity, expose a clear refund
+  control, and retain the applied FX rate. Ledger cells, expense distribution,
+  fixed/variable totals, forecasts and search display use the same flow rule.
+- Donuts keep positive arc geometry, list refunds separately and display the net
+  ledger-compatible expense total. Manual bulk history is now past-month only.
+- Typecheck, 16 files/157 tests and Expo lint pass. A local-mode static export
+  also passes; final export/browser smoke and shipping follow the commit.
+
 ### 2026-07-15 — Codex (server-authoritative sync package)
 
 - Base `5f5a625`, branch `main`.
@@ -97,8 +108,11 @@ diff and running checks proportionate to the change.
 - Malformed/cross-account outbox entries move to the new local-only
   `sync_dead_letters` migration instead of being silently deleted. Exact event
   ids are removed only after push acknowledgement/quarantine commits.
-- Added pure conflict/batch tests. Typecheck and 15 files/153 tests pass;
-  lint/export/Playwright and shipping follow this package commit.
+- Added pure conflict/batch tests. Typecheck, 15 files/153 tests, lint, static
+  export and Playwright smoke passed. Shipped as `95edde9`: GitHub web run
+  `29422395799` succeeded and EAS preview update group
+  `a7abf127-ca58-40e9-a185-e2b87223f34c` was published after a transient DNS
+  upload retry.
 
 ### 2026-07-15 — Codex (account lifecycle safety package)
 

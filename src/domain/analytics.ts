@@ -9,6 +9,7 @@ import { makeMonthKey, monthKeyOf, monthRange, type ISODate, type MonthKey } fro
 import type { Minor } from "./money";
 import { countsTowardBalance } from "./balance";
 import type { TxLike } from "./types";
+import { financialFlow } from "./transactions";
 
 export interface CategoryYearRow {
   categoryId: string;
@@ -39,7 +40,8 @@ export function categoryRangeMatrix(
   for (const tx of transactions) {
     // Transfers move money rather than earn/spend it. A transfer can still
     // carry a category for display, but must never inflate category analytics.
-    if (!countsTowardBalance(tx, today) || tx.type === "transfer" || !tx.categoryId) continue;
+    const flow = financialFlow(tx);
+    if (!countsTowardBalance(tx, today) || flow.type === "transfer" || !tx.categoryId) continue;
     const month = monthKeyOf(tx.effectiveDate);
     if (month < start || month > end) continue;
     let row = rows.get(tx.categoryId);
@@ -47,8 +49,8 @@ export function categoryRangeMatrix(
       row = { categoryId: tx.categoryId, monthly: new Map(), ytdMinor: 0 };
       rows.set(tx.categoryId, row);
     }
-    row.monthly.set(month, (row.monthly.get(month) ?? 0) + tx.amountTryMinor);
-    row.ytdMinor += tx.amountTryMinor;
+    row.monthly.set(month, (row.monthly.get(month) ?? 0) + flow.amountTryMinor);
+    row.ytdMinor += flow.amountTryMinor;
   }
   return rows;
 }
@@ -91,15 +93,16 @@ export function distributionForRange(
   for (const tx of transactions) {
     if (!countsTowardBalance(tx, today)) continue;
     if (tx.effectiveDate < from || tx.effectiveDate > to) continue;
-    if (tx.type === "expense") {
-      expenseTotal += tx.amountTryMinor;
+    const flow = financialFlow(tx);
+    if (flow.type === "expense") {
+      expenseTotal += flow.amountTryMinor;
       if (tx.categoryId) {
-        expenseByCategory.set(tx.categoryId, (expenseByCategory.get(tx.categoryId) ?? 0) + tx.amountTryMinor);
-      } else uncategorizedExpense += tx.amountTryMinor;
-    } else if (tx.type === "transfer") {
-      transferTotal += tx.amountTryMinor;
+        expenseByCategory.set(tx.categoryId, (expenseByCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
+      } else uncategorizedExpense += flow.amountTryMinor;
+    } else if (flow.type === "transfer") {
+      transferTotal += flow.amountTryMinor;
     } else {
-      incomeTotal += tx.amountTryMinor;
+      incomeTotal += flow.amountTryMinor;
     }
   }
   return {
@@ -125,10 +128,11 @@ export function fixedVsVariable(
   let fixed = 0;
   let variable = 0;
   for (const tx of transactions) {
-    if (!countsTowardBalance(tx, today) || tx.type !== "expense") continue;
+    const flow = financialFlow(tx);
+    if (!countsTowardBalance(tx, today) || flow.type !== "expense") continue;
     if (tx.effectiveDate < from || tx.effectiveDate > to) continue;
-    if (tx.installmentPlanId || tx.subscriptionId) fixed += tx.amountTryMinor;
-    else variable += tx.amountTryMinor;
+    if (tx.installmentPlanId || tx.subscriptionId) fixed += flow.amountTryMinor;
+    else variable += flow.amountTryMinor;
   }
   return { fixedMinor: fixed, variableMinor: variable };
 }
@@ -146,11 +150,12 @@ export function creditCardSplit(
   let single = 0;
   let installment = 0;
   for (const tx of transactions) {
-    if (!countsTowardBalance(tx, today) || tx.type !== "expense") continue;
+    const flow = financialFlow(tx);
+    if (!countsTowardBalance(tx, today) || flow.type !== "expense") continue;
     if (monthKeyOf(tx.effectiveDate) !== month) continue;
     if (!tx.paymentSourceId || !creditCardSourceIds.has(tx.paymentSourceId)) continue;
-    if (tx.installmentPlanId) installment += tx.amountTryMinor;
-    else single += tx.amountTryMinor;
+    if (tx.installmentPlanId) installment += flow.amountTryMinor;
+    else single += flow.amountTryMinor;
   }
   return { singleMinor: single, installmentMinor: installment };
 }

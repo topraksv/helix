@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
+import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { dateLabel, tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
@@ -45,17 +46,10 @@ export default function AnalysisScreen() {
 
   // No manual useMemo: the React Compiler (enabled app-wide) memoizes these
   // and bails out when it finds hand-rolled memoization on unstable deps.
-  const txLike = toTxLike(allTx, persons);
-  const categoryKind = new Map(categories.map((category) => [category.id, category.kind]));
-  // Category detail rows require the stored category kind to match. Aggregate
-  // income/expense charts below still trust the transaction type so legacy
-  // mismatches cannot make real money disappear from the period total.
-  const categoryMatrixTx = txLike.filter((tx) => {
-    if (tx.type === "transfer") return false;
-    if (!tx.categoryId) return true;
-    return categoryKind.get(tx.categoryId) === tx.type;
-  });
-  const matrix = categoryRangeMatrix(categoryMatrixTx, startMonth, endMonth, today);
+  const txLike = toTxLike(allTx, persons, categories);
+  // Legacy type/category mismatches are normalized by the shared domain flow,
+  // so category details and aggregate charts use one financial rule.
+  const matrix = categoryRangeMatrix(txLike, startMonth, endMonth, today);
 
   // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
   // back arrow can't wander into empty years forever.
@@ -106,18 +100,25 @@ export default function AnalysisScreen() {
       valueMinor,
     }))
     .concat(
-      periodDistribution.uncategorizedExpenseMinor > 0
+      periodDistribution.uncategorizedExpenseMinor !== 0
         ? [{ label: tr.common.none, valueMinor: periodDistribution.uncategorizedExpenseMinor }]
         : [],
     )
     .sort((a, b) => b.valueMinor - a.valueMinor);
+  const positiveExpenseRows = expenseRows.filter((row) => row.valueMinor > 0);
+  const refundRows = expenseRows.filter((row) => row.valueMinor < 0);
   const pieSlices = [
-    ...expenseRows.slice(0, 7).map((row, i) => ({ ...row, color: colors[i % colors.length] })),
+    ...positiveExpenseRows.slice(0, 7).map((row, i) => ({ ...row, color: colors[i % colors.length] })),
     ...(() => {
-      const rest = expenseRows.slice(7).reduce((sum, row) => sum + row.valueMinor, 0);
+      const rest = positiveExpenseRows.slice(7).reduce((sum, row) => sum + row.valueMinor, 0);
       return rest > 0 ? [{ label: tr.common.other, valueMinor: rest, color: colors[7] }] : [];
     })(),
   ];
+  const pieSupplemental = refundRows.map((row) => ({
+    label: tr.dashboard.refundAside(row.label),
+    valueMinor: row.valueMinor,
+    color: palette.positive,
+  }));
   const barGroups = monthKeys.map((m) => {
     const label = tr.months[monthOf(m) - 1].slice(0, 3);
     if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
@@ -180,7 +181,13 @@ export default function AnalysisScreen() {
                       {t.note ? ` · ${t.note}` : ""}
                     </Body>
                   </View>
-                  <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
+                  <Amount
+                    minor={signedBalanceEffectOf(
+                      t.type,
+                      t.amountTryMinor,
+                      t.categoryId ? categories.find((category) => category.id === t.categoryId)?.kind ?? null : null,
+                    )}
+                  />
                 </Spread>
                 <Divider />
               </View>
@@ -189,7 +196,7 @@ export default function AnalysisScreen() {
         </Card>
       ) : null}
 
-      {rows.length > 0 || pieSlices.length > 0 ? (
+      {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
         <Card>
           <Spread style={{ marginBottom: spacing.sm }}>
             <Heading style={{ marginTop: 0, marginBottom: 0 }}>
@@ -208,8 +215,12 @@ export default function AnalysisScreen() {
             </View>
           </Spread>
           {chartType === "pie" ? (
-            pieSlices.length > 0 ? (
-              <Donut slices={pieSlices} />
+            pieSlices.length > 0 || pieSupplemental.length > 0 ? (
+              <Donut
+                slices={pieSlices}
+                supplementalSlices={pieSupplemental}
+                totalMinor={periodDistribution.expenseTotalMinor}
+              />
             ) : (
               <Body muted>{tr.analysis.noResults}</Body>
             )

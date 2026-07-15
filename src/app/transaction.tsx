@@ -14,7 +14,7 @@ import { deriveStartMonth, isValidInstallmentCount } from "../domain/installment
 import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
 import { monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented } from "../ui/components";
+import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -48,8 +48,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"));
 
   const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? "expense");
-  const [amountRaw, setAmountRaw] = useState(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");
-  const [amountMinor, setAmountMinor] = useState<number | null>(existing?.amountMinor ?? null);
+  const [amountRaw, setAmountRaw] = useState(existing ? (Math.abs(existing.amountMinor) / 100).toFixed(2).replace(".", ",") : "");
+  const [amountMinor, setAmountMinor] = useState<number | null>(existing ? Math.abs(existing.amountMinor) : null);
+  const [isReversal, setIsReversal] = useState((existing?.amountMinor ?? 0) < 0);
   const [currency, setCurrency] = useState<string>(existing?.currency ?? "TRY");
   const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
   const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
@@ -77,7 +78,10 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       if (!v) return;
       try {
         const parsed = JSON.parse(v) as { categoryId?: string; sourceId?: string };
-        if (parsed.categoryId && categories.some((c) => c.id === parsed.categoryId)) setCategoryId(parsed.categoryId);
+        const expectedKind = entryType === "income" ? "income" : "expense";
+        if (parsed.categoryId && categories.some((c) => c.id === parsed.categoryId && c.kind === expectedKind)) {
+          setCategoryId(parsed.categoryId);
+        }
         if (parsed.sourceId && sources.some((s) => s.id === parsed.sourceId)) setSourceId(parsed.sourceId);
       } catch {}
     });
@@ -96,8 +100,10 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     editingSameCurrency && existing?.fxRate ? Number(existing.fxRate) : null;
   const effectiveRateTry: number | null =
     currency === "TRY" ? 1 : (historicalRateTry ?? rate?.rate.rateTry ?? null);
-  const tryMinor =
+  const unsignedTryMinor =
     amountMinor == null || effectiveRateTry == null ? null : convertToTryMinor(amountMinor, effectiveRateTry);
+  const signedAmountMinor = amountMinor == null ? null : isReversal ? -amountMinor : amountMinor;
+  const tryMinor = unsignedTryMinor == null ? null : isReversal ? -unsignedTryMinor : unsignedTryMinor;
 
   const kindForCategories = entryType === "income" ? "income" : "expense";
   const categoryOptions = categories
@@ -116,7 +122,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     !installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
   // A category is mandatory for every entry (no "uncategorized" rows).
   const canSave =
-    amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid && categoryId != null;
+    amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid && categoryId != null && !(installment && isReversal);
 
   const fail = (msg: string) => void appAlert(msg, tr.errors.title);
 
@@ -129,13 +135,13 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       if (isEdit) {
         await updateTransaction(userId, existing as unknown as Record<string, unknown>, {
           type: entryType,
-          amountMinor: amountMinor!,
+          amountMinor: signedAmountMinor!,
           currency,
           fxRate,
           amountTryMinor: tryMinor!,
           effectiveDate,
           isAggregate: dateless,
-          categoryId,
+          categoryId: categoryId!,
           paymentSourceId: sourceId,
           personId,
           note: note.trim() || null,
@@ -162,20 +168,20 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           paymentSourceId: sourceId,
           personId,
           personIsSelf: person.isSelf,
-          categoryId,
+          categoryId: categoryId!,
           note: note.trim() || null,
           tryFactor: currency === "TRY" ? 1 : effectiveRateTry!,
         });
       } else {
         await addTransaction(userId, {
           type: entryType,
-          amountMinor: amountMinor!,
+          amountMinor: signedAmountMinor!,
           currency,
           fxRate,
           amountTryMinor: tryMinor!,
           effectiveDate,
           isAggregate: dateless,
-          categoryId,
+          categoryId: categoryId!,
           paymentSourceId: sourceId,
           personId,
           note: note.trim() || null,
@@ -186,6 +192,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       if (thenNew) {
         setAmountRaw("");
         setAmountMinor(null);
+        setIsReversal(false);
         setNote("");
       } else {
         close();
@@ -214,6 +221,12 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         value={entryType}
         onChange={(v) => {
           setEntryType(v);
+          setIsReversal(false);
+          setCategoryId((current) => {
+            if (!current || v === "transfer") return current;
+            const expectedKind = v === "income" ? "income" : "expense";
+            return categories.some((category) => category.id === current && category.kind === expectedKind) ? current : null;
+          });
           if (v !== "expense") setInstallment(false);
         }}
       />
@@ -225,9 +238,22 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         placeholder={useRotatingPlaceholder(placeholderPools.amount)}
         onChangeMinor={(raw, minor) => {
           setAmountRaw(raw);
-          setAmountMinor(minor);
+          if (minor != null && minor < 0) setIsReversal(true);
+          setAmountMinor(minor == null ? null : Math.abs(minor));
         }}
       />
+      <Row style={{ marginTop: -spacing.sm, marginBottom: spacing.md, alignItems: "center" }}>
+        <Body style={{ flex: 1, paddingRight: spacing.md }}>{tr.tx.reversalLabel(entryType)}</Body>
+        <Toggle
+          value={isReversal}
+          disabled={installment}
+          onValueChange={(value) => {
+            setIsReversal(value);
+            if (value) setInstallment(false);
+          }}
+        />
+      </Row>
+      {isReversal ? <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md }}>{tr.tx.reversalHint}</Body> : null}
       {showCurrency ? (
         <>
           <Label>{tr.tx.currency}</Label>

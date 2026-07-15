@@ -73,7 +73,7 @@ export default function ComputedColumnsScreen() {
     const month = bundle.yearMonths.find((m) => m.month === monthKeyOf(today));
     if (!month) return null;
     const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
-    const cc = creditCardSplit(toTxLike(allTx, persons), creditCardIds, month.month, today);
+    const cc = creditCardSplit(toTxLike(allTx, persons, categories), creditCardIds, month.month, today);
     try {
       return evaluateComputedColumn(definition, {
         month: month.month,
@@ -86,7 +86,7 @@ export default function ComputedColumnsScreen() {
     } catch {
       return null;
     }
-  }, [definition, bundle, today, sources, allTx, persons]);
+  }, [definition, bundle, today, sources, allTx, persons, categories]);
 
   const valid = name.trim() !== "" && definition !== null;
 

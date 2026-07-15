@@ -7,6 +7,7 @@ import type { ISODate, MonthKey } from "./dates";
 import type { Minor } from "./money";
 
 export type TransactionType = "expense" | "income" | "transfer";
+export type CategoryKind = "expense" | "income";
 export type TransactionStatus = "pending" | "realized";
 export type PaymentSourceType =
   | "credit_card"
@@ -40,6 +41,9 @@ export interface TxLike {
   effectiveDate: ISODate;
   status: TransactionStatus;
   categoryId: string | null;
+  /** Kind of the referenced live/legacy category. Used to normalize records
+   *  created by older clients that allowed type/category mismatches. */
+  categoryKind: CategoryKind | null;
   paymentSourceId: string | null;
   personIsSelf: boolean;
   installmentPlanId: string | null;

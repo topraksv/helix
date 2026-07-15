@@ -185,6 +185,7 @@ export const tr = {
     received: "Alındı",
     distribution: "Gider Dağılımı",
     investmentAside: "Yatırım / Transfer",
+    refundAside: (name: string) => `${name} · İade`,
     trend: "Aylık Gelir ve Gider",
     trendNet: (v: string) => `Bu ay net: ${v}`,
     fixedVsVariable: "Sabit / Değişken",
@@ -254,6 +255,9 @@ export const tr = {
     edit: "İşlemi Düzenle",
     type: "Tür", expense: "Gider", income: "Gelir", transferInvest: "Yatırım",
     amount: "Tutar", currency: "Para Birimi",
+    reversalLabel: (kind: "expense" | "income" | "transfer") =>
+      kind === "expense" ? "İade / geri ödeme" : kind === "income" ? "Gelir iptali / geri ödeme" : "Ters yönlü transfer",
+    reversalHint: "Bu kayıt seçili kalemin toplamını azaltır ve bakiye etkisini tersine çevirir.",
     tryEquivalent: (v: string) => `≈ ${v}`,
     staleRate: "Kur güncel değil, son bilinen kur kullanıldı",
     rateNotFound: "⚠ Kur bulunamadı. Önce internetle bir kez kur çek",
