@@ -16,14 +16,16 @@ lags behind them.
 - Test baseline: 13 files, 147 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
+  Production Playwright also rendered expired and invalid password-reset states
+  at 320/390 px and sign-in at 1280 px with zero browser errors.
 
 ## Active working tree
 
-The three pre-existing cash-flow/dashboard UI edits have been understood and
-completed in the finance presentation package: mobile card wrapping was kept,
-while investment/transfer was moved into a supplemental donut legend row so it
-does not corrupt expense totals. Always re-check `git status`; the remaining
-12-item recovery task continues in subsequent packages.
+The 12-item recovery task is complete. Claude's three pre-existing unstaged
+cash-flow/dashboard edits were understood and completed rather than reset;
+every subsequent package is committed and shipped. The working tree was clean
+at application HEAD `f8f1b68`; always re-check `git status` because Git remains
+authoritative after this handoff document's commit.
 
 ## Current architecture summary
 
@@ -200,8 +202,8 @@ diff and running checks proportionate to the change.
   targets the aggregate Helix balance and the UI states that limitation.
 - Checks: typecheck, 13 files/147 tests, Expo lint and static web export pass.
   Tests cover same-day convergence, zero removal math, signed adjustments, and
-  exact preservation of January/opening/all months before the correction. Playwright
-  sign-in regression passed at 320/390/1280 px without overflow or browser
+  exact preservation of January/opening/all months before the correction.
+  Playwright sign-in regression passed at 320/390/1280 px without overflow or browser
   errors; the protected balance screen still lacks a repository E2E credential.
 - Shipped as `011dbbc`: pushed to `main`, GitHub `deploy-web` run
   `29407854836` completed successfully, production root and balance routes
@@ -215,8 +217,10 @@ diff and running checks proportionate to the change.
   genuine bank/cash loan installments. Card-sourced rows still collapse into
   one statement, while non-card installments now remain standalone obligations
   on their explicit dates; month-only aggregates remain excluded.
-- Typecheck, 13 files/147 tests, Expo lint and static web export pass. Commit,
-  push, web and OTA state are pending at this note's write time.
+- Typecheck, 13 files/147 tests, Expo lint and static web export pass. Shipped as
+  `f8f1b68`: pushed to `main`, GitHub `deploy-web` run `29408095598` completed
+  successfully, production returned HTTP 200, and EAS `preview` update group
+  `119fe6db-9092-497a-be1b-e376786fd2c0` published for iOS and Android.
 
 ### 2026-07-15 — Codex
 
