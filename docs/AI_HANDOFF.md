@@ -24,7 +24,7 @@ lags behind them.
 The 12-item recovery task is complete. Claude's three pre-existing unstaged
 cash-flow/dashboard edits were understood and completed rather than reset;
 every subsequent package is committed and shipped. The working tree was clean
-at application HEAD `f8f1b68`; always re-check `git status` because Git remains
+at application HEAD `d8b762f`; always re-check `git status` because Git remains
 authoritative after this handoff document's commit.
 
 ## Current architecture summary
@@ -56,9 +56,9 @@ current code before fixing it.
 3. Editing/deleting subscriptions or recurring incomes does not reconcile their
    already-generated `expected_payments`, leaving stale or orphaned items.
 4. Transaction type changes still do not guarantee that the selected category
-   belongs to the new type. Analytics now excludes transfers and the analysis
-   screen rejects legacy type/category mismatches, but the editor invariant
-   remains to be enforced separately.
+   belongs to the new type. Aggregate analytics trust transaction type so stale
+   category kinds cannot hide money; category-detail rows require kind parity.
+   The editor invariant remains to be enforced separately.
 5. Cell-note editors use random ids despite the existing deterministic natural
    key. The month-detail pseudo-category `uncategorized` can also be written into
    a UUID-shaped remote `category_id`.
@@ -221,6 +221,22 @@ diff and running checks proportionate to the change.
   `f8f1b68`: pushed to `main`, GitHub `deploy-web` run `29408095598` completed
   successfully, production returned HTTP 200, and EAS `preview` update group
   `119fe6db-9092-497a-be1b-e376786fd2c0` published for iOS and Android.
+
+### 2026-07-15 — Codex (final analytics regression)
+
+- Base `3b3feb3`, branch `main`.
+- Final chart review found that the analysis screen's aggregate period and
+  monthly charts still applied category-kind parity before calling the shared
+  distribution logic. A legacy expense assigned to a stale income category
+  could therefore disappear even though its transaction type was authoritative.
+- Aggregate charts now use every eligible transaction and let
+  `distributionForRange` classify by type; category-kind parity remains limited
+  to category-detail rows.
+- Typecheck, 13 files/147 tests, Expo lint, static web export and Playwright
+  sign-in regression at 320/390/1280 px passed without overflow or browser
+  errors. Shipped as `d8b762f`: pushed to `main`, GitHub `deploy-web` run
+  `29408718295` completed successfully, and EAS `preview` update group
+  `71bef391-16d6-43f6-b14e-92558d8d8617` published for iOS and Android.
 
 ### 2026-07-15 — Codex
 
