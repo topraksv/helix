@@ -9,11 +9,10 @@ lags behind them.
 
 - Updated: 2026-07-15 (Europe/Istanbul)
 - Branch: `main`
-- Review base: `77a7487` (`origin/main` was at the same commit when the current
-  12-item recovery task started; use `git log -1` for the resulting HEAD)
+- Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 13 files, 147 tests passing
+- Test baseline: 14 files, 150 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -21,11 +20,10 @@ lags behind them.
 
 ## Active working tree
 
-The 12-item recovery task is complete. Claude's three pre-existing unstaged
-cash-flow/dashboard edits were understood and completed rather than reset;
-every subsequent package is committed and shipped. The working tree was clean
-at application HEAD `d8b762f`; always re-check `git status` because Git remains
-authoritative after this handoff document's commit.
+The repository-wide remediation requested on 2026-07-15 is in progress. Package
+1 closes the critical account-switch/freeze data-loss findings. Remaining audit
+items below are being completed as separately verified and shipped packages.
+Always re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -49,29 +47,27 @@ These are static-analysis findings from the 2026-07-15 repository review. They
 have not yet been implemented or runtime-reproduced; verify each against the
 current code before fixing it.
 
-1. Account freeze can sign out and wipe the local outbox after a failed/offline
-   sync because `syncNow` handles errors internally and resolves.
-2. Client-clock timestamps can remain ahead of the server-normalized timestamp;
+1. Client-clock timestamps can remain ahead of the server-normalized timestamp;
    pull LWW may then reject legitimate remote updates while advancing its cursor.
-3. Editing/deleting subscriptions or recurring incomes does not reconcile their
+2. Editing/deleting subscriptions or recurring incomes does not reconcile their
    already-generated `expected_payments`, leaving stale or orphaned items.
-4. Transaction type changes still do not guarantee that the selected category
+3. Transaction type changes still do not guarantee that the selected category
    belongs to the new type. Aggregate analytics trust transaction type so stale
    category kinds cannot hide money; category-detail rows require kind parity.
    The editor invariant remains to be enforced separately.
-5. Cell-note editors use random ids despite the existing deterministic natural
+4. Cell-note editors use random ids despite the existing deterministic natural
    key. The month-detail pseudo-category `uncategorized` can also be written into
    a UUID-shaped remote `category_id`.
-6. `Logo` claims fully local rendering but defaults to Google's favicon service;
+5. `Logo` claims fully local rendering but defaults to Google's favicon service;
    no settings toggle currently supplies `allowRemote=false`.
-7. Several `numberOfLines` uses, special/non-editable table columns, trailing
+6. Several `numberOfLines` uses, special/non-editable table columns, trailing
    dividers, and manual derivation memos conflict with the UI/Compiler rules in
    `AGENTS.md` and need an app-wide sweep.
-8. Foreign subscription totals fall back to treating an unavailable FX amount
+7. Foreign subscription totals fall back to treating an unavailable FX amount
    as TRY; JSON restore validation does not validate enums, ranges, dates, or
    relational integrity; person/source deletion can leave orphan references.
-9. Onboarding person deletion does not remap draft source `personIndex` values.
-10. README/testing counts and the README palette are stale; web HTML language is
+8. Onboarding person deletion does not remap draft source `personIndex` values.
+9. README/testing counts and the README palette are stale; web HTML language is
     `en`, and Android biometric permissions are duplicated in `app.json`.
 
 ## Handoff update contract
@@ -92,6 +88,21 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-15 — Codex (account lifecycle safety package)
+
+- Base `22d7bfb`, branch `main`.
+- Added a user-scoped session epoch: sync requests are abortable, late responses
+  cannot clear outbox/merge rows after an account switch, and sign-out waits for
+  registered maintenance/FX/notification work before wiping SQLite.
+- Sign-out now keeps the authenticated workspace open and reports an error when
+  the local wipe fails. Freeze now requires a successful outbox flush and rolls
+  its flag back instead of destroying offline changes.
+- SecureStore token replacement removes obsolete chunks; logout also purges
+  orphan chunks left by older versions.
+- Typecheck, 14 files/150 tests, Expo lint, static web export and Playwright
+  sign-in/recovery smoke at mobile and desktop widths passed. Push/web/preview
+  OTA follow this package commit; Git, Actions and EAS remain authoritative.
 
 ### 2026-07-15 — Codex (finance recovery package)
 

@@ -10,6 +10,7 @@ import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
+import { SessionEpoch, SessionEpochCancelledError, type SessionEpochToken } from "./session-epoch";
 
 const isAuthError = (raw: string) => /jwt|token|401|unauthorized|not authenticated/i.test(raw);
 
@@ -107,12 +108,19 @@ function toLocal(table: SyncedTableName, row: Record<string, unknown>): Record<s
   return out;
 }
 
-async function pushOutbox(userId: string): Promise<void> {
+const sessionEpoch = new SessionEpoch();
+
+function assertActive(token: SessionEpochToken): void {
+  sessionEpoch.assertCurrent(token);
+}
+
+async function pushOutbox(userId: string, token: SessionEpochToken): Promise<void> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
   // Push per table in FK-safe declaration order, oldest events first.
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     for (;;) {
+      assertActive(token);
       const events = await sqlite.getAllAsync<{ id: number; payload: string; row_id: string }>(
         `SELECT id, payload, row_id FROM outbox WHERE table_name = ? ORDER BY id ASC LIMIT ${PUSH_BATCH}`,
         [table] as never[],
@@ -131,9 +139,13 @@ async function pushOutbox(userId: string): Promise<void> {
       }
       const rows = [...latestByRow.values()].map((e) => toRemote(table, JSON.parse(e.payload)));
       if (rows.length > 0) {
-        const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
+        assertActive(token);
+        const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" }).abortSignal(token.signal);
         if (error) throw new Error(`push ${table}: ${error.message}`);
       }
+      // A sign-out/account switch may have happened while PostgREST was in
+      // flight. Never clear the local outbox for a stale session response.
+      assertActive(token);
       // Clear the whole batch (own rows pushed, foreign rows discarded).
       const maxId = events[events.length - 1].id;
       await sqlite.runAsync(`DELETE FROM outbox WHERE table_name = ? AND id <= ?`, [table, maxId] as never[]);
@@ -141,10 +153,11 @@ async function pushOutbox(userId: string): Promise<void> {
   }
 }
 
-async function pullAndMerge(userId: string): Promise<void> {
+async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<void> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    assertActive(token);
     const allowed = KNOWN_COLUMNS.get(table)!;
     const cursorRow = await sqlite.getFirstAsync<{ last_pulled_at: string }>(
       `SELECT last_pulled_at FROM sync_state WHERE table_name = ?`,
@@ -167,12 +180,14 @@ async function pullAndMerge(userId: string): Promise<void> {
       query = curId
         ? query.or(`updated_at.gt.${curTs},and(updated_at.eq.${curTs},id.gt.${curId})`)
         : query.gt("updated_at", curTs);
-      const { data, error } = await query;
+      const { data, error } = await query.abortSignal(token.signal);
       if (error) throw new Error(`pull ${table}: ${error.message}`);
       if (!data || data.length === 0) break;
 
+      assertActive(token);
       await withTransaction(async () => {
         for (const remoteRaw of data) {
+          assertActive(token);
           const remote = toLocal(table, remoteRaw as Record<string, unknown>);
           // An unparseable server timestamp can't participate in LWW; skip it
           // explicitly (and loudly) instead of relying on a NaN comparison
@@ -200,6 +215,7 @@ async function pullAndMerge(userId: string): Promise<void> {
           );
         }
         const last = data[data.length - 1] as { updated_at: string; id: string };
+        assertActive(token);
         curTs = new Date(last.updated_at).toISOString();
         curId = last.id;
         await sqlite.runAsync(
@@ -215,10 +231,53 @@ async function pullAndMerge(userId: string): Promise<void> {
 }
 
 let syncing = false;
-let rerunRequested = false;
+let rerunRequestedFor: string | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempt = 0;
+let inFlight: Promise<boolean> | null = null;
+const sessionTasks = new Set<Promise<unknown>>();
+
+function clearScheduledSync(): void {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  if (retryTimer) clearTimeout(retryTimer);
+  debounceTimer = null;
+  retryTimer = null;
+  retryAttempt = 0;
+  rerunRequestedFor = null;
+}
+
+/** Activate sync for the authenticated/local workspace owner. */
+export function startSyncSession(userId: string): void {
+  const previous = sessionEpoch.capture(userId);
+  sessionEpoch.start(userId);
+  if (!previous) clearScheduledSync();
+}
+
+/**
+ * Register non-sync background work (maintenance, FX, notifications) under
+ * the same user epoch. Sign-out waits for registered work before wiping the
+ * database, and the callback receives an abort signal for cancellable I/O.
+ */
+export async function runSyncSessionTask<T>(
+  userId: string,
+  task: (signal: AbortSignal) => Promise<T>,
+): Promise<T | undefined> {
+  const token = sessionEpoch.capture(userId);
+  if (!token) return undefined;
+  const running = task(token.signal);
+  sessionTasks.add(running);
+  try {
+    const result = await running;
+    assertActive(token);
+    return result;
+  } catch (e) {
+    if (e instanceof SessionEpochCancelledError || token.signal.aborted || !sessionEpoch.isCurrent(token)) return undefined;
+    throw e;
+  } finally {
+    sessionTasks.delete(running);
+  }
+}
 
 /**
  * Stop every scheduled/pending sync (debounce + retry timers). Called on
@@ -226,35 +285,36 @@ let retryAttempt = 0;
  * local workspace has been wiped.
  */
 export function cancelSync(): void {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  if (retryTimer) clearTimeout(retryTimer);
-  debounceTimer = null;
-  retryTimer = null;
-  retryAttempt = 0;
-  rerunRequested = false;
+  sessionEpoch.stop();
+  clearScheduledSync();
 }
 
-export async function syncNow(userId: string, allowRefresh = true): Promise<void> {
+/** Abort the current epoch and wait until its transaction/network task exits. */
+export async function stopSyncSession(userId?: string): Promise<void> {
+  sessionEpoch.stop(userId);
+  clearScheduledSync();
+  const current = inFlight;
+  await Promise.allSettled([...(current ? [current] : []), ...sessionTasks]);
+}
+
+async function runSync(userId: string, token: SessionEpochToken, allowRefresh: boolean): Promise<boolean> {
   const status = useSyncStatus.getState();
   if (!getSupabase()) {
     status.set({ state: "unconfigured" });
-    return;
+    return true;
   }
-  if (syncing) {
-    // A write landed while a sync is in flight: remember it and run one more
-    // pass right after, so the outbox never sits silently until the next
-    // app-foreground (the status would otherwise show "idle" while rows wait).
-    rerunRequested = true;
-    return;
-  }
-  syncing = true;
   status.set({ state: "syncing" });
   try {
-    await pushOutbox(userId);
-    await pullAndMerge(userId);
+    await pushOutbox(userId, token);
+    await pullAndMerge(userId, token);
+    assertActive(token);
     retryAttempt = 0;
     status.set({ state: "idle", lastSyncAt: new Date().toISOString(), error: null });
+    return true;
   } catch (e) {
+    if (e instanceof SessionEpochCancelledError || !sessionEpoch.isCurrent(token) || token.signal.aborted) {
+      return false;
+    }
     const raw = e instanceof Error ? e.message : String(e);
     console.error("[sync]", raw);
     // Expired token → refresh once and retry immediately, no user action.
@@ -262,7 +322,7 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<void
       status.set({ state: "syncing" });
       if (retryTimer) clearTimeout(retryTimer);
       retryTimer = setTimeout(() => void syncNow(userId, false), 0);
-      return;
+      return false;
     }
     status.set({ state: "error", error: friendlySyncError(raw) });
     // Exponential backoff retry: 5s, 10s, 20s… capped at 5 min.
@@ -270,18 +330,43 @@ export async function syncNow(userId: string, allowRefresh = true): Promise<void
     retryAttempt += 1;
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = setTimeout(() => void syncNow(userId), delay);
+    return false;
+  }
+}
+
+export async function syncNow(userId: string, allowRefresh = true): Promise<boolean> {
+  const token = sessionEpoch.capture(userId);
+  // A late maintenance callback from a signed-out account must be a no-op. The
+  // auth/session layer is the only place allowed to activate an epoch.
+  if (!token) return false;
+  if (syncing) {
+    // A write landed while a sync is in flight: remember the active account and
+    // run one more pass. A new account can replace this request after aborting
+    // the old epoch, but an old callback can never replace the new one.
+    rerunRequestedFor = userId;
+    const current = inFlight;
+    return current ? current.catch(() => false) : false;
+  }
+  syncing = true;
+  const task = runSync(userId, token, allowRefresh);
+  inFlight = task;
+  try {
+    return await task;
   } finally {
+    if (inFlight === task) inFlight = null;
     syncing = false;
-    if (rerunRequested) {
-      rerunRequested = false;
+    const requestedUser = rerunRequestedFor;
+    rerunRequestedFor = null;
+    if (requestedUser && sessionEpoch.capture(requestedUser)) {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => void syncNow(userId), 250);
+      debounceTimer = setTimeout(() => void syncNow(requestedUser), 250);
     }
   }
 }
 
 /** Debounced trigger for after-write sync (UI never waits on this). */
 export function scheduleSync(userId: string, delayMs = 1500): void {
+  if (!sessionEpoch.capture(userId)) return;
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => void syncNow(userId), delayMs);
 }

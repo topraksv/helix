@@ -17,6 +17,7 @@ import { useUserId } from "../data/hooks";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 import { Body, Button, Screen, Title } from "./components";
+import { appAlert } from "./dialog";
 import { spacing, useTheme } from "./theme";
 
 export function FrozenGate() {
@@ -66,7 +67,8 @@ export function FrozenGate() {
             onPress={async () => {
               setBusy(true);
               try {
-                await signOut();
+                const error = await signOut();
+                if (error) void appAlert(error, tr.errors.title);
               } finally {
                 setBusy(false);
               }

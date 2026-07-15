@@ -26,7 +26,7 @@ import { useAccountFrozen, useOnboarded } from "../data/hooks";
 import { runMaintenance } from "../data/repo";
 import { loadRateCache, refreshRates } from "../services/fx-fetch";
 import { rescheduleAll } from "../services/notifications";
-import { syncNow } from "../sync/engine";
+import { runSyncSessionTask, syncNow } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
@@ -244,12 +244,17 @@ function RootLayoutInner() {
       // re-triggered mid-flight by those writes. All DB transactions are
       // serialized (see db/client withTransaction), but sequencing here also
       // avoids a rerun storm right after sign-in.
-      void runMaintenance(userId)
-        .then(() => rescheduleAll(userId))
+      void runSyncSessionTask(userId, async (signal) => {
+        await runMaintenance(userId);
+        if (signal.aborted) return;
+        await rescheduleAll(userId);
+      })
         .catch((e) => console.warn("maintenance failed", e))
         .finally(() => void syncNow(userId));
-      void loadRateCache(userId).catch(() => {});
-      void refreshRates(userId).catch(() => {});
+      void runSyncSessionTask(userId, async (signal) => {
+        await loadRateCache(userId);
+        if (!signal.aborted) await refreshRates(userId);
+      }).catch(() => {});
     };
     kick();
     const sub = AppState.addEventListener("change", (state) => {

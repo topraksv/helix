@@ -82,7 +82,8 @@ export default function SettingsScreen() {
           danger: true,
         });
         if (!proceed) return;
-        await signOut();
+        const error = await signOut();
+        if (error) void appAlert(error, tr.errors.title);
         return;
       }
       if ((await pendingOutboxCount()) > 0) {
@@ -96,7 +97,8 @@ export default function SettingsScreen() {
         });
         if (!proceed) return;
       }
-      await signOut();
+      const error = await signOut();
+      if (error) void appAlert(error, tr.errors.title);
     } finally {
       setSigningOut(false);
     }
@@ -177,8 +179,21 @@ export default function SettingsScreen() {
         // Push the flag to the cloud, then sign out to the login screen. Data is
         // preserved (it lives in the cloud); logging back in re-hydrates it and
         // clears the freeze. A different account can be used from here too.
-        await syncNow(userId).catch(() => {});
-        await signOut(); // resets isFreezing
+        const synced = await syncNow(userId);
+        if (!synced || (await pendingOutboxCount()) > 0) {
+          await writeSetting(userId, "account_frozen", false);
+          scheduleSync(userId);
+          useSession.setState({ isFreezing: false });
+          void appAlert(tr.account.freezeSyncFailed, tr.errors.title);
+          return;
+        }
+        const signOutError = await signOut(); // resets isFreezing on success
+        if (signOutError) {
+          await writeSetting(userId, "account_frozen", false);
+          scheduleSync(userId);
+          useSession.setState({ isFreezing: false });
+          void appAlert(signOutError, tr.errors.title);
+        }
       } else {
         // Local-only (no cloud): keep the session and lock in place via the gate.
         scheduleSync(userId);
