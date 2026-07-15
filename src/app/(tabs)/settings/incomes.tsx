@@ -8,10 +8,8 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Banknote, Pencil, Trash2 } from "lucide-react-native";
-import { newId } from "../../../db/ids";
-import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
 import { useCategories, usePersons, useRecurringIncomes, useUserId } from "../../../data/hooks";
-import { runMaintenance } from "../../../data/repo";
+import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
@@ -84,25 +82,18 @@ export default function IncomeRulesScreen() {
     setBusy(true);
     try {
       const existing = editingId ? incomes.find((r) => r.id === editingId) : null;
-      await writeRows(userId, [
-        {
-          table: "recurring_incomes",
-          row: {
-            ...(existing ?? { note: null }),
-            id: editingId ?? newId(),
-            name: effectiveName.trim(),
-            kind,
-            defaultAmountMinor: amountMinor!,
-            currency: "TRY",
-            payDay,
-            personId,
-            categoryId,
-            isActive: existing ? existing.isActive : true,
-            deletedAt: null,
-          },
-        },
-      ]);
-      await runMaintenance(userId); // (re)generate this month's expected income immediately
+      await upsertRecurringIncome(userId, {
+        id: editingId ?? undefined,
+        name: effectiveName.trim(),
+        kind,
+        defaultAmountMinor: amountMinor!,
+        currency: "TRY",
+        payDay,
+        personId,
+        categoryId,
+        isActive: existing ? existing.isActive : true,
+        note: existing?.note ?? null,
+      });
       scheduleSync(userId);
       resetForm();
     } finally {
@@ -111,9 +102,13 @@ export default function IncomeRulesScreen() {
   };
 
   const remove = async (r: (typeof incomes)[number]) => {
-    const snapshot = await softDelete(userId, "recurring_incomes", r.id);
+    const snapshot = await deleteRecurringIncomeWithExpected(userId, r.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${r.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "recurring_incomes", snapshot), "warning");
+    if (snapshot) {
+      undo.show(`${r.name} · ${tr.common.deleted}`, () => {
+        void restoreDeletedRule(userId, snapshot).then(() => scheduleSync(userId));
+      }, "warning");
+    }
   };
 
   return (

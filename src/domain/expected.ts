@@ -28,6 +28,26 @@ export function expectedKey(e: Pick<ExpectedPaymentLike, "kind" | "refId" | "due
 }
 
 /**
+ * Which derived unpaid rows must be tombstoned when a rule is edited. Active
+ * rules retain genuinely overdue obligations, replace today's/future schedule,
+ * and never touch paid/skipped history. Inactive/watch-only/deleted rules drop
+ * every unpaid derivative so stale dashboard cards cannot survive.
+ */
+export function obsoleteExpectedIds(
+  existing: ExpectedPaymentLike[],
+  drafts: ExpectedDraft[],
+  today: ISODate,
+  sourceActive: boolean,
+): string[] {
+  const generated = new Set(drafts.map((draft) => expectedKey(draft)));
+  return existing
+    .filter((row) => row.status === "pending" || row.status === "late")
+    .filter((row) => !sourceActive || row.dueDate >= today)
+    .filter((row) => !generated.has(expectedKey(row)))
+    .map((row) => row.id);
+}
+
+/**
  * Generate missing expected items from today through `horizonMonths` full
  * months ahead. Idempotent: anything already present in `existing` (by
  * kind+refId+dueDate) is skipped, so re-running on every app open is safe.
@@ -47,8 +67,18 @@ export function generateExpected(
   const drafts: ExpectedDraft[] = [];
 
   for (const sub of subscriptions) {
-    if (!sub.isActive) continue;
-    for (const dueDate of dueDatesInRange(sub.nextDueDate, sub.intervalMonths, sub.billingDay, today, horizon)) {
+    if (!sub.isActive || !sub.personIsSelf) continue;
+    // A free trial cannot create a charge before it ends. If the trial ends
+    // after the stored next due date, use the first scheduled billing date on
+    // or after that boundary as the generation anchor.
+    let anchor = sub.nextDueDate;
+    if (sub.trialEndDate && sub.trialEndDate > anchor) {
+      const trialMonthDue = dueDateInMonth(monthKeyOf(sub.trialEndDate), sub.billingDay);
+      anchor = trialMonthDue >= sub.trialEndDate
+        ? trialMonthDue
+        : dueDateInMonth(addMonthsToKey(monthKeyOf(sub.trialEndDate), sub.intervalMonths), sub.billingDay);
+    }
+    for (const dueDate of dueDatesInRange(anchor, sub.intervalMonths, sub.billingDay, today, horizon)) {
       const draft: ExpectedDraft = {
         direction: "out",
         kind: "subscription",
@@ -62,7 +92,7 @@ export function generateExpected(
   }
 
   for (const income of incomes) {
-    if (!income.isActive) continue;
+    if (!income.isActive || !income.personIsSelf) continue;
     let month = monthKeyOf(today);
     for (let i = 0; i <= horizonMonths; i++) {
       const dueDate = dueDateInMonth(month, income.payDay);

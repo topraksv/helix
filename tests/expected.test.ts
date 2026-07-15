@@ -5,6 +5,7 @@ import {
   findLate,
   generateExpected,
   isDueWithin,
+  obsoleteExpectedIds,
 } from "../src/domain/expected";
 import type { ExpectedPaymentLike, RecurringIncomeLike, SubscriptionLike } from "../src/domain/types";
 
@@ -72,6 +73,28 @@ describe("generateExpected", () => {
     expect(drafts).toEqual([]);
   });
 
+  it("never creates balance-affecting expected rows for watch-only people", () => {
+    const drafts = generateExpected(
+      [sub({ personIsSelf: false })],
+      [income({ personIsSelf: false })],
+      [],
+      "2026-07-05",
+      2,
+    );
+    expect(drafts).toEqual([]);
+  });
+
+  it("does not bill a subscription before its free trial ends", () => {
+    const drafts = generateExpected(
+      [sub({ nextDueDate: "2026-07-10", trialEndDate: "2026-08-12" })],
+      [],
+      [],
+      "2026-07-05",
+      2,
+    );
+    expect(drafts.map((draft) => draft.dueDate)).toEqual(["2026-09-10"]);
+  });
+
   it("generates salary as incoming expected with the pay day per month", () => {
     const drafts = generateExpected([], [income({})], [], "2026-07-05", 1);
     expect(drafts.map((d) => [d.direction, d.dueDate])).toEqual([
@@ -92,6 +115,18 @@ describe("generateExpected", () => {
 });
 
 describe("state transitions", () => {
+  it("reconciles future unpaid rows without erasing active overdue history", () => {
+    const rows = [
+      expected({ id: "late", dueDate: "2026-07-01", status: "late" }),
+      expected({ id: "future-old", dueDate: "2026-07-20" }),
+      expected({ id: "future-kept", dueDate: "2026-08-10" }),
+      expected({ id: "paid", dueDate: "2026-09-10", status: "paid" }),
+    ];
+    const drafts = [{ direction: "out" as const, kind: "subscription" as const, refId: "sub-1", dueDate: "2026-08-10", amountMinor: 1, currency: "TRY" }];
+    expect(obsoleteExpectedIds(rows, drafts, "2026-07-15", true)).toEqual(["future-old"]);
+    expect(obsoleteExpectedIds(rows, [], "2026-07-15", false)).toEqual(["late", "future-old", "future-kept"]);
+  });
+
   it("flags pending items past due as late", () => {
     const items = [expected({ dueDate: "2026-07-01" }), expected({ id: "e2", dueDate: "2026-07-09" })];
     expect(findLate(items, "2026-07-05").map((e) => e.id)).toEqual(["exp-1"]);

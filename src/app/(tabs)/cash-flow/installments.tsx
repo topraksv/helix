@@ -77,6 +77,7 @@ export default function InstallmentsScreen() {
 
   // Header total = what this month's shown installments actually cost.
   const monthObligationMinor = selfPlans.reduce((sum, p) => sum + (itemInMonth(p.id)?.amountMinor ?? 0), 0);
+  const watchedObligationMinor = otherPlans.reduce((sum, p) => sum + (itemInMonth(p.id)?.amountMinor ?? 0), 0);
 
   const renderPlan = (plan: (typeof plans)[number], watchedBy?: string) => {
     const items = itemsByPlan.get(plan.id) ?? [];
@@ -153,6 +154,11 @@ export default function InstallmentsScreen() {
       {otherPlans.length > 0 ? (
         <>
           <SectionHeader>{tr.installments.othersSection}</SectionHeader>
+          <Card>
+            <Body muted>{tr.installments.watchedMonthTotal} · {monthLabel(viewMonth)}</Body>
+            <Amount minor={watchedObligationMinor} large colorized={false} />
+            <Body muted style={{ marginTop: spacing.xs }}>{tr.installments.watchedBalanceHint}</Body>
+          </Card>
           <CardList items={otherPlans} keyExtractor={(p) => p.id} renderItem={(p) => renderPlan(p, personName.get(p.personId) ?? "")} />
         </>
       ) : null}
