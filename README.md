@@ -151,6 +151,10 @@ npx expo lint           # lint
    client code).
 5. Run the `supabase-keepalive` workflow once from the Actions tab. It pings the
    database every 3 days so a free-tier project never pauses.
+6. Under **Authentication → URL Configuration → Redirect URLs**, allow
+   `https://topraksv.github.io/helix/**` for web and `helix://**` for the
+   installed app. Password recovery uses Supabase's expiring, one-time PKCE
+   links and routes both targets to `/reset-password`.
 
 ### Deploy the web app
 

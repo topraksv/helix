@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { AlertCircle, CloudOff } from "lucide-react-native";
+import { AlertCircle, CheckCircle2, CloudOff } from "lucide-react-native";
 import { useSession } from "../../auth/session";
 import { isSupabaseConfigured } from "../../sync/supabase";
 import { Body, Button, Field, Screen } from "../../ui/components";
@@ -10,32 +10,46 @@ import { radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
 
 export default function SignInScreen() {
-  const [mode, setMode] = useState<"signIn" | "signUp">("signIn");
+  const [mode, setMode] = useState<"signIn" | "signUp" | "forgot">("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const { signIn, signUp } = useSession();
+  const [resetSent, setResetSent] = useState(false);
+  const { signIn, signUp, requestPasswordReset } = useSession();
   const { palette } = useTheme();
 
   const emailValid = /.+@.+\..+/.test(email.trim());
-  const canSubmit = emailValid && password.length >= 6 && !busy;
+  const canSubmit = emailValid && (mode === "forgot" || password.length >= 6) && !busy;
 
   const submit = async () => {
     if (!canSubmit) return;
     setBusy(true);
     setError(null);
-    const err = mode === "signIn" ? await signIn(email.trim(), password) : await signUp(email.trim(), password);
+    const err = mode === "signIn"
+      ? await signIn(email.trim(), password)
+      : mode === "signUp"
+        ? await signUp(email.trim(), password)
+        : await requestPasswordReset(email.trim());
     setBusy(false);
     // On success, let the root route guard navigate (it keys off userId +
     // onboarded). Replacing to "/" here landed on a length-0 route that made the
     // guard's "(tabs)" redirect loop (React error #185 → white screen).
     if (err) setError(err);
+    else if (mode === "forgot") setResetSent(true);
   };
 
   const switchMode = () => {
     setError(null);
+    setResetSent(false);
     setMode(mode === "signIn" ? "signUp" : "signIn");
+  };
+
+  const showForgot = () => {
+    setMode("forgot");
+    setPassword("");
+    setError(null);
+    setResetSent(false);
   };
 
   useSubmitOnEnter(() => void submit(), canSubmit);
@@ -55,10 +69,10 @@ export default function SignInScreen() {
         </View>
 
         <Text style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>
-          {mode === "signIn" ? tr.auth.welcomeBack : tr.auth.signUpTitle}
+          {mode === "signIn" ? tr.auth.welcomeBack : mode === "signUp" ? tr.auth.signUpTitle : tr.auth.forgotTitle}
         </Text>
         <Body muted style={{ marginBottom: spacing.lg }}>
-          {mode === "signIn" ? tr.auth.signInSubtitle : tr.auth.signUpSubtitle}
+          {mode === "signIn" ? tr.auth.signInSubtitle : mode === "signUp" ? tr.auth.signUpSubtitle : tr.auth.forgotSubtitle}
         </Body>
 
         <Field
@@ -75,20 +89,45 @@ export default function SignInScreen() {
           returnKeyType="next"
           placeholder="ornek@eposta.com"
         />
-        <Field
-          label={tr.auth.password}
-          value={password}
-          onChangeText={(v) => {
-            setPassword(v);
-            setError(null);
-          }}
-          secure
-          autoComplete={mode === "signIn" ? "current-password" : "new-password"}
-          textContentType={mode === "signIn" ? "password" : "newPassword"}
-          returnKeyType="go"
-          onSubmitEditing={() => void submit()}
-          error={mode === "signUp" && password.length > 0 && password.length < 6 ? tr.auth.passwordMin : null}
-        />
+        {mode !== "forgot" ? (
+          <Field
+            label={tr.auth.password}
+            value={password}
+            onChangeText={(v) => {
+              setPassword(v);
+              setError(null);
+            }}
+            secure
+            autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+            textContentType={mode === "signIn" ? "password" : "newPassword"}
+            returnKeyType="go"
+            onSubmitEditing={() => void submit()}
+            error={mode === "signUp" && password.length > 0 && password.length < 6 ? tr.auth.passwordMin : null}
+          />
+        ) : null}
+
+        {mode === "signIn" ? (
+          <Pressable accessibilityRole="button" onPress={showForgot} hitSlop={8} style={{ alignSelf: "flex-end", marginBottom: spacing.md }}>
+            <Text style={[type.label, { color: palette.primary }]}>{tr.auth.forgotPassword}</Text>
+          </Pressable>
+        ) : null}
+
+        {resetSent ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.sm,
+              backgroundColor: palette.positive + "16",
+              borderRadius: radius.sm,
+              padding: spacing.md,
+              marginBottom: spacing.md,
+            }}
+          >
+            <CheckCircle2 size={17} color={palette.positive} />
+            <Text style={[type.label, { color: palette.positive, flex: 1 }]}>{tr.auth.resetSent}</Text>
+          </View>
+        ) : null}
 
         {error ? (
           <View
@@ -108,16 +147,18 @@ export default function SignInScreen() {
         ) : null}
 
         <Button
-          label={mode === "signIn" ? tr.auth.signIn : tr.auth.signUpTitle}
-          onPress={() => void submit()}
+          label={resetSent ? tr.auth.backToSignIn : mode === "signIn" ? tr.auth.signIn : mode === "signUp" ? tr.auth.signUpTitle : tr.auth.sendResetLink}
+          onPress={resetSent ? switchMode : () => void submit()}
           loading={busy}
-          disabled={!canSubmit}
+          disabled={!resetSent && !canSubmit}
         />
 
         <View style={{ flexDirection: "row", justifyContent: "center", gap: spacing.xs, marginTop: spacing.lg }}>
-          <Body muted>{mode === "signIn" ? tr.auth.noAccount : tr.auth.haveAccount}</Body>
+          <Body muted>{mode === "signIn" ? tr.auth.noAccount : mode === "signUp" ? tr.auth.haveAccount : tr.auth.rememberedPassword}</Body>
           <Pressable accessibilityRole="button" onPress={switchMode} hitSlop={8}>
-            <Text style={[type.body, { color: palette.primary, fontFamily: "Inter_600SemiBold" }]}>
+            <Text
+              style={[type.body, { color: palette.primary, fontFamily: "Inter_600SemiBold" }]}
+            >
               {mode === "signIn" ? tr.auth.signUpAction : tr.auth.signInAction}
             </Text>
           </Pressable>

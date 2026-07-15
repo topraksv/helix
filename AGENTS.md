@@ -68,6 +68,10 @@ agent-to-agent communication that did not occur.
   expenses are installment/subscription-linked, and ordinary expenses default
   to variable. Upcoming card charges collapse into one dated statement per
   card; cards without a real due day never get a synthetic payment date.
+- **Password recovery uses Supabase PKCE.** Web reset redirects must retain the
+  Router `/helix` base path; installed builds use the existing `helix://` scheme.
+  Recovery routes are intentionally exempt from normal signed-in/onboarding
+  guards. Never expose whether a reset-request e-mail belongs to an account.
 - **UI strings live only in `src/i18n/tr.ts`.** Code is English, UI is Turkish.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint

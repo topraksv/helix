@@ -13,7 +13,7 @@ lags behind them.
   12-item recovery task started; use `git log -1` for the resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 10 files, 132 tests passing
+- Test baseline: 11 files, 138 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
 
@@ -109,8 +109,31 @@ diff and running checks proportionate to the change.
 - Checks: typecheck, 10 files/132 tests, Expo lint, static Expo web export and
   Playwright at 320/390/1280 px passed. Authenticated finance-route Playwright
   still needs a valid test session; the repo contains no E2E credential/flow.
-- Commit/push/web/OTA state is pending at this note's write time; verify Git and
-  EAS before treating the package as shipped.
+- Shipped as `f68be7d`: pushed to `main`, GitHub `deploy-web` completed
+  successfully, production returned HTTP 200, and EAS `preview` update group
+  `b2d405cc-1f1e-44d2-b723-061f96ce3bb0` published for runtime `1.0.0`.
+
+### 2026-07-15 — Codex (auth recovery package)
+
+- Base `f68be7d`, branch `main`.
+- Added Supabase's PKCE password-reset request/exchange/update flow, neutral
+  account-enumeration-safe request copy, and distinct expired versus
+  invalid/previously-used link screens. Web redirects keep `/helix`; native
+  accepts the existing `helix://` deep-link scheme.
+- Added device-local per-account login history: dashboard shows the successful
+  login before the current session; failed auth, password verification and cold
+  starts do not advance it. Existing mid-session users are seeded once.
+- Hid the dashboard `Bekleyenler` action whenever the live overdue count is zero;
+  it reappears from the same query when an item becomes late.
+- Checks: typecheck, 11 files/138 tests, Expo lint and web export pass. Headless
+  Playwright intercepted (did not send) a recovery request, verified its neutral
+  success and `/helix/reset-password` redirect at 320 px, and rendered expired
+  and used/invalid link states at 320/390 px.
+- Supabase Dashboard redirect allow-list state cannot be read with the available
+  credentials. README records the required production entries
+  (`https://topraksv.github.io/helix/**`, `helix://**`); verify them in the
+  project dashboard before a real recipient test.
+- Commit/push/web/OTA state is pending at this note's write time.
 
 ### 2026-07-15 — Codex
 

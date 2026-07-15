@@ -6,13 +6,22 @@
  */
 
 import { create } from "zustand";
-import { getSupabase, isSupabaseConfigured } from "../sync/supabase";
+import * as Linking from "expo-linking";
+import { Platform } from "react-native";
+import {
+  clearPasswordRecoveryDetected,
+  getSupabase,
+  isSupabaseConfigured,
+  wasPasswordRecoveryDetected,
+} from "../sync/supabase";
 import { resetLocalWorkspace, writeSetting } from "../db/mutations";
 import { cancelSync } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { disconnectMarkets } from "../services/markets";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
+import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
+import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "./recovery";
 
 const LAST_USER_KEY = "helix.last_user_id";
 /** Owner of the data currently in the local DB (for account-switch detection). */
@@ -66,9 +75,17 @@ interface SessionStore {
   /** Set while a "freeze" is in progress (write flag → push → sign out) so the
    *  guard doesn't flash the frozen gate on the initiating device. */
   isFreezing: boolean;
+  /** Login before the current successful session; never the current start. */
+  previousLoginAt: string | null;
   bootstrap: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
+  /** Send a neutral, expiring Supabase password-reset link. */
+  requestPasswordReset: (email: string) => Promise<string | null>;
+  /** Exchange a web/native recovery deep link for a short-lived session. */
+  preparePasswordRecovery: (url: string | null) => Promise<"ready" | "expired" | "invalid">;
+  /** Update the password from the recovery session and end that session. */
+  completePasswordRecovery: (newPassword: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   /** Permanently delete all data (cloud + this device) and sign out. Returns a
    *  user-facing error string when the cloud wipe could not complete. */
@@ -91,6 +108,7 @@ export const useSession = create<SessionStore>((set) => ({
   isOnlineSession: false,
   isNewSignup: false,
   isFreezing: false,
+  previousLoginAt: null,
 
   bootstrap: async () => {
     if (!isSupabaseConfigured) {
@@ -102,14 +120,21 @@ export const useSession = create<SessionStore>((set) => ({
       const { data } = await supabase.auth.getSession();
       if (data.session?.user) {
         await kv.set(LAST_USER_KEY, data.session.user.id);
-        set({ userId: data.session.user.id, email: data.session.user.email ?? null, ready: true, isOnlineSession: true, isNewSignup: false });
+        await seedCurrentLogin(
+          kv,
+          data.session.user.id,
+          data.session.user.last_sign_in_at ?? new Date().toISOString(),
+        );
+        const previousLoginAt = await loadPreviousLogin(kv, data.session.user.id);
+        set({ userId: data.session.user.id, email: data.session.user.email ?? null, ready: true, isOnlineSession: true, isNewSignup: false, previousLoginAt });
         return;
       }
     } catch {
       // offline — fall through to the persisted user id
     }
     const lastUser = await kv.get(LAST_USER_KEY);
-    set({ userId: lastUser, ready: true, isOnlineSession: false, isNewSignup: false });
+    const previousLoginAt = lastUser ? await loadPreviousLogin(kv, lastUser) : null;
+    set({ userId: lastUser, ready: true, isOnlineSession: false, isNewSignup: false, previousLoginAt });
   },
 
   signIn: async (email, password) => {
@@ -123,11 +148,16 @@ export const useSession = create<SessionStore>((set) => ({
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
+    const previousLoginAt = await recordSuccessfulLogin(
+      kv,
+      data.user.id,
+      data.user.last_sign_in_at ?? new Date().toISOString(),
+    );
     // Signing in IS the password check, so it unfreezes a frozen account: clear
     // the synced flag (a newer LWW write than the freeze) so the reactivation
     // gate never reappears after a successful login.
     await writeSetting(data.user.id, "account_frozen", false).catch(() => {});
-    set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: false });
+    set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: false, previousLoginAt });
     return null;
   },
 
@@ -143,10 +173,61 @@ export const useSession = create<SessionStore>((set) => ({
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
+    await startLoginHistory(kv, data.user.id, new Date().toISOString());
     // A brand-new account has no cloud data to pull → go straight to onboarding
     // (isNewSignup), skipping the "await first pull" hold used for existing
     // accounts syncing onto a fresh device.
-    set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: true });
+    set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: true, previousLoginAt: null });
+    return null;
+  },
+
+  requestPasswordReset: async (email) => {
+    const supabase = getSupabase();
+    if (!supabase) return tr.errors.supabaseNotConfigured;
+    const redirectTo = Platform.OS === "web" && globalThis.location
+      ? webPasswordRecoveryRedirectUrl(globalThis.location.origin, process.env.EXPO_BASE_URL ?? "/")
+      : Linking.createURL("/reset-password");
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    if (!error) return null;
+    // Supabase normally returns the same success for unknown addresses. Keep
+    // that guarantee even if a project policy returns an account lookup error.
+    if (/user.*not found|email.*not found/i.test(error.message)) return null;
+    return friendlyAuthError(error.message);
+  },
+
+  preparePasswordRecovery: async (url) => {
+    const supabase = getSupabase();
+    if (!supabase) return "invalid";
+    const link = parsePasswordRecoveryUrl(url);
+    if (link.kind === "expired") return "expired";
+    if (link.kind === "code") {
+      const { error } = await supabase.auth.exchangeCodeForSession(link.code);
+      if (!error) return "ready";
+      // On web, detectSessionInUrl may win the race and consume the one-time
+      // code before this screen mounts. Accept only an observed recovery event,
+      // never an unrelated existing session.
+      const { data } = await supabase.auth.getSession();
+      return data.session && wasPasswordRecoveryDetected() ? "ready" : "invalid";
+    }
+    if (link.kind === "tokens") {
+      const { error } = await supabase.auth.setSession({
+        access_token: link.accessToken,
+        refresh_token: link.refreshToken,
+      });
+      return error ? "invalid" : "ready";
+    }
+    const { data } = await supabase.auth.getSession();
+    return data.session && wasPasswordRecoveryDetected() ? "ready" : "invalid";
+  },
+
+  completePasswordRecovery: async (newPassword) => {
+    const supabase = getSupabase();
+    if (!supabase) return tr.errors.supabaseNotConfigured;
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return friendlyAuthError(error.message);
+    clearPasswordRecoveryDetected();
+    if (useSession.getState().userId) await useSession.getState().signOut();
+    else await supabase.auth.signOut({ scope: "local" }).catch(() => {});
     return null;
   },
 
@@ -176,7 +257,7 @@ export const useSession = create<SessionStore>((set) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
-    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false });
+    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
   },
 
   deleteAccount: async () => {
@@ -221,7 +302,7 @@ export const useSession = create<SessionStore>((set) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
-    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false });
+    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
     return null;
   },
 

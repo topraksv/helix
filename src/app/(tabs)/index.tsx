@@ -10,7 +10,8 @@ import { projectedBalance } from "../../domain/balance";
 import { firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { standaloneUpcomingTransactions, upcomingCardStatements } from "../../domain/upcoming";
-import { dateLabel, monthLabel, tr } from "../../i18n/tr";
+import { dateLabel, dateTimeLabel, monthLabel, tr } from "../../i18n/tr";
+import { useSession } from "../../auth/session";
 import {
   daysBetween,
   useCategories,
@@ -99,6 +100,7 @@ function greeting(): string {
 
 export default function DashboardScreen() {
   const userId = useUserId();
+  const previousLoginAt = useSession((state) => state.previousLoginAt);
   const today = todayISO();
   const year = yearOf(today);
   const month = monthKeyOf(today);
@@ -296,6 +298,11 @@ export default function DashboardScreen() {
   return (
     <Screen title={greeting()} subtitle={dateLabel(today)} leading={<BrandMark size={40} />}>
       <FirstRunTour />
+      {previousLoginAt ? (
+        <Body muted style={{ marginBottom: spacing.sm }}>
+          {tr.dashboard.lastLogin(dateTimeLabel(previousLoginAt))}
+        </Body>
+      ) : null}
       {/* "When did you pay?" — records the actual paid day for an expected item,
           so an early/manual payment realizes on that date. Future days disabled. */}
       {paying ? (
@@ -400,9 +407,11 @@ export default function DashboardScreen() {
         <View style={{ flex: 1 }}>
           <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Button icon={History} label={tr.dashboard.catchupShort} variant="secondary" onPress={() => router.push("/reconciliation")} />
-        </View>
+        {late.length > 0 ? (
+          <View style={{ flex: 1 }}>
+            <Button icon={History} label={tr.dashboard.catchupShort} variant="secondary" onPress={() => router.push("/reconciliation")} />
+          </View>
+        ) : null}
       </Row>
 
       {/* Upcoming payments */}

@@ -51,6 +51,16 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 export const isSupabaseConfigured = Boolean(url && anonKey);
 
 let client: SupabaseClient | null = null;
+let passwordRecoveryDetected = false;
+
+/** True only when Supabase itself completed a recovery URL before the route mounted. */
+export function wasPasswordRecoveryDetected(): boolean {
+  return passwordRecoveryDetected;
+}
+
+export function clearPasswordRecoveryDetected(): void {
+  passwordRecoveryDetected = false;
+}
 
 export function getSupabase(): SupabaseClient | null {
   if (!isSupabaseConfigured) return null;
@@ -61,7 +71,11 @@ export function getSupabase(): SupabaseClient | null {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: Platform.OS === "web",
+        flowType: "pkce",
       },
+    });
+    client.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") passwordRecoveryDetected = true;
     });
   }
   return client;
