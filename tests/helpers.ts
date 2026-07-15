@@ -6,12 +6,14 @@ let txCounter = 0;
 export function tx(overrides: Partial<TxLike> & Pick<TxLike, "type" | "amountTryMinor" | "effectiveDate">): TxLike {
   return {
     id: `tx-${++txCounter}`,
+    purchaseDate: null,
     status: "realized",
     categoryId: null,
     categoryKind: null,
     paymentSourceId: null,
     personIsSelf: true,
     installmentPlanId: null,
+    cardStatementId: null,
     subscriptionId: null,
     isAggregate: false,
     ...overrides,

@@ -149,6 +149,19 @@ export function usePlans() {
   ).data;
 }
 
+export function useCreditCardStatements() {
+  const userId = useUserId();
+  return useLive(
+    getDb()
+      .select()
+      .from(s.creditCardStatements)
+      .where(and(eq(s.creditCardStatements.userId, userId), isNull(s.creditCardStatements.deletedAt)))
+      .orderBy(asc(s.creditCardStatements.dueDate)),
+    [userId],
+    ["credit_card_statements"],
+  ).data;
+}
+
 export function useRecurringIncomes() {
   const userId = useUserId();
   return useLive(
@@ -310,6 +323,7 @@ export function toTxLike(
     id: r.id,
     type: r.type,
     amountTryMinor: r.amountTryMinor,
+    purchaseDate: r.purchaseDate,
     effectiveDate: r.effectiveDate,
     status: r.status,
     categoryId: r.categoryId,
@@ -317,6 +331,7 @@ export function toTxLike(
     paymentSourceId: r.paymentSourceId,
     personIsSelf: selfIds.has(r.personId),
     installmentPlanId: r.installmentPlanId,
+    cardStatementId: r.cardStatementId,
     subscriptionId: r.subscriptionId,
     isAggregate: r.isAggregate,
   }));

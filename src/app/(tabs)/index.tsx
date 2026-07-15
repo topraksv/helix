@@ -15,6 +15,7 @@ import { useSession } from "../../auth/session";
 import {
   daysBetween,
   useCategories,
+  useCreditCardStatements,
   useLedger,
   usePendingExpected,
   usePersons,
@@ -113,6 +114,7 @@ export default function DashboardScreen() {
   const subscriptions = useSubscriptions();
   const incomes = useRecurringIncomes();
   const sources = useSources();
+  const cardStatements = useCreditCardStatements();
   const router = useRouter();
   const colors = useSeriesColors();
   const undo = useUndo();
@@ -198,6 +200,7 @@ export default function DashboardScreen() {
     ...upcomingCardStatements(
       txLike,
       sources.filter((source) => source.type === "credit_card"),
+      cardStatements,
       today,
     ).map((statement) => ({
           key: `card-${statement.cardId}`,

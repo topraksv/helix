@@ -51,7 +51,9 @@ spreadsheet (months, running balances, a category grid) but makes the numbers
   detail.
 - 💳 **Installment engine** — enter "6 installments, 2 already paid" once;
   Helix spreads the amounts across the right months, tracks `2/6` progress,
-  and totals what you owe this month.
+  and totals what you owe this month. Card purchases are assigned to a stored
+  statement period and affect cash on the real statement due date; prior
+  statements remain available in payment-source settings.
 - 🔁 **Subscriptions & recurring rules** — salaries, rent, streaming; recurrence
   that respects month-ends (a rule on the 31st lands on Feb 28), with expected
   vs. confirmed amounts and free-trial handling.
@@ -184,9 +186,6 @@ manual test scenarios for the critical flows are in [docs/TESTING.md](docs/TESTI
 
 Helix already handles the day-to-day. On the horizon:
 
-- Card statement periods (cut-off dates) so installments post to the right
-  billing cycle, not just the calendar month — the schema field is already in
-  place.
 - Budget alerts and a calendar view.
 - Home-screen widgets and richer web notifications.
 

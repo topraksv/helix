@@ -14,13 +14,13 @@ import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { CheckCircle2, FileSpreadsheet, Upload } from "lucide-react-native";
 import { importSheets, importedYears } from "../data/repo";
-import { usePersons, useUserId } from "../data/hooks";
+import { usePersons, useSources, useUserId } from "../data/hooks";
 import { yearOf } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
-import { MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
+import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, Card, ChipPicker, Row, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, Card, ChipPicker, Field, Row, Screen, SectionHeader } from "../ui/components";
 import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 
 // --- visual format guide ---------------------------------------------------
@@ -127,6 +127,7 @@ const hasBreakdown = (c: CellData) => Boolean(c.formulaParts || c.comment);
 export default function ImportWizardModal() {
   const userId = useUserId();
   const persons = usePersons();
+  const sources = useSources();
   const router = useRouter();
   const { palette } = useTheme();
   const { width } = useWindowDimensions();
@@ -138,6 +139,7 @@ export default function ImportWizardModal() {
   const [busy, setBusy] = useState(false);
   const [reimportYears, setReimportYears] = useState<number[] | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
+  const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
   const scrollRef = useRef<ScrollView>(null);
   const operationActive = useRef(false);
 
@@ -189,6 +191,7 @@ export default function ImportWizardModal() {
       setWorkbook(parsed);
       setSelectedYears(yearsOf(parsed));
       setExcluded([]);
+      setCardCycleDrafts({});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -198,6 +201,31 @@ export default function ImportWizardModal() {
 
   // Sheets that contribute at least one month in a selected year.
   const activeSheets = (workbook?.sheets ?? []).filter((s) => s.months.some((m) => selectedYears.includes(yearOf(m))));
+  const normalizeCard = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
+  const installmentCards = [...new Set(
+    collectInstallmentPlans(activeSheets, {
+      excludedLabels: excluded,
+      informationalCards: workbook?.informationalCards ?? [],
+      yearAllowed: (year) => selectedYears.includes(year),
+    }).map((plan) => plan.card),
+  )];
+  const cycleDraft = (card: string) => {
+    const explicit = cardCycleDrafts[card];
+    if (explicit) return explicit;
+    const existing = sources.find((source) => source.type === "credit_card" && normalizeCard(source.name) === normalizeCard(card));
+    return {
+      statementDay: existing?.statementDay == null ? "" : String(existing.statementDay),
+      dueDay: existing?.dueDay == null ? "" : String(existing.dueDay),
+    };
+  };
+  const validCycleDay = (value: string) => {
+    const day = Number(value);
+    return value.trim() !== "" && Number.isInteger(day) && day >= 1 && day <= 31;
+  };
+  const cardCyclesValid = installmentCards.every((card) => {
+    const cycle = cycleDraft(card);
+    return validCycleDay(cycle.statementDay) && validCycleDay(cycle.dueDay);
+  });
 
   const startImport = async () => {
     if (selectedYears.length === 0 || !beginOperation()) return;
@@ -227,6 +255,12 @@ export default function ImportWizardModal() {
       selfId,
       mode,
       informationalCards: workbook?.informationalCards ?? [],
+      cardCycles: Object.fromEntries(
+        installmentCards.map((card) => {
+          const cycle = cycleDraft(card);
+          return [card, { statementDay: Number(cycle.statementDay), dueDay: Number(cycle.dueDay) }];
+        }),
+      ),
     });
     scheduleSync(userId);
     setDoneCount(imported);
@@ -342,6 +376,47 @@ export default function ImportWizardModal() {
                 onToggle={(label) => setExcluded((xs) => (xs.includes(label) ? xs.filter((x) => x !== label) : [...xs, label]))}
               />
 
+              {installmentCards.length > 0 ? (
+                <Card>
+                  <SectionHeader>{tr.importer.cardCyclesTitle}</SectionHeader>
+                  <Body muted style={{ marginBottom: spacing.md }}>{tr.importer.cardCyclesHint}</Body>
+                  {installmentCards.map((card) => {
+                    const cycle = cycleDraft(card);
+                    return (
+                      <View key={card} style={{ marginBottom: spacing.sm }}>
+                        <Body style={{ marginBottom: spacing.xs }}>{card}</Body>
+                        <Row>
+                          <View style={{ flex: 1 }}>
+                            <Field
+                              label={tr.sources.statementDay}
+                              value={cycle.statementDay}
+                              onChangeText={(statementDay) => setCardCycleDrafts((current) => ({
+                                ...current,
+                                [card]: { ...cycleDraft(card), statementDay },
+                              }))}
+                              placeholder={tr.sources.dayPlaceholder}
+                              keyboardType="number-pad"
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Field
+                              label={tr.sources.dueDay}
+                              value={cycle.dueDay}
+                              onChangeText={(dueDay) => setCardCycleDrafts((current) => ({
+                                ...current,
+                                [card]: { ...cycleDraft(card), dueDay },
+                              }))}
+                              placeholder={tr.sources.dayPlaceholder}
+                              keyboardType="number-pad"
+                            />
+                          </View>
+                        </Row>
+                      </View>
+                    );
+                  })}
+                </Card>
+              ) : null}
+
               {/* preview grid (first active sheet) */}
               <Body muted style={{ marginBottom: spacing.sm }}>
                 {tr.importer.detected(preview.months.length, preview.columns.length)}
@@ -384,16 +459,16 @@ export default function ImportWizardModal() {
                   <Body style={{ marginBottom: spacing.sm }}>{tr.importer.reimportPrompt(reimportYears.join(", "))}</Body>
                   <Row gap={spacing.sm}>
                     <View style={{ flex: 1 }}>
-                      <Button label={tr.importer.reimportReplace} onPress={() => void doImport("replace")} loading={busy} disabled={busy} />
+                      <Button label={tr.importer.reimportReplace} onPress={() => void doImport("replace")} loading={busy} disabled={busy || !cardCyclesValid} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Button label={tr.importer.reimportAdd} variant="secondary" onPress={() => void doImport("add")} loading={busy} disabled={busy} />
+                      <Button label={tr.importer.reimportAdd} variant="secondary" onPress={() => void doImport("add")} loading={busy} disabled={busy || !cardCyclesValid} />
                     </View>
                   </Row>
                   <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setReimportYears(null)} disabled={busy} />
                 </Card>
               ) : (
-                <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} disabled={busy || selectedYears.length === 0} />
+                <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} disabled={busy || selectedYears.length === 0 || !cardCyclesValid} />
               )}
             </>
           ) : null}

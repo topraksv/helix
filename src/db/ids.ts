@@ -41,6 +41,9 @@ export const naturalKeys = {
   expected: (userId: string, kind: string, refId: string, dueDate: string) =>
     `expected:${userId}:${kind}:${refId}:${dueDate}`,
   installmentTx: (planId: string, installmentNo: number) => `insttx:${planId}:${installmentNo}`,
+  /** One immutable credit-card statement row per card and statement month. */
+  cardStatement: (userId: string, sourceId: string, periodMonth: string) =>
+    `cardstatement:${userId}:${sourceId}:${periodMonth}`,
   /** The transaction created by confirming an expected item. Deterministic so
    *  a double-tap or two devices confirming concurrently converge on ONE
    *  transaction instead of duplicating the payment. */

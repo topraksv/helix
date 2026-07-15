@@ -74,6 +74,26 @@ export const installmentPlans = sqliteTable("installment_plans", {
   note: text("note"),
 });
 
+/**
+ * Immutable statement dates per card/period. Amount is intentionally derived
+ * from linked transactions so refunds and edits cannot leave a stale cached
+ * total. Old periods stay available after the card's cycle settings change.
+ */
+export const creditCardStatements = sqliteTable(
+  "credit_card_statements",
+  {
+    ...syncColumns,
+    paymentSourceId: text("payment_source_id").notNull(),
+    periodMonth: text("period_month").notNull(),
+    statementDate: text("statement_date").notNull(),
+    dueDate: text("due_date").notNull(),
+  },
+  (t) => [
+    index("idx_card_statement_source_period").on(t.paymentSourceId, t.periodMonth),
+    index("idx_card_statement_due").on(t.dueDate),
+  ],
+);
+
 export const transactions = sqliteTable(
   "transactions",
   {
@@ -84,6 +104,9 @@ export const transactions = sqliteTable(
     fxRate: text("fx_rate"), // decimal string, null for TRY
     amountTryMinor: integer("amount_try_minor").notNull(),
     entryDate: text("entry_date").notNull(),
+    /** Real-world purchase/occurrence date. For card expenses, effectiveDate
+     *  is the statement due date that affects the ledger. */
+    purchaseDate: text("purchase_date"),
     effectiveDate: text("effective_date").notNull(),
     status: text("status", { enum: ["pending", "realized"] }).notNull(),
     categoryId: text("category_id"),
@@ -91,6 +114,7 @@ export const transactions = sqliteTable(
     personId: text("person_id").notNull(),
     installmentPlanId: text("installment_plan_id"),
     installmentNo: integer("installment_no"),
+    cardStatementId: text("card_statement_id"),
     subscriptionId: text("subscription_id"),
     isAggregate: integer("is_aggregate", { mode: "boolean" }).notNull().default(false),
     note: text("note"),
@@ -99,6 +123,7 @@ export const transactions = sqliteTable(
     index("idx_tx_effective").on(t.effectiveDate),
     index("idx_tx_category_effective").on(t.categoryId, t.effectiveDate),
     index("idx_tx_plan").on(t.installmentPlanId),
+    index("idx_tx_card_statement").on(t.cardStatementId),
     index("idx_tx_subscription").on(t.subscriptionId),
   ],
 );
@@ -231,6 +256,7 @@ export const SYNCED_TABLES = {
   payment_sources: paymentSources,
   computed_columns: computedColumns,
   installment_plans: installmentPlans,
+  credit_card_statements: creditCardStatements,
   subscriptions,
   transactions,
   price_history: priceHistory,

@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 17 files, 164 tests passing
+- Test baseline: 19 files, 173 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -81,6 +81,26 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-15 — Codex (credit-card statement periods package)
+
+- Base `7dc353b`, branch `main`; package verification/shipping is in progress.
+- Added synced, immutable card statement periods plus separate purchase and
+  ledger-effective dates. New/onboarding/imported cards require cut-off and due
+  days in both UI and repository validation. Single charges, installments and
+  card-paid subscriptions link to deterministic statements; the dashboard
+  groups only persisted periods and never derives a date from today.
+- Existing ambiguous one-off history is not guessed or moved. Configured
+  pending installments are repaired to the real due day, while realized plan
+  rows remain immutable. Plan edits cannot delete/rewrite paid installments;
+  plan deletion is atomic. Source reassignment requires a configured card when
+  card plans depend on it and preserves realized accounting dates.
+- SQLite/Drizzle and Supabase migrations add the statement table and transaction
+  links. JSON backup validation, CSV export, Excel cycle capture, statement
+  history UI and shared date display were updated. Pure cycle/date tests cover
+  cut-off boundaries, cross-month due dates and short months.
+- Current checks: typecheck, 19 files/173 tests and Expo lint pass. Static export,
+  Playwright, migration publish, commit/push/web/OTA remain to be recorded.
 
 ### 2026-07-15 — Codex (expected lifecycle and references package)
 

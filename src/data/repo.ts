@@ -5,7 +5,7 @@
 
 import { getSqliteAsync } from "../db/client";
 import { deterministicId, naturalKeys, newId } from "../db/ids";
-import { fromDbShape, nowIso, readSetting, softDelete, softDeleteMany, writeRows, writeSetting, type RowWrite } from "../db/mutations";
+import { fromDbShape, nowIso, readSetting, softDelete, writeRows, writeSetting, type RowWrite } from "../db/mutations";
 import { addMonthsToKey, isCurrentOrFutureMonth, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { generateSchedule } from "../domain/installments";
 import { convertToTryMinor } from "../domain/fx";
@@ -20,6 +20,14 @@ import type { ExpectedPaymentLike, PaymentSourceType, RecurringIncomeLike, Subsc
 import { findSubscriptionCategory } from "../domain/subscriptions";
 import { reconciliationDelta } from "../domain/balance";
 import { categoryAcceptsTransaction } from "../domain/transactions";
+import {
+  isValidCardCycle,
+  statementForDueDate,
+  statementForPurchase,
+  statementPeriod,
+  type CardCycle,
+  type CardStatementPeriod,
+} from "../domain/card-statements";
 
 // ---------------------------------------------------------------------------
 // Onboarding seed
@@ -69,7 +77,13 @@ export interface SeedInput {
   startMonth: MonthKey;
   openingBalanceMinor: Minor;
   persons: { name: string; isSelf: boolean }[];
-  sources: { name: string; type: PaymentSourceType; personIndex: number; dueDay?: number | null }[];
+  sources: {
+    name: string;
+    type: PaymentSourceType;
+    personIndex: number;
+    dueDay?: number | null;
+    statementDay?: number | null;
+  }[];
 }
 
 /**
@@ -94,6 +108,10 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
   });
   const sourceIds = await Promise.all(input.sources.map((_, i) => deterministicId(naturalKeys.onboardingSource(userId, i))));
   input.sources.forEach((s, i) => {
+    if (
+      s.type === "credit_card" &&
+      !isValidCardCycle({ statementDay: s.statementDay, dueDay: s.dueDay })
+    ) throw new CreditCardCycleRequiredError();
     writes.push({
       table: "payment_sources",
       row: {
@@ -102,7 +120,7 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
         type: s.type,
         personId: personIds[s.personIndex] ?? personIds[0],
         dueDay: s.dueDay ?? null,
-        statementDay: null,
+        statementDay: s.statementDay ?? null,
         color: null,
         logoSource: "initials",
         logoRef: null,
@@ -157,6 +175,7 @@ export interface PersonReferenceUsage {
 
 export interface PaymentSourceReferenceUsage {
   installmentPlans: number;
+  cardInstallmentPlans: number;
   transactions: number;
   subscriptions: number;
   total: number;
@@ -167,6 +186,62 @@ export class ReferencedRecordError extends Error {
     super("Record still has live references");
     this.name = "ReferencedRecordError";
   }
+}
+
+export class CreditCardCycleRequiredError extends Error {
+  constructor() {
+    super("Credit-card statement and due dates are required");
+    this.name = "CreditCardCycleRequiredError";
+  }
+}
+
+export interface PaymentSourceInput {
+  id?: string;
+  name: string;
+  type: PaymentSourceType;
+  personId: string;
+  dueDay: number | null;
+  statementDay: number | null;
+}
+
+/** Repo-level validation protects imports/non-UI callers as well as the form. */
+export async function upsertPaymentSource(userId: string, input: PaymentSourceInput): Promise<string> {
+  if (!input.name.trim() || !input.personId) throw new Error("Payment source name and owner are required");
+  const sqlite = await getSqliteAsync();
+  const person = await sqlite.getFirstAsync<{ id: string }>(
+    `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [input.personId, userId] as never[],
+  );
+  if (!person) throw new Error("Payment source owner does not exist");
+  if (input.type === "credit_card" && !isValidCardCycle(input)) throw new CreditCardCycleRequiredError();
+  const existing = input.id
+    ? await sqlite.getFirstAsync<Record<string, unknown>>(
+        `SELECT * FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+        [input.id, userId] as never[],
+      )
+    : null;
+  const id = input.id ?? newId();
+  await writeRows(userId, [
+    {
+      table: "payment_sources",
+      row: {
+        ...(existing ? fromDbShape("payment_sources", existing) : {}),
+        id,
+        name: input.name.trim(),
+        type: input.type,
+        personId: input.personId,
+        dueDay: input.type === "credit_card" ? input.dueDay : null,
+        statementDay: input.type === "credit_card" ? input.statementDay : null,
+        color: existing?.color ?? null,
+        logoSource: existing?.logo_source ?? "initials",
+        logoRef: existing?.logo_ref ?? null,
+        isActive: existing?.is_active == null ? true : Boolean(existing.is_active),
+        deletedAt: null,
+      },
+    },
+  ]);
+  if (input.type === "credit_card") await repairCardStatementLinks(userId, todayISO());
+  return id;
 }
 
 export async function personReferenceUsage(userId: string, personId: string): Promise<PersonReferenceUsage> {
@@ -189,12 +264,16 @@ export async function paymentSourceReferenceUsage(userId: string, sourceId: stri
   const row = await sqlite.getFirstAsync<Omit<PaymentSourceReferenceUsage, "total">>(
     `SELECT
        (SELECT COUNT(*) FROM installment_plans WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL) AS installmentPlans,
+       (SELECT COUNT(*) FROM installment_plans WHERE user_id = ? AND payment_source_id = ? AND kind = 'card_installment' AND deleted_at IS NULL) AS cardInstallmentPlans,
        (SELECT COUNT(*) FROM transactions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL) AS transactions,
        (SELECT COUNT(*) FROM subscriptions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL) AS subscriptions`,
-    [userId, sourceId, userId, sourceId, userId, sourceId] as never[],
+    [userId, sourceId, userId, sourceId, userId, sourceId, userId, sourceId] as never[],
   );
-  const counts = row ?? { installmentPlans: 0, transactions: 0, subscriptions: 0 };
-  return { ...counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0) };
+  const counts = row ?? { installmentPlans: 0, cardInstallmentPlans: 0, transactions: 0, subscriptions: 0 };
+  return {
+    ...counts,
+    total: counts.installmentPlans + counts.transactions + counts.subscriptions,
+  };
 }
 
 async function referenceUpdateRows(
@@ -281,20 +360,101 @@ export async function reassignAndDeletePaymentSource(
     [sourceId, userId] as never[],
   );
   if (!source) return;
+  let replacement: LivePaymentSource | null = null;
   if (replacementId) {
-    const replacement = await sqlite.getFirstAsync<{ id: string }>(
-      `SELECT id FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    replacement = await sqlite.getFirstAsync<LivePaymentSource>(
+      `SELECT id, type, statement_day, due_day FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
       [replacementId, userId] as never[],
     );
     if (!replacement) throw new Error("Payment source not found");
   }
-  const writes = (
+  const plans = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM installment_plans WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
+    [userId, sourceId] as never[],
+  );
+  const hasCardPlan = plans.some((plan) => plan.kind === "card_installment");
+  const replacementCycle = { statementDay: replacement?.statement_day, dueDay: replacement?.due_day };
+  if (hasCardPlan && (!replacement || replacement.type !== "credit_card" || !isValidCardCycle(replacementCycle))) {
+    throw new CreditCardCycleRequiredError();
+  }
+  const transactions = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM transactions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
+    [userId, sourceId] as never[],
+  );
+  const oldStatementIds = [...new Set(
+    transactions.map((transaction) => transaction.card_statement_id).filter((id): id is string => typeof id === "string"),
+  )];
+  const oldStatements = oldStatementIds.length === 0
+    ? []
+    : await sqlite.getAllAsync<{ id: string; period_month: MonthKey }>(
+        `SELECT id, period_month FROM credit_card_statements
+         WHERE user_id = ? AND id IN (${oldStatementIds.map(() => "?").join(", ")})`,
+        [userId, ...oldStatementIds] as never[],
+      );
+  const oldPeriodById = new Map(oldStatements.map((statement) => [statement.id, statement.period_month]));
+  const statementWrites = new Map<string, RowWrite>();
+  const transactionWrites: RowWrite[] = [];
+  for (const transaction of transactions) {
+    const next = { ...fromDbShape("transactions", transaction), paymentSourceId: replacementId };
+    if (!replacement || replacement.type !== "credit_card") {
+      transactionWrites.push({ table: "transactions", row: { ...next, purchaseDate: null, cardStatementId: null } });
+      continue;
+    }
+    if (
+      transaction.type !== "expense" ||
+      Boolean(transaction.is_aggregate) ||
+      transaction.status !== "pending" ||
+      !isValidCardCycle(replacementCycle)
+    ) {
+      // Historical effective dates are accounting history. Reassignment changes
+      // their label/source, never retroactively moves the balance.
+      transactionWrites.push({ table: "transactions", row: { ...next, purchaseDate: null, cardStatementId: null } });
+      continue;
+    }
+    const oldPeriod = typeof transaction.card_statement_id === "string"
+      ? oldPeriodById.get(transaction.card_statement_id)
+      : null;
+    const period = transaction.purchase_date
+      ? statementForPurchase(String(transaction.purchase_date), replacementCycle)
+      : oldPeriod
+        ? statementPeriod(oldPeriod, replacementCycle)
+        : statementForDueDate(String(transaction.effective_date), replacementCycle);
+    let statementWrite = statementWrites.get(period.periodMonth);
+    if (!statementWrite) {
+      statementWrite = await cardStatementWrite(userId, replacement.id, period);
+      statementWrites.set(period.periodMonth, statementWrite);
+    }
+    transactionWrites.push({
+      table: "transactions",
+      row: {
+        ...next,
+        purchaseDate: transaction.purchase_date ?? null,
+        effectiveDate: period.dueDate,
+        status: period.dueDate <= todayISO() ? "realized" : "pending",
+        cardStatementId: statementWrite.row.id,
+      },
+    });
+  }
+  const otherWrites = (
     await Promise.all([
-      referenceUpdateRows(userId, "installment_plans", "payment_source_id", sourceId, "paymentSourceId", replacementId),
-      referenceUpdateRows(userId, "transactions", "payment_source_id", sourceId, "paymentSourceId", replacementId),
       referenceUpdateRows(userId, "subscriptions", "payment_source_id", sourceId, "paymentSourceId", replacementId),
     ])
   ).flat();
+  const writes: RowWrite[] = [
+    ...statementWrites.values(),
+    ...plans.map((plan) => ({
+      table: "installment_plans" as const,
+      row: {
+        ...fromDbShape("installment_plans", plan),
+        paymentSourceId: replacementId,
+        dueDay: plan.kind === "card_installment" && isValidCardCycle(replacementCycle)
+          ? replacementCycle.dueDay
+          : plan.due_day,
+      },
+    })),
+    ...transactionWrites,
+    ...otherWrites,
+  ];
   writes.push({ table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt: nowIso() } });
   await writeRows(userId, writes);
 }
@@ -309,6 +469,8 @@ export interface NewTransaction {
   currency: string;
   fxRate: string | null;
   amountTryMinor: Minor;
+  /** Occurrence date supplied by the caller. For a card expense this becomes
+   *  purchaseDate and the ledger effectiveDate is resolved from its statement. */
   effectiveDate: ISODate;
   categoryId: string;
   paymentSourceId: string | null;
@@ -316,6 +478,74 @@ export interface NewTransaction {
   note: string | null;
   isAggregate?: boolean;
   subscriptionId?: string | null;
+}
+
+interface LivePaymentSource {
+  id: string;
+  type: PaymentSourceType;
+  statement_day: number | null;
+  due_day: number | null;
+}
+
+async function livePaymentSource(userId: string, sourceId: string | null): Promise<LivePaymentSource | null> {
+  if (!sourceId) return null;
+  const sqlite = await getSqliteAsync();
+  return sqlite.getFirstAsync<LivePaymentSource>(
+    `SELECT id, type, statement_day, due_day FROM payment_sources
+     WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [sourceId, userId] as never[],
+  );
+}
+
+async function cardStatementWrite(
+  userId: string,
+  paymentSourceId: string,
+  period: CardStatementPeriod,
+): Promise<RowWrite> {
+  const id = await deterministicId(naturalKeys.cardStatement(userId, paymentSourceId, period.periodMonth));
+  const sqlite = await getSqliteAsync();
+  const existing = await sqlite.getFirstAsync<{ created_at: string }>(
+    `SELECT created_at FROM credit_card_statements WHERE id = ? AND user_id = ?`,
+    [id, userId] as never[],
+  );
+  return {
+    table: "credit_card_statements",
+    row: {
+      id,
+      paymentSourceId,
+      periodMonth: period.periodMonth,
+      statementDate: period.statementDate,
+      dueDate: period.dueDate,
+      createdAt: existing?.created_at,
+      deletedAt: null,
+    },
+  };
+}
+
+async function resolveSingleTransactionDates(
+  userId: string,
+  input: Pick<NewTransaction, "type" | "paymentSourceId" | "effectiveDate" | "isAggregate">,
+): Promise<{
+  purchaseDate: ISODate | null;
+  effectiveDate: ISODate;
+  cardStatementId: string | null;
+  statementWrite: RowWrite | null;
+}> {
+  const source = await livePaymentSource(userId, input.paymentSourceId);
+  if (!source || source.type !== "credit_card" || input.type !== "expense") {
+    return { purchaseDate: null, effectiveDate: input.effectiveDate, cardStatementId: null, statementWrite: null };
+  }
+  if (input.isAggregate) throw new CreditCardCycleRequiredError();
+  const cycle = { statementDay: source.statement_day, dueDay: source.due_day };
+  if (!isValidCardCycle(cycle)) throw new CreditCardCycleRequiredError();
+  const period = statementForPurchase(input.effectiveDate, cycle);
+  const statementWrite = await cardStatementWrite(userId, source.id, period);
+  return {
+    purchaseDate: input.effectiveDate,
+    effectiveDate: period.dueDate,
+    cardStatementId: String(statementWrite.row.id),
+    statementWrite,
+  };
 }
 
 function assertSignedTransactionAmounts(amountMinor: Minor, amountTryMinor: Minor): void {
@@ -355,18 +585,23 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
   await assertTransactionCategory(userId, input.type, input.categoryId, true);
   const today = todayISO();
   const id = newId();
+  const dates = await resolveSingleTransactionDates(userId, input);
   await writeRows(userId, [
+    ...(dates.statementWrite ? [dates.statementWrite] : []),
     {
       table: "transactions",
       row: {
         id,
         ...input,
+        purchaseDate: dates.purchaseDate,
+        effectiveDate: dates.effectiveDate,
+        cardStatementId: dates.cardStatementId,
         isAggregate: input.isAggregate ?? false,
         subscriptionId: input.subscriptionId ?? null,
         installmentPlanId: null,
         installmentNo: null,
         entryDate: today,
-        status: input.effectiveDate <= today ? "realized" : "pending",
+        status: dates.effectiveDate <= today ? "realized" : "pending",
         deletedAt: null,
       },
     },
@@ -397,13 +632,18 @@ export async function updateTransaction(
 ): Promise<void> {
   assertSignedTransactionAmounts(patch.amountMinor, patch.amountTryMinor);
   await assertTransactionCategory(userId, patch.type, patch.categoryId, true);
+  const dates = await resolveSingleTransactionDates(userId, patch);
   await writeRows(userId, [
+    ...(dates.statementWrite ? [dates.statementWrite] : []),
     {
       table: "transactions",
       row: {
         ...existing,
         ...patch,
-        status: patch.effectiveDate <= todayISO() ? "realized" : "pending",
+        purchaseDate: dates.purchaseDate,
+        effectiveDate: dates.effectiveDate,
+        cardStatementId: dates.cardStatementId,
+        status: dates.effectiveDate <= todayISO() ? "realized" : "pending",
       },
     },
   ]);
@@ -492,6 +732,13 @@ export interface NewPlan {
   tryFactor: number;
 }
 
+export class InstallmentHistoryConflictError extends Error {
+  constructor() {
+    super("Realized installments cannot be removed or rewritten");
+    this.name = "InstallmentHistoryConflictError";
+  }
+}
+
 /**
  * Write the plan row plus one deterministic transaction per scheduled month.
  * Installment transactions are a pure function of (plan params, start month):
@@ -547,6 +794,7 @@ async function buildPlanRows(planId: string, input: NewPlan, today: ISODate): Pr
         fxRate: input.fxRate,
         amountTryMinor: Math.round(item.amountMinor * input.tryFactor),
         entryDate: today,
+        purchaseDate: null,
         effectiveDate: item.effectiveDate,
         status: item.status,
         categoryId: input.categoryId,
@@ -554,6 +802,7 @@ async function buildPlanRows(planId: string, input: NewPlan, today: ISODate): Pr
         personId: input.personId,
         installmentPlanId: planId,
         installmentNo: item.installmentNo,
+        cardStatementId: null,
         subscriptionId: null,
         isAggregate: false,
         note: null,
@@ -564,10 +813,101 @@ async function buildPlanRows(planId: string, input: NewPlan, today: ISODate): Pr
   return { rows: [planRow, ...txRows], keepNos: new Set(schedule.map((s) => s.installmentNo)) };
 }
 
-async function writePlanWithSchedule(userId: string, planId: string, input: NewPlan): Promise<Set<number>> {
+async function linkDueRowsToCardStatements(
+  userId: string,
+  paymentSourceId: string,
+  cycle: CardCycle,
+  rows: RowWrite[],
+): Promise<RowWrite[]> {
+  const periods = new Map<string, CardStatementPeriod>();
+  for (const write of rows) {
+    if (write.table !== "transactions") continue;
+    const period = statementForDueDate(String(write.row.effectiveDate), cycle);
+    periods.set(period.periodMonth, period);
+  }
+  const statementWrites = await Promise.all(
+    [...periods.values()].map((period) => cardStatementWrite(userId, paymentSourceId, period)),
+  );
+  const idByPeriod = new Map(
+    statementWrites.map((write) => [String(write.row.periodMonth), String(write.row.id)]),
+  );
+  return [
+    ...statementWrites,
+    ...rows.map((write) => {
+      if (write.table !== "transactions") return write;
+      const period = statementForDueDate(String(write.row.effectiveDate), cycle);
+      return { ...write, row: { ...write.row, cardStatementId: idByPeriod.get(period.periodMonth) ?? null } };
+    }),
+  ];
+}
+
+async function writePlanWithSchedule(
+  userId: string,
+  planId: string,
+  input: NewPlan,
+  preserveRealized = false,
+): Promise<Set<number>> {
   await assertTransactionCategory(userId, "expense", input.categoryId, false);
-  const { rows, keepNos } = await buildPlanRows(planId, input, todayISO());
-  await writeRows(userId, rows);
+  const sqlite = await getSqliteAsync();
+  const existingPlanTransactions = preserveRealized
+    ? await sqlite.getAllAsync<Record<string, unknown>>(
+        `SELECT * FROM transactions WHERE user_id = ? AND installment_plan_id = ?
+         AND deleted_at IS NULL`,
+        [userId, planId] as never[],
+      )
+    : [];
+  const realized = existingPlanTransactions.filter((transaction) => transaction.status === "realized");
+  if (realized.some((transaction) => Number(transaction.installment_no) > input.installmentCount)) {
+    throw new InstallmentHistoryConflictError();
+  }
+  let resolvedInput = input;
+  let cardCycle: CardCycle | null = null;
+  if (input.kind === "card_installment") {
+    const source = await livePaymentSource(userId, input.paymentSourceId);
+    const candidate = { statementDay: source?.statement_day, dueDay: source?.due_day };
+    if (!source || source.type !== "credit_card" || !isValidCardCycle(candidate)) {
+      throw new CreditCardCycleRequiredError();
+    }
+    cardCycle = candidate;
+    resolvedInput = { ...input, dueDay: candidate.dueDay };
+  }
+  const { rows, keepNos } = await buildPlanRows(planId, resolvedInput, todayISO());
+  let writes = cardCycle && resolvedInput.paymentSourceId
+    ? await linkDueRowsToCardStatements(userId, resolvedInput.paymentSourceId, cardCycle, rows)
+    : rows;
+  if (realized.length > 0) {
+    const realizedById = new Map(realized.map((transaction) => [String(transaction.id), transaction]));
+    writes = writes.map((write) => {
+      if (write.table !== "transactions") return write;
+      const historical = realizedById.get(String(write.row.id));
+      return historical ? { table: "transactions" as const, row: fromDbShape("transactions", historical) } : write;
+    });
+    const referencedStatementIds = new Set(
+      writes
+        .filter((write) => write.table === "transactions")
+        .map((write) => write.row.cardStatementId)
+        .filter((id): id is string => typeof id === "string"),
+    );
+    writes = writes.filter(
+      (write) => write.table !== "credit_card_statements" || referencedStatementIds.has(String(write.row.id)),
+    );
+  }
+  if (preserveRealized) {
+    writes.push(
+      ...existingPlanTransactions
+        .filter(
+          (transaction) =>
+            transaction.status === "pending" &&
+            transaction.installment_no != null &&
+            !keepNos.has(Number(transaction.installment_no)),
+        )
+        .map((transaction) => ({
+          table: "transactions" as const,
+          row: { ...fromDbShape("transactions", transaction), deletedAt: nowIso() },
+        })),
+    );
+  }
+  await writeRows(userId, writes);
   return keepNos;
 }
 
@@ -596,25 +936,31 @@ export async function createInstallmentPlan(userId: string, input: NewPlan): Pro
  * (e.g. when the installment count is reduced).
  */
 export async function updateInstallmentPlan(userId: string, planId: string, input: NewPlan): Promise<void> {
-  const keepNos = await writePlanWithSchedule(userId, planId, input);
-  const sqlite = await getSqliteAsync();
-  const existing = await sqlite.getAllAsync<{ id: string; installment_no: number }>(
-    `SELECT id, installment_no FROM transactions WHERE installment_plan_id = ? AND deleted_at IS NULL`,
-    [planId] as never[],
-  );
-  const drop = existing.filter((t) => t.installment_no != null && !keepNos.has(t.installment_no)).map((t) => t.id);
-  await softDeleteMany(userId, "transactions", drop);
+  await writePlanWithSchedule(userId, planId, input, true);
 }
 
 /** Tombstone a plan together with its generated transactions. */
 export async function deletePlan(userId: string, planId: string): Promise<void> {
   const sqlite = await getSqliteAsync();
-  const txIds = await sqlite.getAllAsync<{ id: string }>(
-    `SELECT id FROM transactions WHERE installment_plan_id = ? AND deleted_at IS NULL`,
-    [planId] as never[],
-  );
-  await softDeleteMany(userId, "transactions", txIds.map((t) => t.id));
-  await softDelete(userId, "installment_plans", planId);
+  const [plan, transactions] = await Promise.all([
+    sqlite.getFirstAsync<Record<string, unknown>>(
+      `SELECT * FROM installment_plans WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+      [planId, userId] as never[],
+    ),
+    sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM transactions WHERE installment_plan_id = ? AND user_id = ? AND deleted_at IS NULL`,
+      [planId, userId] as never[],
+    ),
+  ]);
+  if (!plan) return;
+  const deletedAt = nowIso();
+  await writeRows(userId, [
+    { table: "installment_plans", row: { ...fromDbShape("installment_plans", plan), deletedAt } },
+    ...transactions.map((transaction) => ({
+      table: "transactions" as const,
+      row: { ...fromDbShape("transactions", transaction), deletedAt },
+    })),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -780,6 +1126,12 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
     [input.personId, userId] as never[],
   );
   if (!person) throw new Error("Subscription person is required");
+  const source = await livePaymentSource(userId, input.paymentSourceId);
+  if (input.paymentSourceId && !source) throw new Error("Subscription payment source does not exist");
+  if (
+    source?.type === "credit_card" &&
+    !isValidCardCycle({ statementDay: source.statement_day, dueDay: source.due_day })
+  ) throw new CreditCardCycleRequiredError();
   const id = input.id ?? newId();
   const writes: RowWrite[] = [];
   if (input.id) {
@@ -1040,10 +1392,32 @@ export async function confirmExpected(
   const today = todayISO();
   // Ledger-affecting date: due date (once passed) / today, unless the user
   // recorded a manual/early payment via `paidOn`. See confirmEffectiveDate.
-  const effectiveDate = confirmEffectiveDate(row.due_date, today, opts.paidOn);
+  let effectiveDate = confirmEffectiveDate(row.due_date, today, opts.paidOn);
   const sqlite = await getSqliteAsync();
+  const sub = row.kind === "subscription"
+    ? await sqlite.getFirstAsync<Record<string, unknown>>(
+        `SELECT * FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+        [row.ref_id, userId] as never[],
+      )
+    : null;
+  const paymentSourceId = sub?.payment_source_id == null ? null : String(sub.payment_source_id);
+  let purchaseDate: ISODate | null = null;
+  let cardStatementId: string | null = null;
+  let statementWrite: RowWrite | null = null;
+  if (row.direction === "out" && paymentSourceId) {
+    const source = await livePaymentSource(userId, paymentSourceId);
+    const cycle = { statementDay: source?.statement_day, dueDay: source?.due_day };
+    if (source?.type === "credit_card" && isValidCardCycle(cycle)) {
+      purchaseDate = opts.paidOn ?? row.due_date;
+      const period = statementForPurchase(purchaseDate, cycle);
+      effectiveDate = period.dueDate;
+      statementWrite = await cardStatementWrite(userId, paymentSourceId, period);
+      cardStatementId = String(statementWrite.row.id);
+    }
+  }
 
   const writes: RowWrite[] = [
+    ...(statementWrite ? [statementWrite] : []),
     {
       table: "transactions",
       row: {
@@ -1054,13 +1428,15 @@ export async function confirmExpected(
         fxRate: appliedRate == null ? null : String(appliedRate),
         amountTryMinor,
         entryDate: today,
+        purchaseDate,
         effectiveDate,
-        status: "realized",
+        status: effectiveDate <= today ? "realized" : "pending",
         categoryId: opts.categoryId ?? null,
-        paymentSourceId: null,
+        paymentSourceId,
         personId: opts.personId,
         installmentPlanId: null,
         installmentNo: null,
+        cardStatementId,
         subscriptionId: row.kind === "subscription" ? row.ref_id : null,
         isAggregate: false,
         note: null,
@@ -1087,10 +1463,6 @@ export async function confirmExpected(
   ];
 
   if (row.kind === "subscription") {
-    const sub = await sqlite.getFirstAsync<Record<string, unknown>>(
-      `SELECT * FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [row.ref_id, userId] as never[],
-    );
     if (sub && (sub.next_due_date as string) <= row.due_date) {
       const next = advanceDueDate(row.due_date, sub.interval_months as number, sub.billing_day as number);
       writes.push({
@@ -1211,6 +1583,9 @@ export interface ImportRequest {
   /** Card/section names flagged "ℹ️ informational" in the workbook — their
    *  installments are skipped (they must not hit the balance). */
   informationalCards?: string[];
+  /** Explicit cycles for cards reconstructed from installment comments. Keys
+   *  are card names; existing configured cards win. */
+  cardCycles?: Record<string, CardCycle>;
 }
 
 const importBatchKey = (year: number) => `import_batch:${year}`;
@@ -1377,11 +1752,24 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   // Query payment sources up front too, so the whole import — categories, rows,
   // reconstructed installment cards + plans — flushes in ONE writeRows. A read
   // issued AFTER a multi-thousand-row write starved the sqlite worker and hung.
-  const existingSources = await sqlite.getAllAsync<{ id: string; name: string }>(
-    `SELECT id, name FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`,
+  const existingSources = await sqlite.getAllAsync<{
+    id: string;
+    name: string;
+    type: PaymentSourceType;
+    statement_day: number | null;
+    due_day: number | null;
+    [key: string]: unknown;
+  }>(
+    `SELECT * FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`,
     [userId] as never[],
   );
-  const sourceIdByName = new Map(existingSources.map((s) => [normalizedName(s.name), s.id]));
+  const sourceByName = new Map(existingSources.map((s) => [normalizedName(s.name), s]));
+  const sourceIdByName = new Map(
+    existingSources.filter((source) => source.type === "credit_card").map((source) => [normalizedName(source.name), source.id]),
+  );
+  const requestedCycles = new Map(
+    Object.entries(req.cardCycles ?? {}).map(([name, cycle]) => [normalizedName(name), cycle]),
+  );
 
   const catWrites: RowWrite[] = [];
   const ensureCategory = (label: string, kind: "expense" | "income"): string => {
@@ -1487,6 +1875,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
               fxRate: null,
               amountTryMinor: amount,
               entryDate: today,
+              purchaseDate: null,
               effectiveDate,
               status,
               categoryId: catId,
@@ -1494,6 +1883,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
               personId: req.selfId,
               installmentPlanId: null,
               installmentNo: null,
+              cardStatementId: null,
               subscriptionId: null,
               // Every imported row is dateless (month-level): shown by month and
               // never surfaced as an upcoming payment, whatever the cell shape.
@@ -1524,21 +1914,45 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     yearAllowed,
   });
   const sourceWrites: RowWrite[] = [];
+  const cycleByName = new Map<string, CardCycle>();
   for (const spec of planSpecs) {
     const key = normalizedName(spec.card);
-    if (sourceIdByName.has(key)) continue;
+    const existingSource = sourceByName.get(key);
+    const existingCycle = existingSource
+      ? { statementDay: existingSource.statement_day, dueDay: existingSource.due_day }
+      : null;
+    const cycle = existingCycle && isValidCardCycle(existingCycle) ? existingCycle : requestedCycles.get(key);
+    if (!cycle || !isValidCardCycle(cycle)) throw new CreditCardCycleRequiredError();
+    cycleByName.set(key, cycle);
+    if (sourceIdByName.has(key)) {
+      if (existingSource && !isValidCardCycle(existingCycle!)) {
+        sourceWrites.push({
+          table: "payment_sources",
+          row: {
+            ...fromDbShape("payment_sources", existingSource),
+            statementDay: cycle.statementDay,
+            dueDay: cycle.dueDay,
+          },
+        });
+      }
+      continue;
+    }
     const id = await deterministicId(naturalKeys.importSource(userId, spec.card));
     sourceIdByName.set(key, id);
     sourceWrites.push({
       table: "payment_sources",
       row: {
-        id, name: spec.card, type: "credit_card", personId: req.selfId, dueDay: null, statementDay: null,
+        id, name: spec.card, type: "credit_card", personId: req.selfId,
+        dueDay: cycle.dueDay, statementDay: cycle.statementDay,
         color: null, logoSource: "initials", logoRef: null, isActive: true, deletedAt: null,
       },
     });
   }
   const planRowBatches = await Promise.all(
     planSpecs.map(async (spec) => {
+      const sourceId = sourceIdByName.get(normalizedName(spec.card));
+      const cycle = cycleByName.get(normalizedName(spec.card));
+      if (!sourceId || !cycle) throw new CreditCardCycleRequiredError();
       const planId = await deterministicId(naturalKeys.importInstallmentPlan(userId, spec.name, spec.monthlyMinor, spec.total, spec.startMonth));
       const built = await buildPlanRows(planId, {
         title: spec.name,
@@ -1549,8 +1963,8 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         currency: "TRY",
         fxRate: null,
         startMonth: spec.startMonth,
-        dueDay: null,
-        paymentSourceId: sourceIdByName.get(normalizedName(spec.card)) ?? null,
+        dueDay: cycle.dueDay,
+        paymentSourceId: sourceId,
         personId: req.selfId,
         personIsSelf: true,
         categoryId:
@@ -1560,7 +1974,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         note: null,
         tryFactor: 1,
       }, today);
-      return { ...built, planId, spec };
+      return { ...built, rows: await linkDueRowsToCardStatements(userId, sourceId, cycle, built.rows), planId, spec };
     }),
   );
   for (const built of planRowBatches) {
@@ -1636,6 +2050,92 @@ async function openingWritesFromImport(userId: string, sheets: ParsedSheet[], ye
 // ---------------------------------------------------------------------------
 
 let maintenanceRunning = false;
+
+async function repairCardStatementLinks(userId: string, today: ISODate): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  const cards = await sqlite.getAllAsync<LivePaymentSource>(
+    `SELECT id, type, statement_day, due_day FROM payment_sources
+     WHERE user_id = ? AND type = 'credit_card' AND deleted_at IS NULL`,
+    [userId] as never[],
+  );
+  for (const card of cards) {
+    const cycle = { statementDay: card.statement_day, dueDay: card.due_day };
+    if (!isValidCardCycle(cycle)) continue;
+    const candidates = await sqlite.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM transactions
+       WHERE user_id = ? AND payment_source_id = ? AND type = 'expense'
+         AND card_statement_id IS NULL AND is_aggregate = 0 AND deleted_at IS NULL
+         AND (installment_plan_id IS NOT NULL OR purchase_date IS NOT NULL)`,
+      [userId, card.id] as never[],
+    );
+    if (candidates.length === 0) continue;
+    const periodByTx = new Map<string, CardStatementPeriod>();
+    for (const transaction of candidates) {
+      const purchaseDate = transaction.purchase_date as ISODate | null;
+      const period = purchaseDate
+        ? statementForPurchase(purchaseDate, cycle)
+        : statementForDueDate(transaction.effective_date as ISODate, cycle);
+      if (
+        !purchaseDate &&
+        transaction.status === "realized" &&
+        period.dueDate !== transaction.effective_date
+      ) continue;
+      periodByTx.set(String(transaction.id), period);
+    }
+    const eligible = candidates.filter((transaction) => periodByTx.has(String(transaction.id)));
+    if (eligible.length === 0) continue;
+    const uniquePeriods = new Map(
+      [...periodByTx.values()].map((period) => [period.periodMonth, period]),
+    );
+    const statementWrites = await Promise.all(
+      [...uniquePeriods.values()].map((period) => cardStatementWrite(userId, card.id, period)),
+    );
+    const idByPeriod = new Map(
+      statementWrites.map((write) => [String(write.row.periodMonth), String(write.row.id)]),
+    );
+    await writeRows(
+      userId,
+      [
+        ...statementWrites,
+        ...eligible.map((transaction) => {
+          const period = periodByTx.get(String(transaction.id))!;
+          const effectiveDate = transaction.purchase_date || transaction.status === "pending"
+            ? period.dueDate
+            : String(transaction.effective_date);
+          return {
+            table: "transactions" as const,
+            row: {
+              ...fromDbShape("transactions", transaction),
+              effectiveDate,
+              status: effectiveDate <= today ? "realized" : "pending",
+              cardStatementId: idByPeriod.get(period.periodMonth) ?? null,
+            },
+          };
+        }),
+      ],
+      false,
+    );
+  }
+  const orphaned = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT cs.* FROM credit_card_statements cs
+     WHERE cs.user_id = ? AND cs.deleted_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM transactions t
+         WHERE t.user_id = cs.user_id AND t.card_statement_id = cs.id AND t.deleted_at IS NULL
+       )`,
+    [userId] as never[],
+  );
+  if (orphaned.length > 0) {
+    await writeRows(
+      userId,
+      orphaned.map((statement) => ({
+        table: "credit_card_statements" as const,
+        row: { ...fromDbShape("credit_card_statements", statement), deletedAt: nowIso() },
+      })),
+      false,
+    );
+  }
+}
 
 export async function runMaintenance(userId: string): Promise<void> {
   // Single-instance guard: rapid foreground/background cycles must not run
@@ -1726,6 +2226,13 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     if (live.length > 0) await softDelete(userId, "computed_columns", ccId);
     await writeSetting(userId, "cc_column_removed", true);
   }
+
+  // 0d) Link only rows with enough real date information. Installments already
+  // store their explicit payment date; new card purchases store purchaseDate.
+  // Legacy one-off card rows without either are deliberately left untouched —
+  // guessing whether their old date meant purchase or payment would rewrite
+  // financial history.
+  await repairCardStatementLinks(userId, today);
 
   // 1) §2.7 — pending transactions whose effective date arrived become realized.
   const due = await sqlite.getAllAsync<Record<string, unknown>>(

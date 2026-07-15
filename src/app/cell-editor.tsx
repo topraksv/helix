@@ -15,11 +15,12 @@ import { newId } from "../db/ids";
 import { restoreRow, writeRows } from "../db/mutations";
 import { addTransaction, deleteTransaction } from "../data/repo";
 import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../data/hooks";
-import { firstDayOf, lastDayOf, monthKeyOf, todayISO } from "../domain/dates";
+import { firstDayOf, lastDayOf, todayISO } from "../domain/dates";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinor, parseAmountExpression } from "../domain/money";
 import { signedBalanceEffectOf } from "../domain/transactions";
-import { dateLabel, monthLabel, tr } from "../i18n/tr";
+import { transactionDateText } from "../ui/transaction-date";
+import { monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Amount, Badge, Body, Button, Divider, EmptyState, Field, IconButton, Row, Screen, SectionHeader, Spread } from "../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -202,7 +203,7 @@ export default function CellEditorModal() {
               <View style={{ flex: 1 }}>
                 {installmentTitle ? <Body style={{ fontFamily: "Inter_500Medium" }}>{installmentTitle}</Body> : null}
                 <Body muted={installmentTitle != null}>
-                  {t.isAggregate || t.installmentPlanId ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
+                  {transactionDateText(t)}
                   {t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : ""}
                 </Body>
                 <Row gap={spacing.sm} style={{ marginTop: 2 }}>
