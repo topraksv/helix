@@ -57,8 +57,8 @@ spreadsheet (months, running balances, a category grid) but makes the numbers
 - 🔁 **Subscriptions & recurring rules** — salaries, rent, streaming; recurrence
   that respects month-ends (a rule on the 31st lands on Feb 28), with expected
   vs. confirmed amounts and free-trial handling.
-- 👀 **Watch-only tracking** — follow someone else's installments; they show up
-  and notify, but never touch your balance.
+- 👀 **Watch-only tracking** — follow someone else's installments and
+  subscriptions in separate totals without touching your balance or analytics.
 - 📅 **Future-dated & catch-up flows** — tomorrow's expense doesn't hit today's
   balance; skip a few days and a reconciliation screen walks you through what
   came due.
@@ -67,8 +67,13 @@ spreadsheet (months, running balances, a category grid) but makes the numbers
 - 🧮 **Built-in calculator & computed columns** — do the math where you need it,
   and define spreadsheet-style derived columns without leaving the app.
 - 🪙 **Live gold & FX** — real-time gold and currency rates from the Harem Altın
-  feed, with TCMB as the reference source for conversions.
-- 🔔 **Upcoming-payment notifications** with a configurable lead time (iOS).
+  feed, with source-dated TCMB/ECB reference rates for conversions. Missing
+  rates are never guessed as TRY.
+- 🔔 **Opt-in local upcoming-payment notifications** with a configurable lead
+  time on installed iOS/Android builds. Permission is requested only in
+  Settings, and account details are cleared from notifications on sign-out.
+- 🛡️ **Private-by-default subscription logos** — local marks unless the
+  device-local remote-logo preference is explicitly enabled.
 
 ## How it's built
 
@@ -82,9 +87,9 @@ truth.
 | **Local store** | `expo-sqlite` **async** API + Drizzle (via the `sqlite-proxy` driver) — non-blocking on every platform, the on-device source of truth |
 | **Sync** | Supabase (Postgres + Auth) via an outbox: push → pull → last-write-wins merge, with tombstone deletes (no hard deletes) |
 | **Security** | Row-Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, parameterized SQL, secrets only in `.env` / CI |
-| **Money** | Integer kuruş everywhere — no floats. FX: TCMB `today.xml` → Frankfurter fallback → cache; live gold/FX from the Harem Altın socket feed |
+| **Money** | Integer kuruş everywhere — no floats. FX: source-dated TCMB `today.xml` → Frankfurter fallback → user-scoped cache; fresh-only live gold/FX from the Harem Altın socket feed |
 | **Tables** | One cross-platform sticky-column matrix ([src/ui/sticky-table.tsx](src/ui/sticky-table.tsx)) — pinned first column + an optional pinned extra column, months-as-rows/columns pivot, identical on web and iOS |
-| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics — covered by 64 unit tests, including a golden chain validated against the original spreadsheet |
+| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — covered by 183 unit tests, including a golden chain validated against the original spreadsheet |
 
 ## The look
 

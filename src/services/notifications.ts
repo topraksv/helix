@@ -11,11 +11,14 @@ import { readSetting } from "../db/mutations";
 import { addDaysISO, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
+import { notificationsEnabled, setNotificationsEnabled } from "../lib/device-preferences";
+import { normalizeReminderDays, uniqueNotifications } from "../domain/notifications";
 
 const HORIZON_DAYS = 30;
 /** iOS keeps at most 64 pending local notifications and silently drops the
  *  rest; schedule the soonest ones only — the next app open replans anyway. */
 const MAX_SCHEDULED = 60;
+const ANDROID_CHANNEL_ID = "helix-reminders";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -26,12 +29,49 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function ensurePermission(): Promise<boolean> {
+function permissionGranted(status: Notifications.NotificationPermissionsStatus): boolean {
+  if (Platform.OS !== "ios") return status.granted;
+  const ios = status.ios?.status;
+  return ios === Notifications.IosAuthorizationStatus.AUTHORIZED ||
+    ios === Notifications.IosAuthorizationStatus.PROVISIONAL ||
+    ios === Notifications.IosAuthorizationStatus.EPHEMERAL;
+}
+
+async function ensureAndroidChannel(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+    name: tr.settings.notifications,
+    importance: Notifications.AndroidImportance.DEFAULT,
+  });
+}
+
+/** Request permission only from an explicit settings action. */
+export async function enableNotifications(userId: string): Promise<boolean> {
   if (Platform.OS === "web") return false;
+  await ensureAndroidChannel();
   const current = await Notifications.getPermissionsAsync();
-  if (current.granted) return true;
-  const asked = await Notifications.requestPermissionsAsync();
-  return asked.granted;
+  const finalStatus = permissionGranted(current) ? current : await Notifications.requestPermissionsAsync();
+  if (!permissionGranted(finalStatus)) {
+    await setNotificationsEnabled(false);
+    return false;
+  }
+  await setNotificationsEnabled(true);
+  await rescheduleAll(userId);
+  return true;
+}
+
+export async function disableNotifications(): Promise<void> {
+  await setNotificationsEnabled(false);
+  await clearAccountNotifications();
+}
+
+/** Remove both future and already-presented account details from the device. */
+export async function clearAccountNotifications(): Promise<void> {
+  if (Platform.OS === "web") return;
+  await Promise.all([
+    Notifications.cancelAllScheduledNotificationsAsync(),
+    Notifications.dismissAllNotificationsAsync(),
+  ]);
 }
 
 interface PlannedNotification {
@@ -45,7 +85,8 @@ export async function planNotifications(userId: string): Promise<PlannedNotifica
   const sqlite = await getSqliteAsync();
   const today = todayISO();
   const horizonIso = addDaysISO(today, HORIZON_DAYS);
-  const reminderDays = (await readSetting<number>(userId, "reminder_days")) ?? 3;
+  const rawReminderDays = (await readSetting<number>(userId, "reminder_days")) ?? 3;
+  const reminderDays = normalizeReminderDays(rawReminderDays, HORIZON_DAYS);
   const planned: PlannedNotification[] = [];
 
   const expected = await sqlite.getAllAsync<{
@@ -61,13 +102,19 @@ export async function planNotifications(userId: string): Promise<PlannedNotifica
     [userId, horizonIso] as never[],
   );
   const subNames = new Map(
-    (await sqlite.getAllAsync<{ id: string; name: string }>(`SELECT id, name FROM subscriptions WHERE user_id = ?`, [userId] as never[])).map(
+    (await sqlite.getAllAsync<{ id: string; name: string }>(
+      `SELECT id, name FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL`,
+      [userId] as never[],
+    )).map(
       (s) => [s.id, s.name] as const,
     ),
   );
   const incomeNames = new Map(
     (
-      await sqlite.getAllAsync<{ id: string; name: string }>(`SELECT id, name FROM recurring_incomes WHERE user_id = ?`, [userId] as never[])
+      await sqlite.getAllAsync<{ id: string; name: string }>(
+        `SELECT id, name FROM recurring_incomes WHERE user_id = ? AND deleted_at IS NULL`,
+        [userId] as never[],
+      )
     ).map((s) => [s.id, s.name] as const),
   );
 
@@ -103,7 +150,8 @@ export async function planNotifications(userId: string): Promise<PlannedNotifica
   const finals = await sqlite.getAllAsync<{ title: string; effective_date: string }>(
     `SELECT ip.title, t.effective_date FROM transactions t
      JOIN installment_plans ip ON ip.id = t.installment_plan_id
-     WHERE t.user_id = ? AND t.deleted_at IS NULL AND t.installment_no = ip.installment_count
+     WHERE t.user_id = ? AND t.deleted_at IS NULL AND ip.deleted_at IS NULL
+       AND t.status = 'pending' AND t.installment_no = ip.installment_count
        AND t.effective_date BETWEEN ? AND ?`,
     [userId, today, horizonIso] as never[],
   );
@@ -117,19 +165,30 @@ export async function planNotifications(userId: string): Promise<PlannedNotifica
 /** Cancel + reschedule everything (idempotent, run on each app open). */
 export async function rescheduleAll(userId: string): Promise<void> {
   if (Platform.OS === "web") return;
-  const granted = await ensurePermission();
-  if (!granted) return;
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  if (!(await notificationsEnabled())) {
+    await clearAccountNotifications();
+    return;
+  }
+  await ensureAndroidChannel();
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permissionGranted(permission)) return;
   const now = Date.now();
-  const upcoming = (await planNotifications(userId))
+  const upcoming = uniqueNotifications(await planNotifications(userId))
     .map((n) => ({ ...n, fireAt: new Date(`${n.date}T09:00:00`) }))
     .filter((n) => n.fireAt.getTime() > now)
     .sort((a, b) => a.fireAt.getTime() - b.fireAt.getTime())
     .slice(0, MAX_SCHEDULED);
+  // Plan/query first: a transient database error must not erase working
+  // reminders. Once the full replacement is ready, swap the app-owned queue.
+  await Notifications.cancelAllScheduledNotificationsAsync();
   for (const n of upcoming) {
     await Notifications.scheduleNotificationAsync({
       content: { title: n.title, body: n.body },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: n.fireAt },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: n.fireAt,
+        ...(Platform.OS === "android" ? { channelId: ANDROID_CHANNEL_ID } : {}),
+      },
     });
   }
 }

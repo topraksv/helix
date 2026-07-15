@@ -9,9 +9,11 @@
 import { create } from "zustand";
 import { io, type Socket } from "socket.io-client";
 import { tr } from "../i18n/tr";
+import { freshMarketQuote, validMarketQuote } from "../domain/market";
 
 const FEED_URL = "wss://hrmsocketonly.haremaltin.com";
 const THROTTLE_MS = 3000;
+export const MARKET_STALE_MS = 60_000;
 
 /** Harem code → display label; order = display order. */
 export const MARKET_SYMBOLS = [
@@ -28,6 +30,8 @@ export interface MarketPrice {
   sellTry: number;
   direction: "up" | "down" | "";
   at: string;
+  /** Local receipt time; provider text is display-only and not trusted for age. */
+  receivedAt: number;
 }
 
 interface MarketsState {
@@ -39,6 +43,7 @@ export const useMarkets = create<MarketsState>(() => ({ prices: {}, status: "idl
 
 let socket: Socket | null = null;
 let lastApplied = 0;
+let staleTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface FeedEntry {
   code: string;
@@ -48,56 +53,83 @@ interface FeedEntry {
   dir?: { satis_dir?: string };
 }
 
-function applyFeed(data: Record<string, FeedEntry>) {
-  const now = Date.now();
+function validEntry(entry: FeedEntry | undefined): boolean {
+  return Boolean(entry && validMarketQuote(entry.alis, entry.satis));
+}
+
+function markStaleAfterSilence(): void {
+  if (staleTimer) clearTimeout(staleTimer);
+  staleTimer = setTimeout(() => {
+    staleTimer = null;
+    useMarkets.setState({ prices: {}, status: "error" });
+  }, MARKET_STALE_MS);
+}
+
+function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
+  if (!MARKET_SYMBOLS.some(({ code }) => validEntry(data[code]))) return;
+  markStaleAfterSilence();
   if (now - lastApplied < THROTTLE_MS) return;
   lastApplied = now;
-  const prices: Record<string, MarketPrice> = { ...useMarkets.getState().prices };
+  const prices: Record<string, MarketPrice> = Object.fromEntries(
+    Object.entries(useMarkets.getState().prices).filter(([, price]) => freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS)),
+  );
   for (const { code } of MARKET_SYMBOLS) {
     const entry = data[code];
-    if (!entry) continue;
+    if (!validEntry(entry)) continue;
     const buyTry = Number(entry.alis);
     const sellTry = Number(entry.satis);
-    // A malformed feed value must never render as "NaN ₺" — keep the previous
-    // price (or the card's unavailable state) instead.
-    if (!Number.isFinite(buyTry) || !Number.isFinite(sellTry)) continue;
     prices[code] = {
       code,
       buyTry,
       sellTry,
       direction: entry.dir?.satis_dir === "up" ? "up" : entry.dir?.satis_dir === "down" ? "down" : "",
       at: entry.tarih,
+      receivedAt: now,
     };
   }
-  useMarkets.setState({ prices, status: "live" });
+  useMarkets.setState({ prices, status: Object.keys(prices).length > 0 ? "live" : "error" });
 }
 
 /** Harem sell ("satış") price in TRY for a currency, or null if not live yet.
  *  Used to convert a foreign-currency amount to TRY at confirm time (we already
  *  pull USDTRY/EURTRY from this feed — no separate FX call needed). */
-export function marketSellRateTry(currency: string): number | null {
+export function marketSellRateTry(currency: string, now = Date.now()): number | null {
   const code = currency === "USD" ? "USDTRY" : currency === "EUR" ? "EURTRY" : null;
   if (!code) return null;
   const price = useMarkets.getState().prices[code];
-  return price && Number.isFinite(price.sellTry) && price.sellTry > 0 ? price.sellTry : null;
+  return price && freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS) && Number.isFinite(price.sellTry) && price.sellTry > 0
+    ? price.sellTry
+    : null;
 }
 
 /** Idempotent: first caller opens the socket; it lives for the app session. */
 export function connectMarkets(): void {
   if (socket) return;
   useMarkets.setState({ status: "connecting" });
-  socket = io(FEED_URL, { transports: ["websocket"], reconnectionDelayMax: 30_000 });
+  socket = io(FEED_URL, {
+    transports: ["websocket"],
+    reconnectionDelayMax: 30_000,
+    timeout: 10_000,
+  });
   socket.on("price_changed", (payload: { data?: Record<string, FeedEntry> }) => {
     if (payload?.data) applyFeed(payload.data);
   });
   socket.on("connect_error", () => {
-    if (useMarkets.getState().status !== "live") useMarkets.setState({ status: "error" });
+    if (staleTimer) {
+      clearTimeout(staleTimer);
+      staleTimer = null;
+    }
+    useMarkets.setState({ prices: {}, status: "error" });
   });
   // A dropped connection must flip us OUT of "live" — otherwise the last prices
   // keep showing as if they were current long after the feed stopped. socket.io
   // auto-reconnects; the next `price_changed` restores "live".
   socket.on("disconnect", () => {
-    useMarkets.setState({ status: "error" });
+    if (staleTimer) {
+      clearTimeout(staleTimer);
+      staleTimer = null;
+    }
+    useMarkets.setState({ prices: {}, status: "error" });
   });
 }
 
@@ -107,6 +139,10 @@ export function connectMarkets(): void {
  * open (battery/data), and so the next sign-in starts clean.
  */
 export function disconnectMarkets(): void {
+  if (staleTimer) {
+    clearTimeout(staleTimer);
+    staleTimer = null;
+  }
   if (socket) {
     socket.removeAllListeners();
     socket.disconnect();

@@ -1369,17 +1369,6 @@ export async function confirmExpected(
   const row = await getExpectedRow(userId, expectedId);
   if (!row || (row.status !== "pending" && row.status !== "late")) return;
   const amount = opts.actualAmountMinor ?? row.amount_minor;
-  // Snapshot the TRY value at confirm time. For foreign-currency items convert
-  // with the Harem sell ("satış") price (already streamed), falling back to the
-  // cached TCMB rate. If NEITHER is available we must not store the raw foreign
-  // amount as TRY (that silently corrupts the balance) — refuse the confirm so
-  // the caller can retry once a rate is known.
-  const appliedRate = row.currency === "TRY"
-    ? null
-    : marketSellRateTry(row.currency) ?? lookupRate(userId, row.currency)?.rate.rateTry ?? null;
-  if (row.currency !== "TRY" && appliedRate == null) throw new FxRateUnavailableError(row.currency);
-  const amountTryMinor = appliedRate == null ? amount : convertToTryMinor(amount, appliedRate);
-  assertSignedTransactionAmounts(amount, amountTryMinor);
   await assertTransactionCategory(
     userId,
     row.direction === "in" ? "income" : "expense",
@@ -1415,6 +1404,19 @@ export async function confirmExpected(
       cardStatementId = String(statementWrite.row.id);
     }
   }
+
+  // Snapshot against the actual occurrence/purchase day. Only a transaction
+  // happening today may use the live market quote; backdated confirmations use
+  // the last official cached rate on/before that date and never today's price.
+  const rateDate = purchaseDate ?? effectiveDate;
+  const appliedRate = row.currency === "TRY"
+    ? null
+    : (rateDate === today ? marketSellRateTry(row.currency) : null) ??
+      lookupRate(userId, row.currency, rateDate)?.rate.rateTry ??
+      null;
+  if (row.currency !== "TRY" && appliedRate == null) throw new FxRateUnavailableError(row.currency);
+  const amountTryMinor = appliedRate == null ? amount : convertToTryMinor(amount, appliedRate);
+  assertSignedTransactionAmounts(amount, amountTryMinor);
 
   const writes: RowWrite[] = [
     ...(statementWrite ? [statementWrite] : []),

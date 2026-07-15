@@ -1,14 +1,13 @@
 /** Subscriptions: true monthly load (yearly amortized §3.1), active/passive
  *  groups, trial badges, next due dates; tap to edit, swipe-free management. */
 
-import React, { useMemo } from "react";
+import React from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Pencil, Plus, RefreshCw, Repeat, Trash2 } from "lucide-react-native";
-import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
+import { normalizedMonthlyLoadMinor, subscriptionLoadTry } from "../../domain/analytics";
 import { todayISO } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
-import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { dateLabel, tr } from "../../i18n/tr";
 import { usePersons, useSubscriptions, useUserId } from "../../data/hooks";
@@ -18,6 +17,7 @@ import { Amount, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Scree
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
 import { spacing, useTheme } from "../../ui/theme";
+import { useDevicePreferences } from "../../lib/device-preferences";
 
 export default function SubscriptionsScreen() {
   const userId = useUserId();
@@ -27,37 +27,22 @@ export default function SubscriptionsScreen() {
   const undo = useUndo();
   const today = todayISO();
   const { palette } = useTheme();
+  const allowRemoteLogos = useDevicePreferences((state) => state.remoteLogos);
   // Re-render when FX rates land after a cold start so foreign-currency totals
   // settle on the real TRY value instead of the raw amount.
-  const fxVersion = useFxRates();
+  useFxRates();
 
-  const { active, watched, passive, monthlyLoadTry, yearlyTry, watchedMonthlyLoadTry, watchedYearlyTry } = useMemo(() => {
-    const activeSubs = subscriptions.filter((s) => s.isActive);
-    const selfIds = new Set(persons.filter((person) => person.isSelf).map((person) => person.id));
-    const toTry = (amountMinor: number, currency: string) => {
-      if (currency === "TRY") return amountMinor;
-      const rate = lookupRate(userId, currency);
-      return rate ? convertToTryMinor(amountMinor, rate.rate.rateTry) : amountMinor;
-    };
-    const personalActive = activeSubs.filter((subscription) => selfIds.has(subscription.personId));
-    const watchedActive = activeSubs.filter((subscription) => !selfIds.has(subscription.personId));
-    const load = (rows: typeof activeSubs) => rows.reduce(
-      (sum, s) => sum + normalizedMonthlyLoadMinor(toTry(s.amountMinor, s.currency), s.intervalMonths),
-      0,
-    );
-    const monthly = load(personalActive);
-    const watchedMonthly = load(watchedActive);
-    return {
-      active: personalActive,
-      watched: watchedActive,
-      passive: subscriptions.filter((s) => !s.isActive),
-      monthlyLoadTry: monthly,
-      yearlyTry: monthly * 12,
-      watchedMonthlyLoadTry: watchedMonthly,
-      watchedYearlyTry: watchedMonthly * 12,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subscriptions, persons, userId, fxVersion]);
+  const activeSubs = subscriptions.filter((s) => s.isActive);
+  const selfIds = new Set(persons.filter((person) => person.isSelf).map((person) => person.id));
+  const active = activeSubs.filter((subscription) => selfIds.has(subscription.personId));
+  const watched = activeSubs.filter((subscription) => !selfIds.has(subscription.personId));
+  const passive = subscriptions.filter((s) => !s.isActive);
+  const load = (rows: typeof activeSubs) => subscriptionLoadTry(
+    rows,
+    (currency) => lookupRate(userId, currency)?.rate.rateTry ?? null,
+  );
+  const personalLoad = load(active);
+  const watchedLoad = load(watched);
 
   const remove = async (id: string, name: string) => {
     const snapshot = await deleteSubscriptionWithExpected(userId, id);
@@ -74,7 +59,7 @@ export default function SubscriptionsScreen() {
     return (
       <ListRow
         key={s.id}
-        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} />}
+        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} allowRemote={allowRemoteLogos} />}
         title={s.name}
         subtitle={
           (s.isActive ? tr.subs.nextDue(dateLabel(s.nextDueDate)) : tr.subs.canceled) +
@@ -111,29 +96,31 @@ export default function SubscriptionsScreen() {
       <Card>
         <Spread>
           <View>
-            <Body muted>{tr.subs.monthlyLoad}</Body>
-            <Amount minor={monthlyLoadTry} large colorized={false} />
+            <Body muted>{personalLoad.missingRates > 0 ? tr.subs.knownMonthlyLoad : tr.subs.monthlyLoad}</Body>
+            <Amount minor={personalLoad.totalMinor} large colorized={false} />
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Body muted>{tr.subs.yearlyTotal}</Body>
-            <Amount minor={yearlyTry} colorized={false} />
+            <Amount minor={personalLoad.totalMinor * 12} colorized={false} />
           </View>
         </Spread>
       </Card>
+      {personalLoad.missingRates > 0 ? <Body muted>{tr.subs.fxExcluded(personalLoad.missingRates)}</Body> : null}
 
       {watched.length > 0 ? (
         <Card>
           <Spread>
             <View>
               <Body muted>{tr.subs.watchedMonthlyLoad}</Body>
-              <Amount minor={watchedMonthlyLoadTry} large colorized={false} />
+              <Amount minor={watchedLoad.totalMinor} large colorized={false} />
             </View>
             <View style={{ alignItems: "flex-end" }}>
               <Body muted>{tr.subs.watchedYearlyTotal}</Body>
-              <Amount minor={watchedYearlyTry} colorized={false} />
+              <Amount minor={watchedLoad.totalMinor * 12} colorized={false} />
             </View>
           </Spread>
           <Body muted style={{ marginTop: spacing.sm }}>{tr.subs.watchedBalanceHint}</Body>
+          {watchedLoad.missingRates > 0 ? <Body muted style={{ marginTop: spacing.xs }}>{tr.subs.fxExcluded(watchedLoad.missingRates)}</Body> : null}
         </Card>
       ) : null}
 

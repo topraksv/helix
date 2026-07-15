@@ -8,6 +8,7 @@ import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import {
   Banknote,
+  Bell,
   BookOpen,
   CalendarClock,
   Calculator,
@@ -16,6 +17,7 @@ import {
   FileDown,
   FileSpreadsheet,
   FileUp,
+  Image as ImageIcon,
   KeyRound,
   LogOut,
   PiggyBank,
@@ -29,13 +31,14 @@ import { useSession } from "../../../auth/session";
 import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
 import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
 import { buildExportBundle, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
-import { rescheduleAll } from "../../../services/notifications";
+import { disableNotifications, enableNotifications, rescheduleAll } from "../../../services/notifications";
 import { scheduleSync, syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalThemePreference } from "../../_layout";
 import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../lib/kv";
+import { setRemoteLogosEnabled, useDevicePreferences } from "../../../lib/device-preferences";
 import { tr } from "../../../i18n/tr";
 import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
@@ -52,6 +55,9 @@ export default function SettingsScreen() {
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const remoteLogos = useDevicePreferences((state) => state.remoteLogos);
+  const notifications = useDevicePreferences((state) => state.notifications);
+  const [notificationBusy, setNotificationBusy] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
   const [reminderStr, setReminderStr] = useState(String(reminderDays));
@@ -270,23 +276,48 @@ export default function SettingsScreen() {
           size="sm"
           disabled={!Number.isInteger(Number(reminderStr)) || Number(reminderStr) < 0 || Number(reminderStr) === reminderDays}
           onPress={() => {
-            void writeSetting(userId, "reminder_days", Number(reminderStr)).then(() => rescheduleAll(userId));
+            void writeSetting(userId, "reminder_days", Number(reminderStr))
+              .then(() => rescheduleAll(userId))
+              .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
           }}
         />
         {Platform.OS !== "web" ? (
-          <ListRow
-            icon={ScanFace}
-            title={tr.settings.biometric}
-            right={
-              <Toggle
-                value={biometric}
-                onValueChange={(v) => {
-                  setBiometric(v);
-                  void kv.set("helix.biometric", String(v));
-                }}
-              />
-            }
-          />
+          <>
+            <ListRow
+              icon={ScanFace}
+              title={tr.settings.biometric}
+              right={
+                <Toggle
+                  value={biometric}
+                  onValueChange={(v) => {
+                    setBiometric(v);
+                    void kv.set("helix.biometric", String(v));
+                  }}
+                />
+              }
+            />
+            <ListRow
+              icon={Bell}
+              title={tr.settings.notifications}
+              subtitle={tr.settings.notificationsDeviceHint}
+              right={
+                <Toggle
+                  value={notifications}
+                  disabled={notificationBusy}
+                  onValueChange={(enabled) => {
+                    if (notificationBusy) return;
+                    setNotificationBusy(true);
+                    void (enabled ? enableNotifications(userId) : disableNotifications())
+                      .then((granted) => {
+                        if (enabled && granted === false) void appAlert(tr.settings.notificationsDenied, tr.errors.title);
+                      })
+                      .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title))
+                      .finally(() => setNotificationBusy(false));
+                  }}
+                />
+              }
+            />
+          </>
         ) : null}
         <ListRow
           icon={CalendarClock}
@@ -295,6 +326,19 @@ export default function SettingsScreen() {
           right={<Toggle value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
         />
         <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.settings.showPendingHint}</Body>
+        <ListRow
+          icon={ImageIcon}
+          title={tr.settings.remoteLogos}
+          subtitle={tr.settings.remoteLogosHint}
+          right={
+            <Toggle
+              value={remoteLogos}
+              onValueChange={(value) => {
+                void setRemoteLogosEnabled(value).catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
+              }}
+            />
+          }
+        />
       </Card>
 
       <SectionHeader>{tr.settings.dataSection}</SectionHeader>

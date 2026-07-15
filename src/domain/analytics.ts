@@ -10,6 +10,7 @@ import type { Minor } from "./money";
 import { countsTowardBalance } from "./balance";
 import type { TxLike } from "./types";
 import { financialFlow } from "./transactions";
+import { convertToTryMinor } from "./fx";
 
 export interface CategoryYearRow {
   categoryId: string;
@@ -163,4 +164,24 @@ export function creditCardSplit(
 /** Yearly subscription cost normalized to a true monthly load (spec §3.1). */
 export function normalizedMonthlyLoadMinor(amountMinor: Minor, intervalMonths: number): Minor {
   return Math.round(amountMinor / intervalMonths);
+}
+
+/** Sum only subscriptions with a real TRY conversion; report unknowns. */
+export function subscriptionLoadTry(
+  subscriptions: { amountMinor: Minor; currency: string; intervalMonths: number }[],
+  rateFor: (currency: string) => number | null,
+): { totalMinor: Minor; missingRates: number } {
+  return subscriptions.reduce(
+    (result, subscription) => {
+      const rate = subscription.currency === "TRY" ? 1 : rateFor(subscription.currency);
+      if (rate == null) return { totalMinor: result.totalMinor, missingRates: result.missingRates + 1 };
+      return {
+        totalMinor:
+          result.totalMinor +
+          normalizedMonthlyLoadMinor(convertToTryMinor(subscription.amountMinor, rate), subscription.intervalMonths),
+        missingRates: result.missingRates,
+      };
+    },
+    { totalMinor: 0, missingRates: 0 },
+  );
 }

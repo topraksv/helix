@@ -1,6 +1,6 @@
 # Manual test scenarios (critical flows)
 
-Automated coverage lives in `tests/` (`npm test`, 56 domain unit tests). The flows below
+Automated coverage lives in `tests/` (`npm test`, 183 unit tests). The flows below
 cross UI, local DB, and sync, so they are verified by hand before a release.
 
 1. **Onboarding:** sign up → pick a template → set starting month + opening balance → add
@@ -25,11 +25,19 @@ cross UI, local DB, and sync, so they are verified by hand before a release.
    other shows the identical state (including deletions).
 10. **RLS:** create a second Supabase user → no query ever returns the first user's data.
 11. **Backup:** export JSON → import into a clean install → data matches 1:1.
-12. **Theme/notifications:** walk every screen in dark and light theme; grant notification
-    permission and verify an upcoming-payment notification is scheduled (Settings → lead days).
+12. **Theme/notifications:** walk every screen in dark and light theme; confirm
+    cold start does not request permission, enable notifications in Settings,
+    and verify an upcoming-payment notification is scheduled. Sign out and
+    confirm scheduled/presented account details are removed.
 13. **Credit-card statements:** create a card with cut-off 25 / due 5 → add
     purchases on the 25th and 26th → verify they land in consecutive statement
     periods and affect the ledger on 5 August / 5 September, not on purchase
     day. The dashboard must show one total per persisted statement. Edit the
     card cycle and confirm old periods/dates stay unchanged. A legacy card with
     missing dates must block new charges without inventing an upcoming date.
+14. **External data/privacy:** with remote logos off, open Subscriptions and
+    confirm no favicon request leaves the device; opt in and confirm known logos
+    load, then turn it off again. Background the app for over 60 seconds and
+    confirm market prices disappear rather than remaining live. With FX offline,
+    foreign subscriptions must be reported as excluded from totals, never added
+    as raw TRY.

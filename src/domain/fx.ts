@@ -23,7 +23,9 @@ export interface RateLookup {
 
 export function convertToTryMinor(amountMinor: Minor, rateTry: number): Minor {
   if (rateTry <= 0 || !Number.isFinite(rateTry)) throw new Error(`Invalid FX rate: ${rateTry}`);
-  return roundHalfAwayFromZero(amountMinor * rateTry);
+  const converted = roundHalfAwayFromZero(amountMinor * rateTry);
+  if (!Number.isSafeInteger(converted)) throw new Error("Converted amount exceeds safe minor-unit range");
+  return converted;
 }
 
 /** Latest rate on/before `date` for the currency; null when none cached. */
