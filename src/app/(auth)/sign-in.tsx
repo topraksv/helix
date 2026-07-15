@@ -106,12 +106,6 @@ export default function SignInScreen() {
           />
         ) : null}
 
-        {mode === "signIn" ? (
-          <Pressable accessibilityRole="button" onPress={showForgot} hitSlop={8} style={{ alignSelf: "flex-end", marginBottom: spacing.md }}>
-            <Text style={[type.label, { color: palette.primary }]}>{tr.auth.forgotPassword}</Text>
-          </Pressable>
-        ) : null}
-
         {resetSent ? (
           <View
             style={{
@@ -152,6 +146,11 @@ export default function SignInScreen() {
           loading={busy}
           disabled={!resetSent && !canSubmit}
         />
+        {mode === "signIn" ? (
+          <View style={{ marginTop: spacing.sm }}>
+            <Button label={tr.auth.forgotPassword} variant="ghost" onPress={showForgot} />
+          </View>
+        ) : null}
 
         <View style={{ flexDirection: "row", justifyContent: "center", gap: spacing.xs, marginTop: spacing.lg }}>
           <Body muted>{mode === "signIn" ? tr.auth.noAccount : mode === "signUp" ? tr.auth.haveAccount : tr.auth.rememberedPassword}</Body>

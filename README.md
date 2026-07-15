@@ -72,8 +72,8 @@ spreadsheet (months, running balances, a category grid) but makes the numbers
 - 🔔 **Opt-in local upcoming-payment notifications** with a configurable lead
   time on installed iOS/Android builds. Permission is requested only in
   Settings, and account details are cleared from notifications on sign-out.
-- 🛡️ **Private-by-default subscription logos** — local marks unless the
-  device-local remote-logo preference is explicitly enabled.
+- 🛡️ **Automatic subscription logos** — known public domains use a validated,
+  cached favicon; utilities, unknowns and network failures stay on local marks.
 
 ## How it's built
 

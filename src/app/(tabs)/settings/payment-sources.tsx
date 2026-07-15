@@ -18,7 +18,7 @@ import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { Pencil, Trash2 } from "lucide-react-native";
-import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, InitialsBadge, Label, Row, Screen, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, Field, IconButton, InitialsBadge, Label, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
@@ -269,18 +269,29 @@ export default function SourcesScreen() {
         items={sources}
         keyExtractor={(s) => s.id}
         renderItem={(s) => (
-          <Spread style={{ paddingVertical: spacing.sm }}>
-            <Row style={{ flex: 1 }}>
+          <Spread style={{ paddingVertical: spacing.sm, alignItems: "center" }}>
+            <Row style={{ flex: 1, alignItems: "center" }}>
               <InitialsBadge name={s.name} size={32} />
               <View style={{ flex: 1 }}>
                 <Body>{s.name}</Body>
-                <Body muted>
-                  {TYPES.find((t) => t.value === s.type)?.label}
-                  {s.type === "credit_card" && s.statementDay && s.dueDay
-                    ? ` · ${tr.sources.statementDay}: ${s.statementDay} · ${tr.sources.dueDay}: ${s.dueDay}`
-                    : s.type === "credit_card" ? ` · ${tr.sources.cycleMissing}` : ""}
-                  {persons.length > 1 ? ` · ${persons.find((p) => p.id === s.personId)?.name ?? ""}` : ""}
-                </Body>
+                <Body muted style={{ marginTop: 1 }}>{TYPES.find((t) => t.value === s.type)?.label}</Body>
+                {persons.length > 1 ? (
+                  <Body muted style={{ marginTop: 1 }}>
+                    {tr.sources.owner}: {persons.find((p) => p.id === s.personId)?.name ?? tr.common.none}
+                  </Body>
+                ) : null}
+                {s.type === "credit_card" ? (
+                  <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs }}>
+                    {s.statementDay && s.dueDay ? (
+                      <>
+                        <Badge text={`${tr.sources.statementDayShort}: ${s.statementDay}`} />
+                        <Badge text={`${tr.sources.dueDayShort}: ${s.dueDay}`} tone="primary" />
+                      </>
+                    ) : (
+                      <Badge text={tr.sources.cycleMissing} tone="warning" />
+                    )}
+                  </Row>
+                ) : null}
               </View>
             </Row>
             <Row gap={spacing.sm}>

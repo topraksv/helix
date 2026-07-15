@@ -17,6 +17,7 @@ import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
+import { navigateBack } from "../ui/navigation";
 
 export default function PlanModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -34,7 +35,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
   const categories = useCategories();
   const router = useRouter();
   const isEdit = existing != null;
-  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow/installments"));
+  const close = () => navigateBack(router, "/(tabs)/cash-flow/installments");
 
   const [kind, setKind] = useState<"card_installment" | "loan">(existing?.kind ?? "card_installment");
   const existingAmountMinor = existing ? (existing.kind === "loan" ? existing.monthlyAmountMinor : existing.totalAmountMinor) : null;

@@ -53,12 +53,21 @@ function FlowStat({
   color: string;
 }) {
   return (
-    <View style={{ flexGrow: 1, flexBasis: 112, minWidth: 0 }}>
-      <Row gap={spacing.xs} style={{ alignItems: "flex-start" }}>
-        <Icon size={14} color={color} />
-        <Text style={[type.small, { color, flex: 1, flexWrap: "wrap" }]}>{label}</Text>
-      </Row>
-      <Text style={[type.amountSm, { color, marginTop: 2 }]}>{formatMinor(amountMinor)}</Text>
+    <View style={{ flex: 1, minWidth: 0, alignItems: "center", paddingHorizontal: 2 }}>
+      <View
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 15,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: color + "1A",
+        }}
+      >
+        <Icon size={15} color={color} />
+      </View>
+      <Text style={[type.small, { color, textAlign: "center", marginTop: spacing.xs, minHeight: 32 }]}>{label}</Text>
+      <Text style={[type.amountSm, { color, textAlign: "center", fontSize: 12 }]}>{formatMinor(amountMinor)}</Text>
     </View>
   );
 }
@@ -235,13 +244,11 @@ export default function CashflowScreen() {
                       <Text style={[type.heading, { color: isCurrent ? palette.primary : palette.text }]}>{monthLabel(m.month)}</Text>
                       <Amount minor={m.closingMinor} />
                     </Spread>
-                    <Row gap={spacing.md} style={{ marginTop: spacing.md, flexWrap: "wrap", rowGap: spacing.md, alignItems: "flex-start" }}>
+                    <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.md, alignItems: "stretch" }}>
                       <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={m.incomeMinor} color={palette.positive} />
                       <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={m.expenseMinor} color={palette.negative} />
-                      {m.transferMinor !== 0 ? (
-                        <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={m.transferMinor} color={palette.textMuted} />
-                      ) : null}
-                    </Row>
+                      <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={m.transferMinor} color={palette.textMuted} />
+                    </View>
                   </Card>
                 );
               })}

@@ -90,20 +90,18 @@ export default function InstallmentsScreen() {
         onPress={() => router.push({ pathname: "/installment-new", params: { id: plan.id } })}
         style={({ pressed }) => [pressed && { opacity: 0.6 }]}
       >
-        <Spread style={{ paddingVertical: spacing.sm }}>
-          <View style={{ flex: 1, paddingRight: spacing.md }}>
-            <Row gap={spacing.sm}>
-              <Body style={{ fontFamily: "Inter_500Medium" }}>
-                {installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}
-              </Body>
+        <Spread style={{ paddingVertical: spacing.sm, alignItems: "flex-start" }}>
+          <View style={{ flex: 1, paddingRight: spacing.sm }}>
+            <Body style={{ fontFamily: "Inter_500Medium" }}>
+              {installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}
+            </Body>
+            <Body muted style={{ marginTop: 2 }}>{sourceName.get(plan.paymentSourceId ?? "") ?? tr.installments.noSource}</Body>
+            <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs }}>
               {plan.kind === "loan" ? <Badge text={tr.installments.loan} /> : null}
+              {thisMonth ? <Badge text={tr.installments.thisMonthInstallment(thisMonth.installmentNo, progress.total)} tone="primary" /> : null}
+              <Badge text={tr.installments.progress(progress.paid, progress.total)} tone={finished ? "positive" : "muted"} />
               {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
             </Row>
-            <Body muted style={{ marginTop: 2 }}>
-              {sourceName.get(plan.paymentSourceId ?? "") ?? tr.installments.noSource}
-              {thisMonth ? ` · ${tr.installments.thisMonthInstallment(thisMonth.installmentNo, progress.total)}` : ""}
-              {` · ${tr.installments.progress(progress.paid, progress.total)}`}
-            </Body>
             {/* progress track */}
             <View style={{ height: 6, borderRadius: 3, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
               <View
@@ -116,7 +114,7 @@ export default function InstallmentsScreen() {
               />
             </View>
           </View>
-          <Row gap={spacing.xs}>
+          <Row gap={spacing.xs} style={{ flexShrink: 0, paddingTop: 1 }}>
             {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} /> : null}
             <ChevronRight size={16} color={palette.textMuted} />
           </Row>

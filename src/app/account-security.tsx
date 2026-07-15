@@ -11,9 +11,10 @@ import { tr } from "../i18n/tr";
 import { Body, Button, Card, Field, Heading, Screen } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { spacing } from "../ui/theme";
+import { navigateBack } from "../ui/navigation";
 
 export default function AccountSecurityScreen() {
-  const { email, verifyPassword, changeEmail, changePassword } = useSession();
+  const { email, verifyPassword, changeEmail, changePassword, requestPasswordReset } = useSession();
   const router = useRouter();
 
   const [newEmail, setNewEmail] = useState("");
@@ -23,6 +24,7 @@ export default function AccountSecurityScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const emailValid = /.+@.+\..+/.test(newEmail.trim());
 
@@ -63,9 +65,20 @@ export default function AccountSecurityScreen() {
       setCurrentPassword("");
       setNewPassword("");
       void appAlert(tr.account.passwordChanged);
-      router.back();
+      navigateBack(router, "/(tabs)/settings");
     } finally {
       setPwBusy(false);
+    }
+  };
+
+  const sendResetLink = async () => {
+    if (!email || resetBusy) return;
+    setResetBusy(true);
+    try {
+      const error = await requestPasswordReset(email);
+      void appAlert(error ?? tr.auth.resetSent, error ? tr.errors.title : tr.account.resetLinkTitle);
+    } finally {
+      setResetBusy(false);
     }
   };
 
@@ -117,6 +130,20 @@ export default function AccountSecurityScreen() {
           onPress={() => void submitPassword()}
           loading={pwBusy}
           disabled={currentPassword.length < 6 || newPassword.length < 6}
+        />
+      </Card>
+
+      <View style={{ height: spacing.md }} />
+
+      <Card>
+        <Heading style={{ marginTop: 0 }}>{tr.auth.forgotPassword}</Heading>
+        <Body muted style={{ marginBottom: spacing.md }}>{tr.account.resetLinkHint}</Body>
+        <Button
+          label={tr.auth.sendResetLink}
+          variant="secondary"
+          onPress={() => void sendResetLink()}
+          loading={resetBusy}
+          disabled={!email || resetBusy}
         />
       </Card>
     </Screen>

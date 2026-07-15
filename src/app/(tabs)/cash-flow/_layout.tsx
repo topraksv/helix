@@ -1,7 +1,10 @@
 import React from "react";
 import { Stack } from "expo-router";
 import { tr } from "../../../i18n/tr";
+import { HeaderBackButton } from "../../../ui/header-back";
 import { useTheme } from "../../../ui/theme";
+
+export const unstable_settings = { initialRouteName: "index" };
 
 export default function CashflowLayout() {
   const { palette } = useTheme();
@@ -12,6 +15,7 @@ export default function CashflowLayout() {
         headerTintColor: palette.text,
         headerTitleStyle: { color: palette.text, fontFamily: "Inter_600SemiBold" },
         headerBackTitle: tr.common.back,
+        headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" />,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: palette.background },
       }}

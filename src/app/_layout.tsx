@@ -38,6 +38,7 @@ import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../lib/device-preferences";
+import { HeaderBackButton } from "../ui/header-back";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -379,17 +380,17 @@ function RootLayoutInner() {
           <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
-          <Stack.Screen name="transaction" options={{ presentation: "modal", title: tr.tx.new }} />
-          <Stack.Screen name="installment-new" options={{ presentation: "modal", title: tr.installments.newPlan }} />
-          <Stack.Screen name="subscription-form" options={{ presentation: "modal", title: tr.subs.add }} />
-          <Stack.Screen name="bulk-entry" options={{ presentation: "modal", title: tr.bulk.title }} />
-          <Stack.Screen name="cell-editor" options={{ presentation: "modal", title: tr.cell.title }} />
-          <Stack.Screen name="import-wizard" options={{ presentation: "modal", title: tr.importer.title }} />
-          <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title }} />
-          <Stack.Screen name="opening-balance" options={{ presentation: "modal", title: tr.settings.opening }} />
-          <Stack.Screen name="account-security" options={{ presentation: "modal", title: tr.account.security }} />
-          <Stack.Screen name="columns-editor" options={{ presentation: "modal", title: tr.settings.categories }} />
-          <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title }} />
+          <Stack.Screen name="transaction" options={{ presentation: "modal", title: tr.tx.new, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="installment-new" options={{ presentation: "modal", title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
+          <Stack.Screen name="subscription-form" options={{ presentation: "modal", title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
+          <Stack.Screen name="bulk-entry" options={{ presentation: "modal", title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="cell-editor" options={{ presentation: "modal", title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="import-wizard" options={{ presentation: "modal", title: tr.importer.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
+          <Stack.Screen name="opening-balance" options={{ presentation: "modal", title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="account-security" options={{ presentation: "modal", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="columns-editor" options={{ presentation: "modal", title: tr.settings.categories, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
         </Stack>
         </ErrorBoundary>
         <UndoSnackbar />

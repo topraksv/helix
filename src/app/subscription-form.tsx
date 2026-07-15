@@ -18,6 +18,7 @@ import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing, useTheme } from "../ui/theme";
+import { navigateBack } from "../ui/navigation";
 
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
@@ -40,7 +41,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const persons = usePersons();
   const router = useRouter();
   const { palette } = useTheme();
-  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/subscriptions"));
+  const close = () => navigateBack(router, "/(tabs)/subscriptions");
 
   const [name, setName] = useState(existing?.name ?? "");
   const [amountRaw, setAmountRaw] = useState(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");

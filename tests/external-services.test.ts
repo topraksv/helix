@@ -3,6 +3,7 @@ import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { normalizeReminderDays, uniqueNotifications } from "../src/domain/notifications";
+import { MARKET_SYMBOLS } from "../src/services/markets";
 
 describe("external FX provider validation", () => {
   it("keeps TCMB's declared business date and unit-adjusted selling rates", () => {
@@ -52,6 +53,16 @@ describe("remote logo boundary", () => {
 });
 
 describe("live market freshness", () => {
+  it("keeps USD and EUR in the visible live-market contract", () => {
+    expect(MARKET_SYMBOLS.map(({ code }) => code)).toEqual([
+      "ALTIN",
+      "CEYREK_YENI",
+      "ATA_YENI",
+      "USDTRY",
+      "EURTRY",
+    ]);
+  });
+
   it("accepts only finite positive two-sided quotes", () => {
     expect(validMarketQuote("40.2", 40.5)).toBe(true);
     expect(validMarketQuote("NaN", 40.5)).toBe(false);

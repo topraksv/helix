@@ -25,6 +25,7 @@ import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { spacing } from "./theme";
 import { useUndo } from "./undo";
+import { navigateBack } from "./navigation";
 
 export function OpeningBalanceEditor() {
   const userId = useUserId();
@@ -74,7 +75,7 @@ export function OpeningBalanceEditor() {
   const openingMinor = draftRaw === null ? currentOpening : draftMinor;
   const openingDirty = openingMinor !== currentOpening || startMonth !== currentStart;
 
-  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"));
+  const close = () => navigateBack(router, "/(tabs)/cash-flow");
 
   const saveOpening = async () => {
     if (openingMinor == null) return;

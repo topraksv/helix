@@ -22,6 +22,7 @@ import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type C
 import { scheduleSync } from "../sync/engine";
 import { Body, Button, Card, ChipPicker, Field, Row, Screen, SectionHeader } from "../ui/components";
 import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
+import { navigateBack } from "../ui/navigation";
 
 // --- visual format guide ---------------------------------------------------
 function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
@@ -290,7 +291,7 @@ export default function ImportWizardModal() {
             </View>
           </Row>
         </Card>
-        <Button icon={CheckCircle2} label={tr.common.done} onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"))} />
+        <Button icon={CheckCircle2} label={tr.common.done} onPress={() => navigateBack(router, "/(tabs)/cash-flow")} />
       </Screen>
     );
   }

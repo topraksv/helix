@@ -31,7 +31,7 @@ export interface DonutSlice {
 /**
  * Donut with 2px surface gaps and a paired legend. Supplemental rows share the
  * exact legend hierarchy but are excluded from the arcs, total and percentages
- * (for example investments/transfers shown beside, never as, expenses).
+ * (for example signed refund rows that cannot form negative arc geometry).
  */
 export function Donut({
   slices,

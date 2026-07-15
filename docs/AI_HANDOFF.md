@@ -7,12 +7,12 @@ lags behind them.
 
 ## Last verified state
 
-- Updated: 2026-07-15 (Europe/Istanbul)
+- Updated: 2026-07-16 (Europe/Istanbul)
 - Branch: `main`
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 20 files, 183 tests passing
+- Test baseline: 21 files, 186 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -23,9 +23,10 @@ lags behind them.
 The repository-wide remediation requested on 2026-07-15 is in progress. The
 account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references, credit-card statement and external-data/privacy
-packages are shipped. Remaining audit items below are being completed as
-separately verified and shipped packages. Always re-check `git status`; Git
-remains authoritative.
+packages are shipped. The navigation/UI regression package is verified and
+awaiting its commit/deploy record. Remaining audit items below are being
+completed as separately verified and shipped packages. Always re-check
+`git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -80,6 +81,30 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (navigation and finance-card UI regression package)
+
+- Base `34f1e83`, branch `main`; verification is complete and shipping follows.
+- Every root, Settings and Cash Flow header now uses a shared safe back control;
+  explicit Done/close actions use the same history-or-parent rule. Nested stacks
+  have an `index` anchor. A rejected root anchor was caught by Playwright because
+  it mounted authenticated hooks on Sign In, and was removed before shipping.
+- Budget Summary includes positive Investment/Transfer values in donut geometry,
+  percentages and the displayed total. Month cards use three equal centred
+  stats. Installment progress and credit-card cycle dates use separate readable
+  metadata chips instead of crowded dot-separated lines.
+- Future-dated transaction settings now form one aligned list row. Subscription
+  logos resolve automatically with the existing validated public-host, disk
+  cache and local-fallback boundary; the technical end-user toggle was removed.
+  Password recovery is a full-width Sign In action and is also available from
+  Account Security. Calendar sheets use a standard Cancel action instead of a
+  floating close glyph. Live Markets always lists USD and EUR, showing a dash
+  only until their valid Harem quote arrives.
+- Typecheck, 21 files/186 tests, Expo lint and static export passed. Playwright
+  exercised the visible password-recovery action at 320/390/1280 px with no
+  overflow or browser errors. Harem's live payload was independently observed
+  carrying valid `USDTRY` and `EURTRY` entries. Protected finance-route visuals
+  still need the installed authenticated app/device pass.
 
 ### 2026-07-15 — Codex (external data and device privacy package)
 
