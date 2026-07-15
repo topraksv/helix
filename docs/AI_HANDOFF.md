@@ -13,7 +13,7 @@ lags behind them.
   12-item recovery task started; use `git log -1` for the resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 11 files, 138 tests passing
+- Test baseline: 12 files, 140 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
 
@@ -133,7 +133,30 @@ diff and running checks proportionate to the change.
   credentials. README records the required production entries
   (`https://topraksv.github.io/helix/**`, `helix://**`); verify them in the
   project dashboard before a real recipient test.
-- Commit/push/web/OTA state is pending at this note's write time.
+- Shipped as `3105c93`: pushed to `main`, GitHub `deploy-web` completed
+  successfully, production reset route returned HTTP 200, and EAS `preview`
+  update group `75caa841-4976-4ea3-81f6-e678700a65fd` published.
+
+### 2026-07-15 — Codex (subscription/import package)
+
+- Base `3105c93`, branch `main`.
+- New or edited subscriptions cannot be persisted without a live expense
+  category; repo validation protects non-UI callers. A missing category now
+  offers a compact `Abonelikler` create-and-save action, reuses normalized live
+  matches, or creates/revives one deterministic category. Declining stays in
+  the form for manual selection; old categoryless rows still render.
+- Excel picker, duplicate-year check and actual import now share a synchronous
+  ref-backed operation gate, preventing double starts even before React state
+  paints. Only a resolved import shows the green success row/button; exceptions
+  retain the error state. The shared Screen exposes its ScrollView ref and the
+  success transition animates to the top.
+- Checks: typecheck, 12 files/140 tests, Expo lint, static web export and
+  Playwright sign-in regression at 320/390/1280 px passed. Protected import and
+  subscription screens still lack a repository E2E credential.
+- Subscription commit `68b163d` and import commit `a98232d` were pushed to
+  `main`. GitHub `deploy-web` run `29406641921` completed successfully and the
+  production import route returned HTTP 200. EAS `preview` update group
+  `ee73862e-d2c0-4e49-bf09-d19c18db7210` published for iOS and Android.
 
 ### 2026-07-15 — Codex
 
