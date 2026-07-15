@@ -206,6 +206,18 @@ export const outbox = sqliteTable("outbox", {
   createdAt: text("created_at").notNull(),
 });
 
+/** Local-only quarantine. Invalid/cross-account outbox payloads are preserved
+ *  for diagnostics instead of being silently discarded or blocking sync. */
+export const syncDeadLetters = sqliteTable("sync_dead_letters", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  outboxId: integer("outbox_id").notNull().unique(),
+  tableName: text("table_name").notNull(),
+  rowId: text("row_id").notNull(),
+  payload: text("payload").notNull(),
+  reason: text("reason", { enum: ["malformed_payload", "wrong_user"] }).notNull(),
+  quarantinedAt: text("quarantined_at").notNull(),
+});
+
 /** Local-only: per-table pull cursor. */
 export const syncState = sqliteTable("sync_state", {
   tableName: text("table_name").primaryKey(),

@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 14 files, 150 tests passing
+- Test baseline: 15 files, 153 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -47,27 +47,25 @@ These are static-analysis findings from the 2026-07-15 repository review. They
 have not yet been implemented or runtime-reproduced; verify each against the
 current code before fixing it.
 
-1. Client-clock timestamps can remain ahead of the server-normalized timestamp;
-   pull LWW may then reject legitimate remote updates while advancing its cursor.
-2. Editing/deleting subscriptions or recurring incomes does not reconcile their
+1. Editing/deleting subscriptions or recurring incomes does not reconcile their
    already-generated `expected_payments`, leaving stale or orphaned items.
-3. Transaction type changes still do not guarantee that the selected category
+2. Transaction type changes still do not guarantee that the selected category
    belongs to the new type. Aggregate analytics trust transaction type so stale
    category kinds cannot hide money; category-detail rows require kind parity.
    The editor invariant remains to be enforced separately.
-4. Cell-note editors use random ids despite the existing deterministic natural
+3. Cell-note editors use random ids despite the existing deterministic natural
    key. The month-detail pseudo-category `uncategorized` can also be written into
    a UUID-shaped remote `category_id`.
-5. `Logo` claims fully local rendering but defaults to Google's favicon service;
+4. `Logo` claims fully local rendering but defaults to Google's favicon service;
    no settings toggle currently supplies `allowRemote=false`.
-6. Several `numberOfLines` uses, special/non-editable table columns, trailing
+5. Several `numberOfLines` uses, special/non-editable table columns, trailing
    dividers, and manual derivation memos conflict with the UI/Compiler rules in
    `AGENTS.md` and need an app-wide sweep.
-7. Foreign subscription totals fall back to treating an unavailable FX amount
+6. Foreign subscription totals fall back to treating an unavailable FX amount
    as TRY; JSON restore validation does not validate enums, ranges, dates, or
    relational integrity; person/source deletion can leave orphan references.
-8. Onboarding person deletion does not remap draft source `personIndex` values.
-9. README/testing counts and the README palette are stale; web HTML language is
+7. Onboarding person deletion does not remap draft source `personIndex` values.
+8. README/testing counts and the README palette are stale; web HTML language is
     `en`, and Android biometric permissions are duplicated in `app.json`.
 
 ## Handoff update contract
@@ -89,6 +87,19 @@ diff and running checks proportionate to the change.
 
 ## Recent handoffs
 
+### 2026-07-15 — Codex (server-authoritative sync package)
+
+- Base `5f5a625`, branch `main`.
+- Pushes now request the server-normalized row and repair the local LWW clock
+  only when no newer local edit arrived during the request. Pull validates the
+  complete page before merge/cursor advancement; corrupt local timestamps no
+  longer reject a valid remote row forever.
+- Malformed/cross-account outbox entries move to the new local-only
+  `sync_dead_letters` migration instead of being silently deleted. Exact event
+  ids are removed only after push acknowledgement/quarantine commits.
+- Added pure conflict/batch tests. Typecheck and 15 files/153 tests pass;
+  lint/export/Playwright and shipping follow this package commit.
+
 ### 2026-07-15 — Codex (account lifecycle safety package)
 
 - Base `22d7bfb`, branch `main`.
@@ -101,8 +112,9 @@ diff and running checks proportionate to the change.
 - SecureStore token replacement removes obsolete chunks; logout also purges
   orphan chunks left by older versions.
 - Typecheck, 14 files/150 tests, Expo lint, static web export and Playwright
-  sign-in/recovery smoke at mobile and desktop widths passed. Push/web/preview
-  OTA follow this package commit; Git, Actions and EAS remain authoritative.
+  sign-in/recovery smoke at mobile and desktop widths passed. Shipped as
+  `5f5a625`: pushed to `main`, GitHub web run `29418964753` succeeded, and EAS
+  preview update group `8911df9e-2122-4143-b474-f9b4448ef74d` was published.
 
 ### 2026-07-15 — Codex (finance recovery package)
 

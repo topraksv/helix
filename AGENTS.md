@@ -66,6 +66,11 @@ agent-to-agent communication that did not occur.
   `stopSyncSession`. Maintenance, FX, notifications, or any other async work
   that can outlive a render must run through `runSyncSessionTask`. A late
   response from user A must never write after user B becomes active.
+- **Sync ordering is server-authoritative.** Supabase normalizes `updated_at`;
+  every push selects and conditionally merges that acknowledgement before its
+  exact outbox events are removed. Never advance a pull cursor past an invalid
+  row and never silently discard malformed/foreign outbox data—quarantine it
+  in `sync_dead_letters`.
 - **Money is integer minor units** (kuruş) everywhere; format only at the edge
   with `formatMinor`. Dates are `YYYY-MM-DD` ISO strings, months `YYYY-MM`.
 - **Analytics follows transaction type, not category appearance.** Expenses

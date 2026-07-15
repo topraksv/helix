@@ -36,6 +36,7 @@ export async function resetLocalWorkspace(): Promise<void> {
       await sqlite.runAsync(`DELETE FROM ${table}`, [] as never[]);
     }
     await sqlite.runAsync(`DELETE FROM outbox`, [] as never[]);
+    await sqlite.runAsync(`DELETE FROM sync_dead_letters`, [] as never[]);
     await sqlite.runAsync(`DELETE FROM sync_state`, [] as never[]);
   });
 }

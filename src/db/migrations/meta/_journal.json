@@ -15,6 +15,13 @@
       "when": 1783337511403,
       "tag": "0001_empty_jane_foster",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784123304327,
+      "tag": "0002_sync_dead_letters",
+      "breakpoints": true
     }
   ]
 }
