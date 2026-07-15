@@ -17,7 +17,6 @@ import { Amount, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Scree
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
 import { spacing, useTheme } from "../../ui/theme";
-import { useDevicePreferences } from "../../lib/device-preferences";
 
 export default function SubscriptionsScreen() {
   const userId = useUserId();
@@ -27,7 +26,6 @@ export default function SubscriptionsScreen() {
   const undo = useUndo();
   const today = todayISO();
   const { palette } = useTheme();
-  const allowRemoteLogos = useDevicePreferences((state) => state.remoteLogos);
   // Re-render when FX rates land after a cold start so foreign-currency totals
   // settle on the real TRY value instead of the raw amount.
   useFxRates();
@@ -59,7 +57,7 @@ export default function SubscriptionsScreen() {
     return (
       <ListRow
         key={s.id}
-        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} allowRemote={allowRemoteLogos} />}
+        leading={<Logo name={s.name} domain={s.websiteDomain} size={40} />}
         title={s.name}
         subtitle={
           (s.isActive ? tr.subs.nextDue(dateLabel(s.nextDueDate)) : tr.subs.canceled) +

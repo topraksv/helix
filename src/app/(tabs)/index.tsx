@@ -68,18 +68,17 @@ function MarketsCard() {
       </Spread>
       {MARKET_SYMBOLS.map(({ code, label }) => {
         const p = prices[code];
-        if (!p) return null;
         return (
           <Spread key={code} style={{ paddingVertical: spacing.sm - 2 }}>
             <Body>{label}</Body>
             <Row gap={spacing.sm}>
-              <Text style={[type.amountSm, { color: palette.textMuted, minWidth: 78, textAlign: "right" }]}>{priceText(p.buyTry)}</Text>
+              <Text style={[type.amountSm, { color: palette.textMuted, minWidth: 78, textAlign: "right" }]}>{p ? priceText(p.buyTry) : "—"}</Text>
               <Text style={[type.amount, { color: palette.text, minWidth: 92, textAlign: "right" }]}>
-                {priceText(p.sellTry)} ₺
+                {p ? `${priceText(p.sellTry)} ₺` : "—"}
               </Text>
-              {p.direction === "up" ? (
+              {p?.direction === "up" ? (
                 <TrendingUp size={15} color={palette.positive} />
-              ) : p.direction === "down" ? (
+              ) : p?.direction === "down" ? (
                 <TrendingDown size={15} color={palette.negative} />
               ) : (
                 <View style={{ width: 15 }} />
@@ -251,6 +250,9 @@ export default function DashboardScreen() {
   const donutSlices = [
     ...positiveDonutEntries.slice(0, 7).map((e, i) => ({ ...e, color: colors[i % colors.length] })),
     ...(donutRest > 0 ? [{ label: tr.common.other, valueMinor: donutRest, color: colors[7] }] : []),
+    ...(dist.transferTotalMinor > 0
+      ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: colors[4] }]
+      : []),
   ];
   const donutSupplemental = [
     ...refundEntries.map((entry) => ({
@@ -258,10 +260,11 @@ export default function DashboardScreen() {
       valueMinor: entry.valueMinor,
       color: palette.positive,
     })),
-    ...(dist.transferTotalMinor !== 0
+    ...(dist.transferTotalMinor < 0
       ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: palette.textMuted }]
       : []),
   ];
+  const distributionTotalMinor = dist.expenseTotalMinor + dist.transferTotalMinor;
 
   const trendMonths = bundle ? bundle.ledger.filter((m) => yearOf(m.month) === year && m.month <= month) : [];
   // Grouped income-vs-expense bars read far clearer than three overlapping
@@ -503,7 +506,7 @@ export default function DashboardScreen() {
           <Heading style={{ marginTop: 0 }}>
             {tr.dashboard.distribution} · {monthLabel(month)}
           </Heading>
-          <Donut slices={donutSlices} supplementalSlices={donutSupplemental} totalMinor={dist.expenseTotalMinor} />
+          <Donut slices={donutSlices} supplementalSlices={donutSupplemental} totalMinor={distributionTotalMinor} />
         </Card>
       ) : null}
 

@@ -35,9 +35,14 @@ cross UI, local DB, and sync, so they are verified by hand before a release.
     day. The dashboard must show one total per persisted statement. Edit the
     card cycle and confirm old periods/dates stay unchanged. A legacy card with
     missing dates must block new charges without inventing an upcoming date.
-14. **External data/privacy:** with remote logos off, open Subscriptions and
-    confirm no favicon request leaves the device; opt in and confirm known logos
-    load, then turn it off again. Background the app for over 60 seconds and
-    confirm market prices disappear rather than remaining live. With FX offline,
-    foreign subscriptions must be reported as excluded from totals, never added
-    as raw TRY.
+14. **External data/privacy:** open Subscriptions and confirm known public
+    domains load cached favicons automatically, while utility/unknown/invalid or
+    local domains keep their local mark without a broken image. Background the
+    app for over 60 seconds and confirm market prices disappear rather than
+    remaining live. With FX offline, foreign subscriptions must be reported as
+    excluded from totals, never added as raw TRY.
+15. **Navigation/UI regression:** open every Settings and Cash Flow child route
+    both from its parent and as a direct link. The header back button must return
+    to history when present and its deterministic parent otherwise. At 320/390
+    px verify month cards keep three centred stats; installment progress and
+    card cycle dates remain readable; USD/EUR stay listed in Live Markets.

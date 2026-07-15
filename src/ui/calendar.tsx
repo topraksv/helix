@@ -5,11 +5,11 @@
 
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
-import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react-native";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { addMonthsToKey, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
-import { FadeIn, IconButton, Label } from "./components";
+import { Button, FadeIn, IconButton, Label } from "./components";
 import { pushOverlay } from "./keyboard";
 
 const WEEKDAYS = ["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz"];
@@ -109,11 +109,9 @@ export function CalendarSheet({
                 );
               })}
             </View>
-            <Pressable accessibilityRole="button" onPress={onClose} hitSlop={8} style={{ position: "absolute", top: -6, right: -6 }}>
-              <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: palette.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
-                <X size={15} color={palette.textMuted} />
-              </View>
-            </Pressable>
+            <View style={{ marginTop: spacing.sm }}>
+              <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={onClose} />
+            </View>
           </FadeIn>
         </Pressable>
       </Pressable>

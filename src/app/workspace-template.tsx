@@ -18,6 +18,7 @@ import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Body, Button, ChipPicker, EmptyState, Screen, SectionHeader } from "../ui/components";
 import { spacing } from "../ui/theme";
+import { navigateBack } from "../ui/navigation";
 
 const ALL_TEMPLATES = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
 
@@ -48,8 +49,7 @@ export default function WorkspaceTemplateModal() {
       }));
       await writeRows(userId, writes);
       scheduleSync(userId);
-      if (router.canGoBack()) router.back();
-      else router.replace("/(tabs)/settings");
+      navigateBack(router, "/(tabs)/settings");
     } finally {
       setBusy(false);
     }

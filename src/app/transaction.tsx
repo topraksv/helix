@@ -22,6 +22,7 @@ import { DateField } from "../ui/calendar";
 import { kv } from "../lib/kv";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
+import { navigateBack } from "../ui/navigation";
 
 type EntryType = "expense" | "income" | "transfer";
 
@@ -49,7 +50,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const isEdit = existing != null;
   // Opened as a router modal normally, but a web deep-link to /transaction has
   // no back stack — fall back to a real screen so "save" always closes it.
-  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"));
+  const close = () => navigateBack(router, "/(tabs)/cash-flow");
 
   const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? "expense");
   const [amountRaw, setAmountRaw] = useState(existing ? (Math.abs(existing.amountMinor) / 100).toFixed(2).replace(".", ",") : "");

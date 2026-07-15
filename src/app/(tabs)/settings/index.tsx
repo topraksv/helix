@@ -17,7 +17,6 @@ import {
   FileDown,
   FileSpreadsheet,
   FileUp,
-  Image as ImageIcon,
   KeyRound,
   LogOut,
   PiggyBank,
@@ -38,7 +37,7 @@ import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalThemePreference } from "../../_layout";
 import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../lib/kv";
-import { setRemoteLogosEnabled, useDevicePreferences } from "../../../lib/device-preferences";
+import { useDevicePreferences } from "../../../lib/device-preferences";
 import { tr } from "../../../i18n/tr";
 import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
@@ -55,7 +54,6 @@ export default function SettingsScreen() {
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
-  const remoteLogos = useDevicePreferences((state) => state.remoteLogos);
   const notifications = useDevicePreferences((state) => state.notifications);
   const [notificationBusy, setNotificationBusy] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
@@ -322,22 +320,8 @@ export default function SettingsScreen() {
         <ListRow
           icon={CalendarClock}
           title={tr.settings.showPending}
-          titleLines={2}
+          subtitle={tr.settings.showPendingHint}
           right={<Toggle value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
-        />
-        <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.settings.showPendingHint}</Body>
-        <ListRow
-          icon={ImageIcon}
-          title={tr.settings.remoteLogos}
-          subtitle={tr.settings.remoteLogosHint}
-          right={
-            <Toggle
-              value={remoteLogos}
-              onValueChange={(value) => {
-                void setRemoteLogosEnabled(value).catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
-              }}
-            />
-          }
         />
       </Card>
 

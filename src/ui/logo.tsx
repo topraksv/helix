@@ -1,7 +1,7 @@
 /**
  * Brand mark for a subscription, derived from its NAME alone and rendered
- * locally by default. A device-local, explicit privacy preference may enable
- * remote favicons; otherwise no subscription-derived network request is made:
+ * locally when no known public domain resolves. Known or previously stored
+ * public domains may load a cached favicon automatically; failures remain local:
  *   utility keyword  → themed lucide icon chip (electricity, water, internet…)
  *   known brand      → a chip in the brand's accent colour with its monogram
  *   otherwise        → deterministic-hue initials badge
@@ -178,14 +178,10 @@ export function Logo({
   name,
   domain,
   size = 36,
-  allowRemote = false,
 }: {
   name: string;
   domain?: string | null;
   size?: number;
-  /** When false, never fetch a remote favicon (privacy) — fall back to the
-   *  local brand chip / initials. Controlled by a settings toggle. */
-  allowRemote?: boolean;
 }) {
   const { palette } = useTheme();
   const [failedDomain, setFailedDomain] = useState<string | null>(null);
@@ -193,10 +189,9 @@ export function Logo({
   const utility = UTILITY_ICONS.find((u) => u.match.test(name));
   const key = name.trim().toLocaleLowerCase("tr-TR");
   const brand = BRAND[key] ?? BRAND[key.split(/\s+/)[0]] ?? null;
-  // A utility (electricity/water/…) keeps its themed icon; otherwise, if we can
-  // resolve a domain AND remote logos are allowed, fetch the real favicon and
-  // fall back to the local chip on any error (offline, unknown host).
-  const faviconDomain = utility || !allowRemote ? null : domainFor(name, domain);
+  // A utility (electricity/water/…) keeps its themed icon; other known public
+  // domains load transparently and fall back locally on any network error.
+  const faviconDomain = utility ? null : domainFor(name, domain);
   const faviconUrl = remoteFaviconUrl(faviconDomain);
 
   if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {

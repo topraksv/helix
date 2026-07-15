@@ -14,6 +14,7 @@ import { Body, Button, Heading, IconButton, MoneyField, Screen, Spread } from ".
 import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
+import { navigateBack } from "../ui/navigation";
 
 export default function BulkEntryModal() {
   const userId = useUserId();
@@ -92,7 +93,7 @@ export default function BulkEntryModal() {
       {savedMsg ? <Body style={{ marginBottom: spacing.md }}>✅ {savedMsg}</Body> : null}
       <View style={{ gap: spacing.sm }}>
         <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
-        <Button label={tr.common.done} variant="secondary" onPress={() => router.back()} />
+        <Button label={tr.common.done} variant="secondary" onPress={() => navigateBack(router, "/(tabs)/cash-flow")} />
       </View>
     </Screen>
   );

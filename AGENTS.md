@@ -83,12 +83,17 @@ agent-to-agent communication that did not occur.
   FX cache is user-scoped. Missing rates stay missing; never interpret a foreign
   amount as TRY. Live market quotes expire after 60 seconds and the socket runs
   only while an unlocked authenticated app is active.
-- **Notification and remote-logo consent is device-local and opt-in.** Do not
-  request notification permission during boot. Disabled notifications clear
-  legacy schedules; sign-out/account switch clears scheduled and presented
-  account details. Subscription logos render locally by default. Google's
-  favicon service may be used only after the device preference is explicitly
-  enabled, with a validated/encoded public hostname.
+- **Notification consent is device-local and opt-in.** Do not request
+  notification permission during boot. Disabled notifications clear legacy
+  schedules; sign-out/account switch clears scheduled and presented account
+  details. Subscription logos resolve automatically: utilities and unknowns
+  stay local; a known/stored domain may use Google's favicon service only after
+  strict public-host validation/encoding, with disk cache and a local fallback.
+- **Every back action has a deterministic parent.** Use `HeaderBackButton` for
+  stack headers and `navigateBack` for explicit close/done actions; raw
+  `router.back()` is not sufficient for direct links with no history. Nested
+  Settings/Cash Flow stacks declare `index` as their initial route. Do not set a
+  root `(tabs)` initial route: it mounts protected hooks on anonymous auth pages.
 - **Sync ordering is server-authoritative.** Supabase normalizes `updated_at`;
   every push selects and conditionally merges that acknowledgement before its
   exact outbox events are removed. Never advance a pull cursor past an invalid
