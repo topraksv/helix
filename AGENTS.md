@@ -1,5 +1,37 @@
 # Helix — agent notes
 
+## Cross-agent continuity (Codex + Claude)
+
+This repository is the shared memory between agents. No agent may assume it
+can see another agent's private chat or model-specific memory. Continuity and
+cross-checking happen through the working tree, Git history, this file, and
+[`docs/AI_HANDOFF.md`](docs/AI_HANDOFF.md).
+
+At the start of every task, every agent must:
+
+1. Read this file and `docs/AI_HANDOFF.md` completely.
+2. Inspect `git status`, the relevant diff, and recent Git history. Git and the
+   current files are authoritative if a handoff note is stale.
+3. Treat existing uncommitted changes as another agent's/user's work: understand
+   and preserve them unless the user explicitly asks to replace them.
+4. Verify relevant claims from a previous agent against code/tests; a note that
+   something is fixed or shipped is not proof by itself.
+
+At the end of every completed task, the acting agent must refresh
+`docs/AI_HANDOFF.md` with the branch and pre-change/base commit, active work,
+files changed, verification performed, deployment/OTA state, decisions, and
+unresolved risks. (A file cannot name the hash of the commit that contains
+itself; `git log` is always the authority for the resulting HEAD.)
+Update this `AGENTS.md` whenever a durable architecture invariant, toolchain
+requirement, design rule, hard-won lesson, or shipping procedure changes. Keep
+`CLAUDE.md` aligned with the same protocol, but do not duplicate the full
+architecture there—`AGENTS.md` remains the canonical instruction source.
+
+An agent may say work was "cross-checked" only after independently inspecting
+the diff and running the relevant checks. If both agents have not actually run,
+say that the work is ready for the other agent to verify; never imply direct
+agent-to-agent communication that did not occur.
+
 ## Toolchain (READ FIRST)
 
 - **Expo SDK 54** — read the versioned docs at
