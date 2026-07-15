@@ -68,6 +68,11 @@ agent-to-agent communication that did not occur.
   expenses are installment/subscription-linked, and ordinary expenses default
   to variable. Upcoming card charges collapse into one dated statement per
   card; cards without a real due day never get a synthetic payment date.
+- **Current-balance reconciliation uses `balance_adjustments`.** It replaces one
+  deterministic row per day; never rewrite the opening/start month to match a
+  current balance. Adjustments are separate from income/expense analytics,
+  visible and undoable. The current model has one aggregate Helix balance, not
+  independently seeded balances per payment source.
 - **Password recovery uses Supabase PKCE.** Web reset redirects must retain the
   Router `/helix` base path; installed builds use the existing `helix://` scheme.
   Recovery routes are intentionally exempt from normal signed-in/onboarding

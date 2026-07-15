@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLedger, currentBalance, projectedBalance } from "../src/domain/balance";
+import { buildLedger, currentBalance, projectedBalance, reconciliationDelta } from "../src/domain/balance";
 import type { TxLike } from "../src/domain/types";
 import { tl, tx } from "./helpers";
 
@@ -137,6 +137,16 @@ describe("§2.8 payer-other exclusion", () => {
 });
 
 describe("balance adjustments (reconciliation)", () => {
+  it("replaces the same-day delta instead of stacking corrections", () => {
+    expect(reconciliationDelta(1200_00, 1000_00)).toBe(200_00);
+    // The displayed 1,200 already includes the prior +200 row. Re-entering the
+    // same target keeps that row at +200 rather than adding another +200.
+    expect(reconciliationDelta(1200_00, 1200_00, 200_00)).toBe(200_00);
+    // Returning to the underlying balance produces zero, which the repo stores
+    // as a tombstone instead of a meaningless live adjustment.
+    expect(reconciliationDelta(1000_00, 1200_00, 200_00)).toBe(0);
+  });
+
   it("applies signed adjustments in their month", () => {
     const ledger = buildLedger({
       openingBalanceMinor: 1000_00,
@@ -151,6 +161,22 @@ describe("balance adjustments (reconciliation)", () => {
     });
     expect(ledger[0].closingMinor).toBe(950_00);
     expect(ledger[1].closingMinor).toBe(975_00);
+  });
+
+  it("leaves the opening and every prior month unchanged", () => {
+    const base = {
+      openingBalanceMinor: 1000_00,
+      startMonth: "2026-01" as const,
+      endMonth: "2026-07" as const,
+      transactions: [],
+      today: "2026-07-31" as const,
+    };
+    const without = buildLedger({ ...base, adjustments: [] });
+    const corrected = buildLedger({ ...base, adjustments: [{ date: "2026-07-15", amountMinor: -125_00 }] });
+    expect(corrected[0].openingMinor).toBe(1000_00);
+    expect(corrected.slice(0, 6)).toEqual(without.slice(0, 6));
+    expect(corrected[6].openingMinor).toBe(without[6].openingMinor);
+    expect(corrected[6].closingMinor).toBe(without[6].closingMinor - 125_00);
   });
 });
 

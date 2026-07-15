@@ -13,23 +13,27 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { writeSetting } from "../db/mutations";
+import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react-native";
+import { restoreRow, softDelete, writeSetting } from "../db/mutations";
 import { setCurrentBalance } from "../data/repo";
-import { settingValue, useLedger, useSettingsMap, useUserId } from "../data/hooks";
+import { settingValue, useAdjustments, useLedger, useSettingsMap, useUserId } from "../data/hooks";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
-import { monthLabel, tr } from "../i18n/tr";
-import { Amount, Body, Button, Card, Heading, IconButton, MoneyField, Screen, Spread } from "./components";
+import { dateLabel, monthLabel, tr } from "../i18n/tr";
+import { Amount, Body, Button, Card, CardList, Heading, IconButton, MoneyField, Row, Screen, Spread } from "./components";
 import { appAlert } from "./dialog";
+import { errorNotice, successNotice } from "./haptics";
 import { spacing } from "./theme";
+import { useUndo } from "./undo";
 
 export function OpeningBalanceEditor() {
   const userId = useUserId();
   const settings = useSettingsMap();
   const router = useRouter();
   const bundle = useLedger(yearOf(todayISO()));
-  const computed = bundle?.actualBalanceMinor ?? 0;
+  const adjustments = useAdjustments();
+  const undo = useUndo();
+  const computed = bundle?.actualBalanceMinor ?? null;
 
   // --- primary: set current balance -----------------------------------------
   // Pristine until the user types (null): mirror the computed balance so the
@@ -37,18 +41,20 @@ export function OpeningBalanceEditor() {
   const [targetRaw, setTargetRaw] = useState<string | null>(null);
   const [targetMinor, setTargetMinor] = useState<number | null>(null);
   const [savingBalance, setSavingBalance] = useState(false);
-  const targetValue = targetRaw ?? (computed / 100).toFixed(2).replace(".", ",");
+  const targetValue = targetRaw ?? (computed == null ? "" : (computed / 100).toFixed(2).replace(".", ","));
   const effectiveTarget = targetRaw === null ? computed : targetMinor;
-  const balanceDirty = effectiveTarget != null && effectiveTarget !== computed;
+  const balanceDirty = computed != null && effectiveTarget != null && effectiveTarget !== computed;
 
   const saveCurrent = async () => {
-    if (effectiveTarget == null || !balanceDirty) return;
+    if (computed == null || effectiveTarget == null || !balanceDirty) return;
     setSavingBalance(true);
     try {
-      await setCurrentBalance(userId, effectiveTarget, computed);
+      await setCurrentBalance(userId, effectiveTarget, computed, tr.settings.balanceAdjustmentNote);
       scheduleSync(userId);
+      successNotice();
       close();
     } catch (e) {
+      errorNotice();
       void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {
       setSavingBalance(false);
@@ -85,6 +91,24 @@ export function OpeningBalanceEditor() {
     }
   };
 
+  const removeAdjustment = async (id: string) => {
+    const snapshot = await softDelete(userId, "balance_adjustments", id);
+    if (!snapshot) return;
+    scheduleSync(userId);
+    undo.show(
+      tr.settings.balanceAdjustmentDeleted,
+      () => {
+        void restoreRow(userId, "balance_adjustments", snapshot).then(() => scheduleSync(userId));
+      },
+      "warning",
+    );
+  };
+
+  // Never let the async ledger's pre-load fallback masquerade as a real zero
+  // balance; the editor becomes actionable only after its accounting inputs load.
+  if (computed == null) return <Screen>{null}</Screen>;
+  const visibleAdjustments = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
+
   return (
     <Screen>
       <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.openingScreenHint}</Body>
@@ -106,8 +130,39 @@ export function OpeningBalanceEditor() {
         {!balanceDirty ? (
           <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.balanceMatches}</Body>
         ) : null}
-        <Button label={tr.common.save} onPress={() => void saveCurrent()} disabled={!balanceDirty} loading={savingBalance} />
+        <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.balanceScopeHint}</Body>
+        <Button label={tr.common.save} onPress={() => void saveCurrent()} disabled={!balanceDirty} loading={savingBalance} haptic="none" />
       </Card>
+
+      <CardList
+        items={visibleAdjustments}
+        keyExtractor={(adjustment) => adjustment.id}
+        header={
+          <View style={{ marginBottom: spacing.sm }}>
+            <Heading style={{ marginTop: 0 }}>{tr.settings.balanceAdjustmentsTitle}</Heading>
+            <Body muted style={{ fontSize: 12 }}>{tr.settings.balanceAdjustmentsHint}</Body>
+          </View>
+        }
+        renderItem={(adjustment) => (
+          <Spread>
+            <View style={{ flex: 1, paddingRight: spacing.md }}>
+              <Body>{dateLabel(adjustment.date)}</Body>
+              <Body muted style={{ fontSize: 12 }}>{adjustment.note ?? tr.settings.balanceAdjustmentFallback}</Body>
+            </View>
+            <Row gap={spacing.sm}>
+              <Amount minor={adjustment.amountMinor} />
+              <IconButton
+                icon={Trash2}
+                size={32}
+                tone="danger"
+                label={tr.common.delete}
+                haptic="none"
+                onPress={() => void removeAdjustment(adjustment.id)}
+              />
+            </Row>
+          </Spread>
+        )}
+      />
 
       {showAdvanced ? (
         <Card>
