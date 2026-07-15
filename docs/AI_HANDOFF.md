@@ -178,7 +178,10 @@ diff and running checks proportionate to the change.
   semantics. Playwright sign-in regression passed at 320/390/1280 px with no
   overflow or browser errors. Physical Taptic Engine feel still requires a real
   iPhone; browser/Android intentionally cannot exercise it.
-- Commit/push/web/OTA state is pending at this note's write time.
+- Shipped as `7e2e0c3`: pushed to `main`, GitHub `deploy-web` run
+  `29407342257` completed successfully, production returned HTTP 200, and EAS
+  `preview` update group `a19b7bb8-9d0d-487c-ab4f-01e667cda956` published for
+  iOS and Android.
 
 ### 2026-07-15 — Codex
 
