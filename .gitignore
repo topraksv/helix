@@ -40,6 +40,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Supabase CLI local link/cache state
+supabase/.temp/
+
 # typescript
 *.tsbuildinfo
 
