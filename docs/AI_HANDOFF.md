@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 16 files, 157 tests passing
+- Test baseline: 17 files, 161 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -58,8 +58,9 @@ current code before fixing it.
    dividers, and manual derivation memos conflict with the UI/Compiler rules in
    `AGENTS.md` and need an app-wide sweep.
 5. Foreign subscription totals fall back to treating an unavailable FX amount
-   as TRY; JSON restore validation does not validate enums, ranges, dates, or
-   relational integrity; person/source deletion can leave orphan references.
+   as TRY; person/source deletion can leave orphan references. JSON restore now
+   validates types/enums/date ranges before an atomic write, but relational
+   integrity is still part of the later data-integrity package.
 6. Onboarding person deletion does not remap draft source `personIndex` values.
 7. README/testing counts and the README palette are stale; web HTML language is
     `en`, and Android biometric permissions are duplicated in `app.json`.
@@ -83,6 +84,23 @@ diff and running checks proportionate to the change.
 
 ## Recent handoffs
 
+### 2026-07-15 — Codex (atomic import and restore package)
+
+- Base `a1e9b39`, branch `main`.
+- JSON backups now have byte/row/text bounds and reject the entire file on a
+  bad required field, unsafe integer, enum, calendar date or settings JSON.
+  Accepted rows across every table are committed by one `writeRows`, with
+  table-level LWW lookups replacing the former row-by-row queries.
+- Excel parsing has byte/sheet/row/column/cell/text bounds, validates numeric
+  month ranges and rejects money outside safe minor-unit integers. Re-import
+  replacement now commits prior tombstones, new categories/transactions/notes,
+  reconstructed plans, column membership, batch metadata and opening settings
+  atomically. Batch v2 owns plan/generated-row ids; deterministic detection
+  safely upgrades legacy import batches. Category matching normalizes whitespace
+  and includes category kind; add-mode column membership is a union.
+- Typecheck, 17 files/161 tests and Expo lint pass. Static export, browser smoke
+  and shipping follow this package's commit.
+
 ### 2026-07-15 — Codex (financial classification package)
 
 - Base `95edde9`, branch `main`.
@@ -95,8 +113,10 @@ diff and running checks proportionate to the change.
   fixed/variable totals, forecasts and search display use the same flow rule.
 - Donuts keep positive arc geometry, list refunds separately and display the net
   ledger-compatible expense total. Manual bulk history is now past-month only.
-- Typecheck, 16 files/157 tests and Expo lint pass. A local-mode static export
-  also passes; final export/browser smoke and shipping follow the commit.
+- Typecheck, 16 files/157 tests, Expo lint, static export and Playwright sign-in
+  smoke at 320/390/1280 px passed. Shipped as `a1e9b39`: GitHub web run
+  `29430809369` succeeded and EAS preview update group
+  `a465ab48-5d4c-4831-9704-f944b8c73ff7` was published.
 
 ### 2026-07-15 — Codex (server-authoritative sync package)
 

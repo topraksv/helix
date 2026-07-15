@@ -61,6 +61,10 @@ agent-to-agent communication that did not occur.
   earliest data and the opening balance is back-computed.
 - **Every user write goes through `writeRows`** (outbox + `last_entry_at` +
   atomic). Deletes are tombstones (`softDelete`), never hard deletes.
+- **Imports are all-or-nothing.** JSON backups are completely validated before
+  one `writeRows`; Excel replace builds old tombstones, new rows, import-batch
+  metadata, column membership and opening settings into that same transaction.
+  Keep file/row/cell limits and import batch ownership intact.
 - **Every authenticated background task is session-scoped.** Auth activates an
   epoch with `startSyncSession`; sign-out/account deletion awaits
   `stopSyncSession`. Maintenance, FX, notifications, or any other async work

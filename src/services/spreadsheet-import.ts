@@ -18,6 +18,13 @@ import type { MonthKey } from "../domain/dates";
 import { addMonthsToKey, yearOf } from "../domain/dates";
 import { roundHalfAwayFromZero, type Minor } from "../domain/money";
 
+export const MAX_WORKBOOK_BYTES = 15 * 1024 * 1024;
+const MAX_WORKBOOK_SHEETS = 100;
+const MAX_WORKBOOK_ROWS_PER_SHEET = 20_000;
+const MAX_WORKBOOK_COLUMNS_PER_SHEET = 500;
+const MAX_WORKBOOK_CELLS = 750_000;
+const MAX_CELL_TEXT_LENGTH = 20_000;
+
 /** One spreadsheet cell, with its value plus any formula/comment metadata. */
 export interface CellData {
   /** Computed value in minor units (null = empty). Includes negatives. */
@@ -120,9 +127,9 @@ export function parseMonthLabel(value: unknown): MonthKey | null {
   const s = String(value ?? "").trim().toLocaleLowerCase("tr-TR");
   if (s === "") return null;
   let m = /^(\d{4})[-/.](\d{1,2})$/.exec(s);
-  if (m) return `${m[1]}-${String(Number(m[2])).padStart(2, "0")}`;
+  if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) return `${m[1]}-${String(Number(m[2])).padStart(2, "0")}`;
   m = /^(\d{1,2})[-/.](\d{4})$/.exec(s);
-  if (m) return `${m[2]}-${String(Number(m[1])).padStart(2, "0")}`;
+  if (m && Number(m[1]) >= 1 && Number(m[1]) <= 12) return `${m[2]}-${String(Number(m[1])).padStart(2, "0")}`;
   // "2025 Ocak" | "Ocak 2025" | "Oca'25" — a month name with a nearby year.
   const nameMatch = /([a-zçğıöşü]{3,})/.exec(s);
   const yearMatch = /(\d{2,4})/.exec(s);
@@ -141,14 +148,18 @@ export function parseMonthLabel(value: unknown): MonthKey | null {
 
 /** Spreadsheet cell → minor units. Accepts numbers and TR/EN formatted text. */
 export function parseSheetAmount(value: unknown): Minor | null {
-  if (typeof value === "number" && Number.isFinite(value)) return roundHalfAwayFromZero(value * 100);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const minor = roundHalfAwayFromZero(value * 100);
+    return Number.isSafeInteger(minor) ? minor : null;
+  }
   const s = String(value ?? "").replace(/[₺\s]/g, "");
   if (s === "" || s === "-") return null;
   // TR "1.234,56" or EN "1,234.56" or plain "1234.56"
   const trLike = /^-?\d{1,3}(\.\d{3})*(,\d{1,2})?$|^-?\d+(,\d{1,2})?$/.test(s);
   const normalized = trLike ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   const num = Number(normalized);
-  return Number.isFinite(num) ? roundHalfAwayFromZero(num * 100) : null;
+  const minor = Number.isFinite(num) ? roundHalfAwayFromZero(num * 100) : Number.NaN;
+  return Number.isSafeInteger(minor) ? minor : null;
 }
 
 /**
@@ -164,7 +175,8 @@ export function parseFormulaLiterals(formula: string): Minor[] | null {
   if (!/^[+-]?\d+(\.\d+)?([+-]\d+(\.\d+)?)+$/.test(compact)) return null; // needs 2+ terms, digits/dots only
   const terms = compact.match(/[+-]?\d+(?:\.\d+)?/g);
   if (!terms) return null;
-  return terms.map((t) => roundHalfAwayFromZero(Number(t) * 100));
+  const minors = terms.map((t) => roundHalfAwayFromZero(Number(t) * 100));
+  return minors.every(Number.isSafeInteger) ? minors : null;
 }
 
 function commentText(c?: { t?: string }[]): string | null {
@@ -450,6 +462,13 @@ export function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
       const cell = ws[XLSX.utils.encode_cell({ r, c: col })] as
         | { v?: unknown; f?: string; c?: { t?: string }[] }
         | undefined;
+      if (
+        (typeof cell?.v === "string" && cell.v.length > MAX_CELL_TEXT_LENGTH) ||
+        (cell?.f && cell.f.length > MAX_CELL_TEXT_LENGTH) ||
+        cell?.c?.some((comment) => (comment.t?.length ?? 0) > MAX_CELL_TEXT_LENGTH)
+      ) {
+        throw new Error(tr.importer.workbookTooComplex);
+      }
       row.push(cell ? { v: cell.v ?? null, f: cell.f, c: cell.c } : { v: null });
     }
     grid.push(row);
@@ -459,11 +478,28 @@ export function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
 
 /** Parse every sheet in a workbook; unparseable sheets are reported, not dropped. */
 export function parseWorkbook(wb: XLSX.WorkBook): ParsedWorkbook {
+  if (wb.SheetNames.length > MAX_WORKBOOK_SHEETS) throw new Error(tr.importer.workbookTooComplex);
   const sheets: ParsedSheet[] = [];
   const unparsed: UnparsedSheet[] = [];
   const informational = new Set<string>();
+  let totalCells = 0;
   for (const name of wb.SheetNames) {
-    const grid = worksheetToRawGrid(wb.Sheets[name]);
+    const worksheet = wb.Sheets[name];
+    const ref = worksheet?.["!fullref"] ?? worksheet?.["!ref"];
+    if (ref) {
+      const range = XLSX.utils.decode_range(ref);
+      const rows = range.e.r - range.s.r + 1;
+      const columns = range.e.c - range.s.c + 1;
+      totalCells += rows * columns;
+      if (
+        rows > MAX_WORKBOOK_ROWS_PER_SHEET ||
+        columns > MAX_WORKBOOK_COLUMNS_PER_SHEET ||
+        totalCells > MAX_WORKBOOK_CELLS
+      ) {
+        throw new Error(tr.importer.workbookTooComplex);
+      }
+    }
+    const grid = worksheetToRawGrid(worksheet);
     for (const row of grid) {
       for (const cell of row) {
         const s = typeof cell?.v === "string" ? cell.v : "";
@@ -482,6 +518,13 @@ export function parseWorkbook(wb: XLSX.WorkBook): ParsedWorkbook {
 
 /** Decode uploaded bytes (xlsx/xlsm/csv/ods) and parse all sheets. */
 export function parseWorkbookBytes(data: Uint8Array): ParsedWorkbook {
-  const wb = XLSX.read(data, { type: "array", cellDates: true, cellFormula: true, sheetStubs: true });
+  if (data.byteLength > MAX_WORKBOOK_BYTES) throw new Error(tr.importer.fileTooLarge);
+  const wb = XLSX.read(data, {
+    type: "array",
+    cellDates: true,
+    cellFormula: true,
+    sheetStubs: true,
+    sheetRows: MAX_WORKBOOK_ROWS_PER_SHEET + 1,
+  });
   return parseWorkbook(wb);
 }

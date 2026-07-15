@@ -18,7 +18,7 @@ import { usePersons, useUserId } from "../data/hooks";
 import { yearOf } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
-import { parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
+import { MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
 import { Body, Button, Card, ChipPicker, Row, Screen, SectionHeader } from "../ui/components";
 import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
@@ -174,6 +174,7 @@ export default function ImportWizardModal() {
         copyToCacheDirectory: true,
       });
       if (picked.canceled || !picked.assets[0]) return;
+      if ((picked.assets[0].size ?? 0) > MAX_WORKBOOK_BYTES) throw new Error(tr.importer.fileTooLarge);
       const uri = picked.assets[0].uri;
       const bytes =
         Platform.OS === "web"

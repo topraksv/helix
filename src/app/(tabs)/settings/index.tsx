@@ -28,7 +28,7 @@ import {
 import { useSession } from "../../../auth/session";
 import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
 import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
-import { buildExportBundle, buildTransactionsCsv, importBundle, saveTextFile } from "../../../services/export-import";
+import { buildExportBundle, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
 import { rescheduleAll } from "../../../services/notifications";
 import { scheduleSync, syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
@@ -129,8 +129,9 @@ export default function SettingsScreen() {
     const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
     try {
+      if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
       const content = await new File(picked.assets[0].uri).text();
-      const result = await importBundle(userId, JSON.parse(content));
+      const result = await importBundle(userId, parseExportBundleText(content));
       const message =
         result.skipped > 0
           ? `${tr.settings.importSuccess(result.imported)} ${tr.errors.importInvalidRows(result.skipped)}`
