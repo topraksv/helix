@@ -72,6 +72,9 @@ agent-to-agent communication that did not occur.
   Router `/helix` base path; installed builds use the existing `helix://` scheme.
   Recovery routes are intentionally exempt from normal signed-in/onboarding
   guards. Never expose whether a reset-request e-mail belongs to an account.
+- **New subscriptions require a live expense category.** The repo validates it,
+  not only the form. The friendly default is the deterministic, reusable
+  `Abonelikler` category; legacy categoryless rows remain readable.
 - **UI strings live only in `src/i18n/tr.ts`.** Code is English, UI is Turkish.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint

@@ -1,9 +1,9 @@
 /** Subscription add/edit modal. Price edits append to price_history (spec §3.1). */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { upsertSubscription } from "../data/repo";
+import { ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
 import { useCategories, usePersons, useSources, useSubscriptions, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
 import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
@@ -12,12 +12,12 @@ import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
-import { Body, Button, ChipPicker, Field, Label, MoneyField, Screen, Segmented, Spread, Toggle } from "../ui/components";
+import { Body, Button, Card, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
-import { spacing } from "../ui/theme";
+import { spacing, useTheme } from "../ui/theme";
 
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
@@ -39,6 +39,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const sources = useSources();
   const persons = usePersons();
   const router = useRouter();
+  const { palette } = useTheme();
   const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)/subscriptions"));
 
   const [name, setName] = useState(existing?.name ?? "");
@@ -64,11 +65,13 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const domain = existing?.websiteDomain ?? "";
   const [note, setNote] = useState(existing?.note ?? "");
   const [busy, setBusy] = useState(false);
+  const [showCategoryOffer, setShowCategoryOffer] = useState(false);
+  const operationActive = useRef(false);
 
   const billingDay = Number(billingDayStr);
   const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);
   const trialValid = !isTrial || trialDate != null;
-  const valid =
+  const baseValid =
     name.trim() !== "" &&
     amountMinor != null &&
     amountMinor > 0 &&
@@ -79,48 +82,86 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     intervalMonths >= 1 &&
     trialValid &&
     personId != null;
+  const expenseCategories = categories.filter((category) => category.kind === "expense");
+  const selectedCategoryId = expenseCategories.some((category) => category.id === categoryId) ? categoryId : null;
+
+  const persist = async (resolvedCategoryId: string) => {
+    if (!personId) return;
+    const today = todayISO();
+    const nextDueDate = existing
+      ? existing.billingDay === billingDay && existing.intervalMonths === intervalMonths
+        ? existing.nextDueDate
+        : nextDueAfter(today, today, intervalMonths, billingDay)
+      : dueDateInMonth(monthKeyOf(today), billingDay) >= today
+        ? dueDateInMonth(monthKeyOf(today), billingDay)
+        : nextDueAfter(today, today, intervalMonths, billingDay);
+    await upsertSubscription(userId, {
+      id: existing?.id,
+      name: name.trim(),
+      amountMinor: amountMinor!,
+      currency,
+      cycle,
+      intervalMonths,
+      billingDay,
+      nextDueDate,
+      paymentSourceId: sourceId,
+      categoryId: resolvedCategoryId,
+      personId,
+      isActive,
+      trialEndDate: isTrial ? trialDate : null,
+      autoPay,
+      websiteDomain: domain || null,
+      note: note.trim() || null,
+    });
+    scheduleSync(userId);
+    close();
+  };
+
+  const beginSave = () => {
+    if (operationActive.current) return false;
+    operationActive.current = true;
+    setBusy(true);
+    return true;
+  };
+
+  const finishSave = () => {
+    operationActive.current = false;
+    setBusy(false);
+  };
 
   const save = async () => {
-    if (!valid || !personId) return;
-    setBusy(true);
+    if (!baseValid || !personId) return;
+    if (!selectedCategoryId) {
+      setShowCategoryOffer(true);
+      return;
+    }
+    if (!beginSave()) return;
     try {
-      const today = todayISO();
-      const nextDueDate = existing
-        ? existing.billingDay === billingDay && existing.intervalMonths === intervalMonths
-          ? existing.nextDueDate
-          : nextDueAfter(today, today, intervalMonths, billingDay)
-        : dueDateInMonth(monthKeyOf(today), billingDay) >= today
-          ? dueDateInMonth(monthKeyOf(today), billingDay)
-          : nextDueAfter(today, today, intervalMonths, billingDay);
-      await upsertSubscription(userId, {
-        id: existing?.id,
-        name: name.trim(),
-        amountMinor: amountMinor!,
-        currency,
-        cycle,
-        intervalMonths,
-        billingDay,
-        nextDueDate,
-        paymentSourceId: sourceId,
-        categoryId,
-        personId,
-        isActive,
-        trialEndDate: isTrial ? trialDate : null,
-        autoPay,
-        websiteDomain: domain || null,
-        note: note.trim() || null,
-      });
-      scheduleSync(userId);
-      close();
+      await persist(selectedCategoryId);
     } catch (e) {
       console.error("[subscription.save]", e);
       void appAlert(tr.errors.saveFailed, tr.errors.title);
     } finally {
-      setBusy(false);
+      finishSave();
     }
   };
 
-  useSubmitOnEnter(() => void save(), valid && !busy);
+  const acceptCategoryOffer = async () => {
+    if (!baseValid || !beginSave()) return;
+    try {
+      const resolvedCategoryId = await ensureSubscriptionCategory(userId, tr.subs.suggestedCategoryName);
+      setCategoryId(resolvedCategoryId);
+      setShowCategoryOffer(false);
+      await persist(resolvedCategoryId);
+    } catch (e) {
+      console.error("[subscription.category]", e);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    } finally {
+      finishSave();
+    }
+  };
+
+  useSubmitOnEnter(() => void save(), baseValid && !busy);
 
   const namePlaceholder = useRotatingPlaceholder(placeholderPools.subscription);
   return (
@@ -171,15 +212,36 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       <Field value={billingDayStr} onChangeText={setBillingDayStr} keyboardType="number-pad" placeholder={tr.subs.billingDay} />
       <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.billingDayHint}</Body>
 
-      {categories.length > 0 ? (
-        <>
-          <Label>{tr.tx.category}</Label>
-          <ChipPicker
-            options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }))}
-            value={categoryId}
-            onChange={setCategoryId}
-          />
-        </>
+      <Label>{tr.tx.category}</Label>
+      {expenseCategories.length > 0 ? (
+        <ChipPicker
+          options={expenseCategories.map((category) => ({ value: category.id, label: `${categoryIcon(category)} ${category.name}` }))}
+          value={selectedCategoryId}
+          onChange={(value) => {
+            setCategoryId(value);
+            setShowCategoryOffer(false);
+          }}
+        />
+      ) : null}
+      {showCategoryOffer && !selectedCategoryId ? (
+        <Card style={{ borderColor: palette.primary }}>
+          <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
+          <Row gap={spacing.sm} style={{ alignItems: "center", flexWrap: "wrap" }}>
+            <Button
+              size="sm"
+              label={tr.subs.categoryOfferAccept}
+              onPress={() => void acceptCategoryOffer()}
+              loading={busy}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              label={tr.subs.categoryOfferDecline}
+              onPress={() => setShowCategoryOffer(false)}
+              disabled={busy}
+            />
+          </Row>
+        </Card>
       ) : null}
       {sources.length > 0 ? (
         <>
@@ -222,7 +284,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         </Body>
       ) : null}
 
-      <Button label={tr.common.save} onPress={() => void save()} disabled={!valid} loading={busy} />
+      <Button label={tr.common.save} onPress={() => void save()} disabled={!baseValid} loading={busy} />
     </Screen>
   );
 }
