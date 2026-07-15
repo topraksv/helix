@@ -22,10 +22,10 @@ lags behind them.
 
 The repository-wide remediation requested on 2026-07-15 is in progress. The
 account lifecycle, sync ordering, financial classification, import/restore,
-derived obligations/references and credit-card statement packages are shipped.
-The external-data/privacy package is verified and awaiting its commit/deploy
-record. Remaining audit items below are being completed as separately verified
-and shipped packages. Always re-check `git status`; Git remains authoritative.
+derived obligations/references, credit-card statement and external-data/privacy
+packages are shipped. Remaining audit items below are being completed as
+separately verified and shipped packages. Always re-check `git status`; Git
+remains authoritative.
 
 ## Current architecture summary
 
@@ -83,7 +83,7 @@ diff and running checks proportionate to the change.
 
 ### 2026-07-15 — Codex (external data and device privacy package)
 
-- Base `be3ba37`, branch `main`; verification is complete and shipping follows.
+- Base `be3ba37`, branch `main`; shipped as `b54315f`.
 - FX fetches now have session cancellation, a 10-second timeout, response bounds
   and strict TCMB/Frankfurter parsing. Provider business dates are preserved,
   identical rates do not churn the outbox, caches are user-scoped, historical
@@ -100,6 +100,10 @@ diff and running checks proportionate to the change.
   rendered sign-in/recovery at 320/390/1280 px without browser errors or
   horizontal overflow. Physical permission prompts, Notification Center cleanup
   and socket background behavior still require the installed app/device pass.
+- Pushed to `main`; GitHub web run `29446420883` completed successfully and the
+  production root and Subscriptions routes returned HTTP 200. EAS `preview`
+  update group `83ec6197-ac26-4d00-a46a-45eec9486385` was published for iOS and
+  Android on runtime `1.0.0`; no native rebuild was required.
 
 ### 2026-07-15 — Codex (credit-card statement periods package)
 
