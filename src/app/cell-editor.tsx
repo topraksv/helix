@@ -119,7 +119,7 @@ export default function CellEditorModal() {
 
   const removeTx = async (id: string) => {
     const snapshot = await deleteTransaction(userId, id);
-    if (snapshot) undo.show(tr.tx.deletedUndo, () => void restoreRow(userId, "transactions", snapshot));
+    if (snapshot) undo.show(tr.tx.deletedUndo, () => void restoreRow(userId, "transactions", snapshot), "warning");
   };
 
   return (
@@ -218,7 +218,7 @@ export default function CellEditorModal() {
               <Row gap={spacing.sm}>
                 <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
                 <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })} />
-                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void removeTx(t.id)} />
+                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void removeTx(t.id)} />
               </Row>
             </Spread>
             {index < cellTx.length - 1 ? <Divider /> : null}

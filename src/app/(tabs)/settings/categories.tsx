@@ -97,7 +97,7 @@ export default function CategoriesScreen() {
     }
     const snapshot = await softDelete(userId, "categories", c.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "categories", snapshot));
+    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "categories", snapshot), "warning");
   };
 
   return (
@@ -189,7 +189,7 @@ export default function CategoriesScreen() {
                             setEditName(c.name);
                           }}
                         />
-                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
+                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(c)} />
                       </Row>
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>

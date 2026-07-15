@@ -45,7 +45,7 @@ export default function PersonsScreen() {
   const remove = async (p: (typeof persons)[number]) => {
     const snapshot = await softDelete(userId, "persons", p.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${p.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "persons", snapshot));
+    if (snapshot) undo.show(`${p.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "persons", snapshot), "warning");
   };
 
   return (
@@ -79,7 +79,7 @@ export default function PersonsScreen() {
               </Row>
               <Row gap={spacing.sm}>
                 <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => { setEditingId(p.id); setEditName(p.name); }} />
-                {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(p)} /> : null}
+                {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(p)} /> : null}
               </Row>
             </Spread>
           )

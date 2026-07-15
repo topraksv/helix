@@ -113,7 +113,7 @@ export default function IncomeRulesScreen() {
   const remove = async (r: (typeof incomes)[number]) => {
     const snapshot = await softDelete(userId, "recurring_incomes", r.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${r.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "recurring_incomes", snapshot));
+    if (snapshot) undo.show(`${r.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "recurring_incomes", snapshot), "warning");
   };
 
   return (
@@ -197,7 +197,7 @@ export default function IncomeRulesScreen() {
               </View>
               <Row gap={spacing.sm}>
                 <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(r)} />
-                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(r)} />
+                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(r)} />
               </Row>
             </Spread>
           )}

@@ -6,11 +6,14 @@ import { create } from "zustand";
 import { FadeIn } from "./components";
 import { radius, spacing, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
+import { haptic, selectionTap, type HapticKind } from "./haptics";
+
+type UndoTone = Extract<HapticKind, "success" | "warning">;
 
 interface UndoState {
   message: string | null;
   onUndo: (() => void) | null;
-  show: (message: string, onUndo: () => void) => void;
+  show: (message: string, onUndo: () => void, tone?: UndoTone) => void;
   clear: () => void;
 }
 
@@ -19,8 +22,9 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 export const useUndo = create<UndoState>((set) => ({
   message: null,
   onUndo: null,
-  show: (message, onUndo) => {
+  show: (message, onUndo, tone = "success") => {
     if (hideTimer) clearTimeout(hideTimer);
+    haptic(tone);
     set({ message, onUndo });
     hideTimer = setTimeout(() => set({ message: null, onUndo: null }), 6000);
   },
@@ -59,6 +63,7 @@ export function UndoSnackbar() {
           <Pressable
             accessibilityRole="button"
             onPress={() => {
+              selectionTap();
               onUndo();
               clear();
             }}

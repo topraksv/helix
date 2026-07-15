@@ -142,7 +142,7 @@ export default function ComputedColumnsScreen() {
     if (editingId === c.id) resetForm();
     const snapshot = await softDelete(userId, "computed_columns", c.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "computed_columns", snapshot));
+    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "computed_columns", snapshot), "warning");
   };
 
   const toggleVisible = async (id: string, show: boolean) => {
@@ -271,7 +271,7 @@ export default function ComputedColumnsScreen() {
                 </View>
                 <Row gap={spacing.sm}>
                   <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(c)} />
-                  <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(c)} />
+                  <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(c)} />
                 </Row>
               </Spread>
               <Spread style={{ marginTop: spacing.xs }}>
