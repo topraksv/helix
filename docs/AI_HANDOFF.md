@@ -101,4 +101,6 @@ diff and running checks proportionate to the change.
 - Confirmed typecheck, 124 tests, and Expo lint pass on the existing working tree.
 - Added the shared Codex/Claude continuity protocol; no application code changed.
 - Existing three-file UI diff remains user-owned and unmodified.
-- Runtime deployment: not required for this documentation-only change.
+- Protocol commit `8449e9c` was pushed to `main`; the automatic Pages workflow
+  may run, but there is no runtime change and no mobile OTA/native build is
+  required.
