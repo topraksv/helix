@@ -101,6 +101,7 @@ export function Screen({
   right,
   leading,
   maxWidth = 760,
+  scrollRef,
 }: {
   children: ReactNode;
   scroll?: boolean;
@@ -113,6 +114,8 @@ export function Screen({
   /** Optional mark shown to the left of the title (e.g. the brand logo). */
   leading?: ReactNode;
   maxWidth?: number;
+  /** Access to the vertical scroller for explicit workflow navigation. */
+  scrollRef?: React.RefObject<ScrollView | null>;
 }) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
@@ -168,7 +171,7 @@ export function Screen({
       style={{ flex: 1, backgroundColor: palette.background }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={inner} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
+      <ScrollView ref={scrollRef} contentContainerStyle={inner} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
         <FadeIn>
           {header}
           {children}

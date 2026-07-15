@@ -7,7 +7,7 @@
  * data/repo; this screen only guides and confirms.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
@@ -20,7 +20,7 @@ import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, Card, ChipPicker, EmptyState, Row, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, Card, ChipPicker, Row, Screen, SectionHeader } from "../ui/components";
 import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 
 // --- visual format guide ---------------------------------------------------
@@ -138,23 +138,42 @@ export default function ImportWizardModal() {
   const [busy, setBusy] = useState(false);
   const [reimportYears, setReimportYears] = useState<number[] | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const operationActive = useRef(false);
+
+  const beginOperation = () => {
+    if (operationActive.current) return false;
+    operationActive.current = true;
+    setBusy(true);
+    return true;
+  };
+  const finishOperation = () => {
+    operationActive.current = false;
+    setBusy(false);
+  };
+
+  useEffect(() => {
+    if (doneCount == null) return;
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
+  }, [doneCount]);
 
   const pick = async () => {
-    setError(null);
-    setReimportYears(null);
-    const picked = await DocumentPicker.getDocumentAsync({
-      type: [
-        "text/csv",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.ms-excel.sheet.macroEnabled.12", // xlsm
-        "application/vnd.ms-excel.sheet.binary.macroEnabled.12", // xlsb
-        "application/vnd.oasis.opendocument.spreadsheet", // ods
-      ],
-      copyToCacheDirectory: true,
-    });
-    if (picked.canceled || !picked.assets[0]) return;
+    if (!beginOperation()) return;
     try {
+      setError(null);
+      setReimportYears(null);
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: [
+          "text/csv",
+          "application/vnd.ms-excel",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.ms-excel.sheet.macroEnabled.12", // xlsm
+          "application/vnd.ms-excel.sheet.binary.macroEnabled.12", // xlsb
+          "application/vnd.oasis.opendocument.spreadsheet", // ods
+        ],
+        copyToCacheDirectory: true,
+      });
+      if (picked.canceled || !picked.assets[0]) return;
       const uri = picked.assets[0].uri;
       const bytes =
         Platform.OS === "web"
@@ -171,6 +190,8 @@ export default function ImportWizardModal() {
       setExcluded([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      finishOperation();
     }
   };
 
@@ -178,43 +199,63 @@ export default function ImportWizardModal() {
   const activeSheets = (workbook?.sheets ?? []).filter((s) => s.months.some((m) => selectedYears.includes(yearOf(m))));
 
   const startImport = async () => {
-    if (selectedYears.length === 0) return;
-    const already = await importedYears(userId, selectedYears);
-    if (already.length > 0) {
-      setReimportYears(already.sort());
-      return;
-    }
-    await doImport("add");
-  };
-
-  const doImport = async (mode: "replace" | "add") => {
-    const selfId = persons.find((p) => p.isSelf)?.id;
-    if (!selfId || selectedYears.length === 0) return;
-    setReimportYears(null);
-    setBusy(true);
+    if (selectedYears.length === 0 || !beginOperation()) return;
+    setError(null);
     try {
-      const { imported } = await importSheets(userId, {
-        sheets: activeSheets,
-        excludedLabels: excluded,
-        selectedYears,
-        selfId,
-        mode,
-        informationalCards: workbook?.informationalCards ?? [],
-      });
-      scheduleSync(userId);
-      setDoneCount(imported);
+      const already = await importedYears(userId, selectedYears);
+      if (already.length > 0) {
+        setReimportYears(already.sort());
+        return;
+      }
+      await performImport("add");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      finishOperation();
+    }
+  };
+
+  const performImport = async (mode: "replace" | "add") => {
+    const selfId = persons.find((p) => p.isSelf)?.id;
+    if (!selfId || selectedYears.length === 0) return;
+    setReimportYears(null);
+    const { imported } = await importSheets(userId, {
+      sheets: activeSheets,
+      excludedLabels: excluded,
+      selectedYears,
+      selfId,
+      mode,
+      informationalCards: workbook?.informationalCards ?? [],
+    });
+    scheduleSync(userId);
+    setDoneCount(imported);
+  };
+
+  const doImport = async (mode: "replace" | "add") => {
+    if (!beginOperation()) return;
+    setError(null);
+    try {
+      await performImport(mode);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      finishOperation();
     }
   };
 
   if (doneCount != null) {
     return (
-      <Screen>
-        <EmptyState icon={CheckCircle2} title={tr.importer.doneTitle(doneCount)} hint={tr.importer.doneHint} />
-        <Button label={tr.common.done} onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"))} />
+      <Screen scrollRef={scrollRef}>
+        <Card style={{ borderColor: palette.positive }}>
+          <Row gap={spacing.md} style={{ alignItems: "center" }}>
+            <CheckCircle2 size={26} color={palette.positive} />
+            <View style={{ flex: 1 }}>
+              <Text style={[type.heading, { color: palette.text }]}>{tr.importer.doneTitle(doneCount)}</Text>
+              <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.doneHint}</Body>
+            </View>
+          </Row>
+        </Card>
+        <Button icon={CheckCircle2} label={tr.common.done} onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/cash-flow"))} />
       </Screen>
     );
   }
@@ -234,9 +275,16 @@ export default function ImportWizardModal() {
   const preview: ParsedSheet | undefined = activeSheets[0];
 
   return (
-    <Screen>
+    <Screen scrollRef={scrollRef}>
       <Body muted style={{ marginBottom: spacing.md }}>{tr.importer.intro}</Body>
-      <Button icon={Upload} label={workbook ? tr.importer.pickAgain : tr.importer.pick} variant={workbook ? "secondary" : "primary"} onPress={() => void pick()} />
+      <Button
+        icon={Upload}
+        label={workbook ? tr.importer.pickAgain : tr.importer.pick}
+        variant={workbook ? "secondary" : "primary"}
+        onPress={() => void pick()}
+        disabled={busy}
+        loading={busy && workbook == null}
+      />
 
       {error ? (
         <Card style={{ marginTop: spacing.md, borderColor: palette.negative }}>
@@ -335,16 +383,16 @@ export default function ImportWizardModal() {
                   <Body style={{ marginBottom: spacing.sm }}>{tr.importer.reimportPrompt(reimportYears.join(", "))}</Body>
                   <Row gap={spacing.sm}>
                     <View style={{ flex: 1 }}>
-                      <Button label={tr.importer.reimportReplace} onPress={() => void doImport("replace")} loading={busy} />
+                      <Button label={tr.importer.reimportReplace} onPress={() => void doImport("replace")} loading={busy} disabled={busy} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Button label={tr.importer.reimportAdd} variant="secondary" onPress={() => void doImport("add")} loading={busy} />
+                      <Button label={tr.importer.reimportAdd} variant="secondary" onPress={() => void doImport("add")} loading={busy} disabled={busy} />
                     </View>
                   </Row>
-                  <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setReimportYears(null)} />
+                  <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setReimportYears(null)} disabled={busy} />
                 </Card>
               ) : (
-                <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} disabled={selectedYears.length === 0} />
+                <Button icon={FileSpreadsheet} label={tr.importer.confirm} onPress={() => void startImport()} loading={busy} disabled={busy || selectedYears.length === 0} />
               )}
             </>
           ) : null}
