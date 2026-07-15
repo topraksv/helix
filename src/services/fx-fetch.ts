@@ -9,82 +9,103 @@ import { create } from "zustand";
 import { deterministicId, naturalKeys } from "../db/ids";
 import { writeRows } from "../db/mutations";
 import { getSqliteAsync } from "../db/client";
-import { todayISO } from "../domain/dates";
+import { todayISO, type ISODate } from "../domain/dates";
 import { pickRate, type FxRate, type RateLookup } from "../domain/fx";
+import {
+  FETCHED_FX_CURRENCIES,
+  isValidRateDate,
+  parseFrankfurterRates,
+  parseTcmbRates,
+  type ProviderRateBatch,
+} from "../domain/fx-provider";
 
-export const SUPPORTED_CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
+export const SUPPORTED_CURRENCIES = ["TRY", ...FETCHED_FX_CURRENCIES] as const;
 export type Currency = (typeof SUPPORTED_CURRENCIES)[number];
 
-/** Parse TCMB today.xml ForexSelling rates (no XML lib needed for this shape). */
-export function parseTcmbXml(xml: string): { currency: string; rateTry: number }[] {
-  const out: { currency: string; rateTry: number }[] = [];
-  const currencyBlocks = xml.split("<Currency ").slice(1);
-  for (const block of currencyBlocks) {
-    const code = /CurrencyCode="([A-Z]{3})"/.exec(block)?.[1];
-    const unit = Number(/<Unit>(\d+)<\/Unit>/.exec(block)?.[1] ?? "1");
-    const selling = /<ForexSelling>([\d.]+)<\/ForexSelling>/.exec(block)?.[1];
-    if (code && selling && Number(selling) > 0) {
-      out.push({ currency: code, rateTry: Number(selling) / (unit || 1) });
+const FETCH_TIMEOUT_MS = 10_000;
+const MAX_RATE_RESPONSE_BYTES = 1_000_000;
+
+async function boundedFetchText(url: string, signal?: AbortSignal): Promise<string> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, FETCH_TIMEOUT_MS);
+  try {
+    if (signal?.aborted) throw new Error("Aborted");
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const declaredLength = Number(res.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_RATE_RESPONSE_BYTES) {
+      throw new Error("FX response too large");
     }
+    const text = await res.text();
+    if (text.length > MAX_RATE_RESPONSE_BYTES) throw new Error("FX response too large");
+    return text;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
-  return out;
 }
 
-async function fetchFromTcmb(): Promise<{ currency: string; rateTry: number }[]> {
-  const res = await fetch("https://www.tcmb.gov.tr/kurlar/today.xml");
-  if (!res.ok) throw new Error(`TCMB ${res.status}`);
-  return parseTcmbXml(await res.text()).filter((r) =>
-    (SUPPORTED_CURRENCIES as readonly string[]).includes(r.currency),
-  );
+async function fetchFromTcmb(signal?: AbortSignal): Promise<ProviderRateBatch> {
+  return parseTcmbRates(await boundedFetchText("https://www.tcmb.gov.tr/kurlar/today.xml", signal));
 }
 
-async function fetchFromFrankfurter(): Promise<{ currency: string; rateTry: number }[]> {
-  const symbols = SUPPORTED_CURRENCIES.filter((c) => c !== "TRY").join(",");
-  const res = await fetch(`https://api.frankfurter.dev/v1/latest?base=TRY&symbols=${symbols}`);
-  if (!res.ok) throw new Error(`Frankfurter ${res.status}`);
-  const data = (await res.json()) as { rates: Record<string, number> };
-  return Object.entries(data.rates).map(([currency, perTry]) => ({ currency, rateTry: 1 / perTry }));
+async function fetchFromFrankfurter(signal?: AbortSignal): Promise<ProviderRateBatch> {
+  const symbols = FETCHED_FX_CURRENCIES.join(",");
+  const text = await boundedFetchText(`https://api.frankfurter.dev/v1/latest?base=TRY&symbols=${symbols}`, signal);
+  return parseFrankfurterRates(JSON.parse(text) as unknown);
 }
 
-/** Fetch and cache today's rates. Failing silently is fine — cache covers it. */
-export async function refreshRates(userId: string): Promise<boolean> {
-  let rates: { currency: string; rateTry: number }[];
+/** Fetch and cache the provider's latest dated rates; cache covers failures. */
+export async function refreshRates(userId: string, signal?: AbortSignal): Promise<boolean> {
+  let batch: ProviderRateBatch;
   // TCMB's today.xml sends no CORS headers, so on web it always fails with a
   // noisy console error — use only the CORS-enabled Frankfurter (ECB) feed
   // there. Native has no CORS restriction, so it prefers TCMB with Frankfurter
   // as a fallback.
   if (Platform.OS === "web") {
     try {
-      rates = await fetchFromFrankfurter();
+      batch = await fetchFromFrankfurter(signal);
     } catch {
       return false;
     }
   } else {
     try {
-      rates = await fetchFromTcmb();
+      batch = await fetchFromTcmb(signal);
     } catch {
       try {
-        rates = await fetchFromFrankfurter();
+        batch = await fetchFromFrankfurter(signal);
       } catch {
         return false;
       }
     }
   }
-  const rateDate = todayISO();
+  if (signal?.aborted) return false;
+  const sqlite = await getSqliteAsync();
+  const existingRows = await sqlite.getAllAsync<{ currency: string; rate_try: string; deleted_at: string | null }>(
+    `SELECT currency, rate_try, deleted_at FROM fx_rates WHERE user_id = ? AND rate_date = ?`,
+    [userId, batch.rateDate] as never[],
+  );
+  const existing = new Map(existingRows.map((row) => [row.currency, row]));
   const writes = [] as { table: "fx_rates"; row: Record<string, unknown> }[];
-  for (const r of rates) {
+  for (const r of batch.rates) {
+    const current = existing.get(r.currency);
+    if (current && current.deleted_at == null && Number(current.rate_try) === r.rateTry) continue;
     writes.push({
       table: "fx_rates",
       row: {
-        id: await deterministicId(naturalKeys.fxRate(userId, r.currency, rateDate)),
+        id: await deterministicId(naturalKeys.fxRate(userId, r.currency, batch.rateDate)),
         currency: r.currency,
-        rateDate,
+        rateDate: batch.rateDate,
         rateTry: String(r.rateTry),
         deletedAt: null,
       },
     });
   }
+  if (signal?.aborted) return false;
   if (writes.length > 0) await writeRows(userId, writes, false);
+  if (signal?.aborted) return false;
   await loadRateCache(userId);
   return true;
 }
@@ -99,6 +120,8 @@ export async function refreshRates(userId: string): Promise<boolean> {
  * cold start, because the module cache updated silently.
  */
 let rateCache: FxRate[] = [];
+let rateCacheUserId: string | null = null;
+let cacheRequest = 0;
 
 export const useFxCacheVersion = create<{ version: number }>(() => ({ version: 0 }));
 
@@ -108,20 +131,34 @@ export function useFxRates(): number {
 }
 
 export async function loadRateCache(userId: string): Promise<void> {
+  const request = ++cacheRequest;
   const sqlite = await getSqliteAsync();
   const rows = await sqlite.getAllAsync<{ currency: string; rate_date: string; rate_try: string }>(
     `SELECT currency, rate_date, rate_try FROM fx_rates
      WHERE user_id = ? AND deleted_at IS NULL ORDER BY rate_date DESC LIMIT 200`,
     [userId] as never[],
   );
-  rateCache = rows.map((r) => ({ currency: r.currency, rateDate: r.rate_date, rateTry: Number(r.rate_try) }));
+  if (request !== cacheRequest) return;
+  rateCacheUserId = userId;
+  rateCache = rows
+    .map((r) => ({ currency: r.currency, rateDate: r.rate_date, rateTry: Number(r.rate_try) }))
+    .filter((r) => isValidRateDate(r.rateDate) && Number.isFinite(r.rateTry) && r.rateTry > 0 && r.rateTry <= 1_000_000);
   useFxCacheVersion.setState((s) => ({ version: s.version + 1 }));
 }
 
-/** Cached rate lookup for entry forms; null when nothing cached yet. */
-export function lookupRate(_userId: string, currency: string): RateLookup | null {
+/** Drop in-memory rates at account boundaries and invalidate in-flight loads. */
+export function clearRateCache(): void {
+  cacheRequest += 1;
+  rateCacheUserId = null;
+  rateCache = [];
+  useFxCacheVersion.setState((s) => ({ version: s.version + 1 }));
+}
+
+/** Cached rate lookup for entry forms; null when this user's cache is absent. */
+export function lookupRate(userId: string, currency: string, date: ISODate = todayISO()): RateLookup | null {
   if (currency === "TRY") {
-    return { rate: { currency: "TRY", rateDate: todayISO(), rateTry: 1 }, isStale: false };
+    return { rate: { currency: "TRY", rateDate: date, rateTry: 1 }, isStale: false };
   }
-  return pickRate(rateCache, currency, todayISO());
+  if (rateCacheUserId !== userId) return null;
+  return pickRate(rateCache, currency, date);
 }

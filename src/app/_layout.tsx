@@ -26,6 +26,7 @@ import { useAccountFrozen, useOnboarded } from "../data/hooks";
 import { runMaintenance } from "../data/repo";
 import { loadRateCache, refreshRates } from "../services/fx-fetch";
 import { rescheduleAll } from "../services/notifications";
+import { connectMarkets, disconnectMarkets } from "../services/markets";
 import { runSyncSessionTask, syncNow } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { kv } from "../lib/kv";
@@ -36,6 +37,7 @@ import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
+import { loadDevicePreferences } from "../lib/device-preferences";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -173,6 +175,7 @@ function RootLayoutInner() {
   );
 
   useEffect(() => {
+    void loadDevicePreferences();
     void kv.get("helix.theme").then((v) => {
       if (v === "light" || v === "dark" || v === "system") setThemePref(v);
     });
@@ -253,7 +256,7 @@ function RootLayoutInner() {
         .finally(() => void syncNow(userId));
       void runSyncSessionTask(userId, async (signal) => {
         await loadRateCache(userId);
-        if (!signal.aborted) await refreshRates(userId);
+        if (!signal.aborted) await refreshRates(userId, signal);
       }).catch(() => {});
     };
     kick();
@@ -261,6 +264,27 @@ function RootLayoutInner() {
       if (state === "active") kick();
     });
     return () => sub.remove();
+  }, [ready, userId, locked]);
+
+  // Keep the live market stream only while an authenticated workspace is
+  // actively visible. Backgrounding closes the socket immediately; foreground
+  // opens one idempotent connection. This avoids stale prices, radio/battery
+  // use and orphan reconnect loops after account changes.
+  useEffect(() => {
+    if (!ready || !userId || locked !== false) {
+      disconnectMarkets();
+      return;
+    }
+    const update = (state: string) => {
+      if (state === "active") connectMarkets();
+      else disconnectMarkets();
+    };
+    update(AppState.currentState);
+    const sub = AppState.addEventListener("change", update);
+    return () => {
+      sub.remove();
+      disconnectMarkets();
+    };
   }, [ready, userId, locked]);
 
   // Route guards.

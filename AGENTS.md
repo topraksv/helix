@@ -77,6 +77,18 @@ agent-to-agent communication that did not occur.
   `stopSyncSession`. Maintenance, FX, notifications, or any other async work
   that can outlive a render must run through `runSyncSessionTask`. A late
   response from user A must never write after user B becomes active.
+- **External financial data is bounded and dated.** FX fetches follow the
+  session abort signal, time out, validate response size/shape and persist the
+  provider's declared business date (never a fabricated "today"). The in-memory
+  FX cache is user-scoped. Missing rates stay missing; never interpret a foreign
+  amount as TRY. Live market quotes expire after 60 seconds and the socket runs
+  only while an unlocked authenticated app is active.
+- **Notification and remote-logo consent is device-local and opt-in.** Do not
+  request notification permission during boot. Disabled notifications clear
+  legacy schedules; sign-out/account switch clears scheduled and presented
+  account details. Subscription logos render locally by default. Google's
+  favicon service may be used only after the device preference is explicitly
+  enabled, with a validated/encoded public hostname.
 - **Sync ordering is server-authoritative.** Supabase normalizes `updated_at`;
   every push selects and conditionally merges that acknowledgement before its
   exact outbox events are removed. Never advance a pull cursor past an invalid

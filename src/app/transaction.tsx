@@ -1,14 +1,14 @@
 /** Transaction entry modal — smart defaults, TR amount input, FX preview,
  *  future-dated payments (§2.7) and inline installment plan creation. */
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
 import { useAllTransactions, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
-import { assertISODate, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
+import { assertISODate, lastDayOf, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
 import { formatMinor } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
@@ -93,9 +93,12 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryType]);
 
-  const fxVersion = useFxRates();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const rate = useMemo(() => lookupRate(userId, currency), [userId, currency, fxVersion]);
+  useFxRates();
+  const today = todayISO();
+  const selectedRateDate = dateMode === "month"
+    ? (monthKey === monthKeyOf(today) ? today : lastDayOf(monthKey))
+    : (/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr as ISODate : today);
+  const rate = lookupRate(userId, currency, selectedRateDate);
   // Editing a foreign-currency row must NOT silently re-price it at today's
   // rate — the transaction's TRY value was snapshotted when it occurred. So
   // when the currency is unchanged from the stored row, keep its original

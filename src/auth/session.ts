@@ -17,7 +17,9 @@ import {
 import { resetLocalWorkspace, writeSetting } from "../db/mutations";
 import { startSyncSession, stopSyncSession } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
-import { disconnectMarkets } from "../services/markets";
+import { connectMarkets, disconnectMarkets } from "../services/markets";
+import { clearRateCache, loadRateCache } from "../services/fx-fetch";
+import { clearAccountNotifications, rescheduleAll } from "../services/notifications";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
@@ -53,6 +55,9 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
   const owner = await kv.get(LOCAL_OWNER_KEY);
   if (owner && owner !== userId) {
     await stopSyncSession();
+    disconnectMarkets();
+    clearRateCache();
+    await clearAccountNotifications().catch(() => {});
     try {
       await resetLocalWorkspace();
     } catch {
@@ -266,6 +271,8 @@ export const useSession = create<SessionStore>((set, get) => ({
     // The database cannot be wiped while an old user task can still write.
     await stopSyncSession(userId ?? undefined);
     disconnectMarkets();
+    clearRateCache();
+    await clearAccountNotifications().catch(() => {});
     useSyncStatus.getState().set({ lastSyncAt: null });
     // Best practice for a finance app: leave no plaintext financial data on the
     // device after an explicit sign-out. The cloud (RLS-scoped) is the source
@@ -274,7 +281,11 @@ export const useSession = create<SessionStore>((set, get) => ({
     try {
       await resetLocalWorkspace();
     } catch {
-      if (userId) startSyncSession(userId);
+      if (userId) {
+        startSyncSession(userId);
+        connectMarkets();
+        void Promise.allSettled([loadRateCache(userId), rescheduleAll(userId)]);
+      }
       return tr.errors.workspaceResetFailed;
     }
     const supabase = getSupabase();
@@ -320,6 +331,8 @@ export const useSession = create<SessionStore>((set, get) => ({
     // Cloud is erased (or local-only mode): stop timers/streams, wipe the device,
     // and end the session.
     disconnectMarkets();
+    clearRateCache();
+    await clearAccountNotifications().catch(() => {});
     useSyncStatus.getState().set({ lastSyncAt: null });
     const supabase = getSupabase();
     if (supabase) {

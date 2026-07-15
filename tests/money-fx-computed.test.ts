@@ -95,6 +95,7 @@ describe("FX", () => {
   it("rejects invalid rates", () => {
     expect(() => convertToTryMinor(100, 0)).toThrow();
     expect(() => convertToTryMinor(100, NaN)).toThrow();
+    expect(() => convertToTryMinor(Number.MAX_SAFE_INTEGER, 2)).toThrow();
   });
 
   it("picks the exact-date rate when present", () => {

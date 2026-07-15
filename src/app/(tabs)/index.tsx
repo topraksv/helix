@@ -1,7 +1,7 @@
 /** Dashboard: catch-up banner, actual vs projected balance (§2.7),
  *  upcoming/late expected items with confirm, distribution, trend. */
 
-import React, { useEffect } from "react";
+import React from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
@@ -25,7 +25,7 @@ import {
   useUserId,
 } from "../../data/hooks";
 import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
-import { connectMarkets, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
+import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
 import { projectedTransactionFlow } from "../../domain/transactions";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
@@ -43,7 +43,6 @@ import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 function MarketsCard() {
   const { palette } = useTheme();
   const { prices, status } = useMarkets();
-  useEffect(() => connectMarkets(), []);
   if (status === "error" || Object.keys(prices).length === 0) return null;
 
   const priceText = (v: number) =>

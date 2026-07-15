@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 19 files, 173 tests passing
+- Test baseline: 20 files, 183 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -23,8 +23,9 @@ lags behind them.
 The repository-wide remediation requested on 2026-07-15 is in progress. The
 account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references and credit-card statement packages are shipped.
-Remaining audit items below are being completed as separately verified and
-shipped packages. Always re-check `git status`; Git remains authoritative.
+The external-data/privacy package is verified and awaiting its commit/deploy
+record. Remaining audit items below are being completed as separately verified
+and shipped packages. Always re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -51,17 +52,14 @@ current code before fixing it.
 1. Cell-note editors use random ids despite the existing deterministic natural
    key. The month-detail pseudo-category `uncategorized` can also be written into
    a UUID-shaped remote `category_id`.
-2. `Logo` claims fully local rendering but defaults to Google's favicon service;
-   no settings toggle currently supplies `allowRemote=false`.
-3. Several `numberOfLines` uses, special/non-editable table columns, trailing
+2. Several `numberOfLines` uses, special/non-editable table columns, trailing
    dividers, and manual derivation memos conflict with the UI/Compiler rules in
    `AGENTS.md` and need an app-wide sweep.
-4. Foreign subscription totals fall back to treating an unavailable FX amount
-   as TRY. JSON restore now validates types/enums/date ranges before an atomic
-   write, but full relational validation is still part of the later
-   data-integrity package.
-5. Onboarding person deletion does not remap draft source `personIndex` values.
-6. README/testing counts and the README palette are stale; web HTML language is
+3. JSON restore now validates types/enums/date ranges before an atomic write,
+   but full relational validation is still part of the later data-integrity
+   package.
+4. Onboarding person deletion does not remap draft source `personIndex` values.
+5. The README palette is stale; web HTML language is
     `en`, and Android biometric permissions are duplicated in `app.json`.
 
 ## Handoff update contract
@@ -82,6 +80,26 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-15 — Codex (external data and device privacy package)
+
+- Base `be3ba37`, branch `main`; verification is complete and shipping follows.
+- FX fetches now have session cancellation, a 10-second timeout, response bounds
+  and strict TCMB/Frankfurter parsing. Provider business dates are preserved,
+  identical rates do not churn the outbox, caches are user-scoped, historical
+  confirmations use historical rates and unsafe conversions are rejected.
+- Foreign subscriptions without a rate are explicitly excluded from personal
+  and watched totals instead of being counted as TRY. Live market quotes carry
+  a local receipt time, expire after 60 seconds and the socket closes while the
+  app is backgrounded, locked or signed out.
+- Notifications and remote logos are device-local opt-ins. Permission is only
+  requested from Settings; disabled/sign-out/account-switch flows clear account
+  notifications. Logos default to local marks; enabled favicon URLs accept only
+  validated public hostnames and use disk caching/fallback.
+- Typecheck, 20 files/183 tests, Expo lint and static export passed. Playwright
+  rendered sign-in/recovery at 320/390/1280 px without browser errors or
+  horizontal overflow. Physical permission prompts, Notification Center cleanup
+  and socket background behavior still require the installed app/device pass.
 
 ### 2026-07-15 — Codex (credit-card statement periods package)
 

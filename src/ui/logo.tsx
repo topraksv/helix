@@ -1,7 +1,7 @@
 /**
  * Brand mark for a subscription, derived from its NAME alone and rendered
- * FULLY LOCALLY — no network request ever leaves the device (privacy: the
- * subscription list is sensitive and must not be sent to any favicon/CDN):
+ * locally by default. A device-local, explicit privacy preference may enable
+ * remote favicons; otherwise no subscription-derived network request is made:
  *   utility keyword  → themed lucide icon chip (electricity, water, internet…)
  *   known brand      → a chip in the brand's accent colour with its monogram
  *   otherwise        → deterministic-hue initials badge
@@ -9,8 +9,9 @@
  * no trademarked bitmap is reproduced.
  */
 
-import React, { useMemo, useState } from "react";
-import { Image, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Text, View } from "react-native";
+import { Image } from "expo-image";
 import {
   Building2,
   Car,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react-native";
 import { InitialsBadge } from "./components";
 import { radius, useTheme } from "./theme";
+import { normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** Utility/service keywords → icon + accent (checked before brand lookup). */
 const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
@@ -156,7 +158,8 @@ const BRAND_DOMAIN: Record<string, string> = {
 
 /** Resolve the domain to fetch a favicon from (explicit override or a brand). */
 function domainFor(name: string, override?: string | null): string | null {
-  if (override && override.trim()) return override.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const normalizedOverride = normalizeLogoDomain(override);
+  if (normalizedOverride) return normalizedOverride;
   const key = name.trim().toLocaleLowerCase("tr-TR");
   return BRAND_DOMAIN[key] ?? BRAND_DOMAIN[key.split(/\s+/)[0]] ?? null;
 }
@@ -175,7 +178,7 @@ export function Logo({
   name,
   domain,
   size = 36,
-  allowRemote = true,
+  allowRemote = false,
 }: {
   name: string;
   domain?: string | null;
@@ -185,28 +188,28 @@ export function Logo({
   allowRemote?: boolean;
 }) {
   const { palette } = useTheme();
-  const [imgFailed, setImgFailed] = useState(false);
+  const [failedDomain, setFailedDomain] = useState<string | null>(null);
 
-  const utility = useMemo(() => UTILITY_ICONS.find((u) => u.match.test(name)), [name]);
-  const brand = useMemo(() => {
-    const key = name.trim().toLocaleLowerCase("tr-TR");
-    return BRAND[key] ?? BRAND[key.split(/\s+/)[0]] ?? null;
-  }, [name]);
+  const utility = UTILITY_ICONS.find((u) => u.match.test(name));
+  const key = name.trim().toLocaleLowerCase("tr-TR");
+  const brand = BRAND[key] ?? BRAND[key.split(/\s+/)[0]] ?? null;
   // A utility (electricity/water/…) keeps its themed icon; otherwise, if we can
   // resolve a domain AND remote logos are allowed, fetch the real favicon and
   // fall back to the local chip on any error (offline, unknown host).
-  const faviconDomain = useMemo(() => (utility || !allowRemote ? null : domainFor(name, domain)), [utility, allowRemote, name, domain]);
+  const faviconDomain = utility || !allowRemote ? null : domainFor(name, domain);
+  const faviconUrl = remoteFaviconUrl(faviconDomain);
 
-  if (faviconDomain && !imgFailed) {
+  if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {
     return (
       <View style={{ width: size, height: size, borderRadius: radius.sm, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: palette.border }}>
         <Image
-          source={{ uri: `https://www.google.com/s2/favicons?domain=${faviconDomain}&sz=64` }}
-          onError={() => setImgFailed(true)}
+          source={{ uri: faviconUrl }}
+          onError={() => setFailedDomain(faviconDomain)}
           // Fill the whole frame instead of floating at 72% inside it, which
           // left a ring of the theme surface colour showing around the mark.
           style={{ width: size, height: size }}
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="disk"
         />
       </View>
     );

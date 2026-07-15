@@ -6,6 +6,7 @@ import {
   distributionForRange,
   fixedVsVariable,
   normalizedMonthlyLoadMinor,
+  subscriptionLoadTry,
 } from "../src/domain/analytics";
 import { tx } from "./helpers";
 
@@ -122,5 +123,17 @@ describe("normalizedMonthlyLoadMinor", () => {
   it("amortizes yearly subscriptions to a monthly load", () => {
     expect(normalizedMonthlyLoadMinor(1200_00, 12)).toBe(100_00);
     expect(normalizedMonthlyLoadMinor(1000_00, 12)).toBe(83_33);
+  });
+
+  it("excludes unknown foreign rates instead of treating them as TRY", () => {
+    const result = subscriptionLoadTry(
+      [
+        { amountMinor: 1_200_00, currency: "TRY", intervalMonths: 12 },
+        { amountMinor: 10_00, currency: "USD", intervalMonths: 1 },
+        { amountMinor: 20_00, currency: "GBP", intervalMonths: 1 },
+      ],
+      (currency) => (currency === "USD" ? 40 : null),
+    );
+    expect(result).toEqual({ totalMinor: 500_00, missingRates: 1 });
   });
 });

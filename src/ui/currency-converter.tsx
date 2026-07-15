@@ -28,7 +28,7 @@ export function CurrencyConverter() {
   // case the cache is empty.
   useFxRates();
   useEffect(() => {
-    void loadRateCache(userId);
+    void loadRateCache(userId).catch(() => {});
   }, [userId]);
 
   const rateFrom = lookupRate(userId, from);
