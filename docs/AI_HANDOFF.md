@@ -203,7 +203,10 @@ diff and running checks proportionate to the change.
   exact preservation of January/opening/all months before the correction. Playwright
   sign-in regression passed at 320/390/1280 px without overflow or browser
   errors; the protected balance screen still lacks a repository E2E credential.
-- Commit/push/web/OTA state is pending at this note's write time.
+- Shipped as `011dbbc`: pushed to `main`, GitHub `deploy-web` run
+  `29407854836` completed successfully, production root and balance routes
+  returned HTTP 200, and EAS `preview` update group
+  `57c127c3-e8fd-4315-8c5f-75f3f5463b72` published for iOS and Android.
 
 ### 2026-07-15 — Codex
 
