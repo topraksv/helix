@@ -4,7 +4,7 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Calculator, ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
-import { selectionTap } from "../../ui/haptics";
+import { selectionTapIfChanged } from "../../ui/haptics";
 import { useTheme } from "../../ui/theme";
 
 export default function TabsLayout() {
@@ -19,7 +19,12 @@ export default function TabsLayout() {
   const barHeight = (isWeb ? 64 : 56) + bottomPad;
   return (
     <Tabs
-      screenListeners={{ tabPress: () => selectionTap() }}
+      screenListeners={({ navigation, route }) => ({
+        tabPress: () => {
+          const state = navigation.getState();
+          selectionTapIfChanged(state.routes[state.index]?.key, route.key);
+        },
+      })}
       screenOptions={{
         // Screens draw their own large titles; a native header would repeat them.
         headerShown: false,

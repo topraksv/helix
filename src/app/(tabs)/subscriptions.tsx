@@ -53,7 +53,7 @@ export default function SubscriptionsScreen() {
   const remove = async (id: string, name: string) => {
     const snapshot = await softDelete(userId, "subscriptions", id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${name} · ${tr.common.deleted}`, () => void restoreRow(userId, "subscriptions", snapshot));
+    if (snapshot) undo.show(`${name} · ${tr.common.deleted}`, () => void restoreRow(userId, "subscriptions", snapshot), "warning");
   };
 
   const renderSub = (s: (typeof subscriptions)[number]) => {
@@ -86,7 +86,7 @@ export default function SubscriptionsScreen() {
               ) : null}
             </View>
             <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })} />
-            <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void remove(s.id, s.name)} />
+            <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(s.id, s.name)} />
           </Row>
         }
       />

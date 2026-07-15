@@ -11,7 +11,8 @@ import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 import { Button, FadeIn } from "./components";
-import { lightTap } from "./haptics";
+import { calculatorKeyHaptic } from "./calculator-feedback";
+import { haptic } from "./haptics";
 import { pushOverlay } from "./keyboard";
 
 type Op = "+" | "-" | "×" | "÷";
@@ -215,7 +216,7 @@ export function CalculatorPad({
                   key={key}
                   accessibilityRole="button"
                   onPress={() => {
-                    lightTap();
+                    haptic(calculatorKeyHaptic(state, key));
                     press(key);
                   }}
                   style={({ pressed }) => [
@@ -248,6 +249,7 @@ export function CalculatorPad({
             label={`${resultLabel ?? tr.calc.useResult} · ${formatMinor(Math.round(value * 100))}`}
             onPress={() => onResult(value)}
             disabled={!Number.isFinite(value)}
+            haptic="success"
           />
         </View>
       ) : null}

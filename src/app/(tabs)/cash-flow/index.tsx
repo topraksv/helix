@@ -37,6 +37,7 @@ import { kv } from "../../../lib/kv";
 import { Amount, Button, Card, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
+import { lightTap } from "../../../ui/haptics";
 
 type MatrixMode = "cards" | "rows" | "columns";
 
@@ -508,7 +509,10 @@ function MatrixCell({
   return (
     <Pressable
       disabled={!onPress}
-      onPress={onPress}
+      onPress={onPress ? () => {
+        lightTap();
+        onPress();
+      } : undefined}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       accessibilityRole={onPress ? "button" : undefined}

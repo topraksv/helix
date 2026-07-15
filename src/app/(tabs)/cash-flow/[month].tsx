@@ -17,6 +17,7 @@ import { categoryIcon } from "../../../data/category-icons";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
+import { selectionTapIfChanged } from "../../../ui/haptics";
 import { spacing, type, useTheme } from "../../../ui/theme";
 
 export default function MonthDetailScreen() {
@@ -60,7 +61,7 @@ export default function MonthDetailScreen() {
   const removeTx = async (id: string) => {
     const snapshot = await deleteTransaction(userId, id);
     if (snapshot) {
-      undo.show(tr.tx.deletedUndo, () => void restoreRow(userId, "transactions", snapshot));
+      undo.show(tr.tx.deletedUndo, () => void restoreRow(userId, "transactions", snapshot), "warning");
     }
   };
 
@@ -108,7 +109,13 @@ export default function MonthDetailScreen() {
         const open = expanded === categoryId;
         return (
           <Card key={categoryId}>
-            <Pressable onPress={() => setExpanded(open ? null : categoryId)} accessibilityRole="button">
+            <Pressable
+              onPress={() => {
+                selectionTapIfChanged(expanded, open ? "" : categoryId);
+                setExpanded(open ? null : categoryId);
+              }}
+              accessibilityRole="button"
+            >
               <Spread>
                 <Row gap={spacing.sm} style={{ flex: 1, paddingRight: spacing.md }}>
                   <Heading style={{ marginVertical: 0, flexShrink: 1 }}>
@@ -146,7 +153,7 @@ export default function MonthDetailScreen() {
                       <Row gap={spacing.sm}>
                         <Amount minor={t.type === "income" ? t.amountTryMinor : -t.amountTryMinor} />
                         <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })} />
-                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void removeTx(t.id)} />
+                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void removeTx(t.id)} />
                       </Row>
                     </Spread>
                     {index < txs.length - 1 ? <Divider /> : null}

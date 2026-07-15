@@ -31,7 +31,7 @@ import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, E
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
-import { lightTap, selectionTap } from "./haptics";
+import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -335,6 +335,7 @@ export function Button({
   loading,
   icon: IconCmp,
   size = "md",
+  haptic: hapticKind = "light",
 }: {
   label: string;
   onPress: () => void;
@@ -343,6 +344,7 @@ export function Button({
   loading?: boolean;
   icon?: LucideIcon;
   size?: "md" | "sm";
+  haptic?: HapticKind;
 }) {
   const { palette } = useTheme();
   const background =
@@ -373,7 +375,7 @@ export function Button({
       onPressIn={press.onPressIn}
       onPressOut={press.onPressOut}
       onPress={() => {
-        lightTap();
+        haptic(hapticKind);
         onPress();
       }}
       style={[
@@ -421,6 +423,7 @@ export function IconButton({
   tone = "default",
   size = 36,
   label,
+  haptic: hapticKind = "light",
 }: {
   icon: LucideIcon;
   onPress: () => void;
@@ -428,6 +431,7 @@ export function IconButton({
   tone?: "default" | "danger" | "primary";
   size?: number;
   label?: string;
+  haptic?: HapticKind;
 }) {
   const { palette } = useTheme();
   const color = tone === "danger" ? palette.negative : tone === "primary" ? palette.primary : palette.textMuted;
@@ -437,7 +441,7 @@ export function IconButton({
       accessibilityLabel={label}
       disabled={disabled}
       onPress={() => {
-        lightTap();
+        haptic(hapticKind);
         onPress();
       }}
       hitSlop={6}
@@ -769,7 +773,7 @@ export function Segmented<T extends string>({
           <Pressable
             key={option.value}
             onPress={() => {
-              selectionTap();
+              selectionTapIfChanged(value, option.value);
               onChange(option.value);
             }}
             accessibilityRole="button"
@@ -831,9 +835,13 @@ export function ChipPicker<T extends string>({
           <Pressable
             key={option.value}
             onPress={() => {
-              selectionTap();
-              if (multi) onToggle?.(option.value);
-              else onChange?.(option.value);
+              if (multi) {
+                selectionTap();
+                onToggle?.(option.value);
+              } else {
+                selectionTapIfChanged(value, option.value);
+                onChange?.(option.value);
+              }
             }}
             accessibilityRole="button"
             accessibilityState={{ selected }}

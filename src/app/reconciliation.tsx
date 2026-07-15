@@ -21,6 +21,7 @@ import { scheduleSync } from "../sync/engine";
 import { Badge, Body, Button, Card, EmptyState, Field, Row, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
+import { errorNotice } from "../ui/haptics";
 import { spacing } from "../ui/theme";
 
 export default function CatchUpScreen() {
@@ -63,6 +64,7 @@ export default function CatchUpScreen() {
       setAmountRaw("");
       undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
     } catch (err) {
+      errorNotice();
       if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
       else {
         console.error("[reconcile.confirm]", err);
@@ -115,6 +117,7 @@ export default function CatchUpScreen() {
                       }}
                       loading={confirmingId === e.id}
                       disabled={parseTRAmountToMinor(amountRaw) == null || confirmingId != null}
+                      haptic="none"
                     />
                   </View>
                   <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditing(null)} />
@@ -127,6 +130,7 @@ export default function CatchUpScreen() {
                     label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                     loading={confirmingId === e.id}
                     disabled={confirmingId != null}
+                    haptic="none"
                     onPress={() => void confirm(e)}
                   />
                 </View>

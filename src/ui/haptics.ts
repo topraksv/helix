@@ -6,6 +6,8 @@
  * - `selectionTap` moving between discrete choices — tabs, chips, a reorder
  *   crossing a slot (selection feedback, the Apple-recommended pattern).
  * - `mediumTap`    picking something up (drag start), a heavier confirmation.
+ * - notification feedback is reserved for a completed success, warning, or
+ *   error outcome rather than the press that started an async operation.
  *
  * Guidance: https://docs.expo.dev/versions/v54.0.0/sdk/haptics/
  */
@@ -13,14 +15,57 @@
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 
+export type HapticKind = "none" | "light" | "selection" | "medium" | "success" | "warning" | "error";
+
+/** Native feedback is an enhancement: unsupported/disabled hardware must never
+ * turn a valid user action into an unhandled rejection. */
+export function haptic(kind: HapticKind): void {
+  if (Platform.OS !== "ios" || kind === "none") return;
+  try {
+    const request =
+      kind === "light"
+        ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+        : kind === "medium"
+          ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+          : kind === "selection"
+            ? Haptics.selectionAsync()
+            : Haptics.notificationAsync(
+                kind === "success"
+                  ? Haptics.NotificationFeedbackType.Success
+                  : kind === "warning"
+                    ? Haptics.NotificationFeedbackType.Warning
+                    : Haptics.NotificationFeedbackType.Error,
+              );
+    void request.catch(() => {});
+  } catch {
+    // Haptics never block the underlying interaction.
+  }
+}
+
 export function lightTap(): void {
-  if (Platform.OS === "ios") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  haptic("light");
 }
 
 export function selectionTap(): void {
-  if (Platform.OS === "ios") void Haptics.selectionAsync();
+  haptic("selection");
 }
 
 export function mediumTap(): void {
-  if (Platform.OS === "ios") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  haptic("medium");
+}
+
+export function selectionTapIfChanged(previous: string | null | undefined, next: string): void {
+  if (previous !== next) selectionTap();
+}
+
+export function successNotice(): void {
+  haptic("success");
+}
+
+export function warningNotice(): void {
+  haptic("warning");
+}
+
+export function errorNotice(): void {
+  haptic("error");
 }

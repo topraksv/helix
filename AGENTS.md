@@ -75,6 +75,10 @@ agent-to-agent communication that did not occur.
 - **New subscriptions require a live expense category.** The repo validates it,
   not only the form. The friendly default is the deterministic, reusable
   `Abonelikler` category; legacy categoryless rows remain readable.
+- **Haptics go through `src/ui/haptics.ts` and are iOS-only.** Selection
+  feedback fires only when the choice changes; calculator digits stay quiet;
+  success/warning/error notifications describe completed outcomes. Native
+  haptic failures must never block the underlying action.
 - **UI strings live only in `src/i18n/tr.ts`.** Code is English, UI is Turkish.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint

@@ -35,6 +35,7 @@ import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
+import { errorNotice } from "../../ui/haptics";
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 
 function MarketsCard() {
@@ -281,6 +282,7 @@ export default function DashboardScreen() {
       scheduleSync(userId);
       undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
     } catch (err) {
+      errorNotice();
       // Foreign-currency item confirmed before any FX rate was cached: tell the
       // user to retry online instead of writing a corrupt TRY amount.
       if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);

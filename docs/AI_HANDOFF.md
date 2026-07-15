@@ -13,7 +13,7 @@ lags behind them.
   12-item recovery task started; use `git log -1` for the resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 12 files, 140 tests passing
+- Test baseline: 13 files, 145 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
 
@@ -157,6 +157,28 @@ diff and running checks proportionate to the change.
   `main`. GitHub `deploy-web` run `29406641921` completed successfully and the
   production import route returned HTTP 200. EAS `preview` update group
   `ee73862e-d2c0-4e49-bf09-d19c18db7210` published for iOS and Android.
+
+### 2026-07-15 — Codex (haptic completion package)
+
+- Base `751335b`, branch `main`.
+- Preserved the haptic architecture introduced by `099b52b`; completed its
+  missing semantics instead of adding a second abstraction. Active tab/chip/
+  segment re-taps stay quiet, while real selection changes retain feedback.
+- Calculator digit entry is quiet; operator, clear, valid result, divide-by-zero
+  and result-apply actions use selection/impact/success/error appropriately.
+  Mali Tablo cells and category expansion now give one navigation/selection
+  cue. Existing drag start and slot-crossing feedback remains unchanged.
+- `src/ui/haptics.ts` now owns all impact/selection/notification dispatch,
+  catches unavailable-device failures and stays a no-op outside iOS. Undo
+  outcomes use success for confirmations and warning for deletions; delete
+  controls suppress their earlier impact so one action does not double-fire.
+- Checks: typecheck, 13 files/145 tests, Expo lint and static web export passed.
+  Haptic tests cover Android no-op, unchanged-selection suppression, one native
+  notification per outcome, unavailable-device fallback and calculator
+  semantics. Playwright sign-in regression passed at 320/390/1280 px with no
+  overflow or browser errors. Physical Taptic Engine feel still requires a real
+  iPhone; browser/Android intentionally cannot exercise it.
+- Commit/push/web/OTA state is pending at this note's write time.
 
 ### 2026-07-15 — Codex
 
