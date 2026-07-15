@@ -208,6 +208,16 @@ diff and running checks proportionate to the change.
   returned HTTP 200, and EAS `preview` update group
   `57c127c3-e8fd-4315-8c5f-75f3f5463b72` published for iOS and Android.
 
+### 2026-07-15 — Codex (final upcoming-payment regression)
+
+- Base `704bc20`, branch `main`.
+- Final cross-feature review found the statement-collapse filter also excluded
+  genuine bank/cash loan installments. Card-sourced rows still collapse into
+  one statement, while non-card installments now remain standalone obligations
+  on their explicit dates; month-only aggregates remain excluded.
+- Typecheck, 13 files/147 tests, Expo lint and static web export pass. Commit,
+  push, web and OTA state are pending at this note's write time.
+
 ### 2026-07-15 — Codex
 
 - Completed a read-only repository-wide architecture and risk review.
