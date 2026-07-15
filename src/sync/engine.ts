@@ -11,6 +11,7 @@ import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, type SessionEpochToken } from "./session-epoch";
+import { classifyOutboxBatch, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
 
 const isAuthError = (raw: string) => /jwt|token|401|unauthorized|not authenticated/i.test(raw);
 
@@ -114,6 +115,38 @@ function assertActive(token: SessionEpochToken): void {
   sessionEpoch.assertCurrent(token);
 }
 
+function validatedRemoteRow(
+  table: SyncedTableName,
+  raw: Record<string, unknown>,
+  userId: string,
+): Record<string, unknown> {
+  const remote = toLocal(table, raw);
+  if (
+    typeof remote.id !== "string" ||
+    remote.user_id !== userId ||
+    typeof remote.updated_at !== "string" ||
+    !Number.isFinite(Date.parse(remote.updated_at))
+  ) {
+    throw new Error(`pull ${table}: invalid server row`);
+  }
+  return remote;
+}
+
+async function upsertLocalRemote(
+  table: SyncedTableName,
+  remote: Record<string, unknown>,
+  allowed: Set<string>,
+): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  const keys = Object.keys(remote).filter((key) => allowed.has(key));
+  if (!keys.includes("id") || keys.length < 2) throw new Error(`pull ${table}: incomplete server row`);
+  await sqlite.runAsync(
+    `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})
+     ON CONFLICT(id) DO UPDATE SET ${keys.filter((key) => key !== "id").map((key) => `${key} = excluded.${key}`).join(", ")}`,
+    keys.map((key) => (remote[key] === undefined ? null : remote[key])) as never[],
+  );
+}
+
 async function pushOutbox(userId: string, token: SessionEpochToken): Promise<void> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
@@ -126,29 +159,58 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
         [table] as never[],
       );
       if (events.length === 0) break;
-      // Keep only the newest event per row (idempotent upserts), and drop any
-      // row that belongs to another account — it can never pass RLS under this
-      // session, so pushing it would fail the whole batch.
-      const latestByRow = new Map<string, { id: number; payload: string }>();
-      for (const e of events) {
-        try {
-          if ((JSON.parse(e.payload) as { user_id?: string }).user_id === userId) latestByRow.set(e.row_id, e);
-        } catch {
-          /* skip malformed payloads */
-        }
-      }
-      const rows = [...latestByRow.values()].map((e) => toRemote(table, JSON.parse(e.payload)));
+      // Keep only the newest event per row. Invalid/cross-account payloads are
+      // quarantined below; they are never silently discarded or sent under the
+      // wrong RLS identity.
+      const { latestByRow, rejected } = classifyOutboxBatch(events, userId);
+      const pushedEvents = [...latestByRow.values()];
+      const rows = pushedEvents.map((event) => toRemote(table, event.row));
+      let acknowledged: Record<string, unknown>[] = [];
       if (rows.length > 0) {
         assertActive(token);
-        const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" }).abortSignal(token.signal);
+        const { data, error } = await supabase
+          .from(table)
+          .upsert(rows, { onConflict: "id" })
+          .select("*")
+          .abortSignal(token.signal);
         if (error) throw new Error(`push ${table}: ${error.message}`);
+        acknowledged = (data ?? []) as Record<string, unknown>[];
+        if (acknowledged.length !== rows.length) throw new Error(`push ${table}: incomplete acknowledgement`);
       }
       // A sign-out/account switch may have happened while PostgREST was in
       // flight. Never clear the local outbox for a stale session response.
       assertActive(token);
-      // Clear the whole batch (own rows pushed, foreign rows discarded).
-      const maxId = events[events.length - 1].id;
-      await sqlite.runAsync(`DELETE FROM outbox WHERE table_name = ? AND id <= ?`, [table, maxId] as never[]);
+      const eventByRow = new Map<string, ParsedOutboxEvent>(pushedEvents.map((event) => [event.row_id, event]));
+      const allowed = KNOWN_COLUMNS.get(table)!;
+      await withTransaction(async () => {
+        assertActive(token);
+        for (const raw of acknowledged) {
+          const remote = validatedRemoteRow(table, raw, userId);
+          const pushed = eventByRow.get(remote.id as string);
+          if (!pushed) throw new Error(`push ${table}: unknown acknowledgement`);
+          const newest = await sqlite.getFirstAsync<{ id: number }>(
+            `SELECT id FROM outbox WHERE table_name = ? AND row_id = ? ORDER BY id DESC LIMIT 1`,
+            [table, pushed.row_id] as never[],
+          );
+          if (shouldApplyServerAck(pushed.id, newest?.id ?? null)) {
+            await upsertLocalRemote(table, remote, allowed);
+          }
+        }
+        for (const event of rejected) {
+          await sqlite.runAsync(
+            `INSERT OR IGNORE INTO sync_dead_letters
+             (outbox_id, table_name, row_id, payload, reason, quarantined_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [event.id, table, event.row_id, event.payload, event.reason, new Date().toISOString()] as never[],
+          );
+        }
+        const placeholders = events.map(() => "?").join(", ");
+        await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${placeholders})`, events.map((event) => event.id) as never[]);
+      });
+      if (rejected.length > 0) {
+        console.warn(`[sync] ${rejected.length} invalid outbox event(s) quarantined`);
+        throw new Error(`push ${table}: invalid local outbox data quarantined`);
+      }
     }
   }
 }
@@ -185,39 +247,27 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
       if (!data || data.length === 0) break;
 
       assertActive(token);
+      // Validate the complete page before merging anything or advancing its
+      // cursor. A bad server row must retry in place, never become a permanent
+      // omission hidden behind a newer cursor.
+      const remoteRows = data.map((row) => validatedRemoteRow(table, row as Record<string, unknown>, userId));
       await withTransaction(async () => {
-        for (const remoteRaw of data) {
+        for (const remote of remoteRows) {
           assertActive(token);
-          const remote = toLocal(table, remoteRaw as Record<string, unknown>);
-          // An unparseable server timestamp can't participate in LWW; skip it
-          // explicitly (and loudly) instead of relying on a NaN comparison
-          // silently evaluating false — otherwise the row would never sync and
-          // no one would know why.
-          const remoteUpdated = Date.parse(remote.updated_at as string);
-          if (!Number.isFinite(remoteUpdated)) {
-            console.warn(`[sync] ${table} ${String(remote.id)}: unparseable updated_at, skipped`);
-            continue;
-          }
           const local = await sqlite.getFirstAsync<{ updated_at: string }>(
             `SELECT updated_at FROM ${table} WHERE id = ?`,
             [remote.id] as never[],
           );
-          const remoteWins = !local || remoteUpdated >= Date.parse(local.updated_at);
+          const remoteWins = remoteWinsLww(local?.updated_at ?? null, remote.updated_at as string);
           if (!remoteWins) continue;
           // Only accept columns this client's schema knows (ignore any extra
           // server columns) so the generated SQL is always well-formed.
-          const keys = Object.keys(remote).filter((k) => allowed.has(k));
-          if (!keys.includes("id")) continue;
-          await sqlite.runAsync(
-            `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})
-             ON CONFLICT(id) DO UPDATE SET ${keys.filter((k) => k !== "id").map((k) => `${k} = excluded.${k}`).join(", ")}`,
-            keys.map((k) => (remote[k] === undefined ? null : remote[k])) as never[],
-          );
+          await upsertLocalRemote(table, remote, allowed);
         }
-        const last = data[data.length - 1] as { updated_at: string; id: string };
+        const last = remoteRows[remoteRows.length - 1];
         assertActive(token);
-        curTs = new Date(last.updated_at).toISOString();
-        curId = last.id;
+        curTs = new Date(last.updated_at as string).toISOString();
+        curId = last.id as string;
         await sqlite.runAsync(
           `INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)
            ON CONFLICT(table_name) DO UPDATE SET last_pulled_at = excluded.last_pulled_at`,
