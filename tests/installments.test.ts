@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveStartMonth,
   generateSchedule,
+  installmentDisplayTitle,
   isValidInstallmentCount,
   MAX_INSTALLMENT_COUNT,
   planAmounts,
@@ -45,6 +46,18 @@ describe("splitIntoInstallments", () => {
   it("rejects non-integer amounts and invalid counts", () => {
     expect(() => splitIntoInstallments(100.5, 3)).toThrow();
     expect(() => splitIntoInstallments(100_00, 0)).toThrow();
+  });
+});
+
+describe("installmentDisplayTitle", () => {
+  it("prefers the plan title, then the first meaningful note part", () => {
+    expect(installmentDisplayTitle("Telefon", "Eski not", "Taksitli Harcama")).toBe("Telefon");
+    expect(installmentDisplayTitle("  ", "  Laptop taksiti  \nGaranti bilgisi", "Taksitli Harcama")).toBe("Laptop taksiti");
+    expect(installmentDisplayTitle(null, "Koltuk; teslimat notu", "Taksitli Harcama")).toBe("Koltuk");
+  });
+
+  it("uses a safe generic title when legacy data has no meaningful text", () => {
+    expect(installmentDisplayTitle(null, "  \n  ", "Taksitli Harcama")).toBe("Taksitli Harcama");
   });
 });
 

@@ -5,8 +5,8 @@
 import React, { useState } from "react";
 import { Text, useWindowDimensions, View } from "react-native";
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
-import { categoryRangeMatrix, cumulativeSeries } from "../../../domain/analytics";
-import { addMonthsToKey, makeMonthKey, monthKeyOf, monthOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
+import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
+import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { dateLabel, tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
@@ -46,7 +46,15 @@ export default function AnalysisScreen() {
   // No manual useMemo: the React Compiler (enabled app-wide) memoizes these
   // and bails out when it finds hand-rolled memoization on unstable deps.
   const txLike = toTxLike(allTx, persons);
-  const matrix = categoryRangeMatrix(txLike, startMonth, endMonth, today);
+  const categoryKind = new Map(categories.map((category) => [category.id, category.kind]));
+  // A category carried by a transfer (or a legacy type/category mismatch) is
+  // presentation metadata, not income/expense analytics.
+  const analyticsTx = txLike.filter((tx) => {
+    if (tx.type === "transfer") return false;
+    if (!tx.categoryId) return true;
+    return categoryKind.get(tx.categoryId) === tx.type;
+  });
+  const matrix = categoryRangeMatrix(analyticsTx, startMonth, endMonth, today);
 
   // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
   // back arrow can't wander into empty years forever.
@@ -87,23 +95,30 @@ export default function AnalysisScreen() {
 
   // Chart data: pie = expense-category shares over the window; bars = monthly
   // income vs expense, or the filtered category's month-by-month values.
-  const expenseRows = categories
-    .map((c) => ({ category: c, data: matrix.get(c.id) }))
-    .filter((r) => r.data && r.category.kind === "expense" && r.data.ytdMinor !== 0)
-    .sort((a, b) => b.data!.ytdMinor - a.data!.ytdMinor);
+  const periodDistribution = distributionForRange(analyticsTx, firstDayOf(startMonth), lastDayOf(endMonth), today);
+  const expenseRows = [...periodDistribution.expenseByCategory.entries()]
+    .map(([categoryId, valueMinor]) => ({
+      label: categories.find((category) => category.id === categoryId)?.name ?? tr.common.none,
+      valueMinor,
+    }))
+    .concat(
+      periodDistribution.uncategorizedExpenseMinor > 0
+        ? [{ label: tr.common.none, valueMinor: periodDistribution.uncategorizedExpenseMinor }]
+        : [],
+    )
+    .sort((a, b) => b.valueMinor - a.valueMinor);
   const pieSlices = [
-    ...expenseRows.slice(0, 7).map((r, i) => ({ label: r.category.name, valueMinor: r.data!.ytdMinor, color: colors[i % colors.length] })),
+    ...expenseRows.slice(0, 7).map((row, i) => ({ ...row, color: colors[i % colors.length] })),
     ...(() => {
-      const rest = expenseRows.slice(7).reduce((sum, r) => sum + r.data!.ytdMinor, 0);
+      const rest = expenseRows.slice(7).reduce((sum, row) => sum + row.valueMinor, 0);
       return rest > 0 ? [{ label: tr.common.other, valueMinor: rest, color: colors[7] }] : [];
     })(),
   ];
   const barGroups = monthKeys.map((m) => {
     const label = tr.months[monthOf(m) - 1].slice(0, 3);
     if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
-    const income = categories.filter((c) => c.kind === "income").reduce((s, c) => s + (matrix.get(c.id)?.monthly.get(m) ?? 0), 0);
-    const expense = categories.filter((c) => c.kind === "expense").reduce((s, c) => s + (matrix.get(c.id)?.monthly.get(m) ?? 0), 0);
-    return { label, values: [income, expense] };
+    const distribution = distributionForRange(analyticsTx, firstDayOf(m), lastDayOf(m), today);
+    return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor] };
   });
   const barSeries = categoryFilter
     ? [{ label: catName(categoryFilter) || tr.tx.category, color: colors[0] }]
@@ -170,7 +185,7 @@ export default function AnalysisScreen() {
         </Card>
       ) : null}
 
-      {rows.length > 0 ? (
+      {rows.length > 0 || pieSlices.length > 0 ? (
         <Card>
           <Spread style={{ marginBottom: spacing.sm }}>
             <Heading style={{ marginTop: 0, marginBottom: 0 }}>

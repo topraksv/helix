@@ -14,8 +14,9 @@ import * as s from "../db/schema";
 import { newId } from "../db/ids";
 import { restoreRow, writeRows } from "../db/mutations";
 import { addTransaction, deleteTransaction } from "../data/repo";
-import { useCategories, useLive, usePersons, useTransactionsBetween, useUserId } from "../data/hooks";
+import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../data/hooks";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO } from "../domain/dates";
+import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinor, parseAmountExpression } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
@@ -30,6 +31,7 @@ export default function CellEditorModal() {
   const router = useRouter();
   const categories = useCategories();
   const persons = usePersons();
+  const plans = usePlans();
   const transactions = useTransactionsBetween(firstDayOf(month!), lastDayOf(month!));
   const undo = useUndo();
   const { palette } = useTheme();
@@ -39,6 +41,7 @@ export default function CellEditorModal() {
 
   const category = categories.find((c) => c.id === categoryId);
   const selfIds = useMemo(() => new Set(persons.filter((p) => p.isSelf).map((p) => p.id)), [persons]);
+  const planTitle = new Map(plans.map((plan) => [plan.id, plan.title]));
   const cellTx = transactions.filter((t) => t.categoryId === categoryId);
   const selfSum = cellTx
     .filter((t) => selfIds.has(t.personId))
@@ -189,18 +192,23 @@ export default function CellEditorModal() {
       {cellTx.length === 0 ? (
         <EmptyState title={tr.cashflow.emptyMonth} />
       ) : (
-        cellTx.map((t) => (
+        cellTx.map((t, index) => {
+          const installmentTitle = t.installmentPlanId
+            ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)
+            : null;
+          return (
           <View key={t.id}>
             <Spread style={{ paddingVertical: spacing.sm }}>
               <View style={{ flex: 1 }}>
-                <Body>
-                  {t.isAggregate ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
+                {installmentTitle ? <Body style={{ fontFamily: "Inter_500Medium" }}>{installmentTitle}</Body> : null}
+                <Body muted={installmentTitle != null}>
+                  {t.isAggregate || t.installmentPlanId ? monthLabel(monthKeyOf(t.effectiveDate)) : dateLabel(t.effectiveDate)}
                   {t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : ""}
                 </Body>
                 <Row gap={spacing.sm} style={{ marginTop: 2 }}>
                   {t.isAggregate ? <Badge text={tr.bulk.aggregateBadge} /> : null}
                   {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
-                  {t.note ? (
+                  {t.note && t.note !== installmentTitle ? (
                     <Text style={[type.small, { color: palette.textMuted, flexShrink: 1 }]}>
                       {t.note}
                     </Text>
@@ -213,9 +221,10 @@ export default function CellEditorModal() {
                 <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} onPress={() => void removeTx(t.id)} />
               </Row>
             </Spread>
-            <Divider />
+            {index < cellTx.length - 1 ? <Divider /> : null}
           </View>
-        ))
+          );
+        })
       )}
     </Screen>
   );

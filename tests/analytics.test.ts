@@ -35,6 +35,15 @@ describe("categoryMonthMatrix + YTD", () => {
     const series = cumulativeSeries(matrix.get("kk")!, "2026-01", "2026-03");
     expect(series.map((p) => p.cumulativeMinor)).toEqual([140_00, 290_00, 290_00]);
   });
+
+  it("does not count transfer categories as income or expense analytics", () => {
+    const matrix = categoryMonthMatrix(
+      [tx({ type: "transfer", amountTryMinor: 1_000_00, effectiveDate: "2026-02-10", categoryId: "yatirim" })],
+      2026,
+      TODAY,
+    );
+    expect(matrix.has("yatirim")).toBe(false);
+  });
 });
 
 describe("distributionForRange", () => {
@@ -50,6 +59,19 @@ describe("distributionForRange", () => {
     expect(dist.transferTotalMinor).toBe(260_000_00);
     expect(dist.incomeTotalMinor).toBe(125_000_00);
   });
+
+  it("keeps legacy categoryless expenses visible and reconciles to the expense total", () => {
+    const txs = [
+      tx({ type: "expense", amountTryMinor: 100_00, effectiveDate: "2026-05-10", categoryId: "market" }),
+      tx({ type: "expense", amountTryMinor: 25_00, effectiveDate: "2026-05-11", categoryId: null }),
+      tx({ type: "transfer", amountTryMinor: 500_00, effectiveDate: "2026-05-12", categoryId: "yatirim" }),
+    ];
+    const dist = distributionForRange(txs, "2026-05-01", "2026-05-31", TODAY);
+    const chartTotal = [...dist.expenseByCategory.values()].reduce((sum, value) => sum + value, 0) + dist.uncategorizedExpenseMinor;
+    expect(dist.uncategorizedExpenseMinor).toBe(25_00);
+    expect(chartTotal).toBe(dist.expenseTotalMinor);
+    expect(dist.expenseTotalMinor).toBe(125_00);
+  });
 });
 
 describe("fixedVsVariable", () => {
@@ -63,6 +85,22 @@ describe("fixedVsVariable", () => {
       fixedMinor: 330_00,
       variableMinor: 55_00,
     });
+  });
+
+  it("treats ordinary expenses as variable and excludes non-expense flows", () => {
+    const txs = [
+      tx({ type: "expense", amountTryMinor: 100_00, effectiveDate: "2026-07-01", installmentPlanId: "p1" }),
+      tx({ type: "expense", amountTryMinor: 55_00, effectiveDate: "2026-07-02", categoryId: null }),
+      tx({ type: "transfer", amountTryMinor: 900_00, effectiveDate: "2026-07-03" }),
+      tx({ type: "income", amountTryMinor: 300_00, effectiveDate: "2026-07-04" }),
+      tx({ type: "expense", amountTryMinor: 40_00, effectiveDate: "2026-07-20", status: "pending" }),
+      tx({ type: "expense", amountTryMinor: 70_00, effectiveDate: "2026-07-02", personIsSelf: false }),
+    ];
+    const result = fixedVsVariable(txs, "2026-07-01", "2026-07-31", TODAY);
+    expect(result).toEqual({ fixedMinor: 100_00, variableMinor: 55_00 });
+    expect(result.fixedMinor + result.variableMinor).toBe(
+      distributionForRange(txs, "2026-07-01", "2026-07-31", TODAY).expenseTotalMinor,
+    );
   });
 });
 

@@ -33,6 +33,26 @@ export interface GeneratedInstallment {
  */
 export const MAX_INSTALLMENT_COUNT = 600;
 
+/**
+ * Pick a readable installment title consistently across the plan and ledger
+ * screens. A legacy row may have lost its plan title, so its first meaningful
+ * note line is the safe fallback; the full note can still be shown below.
+ */
+export function installmentDisplayTitle(
+  planTitle: string | null | undefined,
+  note: string | null | undefined,
+  fallback: string,
+): string {
+  for (const candidate of [planTitle, note]) {
+    const firstMeaningfulPart = candidate
+      ?.split(/\r?\n|[;|]/)
+      .map((part) => part.trim().replace(/\s+/g, " "))
+      .find(Boolean);
+    if (firstMeaningfulPart) return firstMeaningfulPart;
+  }
+  return fallback;
+}
+
 /** True when a count is a sane, materializable installment count. */
 export function isValidInstallmentCount(count: number): boolean {
   return Number.isInteger(count) && count >= 1 && count <= MAX_INSTALLMENT_COUNT;

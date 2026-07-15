@@ -9,7 +9,7 @@
 import React, { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowDownRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
+import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
@@ -39,6 +39,28 @@ import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn
 import { spacing, type, useTheme } from "../../../ui/theme";
 
 type MatrixMode = "cards" | "rows" | "columns";
+
+function FlowStat({
+  icon: Icon,
+  label,
+  amountMinor,
+  color,
+}: {
+  icon: React.ComponentType<{ size?: number; color?: string }>;
+  label: string;
+  amountMinor: number;
+  color: string;
+}) {
+  return (
+    <View style={{ flexGrow: 1, flexBasis: 112, minWidth: 0 }}>
+      <Row gap={spacing.xs} style={{ alignItems: "flex-start" }}>
+        <Icon size={14} color={color} />
+        <Text style={[type.small, { color, flex: 1, flexWrap: "wrap" }]}>{label}</Text>
+      </Row>
+      <Text style={[type.amountSm, { color, marginTop: 2 }]}>{formatMinor(amountMinor)}</Text>
+    </View>
+  );
+}
 
 export default function CashflowScreen() {
   const currentYear = yearOf(todayISO());
@@ -212,19 +234,11 @@ export default function CashflowScreen() {
                       <Text style={[type.heading, { color: isCurrent ? palette.primary : palette.text }]}>{monthLabel(m.month)}</Text>
                       <Amount minor={m.closingMinor} />
                     </Spread>
-                    <Row gap={spacing.lg} style={{ marginTop: spacing.md }}>
-                      <Row gap={spacing.xs}>
-                        <ArrowUpRight size={14} color={palette.positive} />
-                        <Text style={[type.amountSm, { color: palette.positive }]}>{formatMinor(m.incomeMinor)}</Text>
-                      </Row>
-                      <Row gap={spacing.xs}>
-                        <ArrowDownRight size={14} color={palette.negative} />
-                        <Text style={[type.amountSm, { color: palette.negative }]}>{formatMinor(m.expenseMinor)}</Text>
-                      </Row>
+                    <Row gap={spacing.md} style={{ marginTop: spacing.md, flexWrap: "wrap", rowGap: spacing.md, alignItems: "flex-start" }}>
+                      <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={m.incomeMinor} color={palette.positive} />
+                      <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={m.expenseMinor} color={palette.negative} />
                       {m.transferMinor !== 0 ? (
-                        <Text style={[type.amountSm, { color: palette.textMuted }]}>
-                          {tr.cashflow.transfer}: {formatMinor(m.transferMinor)}
-                        </Text>
+                        <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={m.transferMinor} color={palette.textMuted} />
                       ) : null}
                     </Row>
                   </Card>
