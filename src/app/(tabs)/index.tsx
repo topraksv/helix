@@ -39,6 +39,7 @@ import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
+import { devError } from "../../services/logger";
 
 function MarketsCard() {
   const { palette } = useTheme();
@@ -128,13 +129,16 @@ export default function DashboardScreen() {
   const txLike = bundle?.txLike ?? [];
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const creditCardIds = new Set(sources.filter((source) => source.type === "credit_card").map((source) => source.id));
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
+  const incomeById = new Map(incomes.map((income) => [income.id, income]));
 
   const pendingItems = expected.filter((e) => e.status === "pending" || e.status === "late");
   const late = pendingItems.filter((e) => e.status === "late" || (e.status === "pending" && e.dueDate < today));
 
-  const catName = (id: string | null) => categories.find((c) => c.id === id)?.name;
+  const catName = (id: string | null) => (id ? categoryById.get(id)?.name : undefined);
   const nameOf = (e: (typeof expected)[number]) =>
-    subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
+    subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
   // Convert an expected amount to TRY minor for projections using the best
   // available rate (live Harem → cached TCMB). Returns null when no rate is
   // known — such an item is left out of the projection rather than counted at
@@ -172,7 +176,7 @@ export default function DashboardScreen() {
         typeLabel:
           e.direction === "in"
             ? tr.dashboard.expectedIncome
-            : catName(subscriptions.find((s) => s.id === e.refId)?.categoryId ?? null) ?? tr.subs.title,
+            : catName(subscriptionById.get(e.refId)?.categoryId ?? null) ?? tr.subs.title,
         amountMinor: e.amountMinor,
         currency: e.currency,
         date: e.dueDate,
@@ -241,7 +245,7 @@ export default function DashboardScreen() {
   const fv = fixedVsVariable(txLike, firstDayOf(month), lastDayOf(month), today);
 
   const donutEntries = [...dist.expenseByCategory.entries()]
-    .map(([id, v]) => ({ label: categories.find((c) => c.id === id)?.name ?? tr.common.none, valueMinor: v }))
+    .map(([id, v]) => ({ label: categoryById.get(id)?.name ?? tr.common.none, valueMinor: v }))
     .concat(dist.uncategorizedExpenseMinor !== 0 ? [{ label: tr.common.none, valueMinor: dist.uncategorizedExpenseMinor }] : [])
     .sort((a, b) => b.valueMinor - a.valueMinor);
   const positiveDonutEntries = donutEntries.filter((entry) => entry.valueMinor > 0);
@@ -290,8 +294,8 @@ export default function DashboardScreen() {
     if (!selfPersonId || confirmingId) return;
     setConfirmingId(e.id);
     try {
-      const sub = subscriptions.find((s) => s.id === e.refId);
-      const income = incomes.find((i) => i.id === e.refId);
+      const sub = subscriptionById.get(e.refId);
+      const income = incomeById.get(e.refId);
       await confirmExpected(userId, e.id, {
         personId: sub?.personId ?? income?.personId ?? selfPersonId,
         categoryId: sub?.categoryId ?? income?.categoryId ?? null,
@@ -305,7 +309,7 @@ export default function DashboardScreen() {
       // user to retry online instead of writing a corrupt TRY amount.
       if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
       else {
-        console.error("[confirm]", err);
+        devError("confirm", err);
         void appAlert(tr.errors.saveFailed);
       }
     } finally {
@@ -360,7 +364,7 @@ export default function DashboardScreen() {
           <Text style={[type.label, { color: "rgba(255,255,255,0.75)", textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
             {tr.dashboard.actualBalance}
           </Text>
-          <Text style={[type.amountLg, { color: "#FFFFFF", fontSize: 38, marginTop: spacing.xs }]}>
+          <Text style={[type.amountLg, { color: palette.onPrimary, fontSize: 38, marginTop: spacing.xs }]}>
             {formatMinor(bundle.actualBalanceMinor)}
           </Text>
           {hasForecast && projected != null ? (
@@ -380,14 +384,14 @@ export default function DashboardScreen() {
               }}
             >
               {projectedDelta != null && projectedDelta >= 0 ? (
-                <TrendingUp size={14} color="#FFFFFF" />
+                <TrendingUp size={14} color={palette.onPrimary} />
               ) : (
-                <TrendingDown size={14} color="#FFFFFF" />
+                <TrendingDown size={14} color={palette.onPrimary} />
               )}
-              <Text style={[type.amountSm, { color: "#FFFFFF" }]}>
+              <Text style={[type.amountSm, { color: palette.onPrimary }]}>
                 {tr.dashboard.forecastToggle} · {formatMinor(projected)}
               </Text>
-              {showForecast ? <ChevronUp size={15} color="#FFFFFF" /> : <ChevronDown size={15} color="#FFFFFF" />}
+              {showForecast ? <ChevronUp size={15} color={palette.onPrimary} /> : <ChevronDown size={15} color={palette.onPrimary} />}
             </Pressable>
           ) : null}
         </HeroCard>

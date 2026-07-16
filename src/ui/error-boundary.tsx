@@ -12,6 +12,7 @@ import { View } from "react-native";
 import { Button, Screen, Title, Body } from "./components";
 import { spacing } from "./theme";
 import { tr } from "../i18n/tr";
+import { devError } from "../services/logger";
 
 function ErrorFallback({ onReset }: { onReset: () => void }) {
   return (
@@ -41,7 +42,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   componentDidCatch(error: unknown, info: { componentStack?: string }) {
     // The single place a render crash is observable — log it verbatim (this is
     // where a crash-reporting SDK like Sentry would hook in for production).
-    console.error("[error-boundary]", error, info?.componentStack);
+    devError("error-boundary", error, info?.componentStack);
   }
 
   private reset = () => this.setState({ hasError: false });

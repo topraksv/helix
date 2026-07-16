@@ -18,6 +18,7 @@ import { todayISO } from "../domain/dates";
 import { formatMinor, parseTRAmountToMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
+import { devError } from "../services/logger";
 import { Badge, Body, Button, Card, EmptyState, Field, Row, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
@@ -41,19 +42,21 @@ export default function CatchUpScreen() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
+  const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
+  const incomeById = new Map(incomes.map((income) => [income.id, income]));
   const items = expected
     .filter((e) => (e.status === "pending" || e.status === "late") && e.dueDate <= today)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   const nameOf = (e: (typeof expected)[number]) =>
-    subscriptions.find((s) => s.id === e.refId)?.name ?? incomes.find((i) => i.id === e.refId)?.name ?? tr.common.paymentFallback;
+    subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
 
   const confirm = async (e: (typeof expected)[number], actual?: number) => {
     if (!selfPersonId || confirmingId) return;
     setConfirmingId(e.id);
     try {
-      const sub = subscriptions.find((s) => s.id === e.refId);
-      const income = incomes.find((i) => i.id === e.refId);
+      const sub = subscriptionById.get(e.refId);
+      const income = incomeById.get(e.refId);
       await confirmExpected(userId, e.id, {
         personId: sub?.personId ?? income?.personId ?? selfPersonId,
         categoryId: sub?.categoryId ?? income?.categoryId ?? null,
@@ -67,7 +70,7 @@ export default function CatchUpScreen() {
       errorNotice();
       if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
       else {
-        console.error("[reconcile.confirm]", err);
+        devError("reconcile.confirm", err);
         void appAlert(tr.errors.saveFailed);
       }
     } finally {

@@ -23,6 +23,7 @@ import { kv } from "../lib/kv";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
+import { devError } from "../services/logger";
 
 type EntryType = "expense" | "income" | "transfer";
 
@@ -220,7 +221,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       }
     } catch (e) {
       // Never surface a raw engine error (English, technical) to the user.
-      console.error("[transaction.save]", e);
+      devError("transaction.save", e);
       fail(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed);
     } finally {
       setBusy(false);
@@ -266,6 +267,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       <Row style={{ marginTop: -spacing.sm, marginBottom: spacing.md, alignItems: "center" }}>
         <Body style={{ flex: 1, paddingRight: spacing.md }}>{tr.tx.reversalLabel(entryType)}</Body>
         <Toggle
+          label={tr.tx.reversalLabel(entryType)}
           value={isReversal}
           disabled={installment}
           onValueChange={(value) => {

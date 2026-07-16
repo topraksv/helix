@@ -55,37 +55,41 @@ export function upcomingCardStatements(
   today: ISODate,
   horizonDays = 45,
 ): UpcomingCardStatement[] {
-  return cards.flatMap((card) => {
-    const candidates = statements
-      .filter((statement) => statement.paymentSourceId === card.id && statement.dueDate >= today)
-      .map((statement) => ({
-        statement,
-        amountMinor: transactions
-          .filter(
-            (tx) =>
-              tx.personIsSelf &&
-              tx.paymentSourceId === card.id &&
-              tx.cardStatementId === statement.id &&
-              financialFlow(tx).type === "expense" &&
-              tx.status === "pending",
-          )
-          .reduce((sum, tx) => sum + financialFlow(tx).amountTryMinor, 0),
-      }))
-      .filter(({ statement, amountMinor }) => {
-        const distance = daysBetween(today, statement.dueDate);
-        return amountMinor > 0 && distance >= 0 && distance <= horizonDays;
-      })
-      .sort((a, b) => a.statement.dueDate.localeCompare(b.statement.dueDate));
-    const next = candidates[0];
-    if (!next) return [];
+  const amountByStatementAndCard = new Map<string, number>();
+  for (const transaction of transactions) {
+    if (
+      !transaction.personIsSelf ||
+      transaction.status !== "pending" ||
+      !transaction.cardStatementId ||
+      !transaction.paymentSourceId
+    ) continue;
+    const flow = financialFlow(transaction);
+    if (flow.type !== "expense") continue;
+    const key = `${transaction.cardStatementId}\u0000${transaction.paymentSourceId}`;
+    amountByStatementAndCard.set(key, (amountByStatementAndCard.get(key) ?? 0) + flow.amountTryMinor);
+  }
 
-    return [
-      {
-        cardId: card.id,
-        cardName: card.name,
-        amountMinor: next.amountMinor,
-        dueDate: next.statement.dueDate,
-      },
-    ];
+  const cardNameById = new Map(cards.map((card) => [card.id, card.name]));
+  const nextByCard = new Map<string, UpcomingCardStatement>();
+  for (const statement of statements) {
+    const cardName = cardNameById.get(statement.paymentSourceId);
+    if (cardName == null) continue;
+    const distance = daysBetween(today, statement.dueDate);
+    if (distance < 0 || distance > horizonDays) continue;
+    const amountMinor = amountByStatementAndCard.get(`${statement.id}\u0000${statement.paymentSourceId}`) ?? 0;
+    if (amountMinor <= 0) continue;
+    const current = nextByCard.get(statement.paymentSourceId);
+    if (current && current.dueDate <= statement.dueDate) continue;
+    nextByCard.set(statement.paymentSourceId, {
+      cardId: statement.paymentSourceId,
+      cardName,
+      amountMinor,
+      dueDate: statement.dueDate,
+    });
+  }
+
+  return cards.flatMap((card) => {
+    const next = nextByCard.get(card.id);
+    return next ? [next] : [];
   });
 }

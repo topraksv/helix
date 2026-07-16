@@ -17,6 +17,7 @@ import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
+import { devError } from "../services/logger";
 import { spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 
@@ -146,7 +147,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     try {
       await persist(selectedCategoryId);
     } catch (e) {
-      console.error("[subscription.save]", e);
+      devError("subscription.save", e);
       void appAlert(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed, tr.errors.title);
     } finally {
       finishSave();
@@ -161,7 +162,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       setShowCategoryOffer(false);
       await persist(resolvedCategoryId);
     } catch (e) {
-      console.error("[subscription.category]", e);
+      devError("subscription.category", e);
       void appAlert(tr.errors.saveFailed, tr.errors.title);
     } finally {
       finishSave();
@@ -274,7 +275,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           <Body>{tr.subs.trialToggle}</Body>
           <Body muted style={{ fontSize: 12 }}>{tr.subs.trialToggleHint}</Body>
         </View>
-        <Toggle value={isTrial} onValueChange={setIsTrial} />
+        <Toggle label={tr.subs.trialToggle} value={isTrial} onValueChange={setIsTrial} />
       </Spread>
       {isTrial ? <DateField label={tr.subs.trialDate} value={trialDate} onChange={setTrialDate} /> : null}
       <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={tr.common.optionalHint} />
@@ -284,11 +285,11 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           <Body>{tr.subs.autoPay}</Body>
           <Body muted>{tr.subs.autoPayHint}</Body>
         </View>
-        <Toggle value={autoPay} onValueChange={setAutoPay} />
+        <Toggle label={tr.subs.autoPay} value={autoPay} onValueChange={setAutoPay} />
       </Spread>
       <Spread style={{ marginBottom: spacing.lg }}>
         <Body>{tr.common.active}</Body>
-        <Toggle value={isActive} onValueChange={setIsActive} />
+        <Toggle label={tr.common.active} value={isActive} onValueChange={setIsActive} />
       </Spread>
 
       {existing && amountMinor != null && amountMinor !== existing.amountMinor ? (

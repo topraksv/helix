@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent, type TextLayoutEvent } from "react-native";
 import { Pin, type LucideIcon } from "lucide-react-native";
 import { lightTap } from "./haptics";
 import { spacing, type, useTheme } from "./theme";
@@ -171,16 +171,13 @@ export function StickyTable({
   height?: number;
 }) {
   const { palette } = useTheme();
-  // On web adjustsFontSizeToFit is a no-op, so a 2-line cap would ellipsize
-  // longer labels. Allow an extra line there (fits within the fixed row/header
-  // heights) so realistic category names wrap fully instead of being cut.
-  const labelLines = Platform.OS === "web" ? 3 : 2;
   const vRef = useRef<ScrollView>(null);
   const bodyHRef = useRef<ScrollView>(null);
   const headerHRef = useRef<ScrollView>(null);
   useWebInteractions(vRef, bodyHRef, headerHRef);
   const [bodyW, setBodyW] = useState(0);
   const [bodyViewH, setBodyViewH] = useState(0);
+  const [labelHeights, setLabelHeights] = useState<Record<string, number>>({});
   const focusedSig = useRef("");
 
   const pinnedIndex = pinnedKey ? columns.findIndex((c) => c.key === pinnedKey) : -1;
@@ -189,11 +186,21 @@ export function StickyTable({
   const colIndexByKey = new Map(columns.map((c, i) => [c.key, i]));
   const cellCenter = { justifyContent: "center" as const, paddingHorizontal: spacing.sm };
   const leftWidth = headWidth + (pinnedCol ? cellWidth : 0);
+  const measureLabel = (key: string, event: TextLayoutEvent) => {
+    const lastLine = event.nativeEvent.lines.at(-1);
+    if (!lastLine) return;
+    const measured = Math.ceil(lastLine.y + lastLine.height + spacing.sm * 2);
+    setLabelHeights((current) => current[key] === measured ? current : { ...current, [key]: measured });
+  };
+  const headerKeys = ["header:corner", ...columns.map((column) => `header:${column.key}`)];
+  const resolvedHeaderHeight = Math.max(headerHeight, ...headerKeys.map((key) => labelHeights[key] ?? 0));
+  const resolvedRowHeights = rows.map((row) => Math.max(rowHeight, labelHeights[`row:${row.key}`] ?? 0));
+  const rowHeightsSignature = resolvedRowHeights.join("|");
 
   // Center the current month on open (clamped at the edges), then leave the
   // user free to scroll. Re-runs when the focus target or viewport changes.
   useEffect(() => {
-    const sig = `${focusColumnKey}|${focusRowKey}|${bodyW}|${bodyViewH}|${scrollCols.length}|${rows.length}`;
+    const sig = `${focusColumnKey}|${focusRowKey}|${bodyW}|${bodyViewH}|${scrollCols.length}|${rows.length}|${rowHeightsSignature}`;
     if (focusedSig.current === sig) return;
     if (focusColumnKey && bodyW > 0) {
       const idx = scrollCols.findIndex((c) => c.key === focusColumnKey);
@@ -208,14 +215,15 @@ export function StickyTable({
     if (focusRowKey && bodyViewH > 0) {
       const idx = rows.findIndex((r) => r.key === focusRowKey);
       if (idx >= 0) {
-        const contentH = rows.length * rowHeight;
-        const target = Math.max(0, Math.min(idx * rowHeight + rowHeight / 2 - bodyViewH / 2, contentH - bodyViewH));
+        const contentH = resolvedRowHeights.reduce((sum, value) => sum + value, 0);
+        const rowTop = resolvedRowHeights.slice(0, idx).reduce((sum, value) => sum + value, 0);
+        const target = Math.max(0, Math.min(rowTop + resolvedRowHeights[idx] / 2 - bodyViewH / 2, contentH - bodyViewH));
         vRef.current?.scrollTo({ y: target, animated: false });
         focusedSig.current = sig;
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusColumnKey, focusRowKey, bodyW, bodyViewH, scrollCols.length, rows.length, cellWidth, rowHeight]);
+  }, [focusColumnKey, focusRowKey, bodyW, bodyViewH, scrollCols.length, rows.length, cellWidth, rowHeightsSignature]);
 
   const rowBg = (i: number, highlight?: boolean) =>
     highlight ? palette.primarySoft + "55" : i % 2 === 1 ? palette.surfaceAlt + "66" : "transparent";
@@ -236,14 +244,17 @@ export function StickyTable({
     return (
       <View
         key={c.key}
-        style={{ width: cellWidth, height: headerHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", paddingHorizontal: spacing.sm }}
+        style={{ width: cellWidth, height: resolvedHeaderHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", paddingHorizontal: spacing.sm }}
       >
-        <Pressable disabled={!labelAction} onPress={labelAction ? () => { lightTap(); labelAction(c.key); } : undefined}>
+        <Pressable
+          disabled={!labelAction}
+          onPress={labelAction ? () => { lightTap(); labelAction(c.key); } : undefined}
+          accessibilityRole={labelAction ? "button" : undefined}
+          accessibilityLabel={labelAction ? c.label : undefined}
+        >
           <Text
             style={[type.label, { color: isCurrent ? palette.primary : palette.textMuted, textAlign: "center" }]}
-            numberOfLines={labelLines}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
+            onTextLayout={(event) => measureLabel(`header:${c.key}`, event)}
           >
             {c.label}
           </Text>
@@ -271,15 +282,23 @@ export function StickyTable({
   return (
     <View style={height ? { height } : { flex: 1 }}>
       {/* Sticky header: corner + column headers, mirrors the body's x offset. */}
-      <View style={{ flexDirection: "row", height: headerHeight, borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surfaceAlt }}>
+      <View style={{ flexDirection: "row", height: resolvedHeaderHeight, borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surfaceAlt }}>
         <View style={{ flexDirection: "row", width: leftWidth, borderRightWidth: 1, borderColor: palette.border }}>
           <View style={[{ width: headWidth }, cellCenter]}>
-            <Text style={[type.label, { color: palette.textMuted, textAlign: "center" }]} numberOfLines={labelLines} adjustsFontSizeToFit minimumFontScale={0.8}>
+            <Text
+              style={[type.label, { color: palette.textMuted, textAlign: "center" }]}
+              onTextLayout={(event) => measureLabel("header:corner", event)}
+            >
               {cornerLabel}
             </Text>
           </View>
           {pinnedCol ? (
-            <PinnedHeader label={pinnedCol.label} width={cellWidth} onUnpin={onTogglePin ? () => onTogglePin(pinnedCol.key) : undefined} />
+            <PinnedHeader
+              label={pinnedCol.label}
+              width={cellWidth}
+              onUnpin={onTogglePin ? () => onTogglePin(pinnedCol.key) : undefined}
+              onTextLayout={(event) => measureLabel(`header:${pinnedCol.key}`, event)}
+            />
           ) : null}
         </View>
         <ScrollView ref={headerHRef} horizontal scrollEnabled={false} showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
@@ -303,7 +322,7 @@ export function StickyTable({
                 key={r.key}
                 style={{
                   flexDirection: "row",
-                  height: rowHeight,
+                  height: resolvedRowHeights[ri],
                   backgroundColor: rowBg(ri, r.rowHighlight),
                   borderBottomWidth: ri === rows.length - 1 ? 0 : 1,
                   borderColor: palette.border,
@@ -313,13 +332,12 @@ export function StickyTable({
                   disabled={!r.onLabelPress}
                   onPress={r.onLabelPress ? () => { lightTap(); r.onLabelPress!(); } : undefined}
                   accessibilityRole={r.onLabelPress ? "link" : undefined}
+                  accessibilityLabel={r.onLabelPress ? r.label : undefined}
                   style={[{ width: headWidth }, cellCenter]}
                 >
                   <Text
                     style={[type.label, { color: r.onLabelPress ? palette.primary : palette.text, textAlign: "center", fontFamily: r.labelHighlight ? "Inter_700Bold" : "Inter_600SemiBold" }]}
-                    numberOfLines={labelLines}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
+                    onTextLayout={(event) => measureLabel(`row:${r.key}`, event)}
                   >
                     {r.label}
                   </Text>
@@ -349,7 +367,7 @@ export function StickyTable({
                   key={r.key}
                   style={{
                     flexDirection: "row",
-                    height: rowHeight,
+                    height: resolvedRowHeights[ri],
                     backgroundColor: rowBg(ri, r.rowHighlight),
                     borderBottomWidth: ri === rows.length - 1 ? 0 : 1,
                     borderColor: palette.border,
@@ -376,16 +394,28 @@ export function StickyTable({
   );
 }
 
-function PinnedHeader({ label, width, onUnpin }: { label: string; width: number; onUnpin?: () => void }) {
+function PinnedHeader({
+  label,
+  width,
+  onUnpin,
+  onTextLayout,
+}: {
+  label: string;
+  width: number;
+  onUnpin?: () => void;
+  onTextLayout: (event: TextLayoutEvent) => void;
+}) {
   const { palette } = useTheme();
   return (
     <Pressable
       disabled={!onUnpin}
       onPress={onUnpin ? () => { lightTap(); onUnpin(); } : undefined}
+      accessibilityRole={onUnpin ? "button" : undefined}
+      accessibilityLabel={onUnpin ? label : undefined}
       style={{ width, justifyContent: "center", paddingHorizontal: spacing.sm, flexDirection: "row", alignItems: "center", gap: 4 }}
     >
       <Pin size={11} color={palette.primary} fill={palette.primary} />
-      <Text style={[type.label, { color: palette.primary, textAlign: "right", flex: 1 }]} numberOfLines={Platform.OS === "web" ? 3 : 2} adjustsFontSizeToFit minimumFontScale={0.8}>
+      <Text style={[type.label, { color: palette.primary, textAlign: "right", flex: 1 }]} onTextLayout={onTextLayout}>
         {label}
       </Text>
     </Pressable>

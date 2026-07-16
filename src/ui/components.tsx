@@ -33,6 +33,7 @@ import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
+import { useReducedMotion } from "./motion";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -43,10 +44,16 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
  */
 function useSpringPress(pressedScale = 0.96) {
   const scale = useRef(new Animated.Value(1)).current;
+  const reducedMotion = useReducedMotion();
+  useEffect(() => () => scale.stopAnimation(), [scale]);
   // Interruptible by construction: each press starts a fresh spring from the
   // current (possibly mid-flight) value, so reversing never glitches.
-  const onPressIn = () => Animated.spring(scale, { toValue: pressedScale, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
-  const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 36, bounciness: 9 }).start();
+  const onPressIn = () => reducedMotion
+    ? scale.setValue(1)
+    : Animated.spring(scale, { toValue: pressedScale, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
+  const onPressOut = () => reducedMotion
+    ? scale.setValue(1)
+    : Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 36, bounciness: 9 }).start();
   return { scale, onPressIn, onPressOut };
 }
 
@@ -57,7 +64,12 @@ function useSpringPress(pressedScale = 0.96) {
  */
 export function FadeIn({ children, delay = 0, style }: { children: ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
   const [progress] = useState(() => new Animated.Value(0));
+  const reducedMotion = useReducedMotion();
   useEffect(() => {
+    if (reducedMotion) {
+      progress.setValue(1);
+      return;
+    }
     // Spring-driven entrance (mass/stiffness feel) — weighted and organic
     // rather than a fixed-duration curve, matching the app-wide motion system.
     const anim = Animated.spring(progress, {
@@ -70,7 +82,7 @@ export function FadeIn({ children, delay = 0, style }: { children: ReactNode; de
     });
     anim.start();
     return () => anim.stop();
-  }, [progress, delay]);
+  }, [progress, delay, reducedMotion]);
   return (
     <Animated.View
       style={[
@@ -357,7 +369,7 @@ export function Button({
     variant === "primary"
       ? palette.onPrimary
       : variant === "danger"
-        ? "#FFFFFF"
+        ? palette.onPrimary
         : variant === "ghost"
           ? palette.primary
           : palette.text;
@@ -1057,17 +1069,35 @@ const TOGGLE_W = 46;
 const TOGGLE_H = 28;
 const TOGGLE_PAD = 3;
 const TOGGLE_THUMB = TOGGLE_H - TOGGLE_PAD * 2;
-export function Toggle({ value, onValueChange, disabled }: { value: boolean; onValueChange: (v: boolean) => void; disabled?: boolean }) {
+export function Toggle({
+  value,
+  onValueChange,
+  label,
+  disabled,
+}: {
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
   const { palette } = useTheme();
+  const reducedMotion = useReducedMotion();
   const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
   useEffect(() => {
-    Animated.spring(progress, { toValue: value ? 1 : 0, useNativeDriver: false, speed: 20, bounciness: 6 }).start();
-  }, [value, progress]);
+    if (reducedMotion) {
+      progress.setValue(value ? 1 : 0);
+      return;
+    }
+    const animation = Animated.spring(progress, { toValue: value ? 1 : 0, useNativeDriver: false, speed: 20, bounciness: 6 });
+    animation.start();
+    return () => animation.stop();
+  }, [value, progress, reducedMotion]);
   const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.border, palette.primary] });
   const thumbX = progress.interpolate({ inputRange: [0, 1], outputRange: [TOGGLE_PAD, TOGGLE_W - TOGGLE_THUMB - TOGGLE_PAD] });
   return (
     <Pressable
       accessibilityRole="switch"
+      accessibilityLabel={label}
       accessibilityState={{ checked: value, disabled }}
       hitSlop={10}
       disabled={disabled}
@@ -1080,7 +1110,7 @@ export function Toggle({ value, onValueChange, disabled }: { value: boolean; onV
             width: TOGGLE_THUMB,
             height: TOGGLE_THUMB,
             borderRadius: TOGGLE_THUMB / 2,
-            backgroundColor: "#ffffff",
+            backgroundColor: palette.onPrimary,
             transform: [{ translateX: thumbX }],
             shadowColor: "#000",
             shadowOpacity: 0.18,

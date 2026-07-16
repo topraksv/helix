@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { ArrowDownUp } from "lucide-react-native";
 import { formatMinor, roundHalfAwayFromZero } from "../domain/money";
 import { loadRateCache, lookupRate, SUPPORTED_CURRENCIES, useFxRates, type Currency } from "../services/fx-fetch";
@@ -90,9 +90,14 @@ export function CurrencyConverter() {
         }}
       >
         {resultMinor != null ? (
-          <Text style={[type.amountLg, { color: palette.text }]} numberOfLines={1} adjustsFontSizeToFit>
-            {formatMinor(resultMinor, to)}
-          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ alignSelf: "stretch" }}
+            contentContainerStyle={{ flexGrow: 1, justifyContent: "center", alignItems: "flex-end" }}
+          >
+            <Text style={[type.amountLg, { color: palette.text, textAlign: "right" }]}>{formatMinor(resultMinor, to)}</Text>
+          </ScrollView>
         ) : (
           <Body muted>{ready ? tr.calc.enterAmount : tr.calc.rateMissing}</Body>
         )}

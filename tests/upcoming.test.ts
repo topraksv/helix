@@ -37,4 +37,23 @@ describe("upcoming card statements", () => {
     const rows = [tx({ type: "expense", amountTryMinor: 10_00, status: "pending", effectiveDate: "2026-07-20", paymentSourceId: "card-1" })];
     expect(upcomingCardStatements(rows, [{ id: "card-1", name: "Kartım" }], [], TODAY)).toEqual([]);
   });
+
+  it("preserves card order and ignores a mismatched statement relationship", () => {
+    const rows = [
+      tx({ type: "expense", status: "pending", effectiveDate: "2026-07-28", paymentSourceId: "card-2", cardStatementId: "st-1", amountTryMinor: 999_00 }),
+      tx({ type: "expense", status: "pending", effectiveDate: "2026-07-28", paymentSourceId: "card-1", cardStatementId: "st-1", amountTryMinor: 100_00 }),
+      tx({ type: "expense", status: "pending", effectiveDate: "2026-07-29", paymentSourceId: "card-2", cardStatementId: "st-2", amountTryMinor: 200_00 }),
+    ];
+    const statements = [
+      { id: "st-2", paymentSourceId: "card-2", periodMonth: "2026-07", statementDate: "2026-07-21", dueDate: "2026-07-29" },
+      { id: "st-1", paymentSourceId: "card-1", periodMonth: "2026-07", statementDate: "2026-07-20", dueDate: "2026-07-28" },
+    ];
+    expect(upcomingCardStatements(rows, [
+      { id: "card-1", name: "Birinci" },
+      { id: "card-2", name: "İkinci" },
+    ], statements, TODAY)).toEqual([
+      { cardId: "card-1", cardName: "Birinci", amountMinor: 100_00, dueDate: "2026-07-28" },
+      { cardId: "card-2", cardName: "İkinci", amountMinor: 200_00, dueDate: "2026-07-29" },
+    ]);
+  });
 });

@@ -2,7 +2,7 @@
  *  or a calendar year), a category filter, per-category cumulative trend and
  *  transaction search. */
 
-import React, { useState } from "react";
+import React, { useDeferredValue, useState } from "react";
 import { Text, useWindowDimensions, View } from "react-native";
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
@@ -48,6 +48,7 @@ export default function AnalysisScreen() {
   // No manual useMemo: the React Compiler (enabled app-wide) memoizes these
   // and bails out when it finds hand-rolled memoization on unstable deps.
   const txLike = toTxLike(allTx, persons, categories);
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
   // Legacy type/category mismatches are normalized by the shared domain flow,
   // so category details and aggregate charts use one financial rule.
   const matrix = categoryRangeMatrix(txLike, startMonth, endMonth, today);
@@ -64,8 +65,9 @@ export default function AnalysisScreen() {
   // Simple but effective search: each transaction becomes one lowercased
   // haystack of category name, note, Turkish month name, year and amount
   // digits, so "market", "mart", "2025" or "1500" all filter sensibly.
-  const catName = (cid: string | null) => (cid ? categories.find((c) => c.id === cid)?.name ?? "" : "");
-  const q = query.trim().toLocaleLowerCase("tr-TR");
+  const catName = (cid: string | null) => (cid ? categoryById.get(cid)?.name ?? "" : "");
+  const deferredQuery = useDeferredValue(query);
+  const q = deferredQuery.trim().toLocaleLowerCase("tr-TR");
   const searchResults =
     q.length < 1
       ? []
@@ -97,7 +99,7 @@ export default function AnalysisScreen() {
   const periodDistribution = distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today);
   const expenseRows = [...periodDistribution.expenseByCategory.entries()]
     .map(([categoryId, valueMinor]) => ({
-      label: categories.find((category) => category.id === categoryId)?.name ?? tr.common.none,
+      label: categoryById.get(categoryId)?.name ?? tr.common.none,
       valueMinor,
     }))
     .concat(
@@ -186,7 +188,7 @@ export default function AnalysisScreen() {
                     minor={signedBalanceEffectOf(
                       t.type,
                       t.amountTryMinor,
-                      t.categoryId ? categories.find((category) => category.id === t.categoryId)?.kind ?? null : null,
+                      t.categoryId ? categoryById.get(t.categoryId)?.kind ?? null : null,
                     )}
                   />
                 </Spread>

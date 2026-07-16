@@ -12,6 +12,7 @@ import { useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, type SessionEpochToken } from "./session-epoch";
 import { classifyOutboxBatch, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
+import { devError, devWarning } from "../services/logger";
 
 const isAuthError = (raw: string) => /jwt|token|401|unauthorized|not authenticated/i.test(raw);
 
@@ -208,7 +209,7 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
         await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${placeholders})`, events.map((event) => event.id) as never[]);
       });
       if (rejected.length > 0) {
-        console.warn(`[sync] ${rejected.length} invalid outbox event(s) quarantined`);
+        devWarning("sync", `${rejected.length} invalid outbox event(s) quarantined`);
         throw new Error(`push ${table}: invalid local outbox data quarantined`);
       }
     }
@@ -366,7 +367,7 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
       return false;
     }
     const raw = e instanceof Error ? e.message : String(e);
-    console.error("[sync]", raw);
+    devError("sync", raw);
     // Expired token → refresh once and retry immediately, no user action.
     if (allowRefresh && isAuthError(raw) && (await tryRefreshSession())) {
       status.set({ state: "syncing" });

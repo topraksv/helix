@@ -40,7 +40,7 @@ function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" |
         backgroundColor: bg,
       }}
     >
-      <Text style={{ fontSize: big ? 13 : 10, color, fontFamily: "Inter_600SemiBold" }} numberOfLines={1}>
+      <Text style={{ fontSize: big ? 13 : 10, color, fontFamily: "Inter_600SemiBold" }}>
         {text ?? "·"}
       </Text>
     </View>

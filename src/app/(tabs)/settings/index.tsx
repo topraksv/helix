@@ -286,6 +286,7 @@ export default function SettingsScreen() {
               title={tr.settings.biometric}
               right={
                 <Toggle
+                  label={tr.settings.biometric}
                   value={biometric}
                   onValueChange={(v) => {
                     setBiometric(v);
@@ -300,6 +301,7 @@ export default function SettingsScreen() {
               subtitle={tr.settings.notificationsDeviceHint}
               right={
                 <Toggle
+                  label={tr.settings.notifications}
                   value={notifications}
                   disabled={notificationBusy}
                   onValueChange={(enabled) => {
@@ -321,7 +323,7 @@ export default function SettingsScreen() {
           icon={CalendarClock}
           title={tr.settings.showPending}
           subtitle={tr.settings.showPendingHint}
-          right={<Toggle value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
+          right={<Toggle label={tr.settings.showPending} value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
         />
       </Card>
 
