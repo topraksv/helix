@@ -9,25 +9,28 @@ lags behind them.
 
 - Updated: 2026-07-16 (Europe/Istanbul)
 - Branch: `main`
-- Review/remediation base: `0c90dc8` (use `git log -1` for resulting HEAD)
+- Uncommitted work base: `a5a2920` (Claude second-pass UX/UI bug fixes below,
+  in the working tree — use `git log -1`/`git status` for the live state)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 24 files, 209 tests passing
-- The current task's 49-route static web export passed; the immediately prior
-  P11 baseline also has clean Android and iOS exports. Earlier headless Playwright
-  baselines rendered sign-in at 320/390/1280 px and recovery error states at
-  320/390 px without overflow or browser errors; the final session exposed no
-  controllable browser and does not claim a new pixel-level pass.
+- Test baseline: 24 files, 211 tests passing
+- Static web export passed. No controllable browser was available this session
+  (no local Playwright, no external connector), so the second pass does NOT
+  claim a new pixel-level visual pass — back-button centring, large-amount
+  table rendering and the modal column drag still want an installed-app / browser
+  confirmation.
 
 ## Active working tree
 
-The repository-wide remediation requested on 2026-07-15 is complete. The
-account lifecycle, sync ordering, financial classification, import/restore,
-derived obligations/references, credit-card statement, external-data/privacy,
-navigation/UI regression, identity/relational restore, UI/table consistency,
-onboarding/config consistency and repository-boundary packages are shipped.
-The repository-wide remediation, dependency/dead-code cleanup and P11 final
-regression are shipped. Always re-check `git status`; Git remains authoritative.
+The 2026-07-15 repository-wide remediation is shipped. On 2026-07-16 the user
+reviewed the shipped mobile-finance/analytics/input package and reported six
+UX/UI bugs; Claude's fixes for all six are IN THE WORKING TREE, uncommitted, on
+base `a5a2920`. They build on Codex's first pass (they revise it, never revert
+it): İade toggle replacing the "normal/iade" segmented, back-button optical
+centring, today-by-default transaction date, drag-only column reorder (arrows
+removed, modal dismiss-gesture disabled), stable live-market quotes, and a
+raised amount ceiling with compact table formatting. Not yet committed/shipped.
+Always re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -72,6 +75,49 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Claude (six reported UX/UI bugs, second pass)
+
+- Base `a5a2920`, branch `main`; changes are in the working tree, NOT committed.
+  These revise Codex's just-shipped first pass after the user reviewed it and
+  reported six concrete bugs; each edit was made on top of the current HEAD
+  files (verified: the stash re-applied cleanly with no conflict).
+- Fixes: (1) transaction form drops the confusing "normal/iade" segmented for a
+  single **İade** toggle with an in-card description (`transaction.tsx`, new
+  `tr.tx.refundToggleHint`, removed `entryEffect`/`normalEntryLabel`). (2)
+  `HeaderBackButton` centres the chevron+label on one optical line (icon boxed
+  to the label line-height, `includeFontPadding:false`). (3) New transactions
+  default to **today** (specific day, hits the balance) instead of month-only;
+  future/aggregate stay one explicit tap away. (4) Column reorder is drag-only —
+  the mobile arrows were removed, the `columns-editor` modal now sets
+  `gestureEnabled:false` (its swipe-dismiss was stealing the drag, which is why
+  it worked in the Settings stack but not the modal), and reorder moved to
+  screen-reader `accessibilityActions` on the grip; `DraggableList` lost the
+  now-dead `canMoveUp/canMoveDown`. (5) Live-market quotes no longer disappear
+  intermittently — a stable (unchanged) symbol keeps showing while the feed is
+  alive; only whole-feed silence for 60 s clears everything. (6) Amount ceiling
+  raised to ~1 trillion (`MAX_ABS_AMOUNT_MINOR`), input capped at
+  `MAX_AMOUNT_MAJOR_DIGITS`, and fixed-width table cells use the new
+  `formatMinorCompact` (locale `Mn`/`Mr`, threshold 1.000.000 TL so the widest
+  full value still fits a narrow cell — no `numberOfLines`, per the design
+  rules); `Amount` steps its font down for long strings so hero/row figures stay
+  one line without truncation or wrap.
+- Dead code removed: the reorder arrows and their `canMove*` API, the two unused
+  i18n keys, and now-unused imports (`Platform`, `ChevronUp/Down`, `formatMinor`
+  where fully replaced). Impact scan: the amount ceiling is centralized through
+  `MAX_ABS_AMOUNT_MINOR`/`MAX_AMOUNT_MAJOR_DIGITS` (calculator + backup already
+  follow it or use an independent safe-integer bound), so nothing else needed a
+  matching bump.
+- Checks: `npm run typecheck`, `npm test` (24 files/211, incl. new money
+  ceiling/compact/input-cap cases and three updated boundary tests) and
+  `npx expo lint` (exit 0) all pass; 49-route static web export clean. No
+  controllable browser this session → no new pixel-level visual pass claimed.
+- Shipped at the user's go-ahead: committed to `main` (see `git log` for the
+  resulting HEAD), pushed so the Pages web deploy runs, and published to the EAS
+  `preview` branch for the mobile OTA (group id recorded in the follow-up docs
+  entry). Post-review fix: the first pass used `numberOfLines={1}` in table
+  cells — a design-rule violation — so it was removed and the compact threshold
+  lowered to 1.000.000 TL so full values still fit a narrow cell unaided.
 
 ### 2026-07-16 — Codex (requested mobile OTA republish)
 

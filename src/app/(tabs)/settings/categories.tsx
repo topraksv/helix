@@ -2,7 +2,7 @@
  *  column visibility all belong to the user (nothing is hardcoded). */
 
 import React, { useState, type ReactNode } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
@@ -12,7 +12,7 @@ import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons"
 import { scheduleSync } from "../../../sync/engine";
 import { appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
-import { ChevronDown, ChevronUp, GripVertical, LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
+import { GripVertical, LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
 import { Body, Button, Card, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
 import { DraggableList } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
@@ -172,6 +172,14 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                           {...handle.panHandlers}
                           accessibilityRole="adjustable"
                           accessibilityLabel={tr.settings.reorderHandle}
+                          accessibilityActions={[
+                            { name: "increment", label: tr.settings.moveUp },
+                            { name: "decrement", label: tr.settings.moveDown },
+                          ]}
+                          onAccessibilityAction={(e) => {
+                            if (e.nativeEvent.actionName === "increment") handle.moveUp();
+                            else if (e.nativeEvent.actionName === "decrement") handle.moveDown();
+                          }}
                           style={{ padding: 4, marginLeft: -4 }}
                         >
                           <GripVertical size={18} color={palette.textMuted} />
@@ -194,15 +202,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                       </Row>
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>
-                      <Row gap={spacing.xs} style={{ flex: 1, paddingRight: spacing.sm }}>
-                        {Platform.OS !== "web" ? (
-                          <>
-                            <IconButton icon={ChevronUp} size={30} label={tr.settings.moveUp} disabled={!handle.canMoveUp} onPress={handle.moveUp} />
-                            <IconButton icon={ChevronDown} size={30} label={tr.settings.moveDown} disabled={!handle.canMoveDown} onPress={handle.moveDown} />
-                          </>
-                        ) : null}
-                        <Body muted style={{ fontSize: 12 }}>{tr.settings.columnVisible}</Body>
-                      </Row>
+                      <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.settings.columnVisible}</Body>
                       <Toggle label={`${c.name} · ${tr.settings.columnVisible}`} value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
                     </Spread>
                   </View>

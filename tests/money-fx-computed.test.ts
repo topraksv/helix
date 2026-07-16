@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_ABS_AMOUNT_MINOR,
   formatMinor,
+  formatMinorCompact,
   formatMoneyInputLive,
   formatTRInputLive,
   majorToMinor,
@@ -50,12 +51,32 @@ describe("TR money formatting/parsing", () => {
   it("rejects amounts beyond the product limit before they can break layouts", () => {
     expect(parseTRAmountToMinor("99999999999999999999")).toBeNull();
     expect(parseAmountExpression("99999999999999999999+1")).toBeNull();
-    expect(parseTRAmountToMinor("1000000000")).toBeNull();
-    expect(parseAmountExpression("600000000+600000000")).toBeNull();
-    expect(parseTRAmountToMinor("999999999,99")).toBe(MAX_ABS_AMOUNT_MINOR);
-    expect(majorToMinor(999_999_999.99)).toBe(MAX_ABS_AMOUNT_MINOR);
-    expect(majorToMinor(1_000_000_000)).toBeNull();
+    // Just past the ~1 trillion ceiling → refused.
+    expect(parseTRAmountToMinor("1000000000000")).toBeNull();
+    expect(parseAmountExpression("600000000000+600000000000")).toBeNull();
+    // Exactly the ceiling parses to MAX; a billion is now comfortably inside it.
+    expect(parseTRAmountToMinor("999999999999,99")).toBe(MAX_ABS_AMOUNT_MINOR);
+    expect(parseTRAmountToMinor("1000000000")).toBe(100_000_000_000); // 1 milyar TL kabul edilir
+    expect(majorToMinor(999_999_999_999.99)).toBe(MAX_ABS_AMOUNT_MINOR);
+    expect(majorToMinor(1_000_000_000_000)).toBeNull();
     expect(majorToMinor(Number.NaN)).toBeNull();
+  });
+
+  it("caps typed integer digits at the supported range instead of failing silently", () => {
+    // 13 integer digits is past the ceiling: the extra digit is not accepted.
+    expect(formatTRInputLive("1234567890123")).toBe("123.456.789.012");
+    expect(parseTRAmountToMinor(formatTRInputLive("1234567890123"))).not.toBeNull();
+  });
+
+  it("abbreviates only very large values for fixed-width table cells", () => {
+    expect(formatMinorCompact(1882292)).toBe("₺18.822,92"); // everyday amount stays full
+    expect(formatMinorCompact(-1877303)).toBe("-₺18.773,03");
+    // 999.999,99 TL — just below the 1.000.000 TL threshold, still written in full
+    // (fits a narrow matrix cell, so no truncation/wrap is ever needed).
+    expect(formatMinorCompact(99_999_999)).toBe(formatMinor(99_999_999));
+    // 1.000.000 TL and up switch to locale compact notation (Mn/Mr).
+    expect(formatMinorCompact(100_000_000)).not.toBe(formatMinor(100_000_000));
+    expect(formatMinorCompact(150_000_000_000).length).toBeLessThan(formatMinor(150_000_000_000).length);
   });
 
   it("live-formats input with TR thousands separators, kuruş optional", () => {

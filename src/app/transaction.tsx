@@ -16,7 +16,7 @@ import { deriveStartMonth, isValidInstallmentCount } from "../domain/installment
 import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented } from "../ui/components";
+import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -67,10 +67,11 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   // even when the modal mounts before the first query resolves.
   const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? null);
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
-  // When did it happen? New entries default to "month only" (dateless) — the
-  // month is what matters, a specific day is optional. An existing dateless row
+  // When did it happen? New entries default to TODAY (specific day) so the
+  // amount hits the current balance right away; "month only" (dateless) and
+  // future days stay one explicit tap away. An existing dateless row
   // (isAggregate) reopens in month mode; a dated row in day mode.
-  const [dateMode, setDateMode] = useState<"month" | "day">(existing ? (existing.isAggregate ? "month" : "day") : "month");
+  const [dateMode, setDateMode] = useState<"month" | "day">(existing ? (existing.isAggregate ? "month" : "day") : "day");
   const initialOccurrenceDate = existing?.purchaseDate ?? existing?.effectiveDate ?? todayISO();
   const [monthKey, setMonthKey] = useState<MonthKey>(monthKeyOf(initialOccurrenceDate));
   const [dateStr, setDateStr] = useState(initialOccurrenceDate);
@@ -266,39 +267,39 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           setAmountMinor(minor == null ? null : Math.abs(minor));
         }}
       />
-      <Label>{tr.tx.entryEffect}</Label>
-      <Segmented
-        options={[
-          { value: "normal", label: tr.tx.normalEntryLabel(entryType) },
-          { value: "reversal", label: tr.tx.reversalLabel(entryType) },
-        ]}
-        value={isReversal ? "reversal" : "normal"}
-        onChange={(value) => {
-          const reversal = value === "reversal";
-          setIsReversal(reversal);
-          if (reversal) setInstallment(false);
+      {/* Refund/return toggle: off = an ordinary entry (no confusing "normal"
+          label), on = a reversal that flips the amount's sign. The description
+          explains the balance effect in the same card, so the meaning is clear
+          without a second segmented control. */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          backgroundColor: isReversal ? palette.primarySoft : palette.surfaceAlt,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: isReversal ? palette.primary : palette.border,
+          padding: spacing.md,
+          marginBottom: spacing.md,
         }}
-      />
-      {isReversal ? (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.md,
-            backgroundColor: palette.primarySoft,
-            borderRadius: radius.md,
-            padding: spacing.md,
-            marginTop: -spacing.sm,
-            marginBottom: spacing.md,
-          }}
-        >
-          <Undo2 size={20} color={palette.primary} />
-          <View style={{ flex: 1 }}>
-            <Body style={{ color: palette.primary }}>{tr.tx.reversalLabel(entryType)}</Body>
-            <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.tx.reversalHint(entryType)}</Body>
-          </View>
+      >
+        <Undo2 size={20} color={isReversal ? palette.primary : palette.textMuted} />
+        <View style={{ flex: 1 }}>
+          <Body style={{ color: isReversal ? palette.primary : palette.text }}>{tr.tx.reversalLabel(entryType)}</Body>
+          <Body muted style={{ fontSize: 12, marginTop: 2 }}>
+            {isReversal ? tr.tx.reversalHint(entryType) : tr.tx.refundToggleHint(entryType)}
+          </Body>
         </View>
-      ) : null}
+        <Toggle
+          label={tr.tx.reversalLabel(entryType)}
+          value={isReversal}
+          onValueChange={(v) => {
+            setIsReversal(v);
+            if (v) setInstallment(false);
+          }}
+        />
+      </View>
       {showCurrency ? (
         <>
           <Label>{tr.tx.currency}</Label>

@@ -130,7 +130,7 @@ describe("repository compatibility contract", () => {
     await expect(repository.seedWorkspace("user-1", {
       templateCategories: [],
       startMonth: "2026-07",
-      openingBalanceMinor: 100_000_000_000,
+      openingBalanceMinor: 100_000_000_000_000,
       persons: [{ name: "Ben", isSelf: true }],
       sources: [],
     })).rejects.toThrow("supported range");
