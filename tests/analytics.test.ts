@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   categoryMonthMatrix,
+  categoryRangeMatrix,
   creditCardSplit,
   cumulativeSeries,
   distributionForRange,
@@ -44,6 +45,22 @@ describe("categoryMonthMatrix + YTD", () => {
       TODAY,
     );
     expect(matrix.has("yatirim")).toBe(false);
+  });
+
+  it("can include transfer categories in the all-flow analysis matrix", () => {
+    const matrix = categoryRangeMatrix(
+      [
+        tx({ type: "transfer", amountTryMinor: 1_000_00, effectiveDate: "2026-02-10", categoryId: "yatirim" }),
+        tx({ type: "transfer", amountTryMinor: -200_00, effectiveDate: "2026-03-10", categoryId: "yatirim" }),
+      ],
+      "2026-01",
+      "2026-03",
+      TODAY,
+      { includeTransfers: true },
+    );
+    expect(matrix.get("yatirim")?.monthly.get("2026-02")).toBe(1_000_00);
+    expect(matrix.get("yatirim")?.monthly.get("2026-03")).toBe(-200_00);
+    expect(matrix.get("yatirim")?.ytdMinor).toBe(800_00);
   });
 });
 

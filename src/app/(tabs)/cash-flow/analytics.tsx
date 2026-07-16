@@ -37,6 +37,7 @@ export default function AnalysisScreen() {
   const colors = useSeriesColors();
   const { width } = useWindowDimensions();
   const compact = width < 900;
+  const narrow = width < 520;
 
   // Window: rolling N months ending now, or a calendar year (navigable).
   const [startMonth, endMonth] =
@@ -51,7 +52,10 @@ export default function AnalysisScreen() {
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   // Legacy type/category mismatches are normalized by the shared domain flow,
   // so category details and aggregate charts use one financial rule.
-  const matrix = categoryRangeMatrix(txLike, startMonth, endMonth, today);
+  // The analysis matrix is an all-flow view: transfer/investment categories
+  // stay visibly separate from expense totals, but must not disappear from the
+  // user's category-by-month history.
+  const matrix = categoryRangeMatrix(txLike, startMonth, endMonth, today, { includeTransfers: true });
 
   // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
   // back arrow can't wander into empty years forever.
@@ -116,21 +120,44 @@ export default function AnalysisScreen() {
       const rest = positiveExpenseRows.slice(7).reduce((sum, row) => sum + row.valueMinor, 0);
       return rest > 0 ? [{ label: tr.common.other, valueMinor: rest, color: colors[7] }] : [];
     })(),
+    ...(periodDistribution.transferTotalMinor > 0
+      ? [{ label: tr.dashboard.investmentAside, valueMinor: periodDistribution.transferTotalMinor, color: colors[4] }]
+      : []),
   ];
-  const pieSupplemental = refundRows.map((row) => ({
-    label: tr.dashboard.refundAside(row.label),
-    valueMinor: row.valueMinor,
-    color: palette.positive,
-  }));
+  const pieSupplemental = [
+    ...refundRows.map((row) => ({
+      label: tr.dashboard.refundAside(row.label),
+      valueMinor: row.valueMinor,
+      color: palette.positive,
+    })),
+    ...(periodDistribution.transferTotalMinor < 0
+      ? [{
+          label: tr.dashboard.investmentRefundAside,
+          valueMinor: periodDistribution.transferTotalMinor,
+          color: palette.positive,
+        }]
+      : []),
+  ];
   const barGroups = monthKeys.map((m) => {
     const label = tr.months[monthOf(m) - 1].slice(0, 3);
     if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
     const distribution = distributionForRange(txLike, firstDayOf(m), lastDayOf(m), today);
-    return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor] };
+    return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor, distribution.transferTotalMinor] };
   });
   const barSeries = categoryFilter
     ? [{ label: catName(categoryFilter) || tr.tx.category, color: colors[0] }]
-    : [{ label: tr.cashflow.income, color: colors[1] }, { label: tr.cashflow.expense, color: colors[5] }];
+    : [
+        { label: tr.cashflow.income, color: colors[1] },
+        { label: tr.cashflow.expense, color: colors[5] },
+        { label: tr.cashflow.transfer, color: colors[4] },
+      ];
+  const maxAmountChars = rows.reduce((longest, { data }) => {
+    const values = [...monthKeys.map((month) => data!.monthly.get(month) ?? 0), data!.ytdMinor];
+    return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinor(value).length));
+  }, 0);
+  // The table already scrolls horizontally; size each numeric column for the
+  // longest actual value so amounts remain on one line instead of wrapping.
+  const analysisCellWidth = Math.min(240, Math.max(compact ? 120 : 128, Math.ceil(maxAmountChars * 7.5) + spacing.lg * 2));
 
   return (
     <Screen>
@@ -206,11 +233,21 @@ export default function AnalysisScreen() {
 
       {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
         <Card>
-          <Spread style={{ marginBottom: spacing.sm }}>
-            <Heading style={{ marginTop: 0, marginBottom: 0 }}>
-              {chartType === "pie" ? tr.analysis.chartExpenseDist : categoryFilter ? catName(categoryFilter) : tr.dashboard.trend}
+          <View
+            style={{
+              flexDirection: narrow ? "column" : "row",
+              alignItems: narrow ? "stretch" : "center",
+              justifyContent: "space-between",
+              gap: spacing.md,
+              marginBottom: spacing.md,
+            }}
+          >
+            <Heading style={{ marginTop: 0, marginBottom: 0, flex: narrow ? undefined : 1 }}>
+              {chartType === "pie"
+                ? tr.analysis.chartExpenseDist
+                : categoryFilter ? catName(categoryFilter) : tr.analysis.monthlyFlows}
             </Heading>
-            <View style={{ width: 168 }}>
+            <View style={{ width: narrow ? "100%" : 168 }}>
               <Segmented
                 noMargin
                 options={[
@@ -221,13 +258,13 @@ export default function AnalysisScreen() {
                 onChange={setChartType}
               />
             </View>
-          </Spread>
+          </View>
           {chartType === "pie" ? (
             pieSlices.length > 0 || pieSupplemental.length > 0 ? (
               <Donut
                 slices={pieSlices}
                 supplementalSlices={pieSupplemental}
-                totalMinor={periodDistribution.expenseTotalMinor}
+                totalMinor={periodDistribution.expenseTotalMinor + periodDistribution.transferTotalMinor}
               />
             ) : (
               <Body muted>{tr.analysis.noResults}</Body>
@@ -244,8 +281,8 @@ export default function AnalysisScreen() {
         <Card padded={false} style={{ height: Math.min(rows.length, 8) * 52 + 60 }}>
           <StickyTable
             cornerLabel={tr.tx.category}
-            headWidth={compact ? 96 : 132}
-            cellWidth={compact ? 88 : 96}
+            headWidth={compact ? 112 : 148}
+            cellWidth={analysisCellWidth}
             currentColumnKey={currentMonth}
             focusColumnKey={currentMonth}
             columns={[...monthKeys.map((m) => ({ key: m, label: tr.months[monthOf(m) - 1].slice(0, 3) })), { key: "__total", label: tr.common.total }]}
@@ -260,13 +297,13 @@ export default function AnalysisScreen() {
                   return (
                     <Text
                       key={m}
-                      style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.sm, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text }]}
+                      style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text }]}
                     >
                       {v === 0 ? "" : formatMinor(v)}
                     </Text>
                   );
                 }),
-                <Text key="__total" style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.sm, fontSize: compact ? 12 : 13, color: palette.text }]}>
+                <Text key="__total" style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, color: palette.text }]}>
                   {formatMinor(data!.ytdMinor)}
                 </Text>,
               ],

@@ -265,7 +265,7 @@ export default function DashboardScreen() {
       color: palette.positive,
     })),
     ...(dist.transferTotalMinor < 0
-      ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: palette.textMuted }]
+      ? [{ label: tr.dashboard.investmentRefundAside, valueMinor: dist.transferTotalMinor, color: palette.positive }]
       : []),
   ];
   const distributionTotalMinor = dist.expenseTotalMinor + dist.transferTotalMinor;
