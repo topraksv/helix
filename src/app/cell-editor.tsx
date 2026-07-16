@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from "react";
-import { Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
 import { Pencil, Trash2 } from "lucide-react-native";
@@ -117,8 +117,16 @@ export default function CellEditorModal() {
       <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(month!)}` }} />
 
       <Spread style={{ marginBottom: spacing.md }}>
-        <Body muted>{tr.cell.total}</Body>
-        <Amount minor={selfSum} large />
+        <Body muted style={{ flexShrink: 0 }}>{tr.cell.total}</Body>
+        <ScrollView
+          horizontal
+          bounces={false}
+          showsHorizontalScrollIndicator={false}
+          style={{ flex: 1, marginLeft: spacing.md }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end" }}
+        >
+          <Amount minor={selfSum} large style={{ flexShrink: 0 }} />
+        </ScrollView>
       </Spread>
 
       {/* Quick entry */}

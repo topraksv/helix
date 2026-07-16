@@ -1,8 +1,8 @@
 /**
- * Column/row editor presented as a modal from Mali Tablo, so closing returns
- * to the table instead of diving into the Settings tab. It reuses the exact
- * same categories management screen — one implementation, two entry points
- * (Settings → "Kalemler ve Kolonlar", and the table's edit button).
+ * Column/row editor opened from Mali Tablo. It stays in the root stack so
+ * closing returns to the table instead of switching to the Settings tab, but
+ * reuses the exact same management screens — one implementation and one
+ * persisted order behind both entry points.
  */
 
 import React, { useState } from "react";
@@ -11,7 +11,7 @@ import ComputedColumnsScreen from "./(tabs)/settings/computed-columns";
 import { tr } from "../i18n/tr";
 import { Segmented } from "../ui/components";
 
-export default function ColumnsEditorModal() {
+export default function ColumnsEditorScreen() {
   const [section, setSection] = useState<"categories" | "computed">("categories");
   const tabs = (
     <Segmented

@@ -318,25 +318,27 @@ export function Amount({
   large,
   colorized = true,
   color,
+  style,
 }: {
   minor: number;
   currency?: string;
   large?: boolean;
   colorized?: boolean;
   color?: string;
+  style?: StyleProp<TextStyle>;
 }) {
   const { palette } = useTheme();
   const resolved = color ?? (colorized && minor < 0 ? palette.negative : palette.text);
   const formatted = formatMinor(minor, currency);
-  // Full figures (hero balance, row amounts) stay on one line up to ~1 trillion
-  // by stepping the font down as the string grows — never truncated or wrapped.
-  // Tables that are truly cell-bound use formatMinorCompact instead.
+  // Keep full figures legible by stepping the font down as the string grows.
+  // Fixed table cells use formatMinorCompact; exact detail totals can pair this
+  // with an unconstrained horizontal container as a final no-wrap fallback.
   const fittedSize = formatted.length > 22
-    ? (large ? 20 : 11)
+    ? (large ? 15 : 11)
     : formatted.length > 18
-      ? (large ? 24 : 12)
+      ? (large ? 19 : 12)
       : formatted.length > 15
-        ? (large ? 28 : 13)
+        ? (large ? 24 : 13)
         : undefined;
   return (
     <Text
@@ -344,6 +346,7 @@ export function Amount({
         large ? type.amountLg : type.amount,
         { color: resolved, flexShrink: 1, textAlign: "right" },
         fittedSize == null ? null : { fontSize: fittedSize },
+        style,
       ]}
     >
       {formatted}

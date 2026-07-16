@@ -256,6 +256,10 @@ reported items:
 - **Aggressively trim bottom safe-area padding** on mobile — no dead space at
   the end of a scroll (use `Math.max(insets.bottom, …)`, but don't overshoot).
 - The **current month auto-focuses/centers** in tables.
+- Do not present a vertically draggable editor as an iOS sheet: its native
+  dismiss pan competes with row reorder even when dismissal is disabled. Use a
+  normal stack card (or a true full-screen presentation when modal semantics
+  are required), while keeping one shared editor/data path across entry points.
 
 ## Shipping updates (do this after every change — the agent owns it)
 
