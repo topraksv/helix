@@ -390,12 +390,11 @@ function RootLayoutInner() {
           <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
           <Stack.Screen name="opening-balance" options={{ presentation: "modal", title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="account-security" options={{ presentation: "modal", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
-          {/* gestureEnabled:false — the modal's swipe-down-to-dismiss otherwise
-              competes with the column drag-reorder gesture and wins, so a
-              press-and-drag never moved a row here (it worked in the Settings
-              stack screen, which has no full-card dismiss gesture). Close via
-              the header back button instead. */}
-          <Stack.Screen name="columns-editor" options={{ presentation: "modal", gestureEnabled: false, title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          {/* Keep the shared column editor in a normal stack card. An iOS sheet
+              owns the same vertical pan used by the reorder grip, even when
+              swipe-to-dismiss is disabled; the Settings entry point works
+              because it has no sheet recognizer. */}
+          <Stack.Screen name="columns-editor" options={{ presentation: "card", title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
         </Stack>
         </ErrorBoundary>
