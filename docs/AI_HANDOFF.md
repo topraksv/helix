@@ -9,18 +9,19 @@ lags behind them.
 
 - Updated: 2026-07-16 (Europe/Istanbul)
 - Branch: `main`
-- Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
+- Review/remediation base: `0c90dc8` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 23 files, 199 tests passing
-- Clean Android, iOS and static web exports passed. Earlier headless Playwright
+- Test baseline: 24 files, 209 tests passing
+- The current task's 49-route static web export passed; the immediately prior
+  P11 baseline also has clean Android and iOS exports. Earlier headless Playwright
   baselines rendered sign-in at 320/390/1280 px and recovery error states at
   320/390 px without overflow or browser errors; the final session exposed no
   controllable browser and does not claim a new pixel-level pass.
 
 ## Active working tree
 
-The repository-wide remediation requested on 2026-07-15 is in progress. The
+The repository-wide remediation requested on 2026-07-15 is complete. The
 account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references, credit-card statement, external-data/privacy,
 navigation/UI regression, identity/relational restore, UI/table consistency,
@@ -46,7 +47,7 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-No verified remediation finding remains open. Accepted constraints: the 17
+No verified code finding or reported bug remains open. Accepted constraints: the 17
 moderate `npm audit --omit=dev` findings are in Expo SDK 54's build/config chain
 and only offer a breaking SDK 57 fix; SDK 54 remains required by the installed
 App Store Expo Go line. The `expo`/`expo-updates` patch alignment needs the next
@@ -71,6 +72,34 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (mobile finance UI and input hardening)
+
+- Base `0c90dc8`, branch `main`; shipped in four isolated commits:
+  `177a9ab`, `4d60491`, `d7c01bf`, and `7040f4c`.
+- Restored a centered, labeled 44-point back control with deterministic route
+  fallbacks; redesigned transaction refunds with kind-specific copy/badges;
+  fixed mobile drag ordering and added accessible up/down controls; right-aligned
+  calculator results; and corrected spacing/wrapping in finance rows.
+- Analysis now exposes investment/transfer as a separate, explicit financial
+  flow in the donut, bar series and range table without reclassifying it as an
+  expense. Table amount widths derive from formatted content so long values do
+  not wrap. The shared transaction-type rule remains authoritative.
+- Added one shared input policy and product money bound across forms,
+  calculator, Excel parsing and repository writes. Responsive amount text
+  remains readable for valid legacy backups. The live converter now reuses
+  fresh USD/EUR quotes and falls back to the dated cache; provider branding was
+  removed from visible product copy and untrusted quote/result sizes are bounded.
+- Typecheck, zero-warning Expo lint, 24 files/209 tests and the 49-route static
+  web export passed. Source audit found no raw `router.back()` outside the
+  deterministic helper and no remaining line-capped/ellipsis text. The browser
+  runtime exposed no controllable profile, so protected pixel-level interaction
+  and physical drag/haptic feel are not claimed as newly verified.
+- All four commits were pushed to `main`; GitHub Pages runs `29497496897`,
+  `29497737547`, `29500775684`, and `29501079074` completed successfully. No
+  mobile OTA was published: the current dependency patch alignment still
+  requires the already-recorded local `npx expo run:ios --device` native rebuild
+  before a new JS update is safely released to the installed phone.
 
 ### 2026-07-16 — Codex (P11 final regression and migration history)
 
