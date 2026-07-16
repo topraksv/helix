@@ -11,9 +11,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import { Pencil, Trash2 } from "lucide-react-native";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
-import { newId } from "../db/ids";
-import { restoreRow, writeRows } from "../db/mutations";
+import { restoreRow } from "../db/mutations";
 import { addTransaction, deleteTransaction } from "../data/repo";
+import { saveCellNote } from "../data/cell-notes";
 import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../data/hooks";
 import { firstDayOf, lastDayOf, todayISO } from "../domain/dates";
 import { installmentDisplayTitle } from "../domain/installments";
@@ -102,19 +102,8 @@ export default function CellEditorModal() {
   };
 
   const saveNote = async (body: string) => {
-    await writeRows(userId, [
-      {
-        table: "cell_notes",
-        row: {
-          id: note?.id ?? newId(),
-          month: month!,
-          categoryId: categoryId!,
-          body: body.trim(),
-          deletedAt: body.trim() === "" ? new Date().toISOString() : null,
-        },
-      },
-    ]);
-    scheduleSync(userId);
+    if (!category) return;
+    await saveCellNote(userId, month!, category.id, body, note);
     setNoteDraft(null);
   };
 

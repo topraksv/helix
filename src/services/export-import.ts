@@ -9,7 +9,7 @@ import { File, Paths } from "expo-file-system";
 import { getSqliteAsync } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { fromDbShape, writeRows } from "../db/mutations";
-import { EXPORT_VERSION, validateExportBundle, type ExportBundle } from "./backup-validation";
+import { EXPORT_VERSION, validateBundleRelationships, validateExportBundle, type ExistingImportIds, type ExportBundle } from "./backup-validation";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
 export type { ExportBundle } from "./backup-validation";
 
@@ -101,17 +101,27 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
   const sqlite = await getSqliteAsync();
   let imported = 0;
   const writes = [] as { table: SyncedTableName; row: Record<string, unknown> }[];
+  const localState = {} as Record<SyncedTableName, { updatedAt: Map<string, number>; ids: Set<string> }>;
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-    const rows = bundle.tables[table];
-    if (!Array.isArray(rows)) continue;
     const localRows = await sqlite.getAllAsync<{ id: string; updated_at: string }>(
       `SELECT id, updated_at FROM ${table} WHERE user_id = ?`,
       [userId] as never[],
     );
-    const localUpdatedAt = new Map(localRows.map((row) => [row.id, Date.parse(row.updated_at)]));
+    localState[table] = {
+      updatedAt: new Map(localRows.map((row) => [row.id, Date.parse(row.updated_at)])),
+      ids: new Set(localRows.map((row) => row.id)),
+    };
+  }
+  validateBundleRelationships(
+    bundle,
+    Object.fromEntries(Object.entries(localState).map(([table, state]) => [table, state.ids])) as ExistingImportIds,
+  );
+  for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    const rows = bundle.tables[table];
+    if (!Array.isArray(rows)) continue;
     for (const raw of rows) {
       const incoming = Date.parse(String(raw.updated_at));
-      const local = localUpdatedAt.get(String(raw.id));
+      const local = localState[table].updatedAt.get(String(raw.id));
       if (local != null && local >= incoming) continue;
       writes.push({ table, row: { ...fromDbShape(table, raw as Record<string, unknown>), userId } });
       imported++;

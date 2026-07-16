@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 21 files, 186 tests passing
+- Test baseline: 21 files, 190 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -22,10 +22,10 @@ lags behind them.
 
 The repository-wide remediation requested on 2026-07-15 is in progress. The
 account lifecycle, sync ordering, financial classification, import/restore,
-derived obligations/references, credit-card statement and external-data/privacy
-and navigation/UI regression packages are shipped. Remaining audit items below
-are being completed as separately verified and shipped packages. Always
-re-check `git status`; Git remains authoritative.
+derived obligations/references, credit-card statement, external-data/privacy,
+navigation/UI regression and identity/relational-restore packages are shipped.
+Remaining audit items below are being completed as separately verified and
+shipped packages. Always re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -49,17 +49,11 @@ These are static-analysis findings from the 2026-07-15 repository review. They
 have not yet been implemented or runtime-reproduced; verify each against the
 current code before fixing it.
 
-1. Cell-note editors use random ids despite the existing deterministic natural
-   key. The month-detail pseudo-category `uncategorized` can also be written into
-   a UUID-shaped remote `category_id`.
-2. Several `numberOfLines` uses, special/non-editable table columns, trailing
+1. Several `numberOfLines` uses, special/non-editable table columns, trailing
    dividers, and manual derivation memos conflict with the UI/Compiler rules in
    `AGENTS.md` and need an app-wide sweep.
-3. JSON restore now validates types/enums/date ranges before an atomic write,
-   but full relational validation is still part of the later data-integrity
-   package.
-4. Onboarding person deletion does not remap draft source `personIndex` values.
-5. The README palette is stale; web HTML language is
+2. Onboarding person deletion does not remap draft source `personIndex` values.
+3. The README palette is stale; web HTML language is
     `en`, and Android biometric permissions are duplicated in `app.json`.
 
 ## Handoff update contract
@@ -80,6 +74,26 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (identity and relational-restore package)
+
+- Base `58bec03`, branch `main`; resulting commit comes from Git history.
+- Cell-note saves now use the existing deterministic month/category natural key.
+  Editing a legacy random-id note atomically tombstones it while writing the
+  canonical row, and the UI-only categoryless group can no longer be persisted
+  as a category relation.
+- JSON restore now accepts the ISO timestamps the app actually writes for paid
+  and cancelled lifecycle rows, while rejecting malformed UUIDs, duplicate ids,
+  mixed-account bundles, invalid computed-column definitions and dangling
+  relationships. Partial backups may resolve parents already present in the
+  active account; every table is read once and validation still finishes before
+  the single atomic `writeRows`.
+- Typecheck, 21 files/190 tests, Expo lint and production static export passed.
+  Playwright rendered the exported recovery flow at 320/390/1280 px without
+  overflow or browser errors. Protected restore/cell-note interaction still
+  requires an authenticated installed-app pass.
+- Commit/push/web/OTA state is recorded after shipping; P9 UI/table consistency,
+  P10 onboarding/config, controlled repository split and final regression remain.
 
 ### 2026-07-16 — Codex (navigation and finance-card UI regression package)
 

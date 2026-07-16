@@ -64,7 +64,9 @@ agent-to-agent communication that did not occur.
 - **Imports are all-or-nothing.** JSON backups are completely validated before
   one `writeRows`; Excel replace builds old tombstones, new rows, import-batch
   metadata, column membership and opening settings into that same transaction.
-  Keep file/row/cell limits and import batch ownership intact.
+  Keep file/row/cell limits and import batch ownership intact. JSON restore
+  accepts only UUID-shaped ids, one source account, unique rows and references
+  resolvable from the bundle or the current account before any write begins.
 - **Expected payments are derived lifecycle rows.** Rule edits reconcile only
   unpaid derivatives; paid/skipped history is immutable. Watch-only rules never
   create balance-affecting expected rows. Deleting a subscription/income rule
@@ -127,6 +129,9 @@ agent-to-agent communication that did not occur.
 - **New subscriptions require a live expense category.** The repo validates it,
   not only the form. The friendly default is the deterministic, reusable
   `Abonelikler` category; legacy categoryless rows remain readable.
+- **Cell notes have one natural identity per real month/category cell.** Save
+  them through `src/data/cell-notes.ts`; never attach notes to UI-only pseudo
+  groups such as `uncategorized`, and never reintroduce random note ids.
 - **Haptics go through `src/ui/haptics.ts` and are iOS-only.** Selection
   feedback fires only when the choice changes; calculator digits stay quiet;
   success/warning/error notifications describe completed outcomes. Native

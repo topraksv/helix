@@ -7,9 +7,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import { ChevronDown, ChevronUp, Inbox, Pencil, StickyNote, Trash2 } from "lucide-react-native";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
-import { newId } from "../../../db/ids";
-import { restoreRow, writeRows } from "../../../db/mutations";
+import { restoreRow } from "../../../db/mutations";
 import { deleteTransaction } from "../../../data/repo";
+import { saveCellNote } from "../../../data/cell-notes";
 import { firstDayOf, lastDayOf, yearOf } from "../../../domain/dates";
 import { useCategories, useLedger, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../../../data/hooks";
 import { installmentDisplayTitle } from "../../../domain/installments";
@@ -168,7 +168,7 @@ export default function MonthDetailScreen() {
                   </View>
                   );
                 })}
-                <CellNoteEditor userId={userId} month={month!} categoryId={categoryId} existing={note} />
+                {category ? <CellNoteEditor userId={userId} month={month!} categoryId={category.id} existing={note} /> : null}
               </View>
             ) : null}
           </Card>
@@ -191,12 +191,7 @@ function CellNoteEditor({
 }) {
   const [text, setText] = useState(existing?.body ?? "");
   const save = async () => {
-    await writeRows(userId, [
-      {
-        table: "cell_notes",
-        row: { id: existing?.id ?? newId(), month, categoryId, body: text.trim(), deletedAt: text.trim() === "" ? new Date().toISOString() : null },
-      },
-    ]);
+    await saveCellNote(userId, month, categoryId, text, existing);
   };
   return (
     <View style={{ marginTop: spacing.sm }}>
