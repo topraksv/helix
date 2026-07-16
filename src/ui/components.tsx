@@ -29,6 +29,7 @@ import { useSegments } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
+import { INPUT_LIMITS } from "../domain/input";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
@@ -326,7 +327,23 @@ export function Amount({
 }) {
   const { palette } = useTheme();
   const resolved = color ?? (colorized && minor < 0 ? palette.negative : palette.text);
-  return <Text style={[large ? type.amountLg : type.amount, { color: resolved }]}>{formatMinor(minor, currency)}</Text>;
+  const formatted = formatMinor(minor, currency);
+  const fittedSize = formatted.length > 20
+    ? (large ? 22 : 12)
+    : formatted.length > 16
+      ? (large ? 27 : 13)
+      : undefined;
+  return (
+    <Text
+      style={[
+        large ? type.amountLg : type.amount,
+        { color: resolved, flexShrink: 1, textAlign: "right" },
+        fittedSize == null ? null : { fontSize: fittedSize },
+      ]}
+    >
+      {formatted}
+    </Text>
+  );
 }
 
 export function Row({ children, style, gap = spacing.md }: { children: ReactNode; style?: StyleProp<ViewStyle>; gap?: number }) {
@@ -505,6 +522,17 @@ export function Field({
   const { palette } = useTheme();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(secure === true);
+  const maxLength = props.maxLength ?? (
+    props.multiline
+      ? INPUT_LIMITS.note
+      : secure || props.secureTextEntry
+        ? INPUT_LIMITS.password
+        : props.keyboardType === "email-address" || props.inputMode === "email"
+          ? INPUT_LIMITS.email
+          : props.keyboardType === "number-pad" || props.keyboardType === "numeric"
+            ? INPUT_LIMITS.numeric
+            : INPUT_LIMITS.text
+  );
   return (
     <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
       {label ? <Label>{label}</Label> : null}
@@ -512,6 +540,7 @@ export function Field({
         <TextInput
           placeholderTextColor={palette.textMuted}
           {...props}
+          maxLength={maxLength}
           secureTextEntry={secure ? hidden : props.secureTextEntry}
           onFocus={(e) => {
             setFocused(true);
@@ -590,6 +619,7 @@ export function MoneyField({
       <View>
         <TextInput
           value={display}
+          maxLength={INPUT_LIMITS.money}
           editable={!disabled}
           onChangeText={(raw) => {
             const formatted = formatMoneyInputLive(raw);
@@ -627,6 +657,7 @@ export function MoneyField({
           </Pressable>
         )}
       </View>
+      {invalid ? <Text style={[type.small, { color: palette.negative, marginTop: spacing.xs }]}>{tr.common.amountLimit}</Text> : null}
       {calcOpen ? (
         <LazyCalculatorModal
           onClose={() => setCalcOpen(false)}

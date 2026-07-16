@@ -11,6 +11,7 @@ export const tr = {
     confirm: "Onayla", skip: "Atla", all: "Tümü", active: "Aktif", inactive: "Pasif",
     selectAll: "Tümünü seç", clearAll: "Tümünü bırak",
     required: "Bu alan zorunlu", invalidAmount: "Geçersiz tutar",
+    amountLimit: "Geçerli bir tutar gir; tutar 1 milyardan küçük olmalı.",
     optionalHint: "Opsiyonel",
     other: "Diğer",
     paymentFallback: "Ödeme",
@@ -584,6 +585,7 @@ export const tr = {
     enterAmount: "Çevirmek için bir tutar gir.",
     rateMissing: "Kur bilgisi henüz alınamadı. İnternete bağlanınca güncellenir.",
     error: "Hata",
+    resultUnavailable: "Sonuç desteklenen tutar sınırını aşıyor",
   },
   tour: {
     s1Title: "Bütçe Özeti",

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatMinor, formatMoneyInputLive, formatTRInputLive, parseAmountExpression, parseTRAmountToMinor } from "../src/domain/money";
+import {
+  MAX_ABS_AMOUNT_MINOR,
+  formatMinor,
+  formatMoneyInputLive,
+  formatTRInputLive,
+  majorToMinor,
+  parseAmountExpression,
+  parseTRAmountToMinor,
+} from "../src/domain/money";
 import { convertToTryMinor, pickRate } from "../src/domain/fx";
 import {
   evaluateComputedColumn,
@@ -39,11 +47,15 @@ describe("TR money formatting/parsing", () => {
     expect(parseTRAmountToMinor("12,345")).toBeNull(); // 3 decimal digits
   });
 
-  it("rejects amounts beyond the safe-integer range", () => {
+  it("rejects amounts beyond the product limit before they can break layouts", () => {
     expect(parseTRAmountToMinor("99999999999999999999")).toBeNull();
     expect(parseAmountExpression("99999999999999999999+1")).toBeNull();
-    // sanity: a large but safe amount still parses
-    expect(parseTRAmountToMinor("999999999999")).toBe(99999999999900);
+    expect(parseTRAmountToMinor("1000000000")).toBeNull();
+    expect(parseAmountExpression("600000000+600000000")).toBeNull();
+    expect(parseTRAmountToMinor("999999999,99")).toBe(MAX_ABS_AMOUNT_MINOR);
+    expect(majorToMinor(999_999_999.99)).toBe(MAX_ABS_AMOUNT_MINOR);
+    expect(majorToMinor(1_000_000_000)).toBeNull();
+    expect(majorToMinor(Number.NaN)).toBeNull();
   });
 
   it("live-formats input with TR thousands separators, kuruş optional", () => {

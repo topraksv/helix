@@ -17,6 +17,7 @@ import { create } from "zustand";
 import { Button, FadeIn } from "./components";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
+import { INPUT_LIMITS } from "../domain/input";
 
 interface DialogRequest {
   title: string;
@@ -133,6 +134,7 @@ export function PromptHost() {
             <Text style={[type.body, { color: palette.textMuted, marginBottom: spacing.md }]}>{current.message}</Text>
             <TextInput
               value={value}
+              maxLength={current.secure ? INPUT_LIMITS.password : INPUT_LIMITS.text}
               onChangeText={setValue}
               secureTextEntry={current.secure}
               placeholder={current.placeholder}

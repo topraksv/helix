@@ -7,6 +7,7 @@ import { isValidCardCycle, statementForDueDate, statementForPurchase, statementP
 import { CreditCardCycleRequiredError, ReferencedRecordError } from "./errors";
 import { cardStatementWrite, type LivePaymentSource } from "./transactions";
 import { repairCardStatementLinks, runMaintenance } from "./maintenance";
+import { assertInputWithinLimit } from "../../domain/input";
 
 export interface PersonReferenceUsage {
   paymentSources: number;
@@ -37,6 +38,7 @@ export interface PaymentSourceInput {
 /** Repo-level validation protects imports/non-UI callers as well as the form. */
 export async function upsertPaymentSource(userId: string, input: PaymentSourceInput): Promise<string> {
   if (!input.name.trim() || !input.personId) throw new Error("Payment source name and owner are required");
+  assertInputWithinLimit(input.name, "text");
   const sqlite = await getSqliteAsync();
   const person = await sqlite.getFirstAsync<{ id: string }>(
     `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,

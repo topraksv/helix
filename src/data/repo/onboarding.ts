@@ -1,7 +1,8 @@
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { readSetting, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
 import type { MonthKey } from "../../domain/dates";
-import type { Minor } from "../../domain/money";
+import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
+import { assertInputWithinLimit } from "../../domain/input";
 import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError } from "./errors";
@@ -77,6 +78,9 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
   if (input.persons.length === 0 || input.persons.filter((person) => person.isSelf).length !== 1) {
     throw new Error("Onboarding requires exactly one self person");
   }
+  assertSupportedMinorAmount(input.openingBalanceMinor);
+  input.persons.forEach((person) => assertInputWithinLimit(person.name, "text"));
+  input.sources.forEach((source) => assertInputWithinLimit(source.name, "text"));
   const writes: RowWrite[] = [];
   const personIds = await Promise.all(
     input.persons.map((p, i) =>
@@ -135,6 +139,7 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
  * earliest start wins; for the same-or-later month the form value is authoritative.
  */
 export async function applyOnboardingBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
+  assertSupportedMinorAmount(openingBalanceMinor);
   const currentStart = await readSetting<string>(userId, "start_month");
   if (currentStart && startMonth > currentStart) return; // keep the earlier imported anchor
   await writeSetting(userId, "start_month", startMonth);

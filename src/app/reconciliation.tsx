@@ -15,11 +15,11 @@ import {
   useUserId,
 } from "../data/hooks";
 import { todayISO } from "../domain/dates";
-import { formatMinor, parseTRAmountToMinor } from "../domain/money";
+import { formatMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
-import { Badge, Body, Button, Card, EmptyState, Field, Row, Screen, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, EmptyState, MoneyField, Row, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
 import { errorNotice } from "../ui/haptics";
@@ -37,6 +37,7 @@ export default function CatchUpScreen() {
   const today = todayISO();
   const [editing, setEditing] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
+  const [amountMinor, setAmountMinor] = useState<number | null>(null);
   // One confirmation at a time (spinner on the active button) — a double-tap
   // must not submit the same expected item twice.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export default function CatchUpScreen() {
       scheduleSync(userId);
       setEditing(null);
       setAmountRaw("");
+      setAmountMinor(null);
       undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
     } catch (err) {
       errorNotice();
@@ -103,11 +105,13 @@ export default function CatchUpScreen() {
             </Spread>
             {editing === e.id ? (
               <View style={{ marginTop: spacing.md }}>
-                <Field
+                <MoneyField
                   label={`${tr.catchup.fixAmount} (${e.currency})`}
                   value={amountRaw}
-                  onChangeText={setAmountRaw}
-                  keyboardType="decimal-pad"
+                  onChangeMinor={(raw, minor) => {
+                    setAmountRaw(raw);
+                    setAmountMinor(minor);
+                  }}
                   placeholder={formatMinor(e.amountMinor, e.currency)}
                 />
                 <Row>
@@ -115,11 +119,10 @@ export default function CatchUpScreen() {
                     <Button
                       label={tr.common.confirm}
                       onPress={() => {
-                        const minor = parseTRAmountToMinor(amountRaw);
-                        if (minor != null && minor > 0) void confirm(e, minor);
+                        if (amountMinor != null && amountMinor > 0) void confirm(e, amountMinor);
                       }}
                       loading={confirmingId === e.id}
-                      disabled={parseTRAmountToMinor(amountRaw) == null || confirmingId != null}
+                      disabled={amountMinor == null || amountMinor <= 0 || confirmingId != null}
                       haptic="none"
                     />
                   </View>
@@ -137,7 +140,7 @@ export default function CatchUpScreen() {
                     onPress={() => void confirm(e)}
                   />
                 </View>
-                <Button label={tr.catchup.fixAmount} variant="secondary" onPress={() => { setEditing(e.id); setAmountRaw(""); }} />
+                <Button label={tr.catchup.fixAmount} variant="secondary" onPress={() => { setEditing(e.id); setAmountRaw(""); setAmountMinor(null); }} />
                 <Button label={tr.common.skip} variant="ghost" onPress={() => { void skipExpected(userId, e.id); scheduleSync(userId); }} />
               </Row>
             )}

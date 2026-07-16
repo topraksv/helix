@@ -16,7 +16,7 @@ import * as XLSX from "xlsx";
 import { tr } from "../i18n/tr";
 import type { MonthKey } from "../domain/dates";
 import { addMonthsToKey, yearOf } from "../domain/dates";
-import { roundHalfAwayFromZero, type Minor } from "../domain/money";
+import { isSupportedMinorAmount, roundHalfAwayFromZero, type Minor } from "../domain/money";
 
 export const MAX_WORKBOOK_BYTES = 15 * 1024 * 1024;
 const MAX_WORKBOOK_SHEETS = 100;
@@ -150,7 +150,7 @@ export function parseMonthLabel(value: unknown): MonthKey | null {
 export function parseSheetAmount(value: unknown): Minor | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     const minor = roundHalfAwayFromZero(value * 100);
-    return Number.isSafeInteger(minor) ? minor : null;
+    return isSupportedMinorAmount(minor) ? minor : null;
   }
   const s = String(value ?? "").replace(/[₺\s]/g, "");
   if (s === "" || s === "-") return null;
@@ -159,7 +159,7 @@ export function parseSheetAmount(value: unknown): Minor | null {
   const normalized = trLike ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   const num = Number(normalized);
   const minor = Number.isFinite(num) ? roundHalfAwayFromZero(num * 100) : Number.NaN;
-  return Number.isSafeInteger(minor) ? minor : null;
+  return isSupportedMinorAmount(minor) ? minor : null;
 }
 
 /**
@@ -176,7 +176,7 @@ export function parseFormulaLiterals(formula: string): Minor[] | null {
   const terms = compact.match(/[+-]?\d+(?:\.\d+)?/g);
   if (!terms) return null;
   const minors = terms.map((t) => roundHalfAwayFromZero(Number(t) * 100));
-  return minors.every(Number.isSafeInteger) ? minors : null;
+  return minors.every((minor) => isSupportedMinorAmount(minor)) ? minors : null;
 }
 
 function commentText(c?: { t?: string }[]): string | null {

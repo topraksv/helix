@@ -364,7 +364,21 @@ export default function DashboardScreen() {
           <Text style={[type.label, { color: "rgba(255,255,255,0.75)", textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
             {tr.dashboard.actualBalance}
           </Text>
-          <Text style={[type.amountLg, { color: palette.onPrimary, fontSize: 38, marginTop: spacing.xs }]}>
+          <Text
+            style={[
+              type.amountLg,
+              {
+                color: palette.onPrimary,
+                fontSize: formatMinor(bundle.actualBalanceMinor).length > 20
+                  ? 26
+                  : formatMinor(bundle.actualBalanceMinor).length > 16
+                    ? 32
+                    : 38,
+                marginTop: spacing.xs,
+                flexShrink: 1,
+              },
+            ]}
+          >
             {formatMinor(bundle.actualBalanceMinor)}
           </Text>
           {hasForecast && projected != null ? (

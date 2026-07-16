@@ -6,6 +6,33 @@
 
 export type Minor = number;
 
+/** Largest single user-entered amount: 999,999,999.99 major units. This keeps
+ * every value comfortably exact in integer minor units and prevents a single
+ * malformed input from blowing out responsive financial rows. */
+export const MAX_ABS_AMOUNT_MINOR = 99_999_999_999;
+export const MAX_AMOUNT_MAJOR_DIGITS = 9;
+
+export function isSupportedMinorAmount(value: number, allowZero = true): value is Minor {
+  return (
+    Number.isSafeInteger(value) &&
+    Math.abs(value) <= MAX_ABS_AMOUNT_MINOR &&
+    (allowZero || value !== 0)
+  );
+}
+
+export function assertSupportedMinorAmount(value: number, allowZero = true): Minor {
+  if (!isSupportedMinorAmount(value, allowZero)) throw new Error("Amount is outside the supported range");
+  return value;
+}
+
+/** Convert a calculator/display major-unit value only when it remains an exact,
+ * product-supported minor-unit integer. */
+export function majorToMinor(value: number): Minor | null {
+  if (!Number.isFinite(value)) return null;
+  const minor = roundHalfAwayFromZero(value * 100);
+  return isSupportedMinorAmount(minor) ? minor : null;
+}
+
 function assertMinor(value: number): Minor {
   if (!Number.isSafeInteger(value)) {
     throw new Error(`Amount must be an integer of minor units, got: ${value}`);
@@ -68,7 +95,7 @@ export function parseTRAmountToMinor(input: string): Minor | null {
   // Beyond safe-integer range the arithmetic is no longer exact — treat it as
   // invalid input rather than storing a corrupted amount (assertMinor would
   // otherwise throw at display time).
-  if (!Number.isSafeInteger(minor)) return null;
+  if (!isSupportedMinorAmount(minor)) return null;
   return negative ? -minor : minor;
 }
 
@@ -125,5 +152,5 @@ export function parseAmountExpression(input: string): Minor | null {
     if (minor == null) return null;
     total += sign * minor;
   }
-  return Number.isSafeInteger(total) ? total : null;
+  return isSupportedMinorAmount(total) ? total : null;
 }

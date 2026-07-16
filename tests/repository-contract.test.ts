@@ -125,4 +125,22 @@ describe("repository compatibility contract", () => {
     })).rejects.toThrow("exactly one self person");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
+
+  it("rejects oversized onboarding text and money before any write", async () => {
+    await expect(repository.seedWorkspace("user-1", {
+      templateCategories: [],
+      startMonth: "2026-07",
+      openingBalanceMinor: 100_000_000_000,
+      persons: [{ name: "Ben", isSelf: true }],
+      sources: [],
+    })).rejects.toThrow("supported range");
+    await expect(repository.seedWorkspace("user-1", {
+      templateCategories: [],
+      startMonth: "2026-07",
+      openingBalanceMinor: 0,
+      persons: [{ name: "x".repeat(121), isSelf: true }],
+      sources: [],
+    })).rejects.toThrow("maximum length");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
 });
