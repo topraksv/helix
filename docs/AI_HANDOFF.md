@@ -13,10 +13,10 @@ lags behind them.
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
 - Test baseline: 23 files, 199 tests passing
-- Static web export passed; headless Playwright rendered the exported sign-in
-  route at 320, 390 and 1280 px without horizontal overflow or browser errors.
-  Production Playwright also rendered expired and invalid password-reset states
-  at 320/390 px and sign-in at 1280 px with zero browser errors.
+- Clean Android, iOS and static web exports passed. Earlier headless Playwright
+  baselines rendered sign-in at 320/390/1280 px and recovery error states at
+  320/390 px without overflow or browser errors; the final session exposed no
+  controllable browser and does not claim a new pixel-level pass.
 
 ## Active working tree
 
@@ -25,9 +25,8 @@ account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references, credit-card statement, external-data/privacy,
 navigation/UI regression, identity/relational restore, UI/table consistency,
 onboarding/config consistency and repository-boundary packages are shipped.
-The first optimization/security/accessibility package is shipped. Dependency,
-dead-code and final regression review remain. Always re-check `git status`; Git
-remains authoritative.
+The repository-wide remediation, dependency/dead-code cleanup and P11 final
+regression are shipped. Always re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -47,9 +46,12 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-No verified P8–P10 or repository-boundary findings remain open. The performance,
-production-log privacy, long-label and reduced-motion findings are shipped. The
-next bounded task is dependency/dead-code validation and P11 final regression.
+No verified remediation finding remains open. Accepted constraints: the 17
+moderate `npm audit --omit=dev` findings are in Expo SDK 54's build/config chain
+and only offer a breaking SDK 57 fix; SDK 54 remains required by the installed
+App Store Expo Go line. The `expo`/`expo-updates` patch alignment needs the next
+local native iOS build before it exists in the binary. Physical haptic, system
+permission and protected-data visual passes still require the installed device.
 
 ## Handoff update contract
 
@@ -69,6 +71,46 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (P11 final regression and migration history)
+
+- Base `e1e79e9`, branch `main`; shipped as `572e1f7`.
+- Supabase CLI revealed that the reserved `00000000000001_init.sql` filename
+  was silently excluded from migration history. Renamed the content-identical
+  file to `00000000000001_initial_schema.sql` and marked the already-present
+  remote schema version applied without executing DDL or changing data.
+  Local/remote versions 1–4 now match; linked database lint reports no errors.
+- A clean `npm ci` was followed by strict typecheck, unused-symbol checking,
+  23 files/199 tests, zero-warning Expo lint, Expo doctor 18/18 and clean
+  Android/iOS/web exports (49 static routes). No skipped/focused tests, direct
+  application console calls, line-capped text or TODO/FIXME/HACK markers remain.
+- The final browser connection had no available profile, so P11 records the
+  prior Playwright baseline and does not invent a new visual pass. Production
+  Sign In, Cash Flow, Settings and password-reset URLs returned HTTP 200.
+- Pushed to `main`; GitHub web run `29491975925` completed successfully. No
+  application code changed in this commit, so no mobile OTA/native build was
+  needed for the migration filename itself.
+
+### 2026-07-16 — Codex (dependency and dead-code cleanup)
+
+- Base `6364b4c`, branch `main`; shipped as `e1e79e9`.
+- Aligned `expo` 54.0.36, `expo-updates` 29.0.19 and the Babel preset with the
+  supported SDK 54 patch set; Expo doctor moved from 17/18 to 18/18. Removed the
+  unused Prettier dependency, its eight-package tree, unreachable helpers and
+  unnecessary public exports. The import-graph report fell from 31 unused
+  exports to one expected dynamic `require()` false positive.
+- Preserved every verified dynamic/tooling dependency: Babel plus the SQL
+  inline plugin build Drizzle migrations, `public/sw.js` is registered by the
+  static HTML shell, `expo-font` satisfies font loading, and CalculatorModal is
+  loaded lazily. No folder restructuring or aesthetic abstraction was added.
+- Typecheck, strict unused-symbol checking, 23 files/199 tests, Expo lint,
+  doctor 18/18 and static export passed. Production audit has zero high/critical
+  and 17 moderate build/config-chain findings; `npm audit fix --force` would
+  violate the required SDK 54 line by upgrading to SDK 57, so it was rejected.
+- Pushed to `main`; GitHub web run `29491570978` completed successfully. No OTA
+  was published because the package changes include Expo native-module patches;
+  the previous functional OTA remains current, and the patch alignment belongs
+  in the next local `npx expo run:ios --device` rebuild.
 
 ### 2026-07-16 — Codex (performance, privacy and accessibility audit)
 
