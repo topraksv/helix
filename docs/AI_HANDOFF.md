@@ -9,28 +9,24 @@ lags behind them.
 
 - Updated: 2026-07-16 (Europe/Istanbul)
 - Branch: `main`
-- Uncommitted work base: `a5a2920` (Claude second-pass UX/UI bug fixes below,
-  in the working tree — use `git log -1`/`git status` for the live state)
+- Completed package base: `2933e27`; application commit: `929fb59` (the
+  following documentation-only commit is authoritative in `git log`)
 - Toolchain used: Node 22
-- Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 24 files, 211 tests passing
-- Static web export passed. No controllable browser was available this session
-  (no local Playwright, no external connector), so the second pass does NOT
-  claim a new pixel-level visual pass — back-button centring, large-amount
-  table rendering and the modal column drag still want an installed-app / browser
-  confirmation.
+- Verification: typecheck, strict unused-symbol check, full tests, Expo lint and
+  49-route static web export passed
+- Test baseline: 24 files, 214 tests passing
+- Live market payload contained all five configured symbols; production root,
+  Sign In, Transaction and Columns Editor returned HTTP 200 after deployment.
+  No controllable browser or local simulator was available, so the back-button
+  optics and physical press-and-drag feel still require the installed-app pass.
 
 ## Active working tree
 
-The 2026-07-15 repository-wide remediation is shipped. On 2026-07-16 the user
-reviewed the shipped mobile-finance/analytics/input package and reported six
-UX/UI bugs; Claude's fixes for all six are IN THE WORKING TREE, uncommitted, on
-base `a5a2920`. They build on Codex's first pass (they revise it, never revert
-it): İade toggle replacing the "normal/iade" segmented, back-button optical
-centring, today-by-default transaction date, drag-only column reorder (arrows
-removed, modal dismiss-gesture disabled), stable live-market quotes, and a
-raised amount ceiling with compact table formatting. Not yet committed/shipped.
-Always re-check `git status`; Git remains authoritative.
+No application work is in progress. Codex independently reviewed Claude's
+`27da3db` implementation and the remaining `money.ts` working-tree patch,
+preserved the useful parts, fixed the six user-reported regressions, and shipped
+web plus mobile OTA from `929fb59`. Always re-check `git status`; Git remains
+authoritative.
 
 ## Current architecture summary
 
@@ -50,7 +46,11 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-No verified code finding or reported bug remains open. Accepted constraints: the 17
+No verified code finding or reported bug remains open. The installed app still
+needs a human visual/gesture confirmation for the centred back control, the
+44-point press-and-drag handles and exact full-value detail presentation; this
+session had neither a controllable browser nor an available local simulator.
+Accepted constraints: the 17
 moderate `npm audit --omit=dev` findings are in Expo SDK 54's build/config chain
 and only offer a breaking SDK 57 fix; SDK 54 remains required by the installed
 App Store Expo Go line. The `expo`/`expo-updates` patch alignment needs the next
@@ -75,6 +75,64 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (six UX/UI regressions, verified completion)
+
+- Base `2933e27`, branch `main`. There were no staged changes; the only initial
+  unstaged file was Claude's Hermes-safe compact-money formatter in
+  `src/domain/money.ts`. It was understood and retained rather than reset.
+- Replaced the visible transaction-card heading/accessibility label with the
+  single requested **İade** control, while presentation badges now distinguish
+  **Gider iadesi**, **Gelir geri ödemesi** and **Yatırımdan çekim**. Descriptions
+  state the exact balance and category effect; no "Normal" choice remains.
+- Rebuilt `HeaderBackButton` as one fixed 82×44 centred control with a common
+  icon/text line box. The existing deterministic `navigateBack` fallbacks and
+  navigation tests remain unchanged.
+- Confirmed ordinary new transactions already defaulted to today in `27da3db`.
+  Fixed the remaining quick-cell bug: typing an arithmetic expression no longer
+  marks a current-day entry as a dateless aggregate. The shared
+  `dateForMonthEntry` rule uses today for the current month; selecting another
+  month remains explicit historical/future intent.
+- The Columns Editor failure was an async live-query race, not a second drag
+  implementation: ending a drag re-enabled the parent scroll, recreated the
+  filtered source array and briefly restored its old order before `writeRows`
+  became observable. `DraggableList` now holds the pending key order until the
+  source acknowledges it, rolls back with error feedback on write failure, and
+  uses a non-collapsible 44×44 grip in both Settings and the modal. Visible arrow
+  buttons remain removed; screen-reader increment/decrement actions remain as
+  the required non-visual accessibility path.
+- Live quote gaps had two causes. `27da3db` correctly retained unchanged
+  symbols during active feed events, but transient `disconnect`/`connect_error`
+  events still erased every verified quote immediately. Short reconnects now
+  retain quotes without extending the original 60-second stale deadline.
+- Large amounts accept legitimate billion-scale values up to
+  `₺999.999.999.999,99`. Over-limit pasted/typed values are no longer silently
+  truncated into a different valid amount; they remain visible, fail parsing,
+  disable saving and show the exact supported limit. Fixed-width table/chart
+  cells use deterministic Hermes/web `M`/`B` formatting from 1 million upward;
+  detail/input surfaces retain the exact full value. The dashboard hero steps
+  down further at the longest supported value.
+- Cleanup was intentionally narrow: removed the compact `Intl` formatter
+  map/factory in favour of one bounded number formatter, refreshed stale
+  comments and ran TypeScript's strict unused-symbol scan. No additional dead
+  production code was found. Accessibility reorder actions and calculator digit
+  limits were verified as live dependencies and retained.
+- Checks: `npm run typecheck`, `npx tsc --noEmit --noUnusedLocals
+  --noUnusedParameters`, `npm test` (24 files/214 tests), `npx expo lint`,
+  `git diff --check` and the 49-route static web export all passed. Focused tests
+  cover current/other-month quick-entry dates, M/B boundaries, non-silent
+  over-limit rejection and reconnect expiry. A live read-only socket probe
+  received valid `ALTIN`, `CEYREK_YENI`, `ATA_YENI`, `USDTRY` and `EURTRY`.
+  Browser discovery returned no controllable profile and no local simulator was
+  available, so no pixel-perfect or physical-gesture pass is claimed.
+- Shipped as `929fb59`, pushed to `main`; GitHub Pages run `29512226065`
+  completed successfully and the production root/Sign In/Transaction/Columns
+  Editor routes returned HTTP 200. After two transient Google asset-storage DNS
+  failures, EAS `preview` update group
+  `00cfa828-fb32-426b-9cf2-990938af5248` published for iOS and Android on
+  runtime `1.0.0` (iOS `019f6b98-8e90-7950-b1a9-2f79a8bdc139`, Android
+  `019f6b98-8e90-7dad-b12a-6c70c2bb72c3`). No native rebuild was required; the
+  phone applies the OTA after fully closing and reopening the app.
 
 ### 2026-07-16 — Claude (six reported UX/UI bugs, second pass)
 
