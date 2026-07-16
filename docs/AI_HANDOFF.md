@@ -73,6 +73,22 @@ diff and running checks proportionate to the change.
 
 ## Recent handoffs
 
+### 2026-07-16 — Codex (requested mobile OTA republish)
+
+- Base `ba4d63c`, branch `main`; working tree was clean and runtime policy still
+  resolved to `1.0.0` before publishing.
+- Published the current mobile finance UI, analytics, input-validation and
+  live-rate changes to EAS Update branch `preview` for both iOS and Android.
+  Update group: `fa97ec26-af8a-4ce0-9383-8cf15e52ebe5`; iOS update:
+  `019f6b22-bab1-7ba4-a2d5-6f03421ab7c8`; Android update:
+  `019f6b22-bab1-7968-bc8c-52c6823e7725`.
+- The first upload attempt hit the already-seen transient Expo asset-storage
+  DNS `ENOTFOUND`; the unchanged retry uploaded both bundles and published
+  successfully. No source file or application behavior changed in this task.
+- The installed app downloads on a cold start and applies on the following
+  launch. If the existing iOS binary cannot load the SDK patch-aligned bundle,
+  the previously recorded `npx expo run:ios --device` rebuild remains required.
+
 ### 2026-07-16 — Codex (mobile finance UI and input hardening)
 
 - Base `0c90dc8`, branch `main`; shipped in four isolated commits:
