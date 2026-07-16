@@ -23,10 +23,9 @@ lags behind them.
 The repository-wide remediation requested on 2026-07-15 is in progress. The
 account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references, credit-card statement and external-data/privacy
-packages are shipped. The navigation/UI regression package is verified and
-awaiting its commit/deploy record. Remaining audit items below are being
-completed as separately verified and shipped packages. Always re-check
-`git status`; Git remains authoritative.
+and navigation/UI regression packages are shipped. Remaining audit items below
+are being completed as separately verified and shipped packages. Always
+re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -84,7 +83,7 @@ diff and running checks proportionate to the change.
 
 ### 2026-07-16 — Codex (navigation and finance-card UI regression package)
 
-- Base `34f1e83`, branch `main`; verification is complete and shipping follows.
+- Base `34f1e83`, branch `main`; shipped as `c873ca8`.
 - Every root, Settings and Cash Flow header now uses a shared safe back control;
   explicit Done/close actions use the same history-or-parent rule. Nested stacks
   have an `index` anchor. A rejected root anchor was caught by Playwright because
@@ -105,6 +104,10 @@ diff and running checks proportionate to the change.
   overflow or browser errors. Harem's live payload was independently observed
   carrying valid `USDTRY` and `EURTRY` entries. Protected finance-route visuals
   still need the installed authenticated app/device pass.
+- Pushed to `main`; GitHub web run `29452873110` completed successfully and the
+  production root, Settings and Cash Flow routes returned HTTP 200. EAS
+  `preview` update group `e0c7aa66-d1c8-492e-a19e-84574c66c6e9` was published
+  for iOS and Android on runtime `1.0.0`; no native rebuild was required.
 
 ### 2026-07-15 — Codex (external data and device privacy package)
 
