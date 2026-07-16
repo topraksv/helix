@@ -1,0 +1,147 @@
+import { deterministicId, naturalKeys } from "../../db/ids";
+import { readSetting, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
+import type { MonthKey } from "../../domain/dates";
+import type { Minor } from "../../domain/money";
+import type { PaymentSourceType } from "../../domain/types";
+import { isValidCardCycle } from "../../domain/card-statements";
+import { CreditCardCycleRequiredError } from "./errors";
+
+// ---------------------------------------------------------------------------
+// Onboarding seed
+// ---------------------------------------------------------------------------
+
+export interface TemplateCategory {
+  name: string;
+  kind: "expense" | "income";
+  isColumn: boolean;
+  icon?: string;
+}
+
+/**
+ * Starter category set offered on first run. Broad, everyday items that fit
+ * most people (no assumptions like a mortgage or a car) — all fully editable
+ * and deletable later. Extra, less-universal examples live in
+ * `TEMPLATE_EXTRA_CATEGORIES` and are offered separately.
+ */
+export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
+  { name: "Kredi Kartı", kind: "expense", isColumn: true, icon: "💳" },
+  { name: "Faturalar", kind: "expense", isColumn: true, icon: "🧾" },
+  { name: "Market", kind: "expense", isColumn: true, icon: "🛒" },
+  { name: "Araç & Yakıt", kind: "expense", isColumn: true, icon: "⛽" },
+  { name: "Kira", kind: "expense", isColumn: true, icon: "🏠" },
+  { name: "Ulaşım", kind: "expense", isColumn: true, icon: "🚌" },
+  { name: "Sağlık", kind: "expense", isColumn: true, icon: "🩺" },
+  { name: "Eğlence", kind: "expense", isColumn: true, icon: "🎬" },
+  { name: "Ek Giderler", kind: "expense", isColumn: true, icon: "🧺" },
+  { name: "Maaş", kind: "income", isColumn: true, icon: "💰" },
+  { name: "Ek Gelirler", kind: "income", isColumn: true, icon: "➕" },
+];
+
+/** Less-universal example columns, offered as optional extras (not default). */
+export const TEMPLATE_EXTRA_CATEGORIES: TemplateCategory[] = [
+  { name: "Ev Kredisi", kind: "expense", isColumn: true, icon: "🏦" },
+  { name: "Araç Kredisi", kind: "expense", isColumn: true, icon: "🚗" },
+  { name: "Yatırım", kind: "expense", isColumn: true, icon: "📈" },
+  { name: "Abonelikler", kind: "expense", isColumn: true, icon: "🔁" },
+  { name: "Giyim", kind: "expense", isColumn: true, icon: "👕" },
+  { name: "Eğitim", kind: "expense", isColumn: true, icon: "🎓" },
+  { name: "Kira Geliri", kind: "income", isColumn: true, icon: "🏘️" },
+];
+
+export interface SeedInput {
+  /** Template categories to create; empty = start blank. */
+  templateCategories: TemplateCategory[];
+  startMonth: MonthKey;
+  openingBalanceMinor: Minor;
+  persons: { name: string; isSelf: boolean }[];
+  sources: {
+    name: string;
+    type: PaymentSourceType;
+    personIndex: number;
+    dueDay?: number | null;
+    statementDay?: number | null;
+  }[];
+}
+
+/**
+ * Seed (or re-seed) the onboarding workspace. Fully idempotent: every seeded
+ * row gets a DETERMINISTIC id (self person, watch-only persons by slot, sources
+ * by slot, template categories by name), so re-entering setup — after a reload,
+ * or opening an importer then committing — upserts the same rows instead of
+ * duplicating the whole workspace (the old `newId()` seed multiplied everything
+ * on every re-run). The opening balance / start month are applied through the
+ * earlier-wins rule so a re-seed on commit never clobbers an earlier ledger
+ * anchor set by an Excel import.
+ */
+export async function seedWorkspace(userId: string, input: SeedInput): Promise<void> {
+  if (input.persons.length === 0 || input.persons.filter((person) => person.isSelf).length !== 1) {
+    throw new Error("Onboarding requires exactly one self person");
+  }
+  const writes: RowWrite[] = [];
+  const personIds = await Promise.all(
+    input.persons.map((p, i) =>
+      p.isSelf ? deterministicId(naturalKeys.selfPerson(userId)) : deterministicId(naturalKeys.onboardingPerson(userId, i)),
+    ),
+  );
+  input.persons.forEach((p, i) => {
+    writes.push({ table: "persons", row: { id: personIds[i], name: p.name, isSelf: p.isSelf, deletedAt: null } });
+  });
+  const sourceIds = await Promise.all(input.sources.map((_, i) => deterministicId(naturalKeys.onboardingSource(userId, i))));
+  input.sources.forEach((s, i) => {
+    const personId = personIds[s.personIndex];
+    if (!personId) throw new Error("Onboarding payment source owner does not exist");
+    if (
+      s.type === "credit_card" &&
+      !isValidCardCycle({ statementDay: s.statementDay, dueDay: s.dueDay })
+    ) throw new CreditCardCycleRequiredError();
+    writes.push({
+      table: "payment_sources",
+      row: {
+        id: sourceIds[i],
+        name: s.name,
+        type: s.type,
+        personId,
+        dueDay: s.dueDay ?? null,
+        statementDay: s.statementDay ?? null,
+        color: null,
+        logoSource: "initials",
+        logoRef: null,
+        isActive: true,
+        deletedAt: null,
+        sortOrder: i,
+      },
+    });
+  });
+  const categoryIds = await Promise.all(
+    input.templateCategories.map((c) => deterministicId(naturalKeys.seedCategory(userId, c.name))),
+  );
+  input.templateCategories.forEach((c, i) => {
+    writes.push({
+      table: "categories",
+      row: { id: categoryIds[i], name: c.name, kind: c.kind, icon: c.icon ?? null, color: null, sortOrder: i, isColumn: c.isColumn, deletedAt: null },
+    });
+  });
+  await writeRows(userId, writes);
+  await applyOnboardingBalance(userId, input.startMonth, input.openingBalanceMinor);
+  // NB: does NOT mark onboarded — the setup screen seeds first (so history can
+  // be imported into a real workspace) and calls finalizeOnboarding() only when
+  // the user taps "save & start". See setup.tsx.
+}
+
+/**
+ * Write the onboarding opening balance + start month, but never overwrite an
+ * EARLIER anchor already set (e.g. by an Excel import that seeded the ledger
+ * from an earlier year). The ledger back-anchors to the earliest data, so the
+ * earliest start wins; for the same-or-later month the form value is authoritative.
+ */
+export async function applyOnboardingBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
+  const currentStart = await readSetting<string>(userId, "start_month");
+  if (currentStart && startMonth > currentStart) return; // keep the earlier imported anchor
+  await writeSetting(userId, "start_month", startMonth);
+  await writeSetting(userId, "opening_balance_minor", openingBalanceMinor);
+}
+
+/** Mark onboarding complete → the route guard lets the user into the app. */
+export async function finalizeOnboarding(userId: string): Promise<void> {
+  await writeSetting(userId, "onboarded", true);
+}
