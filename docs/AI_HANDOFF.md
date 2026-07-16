@@ -75,7 +75,7 @@ diff and running checks proportionate to the change.
 
 ### 2026-07-16 — Codex (UI and table consistency package)
 
-- Base `bff7f19`, branch `main`; resulting commit comes from Git history.
+- Base `bff7f19`, branch `main`; shipped as `2b34599`.
 - Mali Tablo's modal editor now exposes ordinary and computed columns through
   one segmented surface. Computed columns gained the same drag ordering,
   edit/delete and visibility controls as categories. Imported-year membership
@@ -93,8 +93,12 @@ diff and running checks proportionate to the change.
   Anonymous Playwright smoke passed at 320/390/1280 px with no overflow or
   browser errors. Both retained authenticated browser profiles had expired, so
   protected column drag/edit interaction still needs the installed-app pass.
-- Commit/push/web/OTA state is recorded after shipping; P10 onboarding/config,
-  controlled repository split, optimization audit and P11 regression remain.
+- Pushed to `main`; GitHub web run `29481507756` completed successfully and the
+  production column-editor route returned HTTP 200. EAS `preview` update group
+  `d75a2be8-69fb-4402-825e-d264c539e68e` was published for iOS and Android on
+  runtime `1.0.0` after two transient storage-DNS failures; no native rebuild
+  was required. P10 onboarding/config, controlled repository split,
+  optimization audit and P11 regression remain.
 
 ### 2026-07-16 — Codex (identity and relational-restore package)
 
