@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 22 files, 195 tests passing
+- Test baseline: 23 files, 198 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -23,10 +23,10 @@ lags behind them.
 The repository-wide remediation requested on 2026-07-15 is in progress. The
 account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references, credit-card statement, external-data/privacy,
-navigation/UI regression, identity/relational restore, UI/table consistency and
-onboarding/config consistency packages are shipped. The controlled repository
-boundary split, optimization audit and final regression remain. Always re-check
-`git status`; Git remains authoritative.
+navigation/UI regression, identity/relational restore, UI/table consistency,
+onboarding/config consistency and repository-boundary packages are shipped.
+The optimization/security/dead-code audit and final regression remain. Always
+re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -46,9 +46,9 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-No verified P8–P10 findings remain open. The next bounded task is the
-characterization-test-backed `repo.ts` boundary split; do not turn it into a
-feature rewrite or broad folder migration.
+No verified P8–P10 or repository-boundary findings remain open. The next
+bounded task is the KISS/YAGNI, performance, security, accessibility and dead
+code audit, followed by P11 final regression.
 
 ## Handoff update contract
 
@@ -68,6 +68,27 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (repository boundary package)
+
+- Base `348ad2e`, branch `main`; shipped as `b66751a`.
+- Replaced the 2,408-line `src/data/repo.ts` implementation monolith with an
+  86-line stable public facade. Existing UI imports are unchanged; focused I/O
+  services now own onboarding, accounts/relations, transactions, installments,
+  recurring rules, expected payments, spreadsheet import and maintenance.
+  Shared statement/category helpers remain internal to the repository folder,
+  and the resulting dependency graph has no service cycle.
+- Added characterization tests that freeze the existing runtime export surface,
+  the atomic onboarding seed write order/ownership and invalid-self rejection.
+  This was a structural move: repository behavior was copied, not redesigned.
+- Typecheck, 23 files/198 tests, zero-warning Expo lint and the 49-route static
+  web export passed. The production Sign In and Settings routes returned HTTP
+  200 after deployment.
+- Pushed to `main`; GitHub web run `29485203649` completed successfully. EAS
+  `preview` update group `7a8cdf48-882f-4446-a686-69190e2958aa` was published
+  for iOS and Android on runtime `1.0.0`; no native rebuild was required.
+- The repository-wide KISS/performance/security/accessibility/dead-code audit
+  and P11 final regression remain.
 
 ### 2026-07-16 — Codex (onboarding and configuration consistency package)
 
