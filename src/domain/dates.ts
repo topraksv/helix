@@ -83,6 +83,15 @@ export function todayISO(now: Date = new Date()): ISODate {
 }
 
 /**
+ * Pick the day used by a transaction created from a monthly table cell.
+ * The current month is anchored to today so it affects the current balance;
+ * selecting another month is itself explicit historical/future intent.
+ */
+export function dateForMonthEntry(month: MonthKey, today: ISODate = todayISO()): ISODate {
+  return monthKeyOf(today) === month ? today : `${month}-15`;
+}
+
+/**
  * A start/entry month may never sit in the future: the current calendar month
  * is the latest allowed value. Shared by the onboarding + opening-balance
  * start-month pickers and the bulk-entry month stepper so the "no future

@@ -13,7 +13,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, View, type GestureResponderHandlers, type LayoutChangeEvent } from "react-native";
-import { mediumTap, selectionTap } from "./haptics";
+import { errorNotice, mediumTap, selectionTap } from "./haptics";
 
 export interface DragHandle {
   /** Spread onto the grip element to make it the drag initiator. */
@@ -38,7 +38,7 @@ export function DraggableList<T>({
   items: T[];
   keyExtractor: (item: T) => string;
   /** Called with the new key order when a drag completes. */
-  onReorder: (orderedKeys: string[]) => void;
+  onReorder: (orderedKeys: string[]) => void | Promise<void>;
   renderRow: (item: T, handle: DragHandle, index: number) => React.ReactNode;
   /** Fires true when a drag starts and false when it ends, so the caller can
    *  freeze the surrounding ScrollView (otherwise it steals the vertical pan
@@ -49,15 +49,49 @@ export function DraggableList<T>({
   disabled?: boolean;
 }) {
   const [order, setOrder] = useState<T[]>(items);
-  const draggingRef = useRef(false);
-  // Resync with the source list on add/delete/sync merges — but never mid-drag,
-  // or the row would jump out from under the finger.
-  useEffect(() => {
-    if (!draggingRef.current) setOrder(items);
-  }, [items]);
-
   const orderRef = useRef(order);
   orderRef.current = order;
+  const draggingRef = useRef(false);
+  const pendingOrderRef = useRef<string[] | null>(null);
+  const latestItemsRef = useRef(items);
+  latestItemsRef.current = items;
+  const keyExtractorRef = useRef(keyExtractor);
+  keyExtractorRef.current = keyExtractor;
+
+  // A live query can render once with its old ordering after the drag ends but
+  // before the async write is observable. Preserve the user's local order
+  // through that window; otherwise the row visibly snaps back and the modal
+  // feels as though dragging did nothing.
+  useEffect(() => {
+    if (draggingRef.current) return;
+    const keyOf = keyExtractorRef.current;
+    const incomingKeys = items.map(keyOf);
+    const localKeys = orderRef.current.map(keyOf);
+    const localKeySet = new Set(localKeys);
+    const sameMembers = incomingKeys.length === localKeys.length
+      && incomingKeys.every((key) => localKeySet.has(key));
+    if (!sameMembers) {
+      pendingOrderRef.current = null;
+      setOrder(items);
+      return;
+    }
+
+    const pending = pendingOrderRef.current;
+    if (pending) {
+      if (incomingKeys.every((key, index) => key === pending[index])) {
+        pendingOrderRef.current = null;
+        setOrder(items);
+        return;
+      }
+      const incomingByKey = new Map(items.map((item) => [keyOf(item), item]));
+      setOrder(pending.flatMap((key) => {
+        const item = incomingByKey.get(key);
+        return item ? [item] : [];
+      }));
+      return;
+    }
+    setOrder(items);
+  }, [items]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const rowH = useRef(0);
   const dragY = useRef(new Animated.Value(0)).current;
@@ -100,13 +134,29 @@ export function DraggableList<T>({
     // Keep the floating row under the finger even though its flow slot changed.
     dragY.setValue((startIndex.current - curIndex.current) * H + dy);
   };
+  const commitOrder = (orderedKeys: string[]) => {
+    pendingOrderRef.current = orderedKeys;
+    const incomingKeys = latestItemsRef.current.map(keyExtractorRef.current);
+    if (incomingKeys.every((key, index) => key === orderedKeys[index])) pendingOrderRef.current = null;
+    void Promise.resolve()
+      .then(() => onReorder(orderedKeys))
+      .catch(() => {
+        pendingOrderRef.current = null;
+        const source = latestItemsRef.current;
+        orderRef.current = source;
+        setOrder(source);
+        errorNotice();
+      });
+  };
+
   api.current.end = () => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     setActiveKey(null);
     dragY.setValue(0);
+    const orderedKeys = orderRef.current.map(keyExtractorRef.current);
+    commitOrder(orderedKeys);
     onDragStateChange?.(false);
-    onReorder(orderRef.current.map(keyExtractor));
   };
 
   const moveBy = (key: string, delta: -1 | 1) => {
@@ -120,7 +170,7 @@ export function DraggableList<T>({
     orderRef.current = next;
     setOrder(next);
     selectionTap();
-    onReorder(next.map(keyExtractor));
+    commitOrder(next.map(keyExtractor));
   };
 
   return (

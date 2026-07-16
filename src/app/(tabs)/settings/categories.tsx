@@ -134,7 +134,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
             <DraggableList
               items={group}
               keyExtractor={(c) => c.id}
-              onReorder={(ids) => void applyOrder(k, ids)}
+              onReorder={(ids) => applyOrder(k, ids)}
               onDragStateChange={setDragging}
               disabled={editingId != null}
               renderRow={(c, handle, index) =>
@@ -180,7 +180,14 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                             if (e.nativeEvent.actionName === "increment") handle.moveUp();
                             else if (e.nativeEvent.actionName === "decrement") handle.moveDown();
                           }}
-                          style={{ padding: 4, marginLeft: -4 }}
+                          collapsable={false}
+                          style={{
+                            width: 44,
+                            height: 44,
+                            marginLeft: -spacing.sm,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
                         >
                           <GripVertical size={18} color={palette.textMuted} />
                         </View>

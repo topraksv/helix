@@ -278,7 +278,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
           <DraggableList
             items={columns}
             keyExtractor={(column) => column.id}
-            onReorder={(ids) => void applyOrder(ids)}
+            onReorder={applyOrder}
             onDragStateChange={setDragging}
             disabled={editingId != null}
             renderRow={(column, handle, index) => {
@@ -300,7 +300,14 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                             if (e.nativeEvent.actionName === "increment") handle.moveUp();
                             else if (e.nativeEvent.actionName === "decrement") handle.moveDown();
                           }}
-                          style={{ padding: 4, marginLeft: -4 }}
+                          collapsable={false}
+                          style={{
+                            width: 44,
+                            height: 44,
+                            marginLeft: -spacing.sm,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
                         >
                           <GripVertical size={18} color={palette.textMuted} />
                         </View>

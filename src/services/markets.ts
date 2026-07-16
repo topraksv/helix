@@ -63,12 +63,29 @@ function markStaleAfterSilence(): void {
   }, MARKET_STALE_MS);
 }
 
+/**
+ * Keep the last verified quotes through a short socket reconnect. Socket.io
+ * reconnects automatically; clearing immediately made otherwise healthy
+ * symbols disappear during momentary mobile-network changes. The existing
+ * silence deadline is deliberately not extended, so genuinely stale quotes
+ * are still removed after one minute.
+ */
+export function markMarketConnectionInterrupted(): void {
+  const { prices } = useMarkets.getState();
+  if (Object.keys(prices).length === 0) {
+    useMarkets.setState({ status: "error" });
+    return;
+  }
+  useMarkets.setState({ status: "connecting" });
+  if (!staleTimer) markStaleAfterSilence();
+}
+
 function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
   if (!MARKET_SYMBOLS.some(({ code }) => validEntry(data[code]))) return;
   markStaleAfterSilence();
   if (now - lastApplied < THROTTLE_MS) return;
   lastApplied = now;
-  // Harem only re-sends a symbol whose price CHANGED, so a stable quote (e.g.
+  // The provider only re-sends a symbol whose price CHANGED, so a stable quote (e.g.
   // gold overnight while USD keeps ticking) stops arriving even though it is
   // still the current price. Keep every known quote and refresh its receipt
   // time on any live event — a symbol must not "disappear" merely because it
@@ -119,21 +136,10 @@ export function connectMarkets(): void {
     if (payload?.data) applyFeed(payload.data);
   });
   socket.on("connect_error", () => {
-    if (staleTimer) {
-      clearTimeout(staleTimer);
-      staleTimer = null;
-    }
-    useMarkets.setState({ prices: {}, status: "error" });
+    markMarketConnectionInterrupted();
   });
-  // A dropped connection must flip us OUT of "live" — otherwise the last prices
-  // keep showing as if they were current long after the feed stopped. socket.io
-  // auto-reconnects; the next `price_changed` restores "live".
   socket.on("disconnect", () => {
-    if (staleTimer) {
-      clearTimeout(staleTimer);
-      staleTimer = null;
-    }
-    useMarkets.setState({ prices: {}, status: "error" });
+    markMarketConnectionInterrupted();
   });
 }
 

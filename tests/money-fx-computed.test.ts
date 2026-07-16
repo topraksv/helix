@@ -62,10 +62,10 @@ describe("TR money formatting/parsing", () => {
     expect(majorToMinor(Number.NaN)).toBeNull();
   });
 
-  it("caps typed integer digits at the supported range instead of failing silently", () => {
-    // 13 integer digits is past the ceiling: the extra digit is not accepted.
-    expect(formatTRInputLive("1234567890123")).toBe("123.456.789.012");
-    expect(parseTRAmountToMinor(formatTRInputLive("1234567890123"))).not.toBeNull();
+  it("keeps an over-limit typed value visible but refuses to parse it", () => {
+    const formatted = formatTRInputLive("1234567890123");
+    expect(formatted).toBe("1.234.567.890.123");
+    expect(parseTRAmountToMinor(formatted)).toBeNull();
   });
 
   it("abbreviates only very large values for fixed-width table cells", () => {
@@ -74,9 +74,11 @@ describe("TR money formatting/parsing", () => {
     // 999.999,99 TL — just below the 1.000.000 TL threshold, still written in full
     // (fits a narrow matrix cell, so no truncation/wrap is ever needed).
     expect(formatMinorCompact(99_999_999)).toBe(formatMinor(99_999_999));
-    // 1.000.000 TL and up switch to locale compact notation (Mn/Mr).
-    expect(formatMinorCompact(100_000_000)).not.toBe(formatMinor(100_000_000));
-    expect(formatMinorCompact(150_000_000_000).length).toBeLessThan(formatMinor(150_000_000_000).length);
+    // 1.000.000 TL and up use deterministic M/B labels on Hermes and web.
+    expect(formatMinorCompact(100_000_000)).toBe("₺1 M");
+    expect(formatMinorCompact(150_000_000)).toBe("₺1,5 M");
+    expect(formatMinorCompact(230_000_000_000)).toBe("₺2,3 B");
+    expect(formatMinorCompact(-230_000_000_000)).toBe("-₺2,3 B");
   });
 
   it("live-formats input with TR thousands separators, kuruş optional", () => {

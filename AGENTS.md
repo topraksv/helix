@@ -116,7 +116,7 @@ agent-to-agent communication that did not occur.
   local/remote versions and `supabase db lint --linked` must stay clean.
 - **Money is integer minor units** (kuruş) everywhere; format only at the edge
   with `formatMinor` (hero/detail figures, always full) or `formatMinorCompact`
-  (fixed-width table cells, which abbreviate to locale `Mn`/`Mr` above
+  (fixed-width table cells, which abbreviate to deterministic `M`/`B` above
   `COMPACT_THRESHOLD_MINOR` so a large value never wraps). The single entry
   ceiling is `MAX_ABS_AMOUNT_MINOR` (~1 trillion major); the calculator/input
   cap follows `MAX_AMOUNT_MAJOR_DIGITS`, so raise the limit only in one place.
