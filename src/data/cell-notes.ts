@@ -1,6 +1,7 @@
 import { deterministicId, naturalKeys } from "../db/ids";
 import { nowIso, writeRows, type RowWrite } from "../db/mutations";
 import { scheduleSync } from "../sync/engine";
+import { assertInputWithinLimit } from "../domain/input";
 
 interface ExistingCellNote {
   id: string;
@@ -15,6 +16,7 @@ export async function saveCellNote(
   body: string,
   existing?: ExistingCellNote,
 ): Promise<void> {
+  assertInputWithinLimit(body, "note");
   const id = await deterministicId(naturalKeys.cellNote(userId, month, categoryId));
   const normalized = body.trim();
   const deletedAt = normalized === "" ? nowIso() : null;

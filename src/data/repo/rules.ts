@@ -3,7 +3,8 @@ import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { fromDbShape, nowIso, writeRows, type RowWrite } from "../../db/mutations";
 import { todayISO, type ISODate } from "../../domain/dates";
 import { generateExpected, obsoleteExpectedIds } from "../../domain/expected";
-import type { Minor } from "../../domain/money";
+import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
+import { assertInputWithinLimit } from "../../domain/input";
 import type { ExpectedPaymentLike, RecurringIncomeLike, SubscriptionLike } from "../../domain/types";
 import { findSubscriptionCategory } from "../../domain/subscriptions";
 import { isValidCardCycle } from "../../domain/card-statements";
@@ -155,6 +156,9 @@ export async function ensureSubscriptionCategory(
 
 export async function upsertSubscription(userId: string, input: SubscriptionInput): Promise<string> {
   const sqlite = await getSqliteAsync();
+  assertInputWithinLimit(input.name, "text");
+  assertInputWithinLimit(input.note, "note");
+  assertSupportedMinorAmount(input.amountMinor, false);
   if (!input.categoryId) throw new SubscriptionCategoryRequiredError();
   const category = await sqlite.getFirstAsync<{ id: string }>(
     `SELECT id FROM categories WHERE id = ? AND user_id = ? AND kind = 'expense' AND deleted_at IS NULL`,
@@ -267,6 +271,9 @@ export interface RecurringIncomeInput {
 
 export async function upsertRecurringIncome(userId: string, input: RecurringIncomeInput): Promise<string> {
   const sqlite = await getSqliteAsync();
+  assertInputWithinLimit(input.name, "text");
+  assertInputWithinLimit(input.note, "note");
+  assertSupportedMinorAmount(input.defaultAmountMinor, false);
   const person = await sqlite.getFirstAsync<{ is_self: number }>(
     `SELECT is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [input.personId, userId] as never[],

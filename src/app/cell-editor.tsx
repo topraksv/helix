@@ -22,7 +22,7 @@ import { signedBalanceEffectOf } from "../domain/transactions";
 import { transactionDateText } from "../ui/transaction-date";
 import { monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Amount, Badge, Body, Button, Divider, EmptyState, Field, IconButton, Row, Screen, SectionHeader, Spread } from "../ui/components";
+import { Amount, Badge, Body, Button, Divider, EmptyState, Field, IconButton, MoneyField, Row, Screen, SectionHeader, Spread } from "../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
@@ -66,7 +66,6 @@ export default function CellEditorModal() {
   ).data[0];
 
   const entryMinor = parseAmountExpression(entryRaw);
-  const entryInvalid = entryRaw.trim() !== "" && entryMinor == null;
 
   const addEntry = async () => {
     const selfId = persons.find((p) => p.isSelf)?.id;
@@ -126,14 +125,11 @@ export default function CellEditorModal() {
       <Body muted style={{ marginBottom: spacing.sm, fontSize: 12 }}>
         {tr.cell.quickEntryHint}
       </Body>
-      <Field
+      <MoneyField
         value={entryRaw}
-        onChangeText={setEntryRaw}
+        onChangeMinor={(raw) => setEntryRaw(raw)}
         placeholder={useRotatingPlaceholder(placeholderPools.amount)}
-        keyboardType="numbers-and-punctuation"
-        inputMode="text"
-        autoCapitalize="none"
-        error={entryInvalid ? tr.common.invalidAmount : null}
+        expression
       />
       {entryMinor != null && (entryRaw.includes("+") || entryRaw.includes("-")) ? (
         <Body muted style={{ marginBottom: spacing.sm }}>

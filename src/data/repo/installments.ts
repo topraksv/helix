@@ -3,7 +3,8 @@ import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { fromDbShape, nowIso, writeRows, type RowWrite } from "../../db/mutations";
 import { todayISO, type ISODate, type MonthKey } from "../../domain/dates";
 import { generateSchedule } from "../../domain/installments";
-import type { Minor } from "../../domain/money";
+import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
+import { assertInputWithinLimit } from "../../domain/input";
 import { isValidCardCycle, statementForDueDate, type CardCycle, type CardStatementPeriod } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError, InstallmentHistoryConflictError } from "./errors";
 import { assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
@@ -41,6 +42,10 @@ export interface NewPlan {
  *  write instead of a DB transaction per plan (that was minutes for ~100 plans).
  *  The per-installment ids are hashed in parallel. */
 export async function buildPlanRows(planId: string, input: NewPlan, today: ISODate): Promise<{ rows: RowWrite[]; keepNos: Set<number> }> {
+  assertInputWithinLimit(input.title, "text");
+  assertInputWithinLimit(input.note, "note");
+  if (input.totalAmountMinor != null) assertSupportedMinorAmount(input.totalAmountMinor, false);
+  if (input.monthlyAmountMinor != null) assertSupportedMinorAmount(input.monthlyAmountMinor, false);
   const schedule = generateSchedule(
     {
       id: planId,
@@ -83,7 +88,7 @@ export async function buildPlanRows(planId: string, input: NewPlan, today: ISODa
         amountMinor: item.amountMinor,
         currency: input.currency,
         fxRate: input.fxRate,
-        amountTryMinor: Math.round(item.amountMinor * input.tryFactor),
+        amountTryMinor: assertSupportedMinorAmount(Math.round(item.amountMinor * input.tryFactor), false),
         entryDate: today,
         purchaseDate: null,
         effectiveDate: item.effectiveDate,

@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { Delete } from "lucide-react-native";
-import { formatMinor } from "../domain/money";
+import { formatMinor, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 import { Button, FadeIn } from "./components";
@@ -65,6 +65,8 @@ function useCalculator() {
       }
       if (/^\d$/.test(key)) {
         const cur = s.current === "0" ? "" : s.current;
+        const [integer, fraction = ""] = cur.split(",");
+        if ((!cur.includes(",") && integer.replace("-", "").length >= MAX_AMOUNT_MAJOR_DIGITS) || fraction.length >= 6) return s;
         return { ...s, current: cur + key };
       }
       if (key === "+" || key === "-" || key === "×" || key === "÷") {
@@ -72,6 +74,7 @@ function useCalculator() {
         const chaining = s.op != null && s.current !== "" && s.accumulator != null;
         if (chaining && s.op === "÷" && operand === 0) return { ...INITIAL, error: true };
         const acc = chaining ? apply(s.accumulator!, operand, s.op!) : operand;
+        if (majorToMinor(acc) == null) return { ...INITIAL, error: true };
         return { current: "", accumulator: acc, op: key };
       }
       if (key === "=") {
@@ -79,6 +82,7 @@ function useCalculator() {
         const operand = s.current !== "" ? toNumber(s.current) : s.accumulator;
         if (s.op === "÷" && operand === 0) return { ...INITIAL, error: true };
         const result = apply(s.accumulator, operand, s.op);
+        if (majorToMinor(result) == null) return { ...INITIAL, error: true };
         return { current: String(result).replace(".", ","), accumulator: null, op: null };
       }
       return s;
@@ -184,6 +188,7 @@ export function CalculatorPad({
     state.op != null && state.current !== "" && state.accumulator != null
       ? apply(state.accumulator, toNumber(state.current), state.op)
       : null;
+  const resultMinor = majorToMinor(value);
 
   const keyStyle = (key: string) => {
     const isOp = ["÷", "×", "-", "+", "="].includes(key);
@@ -262,9 +267,9 @@ export function CalculatorPad({
       {onResult ? (
         <View style={{ marginTop: spacing.lg }}>
           <Button
-            label={`${resultLabel ?? tr.calc.useResult} · ${formatMinor(Math.round(value * 100))}`}
+            label={resultMinor == null ? tr.calc.resultUnavailable : `${resultLabel ?? tr.calc.useResult} · ${formatMinor(resultMinor)}`}
             onPress={() => onResult(value)}
-            disabled={!Number.isFinite(value)}
+            disabled={resultMinor == null}
             haptic="success"
           />
         </View>

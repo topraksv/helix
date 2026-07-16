@@ -2,7 +2,8 @@ import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { nowIso, softDelete, writeRows, type RowWrite } from "../../db/mutations";
 import { isCurrentOrFutureMonth, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
-import type { Minor } from "../../domain/money";
+import { assertSupportedMinorAmount, isSupportedMinorAmount, type Minor } from "../../domain/money";
+import { assertInputWithinLimit } from "../../domain/input";
 import type { PaymentSourceType, TransactionType } from "../../domain/types";
 import { reconciliationDelta } from "../../domain/balance";
 import { categoryAcceptsTransaction } from "../../domain/transactions";
@@ -100,10 +101,8 @@ async function resolveSingleTransactionDates(
 
 export function assertSignedTransactionAmounts(amountMinor: Minor, amountTryMinor: Minor): void {
   if (
-    !Number.isSafeInteger(amountMinor) ||
-    !Number.isSafeInteger(amountTryMinor) ||
-    amountMinor === 0 ||
-    amountTryMinor === 0 ||
+    !isSupportedMinorAmount(amountMinor, false) ||
+    !isSupportedMinorAmount(amountTryMinor, false) ||
     Math.sign(amountMinor) !== Math.sign(amountTryMinor)
   ) {
     throw new Error("Invalid signed transaction amount");
@@ -132,6 +131,7 @@ export async function assertTransactionCategory(
 
 export async function addTransaction(userId: string, input: NewTransaction): Promise<string> {
   assertSignedTransactionAmounts(input.amountMinor, input.amountTryMinor);
+  assertInputWithinLimit(input.note, "note");
   await assertTransactionCategory(userId, input.type, input.categoryId, true);
   const today = todayISO();
   const id = newId();
@@ -181,6 +181,7 @@ export async function updateTransaction(
   patch: TransactionPatch,
 ): Promise<void> {
   assertSignedTransactionAmounts(patch.amountMinor, patch.amountTryMinor);
+  assertInputWithinLimit(patch.note, "note");
   await assertTransactionCategory(userId, patch.type, patch.categoryId, true);
   const dates = await resolveSingleTransactionDates(userId, patch);
   await writeRows(userId, [
@@ -220,6 +221,8 @@ export async function setCurrentBalance(
   computedNowMinor: Minor,
   note: string | null = null,
 ): Promise<void> {
+  assertSupportedMinorAmount(targetMinor);
+  assertInputWithinLimit(note, "note");
   const today = todayISO();
   const id = await deterministicId(naturalKeys.balanceAdjustment(userId, today));
   const sqlite = await getSqliteAsync();
@@ -231,6 +234,7 @@ export async function setCurrentBalance(
   // computedNow already contains prevAmount; the new adjustment must make the
   // total land on target: (computedNow - prevAmount) + delta = target.
   const delta = reconciliationDelta(targetMinor, computedNowMinor, prevAmount);
+  assertSupportedMinorAmount(delta);
   await writeRows(userId, [
     {
       table: "balance_adjustments",
@@ -273,6 +277,7 @@ export async function bulkMonthEntry(
   entries: { categoryId: string; kind: "expense" | "income"; amountMinor: Minor; isInvestment?: boolean }[],
 ): Promise<void> {
   if (isCurrentOrFutureMonth(month)) throw new Error("Bulk history accepts past months only");
+  entries.forEach((entry) => assertSupportedMinorAmount(entry.amountMinor, false));
   await Promise.all(
     entries.map((entry) =>
       assertTransactionCategory(userId, entry.isInvestment ? "transfer" : entry.kind, entry.categoryId, true),

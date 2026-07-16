@@ -11,7 +11,7 @@ import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, lastDayOf, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
-import { formatMinor } from "../domain/money";
+import { formatMinor, isSupportedMinorAmount } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
@@ -141,7 +141,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     !installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
   // A category is mandatory for every entry (no "uncategorized" rows).
   const canSave =
-    amountMinor != null && amountMinor > 0 && tryMinor != null && personId != null && dateValid && installmentValid && categoryId != null &&
+    amountMinor != null && amountMinor > 0 && tryMinor != null && isSupportedMinorAmount(tryMinor, false) && personId != null && dateValid && installmentValid && categoryId != null &&
     cardCycleValid && !(installment && isReversal);
 
   const cardStatementPreview = isCreditCardExpense && isValidCardCycle(cardCycle) && dateValid
