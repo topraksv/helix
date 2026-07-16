@@ -17,7 +17,7 @@ for the network.
 [![React Native 0.81](https://img.shields.io/badge/React%20Native-0.81-1a1918?logo=react&logoColor=61DAFB)](https://reactnative.dev)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-1a1918?logo=typescript&logoColor=3178C6)](https://www.typescriptlang.org)
 [![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-1a1918?logo=supabase&logoColor=3FCF8E)](https://supabase.com)
-[![199 tests passing](https://img.shields.io/badge/tests-199%20passing-6c8352)](tests/)
+[![209 tests passing](https://img.shields.io/badge/tests-209%20passing-6c8352)](tests/)
 [![Proprietary](https://img.shields.io/badge/license-proprietary-d97757)](#license)
 
 *iOS + Web from a single codebase.*
@@ -89,7 +89,7 @@ truth.
 | **Security** | Row-Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, parameterized SQL, secrets only in `.env` / CI |
 | **Money** | Integer kuruş everywhere — no floats. FX: source-dated TCMB `today.xml` → Frankfurter fallback → user-scoped cache; fresh-only gold/FX quotes from a read-only live feed |
 | **Tables** | One cross-platform sticky-column matrix ([src/ui/sticky-table.tsx](src/ui/sticky-table.tsx)) — pinned first column + an optional pinned extra column, months-as-rows/columns pivot, identical on web and iOS |
-| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — covered by 199 unit tests, including a golden chain validated against the original spreadsheet |
+| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — covered by 209 unit tests, including a golden chain validated against the original spreadsheet |
 
 ## The look
 
@@ -140,7 +140,7 @@ No Supabase project? Leave `.env` empty and Helix runs fully local — no
 account, no network, nothing leaves the device.
 
 ```bash
-npm test                # 199 unit tests
+npm test                # 209 unit tests
 npm run typecheck       # strict TypeScript
 npx expo lint           # lint
 ```

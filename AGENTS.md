@@ -88,7 +88,9 @@ agent-to-agent communication that did not occur.
   provider's declared business date (never a fabricated "today"). The in-memory
   FX cache is user-scoped. Missing rates stay missing; never interpret a foreign
   amount as TRY. Live market quotes expire after 60 seconds and the socket runs
-  only while an unlocked authenticated app is active.
+  only while an unlocked authenticated app is active. The converter reuses a
+  fresh live USD/EUR quote, then falls back to the dated user-scoped FX cache;
+  it must never open a second market request for the same conversion.
 - **Notification consent is device-local and opt-in.** Do not request
   notification permission during boot. Disabled notifications clear legacy
   schedules; sign-out/account switch clears scheduled and presented account
@@ -114,7 +116,10 @@ agent-to-agent communication that did not occur.
   and category with signed negative `amount_minor`/`amount_try_minor`; every
   other amount is positive. Income/expense categories must match transaction
   type; transfers use an expense-kind category. Dates are `YYYY-MM-DD` ISO
-  strings, months `YYYY-MM`.
+  strings, months `YYYY-MM`. New user-entered amounts must pass
+  `isSupportedMinorAmount`; editable text uses the shared `INPUT_LIMITS` policy
+  in both UI and repository boundaries. Do not apply those input limits while
+  reading an otherwise valid legacy backup—old data must remain recoverable.
 - **Analytics follows transaction type, not category appearance.** Expenses
   alone feed expense totals/distribution; transfers stay separate. Fixed
   expenses are installment/subscription-linked, and ordinary expenses default
