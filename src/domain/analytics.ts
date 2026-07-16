@@ -36,13 +36,19 @@ export function categoryRangeMatrix(
   start: MonthKey,
   end: MonthKey,
   today: ISODate,
+  options: { includeTransfers?: boolean } = {},
 ): Map<string, CategoryYearRow> {
   const rows = new Map<string, CategoryYearRow>();
   for (const tx of transactions) {
-    // Transfers move money rather than earn/spend it. A transfer can still
-    // carry a category for display, but must never inflate category analytics.
+    // Transfers move money rather than earn/spend it, so the default category
+    // matrix excludes them. The dedicated all-flow analysis view opts in only
+    // to keep those categories visible; expense totals remain separate.
     const flow = financialFlow(tx);
-    if (!countsTowardBalance(tx, today) || flow.type === "transfer" || !tx.categoryId) continue;
+    if (
+      !countsTowardBalance(tx, today) ||
+      (flow.type === "transfer" && !options.includeTransfers) ||
+      !tx.categoryId
+    ) continue;
     const month = monthKeyOf(tx.effectiveDate);
     if (month < start || month > end) continue;
     let row = rows.get(tx.categoryId);
