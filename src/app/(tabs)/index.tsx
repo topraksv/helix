@@ -140,7 +140,7 @@ export default function DashboardScreen() {
   const nameOf = (e: (typeof expected)[number]) =>
     subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
   // Convert an expected amount to TRY minor for projections using the best
-  // available rate (live Harem → cached TCMB). Returns null when no rate is
+  // available rate (fresh live quote → dated local cache). Returns null when no rate is
   // known — such an item is left out of the projection rather than counted at
   // its raw foreign value (which would silently distort the figure). Foreign
   // subscriptions were previously dropped entirely; now they count when a rate
@@ -515,7 +515,7 @@ export default function DashboardScreen() {
         </Card>
       )}
 
-      {/* Live markets (Harem Altın feed) */}
+      {/* Live markets */}
       <MarketsCard />
 
       {/* Expense distribution */}

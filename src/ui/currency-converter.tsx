@@ -1,8 +1,9 @@
 /**
  * Currency converter shown under the calculator. Converts freely between the
- * app's supported currencies (TRY/USD/EUR/GBP) using the cached FX rates
- * (TRY-per-unit), cross-rating through TRY. Read-only helper — it never writes
- * a transaction; it just answers "how much is X in Y right now".
+ * app's supported currencies (TRY/USD/EUR/GBP), cross-rating through TRY.
+ * Fresh USD/EUR quotes reuse the live-market connection already owned by the
+ * app; the dated local FX cache covers GBP, offline use and feed outages. This
+ * read-only helper never opens a separate network request or writes a row.
  */
 
 import React, { useEffect, useState } from "react";
@@ -10,6 +11,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { ArrowDownUp } from "lucide-react-native";
 import { formatMinor, roundHalfAwayFromZero } from "../domain/money";
 import { loadRateCache, lookupRate, SUPPORTED_CURRENCIES, useFxRates, type Currency } from "../services/fx-fetch";
+import { marketSellRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
 import { tr } from "../i18n/tr";
 import { Badge, Body, Label, MoneyField, Segmented } from "./components";
@@ -27,16 +29,26 @@ export function CurrencyConverter() {
   // (a cold start otherwise left it on "rate unavailable"); also kick a load in
   // case the cache is empty.
   useFxRates();
+  useMarkets((state) => state.prices);
   useEffect(() => {
     void loadRateCache(userId).catch(() => {});
   }, [userId]);
 
-  const rateFrom = lookupRate(userId, from);
-  const rateTo = lookupRate(userId, to);
+  const converterRate = (currency: Currency) => {
+    const liveRateTry = marketSellRateTry(currency);
+    if (liveRateTry != null) return { rateTry: liveRateTry, isStale: false };
+    const cached = lookupRate(userId, currency);
+    return cached == null ? null : { rateTry: cached.rate.rateTry, isStale: cached.isStale };
+  };
+  const rateFrom = converterRate(from);
+  const rateTo = converterRate(to);
   const ready = rateFrom != null && rateTo != null;
   const stale = (rateFrom?.isStale ?? false) || (rateTo?.isStale ?? false);
-  const resultMinor =
-    minor != null && ready ? roundHalfAwayFromZero((minor * rateFrom!.rate.rateTry) / rateTo!.rate.rateTry) : null;
+  const converted = minor != null && ready
+    ? roundHalfAwayFromZero((minor * rateFrom!.rateTry) / rateTo!.rateTry)
+    : null;
+  const resultMinor = converted != null && Number.isSafeInteger(converted) ? converted : null;
+  const resultOutOfRange = minor != null && ready && resultMinor == null;
 
   const options = SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }));
   const swap = () => {
@@ -94,12 +106,12 @@ export function CurrencyConverter() {
             horizontal
             showsHorizontalScrollIndicator={false}
             style={{ alignSelf: "stretch" }}
-            contentContainerStyle={{ flexGrow: 1, justifyContent: "center", alignItems: "flex-end" }}
+            contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", alignItems: "flex-end" }}
           >
             <Text style={[type.amountLg, { color: palette.text, textAlign: "right" }]}>{formatMinor(resultMinor, to)}</Text>
           </ScrollView>
         ) : (
-          <Body muted>{ready ? tr.calc.enterAmount : tr.calc.rateMissing}</Body>
+          <Body muted>{resultOutOfRange ? tr.calc.resultUnavailable : ready ? tr.calc.enterAmount : tr.calc.rateMissing}</Body>
         )}
       </View>
       {stale && ready ? (

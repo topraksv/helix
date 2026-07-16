@@ -17,7 +17,7 @@ import { assertSignedTransactionAmounts, assertTransactionCategory, cardStatemen
 
 /**
  * Thrown when a foreign-currency item is confirmed but no FX rate is available
- * yet (no live Harem price and nothing cached from TCMB). Storing the raw
+ * yet (no fresh live price and nothing cached from the dated FX feed). Storing the raw
  * foreign amount as if it were TRY would silently corrupt the balance, so the
  * confirm is refused instead — the caller retries once a rate is known.
  */
