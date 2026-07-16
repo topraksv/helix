@@ -197,6 +197,9 @@ export default function CellEditorModal() {
                 </Body>
                 <Row gap={spacing.sm} style={{ marginTop: 2 }}>
                   {t.isAggregate ? <Badge text={tr.bulk.aggregateBadge} /> : null}
+                  {t.amountTryMinor < 0 ? (
+                    <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
+                  ) : null}
                   {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
                   {t.note && t.note !== installmentTitle ? (
                     <Text style={[type.small, { color: palette.textMuted, flexShrink: 1 }]}>

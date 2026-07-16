@@ -153,6 +153,9 @@ export default function MonthDetailScreen() {
                           {!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : ""}
                         </Body>
                         {t.note && t.note !== installmentTitle ? <Text style={[type.small, { color: palette.textMuted }]}>{t.note}</Text> : null}
+                        {t.amountTryMinor < 0 ? (
+                          <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
+                        ) : null}
                         {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
                       </View>
                       <Row gap={spacing.sm}>

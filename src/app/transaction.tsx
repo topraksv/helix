@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Undo2 } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
 import { useAllTransactions, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
@@ -15,13 +16,13 @@ import { deriveStartMonth, isValidInstallmentCount } from "../domain/installment
 import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Toggle } from "../ui/components";
+import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { kv } from "../lib/kv";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
-import { spacing } from "../ui/theme";
+import { radius, spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 
@@ -48,6 +49,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const sources = useSources();
   const persons = usePersons();
   const router = useRouter();
+  const { palette } = useTheme();
   const isEdit = existing != null;
   // Opened as a router modal normally, but a web deep-link to /transaction has
   // no back stack — fall back to a real screen so "save" always closes it.
@@ -264,19 +266,39 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           setAmountMinor(minor == null ? null : Math.abs(minor));
         }}
       />
-      <Row style={{ marginTop: -spacing.sm, marginBottom: spacing.md, alignItems: "center" }}>
-        <Body style={{ flex: 1, paddingRight: spacing.md }}>{tr.tx.reversalLabel(entryType)}</Body>
-        <Toggle
-          label={tr.tx.reversalLabel(entryType)}
-          value={isReversal}
-          disabled={installment}
-          onValueChange={(value) => {
-            setIsReversal(value);
-            if (value) setInstallment(false);
+      <Label>{tr.tx.entryEffect}</Label>
+      <Segmented
+        options={[
+          { value: "normal", label: tr.tx.normalEntryLabel(entryType) },
+          { value: "reversal", label: tr.tx.reversalLabel(entryType) },
+        ]}
+        value={isReversal ? "reversal" : "normal"}
+        onChange={(value) => {
+          const reversal = value === "reversal";
+          setIsReversal(reversal);
+          if (reversal) setInstallment(false);
+        }}
+      />
+      {isReversal ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.md,
+            backgroundColor: palette.primarySoft,
+            borderRadius: radius.md,
+            padding: spacing.md,
+            marginTop: -spacing.sm,
+            marginBottom: spacing.md,
           }}
-        />
-      </Row>
-      {isReversal ? <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md }}>{tr.tx.reversalHint}</Body> : null}
+        >
+          <Undo2 size={20} color={palette.primary} />
+          <View style={{ flex: 1 }}>
+            <Body style={{ color: palette.primary }}>{tr.tx.reversalLabel(entryType)}</Body>
+            <Body muted style={{ fontSize: 12, marginTop: 2 }}>{tr.tx.reversalHint(entryType)}</Body>
+          </View>
+        </View>
+      ) : null}
       {showCurrency ? (
         <>
           <Label>{tr.tx.currency}</Label>
