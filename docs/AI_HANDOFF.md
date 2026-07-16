@@ -77,7 +77,7 @@ diff and running checks proportionate to the change.
 
 ### 2026-07-16 — Codex (identity and relational-restore package)
 
-- Base `58bec03`, branch `main`; resulting commit comes from Git history.
+- Base `58bec03`, branch `main`; shipped as `20f5c23`.
 - Cell-note saves now use the existing deterministic month/category natural key.
   Editing a legacy random-id note atomically tombstones it while writing the
   canonical row, and the UI-only categoryless group can no longer be persisted
@@ -92,8 +92,11 @@ diff and running checks proportionate to the change.
   Playwright rendered the exported recovery flow at 320/390/1280 px without
   overflow or browser errors. Protected restore/cell-note interaction still
   requires an authenticated installed-app pass.
-- Commit/push/web/OTA state is recorded after shipping; P9 UI/table consistency,
-  P10 onboarding/config, controlled repository split and final regression remain.
+- Pushed to `main`; GitHub web run `29475992198` completed successfully and the
+  production Sign In route returned HTTP 200. EAS `preview` update group
+  `d8a7ae31-1c5d-41eb-960f-2f53f8573cab` was published for iOS and Android on
+  runtime `1.0.0`; no native rebuild was required. P9 UI/table consistency, P10
+  onboarding/config, controlled repository split and final regression remain.
 
 ### 2026-07-16 — Codex (navigation and finance-card UI regression package)
 
