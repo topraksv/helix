@@ -1,5 +1,6 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import { type PropsWithChildren } from "react";
+import { tr } from "../i18n/tr";
 
 /**
  * Root HTML shell for web (dev + static export).
@@ -7,7 +8,7 @@ import { type PropsWithChildren } from "react";
  */
 export default function Root({ children }: PropsWithChildren) {
   return (
-    <html lang="en">
+    <html lang="tr">
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
@@ -18,7 +19,7 @@ export default function Root({ children }: PropsWithChildren) {
         {/* Tab title comes from expo-router <Head> in _layout.tsx. */}
         <meta
           name="description"
-          content="Local-first personal finance: monthly cash flow, installments, subscriptions."
+          content={tr.meta.description}
         />
         <ScrollViewStyleReset />
         {/* Lock the page frame: the app scrolls inside its own ScrollViews, so

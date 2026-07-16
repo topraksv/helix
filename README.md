@@ -11,14 +11,14 @@ Monthly cash flow, installment tracking, and subscriptions in one app that
 works fully offline, syncs when you're back online, and never makes you wait
 for the network.
 
-[![Open the live web app](https://img.shields.io/badge/▶_Open_the_live_web_app-C9623F?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
+[![Open the live web app](https://img.shields.io/badge/▶_Open_the_live_web_app-d97757?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
 
-[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-181817?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
-[![React Native 0.81](https://img.shields.io/badge/React%20Native-0.81-181817?logo=react&logoColor=61DAFB)](https://reactnative.dev)
-[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-181817?logo=typescript&logoColor=3178C6)](https://www.typescriptlang.org)
-[![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-181817?logo=supabase&logoColor=3FCF8E)](https://supabase.com)
-[![64 tests passing](https://img.shields.io/badge/tests-64%20passing-7D8370)](tests/)
-[![Proprietary](https://img.shields.io/badge/license-proprietary-C5A07F)](#license)
+[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-1a1918?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
+[![React Native 0.81](https://img.shields.io/badge/React%20Native-0.81-1a1918?logo=react&logoColor=61DAFB)](https://reactnative.dev)
+[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-1a1918?logo=typescript&logoColor=3178C6)](https://www.typescriptlang.org)
+[![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-1a1918?logo=supabase&logoColor=3FCF8E)](https://supabase.com)
+[![195 tests passing](https://img.shields.io/badge/tests-195%20passing-6c8352)](tests/)
+[![Proprietary](https://img.shields.io/badge/license-proprietary-d97757)](#license)
 
 *iOS + Web from a single codebase.*
 
@@ -89,20 +89,20 @@ truth.
 | **Security** | Row-Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, parameterized SQL, secrets only in `.env` / CI |
 | **Money** | Integer kuruş everywhere — no floats. FX: source-dated TCMB `today.xml` → Frankfurter fallback → user-scoped cache; fresh-only live gold/FX from the Harem Altın socket feed |
 | **Tables** | One cross-platform sticky-column matrix ([src/ui/sticky-table.tsx](src/ui/sticky-table.tsx)) — pinned first column + an optional pinned extra column, months-as-rows/columns pivot, identical on web and iOS |
-| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — covered by 183 unit tests, including a golden chain validated against the original spreadsheet |
+| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — covered by 195 unit tests, including a golden chain validated against the original spreadsheet |
 
 ## The look
 
 Helix isn't styled like a fintech dashboard. Its design language is **Warm
-Organic Editorial** — a linen-and-ink palette, serif headlines, and a botanical
+Organic Editorial** — a warm-gray-and-clay palette, serif headlines, and a botanical
 double-helix mark, so your money feels less like a spreadsheet and more like a
 well-set page.
 
-![Linen](https://img.shields.io/badge/linen-F3EFE0?style=flat-square&labelColor=F3EFE0)
-![Obsidian](https://img.shields.io/badge/obsidian-181817?style=flat-square&labelColor=181817)
-![Terracotta](https://img.shields.io/badge/terracotta-C9623F?style=flat-square&labelColor=C9623F)
-![Sage](https://img.shields.io/badge/sage-7D8370?style=flat-square&labelColor=7D8370)
-![Camel](https://img.shields.io/badge/camel-C5A07F?style=flat-square&labelColor=C5A07F)
+![Cream](https://img.shields.io/badge/cream-faf9f5?style=flat-square&labelColor=faf9f5)
+![Ink](https://img.shields.io/badge/ink-1a1918?style=flat-square&labelColor=1a1918)
+![Clay](https://img.shields.io/badge/clay-d97757?style=flat-square&labelColor=d97757)
+![Olive](https://img.shields.io/badge/olive-6c8352?style=flat-square&labelColor=6c8352)
+![Warm_gray](https://img.shields.io/badge/warm_gray-f0eee6?style=flat-square&labelColor=f0eee6)
 
 - **Type** — [Fraunces](https://fonts.google.com/specimen/Fraunces) for headings
   and figures, [Inter](https://fonts.google.com/specimen/Inter) for everything
@@ -110,7 +110,7 @@ well-set page.
 - **Motion** — spring physics only: every press, list change, and reveal eases
   with an interruptible `Animated.spring`, never a linear tween.
 - **Light & dark** — one palette, both themes; the terracotta accent is shared,
-  the ground swaps from linen to obsidian.
+  the ground swaps from warm cream to charcoal.
 - **The mark** — a DNA helix wound with sage-and-terracotta foliage: *growth,
   compounding, the double strand of income and expense.* Full brand kit in
   [`assets/brand/`](assets/brand/).
@@ -140,7 +140,7 @@ No Supabase project? Leave `.env` empty and Helix runs fully local — no
 account, no network, nothing leaves the device.
 
 ```bash
-npm test                # 64 domain unit tests
+npm test                # 195 unit tests
 npm run typecheck       # strict TypeScript
 npx expo lint           # lint
 ```
@@ -177,6 +177,7 @@ src/
 ├── app/        # expo-router routes (dashboard, cash flow, subscriptions, calculator, settings)
 ├── domain/     # pure TS money engines — no I/O, fully unit-tested
 ├── db/         # Drizzle schema + expo-sqlite setup
+├── data/       # live-query hooks and repository operations
 ├── sync/       # outbox, push/pull, last-write-wins merge
 ├── services/   # FX rates, notifications, backup (JSON export/import)
 ├── auth/       # Supabase auth + Face ID lock

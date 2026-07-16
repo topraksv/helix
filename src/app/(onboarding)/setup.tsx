@@ -9,6 +9,7 @@ import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../ser
 import { useSession } from "../../auth/session";
 import { useSettingsMap } from "../../data/hooks";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../../domain/dates";
+import { remapDraftOwnerIndex } from "../../domain/onboarding";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
 import { Body, Button, Card, ChipPicker, Field, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "../../ui/components";
@@ -113,6 +114,21 @@ export default function SetupScreen() {
     setNewSourceStatementDay(s.statementDay == null ? "" : String(s.statementDay));
     setNewSourceDueDay(s.dueDay == null ? "" : String(s.dueDay));
     setEditingSource(i);
+  };
+
+  const removePerson = (removedIndex: number) => {
+    setPersons((current) => current.filter((_, index) => index !== removedIndex));
+    setSources((current) =>
+      current.map((source) => ({
+        ...source,
+        personIndex: remapDraftOwnerIndex(source.personIndex, removedIndex),
+      })),
+    );
+    setNewSourcePerson((current) => remapDraftOwnerIndex(current, removedIndex));
+    setEditingPerson((current) => {
+      if (current == null || current < removedIndex) return current;
+      return current === removedIndex ? null : current - 1;
+    });
   };
 
   // Seed the workspace (persons/sources/categories/opening) from the CURRENT
@@ -316,10 +332,7 @@ export default function SetupScreen() {
                       icon={Trash2}
                       tone="danger"
                       label={tr.common.delete}
-                      onPress={() => {
-                        setPersons(persons.filter((_, j) => j !== i));
-                        if (editingPerson === i) setEditingPerson(null);
-                      }}
+                      onPress={() => removePerson(i)}
                     />
                   ) : null}
                 </Row>
@@ -351,7 +364,7 @@ export default function SetupScreen() {
                 <Body>
                   {src.name} · {SOURCE_TYPES.find((t) => t.value === src.type)?.label}
                   {src.type === "credit_card" ? ` · ${src.statementDay}/${src.dueDay}` : ""}
-                  {persons.length > 1 ? ` · ${persons[src.personIndex]}` : ""}
+                  {persons.length > 1 ? ` · ${persons[src.personIndex] ?? persons[0]}` : ""}
                 </Body>
               </View>
               <Row gap={spacing.sm} style={{ alignItems: "center" }}>

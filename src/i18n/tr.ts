@@ -2,6 +2,7 @@
 
 export const tr = {
   app: { name: "Helix", tagline: "Nakit akışın, taksitlerin ve aboneliklerin tek yerde." },
+  meta: { description: "Aylık nakit akışı, taksitler ve abonelikler için çevrimdışı çalışabilen kişisel finans uygulaması." },
   tabs: { dashboard: "Bütçe Özeti", cashflow: "Mali Tablo", subscriptions: "Abonelikler", calculator: "Hesap", settings: "Ayarlar" },
   common: {
     save: "Kaydet", cancel: "Vazgeç", delete: "Sil", edit: "Düzenle", add: "Ekle",
