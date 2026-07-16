@@ -112,12 +112,15 @@ diff and running checks proportionate to the change.
   ceiling/compact/input-cap cases and three updated boundary tests) and
   `npx expo lint` (exit 0) all pass; 49-route static web export clean. No
   controllable browser this session → no new pixel-level visual pass claimed.
-- Shipped at the user's go-ahead: committed to `main` (see `git log` for the
-  resulting HEAD), pushed so the Pages web deploy runs, and published to the EAS
-  `preview` branch for the mobile OTA (group id recorded in the follow-up docs
-  entry). Post-review fix: the first pass used `numberOfLines={1}` in table
-  cells — a design-rule violation — so it was removed and the compact threshold
-  lowered to 1.000.000 TL so full values still fit a narrow cell unaided.
+- Shipped as `27da3db`, pushed to `main`; the `deploy-web` run `29507932867`
+  completed successfully and production Sign In returned HTTP 200. The mobile
+  OTA published to EAS `preview` (iOS + Android, runtime `1.0.0`) after several
+  transient `storage.googleapis.com` DNS `ENOTFOUND`/`REFUSED` upload failures;
+  the active update group is `cecc08c4-d1b0-4bd5-af58-4441cf12e2ef`. Post-review
+  fix: the first pass used `numberOfLines={1}` in table cells — a design-rule
+  violation — so it was removed and the compact threshold lowered to 1.000.000
+  TL so the widest full value still fits a narrow cell unaided. Phone applies
+  the OTA on the next cold start (fully close and reopen the app once).
 
 ### 2026-07-16 — Codex (requested mobile OTA republish)
 
