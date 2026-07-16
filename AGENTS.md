@@ -61,6 +61,10 @@ agent-to-agent communication that did not occur.
   earliest data and the opening balance is back-computed.
 - **Every user write goes through `writeRows`** (outbox + `last_entry_at` +
   atomic). Deletes are tombstones (`softDelete`), never hard deletes.
+- **`src/data/repo.ts` is the stable repository facade.** Route/UI callers
+  import only that public surface; focused I/O implementations live under
+  `src/data/repo/`. Keep cross-domain helpers internal to that folder and do
+  not recreate a monolith or introduce circular service imports.
 - **Imports are all-or-nothing.** JSON backups are completely validated before
   one `writeRows`; Excel replace builds old tombstones, new rows, import-batch
   metadata, column membership and opening settings into that same transaction.
@@ -163,7 +167,7 @@ src/ui/         shared visual primitives + design tokens (theme.ts). One
 src/domain/     pure functions with unit tests (balance, installments,
                 analytics, dates, money, recurrence). No React, no I/O.
 src/db/         drizzle schema, async client, migrations.
-src/data/       hooks + repo (live queries, maintenance).
+src/data/       hooks + stable repo facade; repo/ contains focused I/O services.
 src/sync/       Supabase outbox engine + status.
 src/services/   side-effecting integrations (fx, markets, notifications,
                 import/export).
