@@ -3,7 +3,7 @@
  * writes instantly (and to sync merges, via SQLite change events).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
 import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
@@ -298,7 +298,7 @@ export function useSettingsMap(): Map<string, string> {
     [userId],
     ["settings"],
   ).data;
-  return useMemo(() => new Map(rows.map((r) => [r.key, r.value])), [rows]);
+  return new Map(rows.map((r) => [r.key, r.value]));
 }
 
 export function settingValue<T>(map: Map<string, string>, key: string, fallback: T): T {
@@ -353,50 +353,48 @@ export function useLedger(year: number): LedgerBundle | null {
   const transactions = useAllTransactions();
   const adjustments = useAdjustments();
 
-  return useMemo(() => {
-    const configuredStart = settingValue<string | null>(settings, "start_month", null);
-    if (!configuredStart) return null;
-    const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
-    const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
-    const today = todayISO();
-    const txLike = toTxLike(transactions, persons, categories);
-    const adj = adjustments.map((a) => ({ date: a.date, amountMinor: a.amountMinor }));
+  const configuredStart = settingValue<string | null>(settings, "start_month", null);
+  if (!configuredStart) return null;
+  const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
+  const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
+  const today = todayISO();
+  const txLike = toTxLike(transactions, persons, categories);
+  const adj = adjustments.map((a) => ({ date: a.date, amountMinor: a.amountMinor }));
 
-    // Extend the ledger back to the earliest recorded data so history entered
-    // before the configured opening month (e.g. a 2025 row) still appears.
-    const { startMonth, openingBalanceMinor: openingAtStart } = resolveLedgerAnchor(
-      configuredStart,
-      openingBalanceMinor,
-      txLike,
-      adj,
-      today,
-    );
+  // Extend the ledger back to the earliest recorded data so history entered
+  // before the configured opening month (e.g. a 2025 row) still appears.
+  const { startMonth, openingBalanceMinor: openingAtStart } = resolveLedgerAnchor(
+    configuredStart,
+    openingBalanceMinor,
+    txLike,
+    adj,
+    today,
+  );
 
-    const endMonth = makeMonthKey(Math.max(year, yearOf(today)), 12);
-    const ledger = buildLedger({
-      openingBalanceMinor: openingAtStart,
-      startMonth,
-      endMonth,
-      transactions: txLike,
-      adjustments: adj,
-      today,
-      includePendingInCells,
-    });
-    const actualBalanceMinor = currentBalance({
-      openingBalanceMinor: openingAtStart,
-      startMonth,
-      transactions: txLike,
-      adjustments: adj,
-      today,
-    });
-    return {
-      ledger,
-      yearMonths: ledger.filter((m) => yearOf(m.month) === year),
-      startMonth,
-      actualBalanceMinor,
-      txLike,
-    };
-  }, [settings, persons, categories, transactions, adjustments, year]);
+  const endMonth = makeMonthKey(Math.max(year, yearOf(today)), 12);
+  const ledger = buildLedger({
+    openingBalanceMinor: openingAtStart,
+    startMonth,
+    endMonth,
+    transactions: txLike,
+    adjustments: adj,
+    today,
+    includePendingInCells,
+  });
+  const actualBalanceMinor = currentBalance({
+    openingBalanceMinor: openingAtStart,
+    startMonth,
+    transactions: txLike,
+    adjustments: adj,
+    today,
+  });
+  return {
+    ledger,
+    yearMonths: ledger.filter((m) => yearOf(m.month) === year),
+    startMonth,
+    actualBalanceMinor,
+    txLike,
+  };
 }
 
 /** Days between two ISO dates (b − a). */

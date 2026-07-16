@@ -213,7 +213,13 @@ reported items:
   row — `alignItems: "center"`, aligned with *all* the row's content, not just
   the title.
 - **No static / special-cased columns.** Everything a user sees in a table must
-  be add/edit/delete-able by them; no bespoke per-column logic.
+  be add/edit/delete-able by them; no bespoke per-column logic. Only Ay Başı
+  and Güncel Bakiye are inert system calculations. Missing-category legacy data
+  belongs in an actionable repair row outside the matrix, never a fake column.
+- The Mali Tablo column editor must expose both ordinary category columns and
+  user-defined computed columns. Both can be renamed, hidden, deleted and
+  reordered. `isColumn=false` overrides imported `column_years` membership;
+  recorded years may preserve membership/order but never defeat visibility.
 - **Matching status chips share identical size and alignment** (equal
   height/width, symmetric).
 - **Aggressively trim bottom safe-area padding** on mobile — no dead space at

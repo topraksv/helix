@@ -172,7 +172,7 @@ export default function AnalysisScreen() {
           {searchResults.length === 0 ? (
             <Body muted style={{ paddingVertical: spacing.sm }}>{tr.analysis.noResults}</Body>
           ) : (
-            searchResults.map((t) => (
+            searchResults.map((t, index) => (
               <View key={t.id}>
                 <Spread style={{ paddingVertical: spacing.xs }}>
                   <View style={{ flex: 1, paddingRight: spacing.sm }}>
@@ -190,7 +190,7 @@ export default function AnalysisScreen() {
                     )}
                   />
                 </Spread>
-                <Divider />
+                {index < searchResults.length - 1 ? <Divider /> : null}
               </View>
             ))
           )}

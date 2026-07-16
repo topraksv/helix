@@ -252,6 +252,8 @@ export const tr = {
     monthTapHint: "Bir kaleme dokununca aylık dökümü açılır · bir aya dokununca o ay açılır · 📌 sabit tutar.",
     cellTransactions: "Hareketler",
     cellNote: "Hücre Notu",
+    uncategorizedLegacy: "Kategorisiz eski kayıtlar",
+    uncategorizedRepairHint: "Aylara göre açıp kayıtları düzenleyebilirsin.",
   },
   tx: {
     new: "Yeni İşlem",

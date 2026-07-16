@@ -34,7 +34,7 @@ export function DraggableList<T>({
   keyExtractor: (item: T) => string;
   /** Called with the new key order when a drag completes. */
   onReorder: (orderedKeys: string[]) => void;
-  renderRow: (item: T, handle: DragHandle) => React.ReactNode;
+  renderRow: (item: T, handle: DragHandle, index: number) => React.ReactNode;
   /** Fires true when a drag starts and false when it ends, so the caller can
    *  freeze the surrounding ScrollView (otherwise it steals the vertical pan
    *  and the row never moves). */
@@ -117,7 +117,7 @@ export function DraggableList<T>({
               if (h > 0) rowH.current = h;
             }}
           >
-            {(handle) => renderRow(item, handle)}
+            {(handle) => renderRow(item, handle, i)}
           </DraggableRow>
         );
       })}

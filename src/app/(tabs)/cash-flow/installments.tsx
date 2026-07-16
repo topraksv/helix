@@ -3,7 +3,7 @@
  *  that has no payment in the selected month (finished, or not yet started) is
  *  hidden — each month shows only its own live installments (spec §3.2, §2.8). */
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronRight, CreditCard, Plus } from "lucide-react-native";
@@ -29,31 +29,28 @@ export default function InstallmentsScreen() {
   const [viewMonth, setViewMonth] = useState(monthKeyOf(todayISO()));
   const [cardFilter, setCardFilter] = useState<string | null>(null);
 
-  const selfIds = useMemo(() => new Set(persons.filter((p) => p.isSelf).map((p) => p.id)), [persons]);
-  const sourceName = useMemo(() => new Map(sources.map((s) => [s.id, s.name])), [sources]);
-  const personName = useMemo(() => new Map(persons.map((p) => [p.id, p.name])), [persons]);
+  const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
+  const sourceName = new Map(sources.map((s) => [s.id, s.name]));
+  const personName = new Map(persons.map((p) => [p.id, p.name]));
   const noteByPlan = new Map<string, string>();
   for (const tx of allTx) {
     if (tx.installmentPlanId && tx.note && !noteByPlan.has(tx.installmentPlanId)) noteByPlan.set(tx.installmentPlanId, tx.note);
   }
 
-  const itemsByPlan = useMemo(() => {
-    const map = new Map<string, GeneratedInstallment[]>();
-    for (const t of allTx) {
-      if (!t.installmentPlanId || t.installmentNo == null) continue;
-      const list = map.get(t.installmentPlanId) ?? [];
-      list.push({
-        installmentNo: t.installmentNo,
-        month: monthKeyOf(t.effectiveDate),
-        amountMinor: t.amountTryMinor,
-        effectiveDate: t.effectiveDate,
-        status: t.status,
-      });
-      map.set(t.installmentPlanId, list);
-    }
-    for (const list of map.values()) list.sort((a, b) => a.installmentNo - b.installmentNo);
-    return map;
-  }, [allTx]);
+  const itemsByPlan = new Map<string, GeneratedInstallment[]>();
+  for (const t of allTx) {
+    if (!t.installmentPlanId || t.installmentNo == null) continue;
+    const list = itemsByPlan.get(t.installmentPlanId) ?? [];
+    list.push({
+      installmentNo: t.installmentNo,
+      month: monthKeyOf(t.effectiveDate),
+      amountMinor: t.amountTryMinor,
+      effectiveDate: t.effectiveDate,
+      status: t.status,
+    });
+    itemsByPlan.set(t.installmentPlanId, list);
+  }
+  for (const list of itemsByPlan.values()) list.sort((a, b) => a.installmentNo - b.installmentNo);
 
   // The one installment (if any) a plan pays in the viewed month.
   const itemInMonth = (planId: string) => itemsByPlan.get(planId)?.find((it) => it.month === viewMonth);

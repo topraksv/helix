@@ -1,6 +1,6 @@
 /** Month detail: per-column breakdown; expand a column to see and manage its transactions + cell note. */
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
@@ -36,20 +36,17 @@ export default function MonthDetailScreen() {
   const undo = useUndo();
 
   const ledgerMonth = bundle?.ledger.find((m) => m.month === month);
-  const personName = useMemo(() => new Map(persons.map((p) => [p.id, p.name])), [persons]);
-  const selfIds = useMemo(() => new Set(persons.filter((p) => p.isSelf).map((p) => p.id)), [persons]);
+  const personName = new Map(persons.map((p) => [p.id, p.name]));
+  const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const planTitle = new Map(plans.map((plan) => [plan.id, plan.title]));
 
-  const byCategory = useMemo(() => {
-    const map = new Map<string, typeof transactions>();
-    for (const t of transactions) {
-      const key = t.categoryId ?? "uncategorized";
-      const list = map.get(key);
-      if (list) list.push(t);
-      else map.set(key, [t]);
-    }
-    return map;
-  }, [transactions]);
+  const byCategory = new Map<string, typeof transactions>();
+  for (const transaction of transactions) {
+    const key = transaction.categoryId ?? "uncategorized";
+    const list = byCategory.get(key);
+    if (list) list.push(transaction);
+    else byCategory.set(key, [transaction]);
+  }
 
   const cellNotes = useLive(
     getDb()
@@ -195,7 +192,7 @@ function CellNoteEditor({
   };
   return (
     <View style={{ marginTop: spacing.sm }}>
-      <Field label={tr.cashflow.cellNote} value={text} onChangeText={setText} multiline placeholder="…" />
+      <Field label={tr.cashflow.cellNote} value={text} onChangeText={setText} multiline placeholder={tr.cell.notePlaceholder} />
       <Button label={tr.common.save} variant="secondary" size="sm" onPress={() => void save()} disabled={text === (existing?.body ?? "")} />
     </View>
   );

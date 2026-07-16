@@ -5,9 +5,9 @@
  * current month, then save.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
-import { Calculator, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
+import { Calculator, CreditCard, GripVertical, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows, writeSetting } from "../../../db/mutations";
 import { settingValue, toTxLike, useAllTransactions, useCategories, useComputedColumns, useLedger, usePersons, useSettingsMap, useSources, useUserId } from "../../../data/hooks";
@@ -17,7 +17,8 @@ import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, ChipPicker, Field, IconButton, Label, Row, Screen, Spread, Toggle } from "../../../ui/components";
+import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, Row, Screen, Spread, Toggle } from "../../../ui/components";
+import { DraggableList } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
@@ -32,7 +33,7 @@ const OP_META: { op: Op; icon: LucideIcon }[] = [
   { op: "cc_split", icon: CreditCard },
 ];
 
-export default function ComputedColumnsScreen() {
+export default function ComputedColumnsScreen({ header }: { header?: ReactNode } = {}) {
   const userId = useUserId();
   const columns = useComputedColumns();
   const categories = useCategories();
@@ -52,41 +53,42 @@ export default function ComputedColumnsScreen() {
   const [minus, setMinus] = useState<string[]>([]);
   const [ccPart, setCcPart] = useState<"single" | "installment">("single");
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
-  const definition = useMemo((): ComputedColumnDefinition | null => {
-    try {
-      if (op === "sum") return parseDefinition({ op, categoryIds: plus });
-      if (op === "difference") return parseDefinition({ op, plusCategoryIds: plus, minusCategoryIds: minus });
-      if (op === "income_minus_expense") return parseDefinition({ op });
-      return parseDefinition({ op: "cc_split", part: ccPart });
-    } catch {
-      return null;
-    }
-  }, [op, plus, minus, ccPart]);
+  let definition: ComputedColumnDefinition | null = null;
+  try {
+    if (op === "sum") definition = parseDefinition({ op, categoryIds: plus });
+    else if (op === "difference") definition = parseDefinition({ op, plusCategoryIds: plus, minusCategoryIds: minus });
+    else if (op === "income_minus_expense") definition = parseDefinition({ op });
+    else definition = parseDefinition({ op: "cc_split", part: ccPart });
+  } catch {
+    definition = null;
+  }
 
   // Live preview against the current month, so setup is never a guess.
-  const preview = useMemo(() => {
-    if (!definition || !bundle) return null;
-    const month = bundle.yearMonths.find((m) => m.month === monthKeyOf(today));
-    if (!month) return null;
-    const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
-    const cc = creditCardSplit(toTxLike(allTx, persons, categories), creditCardIds, month.month, today);
+  let preview: number | null = null;
+  if (definition && bundle) {
+    const month = bundle.yearMonths.find((item) => item.month === monthKeyOf(today));
     try {
-      return evaluateComputedColumn(definition, {
-        month: month.month,
-        byCategory: month.byCategory,
-        incomeMinor: month.incomeMinor,
-        expenseMinor: month.expenseMinor,
-        ccSingleMinor: cc.singleMinor,
-        ccInstallmentMinor: cc.installmentMinor,
-      });
+      if (month) {
+        const creditCardIds = new Set(sources.filter((source) => source.type === "credit_card").map((source) => source.id));
+        const cc = creditCardSplit(toTxLike(allTx, persons, categories), creditCardIds, month.month, today);
+        preview = evaluateComputedColumn(definition, {
+          month: month.month,
+          byCategory: month.byCategory,
+          incomeMinor: month.incomeMinor,
+          expenseMinor: month.expenseMinor,
+          ccSingleMinor: cc.singleMinor,
+          ccInstallmentMinor: cc.installmentMinor,
+        });
+      }
     } catch {
-      return null;
+      preview = null;
     }
-  }, [definition, bundle, today, sources, allTx, persons, categories]);
+  }
 
   const valid = name.trim() !== "" && definition !== null;
 
@@ -151,14 +153,27 @@ export default function ComputedColumnsScreen() {
     scheduleSync(userId);
   };
 
+  const applyOrder = async (orderedIds: string[]) => {
+    const byId = new Map(columns.map((column) => [column.id, column]));
+    const slots = columns.map((column) => column.sortOrder);
+    const writes = orderedIds.flatMap((id, index) => {
+      const column = byId.get(id);
+      return column ? [{ table: "computed_columns" as const, row: { ...column, sortOrder: slots[index] } }] : [];
+    });
+    if (writes.length === 0) return;
+    await writeRows(userId, writes);
+    scheduleSync(userId);
+  };
+
   const categoryChips = categories.map((c) => ({ value: c.id, label: c.name }));
 
   return (
-    <Screen>
+    <Screen scrollEnabled={!dragging}>
+      {header}
       <Body muted style={{ marginBottom: spacing.md }}>{tr.computed.intro}</Body>
       {editingId ? (
         <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.md }}>
-          <Body style={{ color: palette.primary, fontSize: 13 }}>{tr.computed.editing(name || "…")}</Body>
+          <Body style={{ color: palette.primary, fontSize: 13 }}>{tr.computed.editing(name || tr.computed.nameLabel)}</Body>
         </View>
       ) : null}
 
@@ -256,32 +271,51 @@ export default function ComputedColumnsScreen() {
       </Card>
 
       {/* Existing columns */}
-      <CardList
-        items={columns}
-        keyExtractor={(c) => c.id}
-        header={columns.length > 0 ? <Label>{tr.computed.existingTitle}</Label> : undefined}
-        renderItem={(c) => {
-          const visible = !hidden.includes(c.id);
-          return (
-            <View style={{ paddingVertical: spacing.sm }}>
-              <Spread>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1, paddingRight: spacing.sm }}>
-                  <Calculator size={16} color={palette.textMuted} />
-                  <Body style={{ flex: 1 }}>{c.name}</Body>
+      {columns.length > 0 ? (
+        <Card>
+          <Label>{tr.computed.existingTitle}</Label>
+          <Body muted style={{ fontSize: 12, marginBottom: spacing.xs }}>{tr.settings.reorderHint}</Body>
+          <DraggableList
+            items={columns}
+            keyExtractor={(column) => column.id}
+            onReorder={(ids) => void applyOrder(ids)}
+            onDragStateChange={setDragging}
+            disabled={editingId != null}
+            renderRow={(column, handle, index) => {
+              const visible = !hidden.includes(column.id);
+              return (
+                <View>
+                  <View style={{ paddingVertical: spacing.sm, backgroundColor: handle.active ? palette.surfaceAlt : palette.surface }}>
+                    <Spread>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1, paddingRight: spacing.sm }}>
+                        <View
+                          {...handle.panHandlers}
+                          accessibilityRole="adjustable"
+                          accessibilityLabel={tr.settings.reorderHandle}
+                          style={{ padding: 4, marginLeft: -4 }}
+                        >
+                          <GripVertical size={18} color={palette.textMuted} />
+                        </View>
+                        <Calculator size={16} color={palette.textMuted} />
+                        <Body style={{ flex: 1 }}>{column.name}</Body>
+                      </View>
+                      <Row gap={spacing.sm}>
+                        <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(column)} />
+                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(column)} />
+                      </Row>
+                    </Spread>
+                    <Spread style={{ marginTop: spacing.xs }}>
+                      <Body muted style={{ fontSize: 12 }}>{tr.computed.showInTable}</Body>
+                      <Toggle value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
+                    </Spread>
+                  </View>
+                  {index < columns.length - 1 ? <Divider /> : null}
                 </View>
-                <Row gap={spacing.sm}>
-                  <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(c)} />
-                  <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(c)} />
-                </Row>
-              </Spread>
-              <Spread style={{ marginTop: spacing.xs }}>
-                <Body muted style={{ fontSize: 12 }}>{tr.computed.showInTable}</Body>
-                <Toggle value={visible} onValueChange={(v) => void toggleVisible(c.id, v)} />
-              </Spread>
-            </View>
-          );
-        }}
-      />
+              );
+            }}
+          />
+        </Card>
+      ) : null}
     </Screen>
   );
 }

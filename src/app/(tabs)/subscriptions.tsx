@@ -13,7 +13,7 @@ import { dateLabel, tr } from "../../i18n/tr";
 import { usePersons, useSubscriptions, useUserId } from "../../data/hooks";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Body, Button, Card, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Body, Button, Card, CardList, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
 import { spacing, useTheme } from "../../ui/theme";
@@ -131,19 +131,19 @@ export default function SubscriptionsScreen() {
       {active.length > 0 ? (
         <>
           <SectionHeader>{tr.common.active}</SectionHeader>
-          <Card>{active.map(renderSub)}</Card>
+          <CardList items={active} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
         </>
       ) : null}
       {watched.length > 0 ? (
         <>
           <SectionHeader>{tr.subs.watchedSection}</SectionHeader>
-          <Card>{watched.map(renderSub)}</Card>
+          <CardList items={watched} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
         </>
       ) : null}
       {passive.length > 0 ? (
         <>
           <SectionHeader>{tr.common.inactive}</SectionHeader>
-          <Card>{passive.map(renderSub)}</Card>
+          <CardList items={passive} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
         </>
       ) : null}
     </Screen>

@@ -4,7 +4,7 @@
  * month row jumps into that month's detail where the transactions are managed.
  */
 
-import React, { useMemo } from "react";
+import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Inbox } from "lucide-react-native";
@@ -39,46 +39,48 @@ export default function ItemBreakdownScreen() {
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
 
-  const creditCardIds = useMemo(
-    () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
-    [sources],
-  );
-  const txLike = useMemo(() => toTxLike(allTx, persons, categories), [allTx, persons, categories]);
+  const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
+  const txLike = toTxLike(allTx, persons, categories);
 
   // Value of this column for a given month: a category reads its bucket; a
   // computed column is evaluated the same way the matrix does (with the
   // credit-card split available to cc_split definitions).
-  const rows = useMemo(() => {
-    const dataByMonth = new Map((bundle?.yearMonths ?? []).map((m) => [m.month, m]));
-    const compDef = kind === "computed" ? computed.find((c) => c.id === col) : null;
-    return Array.from({ length: 12 }, (_, i) => {
-      const month = makeMonthKey(year, i + 1);
-      const m = dataByMonth.get(month) ?? null;
-      let value: number | null = 0;
-      if (!m) value = null;
-      else if (kind === "computed") {
-        if (!compDef) value = null;
-        else {
-          const cc = creditCardSplit(txLike, creditCardIds, month, today);
-          try {
-            value = evaluateComputedColumn(parseDefinition(JSON.parse(compDef.definition)), {
-              month,
-              byCategory: m.byCategory,
-              incomeMinor: m.incomeMinor,
-              expenseMinor: m.expenseMinor,
-              ccSingleMinor: cc.singleMinor,
-              ccInstallmentMinor: cc.installmentMinor,
-            });
-          } catch {
-            value = null;
-          }
+  const dataByMonth = new Map((bundle?.yearMonths ?? []).map((month) => [month.month, month]));
+  const compDef = kind === "computed" ? computed.find((column) => column.id === col) : null;
+  const liveCategoryIds = new Set(categories.map((category) => category.id));
+  const rows = Array.from({ length: 12 }, (_, index) => {
+    const month = makeMonthKey(year, index + 1);
+    const ledgerMonth = dataByMonth.get(month) ?? null;
+    let value: number | null = 0;
+    if (!ledgerMonth) value = null;
+    else if (kind === "computed") {
+      if (!compDef) value = null;
+      else {
+        const cc = creditCardSplit(txLike, creditCardIds, month, today);
+        try {
+          value = evaluateComputedColumn(parseDefinition(JSON.parse(compDef.definition)), {
+            month,
+            byCategory: ledgerMonth.byCategory,
+            incomeMinor: ledgerMonth.incomeMinor,
+            expenseMinor: ledgerMonth.expenseMinor,
+            ccSingleMinor: cc.singleMinor,
+            ccInstallmentMinor: cc.installmentMinor,
+          });
+        } catch {
+          value = null;
         }
-      } else {
-        value = m.byCategory.get(col) ?? 0;
       }
-      return { month, value };
-    });
-  }, [bundle?.yearMonths, computed, col, kind, year, txLike, creditCardIds, today]);
+    } else if (kind === "uncategorized") {
+      let uncategorized = ledgerMonth.uncategorizedMinor;
+      ledgerMonth.byCategory.forEach((amount, categoryId) => {
+        if (!liveCategoryIds.has(categoryId)) uncategorized += amount;
+      });
+      value = uncategorized;
+    } else {
+      value = ledgerMonth.byCategory.get(col) ?? 0;
+    }
+    return { month, value };
+  });
 
   const total = rows.reduce((sum, r) => sum + (r.value ?? 0), 0);
 
