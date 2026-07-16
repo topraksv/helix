@@ -1,6 +1,6 @@
 # Manual test scenarios (critical flows)
 
-Automated coverage lives in `tests/` (`npm test`, 198 unit tests). The flows below
+Automated coverage lives in `tests/` (`npm test`, 199 unit tests). The flows below
 cross UI, local DB, and sync, so they are verified by hand before a release.
 
 1. **Onboarding:** sign up → pick a template → set starting month + opening balance → add

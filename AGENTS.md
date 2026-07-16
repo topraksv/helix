@@ -105,6 +105,10 @@ agent-to-agent communication that did not occur.
   exact outbox events are removed. Never advance a pull cursor past an invalid
   row and never silently discard malformed/foreign outbox data—quarantine it
   in `sync_dead_letters`.
+- **Supabase migration history must be reproducible.** Never name a timestamped
+  migration with the reserved `_init.sql` suffix: the CLI skips it. After any
+  migration change, `supabase migration list --linked` must show identical
+  local/remote versions and `supabase db lint --linked` must stay clean.
 - **Money is integer minor units** (kuruş) everywhere; format only at the edge
   with `formatMinor`. Transaction reversals/refunds keep their original type
   and category with signed negative `amount_minor`/`amount_try_minor`; every
