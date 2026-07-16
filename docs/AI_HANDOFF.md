@@ -9,24 +9,22 @@ lags behind them.
 
 - Updated: 2026-07-16 (Europe/Istanbul)
 - Branch: `main`
-- Completed package base: `2933e27`; application commit: `929fb59` (the
+- Completed package base: `4f570c7`; application commit: `b8bc26e` (the
   following documentation-only commit is authoritative in `git log`)
 - Toolchain used: Node 22
-- Verification: typecheck, strict unused-symbol check, full tests, Expo lint and
-  49-route static web export passed
+- Verification: typecheck, full tests, Expo lint, 49-route static web export,
+  iOS/Android OTA bundles and production route probes passed
 - Test baseline: 24 files, 214 tests passing
-- Live market payload contained all five configured symbols; production root,
-  Sign In, Transaction and Columns Editor returned HTTP 200 after deployment.
-  No controllable browser or local simulator was available, so the back-button
-  optics and physical press-and-drag feel still require the installed-app pass.
+- Production root, Columns Editor and Cell Editor returned HTTP 200 after the
+  successful Pages deployment. No controllable browser or local simulator was
+  available, so the final back-button optics and physical press-and-drag feel
+  still require the installed-app pass.
 
 ## Active working tree
 
-No application work is in progress. Codex independently reviewed Claude's
-`27da3db` implementation and the remaining `money.ts` working-tree patch,
-preserved the useful parts, fixed the six user-reported regressions, and shipped
-web plus mobile OTA from `929fb59`. Always re-check `git status`; Git remains
-authoritative.
+No application work is in progress. Codex fixed the three screenshot-confirmed
+UI regressions and shipped web plus mobile OTA from `b8bc26e`. Always re-check
+`git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -46,11 +44,11 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-No verified code finding or reported bug remains open. The installed app still
-needs a human visual/gesture confirmation for the centred back control, the
-44-point press-and-drag handles and exact full-value detail presentation; this
-session had neither a controllable browser nor an available local simulator.
-Accepted constraints: the 17
+No verified code finding from this package remains open. The installed app
+still needs a human visual/gesture confirmation for the optically centred back
+control, Mali Tablo entry-point drag reorder and exact single-line high-value
+total; this session had neither a controllable browser nor an available local
+simulator. Accepted constraints: the 17
 moderate `npm audit --omit=dev` findings are in Expo SDK 54's build/config chain
 and only offer a breaking SDK 57 fix; SDK 54 remains required by the installed
 App Store Expo Go line. The `expo`/`expo-updates` patch alignment needs the next
@@ -75,6 +73,42 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (back, column drag and high-total UI follow-up)
+
+- Base `4f570c7`, branch `main`; the working tree was clean with no staged work.
+  The user supplied three installed-iOS screenshots proving that the previous
+  geometric centring, sheet-contained drag and long-total sizing still needed
+  correction.
+- `HeaderBackButton` keeps one 82×44 hit target but now centres its absolute
+  icon/text plane inside the capsule and applies a measured optical offset for
+  the chevron's transparent bounds and Inter line box. The labelled **Geri**
+  control and deterministic `navigateBack` behavior remain shared across web
+  and native.
+- Both column entry points still render the same `CategoriesScreen` and
+  `ComputedColumnsScreen`, call the same `DraggableList`, and persist the same
+  synced `sortOrder`; no duplicate editor or reorder service was added. The Mali
+  Tablo route now opens as a normal stack card because an iOS sheet owns the
+  vertical pan and can steal the grip gesture even with dismissal disabled.
+  This hard-won presentation rule is recorded in `AGENTS.md`.
+- Cell totals retain the exact full `formatMinor` value. Long hero figures step
+  down further, stay right-aligned in an unconstrained horizontal container and
+  therefore cannot split the minus sign, major value and kuruş across lines;
+  horizontal access remains as a fallback at exceptionally narrow widths.
+- Checks: `npm run typecheck`, `npm test` (24 files/214 tests), `npx expo lint`,
+  `git diff --check`, 49-route static web export and the iOS/Android EAS bundle
+  exports passed. Browser discovery returned no available profile, so no
+  pixel-perfect or physical-gesture result is claimed. Production root,
+  Columns Editor and Cell Editor returned HTTP 200.
+- Shipped as `b8bc26e`, pushed to `main`; GitHub Pages run `29514391456`
+  completed successfully. EAS asset upload hit the known Google Storage DNS
+  failure three times; a command-scoped, uncommitted resolver preload using a
+  directly verified Google IPv4 endpoint completed the unchanged fourth
+  upload. `preview` update group `dc449f63-7497-44d0-8472-d4044a923e3b`
+  published on runtime `1.0.0` (iOS
+  `019f6bba-2c65-7ea8-a6c9-96d891155e83`, Android
+  `019f6bba-2c65-797c-91d3-e87e9f8fec8e`). No native rebuild was required; the
+  phone applies it after a complete close and reopen.
 
 ### 2026-07-16 — Codex (six UX/UI regressions, verified completion)
 
