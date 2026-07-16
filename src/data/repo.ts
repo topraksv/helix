@@ -97,6 +97,9 @@ export interface SeedInput {
  * anchor set by an Excel import.
  */
 export async function seedWorkspace(userId: string, input: SeedInput): Promise<void> {
+  if (input.persons.length === 0 || input.persons.filter((person) => person.isSelf).length !== 1) {
+    throw new Error("Onboarding requires exactly one self person");
+  }
   const writes: RowWrite[] = [];
   const personIds = await Promise.all(
     input.persons.map((p, i) =>
@@ -108,6 +111,8 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
   });
   const sourceIds = await Promise.all(input.sources.map((_, i) => deterministicId(naturalKeys.onboardingSource(userId, i))));
   input.sources.forEach((s, i) => {
+    const personId = personIds[s.personIndex];
+    if (!personId) throw new Error("Onboarding payment source owner does not exist");
     if (
       s.type === "credit_card" &&
       !isValidCardCycle({ statementDay: s.statementDay, dueDay: s.dueDay })
@@ -118,7 +123,7 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
         id: sourceIds[i],
         name: s.name,
         type: s.type,
-        personId: personIds[s.personIndex] ?? personIds[0],
+        personId,
         dueDay: s.dueDay ?? null,
         statementDay: s.statementDay ?? null,
         color: null,

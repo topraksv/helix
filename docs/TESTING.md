@@ -1,10 +1,11 @@
 # Manual test scenarios (critical flows)
 
-Automated coverage lives in `tests/` (`npm test`, 183 unit tests). The flows below
+Automated coverage lives in `tests/` (`npm test`, 195 unit tests). The flows below
 cross UI, local DB, and sync, so they are verified by hand before a release.
 
 1. **Onboarding:** sign up → pick a template → set starting month + opening balance → add
-   person/payment source → finish.
+   two watched people and assign payment sources → delete the first watched person → verify
+   their source returns to “Ben”, the later person's source keeps its owner → finish.
 2. **Bulk history entry:** back-fill 3 past months with category totals → compare the Cash
    Flow cards, the wide-screen matrix, and the Analytics YTD totals 1:1 against the spreadsheet.
 3. **Installments:** add an expense as "6 installments, 2 paid" → distribution across months,

@@ -132,6 +132,10 @@ agent-to-agent communication that did not occur.
 - **Cell notes have one natural identity per real month/category cell.** Save
   them through `src/data/cell-notes.ts`; never attach notes to UI-only pseudo
   groups such as `uncategorized`, and never reintroduce random note ids.
+- **Onboarding draft ownership is index-safe.** Person index zero is the
+  deterministic self person. Removing a watched person reassigns that person's
+  draft payment sources to self and shifts later owner indices; repository
+  seeding rejects a missing or ambiguous self and dangling source owners.
 - **Haptics go through `src/ui/haptics.ts` and are iOS-only.** Selection
   feedback fires only when the choice changes; calculator digits stay quiet;
   success/warning/error notifications describe completed outcomes. Native
