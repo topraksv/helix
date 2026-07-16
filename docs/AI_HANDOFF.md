@@ -90,6 +90,10 @@ diff and running checks proportionate to the change.
 - Pushed to `main`; GitHub web run `29491975925` completed successfully. No
   application code changed in this commit, so no mobile OTA/native build was
   needed for the migration filename itself.
+- Final CI review found the old Pages actions still executed on deprecated
+  Node 20 action runtimes. Follow-up `84b70c6` moved checkout/setup-node to v6
+  and both Pages actions to v5 while keeping the Helix build on Node 22. Web run
+  `29493546514` completed successfully with no annotations.
 
 ### 2026-07-16 — Codex (dependency and dead-code cleanup)
 
