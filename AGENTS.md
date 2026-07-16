@@ -144,6 +144,10 @@ agent-to-agent communication that did not occur.
   feedback fires only when the choice changes; calculator digits stay quiet;
   success/warning/error notifications describe completed outcomes. Native
   haptic failures must never block the underlying action.
+- **Production diagnostics stay silent.** App-owned diagnostics go through
+  `src/services/logger.ts`; it emits only in development and must never receive
+  tokens, passwords or raw imported data. Do not reintroduce direct console
+  logging in application code.
 - **UI strings live only in `src/i18n/tr.ts`.** Code is English, UI is Turkish.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint
@@ -200,7 +204,9 @@ the old indigo fintech palette 2026-07). Keep it; don't regress to indigo.
   `_layout.tsx` falls back to system fonts (prevents the mobile-web white
   screen).
 - **Motion:** `Animated.spring` only — `useSpringPress(0.96)` +
-  `AnimatedPressable` for press feedback, `FadeIn` for list transitions.
+  `AnimatedPressable` for press feedback, `FadeIn` for list transitions. Shared
+  motion primitives honor the system reduced-motion preference through
+  `src/ui/motion.ts`; do not add screen-local accessibility listeners.
   Interruptible, React-Compiler-safe (no manual memo on unstable deps).
 - **Radii/shadow:** soft — `radius` tokens 12–22, `cardShadow` very low opacity.
 - **Logo:** the botanical DNA-helix mark. `src/ui/brand.tsx` `BrandMark` renders
