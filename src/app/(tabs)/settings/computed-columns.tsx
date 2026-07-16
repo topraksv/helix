@@ -306,7 +306,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>
                       <Body muted style={{ fontSize: 12 }}>{tr.computed.showInTable}</Body>
-                      <Toggle value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
+                      <Toggle label={`${column.name} · ${tr.computed.showInTable}`} value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
                     </Spread>
                   </View>
                   {index < columns.length - 1 ? <Divider /> : null}

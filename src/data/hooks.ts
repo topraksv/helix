@@ -13,6 +13,7 @@ import { buildLedger, currentBalance, resolveLedgerAnchor, type MonthLedger } fr
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { readSetting } from "../db/mutations";
+import { devError } from "../services/logger";
 
 interface LiveResult<T> {
   data: T[];
@@ -56,7 +57,7 @@ export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: re
           // sqlite worker never recovered, and route guards that key off this
           // query showed a permanent blank screen). Surface the error too, so
           // callers can render a retry affordance rather than nothing.
-          if (attempt < 3) console.error("[live-query]", String(error));
+          if (attempt < 3) devError("live-query", error);
           setState((prev) => ({ ...prev, error: String(error) }));
           const delay = Math.min(250 * 2 ** attempt++, 5000);
           timer = setTimeout(run, delay);

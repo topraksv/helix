@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Platform, Pressable, Text, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { Delete } from "lucide-react-native";
 import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
@@ -102,6 +102,22 @@ const KEYS: string[][] = [
 // (e.g. the popup opened over the tab calculator) responds to a keypress.
 const kbStack: object[] = [];
 
+function CalculatorLine({ text, color, main = false }: { text: string; color: string; main?: boolean }) {
+  const scrollRef = useRef<ScrollView>(null);
+  return (
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ alignSelf: "stretch", height: main ? 50 : 18 }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center", alignItems: "flex-end" }}
+      onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+    >
+      <Text style={[main ? type.amountLg : type.small, { color, textAlign: "right" }]}>{text}</Text>
+    </ScrollView>
+  );
+}
+
 export function CalculatorPad({
   onResult,
   resultLabel,
@@ -195,15 +211,15 @@ export function CalculatorPad({
           alignItems: "flex-end",
         }}
       >
-        <Text style={[type.small, { color: palette.textMuted, height: 18 }]} numberOfLines={1}>
-          {state.op ? `${new Intl.NumberFormat("tr-TR").format(state.accumulator ?? 0)} ${state.op}` : " "}
-        </Text>
-        <Text style={[type.amountLg, { color: palette.text }]} numberOfLines={1} adjustsFontSizeToFit>
-          {text}
-        </Text>
-        <Text style={[type.small, { color: preview != null ? palette.primary : "transparent", height: 18 }]} numberOfLines={1}>
-          {preview != null ? `= ${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}` : " "}
-        </Text>
+        <CalculatorLine
+          text={state.op ? `${new Intl.NumberFormat("tr-TR").format(state.accumulator ?? 0)} ${state.op}` : " "}
+          color={palette.textMuted}
+        />
+        <CalculatorLine text={text} color={palette.text} main />
+        <CalculatorLine
+          text={preview != null ? `= ${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}` : " "}
+          color={preview != null ? palette.primary : "transparent"}
+        />
       </View>
       {/* keys */}
       <View style={{ gap: spacing.sm }}>

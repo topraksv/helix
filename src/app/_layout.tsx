@@ -34,6 +34,7 @@ import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from ".
 import { Button, Screen, Title } from "../ui/components";
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
+import { devWarning } from "../services/logger";
 import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
@@ -253,7 +254,7 @@ function RootLayoutInner() {
         if (signal.aborted) return;
         await rescheduleAll(userId);
       })
-        .catch((e) => console.warn("maintenance failed", e))
+        .catch((e) => devWarning("maintenance", String(e)))
         .finally(() => void syncNow(userId));
       void runSyncSessionTask(userId, async (signal) => {
         await loadRateCache(userId);

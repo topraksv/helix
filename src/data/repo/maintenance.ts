@@ -321,6 +321,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     status: r.status as ExpectedPaymentLike["status"],
   }));
   const autoPayIds = new Set(subs.filter((s) => Boolean(s.auto_pay) && Boolean(s.is_self)).map((s) => s.id as string));
+  const subscriptionById = new Map(subs.map((subscription) => [subscription.id as string, subscription]));
   const selfPersonId = (
     await sqlite.getFirstAsync<{ id: string }>(
       `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL`,
@@ -329,7 +330,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   )?.id;
   for (const item of findAutoConfirmable(pendingLike, autoPayIds, today)) {
     if (selfPersonId) {
-      const sub = subs.find((s) => s.id === item.refId);
+      const sub = subscriptionById.get(item.refId);
       try {
         await confirmExpected(userId, item.id, {
           personId: (sub?.person_id as string) ?? selfPersonId,

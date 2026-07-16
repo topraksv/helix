@@ -18,6 +18,7 @@ import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
+import { devError } from "../services/logger";
 
 export default function PlanModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -110,7 +111,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       scheduleSync(userId);
       close();
     } catch (e) {
-      console.error("[installment.save]", e);
+      devError("installment.save", e);
       void appAlert(
         e instanceof CreditCardCycleRequiredError
           ? tr.sources.cycleRequired

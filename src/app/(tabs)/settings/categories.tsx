@@ -195,7 +195,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>
                       <Body muted style={{ fontSize: 12 }}>{tr.settings.columnVisible}</Body>
-                      <Toggle value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
+                      <Toggle label={`${c.name} · ${tr.settings.columnVisible}`} value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
                     </Spread>
                   </View>
                 )
