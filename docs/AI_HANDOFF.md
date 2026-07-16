@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 21 files, 192 tests passing
+- Test baseline: 22 files, 195 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -23,10 +23,10 @@ lags behind them.
 The repository-wide remediation requested on 2026-07-15 is in progress. The
 account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references, credit-card statement, external-data/privacy,
-navigation/UI regression, identity/relational restore and UI/table consistency
-packages are shipped. Remaining audit items below are being completed as
-separately verified and shipped packages. Always re-check `git status`; Git
-remains authoritative.
+navigation/UI regression, identity/relational restore, UI/table consistency and
+onboarding/config consistency packages are shipped. The controlled repository
+boundary split, optimization audit and final regression remain. Always re-check
+`git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -46,13 +46,9 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-These are static-analysis findings from the 2026-07-15 repository review. They
-have not yet been implemented or runtime-reproduced; verify each against the
-current code before fixing it.
-
-1. Onboarding person deletion does not remap draft source `personIndex` values.
-2. The README palette is stale; web HTML language is
-    `en`, and Android biometric permissions are duplicated in `app.json`.
+No verified P8–P10 findings remain open. The next bounded task is the
+characterization-test-backed `repo.ts` boundary split; do not turn it into a
+feature rewrite or broad folder migration.
 
 ## Handoff update contract
 
@@ -72,6 +68,31 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (onboarding and configuration consistency package)
+
+- Base `38600ac`, branch `main`; shipped as `5f2fcb7`.
+- Removing a watched person during onboarding now remaps draft payment-source
+  ownership deterministically: that person's sources return to self and later
+  owner indices shift with the person list. Repository seeding rejects missing,
+  ambiguous or dangling owners instead of silently assigning invalid input.
+- Removed duplicated Android biometric permissions from `app.json`; Expo SDK
+  54's local-authentication plugin resolves each permission exactly once.
+  Turkish web language/metadata, README palette/test counts, project layout and
+  the onboarding manual scenario now match the implementation.
+- Typecheck, 22 files/195 tests, Expo lint, resolved prebuild config and static
+  web export passed. The exported HTML contains Turkish language/description
+  metadata. The session exposed no controllable browser instance, so P10 did
+  not add a new pixel-level Playwright result; this limitation is explicit
+  rather than inferred as a pass.
+- Pushed to `main`; GitHub web run `29483841037` completed successfully and the
+  production Sign In and Setup routes returned HTTP 200. EAS `preview` update
+  group `c701acad-7ca5-4760-a4b4-c02bb3ed40a0` was published for iOS and
+  Android on runtime `1.0.0`. The Android permission-source cleanup takes
+  effect in the next native Android binary; the existing binary already has
+  the same required permissions and the JS functionality shipped by OTA.
+- The controlled repository split, optimization/security/dead-code audit and
+  P11 final regression remain.
 
 ### 2026-07-16 — Codex (UI and table consistency package)
 
