@@ -3,7 +3,7 @@ import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { normalizeReminderDays, uniqueNotifications } from "../src/domain/notifications";
-import { MARKET_SYMBOLS } from "../src/services/markets";
+import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../src/services/markets";
 
 describe("external FX provider validation", () => {
   it("keeps TCMB's declared business date and unit-adjusted selling rates", () => {
@@ -67,12 +67,28 @@ describe("live market freshness", () => {
     expect(validMarketQuote("40.2", 40.5)).toBe(true);
     expect(validMarketQuote("NaN", 40.5)).toBe(false);
     expect(validMarketQuote(40, 0)).toBe(false);
+    expect(validMarketQuote(40, 1_000_001)).toBe(false);
   });
 
   it("never treats future or expired receipt timestamps as fresh", () => {
     expect(freshMarketQuote(1_000, 1_500, 600)).toBe(true);
     expect(freshMarketQuote(1_000, 1_601, 600)).toBe(false);
     expect(freshMarketQuote(2_000, 1_500, 600)).toBe(false);
+  });
+
+  it("reuses only fresh USD/EUR quotes for conversion", () => {
+    const now = 10_000;
+    useMarkets.setState({
+      status: "live",
+      prices: {
+        USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: now },
+        EURTRY: { code: "EURTRY", buyTry: 47, sellTry: 47.5, direction: "", at: "", receivedAt: now - 60_001 },
+      },
+    });
+    expect(marketSellRateTry("USD", now)).toBe(40.5);
+    expect(marketSellRateTry("EUR", now)).toBeNull();
+    expect(marketSellRateTry("GBP", now)).toBeNull();
+    useMarkets.setState({ prices: {}, status: "idle" });
   });
 });
 

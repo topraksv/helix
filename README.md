@@ -66,8 +66,8 @@ spreadsheet (months, running balances, a category grid) but makes the numbers
   wizard, or enter a whole month in one pass.
 - 🧮 **Built-in calculator & computed columns** — do the math where you need it,
   and define spreadsheet-style derived columns without leaving the app.
-- 🪙 **Live gold & FX** — real-time gold and currency rates from the Harem Altın
-  feed, with source-dated TCMB/ECB reference rates for conversions. Missing
+- 🪙 **Live gold & FX** — fresh gold and currency rates from a read-only feed,
+  with source-dated TCMB/ECB reference rates for conversions. Missing
   rates are never guessed as TRY.
 - 🔔 **Opt-in local upcoming-payment notifications** with a configurable lead
   time on installed iOS/Android builds. Permission is requested only in
@@ -87,7 +87,7 @@ truth.
 | **Local store** | `expo-sqlite` **async** API + Drizzle (via the `sqlite-proxy` driver) — non-blocking on every platform, the on-device source of truth |
 | **Sync** | Supabase (Postgres + Auth) via an outbox: push → pull → last-write-wins merge, with tombstone deletes (no hard deletes) |
 | **Security** | Row-Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, parameterized SQL, secrets only in `.env` / CI |
-| **Money** | Integer kuruş everywhere — no floats. FX: source-dated TCMB `today.xml` → Frankfurter fallback → user-scoped cache; fresh-only live gold/FX from the Harem Altın socket feed |
+| **Money** | Integer kuruş everywhere — no floats. FX: source-dated TCMB `today.xml` → Frankfurter fallback → user-scoped cache; fresh-only gold/FX quotes from a read-only live feed |
 | **Tables** | One cross-platform sticky-column matrix ([src/ui/sticky-table.tsx](src/ui/sticky-table.tsx)) — pinned first column + an optional pinned extra column, months-as-rows/columns pivot, identical on web and iOS |
 | **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — covered by 199 unit tests, including a golden chain validated against the original spreadsheet |
 

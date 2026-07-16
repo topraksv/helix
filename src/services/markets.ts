@@ -1,9 +1,7 @@
 /**
- * Live market prices from Harem Altın's public socket feed (user requirement:
- * jeweler-accurate gold prices, not Google/BigPara approximations).
- * Read-only, no API key; prices update over websocket and are throttled into
- * the store. If the socket can't connect (network, origin policy) the UI
- * simply shows the card in its "unavailable" state.
+ * Live gold and currency prices from a public, read-only socket feed. No API
+ * key is used; updates are validated and throttled into the store. If the
+ * socket cannot connect, the UI simply omits the unavailable card.
  */
 
 import { create } from "zustand";
@@ -15,7 +13,7 @@ const FEED_URL = "wss://hrmsocketonly.haremaltin.com";
 const THROTTLE_MS = 3000;
 const MARKET_STALE_MS = 60_000;
 
-/** Harem code → display label; order = display order. */
+/** Provider code → display label; order = display order. */
 export const MARKET_SYMBOLS = [
   { code: "ALTIN", label: tr.markets.gram },
   { code: "CEYREK_YENI", label: tr.markets.quarter },
@@ -90,7 +88,7 @@ function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
   useMarkets.setState({ prices, status: Object.keys(prices).length > 0 ? "live" : "error" });
 }
 
-/** Harem sell ("satış") price in TRY for a currency, or null if not live yet.
+/** Fresh live sell ("satış") price in TRY, or null when unavailable.
  *  Used to convert a foreign-currency amount to TRY at confirm time (we already
  *  pull USDTRY/EURTRY from this feed — no separate FX call needed). */
 export function marketSellRateTry(currency: string, now = Date.now()): number | null {

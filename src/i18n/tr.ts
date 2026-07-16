@@ -608,7 +608,7 @@ export const tr = {
   },
   markets: {
     title: "Canlı Piyasalar",
-    source: "Harem Altın",
+    source: "Canlı",
     gram: "Gram Altın",
     quarter: "Çeyrek Altın",
     republic: "Cumhuriyet (Ata)",

@@ -252,10 +252,10 @@ diff and running checks proportionate to the change.
   Password recovery is a full-width Sign In action and is also available from
   Account Security. Calendar sheets use a standard Cancel action instead of a
   floating close glyph. Live Markets always lists USD and EUR, showing a dash
-  only until their valid Harem quote arrives.
+  only until their valid live quote arrives.
 - Typecheck, 21 files/186 tests, Expo lint and static export passed. Playwright
   exercised the visible password-recovery action at 320/390/1280 px with no
-  overflow or browser errors. Harem's live payload was independently observed
+  overflow or browser errors. The live payload was independently observed
   carrying valid `USDTRY` and `EURTRY` entries. Protected finance-route visuals
   still need the installed authenticated app/device pass.
 - Pushed to `main`; GitHub web run `29452873110` completed successfully and the
