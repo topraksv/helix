@@ -11,7 +11,7 @@ export const tr = {
     confirm: "Onayla", skip: "Atla", all: "Tümü", active: "Aktif", inactive: "Pasif",
     selectAll: "Tümünü seç", clearAll: "Tümünü bırak",
     required: "Bu alan zorunlu", invalidAmount: "Geçersiz tutar",
-    amountLimit: "Geçerli bir tutar gir; tutar 1 milyardan küçük olmalı.",
+    amountLimit: "Bu tutar desteklenen sınırı aşıyor. En fazla ₺999.999.999.999,99 girebilirsin.",
     optionalHint: "Opsiyonel",
     other: "Diğer",
     paymentFallback: "Ödeme",
@@ -190,7 +190,7 @@ export const tr = {
     received: "Alındı",
     distribution: "Harcama ve Yatırım Dağılımı",
     investmentAside: "Yatırım / Transfer",
-    investmentRefundAside: "Yatırım / Transfer · İade",
+    investmentRefundAside: "Yatırımdan çekim",
     refundAside: (name: string) => `${name} · Gider iadesi`,
     trend: "Aylık Gelir ve Gider",
     trendNet: (v: string) => `Bu ay net: ${v}`,
@@ -263,20 +263,21 @@ export const tr = {
     edit: "İşlemi Düzenle",
     type: "Tür", expense: "Gider", income: "Gelir", transferInvest: "Yatırım",
     amount: "Tutar", currency: "Para Birimi",
+    refundToggleLabel: "İade",
     reversalLabel: (kind: "expense" | "income" | "transfer") =>
-      kind === "expense" ? "Gider iadesi" : kind === "income" ? "Gelir iptali" : "Yatırım iadesi",
+      kind === "expense" ? "Gider iadesi" : kind === "income" ? "Gelir geri ödemesi" : "Yatırımdan çekim",
     refundToggleHint: (kind: "expense" | "income" | "transfer") =>
       kind === "expense"
-        ? "Bir gideri geri aldıysan aç; tutar bakiyene geri eklenir."
+        ? "Ödediğin bir tutar geri geldiyse bu seçeneği aç."
         : kind === "income"
-          ? "Bir geliri iptal ettiysen aç; tutar bakiyenden düşülür."
-          : "Bir yatırımı geri aldıysan aç; tutar bakiyene geri eklenir.",
+          ? "Aldığın bir geliri geri verdiysen bu seçeneği aç."
+          : "Yatırımı bozup tutarı bakiyene aldıysan bu seçeneği aç.",
     reversalHint: (kind: "expense" | "income" | "transfer") =>
       kind === "expense"
-        ? "Tutar bakiyene geri eklenir ve seçili kategorinin giderini azaltır."
+        ? "Geri gelen tutar bakiyene eklenir; seçili kategorinin giderini azaltır."
         : kind === "income"
-          ? "Tutar bakiyenden düşer ve seçili kategorinin gelirini azaltır."
-          : "Tutar bakiyene geri eklenir ve yatırım / transfer toplamını azaltır.",
+          ? "Geri verdiğin tutar bakiyenden düşer; seçili kategorinin gelirini azaltır."
+          : "Çektiğin tutar bakiyene eklenir; yatırım toplamını azaltır.",
     tryEquivalent: (v: string) => `≈ ${v}`,
     staleRate: "Kur güncel değil, son bilinen kur kullanıldı",
     rateNotFound: "⚠ Kur bulunamadı. Önce internetle bir kez kur çek",

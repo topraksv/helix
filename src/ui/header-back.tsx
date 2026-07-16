@@ -4,13 +4,14 @@ import { useRouter, type Href } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { navigateBack } from "./navigation";
-import { spacing, type, useTheme } from "./theme";
+import { font, useTheme } from "./theme";
 
 /** Native-header back control with a deterministic parent for direct links. */
 export function HeaderBackButton({ fallback }: { fallback: Href }) {
   const router = useRouter();
   const { palette } = useTheme();
-  const ICON = 22;
+  const controlHeight = 44;
+  const iconSize = 20;
   return (
     <Pressable
       accessibilityRole="button"
@@ -18,24 +19,38 @@ export function HeaderBackButton({ fallback }: { fallback: Href }) {
       hitSlop={8}
       onPress={() => navigateBack(router, fallback)}
       style={({ pressed }) => ({
-        height: 44,
-        paddingLeft: spacing.xs,
-        paddingRight: spacing.sm,
-        flexDirection: "row",
+        width: 82,
+        height: controlHeight,
         alignItems: "center",
-        gap: 2,
+        justifyContent: "center",
         opacity: pressed ? 0.55 : 1,
       })}
     >
-      {/* Wrap the glyph in a box the same height as the text line so the chevron
-          and label share one optical centre line on both web and native (the
-          bare SVG sat a hair high against the label baseline otherwise). */}
-      <View style={{ width: ICON, height: ICON, alignItems: "center", justifyContent: "center", marginLeft: -2 }}>
-        <ChevronLeft size={ICON} color={palette.text} />
+      <View
+        style={{
+          height: controlHeight,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 3,
+        }}
+      >
+        <View style={{ width: iconSize, height: iconSize, alignItems: "center", justifyContent: "center" }}>
+          <ChevronLeft size={iconSize} color={palette.text} />
+        </View>
+        <Text
+          style={{
+            color: palette.text,
+            fontFamily: font.medium,
+            fontSize: 15,
+            lineHeight: iconSize,
+            includeFontPadding: false,
+            textAlignVertical: "center",
+          }}
+        >
+          {tr.common.back}
+        </Text>
       </View>
-      <Text style={[type.label, { color: palette.text, lineHeight: ICON, includeFontPadding: false }]}>
-        {tr.common.back}
-      </Text>
     </Pressable>
   );
 }

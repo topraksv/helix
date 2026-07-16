@@ -318,6 +318,7 @@ export default function DashboardScreen() {
   };
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
+  const actualBalanceText = bundle ? formatMinor(bundle.actualBalanceMinor) : "";
 
   return (
     <Screen title={greeting()} subtitle={dateLabel(today)} leading={<BrandMark size={40} />}>
@@ -369,17 +370,17 @@ export default function DashboardScreen() {
               type.amountLg,
               {
                 color: palette.onPrimary,
-                fontSize: formatMinor(bundle.actualBalanceMinor).length > 20
-                  ? 26
-                  : formatMinor(bundle.actualBalanceMinor).length > 16
-                    ? 32
+                fontSize: actualBalanceText.length > 20
+                  ? 20
+                  : actualBalanceText.length > 16
+                    ? 26
                     : 38,
                 marginTop: spacing.xs,
                 flexShrink: 1,
               },
             ]}
           >
-            {formatMinor(bundle.actualBalanceMinor)}
+            {actualBalanceText}
           </Text>
           {hasForecast && projected != null ? (
             <Pressable

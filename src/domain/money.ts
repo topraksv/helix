@@ -9,7 +9,7 @@ export type Minor = number;
 /** Largest single user-entered amount: 999,999,999,999.99 major units (~1
  * trillion). Comfortably exact in integer minor units (< 2^53) so a big but
  * legitimate figure — someone tracking a business or a portfolio in the
- * billions — is accepted; the table falls back to compact "Mn/Mr" display
+ * billions — is accepted; the table falls back to compact "M/B" display
  * (see `formatMinorCompact`) so a large value never overflows a fixed cell. */
 export const MAX_ABS_AMOUNT_MINOR = 99_999_999_999_999;
 export const MAX_AMOUNT_MAJOR_DIGITS = 12;
@@ -82,21 +82,12 @@ export function formatMinor(amountMinor: Minor, currency = "TRY"): string {
   return formatterFor(currency).format(assertMinor(amountMinor) / 100);
 }
 
-const COMPACT_FORMATTERS = new Map<string, Intl.NumberFormat>();
-
-function compactFormatterFor(currency: string): Intl.NumberFormat {
-  let formatter = COMPACT_FORMATTERS.get(currency);
-  if (!formatter) {
-    formatter = new Intl.NumberFormat("tr-TR", {
-      style: "currency",
-      currency,
-      notation: "compact",
-      maximumFractionDigits: 1,
-    });
-    COMPACT_FORMATTERS.set(currency, formatter);
-  }
-  return formatter;
-}
+// One-decimal grouped number formatter for the compact scale (e.g. "1,5").
+// Deliberately NOT Intl's `notation:"compact"`: Hermes builds that formatter
+// but may ignore the option on some devices, which would silently print the
+// full number back into a cell it can't fit. Basic grouping IS supported (it
+// backs formatMinor), so a hand-rolled scale + TR suffix is the safe path.
+const COMPACT_NUMBER = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 });
 
 /** Amount below which table cells show the value in full; at or above it they
  * switch to compact notation. 1.000.000 TL keeps everyday figures fully written
@@ -106,15 +97,20 @@ function compactFormatterFor(currency: string): Intl.NumberFormat {
 export const COMPACT_THRESHOLD_MINOR = 100_000_000;
 
 /**
- * Table-cell money: full `₺1.234.567,89` for everyday amounts, but locale-aware
- * compact ("₺12,3 Mn", "₺1,5 Mr") once the value would overflow a fixed-width
- * matrix cell. Use `formatMinor` for hero/detail figures that have room to
- * render in full.
+ * Table-cell money: full `₺1.234.567,89` for everyday amounts, but a compact
+ * `₺1,5 M` / `₺2,3 B` (million / billion) once the value would overflow a
+ * fixed-width matrix cell. TR-only by design (the app's single locale). Use
+ * `formatMinor` for hero/detail figures that have room to render in full.
  */
 export function formatMinorCompact(amountMinor: Minor, currency = "TRY"): string {
   assertMinor(amountMinor);
   if (Math.abs(amountMinor) < COMPACT_THRESHOLD_MINOR) return formatMinor(amountMinor, currency);
-  return compactFormatterFor(currency).format(amountMinor / 100);
+  const major = amountMinor / 100;
+  // Reached only at ≥ 1.000.000 TL, so the scale is always milyon or milyar.
+  const [scaled, suffix]: [number, string] = Math.abs(major) >= 1e9 ? [major / 1e9, " B"] : [major / 1e6, " M"];
+  const sign = scaled < 0 ? "-" : "";
+  const symbol = currency === "TRY" ? "₺" : `${currency} `;
+  return `${sign}${symbol}${COMPACT_NUMBER.format(Math.abs(scaled))}${suffix}`;
 }
 
 /**
@@ -140,8 +136,9 @@ export function parseTRAmountToMinor(input: string): Minor | null {
  * Live-format a raw money input as the user types: group the integer part with
  * TR thousands separators (`15000` → `15.000`) and keep at most one decimal
  * comma with two kuruş digits (`1234,5` → `1.234,5`). Kuruş stay optional — no
- * comma is inserted unless the user types one. The result is always parseable
- * by `parseTRAmountToMinor`, so callers can store it directly.
+ * comma is inserted unless the user types one. Values inside the supported
+ * range stay parseable; over-limit input remains visible and parses as `null`
+ * so the form can explain the limit instead of silently changing the amount.
  */
 export function formatTRInputLive(raw: string): string {
   const negative = raw.trim().startsWith("-");
@@ -150,9 +147,8 @@ export function formatTRInputLive(raw: string): string {
   let intDigits = (firstComma === -1 ? cleaned : cleaned.slice(0, firstComma)).replace(/\D/g, "");
   const frac = firstComma === -1 ? null : cleaned.slice(firstComma + 1).replace(/\D/g, "").slice(0, 2);
   intDigits = intDigits.replace(/^0+(?=\d)/, ""); // drop leading zeros, keep a lone 0
-  // Stop accepting integer digits past the supported range so a too-large value
-  // is refused as the user types instead of silently failing validation later.
-  intDigits = intDigits.slice(0, MAX_AMOUNT_MAJOR_DIGITS);
+  // Keep over-limit digits visible so validation can explain the problem.
+  // Silently slicing here changed a pasted value into a smaller, valid amount.
   const grouped = intDigits === "" ? "" : intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   let out = frac === null ? grouped : `${grouped === "" ? "0" : grouped},${frac}`;
   if (out === "") return negative ? "-" : "";

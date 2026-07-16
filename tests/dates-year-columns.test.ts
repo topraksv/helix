@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDaysISO } from "../src/domain/dates";
+import { addDaysISO, dateForMonthEntry } from "../src/domain/dates";
 import { resolveYearColumns } from "../src/domain/year-columns";
 
 describe("addDaysISO", () => {
@@ -19,6 +19,17 @@ describe("addDaysISO", () => {
 
   it("delta 0 is identity", () => {
     expect(addDaysISO("2026-07-11", 0)).toBe("2026-07-11");
+  });
+});
+
+describe("dateForMonthEntry", () => {
+  it("uses today for the current month so a quick entry affects today's balance", () => {
+    expect(dateForMonthEntry("2026-07", "2026-07-16")).toBe("2026-07-16");
+  });
+
+  it("uses a deterministic day when another month was explicitly selected", () => {
+    expect(dateForMonthEntry("2026-06", "2026-07-16")).toBe("2026-06-15");
+    expect(dateForMonthEntry("2026-08", "2026-07-16")).toBe("2026-08-15");
   });
 });
 

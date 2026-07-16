@@ -1,7 +1,7 @@
 /**
  * Matrix cell editor (spreadsheet habit, spec follow-up): tapping a month ×
  * category cell shows its transactions, the cell note, and a quick-entry box
- * that accepts sum expressions ("300+400+500") saved as one aggregate row.
+ * that accepts sum expressions ("300+400+500") saved as one dated row.
  */
 
 import React, { useState } from "react";
@@ -15,7 +15,7 @@ import { restoreRow } from "../db/mutations";
 import { addTransaction, deleteTransaction } from "../data/repo";
 import { saveCellNote } from "../data/cell-notes";
 import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../data/hooks";
-import { firstDayOf, lastDayOf, todayISO } from "../domain/dates";
+import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinor, parseAmountExpression } from "../domain/money";
 import { signedBalanceEffectOf } from "../domain/transactions";
@@ -73,7 +73,6 @@ export default function CellEditorModal() {
     setBusy(true);
     try {
       const today = todayISO();
-      const inMonth = today >= firstDayOf(month!) && today <= lastDayOf(month!);
       // A negative amount is a reversal of this category: an expense refund
       // reduces spending, an income correction reduces income, and an
       // investment withdrawal reduces the transfer total without changing the
@@ -86,12 +85,14 @@ export default function CellEditorModal() {
         currency: "TRY",
         fxRate: null,
         amountTryMinor: entryMinor,
-        effectiveDate: inMonth ? today : `${month}-15`,
+        effectiveDate: dateForMonthEntry(month!, today),
         categoryId: category.id,
         paymentSourceId: null,
         personId: selfId,
         note: hasExpr ? entryRaw.trim() : null,
-        isAggregate: hasExpr,
+        // An arithmetic expression is still one dated transaction. Aggregate
+        // means an intentionally dateless monthly total, not "the user typed +".
+        isAggregate: false,
       });
       scheduleSync(userId);
       setEntryRaw("");

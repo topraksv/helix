@@ -286,13 +286,13 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       >
         <Undo2 size={20} color={isReversal ? palette.primary : palette.textMuted} />
         <View style={{ flex: 1 }}>
-          <Body style={{ color: isReversal ? palette.primary : palette.text }}>{tr.tx.reversalLabel(entryType)}</Body>
+          <Body style={{ color: isReversal ? palette.primary : palette.text }}>{tr.tx.refundToggleLabel}</Body>
           <Body muted style={{ fontSize: 12, marginTop: 2 }}>
             {isReversal ? tr.tx.reversalHint(entryType) : tr.tx.refundToggleHint(entryType)}
           </Body>
         </View>
         <Toggle
-          label={tr.tx.reversalLabel(entryType)}
+          label={tr.tx.refundToggleLabel}
           value={isReversal}
           onValueChange={(v) => {
             setIsReversal(v);

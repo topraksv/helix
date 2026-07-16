@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { normalizeReminderDays, uniqueNotifications } from "../src/domain/notifications";
-import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../src/services/markets";
+import { disconnectMarkets, markMarketConnectionInterrupted, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../src/services/markets";
+
+afterEach(() => {
+  disconnectMarkets();
+  vi.useRealTimers();
+});
 
 describe("external FX provider validation", () => {
   it("keeps TCMB's declared business date and unit-adjusted selling rates", () => {
@@ -89,6 +94,25 @@ describe("live market freshness", () => {
     expect(marketSellRateTry("EUR", now)).toBeNull();
     expect(marketSellRateTry("GBP", now)).toBeNull();
     useMarkets.setState({ prices: {}, status: "idle" });
+  });
+
+  it("keeps verified prices through a brief reconnect but expires them after silence", () => {
+    vi.useFakeTimers();
+    useMarkets.setState({
+      status: "live",
+      prices: {
+        ALTIN: { code: "ALTIN", buyTry: 4_000, sellTry: 4_010, direction: "", at: "", receivedAt: 1_000 },
+      },
+    });
+
+    markMarketConnectionInterrupted();
+    expect(useMarkets.getState().status).toBe("connecting");
+    expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_010);
+
+    vi.advanceTimersByTime(59_999);
+    expect(useMarkets.getState().prices.ALTIN).toBeDefined();
+    vi.advanceTimersByTime(1);
+    expect(useMarkets.getState()).toMatchObject({ prices: {}, status: "error" });
   });
 });
 
