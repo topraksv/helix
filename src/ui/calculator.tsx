@@ -46,7 +46,7 @@ function display(state: CalcState): string {
   return new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(raw);
 }
 
-export function useCalculator() {
+function useCalculator() {
   const [state, setState] = useState<CalcState>(INITIAL);
 
   const press = (key: string) => {

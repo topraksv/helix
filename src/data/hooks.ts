@@ -10,9 +10,8 @@ import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
 import { buildLedger, currentBalance, resolveLedgerAnchor, type MonthLedger } from "../domain/balance";
-import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, todayISO, yearOf, type MonthKey } from "../domain/dates";
+import { makeMonthKey, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
-import { readSetting } from "../db/mutations";
 import { devError } from "../services/logger";
 
 interface LiveResult<T> {
@@ -410,5 +409,3 @@ export function useLastEntryInfo(): { at: string | null; daysAgo: number | null 
   const date = iso.slice(0, 10);
   return { at: date, daysAgo: daysBetween(date, todayISO()) };
 }
-
-export { readSetting, addMonthsToKey, firstDayOf, lastDayOf };

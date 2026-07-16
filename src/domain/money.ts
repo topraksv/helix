@@ -6,15 +6,11 @@
 
 export type Minor = number;
 
-export function assertMinor(value: number): Minor {
+function assertMinor(value: number): Minor {
   if (!Number.isSafeInteger(value)) {
     throw new Error(`Amount must be an integer of minor units, got: ${value}`);
   }
   return value;
-}
-
-export function minorFromMajor(major: number): Minor {
-  return roundHalfAwayFromZero(major * 100);
 }
 
 export function roundHalfAwayFromZero(value: number): number {

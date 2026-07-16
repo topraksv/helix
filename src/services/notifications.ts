@@ -81,7 +81,7 @@ interface PlannedNotification {
 }
 
 /** Collect everything worth notifying within the horizon. */
-export async function planNotifications(userId: string): Promise<PlannedNotification[]> {
+async function planNotifications(userId: string): Promise<PlannedNotification[]> {
   const sqlite = await getSqliteAsync();
   const today = todayISO();
   const horizonIso = addDaysISO(today, HORIZON_DAYS);

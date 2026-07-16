@@ -123,7 +123,7 @@ let rateCache: FxRate[] = [];
 let rateCacheUserId: string | null = null;
 let cacheRequest = 0;
 
-export const useFxCacheVersion = create<{ version: number }>(() => ({ version: 0 }));
+const useFxCacheVersion = create<{ version: number }>(() => ({ version: 0 }));
 
 /** Subscribe a component to rate-cache updates (re-renders when rates load). */
 export function useFxRates(): number {

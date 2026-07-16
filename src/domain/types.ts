@@ -27,11 +27,11 @@ export const PAYMENT_SOURCE_TYPES: readonly PaymentSourceType[] = [
   "direct_debit",
   "bank_transfer",
 ];
-export type SubscriptionCycle = "monthly" | "yearly" | "custom";
-export type ExpectedStatus = "pending" | "paid" | "late" | "skipped";
-export type ExpectedDirection = "in" | "out";
-export type ExpectedKind = "subscription" | "installment" | "loan" | "recurring_income";
-export type PlanKind = "card_installment" | "loan";
+type SubscriptionCycle = "monthly" | "yearly" | "custom";
+type ExpectedStatus = "pending" | "paid" | "late" | "skipped";
+type ExpectedDirection = "in" | "out";
+type ExpectedKind = "subscription" | "installment" | "loan" | "recurring_income";
+type PlanKind = "card_installment" | "loan";
 
 /** The slice of a transaction the engines need. */
 export interface TxLike {

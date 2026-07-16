@@ -7,15 +7,9 @@ export type ISODate = string; // YYYY-MM-DD
 export type MonthKey = string; // YYYY-MM
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MONTH_KEY_RE = /^\d{4}-\d{2}$/;
 
 export function assertISODate(value: string): ISODate {
   if (!ISO_DATE_RE.test(value)) throw new Error(`Invalid ISO date: ${value}`);
-  return value;
-}
-
-export function assertMonthKey(value: string): MonthKey {
-  if (!MONTH_KEY_RE.test(value)) throw new Error(`Invalid month key: ${value}`);
   return value;
 }
 
@@ -35,7 +29,7 @@ export function dayOf(date: ISODate): number {
   return Number(date.slice(8, 10));
 }
 
-export function isLeapYear(year: number): boolean {
+function isLeapYear(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
 
@@ -65,7 +59,7 @@ export function addMonthsToKey(key: MonthKey, delta: number): MonthKey {
 }
 
 /** Whole months from `a` to `b` (b - a). */
-export function monthDiff(a: MonthKey, b: MonthKey): number {
+function monthDiff(a: MonthKey, b: MonthKey): number {
   return yearOf(b) * 12 + monthOf(b) - (yearOf(a) * 12 + monthOf(a));
 }
 
@@ -82,15 +76,6 @@ export function firstDayOf(key: MonthKey): ISODate {
 
 export function lastDayOf(key: MonthKey): ISODate {
   return clampDayToMonth(yearOf(key), monthOf(key), 31);
-}
-
-/** ISO strings compare correctly with <, so expose intent-revealing helpers. */
-export function isOnOrBefore(a: ISODate, b: ISODate): boolean {
-  return a <= b;
-}
-
-export function isAfter(a: ISODate, b: ISODate): boolean {
-  return a > b;
 }
 
 export function todayISO(now: Date = new Date()): ISODate {

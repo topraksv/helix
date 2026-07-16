@@ -330,16 +330,6 @@ export async function runSyncSessionTask<T>(
   }
 }
 
-/**
- * Stop every scheduled/pending sync (debounce + retry timers). Called on
- * sign-out so a backoff retry never fires for the previous account after the
- * local workspace has been wiped.
- */
-export function cancelSync(): void {
-  sessionEpoch.stop();
-  clearScheduledSync();
-}
-
 /** Abort the current epoch and wait until its transaction/network task exits. */
 export async function stopSyncSession(userId?: string): Promise<void> {
   sessionEpoch.stop(userId);

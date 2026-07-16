@@ -4,7 +4,7 @@ import { daysInMonth, makeISODate, type ISODate } from "./dates";
 
 export const FETCHED_FX_CURRENCIES = ["USD", "EUR", "GBP"] as const;
 
-export interface ProviderRate {
+interface ProviderRate {
   currency: (typeof FETCHED_FX_CURRENCIES)[number];
   rateTry: number;
 }

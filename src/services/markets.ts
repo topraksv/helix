@@ -13,7 +13,7 @@ import { freshMarketQuote, validMarketQuote } from "../domain/market";
 
 const FEED_URL = "wss://hrmsocketonly.haremaltin.com";
 const THROTTLE_MS = 3000;
-export const MARKET_STALE_MS = 60_000;
+const MARKET_STALE_MS = 60_000;
 
 /** Harem code → display label; order = display order. */
 export const MARKET_SYMBOLS = [
@@ -24,7 +24,7 @@ export const MARKET_SYMBOLS = [
   { code: "EURTRY", label: tr.markets.eur },
 ] as const;
 
-export interface MarketPrice {
+interface MarketPrice {
   code: string;
   buyTry: number;
   sellTry: number;
