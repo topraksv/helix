@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 23 files, 198 tests passing
+- Test baseline: 23 files, 199 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -25,8 +25,9 @@ account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references, credit-card statement, external-data/privacy,
 navigation/UI regression, identity/relational restore, UI/table consistency,
 onboarding/config consistency and repository-boundary packages are shipped.
-The optimization/security/dead-code audit and final regression remain. Always
-re-check `git status`; Git remains authoritative.
+The first optimization/security/accessibility package is shipped. Dependency,
+dead-code and final regression review remain. Always re-check `git status`; Git
+remains authoritative.
 
 ## Current architecture summary
 
@@ -46,9 +47,9 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-No verified P8–P10 or repository-boundary findings remain open. The next
-bounded task is the KISS/YAGNI, performance, security, accessibility and dead
-code audit, followed by P11 final regression.
+No verified P8–P10 or repository-boundary findings remain open. The performance,
+production-log privacy, long-label and reduced-motion findings are shipped. The
+next bounded task is dependency/dead-code validation and P11 final regression.
 
 ## Handoff update contract
 
@@ -68,6 +69,29 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (performance, privacy and accessibility audit)
+
+- Base `4ae98aa`, branch `main`; shipped as `43822b9`.
+- Replaced repeated category/rule lookups with per-render maps, changed upcoming
+  card-statement aggregation from repeated nested scans to linear indexed
+  passes, and removed the subscription maintenance loop's repeated search.
+- Routed application diagnostics through a development-only logger so
+  production does not emit user-context errors. Added one shared reduced-motion
+  subscription for all animated primitives, stopped toggle animations on
+  cleanup and gave every switch an explicit screen-reader label.
+- Removed the remaining one-line truncation behavior. Long table labels now
+  measure shared row/header heights so sticky halves remain aligned; calculator
+  and converter amounts remain fully available through horizontal scrolling.
+- Typecheck, 23 files/199 tests, zero-warning Expo lint and the 49-route static
+  web export passed. The browser connector exposed no controllable browser, so
+  this package has no new pixel-level authenticated result.
+- Pushed to `main`; GitHub web run `29488182002` completed successfully and the
+  production Sign In and Cash Flow routes returned HTTP 200. EAS `preview`
+  update group `bc533059-a4c4-4099-b911-d9adce517421` was published for iOS and
+  Android on runtime `1.0.0` after two transient storage DNS failures; no native
+  rebuild was required.
+- Dependency/dead-code validation and P11 final regression remain.
 
 ### 2026-07-16 — Codex (repository boundary package)
 
