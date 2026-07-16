@@ -110,7 +110,7 @@ function CalculatorLine({ text, color, main = false }: { text: string; color: st
       horizontal
       showsHorizontalScrollIndicator={false}
       style={{ alignSelf: "stretch", height: main ? 50 : 18 }}
-      contentContainerStyle={{ flexGrow: 1, justifyContent: "center", alignItems: "flex-end" }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", alignItems: "center" }}
       onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
     >
       <Text style={[main ? type.amountLg : type.small, { color, textAlign: "right" }]}>{text}</Text>

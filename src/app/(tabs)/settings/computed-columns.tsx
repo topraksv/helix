@@ -6,8 +6,8 @@
  */
 
 import React, { useState, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
-import { Calculator, CreditCard, GripVertical, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
+import { Platform, Pressable, Text, View } from "react-native";
+import { Calculator, ChevronDown, ChevronUp, CreditCard, GripVertical, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows, writeSetting } from "../../../db/mutations";
 import { settingValue, toTxLike, useAllTransactions, useCategories, useComputedColumns, useLedger, usePersons, useSettingsMap, useSources, useUserId } from "../../../data/hooks";
@@ -305,7 +305,15 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                       </Row>
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>
-                      <Body muted style={{ fontSize: 12 }}>{tr.computed.showInTable}</Body>
+                      <Row gap={spacing.xs} style={{ flex: 1, paddingRight: spacing.sm }}>
+                        {Platform.OS !== "web" ? (
+                          <>
+                            <IconButton icon={ChevronUp} size={30} label={tr.settings.moveUp} disabled={!handle.canMoveUp} onPress={handle.moveUp} />
+                            <IconButton icon={ChevronDown} size={30} label={tr.settings.moveDown} disabled={!handle.canMoveDown} onPress={handle.moveDown} />
+                          </>
+                        ) : null}
+                        <Body muted style={{ fontSize: 12 }}>{tr.computed.showInTable}</Body>
+                      </Row>
                       <Toggle label={`${column.name} · ${tr.computed.showInTable}`} value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
                     </Spread>
                   </View>

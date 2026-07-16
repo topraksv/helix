@@ -189,7 +189,7 @@ export const tr = {
     received: "Alındı",
     distribution: "Harcama ve Yatırım Dağılımı",
     investmentAside: "Yatırım / Transfer",
-    refundAside: (name: string) => `${name} · İade`,
+    refundAside: (name: string) => `${name} · Gider iadesi`,
     trend: "Aylık Gelir ve Gider",
     trendNet: (v: string) => `Bu ay net: ${v}`,
     fixedVsVariable: "Sabit / Değişken",
@@ -261,9 +261,17 @@ export const tr = {
     edit: "İşlemi Düzenle",
     type: "Tür", expense: "Gider", income: "Gelir", transferInvest: "Yatırım",
     amount: "Tutar", currency: "Para Birimi",
+    entryEffect: "İşlemin etkisi",
+    normalEntryLabel: (kind: "expense" | "income" | "transfer") =>
+      kind === "expense" ? "Normal gider" : kind === "income" ? "Normal gelir" : "Normal yatırım",
     reversalLabel: (kind: "expense" | "income" | "transfer") =>
-      kind === "expense" ? "İade / geri ödeme" : kind === "income" ? "Gelir iptali / geri ödeme" : "Ters yönlü transfer",
-    reversalHint: "Bu kayıt seçili kalemin toplamını azaltır ve bakiye etkisini tersine çevirir.",
+      kind === "expense" ? "Gider iadesi" : kind === "income" ? "Gelir iptali" : "Yatırım iadesi",
+    reversalHint: (kind: "expense" | "income" | "transfer") =>
+      kind === "expense"
+        ? "Tutar bakiyene geri eklenir ve seçili kategorinin giderini azaltır."
+        : kind === "income"
+          ? "Tutar bakiyenden düşer ve seçili kategorinin gelirini azaltır."
+          : "Tutar bakiyene geri eklenir ve yatırım / transfer toplamını azaltır.",
     tryEquivalent: (v: string) => `≈ ${v}`,
     staleRate: "Kur güncel değil, son bilinen kur kullanıldı",
     rateNotFound: "⚠ Kur bulunamadı. Önce internetle bir kez kur çek",
@@ -419,8 +427,10 @@ export const tr = {
     dataSection: "Veri ve Yedekleme",
     categories: "Kalemler ve Kolonlar",
     categoriesDesc: "Mali Tablo'daki gelir-gider kalemlerini ekle, düzenle ve sırala.",
-    reorderHint: "Sıralamak için tutamaçtan sürükle.",
+    reorderHint: "Tutamaçtan sürükle; mobilde oklarla da sırala.",
     reorderHandle: "Sürükleyerek sırala",
+    moveUp: "Yukarı taşı",
+    moveDown: "Aşağı taşı",
     addSuggested: "Önerilen Kalem Ekle",
     computed: "Hesaplanan Kolonlar",
     computedDesc: "Seçtiğin kalemleri toplayan ya da farkını alan, kendi hesapladığın kolonlar.",

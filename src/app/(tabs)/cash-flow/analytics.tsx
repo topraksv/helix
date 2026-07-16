@@ -13,7 +13,7 @@ import { transactionDateText } from "../../../ui/transaction-date";
 import { tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
-import { Amount, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
@@ -183,6 +183,11 @@ export default function AnalysisScreen() {
                       {transactionDateText(t)}
                       {t.note ? ` · ${t.note}` : ""}
                     </Body>
+                    {t.amountTryMinor < 0 ? (
+                      <View style={{ marginTop: spacing.xs }}>
+                        <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
+                      </View>
+                    ) : null}
                   </View>
                   <Amount
                     minor={signedBalanceEffectOf(

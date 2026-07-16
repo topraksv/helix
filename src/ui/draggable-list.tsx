@@ -20,6 +20,12 @@ export interface DragHandle {
   panHandlers: GestureResponderHandlers;
   /** True while this row is the one being dragged. */
   active: boolean;
+  /** Deterministic alternatives for touch/accessibility when a drag gesture is
+   *  inconvenient or intercepted by the surrounding scroll view. */
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  moveUp: () => void;
+  moveDown: () => void;
 }
 
 export function DraggableList<T>({
@@ -86,6 +92,9 @@ export function DraggableList<T>({
       const [moved] = next.splice(curIndex.current, 1);
       next.splice(target, 0, moved);
       curIndex.current = target;
+      // Pan events can arrive faster than React renders. Update the imperative
+      // snapshot now so the next event never reorders an already-stale array.
+      orderRef.current = next;
       setOrder(next);
       selectionTap(); // crossed into a new slot
     }
@@ -99,6 +108,20 @@ export function DraggableList<T>({
     dragY.setValue(0);
     onDragStateChange?.(false);
     onReorder(orderRef.current.map(keyExtractor));
+  };
+
+  const moveBy = (key: string, delta: -1 | 1) => {
+    if (disabledRef.current || draggingRef.current) return;
+    const current = orderRef.current;
+    const index = current.findIndex((item) => keyExtractor(item) === key);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= current.length) return;
+    const next = [...current];
+    [next[index], next[target]] = [next[target], next[index]];
+    orderRef.current = next;
+    setOrder(next);
+    selectionTap();
+    onReorder(next.map(keyExtractor));
   };
 
   return (
@@ -116,6 +139,10 @@ export function DraggableList<T>({
             onMeasureFirst={(h) => {
               if (h > 0) rowH.current = h;
             }}
+            canMoveUp={i > 0}
+            canMoveDown={i < order.length - 1}
+            onMoveUp={() => moveBy(key, -1)}
+            onMoveDown={() => moveBy(key, 1)}
           >
             {(handle) => renderRow(item, handle, i)}
           </DraggableRow>
@@ -132,6 +159,10 @@ function DraggableRow({
   dragY,
   api,
   onMeasureFirst,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   children,
 }: {
   itemKey: string;
@@ -140,6 +171,10 @@ function DraggableRow({
   dragY: Animated.Value;
   api: React.MutableRefObject<{ begin: (k: string) => void; move: (dy: number) => void; end: () => void }>;
   onMeasureFirst: (h: number) => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   children: (handle: DragHandle) => React.ReactNode;
 }) {
   const pan = useRef(
@@ -163,7 +198,14 @@ function DraggableRow({
       onLayout={first ? (e: LayoutChangeEvent) => onMeasureFirst(e.nativeEvent.layout.height) : undefined}
       style={active ? { transform: [{ translateY: dragY }], zIndex: 10, elevation: 6, opacity: 0.96 } : undefined}
     >
-      {children({ panHandlers: pan.panHandlers, active })}
+      {children({
+        panHandlers: pan.panHandlers,
+        active,
+        canMoveUp,
+        canMoveDown,
+        moveUp: onMoveUp,
+        moveDown: onMoveDown,
+      })}
     </Animated.View>
   );
 }
