@@ -1,7 +1,7 @@
 /** Category & column management — the personalization core: names, kinds,
  *  column visibility all belong to the user (nothing is hardcoded). */
 
-import React, { useState } from "react";
+import React, { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { newId } from "../../../db/ids";
@@ -19,7 +19,7 @@ import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholde
 import { useUndo } from "../../../ui/undo";
 import { spacing, useTheme } from "../../../ui/theme";
 
-export default function CategoriesScreen() {
+export default function CategoriesScreen({ header }: { header?: ReactNode } = {}) {
   const userId = useUserId();
   const router = useRouter();
   const categories = useCategories();
@@ -102,6 +102,7 @@ export default function CategoriesScreen() {
 
   return (
     <Screen scrollEnabled={!dragging}>
+      {header}
       <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.categoriesDesc}</Body>
       <Card>
         <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.category)} />
@@ -136,7 +137,7 @@ export default function CategoriesScreen() {
               onReorder={(ids) => void applyOrder(k, ids)}
               onDragStateChange={setDragging}
               disabled={editingId != null}
-              renderRow={(c, handle) =>
+              renderRow={(c, handle, index) =>
                 editingId === c.id ? (
                   <View>
                     <Row style={{ paddingVertical: spacing.sm }}>
@@ -154,13 +155,13 @@ export default function CategoriesScreen() {
                       />
                       <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
                     </Row>
-                    <Divider />
+                    {index < group.length - 1 ? <Divider /> : null}
                   </View>
                 ) : (
                   <View
                     style={{
                       paddingVertical: spacing.sm,
-                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomWidth: index < group.length - 1 ? StyleSheet.hairlineWidth : 0,
                       borderColor: palette.border,
                       backgroundColor: handle.active ? palette.surfaceAlt : palette.surface,
                     }}

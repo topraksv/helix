@@ -4,7 +4,7 @@
  * that accepts sum expressions ("300+400+500") saved as one aggregate row.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
@@ -42,7 +42,7 @@ export default function CellEditorModal() {
   const [busy, setBusy] = useState(false);
 
   const category = categories.find((c) => c.id === categoryId);
-  const selfIds = useMemo(() => new Set(persons.filter((p) => p.isSelf).map((p) => p.id)), [persons]);
+  const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const planTitle = new Map(plans.map((plan) => [plan.id, plan.title]));
   const cellTx = transactions.filter((t) => t.categoryId === categoryId);
   const selfSum = cellTx

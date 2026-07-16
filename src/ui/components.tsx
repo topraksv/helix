@@ -258,16 +258,14 @@ export function Body({
   children,
   muted,
   style,
-  numberOfLines,
 }: {
   children: ReactNode;
   muted?: boolean;
   style?: StyleProp<TextStyle>;
-  numberOfLines?: number;
 }) {
   const { palette } = useTheme();
   return (
-    <Text numberOfLines={numberOfLines} style={[type.body, { color: muted ? palette.textMuted : palette.text }, style]}>
+    <Text style={[type.body, { color: muted ? palette.textMuted : palette.text }, style]}>
       {children}
     </Text>
   );
@@ -400,12 +398,7 @@ export function Button({
         <>
           {IconCmp ? <IconCmp size={small ? 15 : 17} color={color} strokeWidth={2.2} /> : null}
           <Text
-            style={[type.label, { color, fontSize: small ? 13 : 15, textAlign: "center" }]}
-            // Web ignores adjustsFontSizeToFit, so a hard line cap would
-            // ellipsize; let the label wrap there instead (never hide text).
-            numberOfLines={Platform.OS === "web" ? undefined : 1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.85}
+            style={[type.label, { color, fontSize: small ? 13 : 15, textAlign: "center", flexShrink: 1 }]}
           >
             {label}
           </Text>
@@ -672,6 +665,7 @@ export function Select<T extends string>({
             borderWidth: 1.5,
             borderColor: open ? palette.focus : "transparent",
             paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
             minHeight: 48,
             flexDirection: "row",
             alignItems: "center",
@@ -682,9 +676,6 @@ export function Select<T extends string>({
       >
         <Text
           style={[type.body, { color: current ? palette.text : palette.textMuted, flex: 1 }]}
-          numberOfLines={Platform.OS === "web" ? undefined : 1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.8}
         >
           {current?.label ?? placeholder ?? ""}
         </Text>
@@ -796,10 +787,6 @@ export function Segmented<T extends string>({
                 // never shift or look off-center when the thumb moves.
                 { color: selected ? palette.text : palette.textMuted, fontFamily: "Inter_600SemiBold", textAlign: "center" },
               ]}
-              // Web ignores adjustsFontSizeToFit — wrap rather than ellipsize.
-              numberOfLines={Platform.OS === "web" ? undefined : 1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
             >
               {option.label}
             </Text>
@@ -912,11 +899,6 @@ export function StatusPill({ label, color }: { label: string; color: string }) {
     >
       <Text
         style={[type.label, { color, fontSize: 13, textAlign: "center" }]}
-        // Never ellipsize (app-wide rule): shrink to fit on native; web
-        // ignores adjustsFontSizeToFit, so let the label wrap there instead.
-        numberOfLines={Platform.OS === "web" ? undefined : 1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.7}
       >
         {label}
       </Text>
@@ -998,7 +980,6 @@ export function ListRow({
   iconColor,
   leading,
   title,
-  titleLines,
   subtitle,
   right,
   onPress,
@@ -1008,9 +989,6 @@ export function ListRow({
   iconColor?: string;
   leading?: ReactNode;
   title: string;
-  /** Optional hard cap on title lines. Undefined = wrap fully (never
-   *  ellipsize — the app-wide rule is that no text is hidden behind "…"). */
-  titleLines?: number;
   subtitle?: string;
   right?: ReactNode;
   onPress?: () => void;
@@ -1035,7 +1013,7 @@ export function ListRow({
         </View>
       ) : null}
       <View style={{ flex: 1 }}>
-        <Text style={[type.body, { color: palette.text, fontFamily: "Inter_500Medium" }]} numberOfLines={titleLines}>
+        <Text style={[type.body, { color: palette.text, fontFamily: "Inter_500Medium" }]}>
           {title}
         </Text>
         {subtitle ? (

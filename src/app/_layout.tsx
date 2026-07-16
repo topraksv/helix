@@ -389,7 +389,7 @@ function RootLayoutInner() {
           <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
           <Stack.Screen name="opening-balance" options={{ presentation: "modal", title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="account-security" options={{ presentation: "modal", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
-          <Stack.Screen name="columns-editor" options={{ presentation: "modal", title: tr.settings.categories, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="columns-editor" options={{ presentation: "modal", title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
         </Stack>
         </ErrorBoundary>

@@ -204,6 +204,18 @@ describe("pending rows in table cells (display-only)", async () => {
     const without = buildLedger({ ...base, transactions: [pendingTx] });
     expect(without[1].byCategory.get("cat")).toBeUndefined();
   });
+
+  it("keeps categoryless legacy rows visible without inventing a category", () => {
+    const realized = { ...pendingTx, id: "t2", status: "realized" as const, categoryId: null, effectiveDate: "2026-07-05" };
+    const pending = { ...pendingTx, id: "t3", categoryId: null };
+    const withFlag = buildLedger({ ...base, transactions: [realized, pending], includePendingInCells: true });
+    expect(withFlag[0].uncategorizedMinor).toBe(50_00);
+    expect(withFlag[1].uncategorizedMinor).toBe(50_00);
+    expect(withFlag[0].byCategory.size).toBe(0);
+    expect(withFlag[0].expenseMinor).toBe(50_00);
+    const withoutFlag = buildLedger({ ...base, transactions: [realized, pending] });
+    expect(withoutFlag[1].uncategorizedMinor).toBe(0);
+  });
 });
 
 describe("resolveLedgerAnchor (prior-year history)", async () => {

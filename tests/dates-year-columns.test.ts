@@ -65,4 +65,16 @@ describe("resolveYearColumns", () => {
     const out = resolveYearColumns(cats, { "2025": ["ghost", "a", "a"] }, 2025, 2026, new Set());
     expect(out.map((c) => c.id)).toEqual(["a"]);
   });
+
+  it("honors the visibility toggle even for recorded columns with data", () => {
+    const cats = [cat("visible"), cat("hidden", false)];
+    const out = resolveYearColumns(
+      cats,
+      { "2025": ["visible", "hidden"] },
+      2025,
+      2026,
+      new Set(["hidden"]),
+    );
+    expect(out.map((category) => category.id)).toEqual(["visible"]);
+  });
 });

@@ -12,7 +12,7 @@ lags behind them.
 - Review/remediation base: `22d7bfb` (use `git log -1` for resulting HEAD)
 - Toolchain used: Node 22
 - Verification: `npm run typecheck`, `npm test`, and `npx expo lint` all passed
-- Test baseline: 21 files, 190 tests passing
+- Test baseline: 21 files, 192 tests passing
 - Static web export passed; headless Playwright rendered the exported sign-in
   route at 320, 390 and 1280 px without horizontal overflow or browser errors.
   Production Playwright also rendered expired and invalid password-reset states
@@ -23,9 +23,10 @@ lags behind them.
 The repository-wide remediation requested on 2026-07-15 is in progress. The
 account lifecycle, sync ordering, financial classification, import/restore,
 derived obligations/references, credit-card statement, external-data/privacy,
-navigation/UI regression and identity/relational-restore packages are shipped.
-Remaining audit items below are being completed as separately verified and
-shipped packages. Always re-check `git status`; Git remains authoritative.
+navigation/UI regression, identity/relational restore and UI/table consistency
+packages are shipped. Remaining audit items below are being completed as
+separately verified and shipped packages. Always re-check `git status`; Git
+remains authoritative.
 
 ## Current architecture summary
 
@@ -49,11 +50,8 @@ These are static-analysis findings from the 2026-07-15 repository review. They
 have not yet been implemented or runtime-reproduced; verify each against the
 current code before fixing it.
 
-1. Several `numberOfLines` uses, special/non-editable table columns, trailing
-   dividers, and manual derivation memos conflict with the UI/Compiler rules in
-   `AGENTS.md` and need an app-wide sweep.
-2. Onboarding person deletion does not remap draft source `personIndex` values.
-3. The README palette is stale; web HTML language is
+1. Onboarding person deletion does not remap draft source `personIndex` values.
+2. The README palette is stale; web HTML language is
     `en`, and Android biometric permissions are duplicated in `app.json`.
 
 ## Handoff update contract
@@ -74,6 +72,29 @@ Never mark another agent's work confirmed without independently inspecting the
 diff and running checks proportionate to the change.
 
 ## Recent handoffs
+
+### 2026-07-16 — Codex (UI and table consistency package)
+
+- Base `bff7f19`, branch `main`; resulting commit comes from Git history.
+- Mali Tablo's modal editor now exposes ordinary and computed columns through
+  one segmented surface. Computed columns gained the same drag ordering,
+  edit/delete and visibility controls as categories. Imported-year membership
+  now respects `isColumn=false` instead of silently re-showing a hidden column.
+- Ay Başı and Güncel Bakiye are the only inert system columns. Missing/deleted
+  category history remains financially visible through a compact repair row
+  outside the matrix; its yearly/monthly drill-down leads to editable source
+  transactions. Categoryless pending rows follow the existing table-visibility
+  setting without affecting realized balances.
+- Removed unused text-line caps, eliminated trailing list separators, moved
+  subscription lists to `CardList`, and removed manual derivation memos now
+  owned by the React Compiler. The `_layout` provider/callback stability memos
+  remain intentionally because they are effect/context identities.
+- Typecheck, 21 files/192 tests, Expo lint and production static export passed.
+  Anonymous Playwright smoke passed at 320/390/1280 px with no overflow or
+  browser errors. Both retained authenticated browser profiles had expired, so
+  protected column drag/edit interaction still needs the installed-app pass.
+- Commit/push/web/OTA state is recorded after shipping; P10 onboarding/config,
+  controlled repository split, optimization audit and P11 regression remain.
 
 ### 2026-07-16 — Codex (identity and relational-restore package)
 

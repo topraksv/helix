@@ -6,7 +6,7 @@
  * Phones can also switch to a compact month-card list.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
@@ -36,7 +36,7 @@ import type { MonthLedger } from "../../../domain/balance";
 import { kv } from "../../../lib/kv";
 import { Amount, Button, Card, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
-import { spacing, type, useTheme } from "../../../ui/theme";
+import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { lightTap } from "../../../ui/haptics";
 
 type MatrixMode = "cards" | "rows" | "columns";
@@ -117,11 +117,8 @@ export default function CashflowScreen() {
     void kv.set("helix.matrix.pinned", next ?? "");
   };
 
-  const creditCardIds = useMemo(
-    () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
-    [sources],
-  );
-  const txLike = useMemo(() => toTxLike(allTx, persons, categories), [allTx, persons, categories]);
+  const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
+  const txLike = toTxLike(allTx, persons, categories);
 
   // Year switcher bounds: back to the earliest data, forward only while there
   // is actual data (e.g. installments spilling into next year).
@@ -134,10 +131,9 @@ export default function CashflowScreen() {
   const dataCats = new Set<string>();
   bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) dataCats.add(cid); }));
   const columnCategories = resolveYearColumns(categories, columnYears, year, maxYear, dataCats);
-  // Every live category id — used to surface an "uncategorized" column for
-  // amounts whose category was deleted, so that money never silently vanishes
-  // from the table (it still counts toward the balance either way).
-  const liveCategoryIds = useMemo(() => new Set(categories.map((c) => c.id)), [categories]);
+  // Every live category id — used to expose a repair link for legacy rows whose
+  // category is missing, without inventing a special non-editable table column.
+  const liveCategoryIds = new Set(categories.map((c) => c.id));
 
   const yearSwitcher = (
     <Row gap={spacing.sm}>
@@ -317,66 +313,62 @@ function MatrixTable({
     [userId],
     ["cell_notes"],
   ).data;
-  const noteByCell = useMemo(() => new Map(cellNotes.map((n) => [`${n.month}:${n.categoryId}`, n.body])), [cellNotes]);
+  const noteByCell = new Map(cellNotes.map((note) => [`${note.month}:${note.categoryId}`, note.body]));
 
-  const months = useMemo<MonthSlot[]>(() => {
-    const dataByMonth = new Map(bundle.yearMonths.map((m) => [m.month, m]));
-    return Array.from({ length: 12 }, (_, i) => {
-      const month = makeMonthKey(year, i + 1);
-      return { month, data: dataByMonth.get(month) ?? null };
-    });
-  }, [bundle.yearMonths, year]);
+  const dataByMonth = new Map(bundle.yearMonths.map((month) => [month.month, month]));
+  const months: MonthSlot[] = Array.from({ length: 12 }, (_, index) => {
+    const month = makeMonthKey(year, index + 1);
+    return { month, data: dataByMonth.get(month) ?? null };
+  });
 
-  const ccByMonth = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof creditCardSplit>>();
-    for (const m of bundle.yearMonths) map.set(m.month, creditCardSplit(txLike, creditCardIds, m.month, today));
-    return map;
-  }, [bundle.yearMonths, txLike, creditCardIds, today]);
+  const ccByMonth = new Map<string, ReturnType<typeof creditCardSplit>>();
+  for (const month of bundle.yearMonths) {
+    ccByMonth.set(month.month, creditCardSplit(txLike, creditCardIds, month.month, today));
+  }
 
   // Sum of amounts booked to a category that no longer exists (deleted) — kept
   // visible so deleting a category never makes its money disappear from the table.
   const uncategorizedValue = (m: MonthLedger): number => {
-    let sum = 0;
+    let sum = m.uncategorizedMinor;
     m.byCategory.forEach((v, cid) => {
       if (!liveCategoryIds.has(cid)) sum += v;
     });
     return sum;
   };
   const hasUncategorized = bundle.yearMonths.some((m) => uncategorizedValue(m) !== 0);
+  const uncategorizedTotal = bundle.yearMonths.reduce((sum, month) => sum + uncategorizedValue(month), 0);
 
-  const columns: ColumnDef[] = useMemo(
-    () => [
-      ...columnCategories.map<ColumnDef>((c) => ({ key: c.id, label: c.name, categoryId: c.id, value: (m) => m.byCategory.get(c.id) ?? 0 })),
-      ...computedColumns.map<ColumnDef>((c) => ({
-        key: c.id,
-        label: c.name,
-        categoryId: null,
-        computed: true,
-        value: (m) => {
-          const cc = ccByMonth.get(m.month);
-          try {
-            return evaluateComputedColumn(parseDefinition(JSON.parse(c.definition)), {
-              month: m.month,
-              byCategory: m.byCategory,
-              incomeMinor: m.incomeMinor,
-              expenseMinor: m.expenseMinor,
-              ccSingleMinor: cc?.singleMinor ?? 0,
-              ccInstallmentMinor: cc?.installmentMinor ?? 0,
-            });
-          } catch {
-            return null; // broken definition → empty cell, not a fake 0
-          }
-        },
-      })),
-      ...(hasUncategorized
-        ? [{ key: "__uncategorized", label: tr.common.none, categoryId: null, value: uncategorizedValue } as ColumnDef]
-        : []),
-      { key: "opening", label: tr.cashflow.opening, categoryId: null, value: (m) => m.openingMinor },
-      { key: "closing", label: tr.cashflow.closing, categoryId: null, value: (m) => m.closingMinor },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [columnCategories, computedColumns, ccByMonth, hasUncategorized, liveCategoryIds],
-  );
+  const columns: ColumnDef[] = [
+    ...columnCategories.map<ColumnDef>((category) => ({
+      key: category.id,
+      label: category.name,
+      categoryId: category.id,
+      value: (month) => month.byCategory.get(category.id) ?? 0,
+    })),
+    ...computedColumns.map<ColumnDef>((column) => ({
+      key: column.id,
+      label: column.name,
+      categoryId: null,
+      computed: true,
+      value: (month) => {
+        const cc = ccByMonth.get(month.month);
+        try {
+          return evaluateComputedColumn(parseDefinition(JSON.parse(column.definition)), {
+            month: month.month,
+            byCategory: month.byCategory,
+            incomeMinor: month.incomeMinor,
+            expenseMinor: month.expenseMinor,
+            ccSingleMinor: cc?.singleMinor ?? 0,
+            ccInstallmentMinor: cc?.installmentMinor ?? 0,
+          });
+        } catch {
+          return null; // broken definition → empty cell, not a fake 0
+        }
+      },
+    })),
+    { key: "opening", label: tr.cashflow.opening, categoryId: null, value: (month) => month.openingMinor },
+    { key: "closing", label: tr.cashflow.closing, categoryId: null, value: (month) => month.closingMinor },
+  ];
 
   const CELL_W = compact ? 104 : 128;
   const HEAD_W = compact ? 80 : 132;
@@ -403,10 +395,15 @@ function MatrixTable({
   // Opening/closing balances are derived summaries — intentionally not tappable.
   const openBreakdown = (key: string) => {
     const col = columns.find((c) => c.key === key);
-    if (!col || col.key === "opening" || col.key === "closing" || col.key === "__uncategorized") return;
+    if (!col || col.key === "opening" || col.key === "closing") return;
     router.push({
       pathname: "/cash-flow/item",
-      params: { col: col.categoryId ?? col.key, label: col.label, year: String(year), kind: col.categoryId ? "category" : "computed" },
+      params: {
+        col: col.categoryId ?? col.key,
+        label: col.label,
+        year: String(year),
+        kind: col.categoryId ? "category" : "computed",
+      },
     });
   };
 
@@ -417,7 +414,7 @@ function MatrixTable({
   const pressFor = (c: ColumnDef, month: MonthKey): (() => void) | undefined => {
     if (c.categoryId) return () => router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId! } });
     if (c.action) return c.action;
-    if (c.key === "opening" || c.key === "closing" || c.key === "__uncategorized") return undefined;
+    if (c.key === "opening" || c.key === "closing") return undefined;
     return () => openBreakdown(c.key); // computed column cell → its breakdown
   };
 
@@ -425,7 +422,7 @@ function MatrixTable({
     <MatrixCell value={value} note={note} onPress={onPress} highlighted={highlighted} fontSize={fontSize} />
   );
   const breakdownFor = (key: string): (() => void) | undefined =>
-    key === "opening" || key === "closing" || key === "__uncategorized" ? undefined : () => openBreakdown(key);
+    key === "opening" || key === "closing" ? undefined : () => openBreakdown(key);
 
   let cornerLabel: string;
   let stickyColumns: StickyColumn[];
@@ -491,6 +488,32 @@ function MatrixTable({
         onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : openBreakdown}
         height={tableHeight}
       />
+      {hasUncategorized ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push({
+            pathname: "/cash-flow/item",
+            params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
+          })}
+          style={({ pressed }) => ({
+            marginHorizontal: spacing.md,
+            marginTop: spacing.sm,
+            padding: spacing.sm,
+            borderRadius: radius.sm,
+            backgroundColor: pressed ? palette.primarySoft : palette.surfaceAlt,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+          })}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[type.label, { color: palette.text }]}>{tr.cashflow.uncategorizedLegacy}</Text>
+            <Text style={[type.small, { color: palette.textMuted }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
+          </View>
+          <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negative : palette.text }]}>{formatMinor(uncategorizedTotal)}</Text>
+          <ChevronRight size={16} color={palette.textMuted} />
+        </Pressable>
+      ) : null}
       <Text style={[type.small, { color: palette.textMuted, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, textAlign: "center" }]}>
         {isColumns ? tr.cashflow.monthTapHint : tr.cashflow.pinHint}
       </Text>

@@ -1,7 +1,7 @@
 /** Bulk history entry (approved feature): fill a whole past month like an
  *  Excel row — one total per category, saved as aggregate transactions. */
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";
@@ -27,10 +27,7 @@ export default function BulkEntryModal() {
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
   const selfId = persons.find((p) => p.isSelf)?.id;
-  const rows = useMemo(
-    () => [...categories].sort((a, b) => (a.kind === b.kind ? a.sortOrder - b.sortOrder : a.kind === "expense" ? -1 : 1)),
-    [categories],
-  );
+  const rows = [...categories].sort((a, b) => (a.kind === b.kind ? a.sortOrder - b.sortOrder : a.kind === "expense" ? -1 : 1));
 
   const entries = rows
     .map((c) => ({ category: c, minor: values[c.id]?.minor ?? null }))

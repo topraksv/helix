@@ -43,8 +43,10 @@ export interface MonthLedger {
   transferMinor: Minor;
   adjustmentMinor: Minor;
   closingMinor: Minor;
-  /** Realized sums per category (TRY minor), for the cash-flow matrix. */
+  /** Displayed sums per category (TRY minor), including pending when enabled. */
   byCategory: Map<string, Minor>;
+  /** Rows with no category, kept visible without inventing a category id. */
+  uncategorizedMinor: Minor;
 }
 
 export interface LedgerInput {
@@ -128,6 +130,7 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
     let income = 0;
     let expense = 0;
     let transfer = 0;
+    let uncategorized = 0;
     const byCategory = new Map<string, Minor>();
     for (const tx of byMonth.get(month) ?? []) {
       const flow = financialFlow(tx);
@@ -136,12 +139,12 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       else transfer += flow.amountTryMinor;
       if (tx.categoryId) {
         byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
-      }
+      } else uncategorized += flow.amountTryMinor;
     }
     for (const tx of pendingByMonth.get(month) ?? []) {
       if (tx.categoryId) {
         byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + financialFlow(tx).amountTryMinor);
-      }
+      } else uncategorized += financialFlow(tx).amountTryMinor;
     }
     const adjustment = adjustmentByMonth.get(month) ?? 0;
     const closing = opening + income - expense - transfer + adjustment;
@@ -154,6 +157,7 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       adjustmentMinor: adjustment,
       closingMinor: closing,
       byCategory,
+      uncategorizedMinor: uncategorized,
     });
     opening = closing;
   }

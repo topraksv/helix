@@ -34,12 +34,12 @@ export function resolveYearColumns<T extends YearColumnCategory>(
   const claimed = new Set<string>();
   for (const ids of Object.values(columnYears)) for (const id of ids) claimed.add(id);
 
-  // Membership (unchanged from before): columns recorded for this year that
-  // still exist, plus any active column that gained data in the year
+  // Membership: active columns recorded for this year, plus any active column
+  // that gained data in the year
   // (self-heal) and — on the live year — unclaimed columns.
-  const existingIds = new Set(categories.map((c) => c.id));
+  const activeIds = new Set(active.map((category) => category.id));
   const member = new Set<string>();
-  for (const id of yearColIds) if (existingIds.has(id)) member.add(id);
+  for (const id of yearColIds) if (activeIds.has(id)) member.add(id);
   for (const c of active) {
     if (member.has(c.id)) continue;
     if (dataCategoryIds.has(c.id) || (year === maxYear && !claimed.has(c.id))) member.add(c.id);
@@ -47,5 +47,5 @@ export function resolveYearColumns<T extends YearColumnCategory>(
 
   // Display order = the caller's category order (sortOrder), so reordering
   // columns in settings is reflected 1:1 in the table for every year.
-  return categories.filter((c) => member.has(c.id));
+  return active.filter((category) => member.has(category.id));
 }
