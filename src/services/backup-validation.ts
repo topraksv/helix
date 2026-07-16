@@ -1,10 +1,12 @@
 import { getTableColumns } from "drizzle-orm";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
+import { parseDefinition, type ComputedColumnDefinition } from "../domain/computed-columns";
 import { tr } from "../i18n/tr";
 
 export const EXPORT_VERSION = 1;
 export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
 const MAX_BACKUP_ROWS = 100_000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface ExportBundle {
   version: number;
@@ -18,14 +20,42 @@ const DATE_COLUMNS = new Set([
   "purchase_date",
   "statement_date",
   "next_due_date",
-  "canceled_at",
   "trial_end_date",
   "effective_from",
   "due_date",
-  "paid_at",
   "date",
   "rate_date",
 ]);
+
+const TIMESTAMP_COLUMNS = new Set(["created_at", "updated_at", "deleted_at", "canceled_at", "paid_at"]);
+
+const RELATIONS = [
+  ["payment_sources", "person_id", "persons"],
+  ["installment_plans", "payment_source_id", "payment_sources"],
+  ["installment_plans", "person_id", "persons"],
+  ["installment_plans", "category_id", "categories"],
+  ["credit_card_statements", "payment_source_id", "payment_sources"],
+  ["transactions", "category_id", "categories"],
+  ["transactions", "payment_source_id", "payment_sources"],
+  ["transactions", "person_id", "persons"],
+  ["transactions", "installment_plan_id", "installment_plans"],
+  ["transactions", "card_statement_id", "credit_card_statements"],
+  ["transactions", "subscription_id", "subscriptions"],
+  ["subscriptions", "payment_source_id", "payment_sources"],
+  ["subscriptions", "category_id", "categories"],
+  ["subscriptions", "person_id", "persons"],
+  ["price_history", "subscription_id", "subscriptions"],
+  ["recurring_incomes", "person_id", "persons"],
+  ["recurring_incomes", "category_id", "categories"],
+  ["expected_payments", "transaction_id", "transactions"],
+  ["cell_notes", "category_id", "categories"],
+] as const satisfies readonly (readonly [SyncedTableName, string, SyncedTableName])[];
+
+export type ExistingImportIds = Partial<Record<SyncedTableName, ReadonlySet<string>>>;
+
+function invalidBackup(): never {
+  throw new Error(tr.errors.invalidBackupFile);
+}
 
 function isIsoTimestamp(value: unknown): boolean {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
@@ -44,7 +74,7 @@ function isMonthKey(value: unknown): boolean {
 
 /** Validate a restore row completely before any database write begins. */
 export function isValidImportRow(table: SyncedTableName, raw: Record<string, unknown>): boolean {
-  if (typeof raw.id !== "string" || raw.id.length === 0 || raw.id.length > 200) return false;
+  if (typeof raw.id !== "string" || !UUID_RE.test(raw.id)) return false;
   for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
     const value = raw[column.name];
     if (value == null) {
@@ -57,8 +87,12 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     if (column.enumValues && !column.enumValues.includes(value as never)) return false;
     if (typeof value === "string" && value.length > 50_000) return false;
   }
-  if (!isIsoTimestamp(raw.created_at) || !isIsoTimestamp(raw.updated_at)) return false;
-  if (raw.deleted_at != null && !isIsoTimestamp(raw.deleted_at)) return false;
+  for (const [key, value] of Object.entries(raw)) {
+    if ((key === "id" || key.endsWith("_id")) && value != null && (typeof value !== "string" || !UUID_RE.test(value))) return false;
+  }
+  for (const key of TIMESTAMP_COLUMNS) {
+    if (key in raw && raw[key] != null && !isIsoTimestamp(raw[key])) return false;
+  }
   for (const key of DATE_COLUMNS) {
     if (key in raw && raw[key] != null && !isIsoDate(raw[key])) return false;
   }
@@ -76,7 +110,62 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
       return false;
     }
   }
+  if (table === "computed_columns") {
+    try {
+      const definition = parseDefinition(JSON.parse(String(raw.definition)));
+      if (definitionCategoryIds(definition).some((id) => !UUID_RE.test(id))) return false;
+    } catch {
+      return false;
+    }
+  }
   return true;
+}
+
+function definitionCategoryIds(definition: ComputedColumnDefinition): string[] {
+  if (definition.op === "sum") return definition.categoryIds;
+  if (definition.op === "difference") return [...definition.plusCategoryIds, ...definition.minusCategoryIds];
+  return [];
+}
+
+/**
+ * Validate foreign-key-like references against the backup plus the current
+ * account. SQLite intentionally has no hard FKs because tombstones must sync,
+ * so restore performs this check before its single atomic write instead.
+ */
+export function validateBundleRelationships(bundle: ExportBundle, existing: ExistingImportIds = {}): void {
+  const available = {} as Record<SyncedTableName, Set<string>>;
+  for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    available[table] = new Set(existing[table] ?? []);
+    for (const row of bundle.tables[table] ?? []) available[table].add(String(row.id));
+  }
+
+  for (const [table, column, target] of RELATIONS) {
+    for (const row of bundle.tables[table] ?? []) {
+      const id = row[column];
+      if (id != null && !available[target].has(String(id))) invalidBackup();
+    }
+  }
+
+  const expectedTargets: Record<string, SyncedTableName> = {
+    subscription: "subscriptions",
+    installment: "installment_plans",
+    loan: "installment_plans",
+    recurring_income: "recurring_incomes",
+  };
+  for (const row of bundle.tables.expected_payments ?? []) {
+    const target = expectedTargets[String(row.kind)];
+    if (!target || !available[target].has(String(row.ref_id))) invalidBackup();
+  }
+
+  for (const row of bundle.tables.computed_columns ?? []) {
+    let definition: ComputedColumnDefinition;
+    try {
+      definition = parseDefinition(JSON.parse(String(row.definition)));
+    } catch {
+      invalidBackup();
+    }
+    if (definitionCategoryIds(definition).some((id) => !available.categories.has(id))) invalidBackup();
+  }
 }
 
 export function validateExportBundle(raw: unknown): ExportBundle {
@@ -88,19 +177,30 @@ export function validateExportBundle(raw: unknown): ExportBundle {
     typeof bundle.tables !== "object" ||
     !isIsoTimestamp(bundle.exportedAt)
   ) {
-    throw new Error(tr.errors.invalidBackupFile);
+    invalidBackup();
   }
+  const tableNames = new Set(Object.keys(SYNCED_TABLES));
+  if (Object.keys(bundle.tables).some((table) => !tableNames.has(table))) invalidBackup();
   let totalRows = 0;
+  const sourceUsers = new Set<string>();
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     const rows = bundle.tables[table];
     if (rows == null) continue;
-    if (!Array.isArray(rows)) throw new Error(tr.errors.invalidBackupFile);
+    if (!Array.isArray(rows)) invalidBackup();
     totalRows += rows.length;
     if (totalRows > MAX_BACKUP_ROWS) throw new Error(tr.errors.backupTooLarge);
-    if (rows.some((row) => !row || typeof row !== "object" || !isValidImportRow(table, row))) {
-      throw new Error(tr.errors.invalidBackupFile);
+    const ids = new Set<string>();
+    if (rows.some((row) => {
+      if (!row || typeof row !== "object" || !isValidImportRow(table, row)) return true;
+      if (ids.has(String(row.id))) return true;
+      ids.add(String(row.id));
+      sourceUsers.add(String(row.user_id));
+      return false;
+    })) {
+      invalidBackup();
     }
   }
+  if (sourceUsers.size > 1) invalidBackup();
   return bundle as ExportBundle;
 }
 
