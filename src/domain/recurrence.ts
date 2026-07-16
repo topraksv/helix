@@ -7,15 +7,12 @@
 import {
   addMonthsToKey,
   clampDayToMonth,
-  dayOf,
-  makeMonthKey,
   monthKeyOf,
   monthOf,
   yearOf,
   type ISODate,
   type MonthKey,
 } from "./dates";
-import type { SubscriptionCycle } from "./types";
 
 /**
  * Hard upper bound on how many steps a recurrence walk may take before it is
@@ -26,15 +23,8 @@ import type { SubscriptionCycle } from "./types";
 const MAX_RECURRENCE_STEPS = 6000;
 
 /** A safe, positive integer month interval, or null when the value is invalid. */
-export function safeIntervalMonths(intervalMonths: number): number | null {
+function safeIntervalMonths(intervalMonths: number): number | null {
   return Number.isInteger(intervalMonths) && intervalMonths >= 1 ? intervalMonths : null;
-}
-
-export function intervalMonthsFor(cycle: SubscriptionCycle, customMonths?: number | null): number {
-  if (cycle === "monthly") return 1;
-  if (cycle === "yearly") return 12;
-  if (!customMonths || customMonths < 1) throw new Error("custom cycle requires intervalMonths >= 1");
-  return customMonths;
 }
 
 /** Due date for a nominal billing day within a given month (clamped). */
@@ -91,13 +81,4 @@ export function dueDatesInRange(
     due = advanceDueDate(due, intervalMonths, billingDay);
   }
   return dates;
-}
-
-/** Nominal billing day of an existing due date (callers store it separately when known). */
-export function billingDayOf(date: ISODate): number {
-  return dayOf(date);
-}
-
-export function currentMonthKey(today: ISODate): MonthKey {
-  return makeMonthKey(yearOf(today), monthOf(today));
 }

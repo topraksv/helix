@@ -17,7 +17,7 @@ import { Platform } from "react-native";
 import { Directory, File, Paths } from "expo-file-system";
 import * as schema from "./schema";
 
-export const DB_NAME = "helix.db";
+const DB_NAME = "helix.db";
 
 let handle: Promise<SQLiteDatabase> | null = null;
 
@@ -159,5 +159,3 @@ const database = drizzle(exec, { schema });
 export function getDb() {
   return database;
 }
-
-export type Db = ReturnType<typeof getDb>;

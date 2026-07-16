@@ -8,7 +8,7 @@ export interface FinancialFlow {
   amountTryMinor: Minor;
 }
 
-export function normalizeFinancialFlow(
+function normalizeFinancialFlow(
   type: TransactionType,
   amountTryMinor: Minor,
   categoryKind: CategoryKind | null,

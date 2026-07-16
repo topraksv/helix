@@ -62,10 +62,6 @@ export function successNotice(): void {
   haptic("success");
 }
 
-export function warningNotice(): void {
-  haptic("warning");
-}
-
 export function errorNotice(): void {
   haptic("error");
 }

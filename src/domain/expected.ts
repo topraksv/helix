@@ -23,7 +23,7 @@ export interface ExpectedDraft {
   currency: string;
 }
 
-export function expectedKey(e: Pick<ExpectedPaymentLike, "kind" | "refId" | "dueDate">): string {
+function expectedKey(e: Pick<ExpectedPaymentLike, "kind" | "refId" | "dueDate">): string {
   return `${e.kind}:${e.refId}:${e.dueDate}`;
 }
 

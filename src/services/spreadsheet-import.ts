@@ -37,7 +37,7 @@ export interface CellData {
   commentParts: { label: string; amountMinor: Minor | null }[] | null;
 }
 
-export interface ParsedColumn {
+interface ParsedColumn {
   label: string;
   kindGuess: "expense" | "income";
   isInvestment: boolean;
@@ -292,7 +292,7 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   };
 }
 
-export interface ImportItem {
+interface ImportItem {
   amountMinor: Minor;
   note: string | null;
   /** true = one opaque monthly total; false = a real itemized part. */
@@ -451,7 +451,7 @@ export function isInstallmentCell(columnLabel: string, comment: string | null): 
 }
 
 /** Convert a SheetJS worksheet into a dense grid of RawCells over its range. */
-export function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
+function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
   const ref = ws["!ref"];
   if (!ref) return [];
   const range = XLSX.utils.decode_range(ref);

@@ -20,7 +20,7 @@ export function countsTowardBalance(tx: TxLike, today: ISODate): boolean {
 }
 
 /** Signed effect of a transaction on the cash balance. */
-export function balanceEffect(tx: TxLike): Minor {
+function balanceEffect(tx: TxLike): Minor {
   return signedBalanceEffect(tx);
 }
 

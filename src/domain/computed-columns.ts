@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { Minor } from "./money";
 import type { MonthKey } from "./dates";
 
-export const computedColumnDefinitionSchema = z.discriminatedUnion("op", [
+const computedColumnDefinitionSchema = z.discriminatedUnion("op", [
   /** Sum of selected categories' realized totals. */
   z.object({ op: z.literal("sum"), categoryIds: z.array(z.string().min(1)).min(1) }),
   /** Σ(plus categories) − Σ(minus categories). */

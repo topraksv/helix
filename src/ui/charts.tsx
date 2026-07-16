@@ -81,7 +81,7 @@ export function Donut({
         )}
         {/* 2px surface gaps between segments */}
         {arcs.length > 1
-          ? arcs.map((a, i) => {
+          ? arcs.map((_, i) => {
               const boundary = arcs.slice(0, i + 1).reduce((deg, x) => deg + x.sweep, -90);
               const p1 = polar(cx, cy, r - strokeWidth / 2 - 1, boundary);
               const p2 = polar(cx, cy, r + strokeWidth / 2 + 1, boundary);

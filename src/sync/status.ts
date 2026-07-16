@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-export type SyncState = "idle" | "syncing" | "error" | "unconfigured";
+type SyncState = "idle" | "syncing" | "error" | "unconfigured";
 
 interface SyncStatusStore {
   state: SyncState;
