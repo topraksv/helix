@@ -28,11 +28,11 @@ jobs:
       EXPO_PUBLIC_SUPABASE_URL: https://nwenaeyimbqxyhhsfrsi.supabase.co
       EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_NvhpZdHfjtL1zRBLQp60gQ_FS90zaj3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # Expo SDK 54 tooling is incompatible with Node 24/26 native TypeScript
       # stripping (it chokes on expo-modules-core's src/index.ts). Node 22 is
       # the newest LTS the SDK 54 build supports.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -42,7 +42,7 @@ jobs:
       # dynamic routes like /cash-flow/2026-05); the not-found page loads the
       # router bundle, which then renders the real route client-side.
       - run: cp dist/+not-found.html dist/404.html
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -54,4 +54,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
