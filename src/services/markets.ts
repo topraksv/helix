@@ -68,8 +68,14 @@ function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
   markStaleAfterSilence();
   if (now - lastApplied < THROTTLE_MS) return;
   lastApplied = now;
+  // Harem only re-sends a symbol whose price CHANGED, so a stable quote (e.g.
+  // gold overnight while USD keeps ticking) stops arriving even though it is
+  // still the current price. Keep every known quote and refresh its receipt
+  // time on any live event — a symbol must not "disappear" merely because it
+  // didn't move. The global silence timer still clears everything if the whole
+  // feed goes quiet for MARKET_STALE_MS (a genuinely dead connection).
   const prices: Record<string, MarketPrice> = Object.fromEntries(
-    Object.entries(useMarkets.getState().prices).filter(([, price]) => freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS)),
+    Object.entries(useMarkets.getState().prices).map(([code, price]) => [code, { ...price, receivedAt: now }]),
   );
   for (const { code } of MARKET_SYMBOLS) {
     const entry = data[code];

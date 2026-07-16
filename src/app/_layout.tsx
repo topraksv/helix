@@ -390,7 +390,12 @@ function RootLayoutInner() {
           <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
           <Stack.Screen name="opening-balance" options={{ presentation: "modal", title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="account-security" options={{ presentation: "modal", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
-          <Stack.Screen name="columns-editor" options={{ presentation: "modal", title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          {/* gestureEnabled:false — the modal's swipe-down-to-dismiss otherwise
+              competes with the column drag-reorder gesture and wins, so a
+              press-and-drag never moved a row here (it worked in the Settings
+              stack screen, which has no full-card dismiss gesture). Close via
+              the header back button instead. */}
+          <Stack.Screen name="columns-editor" options={{ presentation: "modal", gestureEnabled: false, title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
         </Stack>
         </ErrorBoundary>

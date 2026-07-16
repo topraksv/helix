@@ -62,7 +62,8 @@ describe("parseSheetAmount", () => {
     expect(parseSheetAmount("-")).toBeNull();
     expect(parseSheetAmount(null)).toBeNull();
     expect(parseSheetAmount(Number.MAX_SAFE_INTEGER)).toBeNull();
-    expect(parseSheetAmount("1.000.000.000")).toBeNull();
+    expect(parseSheetAmount("1.000.000.000.000")).toBeNull(); // 1 trilyon üstü reddedilir
+    expect(parseSheetAmount("1.000.000.000")).toBe(100_000_000_000); // 1 milyar TL artık kabul
     expect(parseSheetAmount("999.999.999,99")).toBe(99_999_999_999);
   });
 });

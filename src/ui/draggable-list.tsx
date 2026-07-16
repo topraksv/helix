@@ -20,10 +20,9 @@ export interface DragHandle {
   panHandlers: GestureResponderHandlers;
   /** True while this row is the one being dragged. */
   active: boolean;
-  /** Deterministic alternatives for touch/accessibility when a drag gesture is
-   *  inconvenient or intercepted by the surrounding scroll view. */
-  canMoveUp: boolean;
-  canMoveDown: boolean;
+  /** Screen-reader fallback (wired to the grip's increment/decrement actions),
+   *  so reordering stays possible without a drag gesture. `moveBy` guards its
+   *  own bounds, so no can-move flags are needed. */
   moveUp: () => void;
   moveDown: () => void;
 }
@@ -139,8 +138,6 @@ export function DraggableList<T>({
             onMeasureFirst={(h) => {
               if (h > 0) rowH.current = h;
             }}
-            canMoveUp={i > 0}
-            canMoveDown={i < order.length - 1}
             onMoveUp={() => moveBy(key, -1)}
             onMoveDown={() => moveBy(key, 1)}
           >
@@ -159,8 +156,6 @@ function DraggableRow({
   dragY,
   api,
   onMeasureFirst,
-  canMoveUp,
-  canMoveDown,
   onMoveUp,
   onMoveDown,
   children,
@@ -171,8 +166,6 @@ function DraggableRow({
   dragY: Animated.Value;
   api: React.MutableRefObject<{ begin: (k: string) => void; move: (dy: number) => void; end: () => void }>;
   onMeasureFirst: (h: number) => void;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
   children: (handle: DragHandle) => React.ReactNode;
@@ -201,8 +194,6 @@ function DraggableRow({
       {children({
         panHandlers: pan.panHandlers,
         active,
-        canMoveUp,
-        canMoveDown,
         moveUp: onMoveUp,
         moveDown: onMoveDown,
       })}

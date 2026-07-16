@@ -87,7 +87,10 @@ agent-to-agent communication that did not occur.
   session abort signal, time out, validate response size/shape and persist the
   provider's declared business date (never a fabricated "today"). The in-memory
   FX cache is user-scoped. Missing rates stay missing; never interpret a foreign
-  amount as TRY. Live market quotes expire after 60 seconds and the socket runs
+  amount as TRY. Live market quotes expire only after the whole feed goes silent
+  for 60 seconds (Harem re-sends a symbol only when its price CHANGES, so a
+  stable/unchanged quote must keep showing while any other symbol still ticks —
+  never drop a quote just because it did not move). The socket runs
   only while an unlocked authenticated app is active. The converter reuses a
   fresh live USD/EUR quote, then falls back to the dated user-scoped FX cache;
   it must never open a second market request for the same conversion.
@@ -112,7 +115,12 @@ agent-to-agent communication that did not occur.
   migration change, `supabase migration list --linked` must show identical
   local/remote versions and `supabase db lint --linked` must stay clean.
 - **Money is integer minor units** (kuruş) everywhere; format only at the edge
-  with `formatMinor`. Transaction reversals/refunds keep their original type
+  with `formatMinor` (hero/detail figures, always full) or `formatMinorCompact`
+  (fixed-width table cells, which abbreviate to locale `Mn`/`Mr` above
+  `COMPACT_THRESHOLD_MINOR` so a large value never wraps). The single entry
+  ceiling is `MAX_ABS_AMOUNT_MINOR` (~1 trillion major); the calculator/input
+  cap follows `MAX_AMOUNT_MAJOR_DIGITS`, so raise the limit only in one place.
+  Transaction reversals/refunds keep their original type
   and category with signed negative `amount_minor`/`amount_try_minor`; every
   other amount is positive. Income/expense categories must match transaction
   type; transfers use an expense-kind category. Dates are `YYYY-MM-DD` ISO

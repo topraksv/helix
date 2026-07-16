@@ -9,7 +9,7 @@
 import React from "react";
 import { Text, View } from "react-native";
 import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
-import { formatMinor } from "../domain/money";
+import { formatMinorCompact } from "../domain/money";
 import { spacing, type, useTheme } from "./theme";
 
 // Warm editorial categorical palette — earth tones spanning distinct hues.
@@ -89,7 +89,7 @@ export function Donut({
             })
           : null}
         <SvgText x={cx} y={cy + 5} textAnchor="middle" fontSize={13} fontWeight="600" fill={palette.text}>
-          {formatMinor(displayTotal)}
+          {formatMinorCompact(displayTotal)}
         </SvgText>
       </Svg>
       {/* Paired legend list: identity never color-alone (relief rule) */}
@@ -104,8 +104,8 @@ export function Donut({
                 style={[type.small, { color: palette.textMuted, fontVariant: ["tabular-nums"] }]}
               >
                 {supplemental
-                  ? formatMinor(s.valueMinor)
-                  : `${arcTotal > 0 ? `%${Math.round((s.valueMinor / arcTotal) * 100)}` : ""} · ${formatMinor(s.valueMinor)}`}
+                  ? formatMinorCompact(s.valueMinor)
+                  : `${arcTotal > 0 ? `%${Math.round((s.valueMinor / arcTotal) * 100)}` : ""} · ${formatMinorCompact(s.valueMinor)}`}
               </Text>
             </View>
           );
@@ -284,7 +284,7 @@ export function SplitBar({ parts }: { parts: { label: string; valueMinor: number
           <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: p.color }} />
           <Text style={[type.small, { color: palette.text, flex: 1 }]}>{p.label}</Text>
           <Text style={[type.small, { color: palette.textMuted, fontVariant: ["tabular-nums"] }]}>
-            {formatMinor(p.valueMinor)}
+            {formatMinorCompact(p.valueMinor)}
           </Text>
         </View>
       ))}

@@ -17,7 +17,7 @@ import { creditCardSplit } from "../../../domain/analytics";
 import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { monthLabel, tr } from "../../../i18n/tr";
 import {
   settingValue,
@@ -67,7 +67,7 @@ function FlowStat({
         <Icon size={15} color={color} />
       </View>
       <Text style={[type.small, { color, textAlign: "center", marginTop: spacing.xs, minHeight: 32 }]}>{label}</Text>
-      <Text style={[type.amountSm, { color, textAlign: "center", fontSize: 12 }]}>{formatMinor(amountMinor)}</Text>
+      <Text style={[type.amountSm, { color, textAlign: "center", fontSize: 12 }]}>{formatMinorCompact(amountMinor)}</Text>
     </View>
   );
 }
@@ -510,7 +510,7 @@ function MatrixTable({
             <Text style={[type.label, { color: palette.text }]}>{tr.cashflow.uncategorizedLegacy}</Text>
             <Text style={[type.small, { color: palette.textMuted }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
           </View>
-          <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negative : palette.text }]}>{formatMinor(uncategorizedTotal)}</Text>
+          <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negative : palette.text }]}>{formatMinorCompact(uncategorizedTotal)}</Text>
           <ChevronRight size={16} color={palette.textMuted} />
         </Pressable>
       ) : null}
@@ -559,7 +559,7 @@ function MatrixCell({
           { fontSize, color: value == null || value === 0 ? palette.textMuted : value < 0 ? palette.negative : palette.text, textAlign: "right" },
         ]}
       >
-        {value == null || value === 0 ? "" : formatMinor(value)}
+        {value == null || value === 0 ? "" : formatMinorCompact(value)}
       </Text>
       {note ? <View style={{ position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: 3, backgroundColor: palette.warning }} /> : null}
     </Pressable>

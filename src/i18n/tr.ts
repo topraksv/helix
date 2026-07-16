@@ -263,11 +263,14 @@ export const tr = {
     edit: "İşlemi Düzenle",
     type: "Tür", expense: "Gider", income: "Gelir", transferInvest: "Yatırım",
     amount: "Tutar", currency: "Para Birimi",
-    entryEffect: "İşlemin etkisi",
-    normalEntryLabel: (kind: "expense" | "income" | "transfer") =>
-      kind === "expense" ? "Normal gider" : kind === "income" ? "Normal gelir" : "Normal yatırım",
     reversalLabel: (kind: "expense" | "income" | "transfer") =>
       kind === "expense" ? "Gider iadesi" : kind === "income" ? "Gelir iptali" : "Yatırım iadesi",
+    refundToggleHint: (kind: "expense" | "income" | "transfer") =>
+      kind === "expense"
+        ? "Bir gideri geri aldıysan aç; tutar bakiyene geri eklenir."
+        : kind === "income"
+          ? "Bir geliri iptal ettiysen aç; tutar bakiyenden düşülür."
+          : "Bir yatırımı geri aldıysan aç; tutar bakiyene geri eklenir.",
     reversalHint: (kind: "expense" | "income" | "transfer") =>
       kind === "expense"
         ? "Tutar bakiyene geri eklenir ve seçili kategorinin giderini azaltır."
@@ -430,7 +433,7 @@ export const tr = {
     dataSection: "Veri ve Yedekleme",
     categories: "Kalemler ve Kolonlar",
     categoriesDesc: "Mali Tablo'daki gelir-gider kalemlerini ekle, düzenle ve sırala.",
-    reorderHint: "Tutamaçtan sürükle; mobilde oklarla da sırala.",
+    reorderHint: "Tutamacı basılı tutup istediğin yere sürükle.",
     reorderHandle: "Sürükleyerek sırala",
     moveUp: "Yukarı taşı",
     moveDown: "Aşağı taşı",

@@ -7,7 +7,7 @@ import { Text, useWindowDimensions, View } from "react-native";
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { tr } from "../../../i18n/tr";
@@ -153,7 +153,7 @@ export default function AnalysisScreen() {
       ];
   const maxAmountChars = rows.reduce((longest, { data }) => {
     const values = [...monthKeys.map((month) => data!.monthly.get(month) ?? 0), data!.ytdMinor];
-    return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinor(value).length));
+    return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinorCompact(value).length));
   }, 0);
   // The table already scrolls horizontally; size each numeric column for the
   // longest actual value so amounts remain on one line instead of wrapping.
@@ -299,12 +299,12 @@ export default function AnalysisScreen() {
                       key={m}
                       style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text }]}
                     >
-                      {v === 0 ? "" : formatMinor(v)}
+                      {v === 0 ? "" : formatMinorCompact(v)}
                     </Text>
                   );
                 }),
                 <Text key="__total" style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, color: palette.text }]}>
-                  {formatMinor(data!.ytdMinor)}
+                  {formatMinorCompact(data!.ytdMinor)}
                 </Text>,
               ],
             }))}

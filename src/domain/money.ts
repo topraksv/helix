@@ -6,11 +6,13 @@
 
 export type Minor = number;
 
-/** Largest single user-entered amount: 999,999,999.99 major units. This keeps
- * every value comfortably exact in integer minor units and prevents a single
- * malformed input from blowing out responsive financial rows. */
-export const MAX_ABS_AMOUNT_MINOR = 99_999_999_999;
-export const MAX_AMOUNT_MAJOR_DIGITS = 9;
+/** Largest single user-entered amount: 999,999,999,999.99 major units (~1
+ * trillion). Comfortably exact in integer minor units (< 2^53) so a big but
+ * legitimate figure — someone tracking a business or a portfolio in the
+ * billions — is accepted; the table falls back to compact "Mn/Mr" display
+ * (see `formatMinorCompact`) so a large value never overflows a fixed cell. */
+export const MAX_ABS_AMOUNT_MINOR = 99_999_999_999_999;
+export const MAX_AMOUNT_MAJOR_DIGITS = 12;
 
 export function isSupportedMinorAmount(value: number, allowZero = true): value is Minor {
   return (
@@ -80,6 +82,41 @@ export function formatMinor(amountMinor: Minor, currency = "TRY"): string {
   return formatterFor(currency).format(assertMinor(amountMinor) / 100);
 }
 
+const COMPACT_FORMATTERS = new Map<string, Intl.NumberFormat>();
+
+function compactFormatterFor(currency: string): Intl.NumberFormat {
+  let formatter = COMPACT_FORMATTERS.get(currency);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat("tr-TR", {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 1,
+    });
+    COMPACT_FORMATTERS.set(currency, formatter);
+  }
+  return formatter;
+}
+
+/** Amount below which table cells show the value in full; at or above it they
+ * switch to compact notation. 1.000.000 TL keeps everyday figures fully written
+ * out while guaranteeing the full string still fits a narrow matrix cell (the
+ * widest full value, "₺999.999,99", is ~11 chars) — so cells never need
+ * truncation (`numberOfLines`) or wrapping, which the design rules forbid. */
+export const COMPACT_THRESHOLD_MINOR = 100_000_000;
+
+/**
+ * Table-cell money: full `₺1.234.567,89` for everyday amounts, but locale-aware
+ * compact ("₺12,3 Mn", "₺1,5 Mr") once the value would overflow a fixed-width
+ * matrix cell. Use `formatMinor` for hero/detail figures that have room to
+ * render in full.
+ */
+export function formatMinorCompact(amountMinor: Minor, currency = "TRY"): string {
+  assertMinor(amountMinor);
+  if (Math.abs(amountMinor) < COMPACT_THRESHOLD_MINOR) return formatMinor(amountMinor, currency);
+  return compactFormatterFor(currency).format(amountMinor / 100);
+}
+
 /**
  * Parse Turkish-formatted decimal input ("1.234,56", "1234,5", "1234") into
  * minor units. Returns null for input that is not a clean number.
@@ -113,6 +150,9 @@ export function formatTRInputLive(raw: string): string {
   let intDigits = (firstComma === -1 ? cleaned : cleaned.slice(0, firstComma)).replace(/\D/g, "");
   const frac = firstComma === -1 ? null : cleaned.slice(firstComma + 1).replace(/\D/g, "").slice(0, 2);
   intDigits = intDigits.replace(/^0+(?=\d)/, ""); // drop leading zeros, keep a lone 0
+  // Stop accepting integer digits past the supported range so a too-large value
+  // is refused as the user types instead of silently failing validation later.
+  intDigits = intDigits.slice(0, MAX_AMOUNT_MAJOR_DIGITS);
   const grouped = intDigits === "" ? "" : intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   let out = frac === null ? grouped : `${grouped === "" ? "0" : grouped},${frac}`;
   if (out === "") return negative ? "-" : "";

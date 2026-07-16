@@ -328,11 +328,16 @@ export function Amount({
   const { palette } = useTheme();
   const resolved = color ?? (colorized && minor < 0 ? palette.negative : palette.text);
   const formatted = formatMinor(minor, currency);
-  const fittedSize = formatted.length > 20
-    ? (large ? 22 : 12)
-    : formatted.length > 16
-      ? (large ? 27 : 13)
-      : undefined;
+  // Full figures (hero balance, row amounts) stay on one line up to ~1 trillion
+  // by stepping the font down as the string grows — never truncated or wrapped.
+  // Tables that are truly cell-bound use formatMinorCompact instead.
+  const fittedSize = formatted.length > 22
+    ? (large ? 20 : 11)
+    : formatted.length > 18
+      ? (large ? 24 : 12)
+      : formatted.length > 15
+        ? (large ? 28 : 13)
+        : undefined;
   return (
     <Text
       style={[
