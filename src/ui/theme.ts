@@ -114,6 +114,27 @@ export const cardShadow = {
   elevation: 1,
 } as const;
 
+/** Floating overlays (snackbar) sit over content, so they need a firmer — but
+ *  still soft — shadow than cards. One definition, no per-screen values. */
+export const overlayShadow = {
+  shadowColor: "#1E1E1E",
+  shadowOpacity: 0.18,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 3 },
+  elevation: 4,
+} as const;
+
+/** Tab bar metrics — the single source for the bar itself AND for overlays
+ *  that must clear it (undo snackbar). Web gets extra height so Turkish
+ *  descenders (ç/ğ) aren't clipped, and a floor because mobile web reports no
+ *  bottom inset. */
+export const TAB_BAR = { height: 56, webHeight: 64, minBottomInset: 8, webMinBottomInset: 14 } as const;
+
+export function tabBarHeight(bottomInset: number, isWeb: boolean): number {
+  const pad = Math.max(bottomInset, isWeb ? TAB_BAR.webMinBottomInset : TAB_BAR.minBottomInset);
+  return (isWeb ? TAB_BAR.webHeight : TAB_BAR.height) + pad;
+}
+
 export type ThemePreference = "system" | "light" | "dark";
 
 export interface Theme {

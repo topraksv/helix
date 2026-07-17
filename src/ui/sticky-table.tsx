@@ -54,6 +54,8 @@ function useWebInteractions(
   vRef: React.RefObject<ScrollView | null>,
   bodyHRef: React.RefObject<ScrollView | null>,
   headerHRef: React.RefObject<ScrollView | null>,
+  rowHeight: number,
+  cellWidth: number,
 ) {
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -101,8 +103,10 @@ function useWebInteractions(
       vNode.style.cursor = "grab";
     };
     const onKey = (e: KeyboardEvent) => {
-      const stepY = 52;
-      const stepX = 120;
+      // One row / one column per arrow press, whatever the table's real
+      // dimensions are — not a hardcoded approximation of them.
+      const stepY = rowHeight;
+      const stepX = cellWidth;
       let handled = true;
       if (e.key === "ArrowDown") vNode.scrollTop += stepY;
       else if (e.key === "ArrowUp") vNode.scrollTop -= stepY;
@@ -130,7 +134,7 @@ function useWebInteractions(
       window.removeEventListener("mouseup", onUp);
       vNode.removeEventListener("keydown", onKey);
     };
-  }, [vRef, bodyHRef, headerHRef]);
+  }, [vRef, bodyHRef, headerHRef, rowHeight, cellWidth]);
 }
 
 export function StickyTable({
@@ -174,7 +178,7 @@ export function StickyTable({
   const vRef = useRef<ScrollView>(null);
   const bodyHRef = useRef<ScrollView>(null);
   const headerHRef = useRef<ScrollView>(null);
-  useWebInteractions(vRef, bodyHRef, headerHRef);
+  useWebInteractions(vRef, bodyHRef, headerHRef, rowHeight, cellWidth);
   const [bodyW, setBodyW] = useState(0);
   const [bodyViewH, setBodyViewH] = useState(0);
   const [labelHeights, setLabelHeights] = useState<Record<string, number>>({});

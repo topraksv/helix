@@ -41,10 +41,20 @@ import { errorNotice } from "../../ui/haptics";
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 
+// Fixed column widths keep buy/sell figures right-aligned across rows (and
+// give the connecting-state placeholders the exact final geometry).
+const MARKET_BUY_W = 78;
+const MARKET_SELL_W = 92;
+const MARKET_TREND_W = 15;
+
 function MarketsCard() {
   const { palette } = useTheme();
   const { prices, status } = useMarkets();
-  if (status === "error" || Object.keys(prices).length === 0) return null;
+  // While connecting, the card renders at full height with per-symbol "—"
+  // placeholders instead of returning null — quotes fill in without the card
+  // popping in above the content (layout shift). A dead feed ("error") still
+  // omits the card entirely, per the product rule.
+  if (status === "error" || status === "idle") return null;
 
   const priceText = (v: number) =>
     new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
@@ -54,7 +64,8 @@ function MarketsCard() {
       <Spread style={{ marginBottom: spacing.xs }}>
         <Heading style={{ marginVertical: 0 }}>{tr.markets.title}</Heading>
         <Row gap={spacing.xs}>
-          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.positive }} />
+          {/* The dot claims liveness only once real quotes are flowing. */}
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textMuted }} />
           <Text style={[type.small, { color: palette.textMuted }]}>{tr.markets.source}</Text>
         </Row>
       </Spread>
@@ -62,9 +73,9 @@ function MarketsCard() {
       <Spread style={{ marginBottom: spacing.xs }}>
         <View />
         <Row gap={spacing.sm}>
-          <Text style={[type.small, { color: palette.textMuted, minWidth: 78, textAlign: "right" }]}>{tr.markets.buy}</Text>
-          <Text style={[type.small, { color: palette.textMuted, minWidth: 92, textAlign: "right" }]}>{tr.markets.sell}</Text>
-          <View style={{ width: 15 }} />
+          <Text style={[type.small, { color: palette.textMuted, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{tr.markets.buy}</Text>
+          <Text style={[type.small, { color: palette.textMuted, minWidth: MARKET_SELL_W, textAlign: "right" }]}>{tr.markets.sell}</Text>
+          <View style={{ width: MARKET_TREND_W }} />
         </Row>
       </Spread>
       {MARKET_SYMBOLS.map(({ code, label }) => {
@@ -73,16 +84,16 @@ function MarketsCard() {
           <Spread key={code} style={{ paddingVertical: spacing.sm - 2 }}>
             <Body>{label}</Body>
             <Row gap={spacing.sm}>
-              <Text style={[type.amountSm, { color: palette.textMuted, minWidth: 78, textAlign: "right" }]}>{p ? priceText(p.buyTry) : "—"}</Text>
-              <Text style={[type.amount, { color: palette.text, minWidth: 92, textAlign: "right" }]}>
+              <Text style={[type.amountSm, { color: palette.textMuted, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{p ? priceText(p.buyTry) : "—"}</Text>
+              <Text style={[type.amount, { color: palette.text, minWidth: MARKET_SELL_W, textAlign: "right" }]}>
                 {p ? `${priceText(p.sellTry)} ₺` : "—"}
               </Text>
               {p?.direction === "up" ? (
-                <TrendingUp size={15} color={palette.positive} />
+                <TrendingUp size={MARKET_TREND_W} color={palette.positive} />
               ) : p?.direction === "down" ? (
-                <TrendingDown size={15} color={palette.negative} />
+                <TrendingDown size={MARKET_TREND_W} color={palette.negative} />
               ) : (
-                <View style={{ width: 15 }} />
+                <View style={{ width: MARKET_TREND_W }} />
               )}
             </Row>
           </Spread>
@@ -359,7 +370,9 @@ export default function DashboardScreen() {
 
       {/* Hero balance + a single month-end forecast line (tap to expand the
           breakdown). One representation of the projected number, not the old
-          hero-chip AND a duplicate card. */}
+          hero-chip AND a duplicate card. While the ledger is still loading the
+          card keeps its place with quiet placeholder bars — a transient "₺0"
+          balance or a popping-in hero both read as glitches in a finance app. */}
       {bundle ? (
         <HeroCard>
           <Text style={[type.label, { color: "rgba(255,255,255,0.75)", textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
@@ -410,7 +423,13 @@ export default function DashboardScreen() {
             </Pressable>
           ) : null}
         </HeroCard>
-      ) : null}
+      ) : (
+        <HeroCard>
+          {/* Same label/amount line heights as the loaded state. */}
+          <View style={{ width: 120, height: 13, borderRadius: radius.sm, backgroundColor: "rgba(255,255,255,0.30)" }} />
+          <View style={{ width: 208, height: 38, borderRadius: radius.sm, backgroundColor: "rgba(255,255,255,0.22)", marginTop: spacing.xs }} />
+        </HeroCard>
+      )}
 
       {/* Breakdown, revealed on demand: current balance + what's still coming in
           − what's still going out = the month-end estimate. */}

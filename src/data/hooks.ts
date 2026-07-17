@@ -16,9 +16,9 @@ import { devError } from "../services/logger";
 
 interface LiveResult<T> {
   data: T[];
+  /** Undefined until the first query resolves — the "still loading" signal
+   *  that separates an empty result from data that has not arrived yet. */
   updatedAt: Date | undefined;
-  /** Last query error, if the most recent run failed (cleared on success). */
-  error?: string;
 }
 
 /**
@@ -47,17 +47,17 @@ export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: re
         (data) => {
           if (cancelled) return;
           attempt = 0;
-          setState({ data, updatedAt: new Date(), error: undefined });
+          setState({ data, updatedAt: new Date() });
         },
         (error) => {
           if (cancelled) return;
-          // Keep retrying with capped backoff instead of giving up. Abandoning
-          // after N tries left screens frozen on empty data forever (a wedged
-          // sqlite worker never recovered, and route guards that key off this
-          // query showed a permanent blank screen). Surface the error too, so
-          // callers can render a retry affordance rather than nothing.
+          // Retry forever with capped backoff — a deliberate decision, not an
+          // oversight: abandoning after N tries left screens frozen on empty
+          // data (a wedged sqlite worker never recovered, and route guards
+          // keyed off this query showed a permanent blank screen). Failures
+          // never touch state, so screens keep the loading signal (or the
+          // last good data) instead of asserting an empty result.
           if (attempt < 3) devError("live-query", error);
-          setState((prev) => ({ ...prev, error: String(error) }));
           const delay = Math.min(250 * 2 ** attempt++, 5000);
           timer = setTimeout(run, delay);
         },
