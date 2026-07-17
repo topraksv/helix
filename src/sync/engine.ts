@@ -11,7 +11,7 @@ import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, type SessionEpochToken } from "./session-epoch";
-import { classifyOutboxBatch, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
+import { classifyOutboxBatch, isUuidShaped, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
 
 const isAuthError = (raw: string) => /jwt|token|401|unauthorized|not authenticated/i.test(raw);
@@ -122,8 +122,10 @@ function validatedRemoteRow(
   userId: string,
 ): Record<string, unknown> {
   const remote = toLocal(table, raw);
+  // The id becomes the keyset cursor and is interpolated into a PostgREST
+  // `.or()` filter, so its UUID shape is part of the trust boundary.
   if (
-    typeof remote.id !== "string" ||
+    !isUuidShaped(remote.id) ||
     remote.user_id !== userId ||
     typeof remote.updated_at !== "string" ||
     !Number.isFinite(Date.parse(remote.updated_at))

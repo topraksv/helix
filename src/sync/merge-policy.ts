@@ -56,6 +56,16 @@ export function shouldApplyServerAck(pushedOutboxId: number, newestOutboxId: num
   return newestOutboxId == null || newestOutboxId <= pushedOutboxId;
 }
 
+/** Every synced row id is UUID-shaped (UUIDv7 or the deterministic v8-nibble
+ *  form). Pull embeds the last row's id into a PostgREST `.or()` filter string
+ *  as the keyset cursor, so an id containing filter grammar (`,`, `(`, `)`)
+ *  must never get that far — validate the shape, not just `typeof`. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuidShaped(id: unknown): id is string {
+  return typeof id === "string" && UUID_SHAPE.test(id);
+}
+
 /** Corrupt local timestamps must not make a valid server row lose forever. */
 export function remoteWinsLww(localUpdatedAt: string | null, remoteUpdatedAt: string): boolean {
   const remote = Date.parse(remoteUpdatedAt);

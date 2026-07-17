@@ -32,8 +32,9 @@ export default function AccountSecurityScreen() {
     if (emailBusy || !emailValid || emailPassword.length < 6) return;
     setEmailBusy(true);
     try {
-      if (!(await verifyPassword(emailPassword))) {
-        void appAlert(tr.account.wrongPassword, tr.errors.title);
+      const verifyError = await verifyPassword(emailPassword);
+      if (verifyError) {
+        void appAlert(verifyError, tr.errors.title);
         return;
       }
       const err = await changeEmail(newEmail.trim());
@@ -53,8 +54,9 @@ export default function AccountSecurityScreen() {
     if (pwBusy || currentPassword.length < 6 || newPassword.length < 6) return;
     setPwBusy(true);
     try {
-      if (!(await verifyPassword(currentPassword))) {
-        void appAlert(tr.account.wrongPassword, tr.errors.title);
+      const verifyError = await verifyPassword(currentPassword);
+      if (verifyError) {
+        void appAlert(verifyError, tr.errors.title);
         return;
       }
       const err = await changePassword(newPassword);
