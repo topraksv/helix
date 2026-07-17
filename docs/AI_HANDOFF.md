@@ -9,25 +9,24 @@ lags behind them.
 
 - Updated: 2026-07-17 (Europe/Istanbul)
 - Branch: `main`
-- Completed package base: `b1d886a`; application commit: `5ac5205`
+- Completed package base: `9840b08`; application commit: `00eb8f3`
 - Toolchain used: Node 22
 - Verification: typecheck, full tests, zero-warning Expo lint, 49-route static
-  web export, headless CSP smoke against the export
+  web export, headless sign-in smoke, and a full protected-flow smoke on a
+  local-only build (onboarding → dashboard → Mali Tablo → back)
 - Test baseline: 24 files, 216 tests passing
 
 ## Active working tree
 
-A four-package audit remediation is underway (Claude, from the 2026-07-17
-repository audit). Packages 1 (hygiene/docs, `98fa44f`), 2 (data-layer and web
-hardening, `0692027`) and 3 (liveliness, `5ac5205`) have shipped. **Pending
-manual step: Supabase migration 5 is committed but NOT applied** —
-`supabase db push --linked` was permission-blocked in the acting session; run
+The four-package 2026-07-17 audit remediation is COMPLETE: 1 hygiene/docs
+(`98fa44f`), 2 data-layer/web hardening (`0692027`), 3 liveliness (`5ac5205`),
+4 scale (`00eb8f3`). All shipped to web + mobile OTA. **One manual step
+remains: Supabase migration 5 is committed but NOT applied** —
+`supabase db push --linked` was permission-blocked for the acting agent; run
 it, then confirm `supabase migration list --linked` shows 1–5 on both sides
-and `supabase db lint --linked` stays clean. Remaining queued package:
-(4) scale — shared live-query layer, typed SQL helpers, iOS data-protection
-entitlement. Explicitly excluded by the user: calculator-tab IA change and
-Supabase captcha/signup panel settings. Always re-check `git status`; Git
-remains authoritative.
+and `supabase db lint --linked` stays clean. Explicitly excluded by the user:
+calculator-tab IA change and Supabase captcha/signup panel settings. Always
+re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -47,16 +46,18 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-No verified code finding from this package remains open. The installed app
-still needs a human visual/gesture confirmation for the optically centred back
-control, Mali Tablo entry-point drag reorder and exact single-line high-value
-total; this session had neither a controllable browser nor an available local
-simulator. Accepted constraints: the 17
-moderate `npm audit --omit=dev` findings are in Expo SDK 54's build/config chain
-and only offer a breaking SDK 57 fix; SDK 54 remains required by the installed
-App Store Expo Go line. The `expo`/`expo-updates` patch alignment needs the next
-local native iOS build before it exists in the binary. Physical haptic, system
-permission and protected-data visual passes still require the installed device.
+From the 2026-07-17 audit, every accepted finding is remediated except:
+`supabase db push` for migration 5 (manual, see above); the iOS Data
+Protection entitlement and the `expo`/`expo-updates` patch alignment both
+activate only at the next local `npx expo run:ios --device` build; README
+screenshots need an authenticated device/browser session to capture. Known
+minor leftover: five `as never` casts in UI generics (`ChipPicker`/`Select`
+variance in three screens + a drizzle `enumValues.includes` check) — cosmetic,
+not the SQL boundary. User-excluded: calculator-tab IA, Supabase captcha.
+Accepted constraints unchanged: the 17 moderate `npm audit --omit=dev`
+findings sit in Expo SDK 54's build/config chain and only clear with the
+breaking SDK 57 bump; physical haptic/gesture/visual passes still require the
+installed device.
 
 ## Handoff update contract
 
@@ -81,6 +82,36 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-17 — Claude (audit package 4: scale and final hardening)
+
+- Base `9840b08`, branch `main`. Fourth and final audit-remediation package.
+- Shared live queries: the eleven identity-stable hooks (persons, categories,
+  transactions, settings…) now run through one reference-counted entry per
+  (hook, user) — first subscriber creates it, last one tears it down, same
+  debounce/backoff/retry semantics as `useLive`, which remains for parametric
+  month windows. Before this, every mounted tab screen re-executed its own
+  copy of the same full-table scan on every write.
+- Removed all 90 `as never[]` SQL parameter casts after an experiment proved
+  them cargo-cult (plain arrays typecheck). The two genuine dynamic-row
+  boundaries (`writeRows` upsert args, pull-merge upsert args) each carry one
+  narrow, documented `SQLiteBindValue` conversion. Five unrelated `as never`
+  UI-generics casts remain (noted in the backlog).
+- iOS `NSFileProtectionComplete` entitlement added to `app.json` (rationale
+  and rollback trigger recorded in AGENTS.md); verified it resolves in the
+  prebuild config. Activates at the next local `npx expo run:ios --device`.
+- Checks: typecheck, 24 files/216 tests, zero-warning lint, 49-route export,
+  sign-in smoke on the normal build. NEW: a protected-flow smoke on a
+  local-only (env-less, cache-cleared) export — headless chromium completed
+  onboarding via "Kaydet ve Kullanmaya Başla", reached the dashboard (shared
+  hooks + ledger + hero), skipped the first-run tour, switched to Mali Tablo
+  and back; zero CSP violations, zero page errors. This is the first
+  authenticated-surface browser pass recorded in this repo.
+- Shipped as `00eb8f3`, pushed; Pages redeploys. EAS `preview` update group
+  `6d7b90e6-f511-48f8-9a6e-bbc9c90e5182` published (iOS
+  `019f7014-2d9b-70f7-a9e0-2a02ac2548e5`, Android
+  `019f7014-2d9b-76b4-a5b5-b4780f574c11`, runtime `1.0.0`); applies on the
+  next full close + reopen.
 
 ### 2026-07-17 — Claude (audit package 3: liveliness and perceived stability)
 
@@ -220,61 +251,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   `019f6bba-2c65-7ea8-a6c9-96d891155e83`, Android
   `019f6bba-2c65-797c-91d3-e87e9f8fec8e`). No native rebuild was required; the
   phone applies it after a complete close and reopen.
-
-### 2026-07-16 — Codex (six UX/UI regressions, verified completion)
-
-- Base `2933e27`, branch `main`. There were no staged changes; the only initial
-  unstaged file was Claude's Hermes-safe compact-money formatter in
-  `src/domain/money.ts`. It was understood and retained rather than reset.
-- Replaced the visible transaction-card heading/accessibility label with the
-  single requested **İade** control, while presentation badges now distinguish
-  **Gider iadesi**, **Gelir geri ödemesi** and **Yatırımdan çekim**. Descriptions
-  state the exact balance and category effect; no "Normal" choice remains.
-- Rebuilt `HeaderBackButton` as one fixed 82×44 centred control with a common
-  icon/text line box. The existing deterministic `navigateBack` fallbacks and
-  navigation tests remain unchanged.
-- Confirmed ordinary new transactions already defaulted to today in `27da3db`.
-  Fixed the remaining quick-cell bug: typing an arithmetic expression no longer
-  marks a current-day entry as a dateless aggregate. The shared
-  `dateForMonthEntry` rule uses today for the current month; selecting another
-  month remains explicit historical/future intent.
-- The Columns Editor failure was an async live-query race, not a second drag
-  implementation: ending a drag re-enabled the parent scroll, recreated the
-  filtered source array and briefly restored its old order before `writeRows`
-  became observable. `DraggableList` now holds the pending key order until the
-  source acknowledges it, rolls back with error feedback on write failure, and
-  uses a non-collapsible 44×44 grip in both Settings and the modal. Visible arrow
-  buttons remain removed; screen-reader increment/decrement actions remain as
-  the required non-visual accessibility path.
-- Live quote gaps had two causes. `27da3db` correctly retained unchanged
-  symbols during active feed events, but transient `disconnect`/`connect_error`
-  events still erased every verified quote immediately. Short reconnects now
-  retain quotes without extending the original 60-second stale deadline.
-- Large amounts accept legitimate billion-scale values up to
-  `₺999.999.999.999,99`. Over-limit pasted/typed values are no longer silently
-  truncated into a different valid amount; they remain visible, fail parsing,
-  disable saving and show the exact supported limit. Fixed-width table/chart
-  cells use deterministic Hermes/web `M`/`B` formatting from 1 million upward;
-  detail/input surfaces retain the exact full value. The dashboard hero steps
-  down further at the longest supported value.
-- Cleanup was intentionally narrow: removed the compact `Intl` formatter
-  map/factory in favour of one bounded number formatter, refreshed stale
-  comments and ran TypeScript's strict unused-symbol scan. No additional dead
-  production code was found. Accessibility reorder actions and calculator digit
-  limits were verified as live dependencies and retained.
-- Checks: `npm run typecheck`, `npx tsc --noEmit --noUnusedLocals
-  --noUnusedParameters`, `npm test` (24 files/214 tests), `npx expo lint`,
-  `git diff --check` and the 49-route static web export all passed. Focused tests
-  cover current/other-month quick-entry dates, M/B boundaries, non-silent
-  over-limit rejection and reconnect expiry. A live read-only socket probe
-  received valid `ALTIN`, `CEYREK_YENI`, `ATA_YENI`, `USDTRY` and `EURTRY`.
-  Browser discovery returned no controllable profile and no local simulator was
-  available, so no pixel-perfect or physical-gesture pass is claimed.
-- Shipped as `929fb59`, pushed to `main`; GitHub Pages run `29512226065`
-  completed successfully and the production root/Sign In/Transaction/Columns
-  Editor routes returned HTTP 200. After two transient Google asset-storage DNS
-  failures, EAS `preview` update group
-  `00cfa828-fb32-426b-9cf2-990938af5248` published for iOS and Android on
-  runtime `1.0.0` (iOS `019f6b98-8e90-7950-b1a9-2f79a8bdc139`, Android
-  `019f6b98-8e90-7dad-b12a-6c70c2bb72c3`). No native rebuild was required; the
-  phone applies the OTA after fully closing and reopening the app.
