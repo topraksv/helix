@@ -22,6 +22,10 @@ At the end of every completed task, the acting agent must refresh
 files changed, verification performed, deployment/OTA state, decisions, and
 unresolved risks. (A file cannot name the hash of the commit that contains
 itself; `git log` is always the authority for the resulting HEAD.)
+`Recent handoffs` keeps at most the **last 5** entries; when adding a sixth,
+move the oldest into `docs/handoffs/<year-month>.md`. The handoff file is read
+in full at the start of every session by every agent, so it must stay small —
+Git history owns the complete chronology.
 Update this `AGENTS.md` whenever a durable architecture invariant, toolchain
 requirement, design rule, hard-won lesson, or shipping procedure changes. Keep
 `CLAUDE.md` aligned with the same protocol, but do not duplicate the full
@@ -44,6 +48,9 @@ agent-to-agent communication that did not occur.
   `expo-modules-core/src/index.ts`). CI is pinned to Node 22.
 - `expo-sharing` is **not** in `app.json` plugins (SDK 54 ships no config
   plugin for it; leaving it there breaks `expo export`).
+- `xlsx` is pinned to SheetJS's official CDN tarball (the npm registry version
+  lags). `npm audit` and Dependabot do **not** see it — check for a newer
+  release manually whenever import code is touched.
 - iOS on a real phone: `npx expo run:ios --device` (free Apple ID, re-sign
   every 7 days). Expo Go can't open the project across SDK lines reliably.
 
@@ -207,9 +214,10 @@ the old indigo fintech palette 2026-07). Keep it; don't regress to indigo.
   hexes now live in `src/ui/theme.ts`: clay/terracotta `#d97757` (primary, both
   themes) over a warm gray ramp — light bg cream `#faf9f5`, white surfaces
   `#ffffff`, alt `#f0eee6`, border `#e8e6dc`, ink `#1a1918`; dark bg `#141413`,
-  surface `#262624`, alt `#30302e`, border `#3d3d3a`, text `#faf9f5`. Semantics:
-  positive olive (`#6c8352`/`#93a382`), negative brick (`#bf4d43`/`#cf5341`),
-  warning amber, focus blue `#2c84db`. Chart series in `src/ui/charts.tsx`
+  surface `#262624`, alt `#30302e`, border `#3d3d3a`, text `#faf9f5`. Semantics
+  (positive green, negative brick, warning amber, focus blue): exact hexes live
+  ONLY in `src/ui/theme.ts` — copies written here drifted from the code once
+  already, so cite the file instead of restating values. Chart series in `src/ui/charts.tsx`
   (index 1 = income/sage, index 5 = expense/brick) are a separate validated
   categorical set. (Previous linen/`#C9623F` palette retired 2026-07-10 for the
   Claude-token clay/warm-gray system; the *fonts* below are unchanged — Anthropic

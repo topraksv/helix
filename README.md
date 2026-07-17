@@ -17,7 +17,7 @@ for the network.
 [![React Native 0.81](https://img.shields.io/badge/React%20Native-0.81-1a1918?logo=react&logoColor=61DAFB)](https://reactnative.dev)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-1a1918?logo=typescript&logoColor=3178C6)](https://www.typescriptlang.org)
 [![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-1a1918?logo=supabase&logoColor=3FCF8E)](https://supabase.com)
-[![209 tests passing](https://img.shields.io/badge/tests-209%20passing-6c8352)](tests/)
+[![Tested with Vitest](https://img.shields.io/badge/tests-vitest-1a1918?logo=vitest&logoColor=729B1B)](tests/)
 [![Proprietary](https://img.shields.io/badge/license-proprietary-d97757)](#license)
 
 *iOS + Web from a single codebase.*
@@ -81,6 +81,25 @@ spreadsheet (months, running balances, a category grid) but makes the numbers
 works in airplane mode, and the database on the device is the single source of
 truth.
 
+```mermaid
+flowchart LR
+  UI["UI · expo-router"] --> Repo["repo facade"]
+  Repo --> DB[("SQLite\nsource of truth")]
+  DB -- "outbox" --> Push["push"]
+  Push --> SB[("Supabase\nRLS + server updated_at")]
+  SB -- "pull + LWW merge" --> DB
+```
+
+Three guarantees hold everywhere, by construction:
+
+- **Money is exact.** Every amount is an integer in minor units (kuruş) — no
+  floats in storage or arithmetic; a golden dataset in the test suite chains
+  the balances against the original spreadsheet.
+- **Nothing is ever hard-deleted.** Deletes are synced tombstones, which is
+  also what powers undo across devices.
+- **The server owns time.** `updated_at` is normalized server-side, so
+  last-write-wins merges never trust a device clock.
+
 | Layer | Choice |
 |---|---|
 | **App** | [Expo SDK 54](https://docs.expo.dev/versions/v54.0.0/) + expo-router, React Native 0.81, React 19, TypeScript strict |
@@ -89,7 +108,7 @@ truth.
 | **Security** | Row-Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, parameterized SQL, secrets only in `.env` / CI |
 | **Money** | Integer kuruş everywhere — no floats. FX: source-dated TCMB `today.xml` → Frankfurter fallback → user-scoped cache; fresh-only gold/FX quotes from a read-only live feed |
 | **Tables** | One cross-platform sticky-column matrix ([src/ui/sticky-table.tsx](src/ui/sticky-table.tsx)) — pinned first column + an optional pinned extra column, months-as-rows/columns pivot, identical on web and iOS |
-| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — covered by 209 unit tests, including a golden chain validated against the original spreadsheet |
+| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — fully unit-tested (`npm test`), including a golden chain validated against the original spreadsheet |
 
 ## The look
 
@@ -101,8 +120,11 @@ well-set page.
 ![Cream](https://img.shields.io/badge/cream-faf9f5?style=flat-square&labelColor=faf9f5)
 ![Ink](https://img.shields.io/badge/ink-1a1918?style=flat-square&labelColor=1a1918)
 ![Clay](https://img.shields.io/badge/clay-d97757?style=flat-square&labelColor=d97757)
-![Olive](https://img.shields.io/badge/olive-6c8352?style=flat-square&labelColor=6c8352)
 ![Warm_gray](https://img.shields.io/badge/warm_gray-f0eee6?style=flat-square&labelColor=f0eee6)
+
+The canonical tokens (including the semantic green/brick/amber ramp) live in
+[`src/ui/theme.ts`](src/ui/theme.ts) — the code, not this file, is the source
+of truth for exact values.
 
 - **Type** — [Fraunces](https://fonts.google.com/specimen/Fraunces) for headings
   and figures, [Inter](https://fonts.google.com/specimen/Inter) for everything
@@ -140,7 +162,7 @@ No Supabase project? Leave `.env` empty and Helix runs fully local — no
 account, no network, nothing leaves the device.
 
 ```bash
-npm test                # 209 unit tests
+npm test                # unit tests (vitest)
 npm run typecheck       # strict TypeScript
 npx expo lint           # lint
 ```
@@ -148,8 +170,11 @@ npx expo lint           # lint
 ### Connect Supabase (optional, for sync)
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. Run [the initial migration](supabase/migrations/00000000000001_initial_schema.sql) in the
-   SQL Editor.
+2. Apply **every** migration in [`supabase/migrations/`](supabase/migrations/)
+   in filename order — run each file in the SQL Editor, or link the project
+   once and push them all: `supabase link && supabase db push`. (Running only
+   the first file leaves the schema behind the app: sync pushes will fail on
+   missing columns and account deletion will lack its RPC.)
 3. Copy the project URL and **publishable (anon)** key from **Settings → API**
    into `.env` as `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
 4. For CI only, add two repo secrets under **Settings → Secrets and variables →
@@ -190,10 +215,15 @@ manual test scenarios for the critical flows are in [docs/TESTING.md](docs/TESTI
 
 ## Roadmap
 
-Helix already handles the day-to-day. On the horizon:
+Helix already handles the day-to-day. On the horizon, drawn from the real
+backlog:
 
 - Budget alerts and a calendar view.
 - Home-screen widgets and richer web notifications.
+- Weekly recurring-income cycles (today rules are monthly/yearly).
+- Field-level merge for concurrent edits (today: row-level last-write-wins).
+- Encrypted-at-rest local database and a performance-profiling pass.
+- Expo SDK upgrade once the installed-build line moves past SDK 54.
 
 ## License
 

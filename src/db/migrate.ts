@@ -1,8 +1,10 @@
 /**
- * Async migration runner over the drizzle-kit journal. Uses the exact
- * bookkeeping of drizzle's own migrator (`__drizzle_migrations`, compared by
- * the journal's `when` timestamp) so installs created by the previous sync
- * migrator continue seamlessly.
+ * Async migration runner over the drizzle-kit journal. Uses the same table
+ * and timestamp bookkeeping as drizzle's own migrator (`__drizzle_migrations`,
+ * compared by the journal's `when`) so installs created by the previous sync
+ * migrator continue seamlessly. The `hash` column exists only for schema
+ * compatibility with drizzle's migrator and is intentionally left empty —
+ * applied-migration content is never re-verified against it.
  */
 
 import { getSqliteAsync, withTransaction } from "./client";

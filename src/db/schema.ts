@@ -31,7 +31,7 @@ export const paymentSources = sqliteTable("payment_sources", {
   }).notNull(),
   personId: text("person_id").notNull(),
   dueDay: integer("due_day"),
-  statementDay: integer("statement_day"), // reserved for Faz 2 statement cycles
+  statementDay: integer("statement_day"), // card cut-off day; drives credit_card_statements periods
   color: text("color"),
   logoSource: text("logo_source", { enum: ["brand", "favicon", "manual", "initials"] })
     .notNull()

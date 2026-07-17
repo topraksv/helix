@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "author": "Ömer Toprak Şavlı",
   "license": "UNLICENSED",
+  "engines": {
+    "node": "^22"
+  },
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
