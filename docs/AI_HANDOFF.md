@@ -18,15 +18,16 @@ lags behind them.
 
 ## Active working tree
 
-The four-package 2026-07-17 audit remediation is COMPLETE: 1 hygiene/docs
-(`98fa44f`), 2 data-layer/web hardening (`0692027`), 3 liveliness (`5ac5205`),
-4 scale (`00eb8f3`). All shipped to web + mobile OTA. **One manual step
-remains: Supabase migration 5 is committed but NOT applied** —
-`supabase db push --linked` was permission-blocked for the acting agent; run
-it, then confirm `supabase migration list --linked` shows 1–5 on both sides
-and `supabase db lint --linked` stays clean. Explicitly excluded by the user:
-calculator-tab IA change and Supabase captcha/signup panel settings. Always
-re-check `git status`; Git remains authoritative.
+The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
+1 hygiene/docs (`98fa44f`), 2 data-layer/web hardening (`0692027`),
+3 liveliness (`5ac5205`), 4 scale (`00eb8f3`) — web + mobile OTA. Supabase
+migration 5 was applied by the user via `supabase db push` and independently
+verified by Claude afterwards: `migration list --linked` shows 1–5 identical
+on both sides and `db lint --linked` reports no errors. (The partial unique
+index on cell_notes creating successfully also proves the dedup left no
+conflicting live rows.) No application work is in progress. Explicitly
+excluded by the user: calculator-tab IA change and Supabase captcha/signup
+panel settings. Always re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -46,14 +47,14 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-From the 2026-07-17 audit, every accepted finding is remediated except:
-`supabase db push` for migration 5 (manual, see above); the iOS Data
-Protection entitlement and the `expo`/`expo-updates` patch alignment both
-activate only at the next local `npx expo run:ios --device` build; README
-screenshots need an authenticated device/browser session to capture. Known
-minor leftover: five `as never` casts in UI generics (`ChipPicker`/`Select`
-variance in three screens + a drizzle `enumValues.includes` check) — cosmetic,
-not the SQL boundary. User-excluded: calculator-tab IA, Supabase captcha.
+From the 2026-07-17 audit, every accepted finding is remediated and migration
+5 is applied + verified. Still pending by nature: the iOS Data Protection
+entitlement and the `expo`/`expo-updates` patch alignment both activate only
+at the next local `npx expo run:ios --device` build; README screenshots need
+an authenticated device/browser session to capture. Known minor leftover:
+five `as never` casts in UI generics (`ChipPicker`/`Select` variance in three
+screens + a drizzle `enumValues.includes` check) — cosmetic, not the SQL
+boundary. User-excluded: calculator-tab IA, Supabase captcha.
 Accepted constraints unchanged: the 17 moderate `npm audit --omit=dev`
 findings sit in Expo SDK 54's build/config chain and only clear with the
 breaking SDK 57 bump; physical haptic/gesture/visual passes still require the
@@ -112,6 +113,12 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   `019f7014-2d9b-70f7-a9e0-2a02ac2548e5`, Android
   `019f7014-2d9b-76b4-a5b5-b4780f574c11`, runtime `1.0.0`); applies on the
   next full close + reopen.
+- Addendum (same day): the user ran `supabase db push` for migration 5;
+  Claude independently re-verified — `migration list --linked` 1–5 identical,
+  `db lint --linked` clean. `db dump` object inspection is unavailable
+  without Docker, but the transactional apply recording version 5 proves
+  every statement (including the cell_notes dedup + partial unique index)
+  succeeded. Production root probed 200 with the CSP meta in served HTML.
 
 ### 2026-07-17 — Claude (audit package 3: liveliness and perceived stability)
 
