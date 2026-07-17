@@ -9,6 +9,7 @@
  */
 
 import { getTableColumns } from "drizzle-orm";
+import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
 import { deterministicId, naturalKeys } from "./ids";
@@ -33,11 +34,11 @@ export async function resetLocalWorkspace(): Promise<void> {
   const sqlite = await getSqliteAsync();
   await withTransaction(async () => {
     for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-      await sqlite.runAsync(`DELETE FROM ${table}`, [] as never[]);
+      await sqlite.runAsync(`DELETE FROM ${table}`, []);
     }
-    await sqlite.runAsync(`DELETE FROM outbox`, [] as never[]);
-    await sqlite.runAsync(`DELETE FROM sync_dead_letters`, [] as never[]);
-    await sqlite.runAsync(`DELETE FROM sync_state`, [] as never[]);
+    await sqlite.runAsync(`DELETE FROM outbox`, []);
+    await sqlite.runAsync(`DELETE FROM sync_dead_letters`, []);
+    await sqlite.runAsync(`DELETE FROM sync_state`, []);
   });
 }
 
@@ -51,7 +52,7 @@ function toDbShape(table: SyncedTableName, row: Record<string, unknown>): Record
   return out;
 }
 
-function upsertSql(table: SyncedTableName, dbRow: Record<string, unknown>): { sql: string; args: unknown[] } {
+function upsertSql(table: SyncedTableName, dbRow: Record<string, unknown>): { sql: string; args: SQLiteBindValue[] } {
   const keys = Object.keys(dbRow);
   const placeholders = keys.map(() => "?").join(", ");
   const updates = keys
@@ -64,10 +65,13 @@ function upsertSql(table: SyncedTableName, dbRow: Record<string, unknown>): { sq
   };
 }
 
-function normalizeForSqlite(value: unknown): unknown {
+/** The one dynamic-row boundary where values arrive as `unknown` (drizzle-
+ *  shaped rows are string/number/null after this normalization) — the single
+ *  narrow cast that replaced the old blanket `as never[]` on every SQL call. */
+function normalizeForSqlite(value: unknown): SQLiteBindValue {
   if (typeof value === "boolean") return value ? 1 : 0;
   if (value === undefined) return null;
-  return value;
+  return value as SQLiteBindValue;
 }
 
 /**
@@ -105,7 +109,7 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
   await withTransaction(async () => {
     for (const { table, dbRow } of entries) {
       const { sql, args } = upsertSql(table, dbRow);
-      await sqlite.runAsync(sql, args as never[]);
+      await sqlite.runAsync(sql, args);
       // On an idempotency-key collision (two writes to the same row within the
       // same millisecond) the payload must be REPLACED, not ignored — otherwise
       // the stale first snapshot gets pushed and LWW echoes it back over the
@@ -114,7 +118,7 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
         `INSERT INTO outbox (table_name, row_id, op, payload, idempotency_key, created_at)
          VALUES (?, ?, 'upsert', ?, ?, ?)
          ON CONFLICT(idempotency_key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`,
-        [table, String(dbRow.id), JSON.stringify(dbRow), `${dbRow.id}:${dbRow.updated_at}`, nowIso()] as never[],
+        [table, String(dbRow.id), JSON.stringify(dbRow), `${dbRow.id}:${dbRow.updated_at}`, nowIso()],
       );
     }
   });
@@ -123,7 +127,7 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
 /** Rows still waiting to be pushed to the cloud (sign-out safety check). */
 export async function pendingOutboxCount(): Promise<number> {
   const sqlite = await getSqliteAsync();
-  const row = await sqlite.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM outbox`, [] as never[]);
+  const row = await sqlite.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM outbox`, []);
   return row?.n ?? 0;
 }
 
@@ -136,7 +140,7 @@ export async function softDelete(
   const sqlite = await getSqliteAsync();
   const previous = await sqlite.getFirstAsync<Record<string, unknown>>(
     `SELECT * FROM ${table} WHERE id = ? AND user_id = ?`,
-    [id, userId] as never[],
+    [id, userId],
   );
   if (!previous) return null;
   const row = { ...fromDbShape(table, previous), deletedAt: nowIso() };
@@ -168,7 +172,7 @@ export async function readSetting<T>(userId: string, key: string): Promise<T | n
   const sqlite = await getSqliteAsync();
   const row = await sqlite.getFirstAsync<{ value: string }>(
     `SELECT value FROM settings WHERE user_id = ? AND key = ? AND deleted_at IS NULL`,
-    [userId, key] as never[],
+    [userId, key],
   );
   if (!row) return null;
   try {

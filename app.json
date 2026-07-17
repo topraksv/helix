@@ -10,6 +10,9 @@
     "ios": {
       "bundleIdentifier": "com.toprak.helix",
       "supportsTablet": true,
+      "entitlements": {
+        "com.apple.developer.default-data-protection": "NSFileProtectionComplete"
+      },
       "infoPlist": {
         "NSFaceIDUsageDescription": "Finansal verilerinizi korumak için Face ID ile kilit açma kullanılır."
       }

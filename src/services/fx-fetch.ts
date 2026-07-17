@@ -85,7 +85,7 @@ export async function refreshRates(userId: string, signal?: AbortSignal): Promis
   const sqlite = await getSqliteAsync();
   const existingRows = await sqlite.getAllAsync<{ currency: string; rate_try: string; deleted_at: string | null }>(
     `SELECT currency, rate_try, deleted_at FROM fx_rates WHERE user_id = ? AND rate_date = ?`,
-    [userId, batch.rateDate] as never[],
+    [userId, batch.rateDate],
   );
   const existing = new Map(existingRows.map((row) => [row.currency, row]));
   const writes = [] as { table: "fx_rates"; row: Record<string, unknown> }[];
@@ -136,7 +136,7 @@ export async function loadRateCache(userId: string): Promise<void> {
   const rows = await sqlite.getAllAsync<{ currency: string; rate_date: string; rate_try: string }>(
     `SELECT currency, rate_date, rate_try FROM fx_rates
      WHERE user_id = ? AND deleted_at IS NULL ORDER BY rate_date DESC LIMIT 200`,
-    [userId] as never[],
+    [userId],
   );
   if (request !== cacheRequest) return;
   rateCacheUserId = userId;

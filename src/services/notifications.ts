@@ -99,12 +99,12 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
   }>(
     `SELECT due_date, amount_minor, currency, direction, kind, ref_id FROM expected_payments
      WHERE user_id = ? AND status = 'pending' AND due_date <= ? AND deleted_at IS NULL`,
-    [userId, horizonIso] as never[],
+    [userId, horizonIso],
   );
   const subNames = new Map(
     (await sqlite.getAllAsync<{ id: string; name: string }>(
       `SELECT id, name FROM subscriptions WHERE user_id = ? AND deleted_at IS NULL`,
-      [userId] as never[],
+      [userId],
     )).map(
       (s) => [s.id, s.name] as const,
     ),
@@ -113,7 +113,7 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
     (
       await sqlite.getAllAsync<{ id: string; name: string }>(
         `SELECT id, name FROM recurring_incomes WHERE user_id = ? AND deleted_at IS NULL`,
-        [userId] as never[],
+        [userId],
       )
     ).map((s) => [s.id, s.name] as const),
   );
@@ -140,7 +140,7 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
     `SELECT name, trial_end_date FROM subscriptions
      WHERE user_id = ? AND is_active = 1 AND deleted_at IS NULL
        AND trial_end_date IS NOT NULL AND trial_end_date BETWEEN ? AND ?`,
-    [userId, today, horizonIso] as never[],
+    [userId, today, horizonIso],
   );
   for (const t of trials) {
     planned.push({ date: t.trial_end_date, title: tr.notif.trialTitle, body: tr.notif.trialBody(t.name, dateLabel(t.trial_end_date)) });
@@ -153,7 +153,7 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
      WHERE t.user_id = ? AND t.deleted_at IS NULL AND ip.deleted_at IS NULL
        AND t.status = 'pending' AND t.installment_no = ip.installment_count
        AND t.effective_date BETWEEN ? AND ?`,
-    [userId, today, horizonIso] as never[],
+    [userId, today, horizonIso],
   );
   for (const f of finals) {
     planned.push({ date: f.effective_date, title: tr.notif.lastInstallmentTitle, body: tr.notif.lastInstallmentBody(f.title) });

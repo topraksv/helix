@@ -42,14 +42,14 @@ export async function upsertPaymentSource(userId: string, input: PaymentSourceIn
   const sqlite = await getSqliteAsync();
   const person = await sqlite.getFirstAsync<{ id: string }>(
     `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [input.personId, userId] as never[],
+    [input.personId, userId],
   );
   if (!person) throw new Error("Payment source owner does not exist");
   if (input.type === "credit_card" && !isValidCardCycle(input)) throw new CreditCardCycleRequiredError();
   const existing = input.id
     ? await sqlite.getFirstAsync<Record<string, unknown>>(
         `SELECT * FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-        [input.id, userId] as never[],
+        [input.id, userId],
       )
     : null;
   const id = input.id ?? newId();
@@ -85,7 +85,7 @@ export async function personReferenceUsage(userId: string, personId: string): Pr
        (SELECT COUNT(*) FROM transactions WHERE user_id = ? AND person_id = ? AND deleted_at IS NULL) AS transactions,
        (SELECT COUNT(*) FROM subscriptions WHERE user_id = ? AND person_id = ? AND deleted_at IS NULL) AS subscriptions,
        (SELECT COUNT(*) FROM recurring_incomes WHERE user_id = ? AND person_id = ? AND deleted_at IS NULL) AS recurringIncomes`,
-    [userId, personId, userId, personId, userId, personId, userId, personId, userId, personId] as never[],
+    [userId, personId, userId, personId, userId, personId, userId, personId, userId, personId],
   );
   const counts = row ?? { paymentSources: 0, installmentPlans: 0, transactions: 0, subscriptions: 0, recurringIncomes: 0 };
   return { ...counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0) };
@@ -99,7 +99,7 @@ export async function paymentSourceReferenceUsage(userId: string, sourceId: stri
        (SELECT COUNT(*) FROM installment_plans WHERE user_id = ? AND payment_source_id = ? AND kind = 'card_installment' AND deleted_at IS NULL) AS cardInstallmentPlans,
        (SELECT COUNT(*) FROM transactions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL) AS transactions,
        (SELECT COUNT(*) FROM subscriptions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL) AS subscriptions`,
-    [userId, sourceId, userId, sourceId, userId, sourceId, userId, sourceId] as never[],
+    [userId, sourceId, userId, sourceId, userId, sourceId, userId, sourceId],
   );
   const counts = row ?? { installmentPlans: 0, cardInstallmentPlans: 0, transactions: 0, subscriptions: 0 };
   return {
@@ -119,7 +119,7 @@ async function referenceUpdateRows(
   const sqlite = await getSqliteAsync();
   const rows = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM ${table} WHERE user_id = ? AND ${column} = ? AND deleted_at IS NULL`,
-    [userId, currentId] as never[],
+    [userId, currentId],
   );
   return rows.map((row) => ({ table, row: { ...fromDbShape(table, row), [field]: replacementId } }));
 }
@@ -130,7 +130,7 @@ export async function deleteUnreferencedPerson(userId: string, personId: string)
   const sqlite = await getSqliteAsync();
   const person = await sqlite.getFirstAsync<Record<string, unknown>>(
     `SELECT * FROM persons WHERE id = ? AND user_id = ? AND is_self = 0 AND deleted_at IS NULL`,
-    [personId, userId] as never[],
+    [personId, userId],
   );
   if (!person) return null;
   await writeRows(userId, [{ table: "persons", row: { ...fromDbShape("persons", person), deletedAt: nowIso() } }]);
@@ -143,11 +143,11 @@ export async function reassignAndDeletePerson(userId: string, personId: string, 
   const [person, replacement] = await Promise.all([
     sqlite.getFirstAsync<Record<string, unknown>>(
       `SELECT * FROM persons WHERE id = ? AND user_id = ? AND is_self = 0 AND deleted_at IS NULL`,
-      [personId, userId] as never[],
+      [personId, userId],
     ),
     sqlite.getFirstAsync<{ id: string }>(
       `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [replacementId, userId] as never[],
+      [replacementId, userId],
     ),
   ]);
   if (!person || !replacement) throw new Error("Person not found");
@@ -173,7 +173,7 @@ export async function deleteUnreferencedPaymentSource(userId: string, sourceId: 
   const sqlite = await getSqliteAsync();
   const source = await sqlite.getFirstAsync<Record<string, unknown>>(
     `SELECT * FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [sourceId, userId] as never[],
+    [sourceId, userId],
   );
   if (!source) return null;
   await writeRows(userId, [{ table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt: nowIso() } }]);
@@ -189,20 +189,20 @@ export async function reassignAndDeletePaymentSource(
   const sqlite = await getSqliteAsync();
   const source = await sqlite.getFirstAsync<Record<string, unknown>>(
     `SELECT * FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [sourceId, userId] as never[],
+    [sourceId, userId],
   );
   if (!source) return;
   let replacement: LivePaymentSource | null = null;
   if (replacementId) {
     replacement = await sqlite.getFirstAsync<LivePaymentSource>(
       `SELECT id, type, statement_day, due_day FROM payment_sources WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [replacementId, userId] as never[],
+      [replacementId, userId],
     );
     if (!replacement) throw new Error("Payment source not found");
   }
   const plans = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM installment_plans WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
-    [userId, sourceId] as never[],
+    [userId, sourceId],
   );
   const hasCardPlan = plans.some((plan) => plan.kind === "card_installment");
   const replacementCycle = { statementDay: replacement?.statement_day, dueDay: replacement?.due_day };
@@ -211,7 +211,7 @@ export async function reassignAndDeletePaymentSource(
   }
   const transactions = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
-    [userId, sourceId] as never[],
+    [userId, sourceId],
   );
   const oldStatementIds = [...new Set(
     transactions.map((transaction) => transaction.card_statement_id).filter((id): id is string => typeof id === "string"),
@@ -221,7 +221,7 @@ export async function reassignAndDeletePaymentSource(
     : await sqlite.getAllAsync<{ id: string; period_month: MonthKey }>(
         `SELECT id, period_month FROM credit_card_statements
          WHERE user_id = ? AND id IN (${oldStatementIds.map(() => "?").join(", ")})`,
-        [userId, ...oldStatementIds] as never[],
+        [userId, ...oldStatementIds],
       );
   const oldPeriodById = new Map(oldStatements.map((statement) => [statement.id, statement.period_month]));
   const statementWrites = new Map<string, RowWrite>();

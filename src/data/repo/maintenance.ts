@@ -20,7 +20,7 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
   const cards = await sqlite.getAllAsync<LivePaymentSource>(
     `SELECT id, type, statement_day, due_day FROM payment_sources
      WHERE user_id = ? AND type = 'credit_card' AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   for (const card of cards) {
     const cycle = { statementDay: card.statement_day, dueDay: card.due_day };
@@ -30,7 +30,7 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
        WHERE user_id = ? AND payment_source_id = ? AND type = 'expense'
          AND card_statement_id IS NULL AND is_aggregate = 0 AND deleted_at IS NULL
          AND (installment_plan_id IS NOT NULL OR purchase_date IS NOT NULL)`,
-      [userId, card.id] as never[],
+      [userId, card.id],
     );
     if (candidates.length === 0) continue;
     const periodByTx = new Map<string, CardStatementPeriod>();
@@ -87,7 +87,7 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
          SELECT 1 FROM transactions t
          WHERE t.user_id = cs.user_id AND t.card_statement_id = cs.id AND t.deleted_at IS NULL
        )`,
-    [userId] as never[],
+    [userId],
   );
   if (orphaned.length > 0) {
     await writeRows(
@@ -122,7 +122,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   // create two). Keep the oldest, remap references, tombstone the rest.
   const selves = await sqlite.getAllAsync<{ id: string }>(
     `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL ORDER BY created_at ASC`,
-    [userId] as never[],
+    [userId],
   );
   if (selves.length > 1) {
     const keepId = selves[0].id;
@@ -131,13 +131,13 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       for (const table of ["transactions", "payment_sources", "subscriptions", "recurring_incomes", "installment_plans"] as const) {
         const refs = await sqlite.getAllAsync<Record<string, unknown>>(
           `SELECT * FROM ${table} WHERE user_id = ? AND person_id = ?`,
-          [userId, dup.id] as never[],
+          [userId, dup.id],
         );
         repairWrites.push(...refs.map((row) => ({ table, row: { ...fromDbShape(table, row), personId: keepId } })));
       }
       const duplicate = await sqlite.getFirstAsync<Record<string, unknown>>(
         `SELECT * FROM persons WHERE id = ? AND user_id = ?`,
-        [dup.id, userId] as never[],
+        [dup.id, userId],
       );
       if (duplicate) repairWrites.push({ table: "persons", row: { ...fromDbShape("persons", duplicate), deletedAt: nowIso() } });
       if (repairWrites.length > 0) await writeRows(userId, repairWrites, false);
@@ -154,7 +154,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
      JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id
      WHERE t.user_id = ? AND t.deleted_at IS NULL
        AND t.type != 'transfer' AND t.type != c.kind`,
-    [userId] as never[],
+    [userId],
   );
   if (mismatched.length > 0) {
     await writeRows(
@@ -179,13 +179,13 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   // device. A user's own manually-created computed columns are untouched.
   const ccRemoved = await sqlite.getAllAsync<{ value: string }>(
     `SELECT value FROM settings WHERE user_id = ? AND key = 'cc_column_removed' AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   if (ccRemoved.length === 0) {
     const ccId = await deterministicId(naturalKeys.ccColumn(userId));
     const live = await sqlite.getAllAsync<{ id: string }>(
       `SELECT id FROM computed_columns WHERE user_id = ? AND id = ? AND deleted_at IS NULL`,
-      [userId, ccId] as never[],
+      [userId, ccId],
     );
     if (live.length > 0) await softDelete(userId, "computed_columns", ccId);
     await writeSetting(userId, "cc_column_removed", true);
@@ -201,7 +201,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   // 1) §2.7 — pending transactions whose effective date arrived become realized.
   const due = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions WHERE user_id = ? AND status = 'pending' AND effective_date <= ? AND deleted_at IS NULL`,
-    [userId, today] as never[],
+    [userId, today],
   );
   if (due.length > 0) {
     await writeRows(
@@ -216,13 +216,13 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     `SELECT s.*, p.is_self FROM subscriptions s
      JOIN persons p ON p.id = s.person_id AND p.user_id = s.user_id AND p.deleted_at IS NULL
      WHERE s.user_id = ? AND s.deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   const incomes = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT r.*, p.is_self FROM recurring_incomes r
      JOIN persons p ON p.id = r.person_id AND p.user_id = r.user_id AND p.deleted_at IS NULL
      WHERE r.user_id = ? AND r.deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   // Older builds generated dashboard obligations for watch-only people. Those
   // rows never belong in the user's balance/forecast; clean pending/late
@@ -233,7 +233,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     const mutableExpected = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM expected_payments
        WHERE user_id = ? AND status IN ('pending', 'late') AND deleted_at IS NULL`,
-      [userId] as never[],
+      [userId],
     );
     const stale = mutableExpected.filter((row) =>
       (row.kind === "subscription" && watchedSubscriptions.has(row.ref_id as string)) ||
@@ -252,7 +252,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   }
   const existing = await sqlite.getAllAsync<{ kind: string; ref_id: string; due_date: string }>(
     `SELECT kind, ref_id, due_date FROM expected_payments WHERE user_id = ? AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   const drafts = generateExpected(
     subs.map((s) => ({
@@ -308,7 +308,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   // 3) Late marking + auto-pay confirmations.
   const pendingRows = await sqlite.getAllAsync<ExpectedRow>(
     `SELECT * FROM expected_payments WHERE user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   const pendingLike: ExpectedPaymentLike[] = pendingRows.map((r) => ({
     id: r.id,
@@ -325,7 +325,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   const selfPersonId = (
     await sqlite.getFirstAsync<{ id: string }>(
       `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL`,
-      [userId] as never[],
+      [userId],
     )
   )?.id;
   for (const item of findAutoConfirmable(pendingLike, autoPayIds, today)) {

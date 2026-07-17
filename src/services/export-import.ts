@@ -19,7 +19,7 @@ export async function buildExportBundle(userId: string): Promise<ExportBundle> {
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     tables[table] = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM ${table} WHERE user_id = ?`,
-      [userId] as never[],
+      [userId],
     );
   }
   return { version: EXPORT_VERSION, exportedAt: new Date().toISOString(), tables };
@@ -38,7 +38,7 @@ export async function buildTransactionsCsv(userId: string): Promise<string> {
      LEFT JOIN credit_card_statements cs ON cs.id = t.card_statement_id AND cs.deleted_at IS NULL
      WHERE t.user_id = ? AND t.deleted_at IS NULL
      ORDER BY t.effective_date`,
-    [userId] as never[],
+    [userId],
   );
   // User-entered text cells are sanitized against CSV formula injection
   // (a leading = + @ or tab would execute when opened in Excel).
@@ -105,7 +105,7 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     const localRows = await sqlite.getAllAsync<{ id: string; updated_at: string }>(
       `SELECT id, updated_at FROM ${table} WHERE user_id = ?`,
-      [userId] as never[],
+      [userId],
     );
     localState[table] = {
       updatedAt: new Map(localRows.map((row) => [row.id, Date.parse(row.updated_at)])),

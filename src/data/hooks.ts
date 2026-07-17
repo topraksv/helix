@@ -3,7 +3,7 @@
  * writes instantly (and to sync merges, via SQLite change events).
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
 import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
@@ -91,111 +91,210 @@ export function useUserId(): string {
   return userId;
 }
 
+/**
+ * Shared live queries for the identity-stable hooks below. Several screens
+ * stay mounted at once under the tab navigator, and before sharing each of
+ * them ran its OWN copy of the same query — one write re-executed the full
+ * transactions scan once per mounted screen. An entry is created by the first
+ * subscriber, reference-counted, and torn down with the last one (the
+ * `motion.ts` pattern); run/debounce/backoff semantics match `useLive`.
+ * Parametric queries (month windows) stay on `useLive` — caching per-argument
+ * results here would grow without bound.
+ */
+interface SharedLiveEntry {
+  state: LiveResult<unknown>;
+  listeners: Set<() => void>;
+  teardown: () => void;
+}
+
+const EMPTY_LIVE: LiveResult<never> = { data: [], updatedAt: undefined };
+const sharedLive = new Map<string, SharedLiveEntry>();
+
+function acquireSharedLive<T>(
+  key: string,
+  query: () => PromiseLike<T[]>,
+  tables: readonly string[],
+): SharedLiveEntry {
+  const existing = sharedLive.get(key);
+  if (existing) return existing;
+  let attempt = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let cancelled = false;
+  const entry: SharedLiveEntry = {
+    state: EMPTY_LIVE,
+    listeners: new Set(),
+    teardown: () => {
+      cancelled = true;
+      listener.remove();
+      if (timer) clearTimeout(timer);
+      sharedLive.delete(key);
+    },
+  };
+  const run = () => {
+    query().then(
+      (data) => {
+        if (cancelled) return;
+        attempt = 0;
+        entry.state = { data, updatedAt: new Date() };
+        for (const notify of entry.listeners) notify();
+      },
+      (error) => {
+        if (cancelled) return;
+        // Same retry-forever rationale as useLive below.
+        if (attempt < 3) devError("live-query", error);
+        const delay = Math.min(250 * 2 ** attempt++, 5000);
+        timer = setTimeout(run, delay);
+      },
+    );
+  };
+  const schedule = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(run, 60);
+  };
+  const listener = addDatabaseChangeListener((event) => {
+    if (event?.tableName && !tables.includes(event.tableName)) return;
+    schedule();
+  });
+  run();
+  sharedLive.set(key, entry);
+  return entry;
+}
+
+function useSharedLive<T>(key: string, query: () => PromiseLike<T[]>, tables: readonly string[]): LiveResult<T> {
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const entry = acquireSharedLive(key, query, tables);
+      entry.listeners.add(onChange);
+      return () => {
+        entry.listeners.delete(onChange);
+        if (entry.listeners.size === 0) entry.teardown();
+      };
+    },
+    // query/tables are fixed for a given key (first subscriber wins), so the
+    // key alone drives resubscription — mirroring useLive's deps contract.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [key],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    () => (sharedLive.get(key)?.state ?? EMPTY_LIVE) as LiveResult<T>,
+    () => EMPTY_LIVE as LiveResult<T>,
+  );
+}
+
 export function usePersons() {
   const userId = useUserId();
-  return useLive(
-    getDb().select().from(s.persons).where(and(eq(s.persons.userId, userId), isNull(s.persons.deletedAt))),
-    [userId],
+  return useSharedLive(
+    `persons:${userId}`,
+    () => getDb().select().from(s.persons).where(and(eq(s.persons.userId, userId), isNull(s.persons.deletedAt))),
     ["persons"],
   ).data;
 }
 
 export function useCategories() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.categories)
-      .where(and(eq(s.categories.userId, userId), isNull(s.categories.deletedAt)))
-      .orderBy(asc(s.categories.sortOrder)),
-    [userId],
+  return useSharedLive(
+    `categories:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.categories)
+        .where(and(eq(s.categories.userId, userId), isNull(s.categories.deletedAt)))
+        .orderBy(asc(s.categories.sortOrder)),
     ["categories"],
   ).data;
 }
 
 export function useSources() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.paymentSources)
-      .where(and(eq(s.paymentSources.userId, userId), isNull(s.paymentSources.deletedAt))),
-    [userId],
+  return useSharedLive(
+    `payment_sources:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.paymentSources)
+        .where(and(eq(s.paymentSources.userId, userId), isNull(s.paymentSources.deletedAt))),
     ["payment_sources"],
   ).data;
 }
 
 export function useSubscriptions() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.subscriptions)
-      .where(and(eq(s.subscriptions.userId, userId), isNull(s.subscriptions.deletedAt))),
-    [userId],
+  return useSharedLive(
+    `subscriptions:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.subscriptions)
+        .where(and(eq(s.subscriptions.userId, userId), isNull(s.subscriptions.deletedAt))),
     ["subscriptions"],
   ).data;
 }
 
 export function usePlans() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.installmentPlans)
-      .where(and(eq(s.installmentPlans.userId, userId), isNull(s.installmentPlans.deletedAt))),
-    [userId],
+  return useSharedLive(
+    `installment_plans:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.installmentPlans)
+        .where(and(eq(s.installmentPlans.userId, userId), isNull(s.installmentPlans.deletedAt))),
     ["installment_plans"],
   ).data;
 }
 
 export function useCreditCardStatements() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.creditCardStatements)
-      .where(and(eq(s.creditCardStatements.userId, userId), isNull(s.creditCardStatements.deletedAt)))
-      .orderBy(asc(s.creditCardStatements.dueDate)),
-    [userId],
+  return useSharedLive(
+    `credit_card_statements:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.creditCardStatements)
+        .where(and(eq(s.creditCardStatements.userId, userId), isNull(s.creditCardStatements.deletedAt)))
+        .orderBy(asc(s.creditCardStatements.dueDate)),
     ["credit_card_statements"],
   ).data;
 }
 
 export function useRecurringIncomes() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.recurringIncomes)
-      .where(and(eq(s.recurringIncomes.userId, userId), isNull(s.recurringIncomes.deletedAt))),
-    [userId],
+  return useSharedLive(
+    `recurring_incomes:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.recurringIncomes)
+        .where(and(eq(s.recurringIncomes.userId, userId), isNull(s.recurringIncomes.deletedAt))),
     ["recurring_incomes"],
   ).data;
 }
 
 export function useComputedColumns() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.computedColumns)
-      .where(and(eq(s.computedColumns.userId, userId), isNull(s.computedColumns.deletedAt)))
-      .orderBy(asc(s.computedColumns.sortOrder)),
-    [userId],
+  return useSharedLive(
+    `computed_columns:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.computedColumns)
+        .where(and(eq(s.computedColumns.userId, userId), isNull(s.computedColumns.deletedAt)))
+        .orderBy(asc(s.computedColumns.sortOrder)),
     ["computed_columns"],
   ).data;
 }
 
 export function usePendingExpected() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.expectedPayments)
-      .where(and(eq(s.expectedPayments.userId, userId), isNull(s.expectedPayments.deletedAt)))
-      .orderBy(asc(s.expectedPayments.dueDate)),
-    [userId],
+  return useSharedLive(
+    `expected_payments:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.expectedPayments)
+        .where(and(eq(s.expectedPayments.userId, userId), isNull(s.expectedPayments.deletedAt)))
+        .orderBy(asc(s.expectedPayments.dueDate)),
     ["expected_payments"],
   ).data;
 }
@@ -222,25 +321,27 @@ export function useTransactionsBetween(from: string, to: string) {
 
 export function useAllTransactions() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.transactions)
-      .where(and(eq(s.transactions.userId, userId), isNull(s.transactions.deletedAt)))
-      .orderBy(asc(s.transactions.effectiveDate)),
-    [userId],
+  return useSharedLive(
+    `transactions:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.transactions)
+        .where(and(eq(s.transactions.userId, userId), isNull(s.transactions.deletedAt)))
+        .orderBy(asc(s.transactions.effectiveDate)),
     ["transactions"],
   ).data;
 }
 
 export function useAdjustments() {
   const userId = useUserId();
-  return useLive(
-    getDb()
-      .select()
-      .from(s.balanceAdjustments)
-      .where(and(eq(s.balanceAdjustments.userId, userId), isNull(s.balanceAdjustments.deletedAt))),
-    [userId],
+  return useSharedLive(
+    `balance_adjustments:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.balanceAdjustments)
+        .where(and(eq(s.balanceAdjustments.userId, userId), isNull(s.balanceAdjustments.deletedAt))),
     ["balance_adjustments"],
   ).data;
 }
@@ -293,9 +394,9 @@ export function useAccountFrozen(userId: string | null): boolean | null {
 
 export function useSettingsMap(): Map<string, string> {
   const userId = useUserId();
-  const rows = useLive(
-    getDb().select().from(s.settings).where(and(eq(s.settings.userId, userId), isNull(s.settings.deletedAt))),
-    [userId],
+  const rows = useSharedLive(
+    `settings:${userId}`,
+    () => getDb().select().from(s.settings).where(and(eq(s.settings.userId, userId), isNull(s.settings.deletedAt))),
     ["settings"],
   ).data;
   return new Map(rows.map((r) => [r.key, r.value]));
