@@ -42,6 +42,8 @@ export const useMarkets = create<MarketsState>(() => ({ prices: {}, status: "idl
 let socket: Socket | null = null;
 let lastApplied = 0;
 let staleTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingFeed: Record<string, FeedEntry> | null = null;
+let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface FeedEntry {
   code: string;
@@ -80,10 +82,28 @@ export function markMarketConnectionInterrupted(): void {
   if (!staleTimer) markStaleAfterSilence();
 }
 
-function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
+/** Exported for tests (like `markMarketConnectionInterrupted`); production
+ *  callers are the socket handler and the trailing-throttle timer below. */
+export function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
   if (!MARKET_SYMBOLS.some(({ code }) => validEntry(data[code]))) return;
   markStaleAfterSilence();
-  if (now - lastApplied < THROTTLE_MS) return;
+  if (now - lastApplied < THROTTLE_MS) {
+    // Trailing edge, never a drop: the provider re-sends a symbol only when
+    // its price CHANGES, so a payload discarded inside the window would leave
+    // that symbol stale until its next move (minutes for slow symbols).
+    // Merge deferred payloads (later entries win) and apply once the window
+    // closes — the visible update rate stays throttled.
+    pendingFeed = { ...pendingFeed, ...data };
+    if (!throttleTimer) {
+      throttleTimer = setTimeout(() => {
+        throttleTimer = null;
+        const deferred = pendingFeed;
+        pendingFeed = null;
+        if (deferred) applyFeed(deferred);
+      }, THROTTLE_MS - (now - lastApplied));
+    }
+    return;
+  }
   lastApplied = now;
   // The provider only re-sends a symbol whose price CHANGED, so a stable quote (e.g.
   // gold overnight while USD keeps ticking) stops arriving even though it is
@@ -153,6 +173,11 @@ export function disconnectMarkets(): void {
     clearTimeout(staleTimer);
     staleTimer = null;
   }
+  if (throttleTimer) {
+    clearTimeout(throttleTimer);
+    throttleTimer = null;
+  }
+  pendingFeed = null;
   if (socket) {
     socket.removeAllListeners();
     socket.disconnect();

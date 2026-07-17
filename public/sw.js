@@ -37,7 +37,25 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          caches.open(CACHE).then((cache) => cache.put(SHELL, res.clone())).catch(() => {});
+          caches
+            .open(CACHE)
+            .then(async (cache) => {
+              await cache.put(SHELL, res.clone());
+              // Prune: content-hashed asset names change every deploy and the
+              // old ones are never requested again, so without a cap the cache
+              // grows by one build per deploy, forever. We are online right
+              // now (this navigation fetch succeeded), so dropping stale
+              // assets is safe — live ones re-cache on their next request.
+              const keys = await cache.keys();
+              if (keys.length > 120) {
+                await Promise.all(
+                  keys
+                    .filter((cached) => new URL(cached.url).pathname !== SHELL)
+                    .map((cached) => cache.delete(cached)),
+                );
+              }
+            })
+            .catch(() => {});
           return res;
         })
         .catch(async () => {

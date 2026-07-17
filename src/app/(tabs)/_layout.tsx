@@ -5,18 +5,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Calculator, ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
 import { selectionTapIfChanged } from "../../ui/haptics";
-import { useTheme } from "../../ui/theme";
+import { TAB_BAR, tabBarHeight, useTheme } from "../../ui/theme";
 
 export default function TabsLayout() {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  // Mobile web reports no safe-area inset yet the label baseline still needs
-  // room, so reserve a floor on web; on native the device inset is enough.
+  // Metrics come from the shared TAB_BAR tokens (theme.ts) so overlays that
+  // must clear the bar (undo snackbar) can never drift from the real height.
   const isWeb = Platform.OS === "web";
-  const bottomPad = Math.max(insets.bottom, isWeb ? 14 : 8);
-  // Web clips descenders (ç/ğ) when the label line box hugs the item edge:
-  // give the bar extra height + an explicit line height so nothing is cut.
-  const barHeight = (isWeb ? 64 : 56) + bottomPad;
+  const bottomPad = Math.max(insets.bottom, isWeb ? TAB_BAR.webMinBottomInset : TAB_BAR.minBottomInset);
+  const barHeight = tabBarHeight(insets.bottom, isWeb);
   return (
     <Tabs
       screenListeners={({ navigation, route }) => ({

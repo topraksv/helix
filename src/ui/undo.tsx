@@ -1,10 +1,11 @@
 /** Undo snackbar (approved feature): shown after deletes, restores tombstoned rows. */
 
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { FadeIn } from "./components";
-import { radius, spacing, type, useTheme } from "./theme";
+import { overlayShadow, radius, spacing, tabBarHeight, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { haptic, selectionTap, type HapticKind } from "./haptics";
 
@@ -37,11 +38,15 @@ export const useUndo = create<UndoState>((set) => ({
 export function UndoSnackbar() {
   const { palette } = useTheme();
   const { message, onUndo, clear } = useUndo();
+  const insets = useSafeAreaInsets();
   if (!message) return null;
+  // Clear the real tab bar (shared TAB_BAR metrics), not a hardcoded offset
+  // that silently drifts when the bar changes.
+  const bottom = tabBarHeight(insets.bottom, Platform.OS === "web") + spacing.lg;
   return (
     <View
       pointerEvents="box-none"
-      style={{ position: "absolute", left: spacing.lg, right: spacing.lg, bottom: 96, alignItems: "center" }}
+      style={{ position: "absolute", left: spacing.lg, right: spacing.lg, bottom, alignItems: "center" }}
     ><FadeIn>
       <View
         style={{
@@ -52,10 +57,7 @@ export function UndoSnackbar() {
           borderRadius: radius.md,
           paddingVertical: spacing.md,
           paddingHorizontal: spacing.lg,
-          shadowColor: "#000",
-          shadowOpacity: 0.2,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 2 },
+          ...overlayShadow,
         }}
       >
         <Text style={[type.body, { color: palette.background }]}>{message}</Text>

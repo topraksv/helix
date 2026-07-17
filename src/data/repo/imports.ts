@@ -87,19 +87,26 @@ async function importBatchMap(userId: string): Promise<Map<number, ImportBatch>>
       [userId] as never[],
     );
     const importedPlanIds = new Set<string>();
-    for (const plan of plans) {
-      if (plan.monthly_amount_minor == null) continue;
-      const expectedId = await deterministicId(
-        naturalKeys.importInstallmentPlan(userId, plan.title, plan.monthly_amount_minor, plan.installment_count, plan.start_month),
-      );
-      if (expectedId !== plan.id) continue;
+    // The SHA-256 digests are independent — compute them in parallel instead
+    // of awaiting one per plan.
+    const expectedIds = await Promise.all(
+      plans.map((plan) =>
+        plan.monthly_amount_minor == null
+          ? null
+          : deterministicId(
+              naturalKeys.importInstallmentPlan(userId, plan.title, plan.monthly_amount_minor, plan.installment_count, plan.start_month),
+            ),
+      ),
+    );
+    plans.forEach((plan, index) => {
+      if (expectedIds[index] !== plan.id) return;
       importedPlanIds.add(plan.id);
       const startYear = yearOf(plan.start_month);
       const endYear = yearOf(addMonthsToKey(plan.start_month, plan.installment_count - 1));
       for (const [year, batch] of result) {
         if (year >= startYear && year <= endYear) batch.installmentPlans = [...new Set([...(batch.installmentPlans ?? []), plan.id])];
       }
-    }
+    });
     if (importedPlanIds.size > 0) {
       const generated = await sqlite.getAllAsync<{ id: string; installment_plan_id: string }>(
         `SELECT id, installment_plan_id FROM transactions

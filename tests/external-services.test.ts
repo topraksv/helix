@@ -3,7 +3,7 @@ import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { normalizeReminderDays, uniqueNotifications } from "../src/domain/notifications";
-import { disconnectMarkets, markMarketConnectionInterrupted, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../src/services/markets";
+import { applyFeed, disconnectMarkets, markMarketConnectionInterrupted, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../src/services/markets";
 
 afterEach(() => {
   disconnectMarkets();
@@ -94,6 +94,19 @@ describe("live market freshness", () => {
     expect(marketSellRateTry("EUR", now)).toBeNull();
     expect(marketSellRateTry("GBP", now)).toBeNull();
     useMarkets.setState({ prices: {}, status: "idle" });
+  });
+
+  it("defers a burst's newest quote to the trailing edge instead of dropping it", () => {
+    vi.useFakeTimers();
+    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t1" } }, 1_000_000);
+    expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_010);
+
+    // Inside the 3 s window: must not apply yet, must not be lost either.
+    applyFeed({ ALTIN: { code: "ALTIN", alis: "4005", satis: "4020", tarih: "t2" } }, 1_001_000);
+    expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_010);
+
+    vi.advanceTimersByTime(2_000); // window closes 3 s after the first apply
+    expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_020);
   });
 
   it("keeps verified prices through a brief reconnect but expires them after silence", () => {
