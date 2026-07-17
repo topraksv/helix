@@ -9,26 +9,25 @@ lags behind them.
 
 - Updated: 2026-07-17 (Europe/Istanbul)
 - Branch: `main`
-- Completed package base: `4e77a04`; application commit: `0692027`
+- Completed package base: `b1d886a`; application commit: `5ac5205`
 - Toolchain used: Node 22
 - Verification: typecheck, full tests, zero-warning Expo lint, 49-route static
   web export, headless CSP smoke against the export
-- Test baseline: 24 files, 215 tests passing
+- Test baseline: 24 files, 216 tests passing
 
 ## Active working tree
 
 A four-package audit remediation is underway (Claude, from the 2026-07-17
-repository audit). Packages 1 (hygiene/docs, `98fa44f`) and 2 (data-layer and
-web hardening, `0692027`) have shipped. **Pending manual step: Supabase
-migration 5 is committed but NOT applied** — `supabase db push --linked` was
-permission-blocked in the acting session; run it, then confirm
-`supabase migration list --linked` shows 1–5 on both sides and
-`supabase db lint --linked` stays clean. Remaining queued packages:
-(3) liveliness — markets trailing throttle, dashboard skeletons, theme-token
-leaks, service-worker cache pruning; (4) scale — shared live-query layer,
-typed SQL helpers, iOS data-protection entitlement. Explicitly excluded by the
-user: calculator-tab IA change and Supabase captcha/signup panel settings.
-Always re-check `git status`; Git remains authoritative.
+repository audit). Packages 1 (hygiene/docs, `98fa44f`), 2 (data-layer and web
+hardening, `0692027`) and 3 (liveliness, `5ac5205`) have shipped. **Pending
+manual step: Supabase migration 5 is committed but NOT applied** —
+`supabase db push --linked` was permission-blocked in the acting session; run
+it, then confirm `supabase migration list --linked` shows 1–5 on both sides
+and `supabase db lint --linked` stays clean. Remaining queued package:
+(4) scale — shared live-query layer, typed SQL helpers, iOS data-protection
+entitlement. Explicitly excluded by the user: calculator-tab IA change and
+Supabase captcha/signup panel settings. Always re-check `git status`; Git
+remains authoritative.
 
 ## Current architecture summary
 
@@ -82,6 +81,38 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-17 — Claude (audit package 3: liveliness and perceived stability)
+
+- Base `b1d886a`, branch `main`. Third audit-remediation package.
+- Markets: the 3 s throttle defers a burst payload to the trailing edge
+  (payloads merge, later entries win) instead of dropping it — the provider
+  re-sends a symbol only on price change, so a dropped payload froze that
+  symbol until its next move. Deferred state clears on disconnect; fake-timer
+  test added. The card's green dot now claims liveness only in "live" status.
+- Hooks: removed the dead `LiveResult.error` surface (zero consumers; the
+  promised retry affordance never existed). Retry-forever kept deliberately;
+  comments now match behavior. `updatedAt === undefined` is the documented
+  loading signal.
+- Dashboard: hero balance shows placeholder bars until the ledger loads (no
+  transient "₺0"), and the markets card renders full-height with per-symbol
+  dashes while connecting instead of popping in (CLS).
+- Theme: shared `TAB_BAR` metrics + `tabBarHeight()` now feed both the tab
+  layout and the undo snackbar (previously a drifting hardcoded `bottom: 96`);
+  new `overlayShadow` token replaces the snackbar's hand-rolled `#000` shadow;
+  markets column widths are named constants; sticky-table keyboard steps
+  derive from the real `rowHeight`/`cellWidth` props.
+- Imports: legacy batch-upgrade SHA-256 digests compute via `Promise.all`.
+  Service worker prunes cached assets above 120 entries during an online
+  navigation (content-hashed names grew the cache by one build per deploy).
+- Checks: typecheck, 24 files/216 tests, zero-warning lint, 49-route export,
+  headless smoke (sign-in reached, zero CSP violations, zero console errors).
+- Shipped as `5ac5205`, pushed; Pages redeploys. EAS `preview` update group
+  `85069d45-a2f1-4e85-b8bf-cc8c5c2d9059` published (iOS
+  `019f7006-acdf-77a7-a3e7-2f591d54b7e7`, Android
+  `019f7006-acdf-7c92-b7a3-cca4f389d55e`, runtime `1.0.0`); applies on the
+  next full close + reopen. Physical feel of the snackbar clearance and the
+  hero skeleton still deserve one installed-device glance.
 
 ### 2026-07-17 — Claude (audit package 2: data-layer and web hardening)
 
@@ -247,49 +278,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   runtime `1.0.0` (iOS `019f6b98-8e90-7950-b1a9-2f79a8bdc139`, Android
   `019f6b98-8e90-7dad-b12a-6c70c2bb72c3`). No native rebuild was required; the
   phone applies the OTA after fully closing and reopening the app.
-
-### 2026-07-16 — Claude (six reported UX/UI bugs, second pass)
-
-- Base `a5a2920`, branch `main`; changes are in the working tree, NOT committed.
-  These revise Codex's just-shipped first pass after the user reviewed it and
-  reported six concrete bugs; each edit was made on top of the current HEAD
-  files (verified: the stash re-applied cleanly with no conflict).
-- Fixes: (1) transaction form drops the confusing "normal/iade" segmented for a
-  single **İade** toggle with an in-card description (`transaction.tsx`, new
-  `tr.tx.refundToggleHint`, removed `entryEffect`/`normalEntryLabel`). (2)
-  `HeaderBackButton` centres the chevron+label on one optical line (icon boxed
-  to the label line-height, `includeFontPadding:false`). (3) New transactions
-  default to **today** (specific day, hits the balance) instead of month-only;
-  future/aggregate stay one explicit tap away. (4) Column reorder is drag-only —
-  the mobile arrows were removed, the `columns-editor` modal now sets
-  `gestureEnabled:false` (its swipe-dismiss was stealing the drag, which is why
-  it worked in the Settings stack but not the modal), and reorder moved to
-  screen-reader `accessibilityActions` on the grip; `DraggableList` lost the
-  now-dead `canMoveUp/canMoveDown`. (5) Live-market quotes no longer disappear
-  intermittently — a stable (unchanged) symbol keeps showing while the feed is
-  alive; only whole-feed silence for 60 s clears everything. (6) Amount ceiling
-  raised to ~1 trillion (`MAX_ABS_AMOUNT_MINOR`), input capped at
-  `MAX_AMOUNT_MAJOR_DIGITS`, and fixed-width table cells use the new
-  `formatMinorCompact` (locale `Mn`/`Mr`, threshold 1.000.000 TL so the widest
-  full value still fits a narrow cell — no `numberOfLines`, per the design
-  rules); `Amount` steps its font down for long strings so hero/row figures stay
-  one line without truncation or wrap.
-- Dead code removed: the reorder arrows and their `canMove*` API, the two unused
-  i18n keys, and now-unused imports (`Platform`, `ChevronUp/Down`, `formatMinor`
-  where fully replaced). Impact scan: the amount ceiling is centralized through
-  `MAX_ABS_AMOUNT_MINOR`/`MAX_AMOUNT_MAJOR_DIGITS` (calculator + backup already
-  follow it or use an independent safe-integer bound), so nothing else needed a
-  matching bump.
-- Checks: `npm run typecheck`, `npm test` (24 files/211, incl. new money
-  ceiling/compact/input-cap cases and three updated boundary tests) and
-  `npx expo lint` (exit 0) all pass; 49-route static web export clean. No
-  controllable browser this session → no new pixel-level visual pass claimed.
-- Shipped as `27da3db`, pushed to `main`; the `deploy-web` run `29507932867`
-  completed successfully and production Sign In returned HTTP 200. The mobile
-  OTA published to EAS `preview` (iOS + Android, runtime `1.0.0`) after several
-  transient `storage.googleapis.com` DNS `ENOTFOUND`/`REFUSED` upload failures;
-  the active update group is `cecc08c4-d1b0-4bd5-af58-4441cf12e2ef`. Post-review
-  fix: the first pass used `numberOfLines={1}` in table cells — a design-rule
-  violation — so it was removed and the compact threshold lowered to 1.000.000
-  TL so the widest full value still fits a narrow cell unaided. Phone applies
-  the OTA on the next cold start (fully close and reopen the app once).
