@@ -1,10 +1,17 @@
 /**
  * Local SQLite schema (Drizzle). Mirrors the Supabase Postgres schema in
- * supabase/migrations. Conventions:
+ * supabase/migrations for tables and columns. Conventions:
  * - ids are client-generated UUIDv7 strings
  * - money is integer minor units (kuruş), columns end with `_minor`
  * - dates are `YYYY-MM-DD`, months `YYYY-MM`, timestamps ISO-8601 UTC strings
  * - soft delete only: `deleted_at` tombstones (sync requires them)
+ *
+ * Uniqueness constraints (settings key, fx_rates currency/date, one live
+ * cell note per month/category) are DELIBERATELY not mirrored locally: they
+ * are enforced by deterministic ids at write time and by Postgres at push
+ * time. A local unique index would wedge pull merges — rows sharing one
+ * server `updated_at` arrive in id order, so a tombstone can land after the
+ * row that replaces it within the same page.
  */
 
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";

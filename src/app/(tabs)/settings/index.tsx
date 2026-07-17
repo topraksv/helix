@@ -158,8 +158,9 @@ export default function SettingsScreen() {
       danger: true,
     });
     if (pw == null) return false;
-    if (!(await verifyPassword(pw))) {
-      void appAlert(tr.account.wrongPassword, tr.errors.title);
+    const verifyError = await verifyPassword(pw);
+    if (verifyError) {
+      void appAlert(verifyError, tr.errors.title);
       return false;
     }
     return true;

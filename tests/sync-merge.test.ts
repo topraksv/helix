@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyOutboxBatch, remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
+import { classifyOutboxBatch, isUuidShaped, remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
 
 describe("sync merge policy", () => {
   it("keeps the newest valid event per row and quarantines invalid ownership", () => {
@@ -30,5 +30,15 @@ describe("sync merge policy", () => {
     expect(remoteWinsLww("not-a-date", "2026-07-15T10:00:00.000Z")).toBe(true);
     expect(remoteWinsLww("2099-01-01T00:00:00.000Z", "2026-07-15T10:00:00.000Z")).toBe(false);
     expect(remoteWinsLww(null, "2026-07-15T10:00:00.000Z")).toBe(true);
+  });
+
+  it("accepts only UUID-shaped row ids for the pull cursor", () => {
+    expect(isUuidShaped("019f6bba-2c65-7ea8-a6c9-96d891155e83")).toBe(true); // UUIDv7
+    expect(isUuidShaped("a1b2c3d4-e5f6-8a7b-8c9d-0e1f2a3b4c5d")).toBe(true); // deterministic v8 nibble
+    expect(isUuidShaped("A1B2C3D4-E5F6-8A7B-8C9D-0E1F2A3B4C5D")).toBe(true); // case-insensitive
+    expect(isUuidShaped("x),user_id.eq.attacker")).toBe(false); // filter-grammar injection
+    expect(isUuidShaped("019f6bba2c657ea8a6c996d891155e83")).toBe(false); // missing hyphens
+    expect(isUuidShaped(42)).toBe(false);
+    expect(isUuidShaped(null)).toBe(false);
   });
 });

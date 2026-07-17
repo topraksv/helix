@@ -25,6 +25,14 @@ import { tr } from "../i18n/tr";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "./recovery";
 
+/** Local brake on password verification: each attempt is a real sign-in, so
+ *  hammering it would trip Supabase's shared login rate limit for the whole
+ *  account. After 5 consecutive failures, verification pauses for 30 s. */
+const VERIFY_MAX_FAILURES = 5;
+const VERIFY_COOLDOWN_MS = 30_000;
+let verifyFailures = 0;
+let verifyBlockedUntil = 0;
+
 const LAST_USER_KEY = "helix.last_user_id";
 /** Owner of the data currently in the local DB (for account-switch detection). */
 const LOCAL_OWNER_KEY = "helix.local_owner";
@@ -99,8 +107,11 @@ interface SessionStore {
    *  user-facing error string when the cloud wipe could not complete. */
   deleteAccount: () => Promise<string | null>;
   /** Re-authenticate the current account to confirm a sensitive action
-   *  (delete / freeze / credential change). True when the password is correct. */
-  verifyPassword: (password: string) => Promise<boolean>;
+   *  (delete / freeze / credential change). Returns null when the password is
+   *  correct, otherwise a user-facing error — including a local cooldown
+   *  after repeated failures, since every attempt is a real sign-in that
+   *  counts against Supabase's shared login rate limit. */
+  verifyPassword: (password: string) => Promise<string | null>;
   /** Request an e-mail change (Supabase confirms via a link). Returns an error
    *  string, or null on success. */
   changeEmail: (newEmail: string) => Promise<string | null>;
@@ -359,13 +370,27 @@ export const useSession = create<SessionStore>((set, get) => ({
   verifyPassword: async (password) => {
     const supabase = getSupabase();
     const email = get().email;
-    if (!supabase || !email) return false;
+    if (!supabase || !email) return tr.errors.supabaseNotConfigured;
+    if (Date.now() < verifyBlockedUntil) return tr.auth.errRateLimit;
     // Re-authenticate with the current e-mail: a successful sign-in confirms
     // the password. It re-issues tokens for the same account (no identity
     // change), which is exactly the "recent login" Supabase wants before a
     // sensitive credential update.
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return !error;
+    if (!error) {
+      verifyFailures = 0;
+      return null;
+    }
+    verifyFailures += 1;
+    if (verifyFailures >= VERIFY_MAX_FAILURES) {
+      verifyFailures = 0;
+      verifyBlockedUntil = Date.now() + VERIFY_COOLDOWN_MS;
+    }
+    // Only the password was typed here (the e-mail is the fixed current
+    // account), so bad credentials get the precise message; other failures
+    // (network, provider rate limit) keep their own friendly mapping.
+    if (/invalid login credentials|invalid_credentials/i.test(error.message)) return tr.account.wrongPassword;
+    return friendlyAuthError(error.message);
   },
 
   changeEmail: async (newEmail) => {

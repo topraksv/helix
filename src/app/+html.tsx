@@ -12,9 +12,33 @@ export default function Root({ children }: PropsWithChildren) {
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+        {/* Defense-in-depth for the static Pages deployment (no server headers
+            there). connect-src pins the only legitimate network peers, which
+            blocks XSS exfiltration targets even though script-src must stay
+            'unsafe-inline' (the export emits per-build inline bootstrap
+            scripts, so hashes cannot be static). 'wasm-unsafe-eval' + worker
+            entries keep the sqlite WASM worker booting. */}
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content={[
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob: https://www.google.com",
+            "font-src 'self' data:",
+            "connect-src 'self' https://*.supabase.co https://api.frankfurter.dev wss://hrmsocketonly.haremaltin.com",
+            "worker-src 'self' blob:",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+          ].join("; ")}
+        />
+        {/* No maximum-scale: locking pinch-zoom fails WCAG 1.4.4 and blocks
+            low-vision users; the app's own scroll containers are unaffected
+            by page zoom. */}
         <meta
           name="viewport"
-          content="width=device-width, initial-scale=1, maximum-scale=1, shrink-to-fit=no, viewport-fit=cover"
+          content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
         {/* Tab title comes from expo-router <Head> in _layout.tsx. */}
         <meta
