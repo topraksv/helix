@@ -7,24 +7,25 @@ lags behind them.
 
 ## Last verified state
 
-- Updated: 2026-07-16 (Europe/Istanbul)
+- Updated: 2026-07-17 (Europe/Istanbul)
 - Branch: `main`
-- Completed package base: `4f570c7`; application commit: `b8bc26e` (the
-  following documentation-only commit is authoritative in `git log`)
+- Completed package base: `e9e40d4`; application commit: `98fa44f`
 - Toolchain used: Node 22
-- Verification: typecheck, full tests, Expo lint, 49-route static web export,
-  iOS/Android OTA bundles and production route probes passed
+- Verification: typecheck, full tests, zero-warning Expo lint
 - Test baseline: 24 files, 214 tests passing
-- Production root, Columns Editor and Cell Editor returned HTTP 200 after the
-  successful Pages deployment. No controllable browser or local simulator was
-  available, so the final back-button optics and physical press-and-drag feel
-  still require the installed-app pass.
 
 ## Active working tree
 
-No application work is in progress. Codex fixed the three screenshot-confirmed
-UI regressions and shipped web plus mobile OTA from `b8bc26e`. Always re-check
-`git status`; Git remains authoritative.
+A four-package audit remediation is underway (Claude, from the 2026-07-17
+repository audit). Package 1 (hygiene/docs) shipped as `98fa44f`. Remaining
+queued packages: (2) data-layer hardening — Supabase sync indexes, server
+CHECK bounds, cell_notes natural-key unique, pull cursor UUID validation,
+password-verify cooldown, web CSP; (3) liveliness — markets trailing throttle,
+dashboard skeletons, theme-token leaks, service-worker cache pruning; (4)
+scale — shared live-query layer, typed SQL helpers, iOS data-protection
+entitlement. Explicitly excluded by the user: calculator-tab IA change and
+Supabase captcha/signup panel settings. Always re-check `git status`; Git
+remains authoritative.
 
 ## Current architecture summary
 
@@ -78,6 +79,34 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-17 — Claude (audit package 1: hygiene and documentation truth)
+
+- Base `e9e40d4`, branch `main`; clean tree. First of four packages remediating
+  the 2026-07-17 repository audit (user excluded the calculator-tab IA change
+  and Supabase captcha panel work).
+- Enforced Node 22 via `engines` + `engine-strict` (was docs-only); cleaned
+  `.gitignore` (orphan `example` line, root-scoped xlsx ignores so fixtures
+  stay committable, `*.pem` moved to the signing block); eslint now ignores
+  `dist-local`; removed the unused `@/*` tsconfig alias (zero usages).
+- Removed `void userId` + its false comment in `sync/engine.ts` (the parameter
+  IS used); corrected two more stale comments (`schema.ts` statement_day
+  "reserved for Faz 2" while five files use it; `migrate.ts` "exact drizzle
+  bookkeeping" while hash stays empty by design).
+- README: count-free test badge (hardcoded 209 had drifted from the real 214),
+  palette hexes defer to `theme.ts`, added sync-flow mermaid diagram and the
+  three correctness guarantees, **Supabase setup now applies all migrations**
+  (following the old step broke sync on fresh projects), roadmap filled from
+  the real backlog. AGENTS.md: semantic palette pointer instead of drifted
+  hexes, xlsx CDN audit blind-spot note, handoff 5-entry pruning rule.
+  AI_HANDOFF now keeps the newest entries only; the rest moved verbatim to
+  `docs/handoffs/2026-07.md`.
+- Checks: `npm run typecheck`, `npm test` (24 files/214), `npx expo lint`
+  (exit 0) all pass. Deleted the stale untracked `dist-local/` build copy.
+- Shipped as `98fa44f` and pushed; the Pages workflow redeploys the web app.
+  **No mobile OTA was published for this package**: the only bundle-affecting
+  edits are comment/no-op removals with identical runtime behavior; package 2+
+  will carry these bytes in its OTA.
 
 ### 2026-07-16 — Codex (back, column drag and high-total UI follow-up)
 
