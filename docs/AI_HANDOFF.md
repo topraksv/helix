@@ -9,23 +9,26 @@ lags behind them.
 
 - Updated: 2026-07-17 (Europe/Istanbul)
 - Branch: `main`
-- Completed package base: `e9e40d4`; application commit: `98fa44f`
+- Completed package base: `4e77a04`; application commit: `0692027`
 - Toolchain used: Node 22
-- Verification: typecheck, full tests, zero-warning Expo lint
-- Test baseline: 24 files, 214 tests passing
+- Verification: typecheck, full tests, zero-warning Expo lint, 49-route static
+  web export, headless CSP smoke against the export
+- Test baseline: 24 files, 215 tests passing
 
 ## Active working tree
 
 A four-package audit remediation is underway (Claude, from the 2026-07-17
-repository audit). Package 1 (hygiene/docs) shipped as `98fa44f`. Remaining
-queued packages: (2) data-layer hardening — Supabase sync indexes, server
-CHECK bounds, cell_notes natural-key unique, pull cursor UUID validation,
-password-verify cooldown, web CSP; (3) liveliness — markets trailing throttle,
-dashboard skeletons, theme-token leaks, service-worker cache pruning; (4)
-scale — shared live-query layer, typed SQL helpers, iOS data-protection
-entitlement. Explicitly excluded by the user: calculator-tab IA change and
-Supabase captcha/signup panel settings. Always re-check `git status`; Git
-remains authoritative.
+repository audit). Packages 1 (hygiene/docs, `98fa44f`) and 2 (data-layer and
+web hardening, `0692027`) have shipped. **Pending manual step: Supabase
+migration 5 is committed but NOT applied** — `supabase db push --linked` was
+permission-blocked in the acting session; run it, then confirm
+`supabase migration list --linked` shows 1–5 on both sides and
+`supabase db lint --linked` stays clean. Remaining queued packages:
+(3) liveliness — markets trailing throttle, dashboard skeletons, theme-token
+leaks, service-worker cache pruning; (4) scale — shared live-query layer,
+typed SQL helpers, iOS data-protection entitlement. Explicitly excluded by the
+user: calculator-tab IA change and Supabase captcha/signup panel settings.
+Always re-check `git status`; Git remains authoritative.
 
 ## Current architecture summary
 
@@ -79,6 +82,49 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-17 — Claude (audit package 2: data-layer and web hardening)
+
+- Base `4e77a04`, branch `main`. Second audit-remediation package.
+- Supabase migration `00000000000005_sync_indexes_and_bounds.sql`: composite
+  `(user_id, updated_at, id)` pull index on all 15 synced tables (13 had none
+  and seq-scanned every sync; the covered `idx_tx_user_updated` is dropped),
+  safe-integer magnitude CHECKs on every money column (blocks rows that would
+  crash other devices' `assertMinor`), `installment_no >= 1`, and the
+  cell_notes one-live-note-per-cell partial unique index preceded by a
+  deterministic keep-newest dedup (tombstones, so LWW propagates them).
+  **NOT yet applied remotely** — `supabase db push` was permission-blocked in
+  this session (list --linked verified 1–4 in sync, 5 local-only). Applying
+  later is safe: the new client write order is harmless against the old
+  server schema, only the reverse order was dangerous.
+- `saveCellNote` writes the legacy tombstone BEFORE the canonical row so one
+  push batch never transiently violates the new index. Local unique mirrors
+  were deliberately rejected (documented in the schema header): pulled rows
+  sharing one server `updated_at` arrive id-ordered, so a local index could
+  wedge the merge.
+- Sync pull now requires UUID-shaped server row ids (`isUuidShaped` in
+  merge-policy + test) before they become the keyset cursor interpolated into
+  the PostgREST `.or()` filter.
+- `verifyPassword` returns an error string (null = ok) like every other
+  session method: precise wrong-password copy, honest network errors (a
+  network failure used to display "Şifre hatalı"), and a local 5-failure/30 s
+  cooldown because each verify is a real sign-in against the shared rate
+  limit. Both caller screens updated.
+- Web shell: CSP meta (connect-src pinned to Supabase/Frankfurter/Harem/self;
+  script-src keeps 'unsafe-inline' because the export emits per-build inline
+  bootstraps, 'wasm-unsafe-eval' + worker-src keep sqlite booting) and the
+  `maximum-scale=1` pinch-zoom lock removed (WCAG 1.4.4).
+- Checks: typecheck, 24 files/215 tests, zero-warning lint, 49-route export.
+  Headless chromium against the served export under `/helix/`: sign-in screen
+  reached (sqlite WASM worker booted), zero CSP violations, zero console
+  errors. FX/socket hosts in connect-src were verified against the source
+  constants; live post-auth traffic still deserves one installed/web pass.
+- Shipped as `0692027`, pushed; Pages redeploys. EAS `preview` update group
+  `cf25c807-47d9-4f9e-b818-c981451f6d93` published (iOS
+  `019f6f34-547d-7109-af99-1218082e000c`, Android
+  `019f6f34-547d-7c1d-8de4-e7a7d4e48163`, runtime `1.0.0`); applies on the
+  next full close + reopen. Remaining risk: until migration 5 is applied, the
+  new indexes/bounds simply don't exist yet — no behavioral mismatch.
 
 ### 2026-07-17 — Claude (audit package 1: hygiene and documentation truth)
 
@@ -247,19 +293,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   violation — so it was removed and the compact threshold lowered to 1.000.000
   TL so the widest full value still fits a narrow cell unaided. Phone applies
   the OTA on the next cold start (fully close and reopen the app once).
-
-### 2026-07-16 — Codex (requested mobile OTA republish)
-
-- Base `ba4d63c`, branch `main`; working tree was clean and runtime policy still
-  resolved to `1.0.0` before publishing.
-- Published the current mobile finance UI, analytics, input-validation and
-  live-rate changes to EAS Update branch `preview` for both iOS and Android.
-  Update group: `fa97ec26-af8a-4ce0-9383-8cf15e52ebe5`; iOS update:
-  `019f6b22-bab1-7ba4-a2d5-6f03421ab7c8`; Android update:
-  `019f6b22-bab1-7968-bc8c-52c6823e7725`.
-- The first upload attempt hit the already-seen transient Expo asset-storage
-  DNS `ENOTFOUND`; the unchanged retry uploaded both bundles and published
-  successfully. No source file or application behavior changed in this task.
-- The installed app downloads on a cold start and applies on the following
-  launch. If the existing iOS binary cannot load the SDK patch-aligned bundle,
-  the previously recorded `npx expo run:ios --device` rebuild remains required.
