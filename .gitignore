@@ -11,18 +11,21 @@ web-build/
 expo-env.d.ts
 
 # local test artifacts / scratch (headless screenshots, browser profiles, sample sheets)
+# Sample sheets are ignored only at the repo root so committed test fixtures
+# (e.g. tests/fixtures/*.xlsx) remain possible.
 vshots/
 profile-*/
-*.xlsm
-*.xlsx
+/*.xlsm
+/*.xlsx
 
-# Native
+# Native (incl. signing material — never commit keys/certs)
 .kotlin/
 *.orig.*
 *.jks
 *.p8
 *.p12
 *.key
+*.pem
 *.mobileprovision
 
 # Metro
@@ -35,7 +38,6 @@ yarn-error.*
 
 # macOS
 .DS_Store
-*.pem
 
 # local env files
 .env*.local
@@ -45,8 +47,6 @@ supabase/.temp/
 
 # typescript
 *.tsbuildinfo
-
-example
 
 # generated native folders
 /ios

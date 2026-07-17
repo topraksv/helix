@@ -278,7 +278,6 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
       if (data.length < PULL_PAGE) break;
     }
   }
-  void userId; // RLS scopes the pull; kept for signature clarity
 }
 
 let syncing = false;
