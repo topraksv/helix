@@ -62,7 +62,7 @@ async function importBatchMap(userId: string): Promise<Map<number, ImportBatch>>
   const sqlite = await getSqliteAsync();
   const rows = await sqlite.getAllAsync<{ key: string; value: string }>(
     `SELECT key, value FROM settings WHERE user_id = ? AND key LIKE 'import_batch:%' AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   const result = new Map<number, ImportBatch>();
   for (const row of rows) {
@@ -84,7 +84,7 @@ async function importBatchMap(userId: string): Promise<Map<number, ImportBatch>>
     }>(
       `SELECT id, title, monthly_amount_minor, installment_count, start_month
        FROM installment_plans WHERE user_id = ? AND deleted_at IS NULL`,
-      [userId] as never[],
+      [userId],
     );
     const importedPlanIds = new Set<string>();
     // The SHA-256 digests are independent — compute them in parallel instead
@@ -111,7 +111,7 @@ async function importBatchMap(userId: string): Promise<Map<number, ImportBatch>>
       const generated = await sqlite.getAllAsync<{ id: string; installment_plan_id: string }>(
         `SELECT id, installment_plan_id FROM transactions
          WHERE user_id = ? AND installment_plan_id IS NOT NULL AND deleted_at IS NULL`,
-        [userId] as never[],
+        [userId],
       );
       const byPlan = new Map<string, string[]>();
       for (const row of generated) {
@@ -155,7 +155,7 @@ async function tombstoneImportRows(
     const placeholders = chunk.map(() => "?").join(", ");
     const rows = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM ${table} WHERE user_id = ? AND id IN (${placeholders})`,
-      [userId, ...chunk] as never[],
+      [userId, ...chunk],
     );
     writes.push(...rows.map((row) => ({ table, row: { ...fromDbShape(table, row), deletedAt: nowIso() } })));
   }
@@ -182,7 +182,7 @@ export async function hasImportedData(userId: string): Promise<boolean> {
   const sqlite = await getSqliteAsync();
   const row = await sqlite.getFirstAsync<{ n: number }>(
     `SELECT COUNT(*) AS n FROM settings WHERE user_id = ? AND key LIKE 'import_batch:%' AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   return (row?.n ?? 0) > 0;
 }
@@ -200,7 +200,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   const sqlite = await getSqliteAsync();
   const existing = await sqlite.getAllAsync<{ id: string; name: string; kind: "expense" | "income"; sort_order: number }>(
     `SELECT id, name, kind, sort_order FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   const normalizedName = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
   const categoryKey = (name: string, kind: "expense" | "income") => `${normalizedName(name)}|${kind}`;
@@ -218,7 +218,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     [key: string]: unknown;
   }>(
     `SELECT * FROM payment_sources WHERE user_id = ? AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   const sourceByName = new Map(existingSources.map((s) => [normalizedName(s.name), s]));
   const sourceIdByName = new Map(

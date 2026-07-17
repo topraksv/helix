@@ -47,7 +47,7 @@ async function refreshRuleExpectedWrites(
   const rows = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM expected_payments
      WHERE user_id = ? AND kind = ? AND ref_id = ? AND deleted_at IS NULL`,
-    [userId, kind, refId] as never[],
+    [userId, kind, refId],
   );
   const terminal = rows
     .filter((row) => row.status === "paid" || row.status === "skipped")
@@ -126,7 +126,7 @@ export async function ensureSubscriptionCategory(
     name: string;
     kind: "expense" | "income";
     deleted_at: string | null;
-  }>(`SELECT id, name, kind, deleted_at FROM categories WHERE user_id = ?`, [userId] as never[]);
+  }>(`SELECT id, name, kind, deleted_at FROM categories WHERE user_id = ?`, [userId]);
   const existing = findSubscriptionCategory(
     categories.map((category) => ({ ...category, deletedAt: category.deleted_at })),
     categoryName,
@@ -136,7 +136,7 @@ export async function ensureSubscriptionCategory(
   const id = await deterministicId(naturalKeys.seedCategory(userId, categoryName));
   const maxOrder = await sqlite.getFirstAsync<{ max_order: number | null }>(
     `SELECT MAX(sort_order) AS max_order FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
-    [userId] as never[],
+    [userId],
   );
   await writeRows(userId, [{
     table: "categories",
@@ -162,12 +162,12 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   if (!input.categoryId) throw new SubscriptionCategoryRequiredError();
   const category = await sqlite.getFirstAsync<{ id: string }>(
     `SELECT id FROM categories WHERE id = ? AND user_id = ? AND kind = 'expense' AND deleted_at IS NULL`,
-    [input.categoryId, userId] as never[],
+    [input.categoryId, userId],
   );
   if (!category) throw new SubscriptionCategoryRequiredError();
   const person = await sqlite.getFirstAsync<{ is_self: number }>(
     `SELECT is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [input.personId, userId] as never[],
+    [input.personId, userId],
   );
   if (!person) throw new Error("Subscription person is required");
   const source = await livePaymentSource(userId, input.paymentSourceId);
@@ -181,7 +181,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   if (input.id) {
     const prev = await sqlite.getFirstAsync<{ amount_minor: number; currency: string }>(
       `SELECT amount_minor, currency FROM subscriptions WHERE id = ? AND user_id = ?`,
-      [id, userId] as never[],
+      [id, userId],
     );
     if (prev && (prev.amount_minor !== input.amountMinor || prev.currency !== input.currency)) {
       writes.push({
@@ -276,7 +276,7 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
   assertSupportedMinorAmount(input.defaultAmountMinor, false);
   const person = await sqlite.getFirstAsync<{ is_self: number }>(
     `SELECT is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [input.personId, userId] as never[],
+    [input.personId, userId],
   );
   if (!person) throw new Error("Recurring income person is required");
   const id = input.id ?? newId();
@@ -328,14 +328,14 @@ async function deleteRuleWithExpected(
   const sqlite = await getSqliteAsync();
   const root = await sqlite.getFirstAsync<Record<string, unknown>>(
     `SELECT * FROM ${table} WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [id, userId] as never[],
+    [id, userId],
   );
   if (!root) return null;
   const expected = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM expected_payments
      WHERE user_id = ? AND kind = ? AND ref_id = ?
        AND status IN ('pending', 'late') AND deleted_at IS NULL`,
-    [userId, kind, id] as never[],
+    [userId, kind, id],
   );
   const deletedAt = nowIso();
   await writeRows(userId, [

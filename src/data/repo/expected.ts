@@ -37,7 +37,7 @@ async function getExpectedRow(userId: string, id: string): Promise<ExpectedRow |
   const sqlite = await getSqliteAsync();
   return sqlite.getFirstAsync<ExpectedRow>(
     `SELECT * FROM expected_payments WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [id, userId] as never[],
+    [id, userId],
   );
 }
 
@@ -71,7 +71,7 @@ export async function confirmExpected(
   const sub = row.kind === "subscription"
     ? await sqlite.getFirstAsync<Record<string, unknown>>(
         `SELECT * FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-        [row.ref_id, userId] as never[],
+        [row.ref_id, userId],
       )
     : null;
   const paymentSourceId = sub?.payment_source_id == null ? null : String(sub.payment_source_id);
@@ -189,7 +189,7 @@ export async function revertExpected(userId: string, expectedId: string): Promis
   if (row.transaction_id) {
     const transaction = await sqlite.getFirstAsync<Record<string, unknown>>(
       `SELECT * FROM transactions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [row.transaction_id, userId] as never[],
+      [row.transaction_id, userId],
     );
     if (transaction) {
       writes.unshift({

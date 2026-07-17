@@ -5,6 +5,7 @@
  */
 
 import { getTableColumns } from "drizzle-orm";
+import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
@@ -146,7 +147,9 @@ async function upsertLocalRemote(
   await sqlite.runAsync(
     `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})
      ON CONFLICT(id) DO UPDATE SET ${keys.filter((key) => key !== "id").map((key) => `${key} = excluded.${key}`).join(", ")}`,
-    keys.map((key) => (remote[key] === undefined ? null : remote[key])) as never[],
+    // toLocal already coerced every column to string/number/null; this is the
+    // dynamic-row boundary where that guarantee meets the driver's types.
+    keys.map((key): SQLiteBindValue => (remote[key] === undefined ? null : (remote[key] as SQLiteBindValue))),
   );
 }
 
@@ -159,7 +162,7 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
       assertActive(token);
       const events = await sqlite.getAllAsync<{ id: number; payload: string; row_id: string }>(
         `SELECT id, payload, row_id FROM outbox WHERE table_name = ? ORDER BY id ASC LIMIT ${PUSH_BATCH}`,
-        [table] as never[],
+        [table],
       );
       if (events.length === 0) break;
       // Keep only the newest event per row. Invalid/cross-account payloads are
@@ -193,7 +196,7 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
           if (!pushed) throw new Error(`push ${table}: unknown acknowledgement`);
           const newest = await sqlite.getFirstAsync<{ id: number }>(
             `SELECT id FROM outbox WHERE table_name = ? AND row_id = ? ORDER BY id DESC LIMIT 1`,
-            [table, pushed.row_id] as never[],
+            [table, pushed.row_id],
           );
           if (shouldApplyServerAck(pushed.id, newest?.id ?? null)) {
             await upsertLocalRemote(table, remote, allowed);
@@ -204,11 +207,11 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
             `INSERT OR IGNORE INTO sync_dead_letters
              (outbox_id, table_name, row_id, payload, reason, quarantined_at)
              VALUES (?, ?, ?, ?, ?, ?)`,
-            [event.id, table, event.row_id, event.payload, event.reason, new Date().toISOString()] as never[],
+            [event.id, table, event.row_id, event.payload, event.reason, new Date().toISOString()],
           );
         }
         const placeholders = events.map(() => "?").join(", ");
-        await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${placeholders})`, events.map((event) => event.id) as never[]);
+        await sqlite.runAsync(`DELETE FROM outbox WHERE id IN (${placeholders})`, events.map((event) => event.id));
       });
       if (rejected.length > 0) {
         devWarning("sync", `${rejected.length} invalid outbox event(s) quarantined`);
@@ -226,7 +229,7 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
     const allowed = KNOWN_COLUMNS.get(table)!;
     const cursorRow = await sqlite.getFirstAsync<{ last_pulled_at: string }>(
       `SELECT last_pulled_at FROM sync_state WHERE table_name = ?`,
-      [table] as never[],
+      [table],
     );
     // Cursor is a keyset on (updated_at, id) encoded as "ts|id"; a plain ISO
     // string is the legacy form (id empty). A composite cursor is required so a
@@ -259,7 +262,7 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
           assertActive(token);
           const local = await sqlite.getFirstAsync<{ updated_at: string }>(
             `SELECT updated_at FROM ${table} WHERE id = ?`,
-            [remote.id] as never[],
+            [String(remote.id)],
           );
           const remoteWins = remoteWinsLww(local?.updated_at ?? null, remote.updated_at as string);
           if (!remoteWins) continue;
@@ -274,7 +277,7 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
         await sqlite.runAsync(
           `INSERT INTO sync_state (table_name, last_pulled_at) VALUES (?, ?)
            ON CONFLICT(table_name) DO UPDATE SET last_pulled_at = excluded.last_pulled_at`,
-          [table, `${curTs}|${curId}`] as never[],
+          [table, `${curTs}|${curId}`],
         );
       });
       if (data.length < PULL_PAGE) break;

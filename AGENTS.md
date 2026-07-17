@@ -85,6 +85,15 @@ agent-to-agent communication that did not occur.
 - **Referenced persons/payment sources cannot be directly deleted.** Count and
   show live usages, then require an explicit atomic reassignment (a payment
   source may be cleared because its references are nullable) before tombstoning.
+- **iOS app data is sealed while the device is locked.** `app.json` declares
+  the `com.apple.developer.default-data-protection` entitlement as
+  `NSFileProtectionComplete`, so app-created files (the SQLite database,
+  caches, downloaded updates) are unreadable on a locked device. This is safe
+  because the app does no background file work: sockets close on background,
+  notifications are local, and JS starts in `didFinishLaunching` (not during
+  prewarm). The entitlement activates on the next local `npx expo run:ios
+  --device` build. If that build ever fails on the Data Protection capability,
+  or the app gains real background tasks, revisit this entitlement FIRST.
 - **Every authenticated background task is session-scoped.** Auth activates an
   epoch with `startSyncSession`; sign-out/account deletion awaits
   `stopSyncSession`. Maintenance, FX, notifications, or any other async work

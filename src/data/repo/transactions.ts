@@ -44,7 +44,7 @@ export async function livePaymentSource(userId: string, sourceId: string | null)
   return sqlite.getFirstAsync<LivePaymentSource>(
     `SELECT id, type, statement_day, due_day FROM payment_sources
      WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [sourceId, userId] as never[],
+    [sourceId, userId],
   );
 }
 
@@ -57,7 +57,7 @@ export async function cardStatementWrite(
   const sqlite = await getSqliteAsync();
   const existing = await sqlite.getFirstAsync<{ created_at: string }>(
     `SELECT created_at FROM credit_card_statements WHERE id = ? AND user_id = ?`,
-    [id, userId] as never[],
+    [id, userId],
   );
   return {
     table: "credit_card_statements",
@@ -122,7 +122,7 @@ export async function assertTransactionCategory(
   const sqlite = await getSqliteAsync();
   const category = await sqlite.getFirstAsync<{ kind: "expense" | "income" }>(
     `SELECT kind FROM categories WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [categoryId, userId] as never[],
+    [categoryId, userId],
   );
   if (!category || !categoryAcceptsTransaction(type, category.kind)) {
     throw new Error("Transaction type and category do not match");
@@ -228,7 +228,7 @@ export async function setCurrentBalance(
   const sqlite = await getSqliteAsync();
   const prev = await sqlite.getFirstAsync<{ amount_minor: number; created_at: string }>(
     `SELECT amount_minor, created_at FROM balance_adjustments WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-    [id, userId] as never[],
+    [id, userId],
   );
   const prevAmount = prev?.amount_minor ?? 0;
   // computedNow already contains prevAmount; the new adjustment must make the
@@ -258,7 +258,7 @@ export async function countTransactionsForCategory(userId: string, categoryId: s
   const sqlite = await getSqliteAsync();
   const row = await sqlite.getFirstAsync<{ n: number }>(
     `SELECT COUNT(*) AS n FROM transactions WHERE user_id = ? AND category_id = ? AND deleted_at IS NULL`,
-    [userId, categoryId] as never[],
+    [userId, categoryId],
   );
   return row?.n ?? 0;
 }

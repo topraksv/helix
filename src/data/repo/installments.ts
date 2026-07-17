@@ -149,7 +149,7 @@ async function writePlanWithSchedule(
     ? await sqlite.getAllAsync<Record<string, unknown>>(
         `SELECT * FROM transactions WHERE user_id = ? AND installment_plan_id = ?
          AND deleted_at IS NULL`,
-        [userId, planId] as never[],
+        [userId, planId],
       )
     : [];
   const realized = existingPlanTransactions.filter((transaction) => transaction.status === "realized");
@@ -213,7 +213,7 @@ export async function countInstallmentsForPlan(userId: string, planId: string): 
   const sqlite = await getSqliteAsync();
   const row = await sqlite.getFirstAsync<{ n: number }>(
     `SELECT COUNT(*) AS n FROM transactions WHERE user_id = ? AND installment_plan_id = ? AND deleted_at IS NULL`,
-    [userId, planId] as never[],
+    [userId, planId],
   );
   return row?.n ?? 0;
 }
@@ -241,11 +241,11 @@ export async function deletePlan(userId: string, planId: string): Promise<void> 
   const [plan, transactions] = await Promise.all([
     sqlite.getFirstAsync<Record<string, unknown>>(
       `SELECT * FROM installment_plans WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [planId, userId] as never[],
+      [planId, userId],
     ),
     sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM transactions WHERE installment_plan_id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [planId, userId] as never[],
+      [planId, userId],
     ),
   ]);
   if (!plan) return;
