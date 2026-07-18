@@ -51,11 +51,13 @@ agent-to-agent communication that did not occur.
 - `xlsx` is pinned to SheetJS's official CDN tarball (the npm registry version
   lags). `npm audit` and Dependabot do **not** see it — check for a newer
   release manually whenever import code is touched.
-- Dependabot ignores minor/major version updates for the Expo-managed
-  React/React Native/native-library matrix. React Native is pre-1.0, so its
-  incompatible SDK jumps appear as SemVer “minor” updates. Remove those ignore
-  guards only in the coordinated `BACKLOG-SDK-01` Expo upgrade/native rebuild;
-  patch and security monitoring stays active.
+- Dependabot ignores routine version updates at every SemVer level for the
+  Expo-managed React/React Native/native-library matrix. React Native is
+  pre-1.0, so incompatible SDK jumps can appear as “minor” updates, and even
+  patch versions can leave Expo's supported matrix. ESLint/TypeScript majors
+  are guarded with the same coordinated `BACKLOG-SDK-01` toolchain upgrade.
+  Remove those guards only in that upgrade/native rebuild; Dependabot security
+  updates and independent dependency version updates stay active.
 - iOS on a real phone: `npx expo run:ios --device` (free Apple ID, re-sign
   every 7 days). Expo Go can't open the project across SDK lines reliably.
 
