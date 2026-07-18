@@ -1,15 +1,15 @@
-/** Dashboard: catch-up banner, actual vs projected balance (§2.7),
- *  upcoming/late expected items with confirm, distribution, trend. */
+/** Dashboard: current balance, action-needed payments, upcoming timeline and
+ * one concise monthly insight. Detailed exploration belongs to Analysis. */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { standaloneUpcomingTransactions, upcomingCardStatements } from "../../domain/upcoming";
-import { dateLabel, dateTimeLabel, monthLabel, shortMonthLabel, tr } from "../../i18n/tr";
+import { dateLabel, dateTimeLabel, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
 import {
   daysBetween,
@@ -32,7 +32,6 @@ import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
-import { Bars, Donut, seriesColor, SplitBar, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
@@ -195,9 +194,7 @@ export default function DashboardScreen() {
     cardStatementsState.retry();
   };
   const router = useRouter();
-  const colors = useSeriesColors();
   const undo = useUndo();
-  const { width } = useWindowDimensions();
   const { palette } = useTheme();
   // Re-render when FX rates land so foreign-currency projections settle.
   useFxRates();
@@ -317,43 +314,9 @@ export default function DashboardScreen() {
   // onward are what isn't in the actual balance yet.
   const hasForecast = incomingMinor > 0 || remainingFixedMinor > 0;
   const projected = model.projectedMinor;
-  const dist = model.distribution;
-  const fv = { fixedMinor: model.fixedMinor, variableMinor: model.variableMinor };
-
-  const donutEntries = [...dist.expenseByCategory.entries()]
-    .map(([id, v]) => ({ label: categoryById.get(id)?.name ?? tr.common.none, valueMinor: v }))
-    .concat(dist.uncategorizedExpenseMinor !== 0 ? [{ label: tr.common.none, valueMinor: dist.uncategorizedExpenseMinor }] : [])
-    .sort((a, b) => b.valueMinor - a.valueMinor);
-  const positiveDonutEntries = donutEntries.filter((entry) => entry.valueMinor > 0);
-  const refundEntries = donutEntries.filter((entry) => entry.valueMinor < 0);
-  const donutRest = positiveDonutEntries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
-  const donutSlices = [
-    ...positiveDonutEntries.slice(0, 7).map((e, i) => ({ ...e, color: seriesColor(colors, i) })),
-    ...(donutRest > 0 ? [{ label: tr.common.other, valueMinor: donutRest, color: colors[7] }] : []),
-    ...(dist.transferTotalMinor > 0
-      ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: colors[4] }]
-      : []),
-  ];
-  const donutSupplemental = [
-    ...refundEntries.map((entry) => ({
-      label: tr.dashboard.refundAside(entry.label),
-      valueMinor: entry.valueMinor,
-      color: palette.positive,
-    })),
-    ...(dist.transferTotalMinor < 0
-      ? [{ label: tr.dashboard.investmentRefundAside, valueMinor: dist.transferTotalMinor, color: palette.positive }]
-      : []),
-  ];
-  const distributionTotalMinor = dist.expenseTotalMinor + dist.transferTotalMinor;
-
-  const trendMonths = model.trendMonths;
-  // Grouped income-vs-expense bars read far clearer than three overlapping
-  // lines where a cumulative balance dwarfed the monthly flows.
-  const trendGroups =
-    trendMonths.length >= 2
-      ? trendMonths.map((m) => ({ label: shortMonthLabel(m.month), values: [m.incomeMinor, m.expenseMinor] }))
-      : null;
-  const thisMonthNet = trendMonths.find((m) => m.month === month);
+  const monthIncomeMinor = model.distribution.incomeTotalMinor;
+  const monthOutflowMinor = model.distribution.expenseTotalMinor + model.distribution.transferTotalMinor;
+  const monthNetMinor = monthIncomeMinor - monthOutflowMinor;
 
   // Marking an expected item paid picks the day it was actually paid. This lets
   // the user record an early/manual payment ("due the 15th, I paid it on the
@@ -609,48 +572,16 @@ export default function DashboardScreen() {
       {/* Live markets */}
       <MarketsCard />
 
-      {/* Expense distribution */}
-      {donutSlices.length > 0 || donutSupplemental.length > 0 ? (
-        <Card>
-          <Heading style={{ marginTop: 0 }}>
-            {tr.dashboard.distribution} · {monthLabel(month)}
-          </Heading>
-          <Donut slices={donutSlices} supplementalSlices={donutSupplemental} totalMinor={distributionTotalMinor} />
-        </Card>
-      ) : null}
-
-      {/* Fixed vs variable */}
-      {fv.fixedMinor !== 0 || fv.variableMinor !== 0 ? (
-        <Card>
-          <Heading style={{ marginTop: 0 }}>{tr.dashboard.fixedVsVariable}</Heading>
-          <SplitBar
-            parts={[
-              { label: tr.dashboard.fixed, valueMinor: fv.fixedMinor, color: colors[0] },
-              { label: tr.dashboard.variable, valueMinor: fv.variableMinor, color: colors[2] },
-            ]}
-          />
-        </Card>
-      ) : null}
-
-      {/* Monthly income vs expense */}
-      {trendGroups ? (
-        <Card>
-          <Spread style={{ marginBottom: spacing.xs }}>
-            <Heading style={{ marginTop: 0, marginBottom: 0 }}>{tr.dashboard.trend}</Heading>
-            {thisMonthNet ? (
-              <Body muted style={{ fontSize: 12 }}>{tr.dashboard.trendNet(formatMinor(thisMonthNet.incomeMinor - thisMonthNet.expenseMinor))}</Body>
-            ) : null}
-          </Spread>
-          <Bars
-            width={Math.min(width - spacing.lg * 4, 640)}
-            groups={trendGroups}
-            series={[
-              { label: tr.cashflow.income, color: colors[1] },
-              { label: tr.cashflow.expense, color: colors[5] },
-            ]}
-          />
-        </Card>
-      ) : null}
+      <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
+      <Card>
+        <ListRow
+          icon={ChartNoAxesColumn}
+          title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
+          subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
+          chevron
+          onPress={() => router.push("/cash-flow/analytics")}
+        />
+      </Card>
     </Screen>
   );
 }
