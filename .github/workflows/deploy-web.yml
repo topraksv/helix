@@ -50,6 +50,17 @@ jobs:
       # blank Supabase env must never become the Pages artifact.
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      # Visual diffs, traces and videos are necessary to separate a real UI
+      # regression from platform rasterization. They contain local-only test
+      # data and expire quickly; never run this suite against production data.
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-failure-${{ github.run_id }}
+          path: |
+            test-results
+            playwright-report
+          retention-days: 7
       # GitHub Pages serves 404.html for unknown paths (e.g. deep links to
       # dynamic routes like /cash-flow/2026-05). Use the root shell: copying
       # +not-found hydrates the wrong server route before the client resolves
