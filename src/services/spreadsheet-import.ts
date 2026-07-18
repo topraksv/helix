@@ -318,7 +318,7 @@ interface ImportItem {
   /** true = one opaque monthly total; false = a real itemized part. */
   isAggregate: boolean;
 }
-export interface CellPlan {
+interface CellPlan {
   items: ImportItem[];
   /** Comment to attach to the (month, category) cell, if it wasn't itemized. */
   cellNote: string | null;

@@ -515,7 +515,7 @@ export const tr = {
     noResults: "Eşleşen işlem yok.",
     chartTitle: "Grafik",
     chartPie: "Pasta",
-    chartBars: "Çubuk",
+    chartBars: "Sütun",
     chartExpenseDist: "Harcama ve yatırım dağılımı",
     monthlyFlows: "Aylık gelir, gider ve yatırım",
     matrixHint: "Kategori × ay matrisi, yıllık görünüm",

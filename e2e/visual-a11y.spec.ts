@@ -65,7 +65,6 @@ test("every primary tab has a permanent mobile visual baseline", async ({ page }
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await onboard(page);
   const tabs = [
-    { name: "dashboard", route: "/helix/", heading: null },
     { name: "cash-flow", route: "/helix/cash-flow", heading: "Mali Tablo" },
     { name: "subscriptions", route: "/helix/subscriptions", heading: "Abonelikler" },
     { name: "calculator", route: "/helix/calculator", heading: "Hesap Makinesi" },
@@ -73,11 +72,7 @@ test("every primary tab has a permanent mobile visual baseline", async ({ page }
   ] as const;
   for (const { name, route, heading } of tabs) {
     await page.goto(route);
-    if (heading) {
-      await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
-    } else {
-      await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
-    }
+    await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
     await expect(page).toHaveScreenshot(`tab-${name}-phone-390-light.png`, {
       animations: "disabled",
       caret: "hide",

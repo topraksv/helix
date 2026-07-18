@@ -198,7 +198,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                             justifyContent: "center",
                           }}
                         >
-                          <GripVertical size={18} color={palette.textMuted} />
+                          <GripVertical size={18} color={palette.textSecondary} />
                         </View>
                         <Body style={{ flex: 1 }}>
                           {categoryIcon(c)} {c.name}

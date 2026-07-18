@@ -17,7 +17,7 @@ import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategoryBudgets, useCategories, usePersons, useSources } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
-import { Bars, Donut, Lines, seriesColor, useSeriesColors } from "../../../ui/charts";
+import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
 
@@ -56,8 +56,6 @@ export default function AnalysisScreen() {
   const monthKeys = monthRange(startMonth, endMonth);
   const searchPeriodLabel = `${monthLabel(startMonth)} – ${monthLabel(endMonth)}`;
 
-  // No manual useMemo: the React Compiler (enabled app-wide) memoizes these
-  // and bails out when it finds hand-rolled memoization on unstable deps.
   const txLike = toTxLike(allTx, persons, categories);
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   // Legacy type/category mismatches are normalized by the shared domain flow,
@@ -78,9 +76,6 @@ export default function AnalysisScreen() {
     })
     .filter((r) => categoryFilter == null || r.category.id === categoryFilter);
 
-  // Simple but effective search: each transaction becomes one lowercased
-  // haystack of category name, note, Turkish month name, year and amount
-  // digits, so "market", "mart", "2025" or "1500" all filter sensibly.
   const catName = (cid: string | null) => (cid ? categoryById.get(cid)?.name ?? "" : "");
   const deferredQuery = useDeferredValue(query);
   const q = deferredQuery.trim().toLocaleLowerCase("tr-TR");
@@ -118,49 +113,12 @@ export default function AnalysisScreen() {
   const trendStartMonth = monthKeys[0];
   const trendEndMonth = monthKeys.at(-1);
 
-  // Chart data: pie = expense-category shares over the window; bars = monthly
-  // income vs expense, or the filtered category's month-by-month values.
-  // Transaction type is authoritative for income/expense totals. Keep legacy
-  // rows whose category kind is stale in the distribution instead of silently
-  // dropping real spending; only the category-detail matrix needs kind parity.
   const periodDistribution = distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today);
-  const expenseRows = [...periodDistribution.expenseByCategory.entries()]
-    .map(([categoryId, valueMinor]) => ({
-      label: categoryById.get(categoryId)?.name ?? tr.common.none,
-      valueMinor,
-    }))
-    .concat(
-      periodDistribution.uncategorizedExpenseMinor !== 0
-        ? [{ label: tr.common.none, valueMinor: periodDistribution.uncategorizedExpenseMinor }]
-        : [],
-    )
-    .sort((a, b) => b.valueMinor - a.valueMinor);
-  const positiveExpenseRows = expenseRows.filter((row) => row.valueMinor > 0);
-  const refundRows = expenseRows.filter((row) => row.valueMinor < 0);
-  const pieSlices = [
-    ...positiveExpenseRows.slice(0, 7).map((row, i) => ({ ...row, color: seriesColor(colors, i) })),
-    ...(() => {
-      const rest = positiveExpenseRows.slice(7).reduce((sum, row) => sum + row.valueMinor, 0);
-      return rest > 0 ? [{ label: tr.common.other, valueMinor: rest, color: colors[7] }] : [];
-    })(),
-    ...(periodDistribution.transferTotalMinor > 0
-      ? [{ label: tr.dashboard.investmentAside, valueMinor: periodDistribution.transferTotalMinor, color: colors[4] }]
-      : []),
-  ];
-  const pieSupplemental = [
-    ...refundRows.map((row) => ({
-      label: tr.dashboard.refundAside(row.label),
-      valueMinor: row.valueMinor,
-      color: palette.positive,
-    })),
-    ...(periodDistribution.transferTotalMinor < 0
-      ? [{
-          label: tr.dashboard.investmentRefundAside,
-          valueMinor: periodDistribution.transferTotalMinor,
-          color: palette.positive,
-        }]
-      : []),
-  ];
+  const {
+    slices: pieSlices,
+    supplementalSlices: pieSupplemental,
+    totalMinor: pieTotalMinor,
+  } = distributionDonutData(periodDistribution, colors, (id) => categoryById.get(id)?.name ?? tr.common.none);
   const barGroups = monthKeys.map((m) => {
     const label = shortMonthLabel(m);
     if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
@@ -391,7 +349,7 @@ export default function AnalysisScreen() {
               <Donut
                 slices={pieSlices}
                 supplementalSlices={pieSupplemental}
-                totalMinor={periodDistribution.expenseTotalMinor + periodDistribution.transferTotalMinor}
+                totalMinor={pieTotalMinor}
               />
             ) : (
               <Body muted>{tr.analysis.noResults}</Body>
@@ -424,7 +382,7 @@ export default function AnalysisScreen() {
                   return (
                     <Text
                       key={m}
-                      style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textMuted : palette.text }]}
+                      style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textSecondary : palette.text }]}
                     >
                       {v === 0 ? "" : formatMinorCompact(v)}
                     </Text>

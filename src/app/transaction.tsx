@@ -309,7 +309,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           marginBottom: spacing.md,
         }}
       >
-        <Undo2 accessible={false} size={20} color={isReversal ? palette.primary : palette.textMuted} />
+        <Undo2 accessible={false} size={20} color={isReversal ? palette.primary : palette.textSecondary} />
         <View style={{ flex: 1 }}>
           <Body style={{ color: isReversal ? palette.primaryText : palette.text }}>{tr.tx.refundToggleLabel}</Body>
           <Body muted style={{ fontSize: 12, marginTop: 2 }}>

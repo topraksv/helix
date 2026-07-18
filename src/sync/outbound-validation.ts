@@ -7,7 +7,7 @@ import {
   type RejectedOutboxEvent,
 } from "./merge-policy";
 
-export type OutboundConversion =
+type OutboundConversion =
   | { ok: true; row: Record<string, unknown> }
   | { ok: false; reason: "invalid_row" };
 

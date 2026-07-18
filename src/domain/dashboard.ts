@@ -6,7 +6,7 @@ import type { Distribution } from "./analytics";
 import type { ExpectedPaymentLike, TxLike } from "./types";
 import { financialFlow, projectedTransactionFlow } from "./transactions";
 
-export interface DashboardModel<TExpected extends ExpectedPaymentLike = ExpectedPaymentLike> {
+interface DashboardModel<TExpected extends ExpectedPaymentLike = ExpectedPaymentLike> {
   pendingItems: TExpected[];
   lateItems: TExpected[];
   monthEndFlows: UpcomingFlow[];
@@ -19,7 +19,7 @@ export interface DashboardModel<TExpected extends ExpectedPaymentLike = Expected
   trendMonths: MonthLedger[];
 }
 
-export interface DashboardModelInput<TExpected extends ExpectedPaymentLike = ExpectedPaymentLike> {
+interface DashboardModelInput<TExpected extends ExpectedPaymentLike = ExpectedPaymentLike> {
   transactions: TxLike[];
   expected: TExpected[];
   ledger: MonthLedger[];

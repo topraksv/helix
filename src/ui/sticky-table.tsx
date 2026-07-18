@@ -261,7 +261,7 @@ export function StickyTable({
           accessibilityLabel={labelAction ? c.label : undefined}
         >
           <Text
-            style={[type.label, { color: isCurrent ? palette.primaryText : palette.textMuted, textAlign: "center" }]}
+            style={[type.label, { color: isCurrent ? palette.primaryText : palette.textSecondary, textAlign: "center" }]}
             onTextLayout={(event) => measureLabel(`header:${c.key}`, event)}
           >
             {c.label}
@@ -275,12 +275,12 @@ export function StickyTable({
             accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.label) : tr.a11y.pinColumn(c.label)}
             style={{ position: "absolute", top: 2, right: 2, padding: 6 }}
           >
-            <Pin accessible={false} size={12} color={palette.textMuted} />
+            <Pin accessible={false} size={12} color={palette.textSecondary} />
           </Pressable>
         ) : null}
         {c.icon ? (
           <View style={{ position: "absolute", bottom: 4, right: 4 }}>
-            <c.icon accessible={false} size={11} color={palette.textMuted} strokeWidth={2.2} />
+            <c.icon accessible={false} size={11} color={palette.textSecondary} strokeWidth={2.2} />
           </View>
         ) : null}
       </View>
@@ -294,7 +294,7 @@ export function StickyTable({
         <View style={{ flexDirection: "row", width: leftWidth, borderRightWidth: 1, borderColor: palette.border }}>
           <View style={[{ width: headWidth }, cellCenter]}>
             <Text
-              style={[type.label, { color: palette.textMuted, textAlign: "center" }]}
+              style={[type.label, { color: palette.textSecondary, textAlign: "center" }]}
               onTextLayout={(event) => measureLabel("header:corner", event)}
             >
               {cornerLabel}
@@ -353,7 +353,7 @@ export function StickyTable({
                   </Text>
                   {r.icon ? (
                     <View style={{ position: "absolute", bottom: 4, right: 4 }}>
-                      <r.icon accessible={false} size={11} color={palette.textMuted} strokeWidth={2.2} />
+                      <r.icon accessible={false} size={11} color={palette.textSecondary} strokeWidth={2.2} />
                     </View>
                   ) : null}
                 </Pressable>

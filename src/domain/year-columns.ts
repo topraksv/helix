@@ -15,7 +15,7 @@
  * ones (whose columns start in Excel order because that's the seed sortOrder).
  */
 
-export interface YearColumnCategory {
+interface YearColumnCategory {
   id: string;
   isColumn: boolean;
 }

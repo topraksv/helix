@@ -81,7 +81,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
             >
               <Text style={[type.heading, { color: palette.text, textAlign: "center", fontSize: 19 }]}>{slide.title}</Text>
             </View>
-            <Text style={[type.body, { color: palette.textMuted, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
+            <Text style={[type.body, { color: palette.textSecondary, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
               {slide.body}
             </Text>
           </View>
@@ -115,7 +115,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
           <View style={{ minHeight: 44, marginTop: spacing.sm, justifyContent: "center" }}>
             {!last ? (
               <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center", minHeight: 44, justifyContent: "center" }}>
-                <Text style={[type.label, { color: palette.textMuted }]}>{tr.tour.skip}</Text>
+                <Text style={[type.label, { color: palette.textSecondary }]}>{tr.tour.skip}</Text>
               </Pressable>
             ) : null}
           </View>

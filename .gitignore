@@ -1,60 +1,49 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# Dependencies and logs
 node_modules/
+*.log
 
-# Expo
+# Local environment and secrets
+.env*
+!.env.example
+*.jks
+*.key
+*.mobileprovision
+*.p8
+*.p12
+*.pem
+
+# Expo, native and build output
 .expo/
+/android/
+/ios/
+.kotlin/
 dist/
-dist-local/
-dist-e2e/
+dist-*/
 web-build/
 expo-env.d.ts
+*.tsbuildinfo
 
-# local test artifacts / scratch (headless screenshots, browser profiles, sample sheets)
-# Sample sheets are ignored only at the repo root so committed test fixtures
-# (e.g. tests/fixtures/*.xlsx) remain possible.
-vshots/
-profile-*/
+# Test and local analysis output
+coverage/
 playwright-report/
 test-results/
+/profile-*/
+/vshots/
+.eslintcache
+
+# Local workbook scratch; committed fixtures under tests/ remain eligible
 /*.xlsm
 /*.xlsx
 
-# Native (incl. signing material — never commit keys/certs)
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.pem
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-
-# local env files
-.env*.local
-
-# Supabase CLI local link/cache state
+# Supabase CLI state
 supabase/.temp/
 
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
-
-# local secrets
-.env
-.env.eas-simulator
+# Editor and OS debris
+.DS_Store
+.idea/
+.claude/settings.local.json
+.vscode/*.local.json
+*.orig
+*.orig.*
+*.rej
+*.swp

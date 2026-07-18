@@ -1,8 +1,4 @@
-/**
- * Design tokens + theme resolution (system / light / dark, user-overridable).
- * Plain StyleSheet tokens — no styling runtime, zero config, works identically
- * on iOS and web. Typeface: Inter (loaded in the root layout).
- */
+/** System/light/dark design tokens shared by native and web. */
 
 import { createContext, useContext } from "react";
 
@@ -10,13 +6,19 @@ export interface Palette {
   background: string;
   surface: string;
   surfaceAlt: string;
+  surfaceHover: string;
+  surfaceStrong: string;
   border: string;
+  textStrong: string;
   text: string;
+  textSecondary: string;
   textMuted: string;
   primary: string;
-  primarySoft: string; // tinted background for icon chips / selected states
-  /** AA text/icon foregrounds; accents above remain available for fills/lines. */
+  primaryStrong: string;
+  primarySoft: string;
+  accentText: string;
   primaryText: string;
+  onPrimary: string;
   onNegative: string;
   positive: string;
   positiveText: string;
@@ -27,50 +29,60 @@ export interface Palette {
   focus: string;
 }
 
-// Warm Organic Editorial, aligned to Claude's design tokens: clay accent
-// (#d97757) over a warm gray ramp (oat cream in light, near-black #141413 in
-// dark). Sage/olive + amber secondaries carry the semantic roles.
-// Accent/fill hexes stay on the established gray/clay/semantic palette.
-// `*Text` and `on*` values are role-specific derivatives: keeping text colors
-// separate from chart/fill colors is what lets every body pair meet WCAG AA.
+// Claude's warm neutral/clay palette. Semantic text roles deliberately use the
+// supplied neutral foregrounds when a chromatic token is not AA at body size.
 export const lightPalette: Palette = {
-  background: "#faf9f5", // gray-050 (warm cream page)
-  surface: "#ffffff", // gray-000
-  surfaceAlt: "#f0eee6", // gray-150
-  border: "#e8e6dc", // gray-200
-  text: "#1a1918", // gray-900
-  textMuted: "#6d6c66", // accessible warm gray foreground
-  primary: "#d97757", // clay
-  primarySoft: "#f6e7df", // clay tint (derived)
-  primaryText: "#a94428",
-  onNegative: "#ffffff",
-  positive: "#1e9f3c", // extended-green (light)
-  positiveText: "#13782b",
-  negative: "#bf4d43", // error
-  negativeText: "#a33b34",
-  warning: "#98801f", // extended-yellow (light)
-  warningText: "#6e5b00",
-  focus: "#2c84db", // color-focus
+  background: "#F8F8F7",
+  surface: "#F5F4EF",
+  surfaceAlt: "#F0EEE5",
+  surfaceHover: "#E8E5D8",
+  surfaceStrong: "#DED8C4",
+  border: "#706B57",
+  textStrong: "#0F0F0D",
+  text: "#29261B",
+  textSecondary: "#535146",
+  textMuted: "#737163",
+  primary: "#BA5B38",
+  primaryStrong: "#C96442",
+  primarySoft: "#F2E0DA",
+  accentText: "#AB5235",
+  primaryText: "#0F0F0D",
+  onPrimary: "#FFFFFF",
+  onNegative: "#FFFFFF",
+  positive: "#207FDE",
+  positiveText: "#535146",
+  negative: "#A72519",
+  negativeText: "#A72519",
+  warning: "#5645A1",
+  warningText: "#535146",
+  focus: "#207FDE",
 };
 
 export const darkPalette: Palette = {
-  background: "#141413", // bg-primary
-  surface: "#262624", // bg-tertiary (cards)
-  surfaceAlt: "#30302e", // gray-750
-  border: "#3d3d3a", // border-secondary
-  text: "#faf9f5", // fg-primary
-  textMuted: "#b0aea5", // fg-secondary
-  primary: "#d97757", // clay
-  primarySoft: "#3a2a22", // clay tint dark (derived)
-  primaryText: "#f28b68",
-  onNegative: "#ffffff",
-  positive: "#4dcb6b", // extended-green (dark)
-  positiveText: "#4dcb6b",
-  negative: "#bf4d43", // error
-  negativeText: "#ff8277",
-  warning: "#ffd014", // extended-yellow (dark)
-  warningText: "#ffd014",
-  focus: "#2c84db", // color-focus
+  background: "#1A1A19",
+  surface: "#222220",
+  surfaceAlt: "#2D2D2A",
+  surfaceHover: "#393937",
+  surfaceStrong: "#494946",
+  border: "#514F48",
+  textStrong: "#FAF9F5",
+  text: "#EFEEEC",
+  textSecondary: "#B6B5AF",
+  textMuted: "#989790",
+  primary: "#D56E48",
+  primaryStrong: "#CC5933",
+  primarySoft: "#493027",
+  accentText: "#D97959",
+  primaryText: "#FAF9F5",
+  onPrimary: "#1A1A19",
+  onNegative: "#0F0F0D",
+  positive: "#4594E3",
+  positiveText: "#B6B5AF",
+  negative: "#DD493C",
+  negativeText: "#EFEEEC",
+  warning: "#8979D2",
+  warningText: "#B6B5AF",
+  focus: "#4594E3",
 };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
@@ -111,24 +123,8 @@ export const type = {
   amountSm: { fontSize: 12, fontFamily: font.medium, fontVariant: ["tabular-nums" as const] },
 };
 
-/** Whisper-soft elevation for light cards; renders as box-shadow on web. */
-export const cardShadow = {
-  shadowColor: "#1E1E1E",
-  shadowOpacity: 0.05,
-  shadowRadius: 14,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 1,
-} as const;
-
-/** Floating overlays (snackbar) sit over content, so they need a firmer — but
- *  still soft — shadow than cards. One definition, no per-screen values. */
-export const overlayShadow = {
-  shadowColor: "#1E1E1E",
-  shadowOpacity: 0.18,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 3 },
-  elevation: 4,
-} as const;
+export const cardShadow = { boxShadow: "0 2px 8px rgba(15, 15, 13, 0.05)" } as const;
+export const overlayShadow = { boxShadow: "0 4px 16px rgba(15, 15, 13, 0.18)" } as const;
 
 /** Tab bar metrics — the single source for the bar itself AND for overlays
  *  that must clear it (undo snackbar). Web gets extra height so Turkish

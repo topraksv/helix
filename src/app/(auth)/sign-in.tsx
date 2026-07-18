@@ -181,8 +181,8 @@ export default function SignInScreen() {
             paddingHorizontal: spacing.lg,
           }}
         >
-          <CloudOff size={14} color={palette.textMuted} />
-          <Text style={[type.small, { color: palette.textMuted, textAlign: "center", flexShrink: 1 }]}>
+          <CloudOff size={14} color={palette.textSecondary} />
+          <Text style={[type.small, { color: palette.textSecondary, textAlign: "center", flexShrink: 1 }]}>
             {isSupabaseConfigured ? tr.auth.offlineNote : tr.settings.syncUnconfiguredHint}
           </Text>
         </View>

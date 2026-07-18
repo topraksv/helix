@@ -28,7 +28,7 @@ export interface PlannedSpreadsheetCell {
   cellNote: string | null;
 }
 
-export interface SpreadsheetImportPlan {
+interface SpreadsheetImportPlan {
   columnYears: Map<number, string[]>;
   cells: Iterable<PlannedSpreadsheetCell>;
 }

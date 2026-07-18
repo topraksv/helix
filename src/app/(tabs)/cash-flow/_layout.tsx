@@ -2,6 +2,7 @@ import React from "react";
 import { Stack } from "expo-router";
 import { tr } from "../../../i18n/tr";
 import { HeaderBackButton } from "../../../ui/header-back";
+import { stackScreenOptions } from "../../../ui/navigation";
 import { useTheme } from "../../../ui/theme";
 
 export const unstable_settings = { initialRouteName: "index" };
@@ -11,14 +12,8 @@ export default function CashflowLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: palette.surface },
-        headerTintColor: palette.text,
-        headerTitleStyle: { color: palette.text, fontFamily: "Inter_600SemiBold" },
-        headerBackTitle: tr.common.back,
+        ...stackScreenOptions(palette),
         headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" />,
-        headerShadowVisible: false,
-        gestureEnabled: true,
-        contentStyle: { backgroundColor: palette.background },
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />

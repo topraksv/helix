@@ -196,7 +196,7 @@ export function CalculatorPad({
     const isFn = key === "C" || key === "⌫";
     return {
       bg: isOp ? palette.primarySoft : isFn ? palette.surfaceAlt : scheme === "dark" ? palette.surfaceAlt : palette.surface,
-      fg: isOp ? palette.primaryText : isFn ? palette.textMuted : palette.text,
+      fg: isOp ? palette.primaryText : isFn ? palette.textSecondary : palette.text,
     };
   };
 
@@ -225,7 +225,7 @@ export function CalculatorPad({
       >
         <CalculatorLine
           text={state.op ? `${new Intl.NumberFormat("tr-TR").format(state.accumulator ?? 0)} ${state.op}` : " "}
-          color={palette.textMuted}
+          color={palette.textSecondary}
         />
         <CalculatorLine text={text} color={palette.text} main />
         <CalculatorLine

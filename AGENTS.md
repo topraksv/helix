@@ -147,8 +147,10 @@ agent-to-agent communication that did not occur.
 - **Every back action has a deterministic parent.** Use `HeaderBackButton` for
   stack headers and `navigateBack` for explicit close/done actions; raw
   `router.back()` is not sufficient for direct links with no history. Nested
-  Settings/Cash Flow stacks declare `index` as their initial route. Do not set a
-  root `(tabs)` initial route: it mounts protected hooks on anonymous auth pages.
+  Settings/Cash Flow stacks declare `index` as their initial route and reset to
+  it on tab blur; the shared back control is the standard 44×44 icon-only target.
+  Do not set a root `(tabs)` initial route: it mounts protected hooks on anonymous
+  auth pages.
 - **Sync ordering is server-authoritative.** Supabase normalizes `updated_at`;
   every push selects and conditionally merges that acknowledgement before its
   exact outbox events are removed. Never advance a pull cursor past an invalid
@@ -211,9 +213,9 @@ agent-to-agent communication that did not occur.
 - **Production diagnostics stay silent.** App-owned diagnostics go through
   `src/services/logger.ts`; raw detail emits only in development. Production
   persists only the bounded, device-local `{time,scope,severity,category}`
-  event shape and the user can export a PII-free health snapshot. Never persist
-  or export tokens, passwords, row payloads, notes, e-mails, ids or amounts; do
-  not reintroduce direct console logging in application code.
+  event shape. There is no user-facing diagnostics route/export. Never persist
+  tokens, passwords, row payloads, notes, e-mails, ids or amounts; do not
+  reintroduce direct console logging in application code.
 - **Workbook bytes are hostile until preflight passes.** Keep XLSX as a dynamic
   import, inspect ZIP central-directory entry/size/ratio limits before SheetJS
   inflates it, then enforce the existing sheet/row/cell/text limits. Large JSON
@@ -284,19 +286,12 @@ tests/          vitest suites for src/domain.
 The look is **Warm Organic Editorial / Vintage Botanical Modernism** (moved off
 the old indigo fintech palette 2026-07). Keep it; don't regress to indigo.
 
-- **Palette (aligned to Claude's design tokens, 2026-07-10)** — the locked
-  hexes now live in `src/ui/theme.ts`: clay/terracotta `#d97757` (primary, both
-  themes) over a warm gray ramp — light bg cream `#faf9f5`, white surfaces
-  `#ffffff`, alt `#f0eee6`, border `#e8e6dc`, ink `#1a1918`; dark bg `#141413`,
-  surface `#262624`, alt `#30302e`, border `#3d3d3a`, text `#faf9f5`. Semantics
-  (positive green, negative brick, warning amber, focus blue): exact hexes live
-  ONLY in `src/ui/theme.ts` — copies written here drifted from the code once
-  already, so cite the file instead of restating values. Chart series in `src/ui/charts.tsx`
-  (index 1 = income/sage, index 5 = expense/brick) are a separate validated
-  categorical set. (Previous linen/`#C9623F` palette retired 2026-07-10 for the
-  Claude-token clay/warm-gray system; the *fonts* below are unchanged — Anthropic
-  Sans/Serif are proprietary, so Inter + Fraunces remain the closest shippable
-  match.)
+- **Palette:** `src/ui/theme.ts` is the only source for the user-approved Claude
+  light/dark neutral, clay, link, purple and error tokens. Charts derive their
+  series from those roles; do not reintroduce screen-local hex palettes. Neutral
+  semantic text roles are used when a chromatic token misses WCAG AA at body
+  size. Anthropic fonts are proprietary, so Inter + Fraunces remain the closest
+  shippable pair.
 - **Typography:** headings and amounts are the serif **Fraunces**
   (`@expo-google-fonts/fraunces`), body is **Inter**. Font tokens (`font.serif`
   etc.) and `type.*` scales live in `theme.ts`. A 2.5 s font-load grace in
@@ -310,7 +305,7 @@ the old indigo fintech palette 2026-07). Keep it; don't regress to indigo.
 - **Radii/shadow:** soft — `radius` tokens 12–22, `cardShadow` very low opacity.
 - **Logo:** the botanical DNA-helix mark. `src/ui/brand.tsx` `BrandMark` renders
   the theme-aware transparent symbol (`assets/brand/symbol-{light,dark}-t.png`);
-  full lockups in `assets/brand/` for future use. (`src/ui/logo.tsx` is
+  horizontal README lockups share that folder. (`src/ui/logo.tsx` is
   unrelated — it fetches subscription *merchant* favicons.)
 
 ## UI/UX rules the user enforces (non-negotiable)

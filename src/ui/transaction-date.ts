@@ -1,7 +1,7 @@
 import { monthKeyOf } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 
-export interface TransactionDateDisplay {
+interface TransactionDateDisplay {
   purchaseDate?: string | null;
   effectiveDate: string;
   isAggregate: boolean;

@@ -30,7 +30,7 @@ import { MonthDayField } from "../ui/month-day-field";
 // --- visual format guide ---------------------------------------------------
 function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
   const bg = tone === "month" ? palette.primarySoft : tone === "head" ? palette.surfaceAlt : palette.surface;
-  const color = tone === "month" ? palette.primaryText : palette.textMuted;
+  const color = tone === "month" ? palette.primaryText : palette.textSecondary;
   return (
     <View
       style={{
@@ -88,7 +88,7 @@ function ExampleRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={{ flexDirection: "row", marginBottom: spacing.xs, flexWrap: "wrap" }}>
       <Text style={[type.small, { color: palette.primaryText, fontFamily: "Inter_600SemiBold", width: 78 }]}>{label}</Text>
-      <Text style={[type.small, { color: palette.textMuted, flex: 1, minWidth: 180 }]}>{value}</Text>
+      <Text style={[type.small, { color: palette.textSecondary, flex: 1, minWidth: 180 }]}>{value}</Text>
     </View>
   );
 }
@@ -116,7 +116,7 @@ function FormatGuide({ wide }: { wide: boolean }) {
           {[tr.importer.auto1, tr.importer.auto2, tr.importer.auto3].map((line) => (
             <View key={line} style={{ flexDirection: "row", marginBottom: spacing.xs }}>
               <Text style={[type.small, { color: palette.primaryText, marginRight: spacing.xs }]}>•</Text>
-              <Text style={[type.small, { color: palette.textMuted, flex: 1 }]}>{line}</Text>
+              <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{line}</Text>
             </View>
           ))}
         </View>
@@ -415,9 +415,9 @@ export default function ImportWizardModal() {
                 <ScrollView horizontal>
                   <View style={{ padding: spacing.md }}>
                     <View style={{ flexDirection: "row" }}>
-                      <Text style={[type.label, { color: palette.textMuted, width: 96 }]}>{tr.cashflow.monthHeader}</Text>
+                      <Text style={[type.label, { color: palette.textSecondary, width: 96 }]}>{tr.cashflow.monthHeader}</Text>
                       {preview.columns.map((c) => (
-                        <Text key={c.label} style={[type.label, { color: palette.textMuted, width: 108, textAlign: "right" }]}>
+                        <Text key={c.label} style={[type.label, { color: palette.textSecondary, width: 108, textAlign: "right" }]}>
                           {c.label}
                         </Text>
                       ))}
@@ -429,7 +429,7 @@ export default function ImportWizardModal() {
                           const cell = preview.cells[r]?.[i];
                           if (!cell) return null;
                           return (
-                            <Text key={c.label} style={[type.amountSm, { color: palette.textMuted, width: 108, textAlign: "right" }]}>
+                            <Text key={c.label} style={[type.amountSm, { color: palette.textSecondary, width: 108, textAlign: "right" }]}>
                               {hasBreakdown(cell) ? <Text style={{ color: palette.primaryText }}>• </Text> : null}
                               {cell.valueMinor != null ? formatMinor(cell.valueMinor) : ""}
                             </Text>

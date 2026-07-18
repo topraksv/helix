@@ -269,7 +269,7 @@ export default function CashflowScreen() {
                     <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.md, alignItems: "stretch" }}>
                       <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={m.incomeMinor} color={palette.positive} foreground={palette.positiveText} />
                       <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={m.expenseMinor} color={palette.negative} foreground={palette.negativeText} />
-                      <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={m.transferMinor} color={palette.textMuted} />
+                      <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={m.transferMinor} color={palette.textSecondary} />
                     </View>
                   </Card>
                 );
@@ -496,13 +496,13 @@ function MatrixTable({
         >
           <View style={{ flex: 1 }}>
             <Text style={[type.label, { color: palette.text }]}>{tr.cashflow.uncategorizedLegacy}</Text>
-            <Text style={[type.small, { color: palette.textMuted }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
+            <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
           </View>
           <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negativeText : palette.text }]}>{formatMinorCompact(uncategorizedTotal)}</Text>
-          <ChevronRight accessible={false} size={16} color={palette.textMuted} />
+          <ChevronRight accessible={false} size={16} color={palette.textSecondary} />
         </Pressable>
       ) : null}
-      <Text style={[type.small, { color: palette.textMuted, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, textAlign: "center" }]}>
+      <Text style={[type.small, { color: palette.textSecondary, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, textAlign: "center" }]}>
         {isColumns ? tr.cashflow.monthTapHint : tr.cashflow.pinHint}
       </Text>
     </Card>
@@ -547,7 +547,7 @@ function MatrixCell({
       <Text
         style={[
           type.amountSm,
-          { fontSize, color: value == null || value === 0 ? palette.textMuted : value < 0 ? palette.negativeText : palette.text, textAlign: "right" },
+          { fontSize, color: value == null || value === 0 ? palette.textSecondary : value < 0 ? palette.negativeText : palette.text, textAlign: "right" },
         ]}
       >
         {value == null || value === 0 ? "" : formatMinorCompact(value)}
