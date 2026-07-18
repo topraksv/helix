@@ -290,16 +290,15 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     const active = sheet.columns.map((c, i) => ({ ...c, index: i })).filter((c) => !req.excludedLabels.includes(c.label));
     const orderedCatIds = active.map((col) => ensureCategory(col.label, col.kindGuess));
 
-    for (let r = 0; r < sheet.months.length; r++) {
-      const month = sheet.months[r];
+    for (const [r, month] of sheet.months.entries()) {
       const year = yearOf(month);
       if (!yearAllowed(year)) continue;
       const priorColumns = columnYearsUpdates.get(year) ?? [];
       columnYearsUpdates.set(year, [...new Set([...priorColumns, ...orderedCatIds])]);
       const batch = batchFor(year);
-      for (let ci = 0; ci < active.length; ci++) {
-        const col = active[ci];
+      for (const [ci, col] of active.entries()) {
         const catId = orderedCatIds[ci];
+        if (!catId) continue;
         // Excel cells carry no day — only a month. Anchor every imported row to
         // the FIRST of its month and mark it dateless (isAggregate below), so the
         // current month reads as realized (counts in the balance + this month's
@@ -311,7 +310,8 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         // A "…Taksitli…" cell stores its card installments in the comment; those
         // become real self-scheduling plans (collected separately, below), so the
         // cell's aggregate/cell-note is skipped to avoid double-counting.
-        const cellData = sheet.cells[r][col.index];
+        const cellData = sheet.cells[r]?.[col.index];
+        if (!cellData) continue;
         if (isInstallmentCell(col.label, cellData.comment)) continue;
         const plan = planImportCell(cellData);
         if (!plan) continue;

@@ -6,15 +6,15 @@ import React, { useDeferredValue, useState } from "react";
 import { Text, useWindowDimensions, View } from "react-native";
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
-import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
+import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
-import { tr } from "../../../i18n/tr";
+import { monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
-import { Bars, Donut, Lines, useSeriesColors } from "../../../ui/charts";
+import { Bars, Donut, Lines, seriesColor, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
 
@@ -59,11 +59,13 @@ export default function AnalysisScreen() {
 
   // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
   // back arrow can't wander into empty years forever.
-  const minYear = allTx.length > 0 ? yearOf(allTx[0].effectiveDate) : currentYear;
+  const minYear = allTx[0] ? yearOf(allTx[0].effectiveDate) : currentYear;
 
   const rows = categories
-    .map((c) => ({ category: c, data: matrix.get(c.id) }))
-    .filter((r) => r.data && r.data.ytdMinor !== 0)
+    .flatMap((category) => {
+      const data = matrix.get(category.id);
+      return data && data.ytdMinor !== 0 ? [{ category, data }] : [];
+    })
     .filter((r) => categoryFilter == null || r.category.id === categoryFilter);
 
   // Simple but effective search: each transaction becomes one lowercased
@@ -81,7 +83,7 @@ export default function AnalysisScreen() {
             const haystack = [
               catName(t.categoryId),
               t.note ?? "",
-              tr.months[monthOf(mk) - 1],
+              monthName(mk),
               String(yearOf(t.effectiveDate)),
               String(Math.round(t.amountTryMinor / 100)),
               (t.amountTryMinor / 100).toFixed(2).replace(".", ","),
@@ -94,6 +96,8 @@ export default function AnalysisScreen() {
           .reverse();
 
   const trendRow = (selected ? rows.find((r) => r.category.id === selected) : null) ?? (categoryFilter ? rows[0] : null);
+  const trendStartMonth = monthKeys[0];
+  const trendEndMonth = monthKeys.at(-1);
 
   // Chart data: pie = expense-category shares over the window; bars = monthly
   // income vs expense, or the filtered category's month-by-month values.
@@ -115,7 +119,7 @@ export default function AnalysisScreen() {
   const positiveExpenseRows = expenseRows.filter((row) => row.valueMinor > 0);
   const refundRows = expenseRows.filter((row) => row.valueMinor < 0);
   const pieSlices = [
-    ...positiveExpenseRows.slice(0, 7).map((row, i) => ({ ...row, color: colors[i % colors.length] })),
+    ...positiveExpenseRows.slice(0, 7).map((row, i) => ({ ...row, color: seriesColor(colors, i) })),
     ...(() => {
       const rest = positiveExpenseRows.slice(7).reduce((sum, row) => sum + row.valueMinor, 0);
       return rest > 0 ? [{ label: tr.common.other, valueMinor: rest, color: colors[7] }] : [];
@@ -139,7 +143,7 @@ export default function AnalysisScreen() {
       : []),
   ];
   const barGroups = monthKeys.map((m) => {
-    const label = tr.months[monthOf(m) - 1].slice(0, 3);
+    const label = shortMonthLabel(m);
     if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
     const distribution = distributionForRange(txLike, firstDayOf(m), lastDayOf(m), today);
     return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor, distribution.transferTotalMinor] };
@@ -152,7 +156,7 @@ export default function AnalysisScreen() {
         { label: tr.cashflow.transfer, color: colors[4] },
       ];
   const maxAmountChars = rows.reduce((longest, { data }) => {
-    const values = [...monthKeys.map((month) => data!.monthly.get(month) ?? 0), data!.ytdMinor];
+    const values = [...monthKeys.map((month) => data.monthly.get(month) ?? 0), data.ytdMinor];
     return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinorCompact(value).length));
   }, 0);
   // The table already scrolls horizontally; size each numeric column for the
@@ -285,7 +289,7 @@ export default function AnalysisScreen() {
             cellWidth={analysisCellWidth}
             currentColumnKey={currentMonth}
             focusColumnKey={currentMonth}
-            columns={[...monthKeys.map((m) => ({ key: m, label: tr.months[monthOf(m) - 1].slice(0, 3) })), { key: "__total", label: tr.common.total }]}
+            columns={[...monthKeys.map((m) => ({ key: m, label: shortMonthLabel(m) })), { key: "__total", label: tr.common.total }]}
             rows={rows.map(({ category, data }) => ({
               key: category.id,
               label: `${categoryIcon(category)} ${category.name}`,
@@ -293,7 +297,7 @@ export default function AnalysisScreen() {
               rowHighlight: selected === category.id,
               cells: [
                 ...monthKeys.map((m) => {
-                  const v = data!.monthly.get(m) ?? 0;
+                  const v = data.monthly.get(m) ?? 0;
                   return (
                     <Text
                       key={m}
@@ -304,7 +308,7 @@ export default function AnalysisScreen() {
                   );
                 }),
                 <Text key="__total" style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, color: palette.text }]}>
-                  {formatMinorCompact(data!.ytdMinor)}
+                  {formatMinorCompact(data.ytdMinor)}
                 </Text>,
               ],
             }))}
@@ -312,17 +316,17 @@ export default function AnalysisScreen() {
         </Card>
       )}
 
-      {trendRow ? (
+      {trendRow && trendStartMonth && trendEndMonth ? (
         <Card>
           <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(trendRow.category.name)}</Heading>
           <Lines
             width={Math.min(width - spacing.lg * 4, 640)}
-            xLabels={monthKeys.map((m) => tr.months[monthOf(m) - 1].slice(0, 3))}
+            xLabels={monthKeys.map(shortMonthLabel)}
             series={[
               {
                 label: trendRow.category.name,
                 color: colors[0],
-                points: cumulativeSeries(trendRow.data!, monthKeys[0], monthKeys[monthKeys.length - 1]).map(
+                points: cumulativeSeries(trendRow.data, trendStartMonth, trendEndMonth).map(
                   (p) => p.cumulativeMinor,
                 ),
               },

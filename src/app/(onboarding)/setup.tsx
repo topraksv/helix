@@ -110,6 +110,7 @@ export default function SetupScreen() {
 
   const editSource = (i: number) => {
     const s = sources[i];
+    if (!s) return;
     setNewSource(s.name);
     setNewSourceType(s.type);
     setNewSourcePerson(Math.min(s.personIndex, persons.length - 1));

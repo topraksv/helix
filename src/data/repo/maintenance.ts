@@ -125,7 +125,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     [userId],
   );
   if (selves.length > 1) {
-    const keepId = selves[0].id;
+    const keepId = selves[0]?.id;
+    if (!keepId) throw new Error("Self-person repair invariant failed");
     for (const dup of selves.slice(1)) {
       const repairWrites: RowWrite[] = [];
       for (const table of ["transactions", "payment_sources", "subscriptions", "recurring_incomes", "installment_plans"] as const) {

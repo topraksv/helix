@@ -678,12 +678,22 @@ export const tr = {
 
 export function monthLabel(monthKey: string): string {
   const [y, m] = monthKey.split("-");
-  return `${tr.months[Number(m) - 1]} ${y}`;
+  const name = tr.months[Number(m) - 1];
+  return name && y ? `${name} ${y}` : monthKey;
+}
+
+export function monthName(monthKey: string): string {
+  return tr.months[Number(monthKey.slice(5, 7)) - 1] ?? monthKey;
+}
+
+export function shortMonthLabel(monthKey: string): string {
+  return monthName(monthKey).slice(0, 3);
 }
 
 export function dateLabel(iso: string): string {
   const [y, m, d] = iso.split("-");
-  return `${Number(d)} ${tr.months[Number(m) - 1]} ${y}`;
+  const name = tr.months[Number(m) - 1];
+  return name && y && d ? `${Number(d)} ${name} ${y}` : iso;
 }
 
 export function dateTimeLabel(iso: string): string {

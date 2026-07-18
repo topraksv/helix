@@ -161,7 +161,8 @@ function domainFor(name: string, override?: string | null): string | null {
   const normalizedOverride = normalizeLogoDomain(override);
   if (normalizedOverride) return normalizedOverride;
   const key = name.trim().toLocaleLowerCase("tr-TR");
-  return BRAND_DOMAIN[key] ?? BRAND_DOMAIN[key.split(/\s+/)[0]] ?? null;
+  const firstWord = key.split(/\s+/)[0];
+  return BRAND_DOMAIN[key] ?? (firstWord ? BRAND_DOMAIN[firstWord] : undefined) ?? null;
 }
 
 /** Perceived luminance → pick black or white ink for legible contrast. */
@@ -188,7 +189,8 @@ export function Logo({
 
   const utility = UTILITY_ICONS.find((u) => u.match.test(name));
   const key = name.trim().toLocaleLowerCase("tr-TR");
-  const brand = BRAND[key] ?? BRAND[key.split(/\s+/)[0]] ?? null;
+  const firstWord = key.split(/\s+/)[0];
+  const brand = BRAND[key] ?? (firstWord ? BRAND[firstWord] : undefined) ?? null;
   // A utility (electricity/water/…) keeps its themed icon; other known public
   // domains load transparently and fall back locally on any network error.
   const faviconDomain = utility ? null : domainFor(name, domain);

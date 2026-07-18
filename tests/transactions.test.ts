@@ -6,7 +6,7 @@ import {
   financialFlow,
   projectedTransactionFlow,
 } from "../src/domain/transactions";
-import { tx } from "./helpers";
+import { required, tx } from "./helpers";
 
 const TODAY = "2026-07-31";
 
@@ -48,14 +48,14 @@ describe("canonical transaction classification", () => {
         categoryKind: "expense",
       }),
     ];
-    const ledger = buildLedger({
+    const ledger = required(buildLedger({
       openingBalanceMinor: 1_000_00,
       startMonth: "2026-07",
       endMonth: "2026-07",
       transactions: rows,
       adjustments: [],
       today: TODAY,
-    })[0];
+    })[0]);
     const distribution = distributionForRange(rows, "2026-07-01", "2026-07-31", TODAY);
     const matrix = categoryRangeMatrix(rows, "2026-07", "2026-07", TODAY);
 

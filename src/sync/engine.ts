@@ -256,6 +256,7 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
           await upsertLocalRemote(table, remote, allowed);
         }
         const last = remoteRows[remoteRows.length - 1];
+        if (!last) throw new Error(`pull ${table}: empty validated page`);
         assertActive(token);
         curTs = new Date(last.updated_at as string).toISOString();
         curId = last.id as string;

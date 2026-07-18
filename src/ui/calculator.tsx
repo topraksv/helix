@@ -66,7 +66,7 @@ function useCalculator() {
       if (/^\d$/.test(key)) {
         const cur = s.current === "0" ? "" : s.current;
         const [integer, fraction = ""] = cur.split(",");
-        if ((!cur.includes(",") && integer.replace("-", "").length >= MAX_AMOUNT_MAJOR_DIGITS) || fraction.length >= 6) return s;
+        if ((!cur.includes(",") && (integer ?? "").replace("-", "").length >= MAX_AMOUNT_MAJOR_DIGITS) || fraction.length >= 6) return s;
         return { ...s, current: cur + key };
       }
       if (key === "+" || key === "-" || key === "×" || key === "÷") {
