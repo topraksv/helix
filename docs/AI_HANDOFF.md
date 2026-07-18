@@ -18,6 +18,12 @@ lags behind them.
 
 ## Active working tree
 
+An eight-package remediation of Codex's independent 2026-07-17 audit is now
+active. Package 0 adds the exact audit export and the exhaustive ID/status
+registry in `docs/AUDIT_TRACKER.md`; later packages must update that registry
+as their acceptance tests, commits and deployments complete. No application
+code has changed yet.
+
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
 1 hygiene/docs (`98fa44f`), 2 data-layer/web hardening (`0692027`),
 3 liveliness (`5ac5205`), 4 scale (`00eb8f3`) — web + mobile OTA. Supabase
@@ -25,9 +31,11 @@ migration 5 was applied by the user via `supabase db push` and independently
 verified by Claude afterwards: `migration list --linked` shows 1–5 identical
 on both sides and `db lint --linked` reports no errors. (The partial unique
 index on cell_notes creating successfully also proves the dedup left no
-conflicting live rows.) No application work is in progress. Explicitly
-excluded by the user: calculator-tab IA change and Supabase captcha/signup
-panel settings. Always re-check `git status`; Git remains authoritative.
+conflicting live rows.) Those packages remain the trusted baseline; the newer
+Codex audit found additional work now tracked by ID. The user explicitly keeps
+the audit's “şimdi yapılmamalı” items and Expo SDK 54 advisories in backlog;
+everything else is active scope. Always re-check `git status`; Git remains
+authoritative.
 
 ## Current architecture summary
 
@@ -47,18 +55,12 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-From the 2026-07-17 audit, every accepted finding is remediated and migration
-5 is applied + verified. Still pending by nature: the iOS Data Protection
-entitlement and the `expo`/`expo-updates` patch alignment both activate only
-at the next local `npx expo run:ios --device` build; README screenshots need
-an authenticated device/browser session to capture. Known minor leftover:
-five `as never` casts in UI generics (`ChipPicker`/`Select` variance in three
-screens + a drizzle `enumValues.includes` check) — cosmetic, not the SQL
-boundary. User-excluded: calculator-tab IA, Supabase captcha.
-Accepted constraints unchanged: the 17 moderate `npm audit --omit=dev`
-findings sit in Expo SDK 54's build/config chain and only clear with the
-breaking SDK 57 bump; physical haptic/gesture/visual passes still require the
-installed device.
+`docs/AUDIT_TRACKER.md` is now the authoritative audit backlog. Only its five
+`BACKLOG-*` items are intentionally deferred: the SDK 54 advisory chain,
+unnecessary technology rewrites, calculator-tab removal without usage data,
+bank/server-push/widget/multi-user expansion, and enterprise architecture
+patterns. Physical VoiceOver/TalkBack/gesture/OTA acceptance still requires an
+installed device; code/config work and every automatable check remain in scope.
 
 ## Handoff update contract
 
@@ -83,6 +85,21 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit remediation package 0: scope registry)
+
+- Base `115baf8`, branch `main`; the working tree was clean before this task.
+- Recovered the previously delivered 2026-07-17 independent audit from the
+  local Codex session record as `docs/HELIX_CODEX_AUDIT_2026-07-17.md`; its two
+  hard-break trailing-space markers were normalized to blank Markdown lines so
+  the repository's whitespace gate remains clean.
+- Added `docs/AUDIT_TRACKER.md`, mapping every audit finding, refactor,
+  performance task, product opportunity and required test to an ID, package,
+  status and acceptance criterion. Only the audit's explicitly deferred ideas
+  and Expo SDK 54 advisories are marked `BACKLOG`.
+- Package 0 is documentation-only; no application code, dependency, migration,
+  remote data or OTA changes. Commit/push/web state and verification are filled
+  in when this package closes; the audit remains a snapshot of `115baf8`.
 
 ### 2026-07-17 — Claude (audit package 4: scale and final hardening)
 
@@ -222,39 +239,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   **No mobile OTA was published for this package**: the only bundle-affecting
   edits are comment/no-op removals with identical runtime behavior; package 2+
   will carry these bytes in its OTA.
-
-### 2026-07-16 — Codex (back, column drag and high-total UI follow-up)
-
-- Base `4f570c7`, branch `main`; the working tree was clean with no staged work.
-  The user supplied three installed-iOS screenshots proving that the previous
-  geometric centring, sheet-contained drag and long-total sizing still needed
-  correction.
-- `HeaderBackButton` keeps one 82×44 hit target but now centres its absolute
-  icon/text plane inside the capsule and applies a measured optical offset for
-  the chevron's transparent bounds and Inter line box. The labelled **Geri**
-  control and deterministic `navigateBack` behavior remain shared across web
-  and native.
-- Both column entry points still render the same `CategoriesScreen` and
-  `ComputedColumnsScreen`, call the same `DraggableList`, and persist the same
-  synced `sortOrder`; no duplicate editor or reorder service was added. The Mali
-  Tablo route now opens as a normal stack card because an iOS sheet owns the
-  vertical pan and can steal the grip gesture even with dismissal disabled.
-  This hard-won presentation rule is recorded in `AGENTS.md`.
-- Cell totals retain the exact full `formatMinor` value. Long hero figures step
-  down further, stay right-aligned in an unconstrained horizontal container and
-  therefore cannot split the minus sign, major value and kuruş across lines;
-  horizontal access remains as a fallback at exceptionally narrow widths.
-- Checks: `npm run typecheck`, `npm test` (24 files/214 tests), `npx expo lint`,
-  `git diff --check`, 49-route static web export and the iOS/Android EAS bundle
-  exports passed. Browser discovery returned no available profile, so no
-  pixel-perfect or physical-gesture result is claimed. Production root,
-  Columns Editor and Cell Editor returned HTTP 200.
-- Shipped as `b8bc26e`, pushed to `main`; GitHub Pages run `29514391456`
-  completed successfully. EAS asset upload hit the known Google Storage DNS
-  failure three times; a command-scoped, uncommitted resolver preload using a
-  directly verified Google IPv4 endpoint completed the unchanged fourth
-  upload. `preview` update group `dc449f63-7497-44d0-8472-d4044a923e3b`
-  published on runtime `1.0.0` (iOS
-  `019f6bba-2c65-7ea8-a6c9-96d891155e83`, Android
-  `019f6bba-2c65-797c-91d3-e87e9f8fec8e`). No native rebuild was required; the
-  phone applies it after a complete close and reopen.
