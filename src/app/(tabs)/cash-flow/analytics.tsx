@@ -3,17 +3,19 @@
  *  transaction search. */
 
 import React, { useDeferredValue, useState } from "react";
-import { Text, useWindowDimensions, View } from "react-native";
+import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
+import { filterTransactions } from "../../../domain/transaction-search";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { monthName, shortMonthLabel, tr } from "../../../i18n/tr";
-import { toTxLike, useAllTransactions, useCategories, usePersons } from "../../../data/hooks";
+import { toTxLike, useAllTransactions, useCategories, usePersons, useSources } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
-import { Amount, Badge, Body, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, seriesColor, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
@@ -30,9 +32,14 @@ export default function AnalysisScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [chartType, setChartType] = useState<"pie" | "bars">("pie");
   const [query, setQuery] = useState("");
+  const [transactionType, setTransactionType] = useState<"expense" | "income" | "transfer" | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const [searchScope, setSearchScope] = useState<"period" | "all">("period");
   const categories = useCategories();
   const persons = usePersons();
+  const sources = useSources();
   const allTx = useAllTransactions();
+  const router = useRouter();
   const { palette } = useTheme();
   const colors = useSeriesColors();
   const { width } = useWindowDimensions();
@@ -74,26 +81,35 @@ export default function AnalysisScreen() {
   const catName = (cid: string | null) => (cid ? categoryById.get(cid)?.name ?? "" : "");
   const deferredQuery = useDeferredValue(query);
   const q = deferredQuery.trim().toLocaleLowerCase("tr-TR");
-  const searchResults =
-    q.length < 1
-      ? []
-      : allTx
-          .filter((t) => {
-            const mk = monthKeyOf(t.effectiveDate);
-            const haystack = [
-              catName(t.categoryId),
-              t.note ?? "",
+  const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
+  const searchActive = q.length > 0 || transactionType != null || categoryFilter != null || sourceFilter != null;
+  const searchResults = searchActive
+    ? filterTransactions(
+        allTx.map((transaction) => {
+          const mk = monthKeyOf(transaction.effectiveDate);
+          return {
+            ...transaction,
+            searchText: [
+              catName(transaction.categoryId),
+              sourceNameById.get(transaction.paymentSourceId ?? "") ?? "",
+              transaction.note ?? "",
               monthName(mk),
-              String(yearOf(t.effectiveDate)),
-              String(Math.round(t.amountTryMinor / 100)),
-              (t.amountTryMinor / 100).toFixed(2).replace(".", ","),
-            ]
-              .join(" ")
-              .toLocaleLowerCase("tr-TR");
-            return haystack.includes(q);
-          })
-          .slice(-100)
-          .reverse();
+              String(yearOf(transaction.effectiveDate)),
+              String(Math.round(transaction.amountTryMinor / 100)),
+              (transaction.amountTryMinor / 100).toFixed(2).replace(".", ","),
+            ].join(" "),
+          };
+        }),
+        {
+          query: deferredQuery,
+          type: transactionType,
+          categoryId: categoryFilter,
+          paymentSourceId: sourceFilter,
+          from: searchScope === "period" ? firstDayOf(startMonth) : null,
+          to: searchScope === "period" ? lastDayOf(endMonth) : null,
+        },
+      )
+    : [];
 
   const trendRow = (selected ? rows.find((r) => r.category.id === selected) : null) ?? (categoryFilter ? rows[0] : null);
   const trendStartMonth = monthKeys[0];
@@ -199,19 +215,71 @@ export default function AnalysisScreen() {
         }}
       />
 
+      <Heading>{tr.analysis.findTransaction}</Heading>
       <Field accessibilityLabel={tr.common.search} placeholder={tr.analysis.searchPlaceholder} value={query} onChangeText={setQuery} autoCapitalize="none" />
-      {q.length >= 1 ? (
+      <Segmented
+        options={[
+          { value: "all", label: tr.common.all },
+          { value: "expense", label: tr.cashflow.expense },
+          { value: "income", label: tr.cashflow.income },
+          { value: "transfer", label: tr.cashflow.transfer },
+        ]}
+        value={transactionType ?? "all"}
+        onChange={(value) => setTransactionType(value === "all" ? null : value)}
+      />
+      <Row style={{ alignItems: "flex-start" }}>
+        <View style={{ flex: 1 }}>
+          <Select
+            label={tr.analysis.searchSource}
+            options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name }))]}
+            value={sourceFilter ?? ""}
+            onChange={(value) => setSourceFilter(value || null)}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Select
+            label={tr.analysis.searchPeriod}
+            options={[
+              { value: "period", label: tr.analysis.selectedPeriod },
+              { value: "all", label: tr.analysis.allTime },
+            ]}
+            value={searchScope}
+            onChange={setSearchScope}
+          />
+        </View>
+      </Row>
+      {searchActive ? (
         <Card>
           {searchResults.length === 0 ? (
-            <Body muted style={{ paddingVertical: spacing.sm }}>{tr.analysis.noResults}</Body>
+            <View style={{ gap: spacing.sm }}>
+              <Body muted>{tr.analysis.noResults}</Body>
+              <Button
+                label={tr.analysis.clearSearch}
+                variant="ghost"
+                size="sm"
+                onPress={() => {
+                  setQuery("");
+                  setTransactionType(null);
+                  setCategoryFilter(null);
+                  setSelected(null);
+                  setSourceFilter(null);
+                }}
+              />
+            </View>
           ) : (
             searchResults.map((t, index) => (
               <View key={t.id}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityHint={tr.analysis.openTransaction}
+                  onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
+                >
                 <Spread style={{ paddingVertical: spacing.xs }}>
                   <View style={{ flex: 1, paddingRight: spacing.sm }}>
                     <Body>{catName(t.categoryId) || tr.common.none}</Body>
                     <Body muted style={{ fontSize: 12 }}>
                       {transactionDateText(t)}
+                      {t.paymentSourceId && sourceNameById.get(t.paymentSourceId) ? ` · ${sourceNameById.get(t.paymentSourceId)}` : ""}
                       {t.note ? ` · ${t.note}` : ""}
                     </Body>
                     {t.amountTryMinor < 0 ? (
@@ -228,6 +296,7 @@ export default function AnalysisScreen() {
                     )}
                   />
                 </Spread>
+                </Pressable>
                 {index < searchResults.length - 1 ? <Divider /> : null}
               </View>
             ))

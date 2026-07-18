@@ -235,6 +235,7 @@ export const tr = {
     catchupShort: "Bekleyenler",
     upcoming: "Yaklaşan Ödemeler",
     upcomingHint: "Otomatik ödeme olsun olmasın, önümüzdeki günlerde ödeyeceklerin: abonelikler, düzenli gelirler ve ileri tarihli işlemler.",
+    allUpcoming: "Tüm Takvimi Gör",
     scheduledTx: "İleri tarihli işlem",
     cardStatement: "Kredi kartı ödemesi",
     late: "Geciken",
@@ -276,6 +277,11 @@ export const tr = {
     subtitle: (d: string) => `${d} tarihinden beri`,
     nothing: "Onay bekleyen bir şey yok, güncelsin ✅",
     fixAmount: "Tutarı Düzelt",
+  },
+  upcoming: {
+    title: "Yaklaşan Takvimi",
+    intro: "Abonelikler, düzenli gelirler, ileri tarihli işlemler ve kredi kartı ekstreleri tek zaman çizgisinde. Bir kaydı açarak kaynağına gidebilirsin.",
+    offline: "Son cihaz verilerin gösteriliyor. İnternet bağlantısı geldiğinde takvim otomatik olarak eşitlenecek.",
   },
   cell: {
     title: "Hücre Detayı",
@@ -467,6 +473,13 @@ export const tr = {
     existingTitle: "Kolonların",
   },
   analysis: {
+    findTransaction: "İşlem Bul",
+    searchSource: "Ödeme yöntemi",
+    searchPeriod: "Arama dönemi",
+    selectedPeriod: "Seçili dönem",
+    allTime: "Tüm zamanlar",
+    clearSearch: "Aramayı Temizle",
+    openTransaction: "İşlemi düzenlemek için aç",
     title: "Analiz",
     ytd: "Yıl Başından Beri",
     period3m: "3 Ay",

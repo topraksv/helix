@@ -3,12 +3,12 @@
 
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
-import { standaloneUpcomingTransactions, upcomingCardStatements } from "../../domain/upcoming";
+import { buildUpcomingTimeline } from "../../domain/upcoming";
 import { dateLabel, dateTimeLabel, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
 import {
@@ -27,7 +27,6 @@ import { combineLiveQueryStatus } from "../../data/live-state";
 import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
 import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
-import { projectedTransactionFlow } from "../../domain/transactions";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
@@ -205,7 +204,6 @@ export default function DashboardScreen() {
   // full-table live query (useAllTransactions) + toTxLike on the same data.
   const txLike = bundle?.txLike ?? [];
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
-  const creditCardIds = new Set(sources.filter((source) => source.type === "credit_card").map((source) => source.id));
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
   const incomeById = new Map(incomes.map((income) => [income.id, income]));
@@ -237,74 +235,36 @@ export default function DashboardScreen() {
     year,
     expectedTryMinor,
   });
-  const { pendingItems, lateItems: late, incomingMinor, outgoingMinor: remainingFixedMinor } = model;
-  // Upcoming = the next ~31 days of everything you'll pay/receive on a fixed
-  // schedule: subscriptions + recurring incomes (expected items) AND your own
-  // future-dated one-off entries (a bill you scheduled ahead). A month-wide
-  // window so each monthly obligation shows once, auto-pay or not.
-  const upcoming: {
-    key: string;
-    kind: "expected" | "tx";
-    expectedId?: string;
-    direction: "in" | "out";
-    name: string;
-    typeLabel: string;
-    amountMinor: number;
-    currency: string;
-    date: string;
-  }[] = [
-    ...pendingItems
-      .filter((e) => e.status === "pending" && e.dueDate >= today && daysBetween(today, e.dueDate) <= 31)
-      .map((e) => ({
-        key: e.id,
-        kind: "expected" as const,
-        expectedId: e.id,
-        direction: e.direction,
-        name: nameOf(e),
-        typeLabel:
-          e.direction === "in"
-            ? tr.dashboard.expectedIncome
-            : catName(subscriptionById.get(e.refId)?.categoryId ?? null) ?? tr.subs.title,
-        amountMinor: e.amountMinor,
-        currency: e.currency,
-        date: e.dueDate,
+  const { lateItems: late, incomingMinor, outgoingMinor: remainingFixedMinor } = model;
+  const upcoming = buildUpcomingTimeline({
+    expected,
+    transactions: txLike,
+    expectedSources: [
+      ...subscriptions.map((subscription) => ({
+        id: subscription.id,
+        name: subscription.name,
+        sourceType: "subscription" as const,
+        categoryName: catName(subscription.categoryId) ?? null,
       })),
-    ...standaloneUpcomingTransactions(txLike, creditCardIds, today)
-      .map((t) => {
-        const flow = projectedTransactionFlow(t);
-        return {
-          key: t.id,
-          kind: "tx" as const,
-          direction: flow.direction,
-          name: catName(t.categoryId) ?? tr.dashboard.scheduledTx,
-          typeLabel: tr.dashboard.scheduledTx,
-          amountMinor: flow.amountTryMinor,
-          currency: "TRY",
-          date: t.effectiveDate,
-        };
-      }),
-    // One consolidated statement per credit card — you pay the card once, not
-    // each purchase. Only for cards that HAVE a due day; a card with no known
-    // due date shows nothing (never a fabricated "in N days"). The amount is the
-    // card's next unpaid statement month (its earliest pending installments).
-    ...upcomingCardStatements(
-      txLike,
-      sources.filter((source) => source.type === "credit_card"),
-      cardStatements,
-      today,
-    ).map((statement) => ({
-          key: `card-${statement.cardId}`,
-          kind: "tx" as const,
-          direction: "out" as const,
-          name: statement.cardName,
-          typeLabel: tr.dashboard.cardStatement,
-          amountMinor: statement.amountMinor,
-          currency: "TRY",
-          date: statement.dueDate,
-        })),
-  ]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 12);
+      ...incomes.map((income) => ({
+        id: income.id,
+        name: income.name,
+        sourceType: "recurring_income" as const,
+        categoryName: catName(income.categoryId) ?? null,
+      })),
+    ],
+    categories: categories.map((category) => ({ id: category.id, name: category.name })),
+    cards: sources.filter((source) => source.type === "credit_card"),
+    statements: cardStatements,
+    today,
+    horizonDays: 31,
+  }).filter((item) => item.status === "upcoming").slice(0, 12);
+  const timelineTypeLabel = (sourceType: (typeof upcoming)[number]["sourceType"]) => ({
+    recurring_income: tr.dashboard.expectedIncome,
+    subscription: tr.subs.title,
+    scheduled_transaction: tr.dashboard.scheduledTx,
+    card_statement: tr.dashboard.cardStatement,
+  })[sourceType];
 
   // Everything still to happen between today and month end, as ONE flow set, so
   // the month-end forecast and its breakdown reconcile exactly:
@@ -540,8 +500,8 @@ export default function DashboardScreen() {
               key={u.key}
               icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
               iconColor={u.direction === "in" ? palette.positive : undefined}
-              title={u.name}
-              subtitle={`${u.typeLabel} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
+              title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
+              subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
               stackRightOnNarrow
               right={
                 u.kind === "expected" && u.expectedId ? (
@@ -562,6 +522,7 @@ export default function DashboardScreen() {
               }
             />
           ))}
+          <Button label={tr.dashboard.allUpcoming} variant="ghost" onPress={() => router.push("/upcoming" as Href)} />
         </Card>
       ) : (
         <Card>
