@@ -28,6 +28,7 @@ import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
 import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
+import { INITIAL_TRANSACTION_ROWS, nextVisibleTransactionCount } from "../ui/progressive-list";
 
 export default function CellEditorModal() {
   const { month, categoryId } = useLocalSearchParams<{ month: string; categoryId: string }>();
@@ -42,6 +43,7 @@ export default function CellEditorModal() {
   const [entryRaw, setEntryRaw] = useState("");
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [visibleTransactions, setVisibleTransactions] = useState(INITIAL_TRANSACTION_ROWS);
   const operationGuard = useOperationGuard();
 
   const category = categories.find((c) => c.id === categoryId);
@@ -193,7 +195,7 @@ export default function CellEditorModal() {
       {cellTx.length === 0 ? (
         <EmptyState title={tr.cashflow.emptyMonth} />
       ) : (
-        cellTx.map((t, index) => {
+        cellTx.slice(0, visibleTransactions).map((t, index) => {
           const installmentTitle = t.installmentPlanId
             ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)
             : null;
@@ -225,11 +227,19 @@ export default function CellEditorModal() {
                 <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void removeTx(t.id)} />
               </Row>
             </Spread>
-            {index < cellTx.length - 1 ? <Divider /> : null}
+            {index < Math.min(cellTx.length, visibleTransactions) - 1 ? <Divider /> : null}
           </View>
           );
         })
       )}
+      {cellTx.length > visibleTransactions ? (
+        <Button
+          label={tr.common.showMore(cellTx.length - visibleTransactions)}
+          variant="secondary"
+          size="sm"
+          onPress={() => setVisibleTransactions(nextVisibleTransactionCount(cellTx.length, visibleTransactions))}
+        />
+      ) : null}
     </Screen>
   );
 }

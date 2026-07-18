@@ -11,7 +11,7 @@ import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
-import { SessionEpoch, SessionEpochCancelledError, type SessionEpochToken } from "./session-epoch";
+import { SessionEpoch, SessionEpochCancelledError, runSessionEpochTask, type SessionEpochToken } from "./session-epoch";
 import { isUuidShaped, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
 import { prepareOutboundBatch } from "./outbound-validation";
@@ -309,17 +309,10 @@ export async function runSyncSessionTask<T>(
   userId: string,
   task: (signal: AbortSignal) => Promise<T>,
 ): Promise<T | undefined> {
-  const token = sessionEpoch.capture(userId);
-  if (!token) return undefined;
-  const running = task(token.signal);
+  const running = runSessionEpochTask(sessionEpoch, userId, task);
   sessionTasks.add(running);
   try {
-    const result = await running;
-    assertActive(token);
-    return result;
-  } catch (e) {
-    if (e instanceof SessionEpochCancelledError || token.signal.aborted || !sessionEpoch.isCurrent(token)) return undefined;
-    throw e;
+    return await running;
   } finally {
     sessionTasks.delete(running);
   }

@@ -79,35 +79,32 @@ function normalizeForSqlite(value: unknown): SQLiteBindValue {
  * `isUserEntry=false` for machine writes (fx cache, sync merges are separate).
  */
 export async function writeRows(userId: string, writes: RowWrite[], isUserEntry = true): Promise<void> {
-  const stamped = writes.map(({ table, row }) => ({
-    table,
-    row: { ...row, updatedAt: nowIso(), createdAt: row.createdAt ?? nowIso(), userId },
-  }));
+  await writeRowBatchesAtomically(userId, [writes], isUserEntry);
+}
 
-  const entries: { table: SyncedTableName; dbRow: Record<string, unknown> }[] = stamped.map((w) => ({
-    table: w.table,
-    dbRow: toDbShape(w.table, w.row),
-  }));
-
-  if (isUserEntry) {
-    const id = await deterministicId(naturalKeys.setting(userId, "last_entry_at"));
-    entries.push({
-      table: "settings",
-      dbRow: toDbShape("settings", {
-        id,
-        userId,
-        createdAt: nowIso(),
-        updatedAt: nowIso(),
-        deletedAt: null,
-        key: "last_entry_at",
-        value: JSON.stringify(nowIso()),
-      }),
-    });
-  }
-
+/**
+ * Consume bounded batches inside one transaction. Large restores therefore do
+ * not allocate a second full stamped/write-plan copy, while preserving the
+ * all-or-nothing row + outbox contract.
+ */
+export async function writeRowBatchesAtomically(
+  userId: string,
+  batches: Iterable<readonly RowWrite[]>,
+  isUserEntry = true,
+): Promise<void> {
+  const lastEntryId = isUserEntry
+    ? await deterministicId(naturalKeys.setting(userId, "last_entry_at"))
+    : null;
   const sqlite = await getSqliteAsync();
   await withTransaction(async () => {
-    for (const { table, dbRow } of entries) {
+    const persist = async (table: SyncedTableName, row: Record<string, unknown>) => {
+      const timestamp = nowIso();
+      const dbRow = toDbShape(table, {
+        ...row,
+        updatedAt: timestamp,
+        createdAt: row.createdAt ?? timestamp,
+        userId,
+      });
       const { sql, args } = upsertSql(table, dbRow);
       await sqlite.runAsync(sql, args);
       // On an idempotency-key collision (two writes to the same row within the
@@ -120,6 +117,19 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
          ON CONFLICT(idempotency_key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`,
         [table, String(dbRow.id), JSON.stringify(dbRow), `${dbRow.id}:${dbRow.updated_at}`, nowIso()],
       );
+    };
+    for (const batch of batches) {
+      for (const write of batch) await persist(write.table, write.row);
+    }
+    if (lastEntryId) {
+      const timestamp = nowIso();
+      await persist("settings", {
+        id: lastEntryId,
+        createdAt: timestamp,
+        deletedAt: null,
+        key: "last_entry_at",
+        value: JSON.stringify(timestamp),
+      });
     }
   });
 }

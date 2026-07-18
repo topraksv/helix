@@ -174,7 +174,7 @@ export default function ImportWizardModal() {
           Platform.OS === "web"
             ? new Uint8Array(await (await fetch(uri)).arrayBuffer())
             : await new File(uri).bytes();
-        const parsed = parseWorkbookBytes(bytes);
+        const parsed = await parseWorkbookBytes(bytes);
         if (parsed.sheets.length === 0) {
           setError(parsed.unparsed[0]?.reason ?? tr.importer.parseError);
           setWorkbook(null);

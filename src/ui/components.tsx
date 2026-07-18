@@ -32,6 +32,7 @@ import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../dom
 import { INPUT_LIMITS } from "../domain/input";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
+import type { LiveQueryStatus } from "../data/live-state";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 import { useReducedMotion } from "./motion";
@@ -978,6 +979,55 @@ export function EmptyState({ icon: IconCmp, title, hint }: { icon?: LucideIcon; 
       ) : null}
       <Text style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
       {hint ? <Text style={[type.body, { color: palette.textMuted, textAlign: "center" }]}>{hint}</Text> : null}
+    </View>
+  );
+}
+
+/**
+ * Honest feedback for local live-query failures. Last known data stays visible
+ * while stale; a first-load failure is never presented as a genuine empty
+ * account. Refreshing is intentionally quiet because the current snapshot is
+ * still valid and most refreshes finish within a frame or two.
+ */
+export function DataStateNotice({
+  status,
+  retry,
+}: {
+  status: LiveQueryStatus;
+  retry: () => void;
+}) {
+  const { palette } = useTheme();
+  if (status === "ready" || status === "refreshing") return null;
+  if (status === "loading") {
+    return (
+      <View
+        accessibilityLiveRegion="polite"
+        accessibilityLabel={tr.dataState.loading}
+        style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}
+      >
+        <ActivityIndicator color={palette.primary} />
+        <Body muted>{tr.dataState.loading}</Body>
+      </View>
+    );
+  }
+  const stale = status === "stale";
+  return (
+    <View
+      accessibilityLiveRegion="assertive"
+      style={{
+        backgroundColor: (stale ? palette.warning : palette.negative) + "14",
+        borderColor: (stale ? palette.warning : palette.negative) + "55",
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: radius.md,
+        padding: spacing.md,
+        marginBottom: spacing.md,
+        gap: spacing.sm,
+      }}
+    >
+      <Body>{stale ? tr.dataState.stale : tr.dataState.error}</Body>
+      <View style={{ alignSelf: "flex-start" }}>
+        <Button size="sm" variant="secondary" label={tr.common.retry} onPress={retry} />
+      </View>
     </View>
   );
 }
