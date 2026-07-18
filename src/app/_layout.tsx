@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Platform, Text, useColorScheme, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
@@ -34,6 +34,7 @@ import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../lib/device-preferences";
 import { HeaderBackButton } from "../ui/header-back";
 import { devError } from "../services/logger";
+import { PrivacyCover } from "../ui/privacy-cover";
 import {
   useBiometricLock,
   useFirstPullGrace,
@@ -95,6 +96,7 @@ export default function RootLayout() {
   const background = systemScheme === "dark" ? darkPalette.background : lightPalette.background;
   const foreground = systemScheme === "dark" ? darkPalette.text : lightPalette.text;
   const primary = systemScheme === "dark" ? darkPalette.primary : lightPalette.primary;
+  const primaryForeground = systemScheme === "dark" ? darkPalette.primaryText : lightPalette.primaryText;
   const fontsReady = fontsLoaded || fontsError != null || fontGrace;
 
   return (
@@ -107,20 +109,25 @@ export default function RootLayout() {
       {dbReady && fontsReady ? (
         <RootLayoutInner />
       ) : (
-        <View style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: 24, gap: 16 }}>
+        <View
+          accessible={!dbError}
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={dbError ? undefined : tr.dataState.loading}
+          style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: 24, gap: 16 }}
+        >
           {dbError ? (
             <>
-              <Text style={{ color: foreground, textAlign: "center" }}>{tr.errors.database}</Text>
-              <Text
+              <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: foreground, textAlign: "center" }}>{tr.errors.database}</Text>
+              <Pressable
                 accessibilityRole="button"
                 onPress={() => {
                   setDbReady(false);
                   setAttempt((a) => a + 1);
                 }}
-                style={{ color: primary, fontWeight: "600" }}
+                style={{ minHeight: 44, paddingHorizontal: 16, justifyContent: "center" }}
               >
-                {tr.common.retry}
-              </Text>
+                <Text style={{ color: primaryForeground, fontWeight: "600" }}>{tr.common.retry}</Text>
+              </Pressable>
             </>
           ) : (
             <ActivityIndicator color={primary} />
@@ -236,7 +243,12 @@ function RootLayoutInner() {
     // While an existing account's first pull is still landing, show a spinner
     // rather than a bare background so the hold never reads as a white screen.
     return (
-      <View style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}>
+      <View
+        accessible={!guardQueryFailed}
+        accessibilityLiveRegion="polite"
+        accessibilityLabel={guardQueryFailed ? undefined : tr.dataState.loading}
+        style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}
+      >
         {guardQueryFailed ? (
           <View style={{ width: "100%", maxWidth: 420, padding: 24, gap: 16 }}>
             <Title>{tr.errors.database}</Title>
@@ -296,6 +308,7 @@ function RootLayoutInner() {
         <UndoSnackbar />
         <DialogHost />
         <PromptHost />
+        <PrivacyCover />
       </View>
     </ThemeContext.Provider>
   );

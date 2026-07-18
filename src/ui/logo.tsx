@@ -200,6 +200,7 @@ export function Logo({
     return (
       <View style={{ width: size, height: size, borderRadius: radius.sm, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: palette.border }}>
         <Image
+          accessible={false}
           source={{ uri: faviconUrl }}
           onError={() => setFailedDomain(faviconDomain)}
           // Fill the whole frame instead of floating at 72% inside it, which
@@ -225,7 +226,7 @@ export function Logo({
           justifyContent: "center",
         }}
       >
-        <IconCmp size={size * 0.55} color={utility.color} strokeWidth={2} />
+        <IconCmp accessible={false} size={size * 0.55} color={utility.color} strokeWidth={2} />
       </View>
     );
   }

@@ -199,7 +199,7 @@ export default function AnalysisScreen() {
         }}
       />
 
-      <Field placeholder={tr.analysis.searchPlaceholder} value={query} onChangeText={setQuery} autoCapitalize="none" />
+      <Field accessibilityLabel={tr.common.search} placeholder={tr.analysis.searchPlaceholder} value={query} onChangeText={setQuery} autoCapitalize="none" />
       {q.length >= 1 ? (
         <Card>
           {searchResults.length === 0 ? (

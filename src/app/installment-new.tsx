@@ -21,6 +21,7 @@ import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function PlanModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -57,6 +58,9 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
   const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
   const [busy, setBusy] = useState(false);
+  const draftSnapshot = JSON.stringify({ kind, title, amountRaw, countStr, paidStr, startMonth, sourceId, personChoice, categoryId });
+  const initialDraftSnapshot = React.useRef(draftSnapshot).current;
+  const allowExit = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
   const selectedSource = sources.find((source) => source.id === sourceId);
   const cardSourceValid = kind !== "card_installment" || Boolean(
     selectedSource?.type === "credit_card" &&
@@ -113,7 +117,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
         if (isEdit) await updateInstallmentPlan(userId, existing!.id, input);
         else await createInstallmentPlan(userId, input, newId());
         scheduleSync(userId);
-        close();
+        allowExit(close);
       } catch (e) {
         devError("installment.save", e);
         void appAlert(
@@ -142,7 +146,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
       if (!ok) return;
       await deletePlan(userId, existing!.id);
       scheduleSync(userId);
-      close();
+      allowExit(close);
     })();
   };
 

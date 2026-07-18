@@ -13,6 +13,7 @@ import { saveCellNote } from "../../../data/cell-notes";
 import { firstDayOf, lastDayOf, yearOf } from "../../../domain/dates";
 import { useCategories, useLedger, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../../../data/hooks";
 import { installmentDisplayTitle } from "../../../domain/installments";
+import { formatMinor } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
@@ -77,7 +78,7 @@ export default function MonthDetailScreen() {
           </Spread>
           <Spread style={{ marginTop: spacing.xs }}>
             <Body muted>{tr.cashflow.income}</Body>
-            <Amount minor={ledgerMonth.incomeMinor} colorized={false} color={palette.positive} />
+            <Amount minor={ledgerMonth.incomeMinor} colorized={false} color={palette.positiveText} />
           </Spread>
           <Spread style={{ marginTop: spacing.xs }}>
             <Body muted>{tr.cashflow.expense}</Body>
@@ -117,12 +118,14 @@ export default function MonthDetailScreen() {
         return (
           <Card key={categoryId}>
             <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open }}
+              accessibilityLabel={tr.a11y.categorySummary(title, formatMinor(selfSum), Boolean(note))}
               onPress={() => {
                 selectionTapIfChanged(expanded, open ? "" : categoryId);
                 setExpanded(open ? null : categoryId);
                 setVisibleTransactions(INITIAL_TRANSACTION_ROWS);
               }}
-              accessibilityRole="button"
             >
               <Spread>
                 <Row gap={spacing.sm} style={{ flex: 1, paddingRight: spacing.md }}>
@@ -130,11 +133,11 @@ export default function MonthDetailScreen() {
                     {category ? `${categoryIcon(category)} ` : ""}
                     {title}
                   </Heading>
-                  {note ? <StickyNote size={14} color={palette.textMuted} /> : null}
+                  {note ? <StickyNote accessible={false} size={14} color={palette.textMuted} /> : null}
                 </Row>
                 <Row gap={spacing.sm}>
                   <Amount minor={selfSum} />
-                  {open ? <ChevronUp size={16} color={palette.textMuted} /> : <ChevronDown size={16} color={palette.textMuted} />}
+                  {open ? <ChevronUp accessible={false} size={16} color={palette.textMuted} /> : <ChevronDown accessible={false} size={16} color={palette.textMuted} />}
                 </Row>
               </Spread>
             </Pressable>

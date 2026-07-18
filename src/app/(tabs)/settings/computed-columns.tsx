@@ -22,6 +22,7 @@ import { DraggableList } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
+import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 
 const HIDDEN_KEY = "computed_columns_hidden";
 
@@ -69,6 +70,19 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   } catch {
     definition = null;
   }
+  const editingColumn = editingId ? columns.find((column) => column.id === editingId) : null;
+  let storedDefinition: ComputedColumnDefinition | null = null;
+  if (editingColumn) {
+    try {
+      storedDefinition = parseDefinition(JSON.parse(editingColumn.definition));
+    } catch {
+      storedDefinition = null;
+    }
+  }
+  const computedDraftDirty = editingColumn
+    ? name.trim() !== editingColumn.name || JSON.stringify(definition) !== JSON.stringify(storedDefinition)
+    : Boolean(name.trim() || plus.length || minus.length || op !== "sum" || ccPart !== "single");
+  useDirtyExitGuard(computedDraftDirty && !busy);
 
   // Live preview against the current month, so setup is never a guess.
   let preview: number | null = null;
@@ -177,7 +191,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
       <Body muted style={{ marginBottom: spacing.md }}>{tr.computed.intro}</Body>
       {editingId ? (
         <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.md }}>
-          <Body style={{ color: palette.primary, fontSize: 13 }}>{tr.computed.editing(name || tr.computed.nameLabel)}</Body>
+          <Body style={{ color: palette.primaryText, fontSize: 13 }}>{tr.computed.editing(name || tr.computed.nameLabel)}</Body>
         </View>
       ) : null}
 
@@ -188,8 +202,8 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
         return (
           <Pressable
             key={value}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected, selected }}
             onPress={() => setOp(value)}
             style={{
               flexDirection: "row",
@@ -198,7 +212,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               padding: spacing.md,
               borderRadius: radius.md,
               borderWidth: 1.5,
-              borderColor: selected ? palette.primary : palette.border,
+              borderColor: selected ? palette.primaryText : palette.controlBorder,
               backgroundColor: selected ? palette.primarySoft : palette.surface,
               marginBottom: spacing.sm,
             }}

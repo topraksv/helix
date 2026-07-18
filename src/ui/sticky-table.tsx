@@ -15,6 +15,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent, type TextLayoutEvent } from "react-native";
 import { Pin, type LucideIcon } from "lucide-react-native";
 import { lightTap } from "./haptics";
+import { tr } from "../i18n/tr";
 import { spacing, type, useTheme } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
@@ -123,7 +124,6 @@ function useWebInteractions(
 
     vNode.style.cursor = "grab";
     vNode.setAttribute("tabindex", "0");
-    (vNode.style as CSSStyleDeclaration).outline = "none";
     vNode.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove, { passive: false });
     window.addEventListener("mouseup", onUp);
@@ -133,6 +133,8 @@ function useWebInteractions(
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       vNode.removeEventListener("keydown", onKey);
+      vNode.removeAttribute("tabindex");
+      vNode.style.cursor = "";
     };
   }, [vRef, bodyHRef, headerHRef, rowHeight, cellWidth]);
 }
@@ -259,7 +261,7 @@ export function StickyTable({
           accessibilityLabel={labelAction ? c.label : undefined}
         >
           <Text
-            style={[type.label, { color: isCurrent ? palette.primary : palette.textMuted, textAlign: "center" }]}
+            style={[type.label, { color: isCurrent ? palette.primaryText : palette.textMuted, textAlign: "center" }]}
             onTextLayout={(event) => measureLabel(`header:${c.key}`, event)}
           >
             {c.label}
@@ -270,15 +272,15 @@ export function StickyTable({
             onPress={() => { lightTap(); onTogglePin!(c.key); }}
             hitSlop={16}
             accessibilityRole="button"
-            accessibilityLabel={c.label}
+            accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.label) : tr.a11y.pinColumn(c.label)}
             style={{ position: "absolute", top: 2, right: 2, padding: 6 }}
           >
-            <Pin size={12} color={palette.textMuted} />
+            <Pin accessible={false} size={12} color={palette.textMuted} />
           </Pressable>
         ) : null}
         {c.icon ? (
           <View style={{ position: "absolute", bottom: 4, right: 4 }}>
-            <c.icon size={11} color={palette.textMuted} strokeWidth={2.2} />
+            <c.icon accessible={false} size={11} color={palette.textMuted} strokeWidth={2.2} />
           </View>
         ) : null}
       </View>
@@ -316,6 +318,8 @@ export function StickyTable({
           data grid; the whole body scrolls vertically as one. */}
       <ScrollView
         ref={vRef}
+        accessibilityLabel={tr.a11y.tableLabel(cornerLabel)}
+        accessibilityHint={tr.a11y.tableNavigation}
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: spacing.sm }}
@@ -342,14 +346,14 @@ export function StickyTable({
                   style={[{ width: headWidth }, cellCenter]}
                 >
                   <Text
-                    style={[type.label, { color: r.onLabelPress ? palette.primary : palette.text, textAlign: "center", fontFamily: r.labelHighlight ? "Inter_700Bold" : "Inter_600SemiBold" }]}
+                    style={[type.label, { color: r.onLabelPress ? palette.primaryText : palette.text, textAlign: "center", fontFamily: r.labelHighlight ? "Inter_700Bold" : "Inter_600SemiBold" }]}
                     onTextLayout={(event) => measureLabel(`row:${r.key}`, event)}
                   >
                     {r.label}
                   </Text>
                   {r.icon ? (
                     <View style={{ position: "absolute", bottom: 4, right: 4 }}>
-                      <r.icon size={11} color={palette.textMuted} strokeWidth={2.2} />
+                      <r.icon accessible={false} size={11} color={palette.textMuted} strokeWidth={2.2} />
                     </View>
                   ) : null}
                 </Pressable>
@@ -417,11 +421,11 @@ function PinnedHeader({
       disabled={!onUnpin}
       onPress={onUnpin ? () => { lightTap(); onUnpin(); } : undefined}
       accessibilityRole={onUnpin ? "button" : undefined}
-      accessibilityLabel={onUnpin ? label : undefined}
+      accessibilityLabel={onUnpin ? tr.a11y.unpinColumn(label) : undefined}
       style={{ width, justifyContent: "center", paddingHorizontal: spacing.sm, flexDirection: "row", alignItems: "center", gap: 4 }}
     >
-      <Pin size={11} color={palette.primary} fill={palette.primary} />
-      <Text style={[type.label, { color: palette.primary, textAlign: "right", flex: 1 }]} onTextLayout={onTextLayout}>
+      <Pin accessible={false} size={11} color={palette.primary} fill={palette.primary} />
+      <Text style={[type.label, { color: palette.primaryText, textAlign: "right", flex: 1 }]} onTextLayout={onTextLayout}>
         {label}
       </Text>
     </Pressable>

@@ -25,6 +25,7 @@ import { useUndo } from "../ui/undo";
 import { errorNotice } from "../ui/haptics";
 import { spacing } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function CatchUpScreen() {
   const userId = useUserId();
@@ -39,6 +40,7 @@ export default function CatchUpScreen() {
   const [editing, setEditing] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
+  useDirtyExitGuard(editing != null && amountRaw.trim() !== "");
   // One confirmation at a time (spinner on the active button) — a double-tap
   // must not submit the same expected item twice.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -97,7 +99,7 @@ export default function CatchUpScreen() {
           <Card key={e.id}>
             <Spread>
               <View style={{ flex: 1 }}>
-                <Row gap={spacing.sm}>
+                <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
                   {e.dueDate < today ? <Badge text={tr.dashboard.late} tone="negative" /> : null}
                   {e.direction === "in" ? <Badge text={tr.dashboard.expectedIncome} tone="positive" /> : null}
                   <Body>{nameOf(e)}</Body>
@@ -134,8 +136,8 @@ export default function CatchUpScreen() {
                 </Row>
               </View>
             ) : (
-              <Row style={{ marginTop: spacing.md }}>
-                <View style={{ flex: 1 }}>
+              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+                <View>
                   <Button
                     label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                     loading={confirmingId === e.id}
@@ -144,9 +146,13 @@ export default function CatchUpScreen() {
                     onPress={() => void confirm(e)}
                   />
                 </View>
-                <Button label={tr.catchup.fixAmount} variant="secondary" onPress={() => { setEditing(e.id); setAmountRaw(""); setAmountMinor(null); }} />
-                <Button label={tr.common.skip} variant="ghost" onPress={() => { void skipExpected(userId, e.id); scheduleSync(userId); }} />
-              </Row>
+                <Row gap={spacing.sm}>
+                  <View style={{ flex: 1 }}>
+                    <Button label={tr.catchup.fixAmount} variant="secondary" onPress={() => { setEditing(e.id); setAmountRaw(""); setAmountMinor(null); }} />
+                  </View>
+                  <Button label={tr.common.skip} variant="ghost" onPress={() => { void skipExpected(userId, e.id); scheduleSync(userId); }} />
+                </Row>
+              </View>
             )}
           </Card>
         ))

@@ -73,7 +73,7 @@ export default function DiagnosticsScreen() {
           <Button icon={Download} label={tr.diagnostics.export} disabled={!snapshot} onPress={() => void exportSnapshot()} />
         </View>
       </View>
-      {error ? <Body>{tr.diagnostics.loadFailed}</Body> : null}
+      {error ? <Body accessibilityRole="alert" accessibilityLiveRegion="assertive">{tr.diagnostics.loadFailed}</Body> : null}
       {snapshot ? (
         <>
           <SectionHeader>{tr.diagnostics.release}</SectionHeader>

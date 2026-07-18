@@ -17,6 +17,7 @@ import { Body, Button, Card, CardList, ChipPicker, EmptyState, Field, IconButton
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
+import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { newId } from "../../../db/ids";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
@@ -51,6 +52,26 @@ export default function IncomeRulesScreen() {
 
   // The kind provides the default title; a hand-typed title always wins.
   const effectiveName = nameTouched && name.trim() !== "" ? name : tr.incomeKinds[kind];
+  const editingIncome = editingId ? incomes.find((income) => income.id === editingId) : null;
+  const editingAmountRaw = editingIncome
+    ? (editingIncome.defaultAmountMinor / 100).toFixed(2).replace(".", ",")
+    : "";
+  const incomeDraftDirty = editingIncome
+    ? kind !== editingIncome.kind ||
+      effectiveName.trim() !== editingIncome.name ||
+      amountRaw !== editingAmountRaw ||
+      payDayStr !== String(editingIncome.payDay) ||
+      personId !== editingIncome.personId ||
+      categoryId !== editingIncome.categoryId
+    : Boolean(
+      (nameTouched && name.trim()) ||
+      amountRaw.trim() ||
+      kind !== "salary" ||
+      payDayStr !== "15" ||
+      personChoice ||
+      categoryChoice
+    );
+  useDirtyExitGuard(incomeDraftDirty && !busy);
 
   const payDay = Number(payDayStr);
   const dayValid = Number.isInteger(payDay) && payDay >= 1 && payDay <= 31;

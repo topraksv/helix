@@ -14,6 +14,7 @@ import { Button, FadeIn } from "./components";
 import { calculatorKeyHaptic } from "./calculator-feedback";
 import { haptic } from "./haptics";
 import { pushOverlay } from "./keyboard";
+import { useModalAccessibility } from "./accessibility";
 
 type Op = "+" | "-" | "×" | "÷";
 
@@ -195,7 +196,7 @@ export function CalculatorPad({
     const isFn = key === "C" || key === "⌫";
     return {
       bg: isOp ? palette.primarySoft : isFn ? palette.surfaceAlt : scheme === "dark" ? palette.surfaceAlt : palette.surface,
-      fg: isOp ? palette.primary : isFn ? palette.textMuted : palette.text,
+      fg: isOp ? palette.primaryText : isFn ? palette.textMuted : palette.text,
     };
   };
 
@@ -205,13 +206,19 @@ export function CalculatorPad({
     <View>
       {/* display */}
       <View
+        accessible
+        accessibilityLiveRegion="polite"
+        accessibilityLabel={tr.a11y.calculatorDisplay(
+          text,
+          preview == null ? undefined : new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview),
+        )}
         style={{
           backgroundColor: palette.surfaceAlt,
           borderRadius: radius.md,
           paddingHorizontal: spacing.lg,
           paddingVertical: spacing.md,
           marginBottom: spacing.md,
-          height: 128,
+          minHeight: 128,
           justifyContent: "center",
           alignItems: "flex-end",
         }}
@@ -223,7 +230,7 @@ export function CalculatorPad({
         <CalculatorLine text={text} color={palette.text} main />
         <CalculatorLine
           text={preview != null ? `= ${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}` : " "}
-          color={preview != null ? palette.primary : "transparent"}
+          color={preview != null ? palette.primaryText : "transparent"}
         />
       </View>
       {/* keys */}
@@ -236,6 +243,7 @@ export function CalculatorPad({
                 <Pressable
                   key={key}
                   accessibilityRole="button"
+                  accessibilityLabel={tr.a11y.calculatorKey(key)}
                   onPress={() => {
                     haptic(calculatorKeyHaptic(state, key));
                     press(key);
@@ -243,7 +251,7 @@ export function CalculatorPad({
                   style={({ pressed }) => [
                     {
                       flex: key === "0" ? 2.09 : 1,
-                      height: 56,
+                      minHeight: 56,
                       borderRadius: radius.md,
                       backgroundColor: bg,
                       alignItems: "center",
@@ -254,7 +262,7 @@ export function CalculatorPad({
                   ]}
                 >
                   {key === "⌫" ? (
-                    <Delete size={20} color={fg} />
+                    <Delete accessible={false} size={20} color={fg} />
                   ) : (
                     <Text style={{ fontSize: 22, fontFamily: "Inter_500Medium", color: fg }}>{key}</Text>
                   )}
@@ -279,17 +287,30 @@ export function CalculatorPad({
 }
 
 /** Popup calculator for amount fields; result flows back into the field. */
-export function CalculatorModal({ onClose, onResult }: { onClose: () => void; onResult: (major: number) => void }) {
+export function CalculatorModal({
+  onClose,
+  onResult,
+  returnFocusRef,
+}: {
+  onClose: () => void;
+  onResult: (major: number) => void;
+  returnFocusRef?: React.RefObject<View | null>;
+}) {
   const { palette } = useTheme();
+  const titleRef = useModalAccessibility(true, returnFocusRef);
   useEffect(() => pushOverlay(), []); // suppress form Enter-submit while open
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <Pressable
+        accessible={false}
         style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
-        <Pressable onPress={() => {}} style={{ width: "100%", maxWidth: 340 }}>
+        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 340 }}>
           <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
+            <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
+              <Text style={[type.heading, { color: palette.text, marginBottom: spacing.md }]}>{tr.tabs.calculator}</Text>
+            </View>
             <CalculatorPad
               onEscape={onClose}
               onResult={(v) => {

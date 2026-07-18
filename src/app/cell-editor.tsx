@@ -29,6 +29,7 @@ import { spacing, type, useTheme } from "../ui/theme";
 import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
 import { INITIAL_TRANSACTION_ROWS, nextVisibleTransactionCount } from "../ui/progressive-list";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function CellEditorModal() {
   const { month, categoryId } = useLocalSearchParams<{ month: string; categoryId: string }>();
@@ -69,6 +70,10 @@ export default function CellEditorModal() {
     [userId, month, categoryId],
     ["cell_notes"],
   ).data[0];
+
+  useDirtyExitGuard(
+    (entryRaw.trim() !== "" || (noteDraft != null && noteDraft !== (note?.body ?? ""))) && !busy,
+  );
 
   const entryMinor = parseAmountExpression(entryRaw);
 
@@ -143,6 +148,7 @@ export default function CellEditorModal() {
         {tr.cell.quickEntryHint}
       </Body>
       <MoneyField
+        accessibilityLabel={tr.cell.quickEntry}
         value={entryRaw}
         onChangeMinor={(raw) => setEntryRaw(raw)}
         placeholder={useRotatingPlaceholder(placeholderPools.amount)}
@@ -180,7 +186,7 @@ export default function CellEditorModal() {
         </View>
       ) : (
         <View style={{ marginBottom: spacing.md }}>
-          <Field value={noteDraft} onChangeText={setNoteDraft} multiline placeholder={tr.cell.notePlaceholder} />
+          <Field accessibilityLabel={tr.common.note} value={noteDraft} onChangeText={setNoteDraft} multiline placeholder={tr.cell.notePlaceholder} />
           <Row gap={spacing.sm}>
             <View style={{ flex: 1 }}>
               <Button label={tr.common.save} size="sm" onPress={() => void saveNote(noteDraft)} />

@@ -11,8 +11,8 @@ import { readSetting } from "../db/mutations";
 import { addDaysISO, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
-import { notificationsEnabled, setNotificationsEnabled } from "../lib/device-preferences";
-import { normalizeReminderDays, uniqueNotifications } from "../domain/notifications";
+import { loadDevicePreferences, notificationsEnabled, setNotificationDetailsEnabled, setNotificationsEnabled } from "../lib/device-preferences";
+import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../domain/notifications";
 
 const HORIZON_DAYS = 30;
 /** iOS keeps at most 64 pending local notifications and silently drops the
@@ -52,7 +52,7 @@ export async function enableNotifications(userId: string): Promise<boolean> {
   const current = await Notifications.getPermissionsAsync();
   const finalStatus = permissionGranted(current) ? current : await Notifications.requestPermissionsAsync();
   if (!permissionGranted(finalStatus)) {
-    await setNotificationsEnabled(false);
+    await disableNotifications();
     return false;
   }
   await setNotificationsEnabled(true);
@@ -61,17 +61,38 @@ export async function enableNotifications(userId: string): Promise<boolean> {
 }
 
 export async function disableNotifications(): Promise<void> {
-  await setNotificationsEnabled(false);
-  await clearAccountNotifications();
+  try {
+    await setNotificationsEnabled(false);
+  } finally {
+    // Even a device-storage failure must not leave a detailed OS preview
+    // scheduled after the user turns notifications off.
+    await clearAccountNotifications(true);
+  }
+}
+
+/** Privacy-off is fail-closed: detailed pending previews are removed before
+ * neutral reminders are rebuilt, so a transient DB error cannot leave them. */
+export async function updateNotificationDetails(userId: string, enabled: boolean): Promise<void> {
+  if (enabled) await setNotificationDetailsEnabled(true);
+  else {
+    await clearAccountNotifications();
+    await setNotificationDetailsEnabled(false);
+  }
+  await rescheduleAll(userId);
 }
 
 /** Remove both future and already-presented account details from the device. */
-export async function clearAccountNotifications(): Promise<void> {
-  if (Platform.OS === "web") return;
-  await Promise.all([
-    Notifications.cancelAllScheduledNotificationsAsync(),
-    Notifications.dismissAllNotificationsAsync(),
-  ]);
+export async function clearAccountNotifications(resetDetails = false): Promise<void> {
+  try {
+    if (Platform.OS !== "web") {
+      await Promise.all([
+        Notifications.cancelAllScheduledNotificationsAsync(),
+        Notifications.dismissAllNotificationsAsync(),
+      ]);
+    }
+  } finally {
+    if (resetDetails) await setNotificationDetailsEnabled(false);
+  }
 }
 
 interface PlannedNotification {
@@ -173,11 +194,15 @@ export async function rescheduleAll(userId: string): Promise<void> {
   const permission = await Notifications.getPermissionsAsync();
   if (!permissionGranted(permission)) return;
   const now = Date.now();
-  const upcoming = uniqueNotifications(await planNotifications(userId))
-    .map((n) => ({ ...n, fireAt: new Date(`${n.date}T09:00:00`) }))
-    .filter((n) => n.fireAt.getTime() > now)
-    .sort((a, b) => a.fireAt.getTime() - b.fireAt.getTime())
-    .slice(0, MAX_SCHEDULED);
+  const detailsEnabled = (await loadDevicePreferences()).notificationDetails;
+  const neutral = { title: tr.notif.privateTitle, body: tr.notif.privateBody };
+  const planned = uniqueNotifications((await planNotifications(userId)).map((notification) => ({
+    ...notification,
+    ...privateNotificationContent(detailsEnabled, notification, neutral),
+  })))
+    .map((notification) => ({ ...notification, fireAt: new Date(`${notification.date}T09:00:00`) }))
+    .filter((notification) => notification.fireAt.getTime() > now);
+  const upcoming = boundedScheduledNotifications(planned, MAX_SCHEDULED);
   // Plan/query first: a transient database error must not erase working
   // reminders. Once the full replacement is ready, swap the app-owned queue.
   await Notifications.cancelAllScheduledNotificationsAsync();

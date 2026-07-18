@@ -11,14 +11,22 @@ export interface Palette {
   surface: string;
   surfaceAlt: string;
   border: string;
+  /** Essential form/control boundary (WCAG non-text contrast). */
+  controlBorder: string;
   text: string;
   textMuted: string;
   primary: string;
   primarySoft: string; // tinted background for icon chips / selected states
+  /** AA text/icon foregrounds; accents above remain available for fills/lines. */
+  primaryText: string;
   onPrimary: string;
+  onNegative: string;
   positive: string;
+  positiveText: string;
   negative: string;
+  negativeText: string;
   warning: string;
+  warningText: string;
   focus: string;
   /** Hero gradient (balance card, auth backdrop accents). */
   gradientFrom: string;
@@ -28,25 +36,31 @@ export interface Palette {
 // Warm Organic Editorial, aligned to Claude's design tokens: clay accent
 // (#d97757) over a warm gray ramp (oat cream in light, near-black #141413 in
 // dark). Sage/olive + amber secondaries carry the semantic roles.
-// All hexes below are Claude's exact design tokens (gray ramp, clay, error,
-// focus, extended-green/yellow). primarySoft is the one derived value (a clay
-// tint) because the codebase appends hex alpha to it.
+// Accent/fill hexes stay on the established gray/clay/semantic palette.
+// `*Text` and `on*` values are role-specific derivatives: keeping text colors
+// separate from chart/fill colors is what lets every body pair meet WCAG AA.
 export const lightPalette: Palette = {
   background: "#faf9f5", // gray-050 (warm cream page)
   surface: "#ffffff", // gray-000
   surfaceAlt: "#f0eee6", // gray-150
   border: "#e8e6dc", // gray-200
+  controlBorder: "#8a8982",
   text: "#1a1918", // gray-900
-  textMuted: "#73726c", // gray-550
+  textMuted: "#6d6c66", // accessible warm gray foreground
   primary: "#d97757", // clay
   primarySoft: "#f6e7df", // clay tint (derived)
-  onPrimary: "#ffffff",
+  primaryText: "#a94428",
+  onPrimary: "#1a1918",
+  onNegative: "#ffffff",
   positive: "#1e9f3c", // extended-green (light)
+  positiveText: "#13782b",
   negative: "#bf4d43", // error
+  negativeText: "#a33b34",
   warning: "#98801f", // extended-yellow (light)
+  warningText: "#6e5b00",
   focus: "#2c84db", // color-focus
   gradientFrom: "#d97757", // clay
-  gradientTo: "#c6613f", // clay-hover
+  gradientTo: "#ca6848", // accessible clay shadow
 };
 
 export const darkPalette: Palette = {
@@ -54,14 +68,20 @@ export const darkPalette: Palette = {
   surface: "#262624", // bg-tertiary (cards)
   surfaceAlt: "#30302e", // gray-750
   border: "#3d3d3a", // border-secondary
+  controlBorder: "#8e8c84",
   text: "#faf9f5", // fg-primary
   textMuted: "#b0aea5", // fg-secondary
   primary: "#d97757", // clay
   primarySoft: "#3a2a22", // clay tint dark (derived)
-  onPrimary: "#ffffff",
+  primaryText: "#f28b68",
+  onPrimary: "#1a1918",
+  onNegative: "#ffffff",
   positive: "#4dcb6b", // extended-green (dark)
+  positiveText: "#4dcb6b",
   negative: "#bf4d43", // error
+  negativeText: "#ff8277",
   warning: "#ffd014", // extended-yellow (dark)
+  warningText: "#ffd014",
   focus: "#2c84db", // color-focus
   gradientFrom: "#d97757", // clay
   gradientTo: "#c46849", // clay-dark

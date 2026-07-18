@@ -65,7 +65,7 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
     await stopSyncSession();
     disconnectMarkets();
     clearRateCache();
-    await clearAccountNotifications().catch(() => {});
+    await clearAccountNotifications(true).catch(() => {});
     try {
       await resetLocalWorkspace();
     } catch {
@@ -283,7 +283,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     await stopSyncSession(userId ?? undefined);
     disconnectMarkets();
     clearRateCache();
-    await clearAccountNotifications().catch(() => {});
+    await clearAccountNotifications(true).catch(() => {});
     useSyncStatus.getState().set({ lastSyncAt: null });
     // Best practice for a finance app: leave no plaintext financial data on the
     // device after an explicit sign-out. The cloud (RLS-scoped) is the source
@@ -343,7 +343,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     // and end the session.
     disconnectMarkets();
     clearRateCache();
-    await clearAccountNotifications().catch(() => {});
+    await clearAccountNotifications(true).catch(() => {});
     useSyncStatus.getState().set({ lastSyncAt: null });
     const supabase = getSupabase();
     if (supabase) {
