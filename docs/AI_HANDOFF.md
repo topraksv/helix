@@ -7,22 +7,22 @@ lags behind them.
 
 ## Last verified state
 
-- Updated: 2026-07-17 (Europe/Istanbul)
+- Updated: 2026-07-18 (Europe/Istanbul)
 - Branch: `main`
-- Completed package base: `9840b08`; application commit: `00eb8f3`
+- Completed remediation package: P1; application commit: `f8f536e`
 - Toolchain used: Node 22
 - Verification: typecheck, full tests, zero-warning Expo lint, 49-route static
-  web export, headless sign-in smoke, and a full protected-flow smoke on a
-  local-only build (onboarding → dashboard → Mali Tablo → back)
-- Test baseline: 24 files, 216 tests passing
+  web export, successful Pages deploy and published iOS/Android EAS update.
+  No browser backend or installed-device delivery was available.
+- Test baseline: 27 files, 224 tests passing
 
 ## Active working tree
 
-An eight-package remediation of Codex's independent 2026-07-17 audit is now
-active. Package 0 adds the exact audit export and the exhaustive ID/status
-registry in `docs/AUDIT_TRACKER.md`; later packages must update that registry
-as their acceptance tests, commits and deployments complete. No application
-code has changed yet.
+An eight-package remediation of Codex's independent 2026-07-17 audit is
+active. P0 (scope registry) and P1 (sync poison-row isolation, mutation
+locking/idempotency and recurring-income category boundary) are complete.
+P2 (CI, GitHub protection and EAS channel/native release contract) is next.
+`docs/AUDIT_TRACKER.md` is the ID/status source of truth.
 
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
 1 hygiene/docs (`98fa44f`), 2 data-layer/web hardening (`0692027`),
@@ -85,6 +85,30 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit remediation package 1: data integrity)
+
+- Base `f6009a5`, branch `main`; P1 shipped as `f8f536e`.
+- Replaced the unsafe inner `JSON.parse` sync boundary with table-aware
+  outbound validation. Malformed JSONB, unknown columns and invalid numerics
+  become `invalid_row` dead letters while healthy rows in the same batch keep
+  moving; rejected events no longer create a permanent retry loop.
+- Added one synchronous operation guard and applied it across critical
+  financial, onboarding, auth/recovery, security and settings mutations.
+  Transaction/plan/bulk creates accept operation identities; bulk child rows
+  and workspace template categories converge deterministically.
+- Recurring income now requires a live, owner-scoped income category at the
+  repository boundary. Regression tests cover poison-row isolation,
+  same-tick operation locking and category ownership/kind validation.
+- Checks: typecheck; 27 files/224 tests; zero-warning Expo lint; diff check;
+  49-route production web export. Browser runtime discovery returned no
+  available backend, so no new visual flow is claimed.
+- GitHub Pages run `29636759953` succeeded. EAS `preview` update group
+  `df604f34-b0e7-46b0-a190-b0cfe5e52e7a` published for runtime `1.0.0`
+  (iOS `019f743f-d498-7f21-bc10-8f3da79f1164`, Android
+  `019f743f-d498-73c8-ac58-aed4b37988f3`). Insights immediately after publish
+  showed 0 installs/users; installed-device delivery remains unverified and is
+  addressed by P2's native channel contract.
 
 ### 2026-07-18 — Codex (audit remediation package 0: scope registry)
 
@@ -211,31 +235,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   `019f6f34-547d-7c1d-8de4-e7a7d4e48163`, runtime `1.0.0`); applies on the
   next full close + reopen. Remaining risk: until migration 5 is applied, the
   new indexes/bounds simply don't exist yet — no behavioral mismatch.
-
-### 2026-07-17 — Claude (audit package 1: hygiene and documentation truth)
-
-- Base `e9e40d4`, branch `main`; clean tree. First of four packages remediating
-  the 2026-07-17 repository audit (user excluded the calculator-tab IA change
-  and Supabase captcha panel work).
-- Enforced Node 22 via `engines` + `engine-strict` (was docs-only); cleaned
-  `.gitignore` (orphan `example` line, root-scoped xlsx ignores so fixtures
-  stay committable, `*.pem` moved to the signing block); eslint now ignores
-  `dist-local`; removed the unused `@/*` tsconfig alias (zero usages).
-- Removed `void userId` + its false comment in `sync/engine.ts` (the parameter
-  IS used); corrected two more stale comments (`schema.ts` statement_day
-  "reserved for Faz 2" while five files use it; `migrate.ts` "exact drizzle
-  bookkeeping" while hash stays empty by design).
-- README: count-free test badge (hardcoded 209 had drifted from the real 214),
-  palette hexes defer to `theme.ts`, added sync-flow mermaid diagram and the
-  three correctness guarantees, **Supabase setup now applies all migrations**
-  (following the old step broke sync on fresh projects), roadmap filled from
-  the real backlog. AGENTS.md: semantic palette pointer instead of drifted
-  hexes, xlsx CDN audit blind-spot note, handoff 5-entry pruning rule.
-  AI_HANDOFF now keeps the newest entries only; the rest moved verbatim to
-  `docs/handoffs/2026-07.md`.
-- Checks: `npm run typecheck`, `npm test` (24 files/214), `npx expo lint`
-  (exit 0) all pass. Deleted the stale untracked `dist-local/` build copy.
-- Shipped as `98fa44f` and pushed; the Pages workflow redeploys the web app.
-  **No mobile OTA was published for this package**: the only bundle-affecting
-  edits are comment/no-op removals with identical runtime behavior; package 2+
-  will carry these bytes in its OTA.
