@@ -57,7 +57,7 @@ export default function ResetPasswordScreen() {
     return (
       <Screen scroll={false} maxWidth={440}>
         <View accessible accessibilityLiveRegion="polite" accessibilityLabel={tr.dataState.loading} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color={palette.primary} />
+          <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} />
         </View>
       </Screen>
     );

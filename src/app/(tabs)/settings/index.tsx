@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { Platform, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import {
   Banknote,
@@ -45,6 +44,7 @@ import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, T
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { spacing, useTheme } from "../../../ui/theme";
 import type { ThemePreference } from "../../../ui/theme";
+import { readPickedText } from "../../../services/picked-file";
 
 export default function SettingsScreen() {
   const userId = useUserId();
@@ -136,7 +136,7 @@ export default function SettingsScreen() {
     if (picked.canceled || !picked.assets[0]) return;
     try {
       if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
-      const content = await new File(picked.assets[0].uri).text();
+      const content = await readPickedText(picked.assets[0]);
       const result = await importBundle(userId, parseExportBundleText(content));
       const message =
         result.skipped > 0

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import { File } from "expo-file-system";
 import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Pencil, Trash2 } from "lucide-react-native";
 import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/export-import";
@@ -18,6 +17,7 @@ import { BrandMark } from "../../ui/brand";
 import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
 import { spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
+import { readPickedText } from "../../services/picked-file";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const ALL_TEMPLATES: TemplateCategory[] = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
@@ -197,7 +197,7 @@ export default function SetupScreen() {
           if (picked.canceled || !picked.assets[0]) return;
           if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
           setBusy(true);
-          const content = await new File(picked.assets[0].uri).text();
+          const content = await readPickedText(picked.assets[0]);
           // Validate and restore the complete workspace atomically. Seeding first
           // would leave a partial starter workspace behind when a corrupt backup
           // is rejected or the restore write fails.

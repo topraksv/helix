@@ -24,6 +24,7 @@ import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "./recovery";
+import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 
 /** Local brake on password verification: each attempt is a real sign-in, so
  *  hammering it would trip Supabase's shared login rate limit for the whole
@@ -36,8 +37,6 @@ let verifyBlockedUntil = 0;
 const LAST_USER_KEY = "helix.last_user_id";
 /** Owner of the data currently in the local DB (for account-switch detection). */
 const LOCAL_OWNER_KEY = "helix.local_owner";
-/** Local-only workspace id used when Supabase is not configured (dev/offline-only mode). */
-const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 /** Supabase auth errors arrive in English; map them to the Turkish UI. */
 function friendlyAuthError(raw: string): string {
@@ -131,13 +130,13 @@ export const useSession = create<SessionStore>((set, get) => ({
 
   bootstrap: async () => {
     if (!isSupabaseConfigured) {
-      const wsError = await ensureWorkspaceFor(LOCAL_USER_ID);
+      const wsError = await ensureWorkspaceFor(LOCAL_ONLY_USER_ID);
       if (wsError) {
         set({ userId: null, ready: true, isOnlineSession: false });
         return;
       }
-      startSyncSession(LOCAL_USER_ID);
-      set({ userId: LOCAL_USER_ID, ready: true, isOnlineSession: false });
+      startSyncSession(LOCAL_ONLY_USER_ID);
+      set({ userId: LOCAL_ONLY_USER_ID, ready: true, isOnlineSession: false });
       return;
     }
     const supabase = getSupabase()!;

@@ -2,234 +2,226 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/brand/horizontal-dark.png">
-  <img src="assets/brand/horizontal-light.png" alt="Helix" width="540">
+  <img src="assets/brand/horizontal-light.png" alt="Helix" width="520">
 </picture>
 
-<h3>Local-first personal finance for people who outgrew the spreadsheet.</h3>
+### Paran bugün nerede, yarın ne olacak—tek bakışta.
 
-Monthly cash flow, installment tracking, and subscriptions in one app that
-works fully offline, syncs when you're back online, and never makes you wait
-for the network.
+**Helix; nakit akışını, taksitlerini, aboneliklerini ve bütçelerini cihazında tutan,**
+**internetsiz de çalışan kişisel finans alanıdır.**
 
-[![Open the live web app](https://img.shields.io/badge/▶_Open_the_live_web_app-d97757?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
+*An offline-first personal finance workspace for cash flow, installments,
+subscriptions and budgets—with a spreadsheet mind and a mobile heart.*
 
+[![Helix'i aç](https://img.shields.io/badge/Helix'i_aç-d97757?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
+
+[![quality](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml)
 [![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-1a1918?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
-[![React Native 0.81](https://img.shields.io/badge/React%20Native-0.81-1a1918?logo=react&logoColor=61DAFB)](https://reactnative.dev)
-[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-1a1918?logo=typescript&logoColor=3178C6)](https://www.typescriptlang.org)
-[![Supabase](https://img.shields.io/badge/Supabase-sync%20%2B%20auth-1a1918?logo=supabase&logoColor=3FCF8E)](https://supabase.com)
-[![Tested with Vitest](https://img.shields.io/badge/tests-vitest-1a1918?logo=vitest&logoColor=729B1B)](tests/)
-[![Proprietary](https://img.shields.io/badge/license-proprietary-d97757)](#license)
-
-*iOS + Web from a single codebase.*
+[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict%20%2B%20checked%20indexes-1a1918?logo=typescript&logoColor=3178C6)](tsconfig.json)
+[![Playwright + Vitest](https://img.shields.io/badge/tests-Playwright%20%2B%20Vitest-1a1918?logo=playwright&logoColor=45BA4B)](docs/TESTING.md)
+[![Proprietary](https://img.shields.io/badge/license-proprietary-d97757)](#lisans--license)
 
 </div>
 
----
+<p align="center">
+  <img src="e2e/__screenshots__/tab-dashboard-phone-390-light.png" alt="Helix Bütçe Özeti ekranı" width="260">
+  &nbsp;&nbsp;
+  <img src="e2e/__screenshots__/dashboard-phone-390-dark.png" alt="Helix koyu tema Bütçe Özeti ekranı" width="260">
+</p>
 
-## Why Helix
+## Helix neyi kolaylaştırır?
 
-You already track your money in a spreadsheet. It works — until a column
-formula breaks, a future-dated expense throws off today's balance, or you
-lose track of which installment you're on. Helix keeps the mental model of a
-spreadsheet (months, running balances, a category grid) but makes the numbers
-**correct by construction** and the app **usable from your phone**.
+Bir tablo para takibi için güçlüdür; ama formül bozulduğunda, ileri tarihli bir
+harcama bugünkü bakiyeye karıştığında veya bir taksidin kaçıncı ayda olduğunu
+unuttuğunda yük tekrar sana döner. Helix tablonun tanıdık ay–kalem düzenini
+korur; hesaplamayı, tekrarları ve veri güvenliğini ürünün sorumluluğu yapar.
 
-- **Offline-first.** Every screen reads from the on-device database. Airplane
-  mode changes nothing; sync happens quietly in the background when there's a
-  connection.
-- **Correct to the kuruş.** All money is stored as integer minor units — no
-  floating-point drift, ever. Balances chain month over month and reconcile
-  against a golden dataset in the test suite.
-- **Yours alone.** Row-level security on every table, Face ID lock on iOS, and
-  a fully local mode that needs no account at all.
-
-## What it does
-
-- 📊 **Monthly cash flow** — chained month-over-month balances with a
-  category matrix on wide screens. Pivot months between rows and columns, pin
-  the columns that matter, and drill into any month (past or future) for its
-  detail.
-- 💳 **Installment engine** — enter "6 installments, 2 already paid" once;
-  Helix spreads the amounts across the right months, tracks `2/6` progress,
-  and totals what you owe this month. Card purchases are assigned to a stored
-  statement period and affect cash on the real statement due date; prior
-  statements remain available in payment-source settings.
-- 🔁 **Subscriptions & recurring rules** — salaries, rent, streaming; recurrence
-  that respects month-ends (a rule on the 31st lands on Feb 28), with expected
-  vs. confirmed amounts and free-trial handling.
-- 👀 **Watch-only tracking** — follow someone else's installments and
-  subscriptions in separate totals without touching your balance or analytics.
-- 📅 **Future-dated & catch-up flows** — tomorrow's expense doesn't hit today's
-  balance; skip a few days and a reconciliation screen walks you through what
-  came due.
-- 📥 **Import & bulk entry** — pull history in from Excel/CSV with a guided
-  wizard, or enter a whole month in one pass.
-- 🧮 **Built-in calculator & computed columns** — do the math where you need it,
-  and define spreadsheet-style derived columns without leaving the app.
-- 🪙 **Live gold & FX** — fresh gold and currency rates from a read-only feed,
-  with source-dated TCMB/ECB reference rates for conversions. Missing
-  rates are never guessed as TRY.
-- 🔔 **Opt-in local upcoming-payment notifications** with a configurable lead
-  time on installed iOS/Android builds. Permission is requested only in
-  Settings, and account details are cleared from notifications on sign-out.
-- 🛡️ **Automatic subscription logos** — known public domains use a validated,
-  cached favicon; utilities, unknowns and network failures stay on local marks.
-
-## How it's built
-
-**Local-first, sync-second.** The UI never waits on the network — everything
-works in airplane mode, and the database on the device is the single source of
-truth.
+| 30 saniyelik akış | Helix ne yapar? | Sana ne kalır? |
+|---|---|---|
+| **1 · Ekle** | Gelir, gider, taksit veya aboneliği tek formdan kaydeder. | Tutarı ve ne olduğunu söylemek. |
+| **2 · Gör** | Bugünkü bakiye, ay tablosu, yaklaşan takvim ve bütçe durumunu birlikte hesaplar. | Karar vermek. |
+| **3 · Güvende tut** | Önce cihazına yazar; bağlantı varsa yalnız hesabına eşitler. Silinen kayıtlar geri alınabilir. | İstersen yedek almak. |
 
 ```mermaid
 flowchart LR
-  UI["UI · expo-router"] --> Repo["repo facade"]
-  Repo --> DB[("SQLite\nsource of truth")]
-  DB -- "outbox" --> Push["push"]
-  Push --> SB[("Supabase\nRLS + server updated_at")]
-  SB -- "pull + LWW merge" --> DB
+  A["İşlemini ekle"] --> B["Önce cihazına kaydolur"]
+  B --> C["Helix bakiyeni ve takvimini hesaplar"]
+  B --> D{"İnternet var mı?"}
+  D -- "Hayır" --> E["Güvenli sırada bekler"]
+  D -- "Evet" --> F["Yalnız senin hesabına eşitlenir"]
+  E -- "Bağlantı gelince" --> F
+  F --> G["Diğer cihazların güncellenir"]
 ```
 
-Three guarantees hold everywhere, by construction:
+Bu akışta ağ, uygulamayı kullanmanın ön koşulu değildir. Sync gecikir veya hata
+verirse verin cihazında kalır; Ayarlar’daki durum ve tanılama yüzeyi ne olduğunu
+gösterir.
 
-- **Money is exact.** Every amount is an integer in minor units (kuruş) — no
-  floats in storage or arithmetic; a golden dataset in the test suite chains
-  the balances against the original spreadsheet.
-- **Nothing is ever hard-deleted.** Deletes are synced tombstones, which is
-  also what powers undo across devices.
-- **The server owns time.** `updated_at` is normalized server-side, so
-  last-write-wins merges never trust a device clock.
+## Her özellik bir görevin yanında
 
-| Layer | Choice |
-|---|---|
-| **App** | [Expo SDK 54](https://docs.expo.dev/versions/v54.0.0/) + expo-router, React Native 0.81, React 19, TypeScript strict |
-| **Local store** | `expo-sqlite` **async** API + Drizzle (via the `sqlite-proxy` driver) — non-blocking on every platform, the on-device source of truth |
-| **Sync** | Supabase (Postgres + Auth) via an outbox: push → pull → last-write-wins merge, with tombstone deletes (no hard deletes) |
-| **Security** | Row-Level Security on every table (`auth.uid() = user_id`), Face ID app lock on iOS, parameterized SQL, secrets only in `.env` / CI |
-| **Money** | Integer kuruş everywhere — no floats. FX: source-dated TCMB `today.xml` → Frankfurter fallback → user-scoped cache; fresh-only gold/FX quotes from a read-only live feed |
-| **Tables** | One cross-platform sticky-column matrix ([src/ui/sticky-table.tsx](src/ui/sticky-table.tsx)) — pinned first column + an optional pinned extra column, months-as-rows/columns pivot, identical on web and iOS |
-| **Domain logic** | Pure TypeScript engines in [src/domain/](src/domain/) — balance chaining (incl. prior-year back-anchoring), installments, recurrence, expected payments, YTD analytics and external-data validation — fully unit-tested (`npm test`), including a golden chain validated against the original spreadsheet |
+| İhtiyacın | Gideceğin yer | Yapabileceklerin |
+|---|---|---|
+| **Şu anki durumum ne?** | **Özet** | Güncel bakiye, yaklaşan ödemeler, aylık net değişim, canlı piyasa özeti |
+| **Ay ay ayrıntı görmek** | **Mali Tablo** | Satır/sütun/ay odaklı matris, geçmiş–gelecek aylar, hücre detayı, analiz ve işlem arama |
+| **Tekrarlayan ödemeleri izlemek** | **Abonelikler** | Aylık/yıllık maliyet, ödeme günü, deneme dönemi, yaklaşan kayıtlar |
+| **Hızlı hesap ve kur dönüşümü** | **Hesap** | Dört işlem, TRY/USD/EUR/GBP dönüşümü, kaynak tarihli kur fallback’i |
+| **Alanımı düzenlemek** | **Ayarlar** | Kalemler, hesaplanan kolonlar, kişiler, ödeme yöntemleri, aylık bütçeler, haftalık/iki haftalık/aylık gelirler |
+| **Yakında ne var?** | **Özet → Yaklaşanlar** | Abonelik, düzenli gelir, ileri tarihli işlem ve kart ekstresini tek takvimde görmek |
+| **Bir işlemi bulmak** | **Mali Tablo → Analiz** | Metin, tarih, tür, kategori ve ödeme yöntemiyle filtrelemek |
+| **Verimi taşımak veya korumak** | **Ayarlar → Verilerini Taşı ve Koru** | JSON yedek/geri yükleme, CSV export, yönlendirilmiş Excel/CSV import |
 
-## The look
+<p align="center">
+  <img src="e2e/__screenshots__/tab-cash-flow-phone-390-light.png" alt="Helix Mali Tablo ekranı" width="240">
+  &nbsp;
+  <img src="e2e/__screenshots__/tab-subscriptions-phone-390-light.png" alt="Helix Abonelikler ekranı" width="240">
+  &nbsp;
+  <img src="e2e/__screenshots__/tab-settings-phone-390-light.png" alt="Helix Ayarlar ekranı" width="240">
+</p>
 
-Helix isn't styled like a fintech dashboard. Its design language is **Warm
-Organic Editorial** — a warm-gray-and-clay palette, serif headlines, and a botanical
-double-helix mark, so your money feels less like a spreadsheet and more like a
-well-set page.
+### Günlük kullanımın ötesinde
 
-![Cream](https://img.shields.io/badge/cream-faf9f5?style=flat-square&labelColor=faf9f5)
-![Ink](https://img.shields.io/badge/ink-1a1918?style=flat-square&labelColor=1a1918)
-![Clay](https://img.shields.io/badge/clay-d97757?style=flat-square&labelColor=d97757)
-![Warm_gray](https://img.shields.io/badge/warm_gray-f0eee6?style=flat-square&labelColor=f0eee6)
+- Taksitler gerçek satın alma ve kart ekstresi dönemlerini korur; nakit etkisi
+  satın alma gününde değil, kaydedilmiş son ödeme tarihinde oluşur.
+- Haftalık, iki haftalık ve aylık düzenli gelirler; ay sonu taşmaları ve
+  gerçekleşen/beklenen ayrımıyla üretilir.
+- İzlenen kişilerin yükümlülükleri ayrı görünür; senin bakiyeni ve analizini
+  değiştirmez.
+- Aylık kategori bütçeleri kalan tutarı ve aşımı gösterir; bütçe verisi de sync
+  ve yedek kapsamındadır.
+- Para integer kuruş olarak saklanır. İade/ters işlem işareti korunur; kur
+  bulunamadığında yabancı tutar TRY kabul edilmez.
+- Silme, cihazlar arasında taşınan tombstone + geri alma akışıdır; kullanıcı
+  kayıtları sessizce hard-delete edilmez.
 
-The canonical tokens (including the semantic green/brick/amber ramp) live in
-[`src/ui/theme.ts`](src/ui/theme.ts) — the code, not this file, is the source
-of truth for exact values.
+## Verin nerede ve kim görebilir?
 
-- **Type** — [Fraunces](https://fonts.google.com/specimen/Fraunces) for headings
-  and figures, [Inter](https://fonts.google.com/specimen/Inter) for everything
-  else. Numbers read like a printed ledger.
-- **Motion** — spring physics only: every press, list change, and reveal eases
-  with an interruptible `Animated.spring`, never a linear tween.
-- **Light & dark** — one palette, both themes; the terracotta accent is shared,
-  the ground swaps from warm cream to charcoal.
-- **The mark** — a DNA helix wound with sage-and-terracotta foliage: *growth,
-  compounding, the double strand of income and expense.* Full brand kit in
-  [`assets/brand/`](assets/brand/).
+- **Local-only mod:** Supabase ayarı yoksa hesap açmadan çalışır; finansal veri
+  cihazdaki SQLite veritabanında kalır.
+- **Hesaplı mod:** Bağlantı olduğunda değişiklikler Supabase’e gider. Her tablo
+  owner-only RLS ile korunur; başka hesap kendi istemcisinden satırlarını
+  okuyamaz veya sahipliği değiştiremez.
+- **Bildirimler:** İzin yalnız Ayarlar’dan istenir. Kilit ekranında finansal
+  ayrıntı varsayılan olarak gizlidir ve ayrıntılı önizleme cihaz bazında ayrıca
+  açılır.
+- **Dış kaynaklar:** Piyasa/kur ve izin verilen favicon istekleri salt okunur,
+  sınırlı ve doğrulamalıdır; resmî olmayan piyasa akışının SLA garantisi yoktur.
 
-## Screens
+Veri türleri, saklama, silme, export, üçüncü taraflar ve bilinen sınırlar için
+[Gizlilik ve Veri Kullanımı](docs/PRIVACY.md) belgesine bak.
 
-`Bütçe Özeti` (dashboard) · `Mali Tablo` (cash-flow matrix + analytics) ·
-`Abonelikler` (subscriptions) · `Hesap` (calculator) · `Ayarlar` (settings).
-The UI is in Turkish; the codebase is in English.
+## Tasarım dili
 
-## Getting started
+Helix klasik mavi fintech görünümünü kullanmaz. **Warm Organic Editorial** dili;
+kil, sıcak gri, Fraunces başlıklar, Inter gövde metni ve botanik çift sarmal
+işaretinden oluşur. Light/dark renk rolleri, durum renkleri, odak sınırları ve
+kontrast eşikleri [theme.ts](src/ui/theme.ts) içinde tek kaynaktır.
 
-> **Node 22 required.** Expo SDK 54's build tooling is incompatible with the
-> native TypeScript stripping in Node 24+. Use Node 22 (LTS).
+- Bütün dokunma alanları ortak primitive’lerden gelir; metin üç noktayla
+  saklanmaz.
+- Grafikler tam değerli ekran okuyucu özeti taşır; form hataları canlı
+  duyurulur.
+- Hareket spring tabanlıdır ve sistemin Reduced Motion tercihini izler.
+- 320, 390, 768 ve 1440 px; light/dark baseline’ları Playwright tarafından
+  release kapısında karşılaştırılır.
+
+## Çalıştırma
+
+> **Node 22 zorunlu.** Expo SDK 54 araç zinciri Node 24+ native TypeScript
+> stripping ile uyumlu değildir.
 
 ```bash
 git clone https://github.com/topraksv/helix.git
 cd helix
 npm install
-cp .env.example .env    # add your Supabase URL + anon key — or leave empty for local-only mode
+cp .env.example .env
 
-npm run web             # run on web
-npm run ios             # iOS dev build (npx expo run:ios --device for a real phone)
+npm run web                 # web development
+npm run ios                 # iOS development build
 ```
 
-No Supabase project? Leave `.env` empty and Helix runs fully local — no
-account, no network, nothing leaves the device.
+`.env` içindeki Supabase URL ve anon key boş bırakılırsa Helix local-only açılır.
+Sync için bir Supabase projesi bağlamak isteyen geliştirici, migration ve remote
+doğrulama adımlarını [Release Sözleşmesi](docs/RELEASE.md) üzerinden izlemelidir.
+
+### Kalite kapıları
 
 ```bash
-npm test                # unit tests (vitest)
-npm run typecheck       # strict TypeScript
-npx expo lint           # lint
+npm run typecheck           # strict TS + checked index access
+npm test                    # domain, sync, DB sınırı ve regression testleri
+npx expo lint               # Expo/React lint
+npm run test:e2e            # local-only static export + gerçek browser SQLite
 ```
 
-### Connect Supabase (optional, for sync)
+Kalıcı senaryo matrisi, CI/manuel ayrımı ve cihaz kabul formu
+[Test Sözleşmesi](docs/TESTING.md) içindedir. Sabit test sayısı dokümana yazılmaz;
+GitHub Actions her PR’da o commit’in gerçek suite’ini çalıştırır.
 
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Apply **every** migration in [`supabase/migrations/`](supabase/migrations/)
-   in filename order — run each file in the SQL Editor, or link the project
-   once and push them all: `supabase link && supabase db push`. (Running only
-   the first file leaves the schema behind the app: sync pushes will fail on
-   missing columns and account deletion will lack its RPC.)
-3. Copy the project URL and **publishable (anon)** key from **Settings → API**
-   into `.env` as `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
-4. For CI only, add two repo secrets under **Settings → Secrets and variables →
-   Actions**: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (the `sb_secret_…`
-   key — it powers the keep-alive cron and must **never** appear in `.env` or
-   client code).
-5. Run the `supabase-keepalive` workflow once from the Actions tab. It pings the
-   database every 3 days so a free-tier project never pauses.
-6. Under **Authentication → URL Configuration → Redirect URLs**, allow
-   `https://topraksv.github.io/helix/**` for web and `helix://**` for the
-   installed app. Password recovery uses Supabase's expiring, one-time PKCE
-   links and routes both targets to `/reset-password`.
+## Teknik katman — merak edenler için
 
-### Deploy the web app
+<details>
+<summary><strong>Local-first mimariyi aç</strong></summary>
 
-Every push to `main` runs [the web deploy workflow](.github/workflows/deploy-web.yml):
-`npx expo export -p web` builds a static site (per-route HTML, `baseUrl: /helix`)
-and publishes it to GitHub Pages. Deep links to dynamic routes are handled by a
-`404.html` fallback that hands the URL back to the client-side router.
-
-## Project structure
-
+```mermaid
+flowchart LR
+  UI["Expo Router + React Native UI"] --> R["Stable repo facade"]
+  R --> L[("Async SQLite\nlocal source of truth")]
+  L --> O["Validated outbox"]
+  O --> P["Push + server timestamp ack"]
+  P --> S[("Supabase Postgres\nowner-only RLS")]
+  S --> Q["Keyset pull + row validation"]
+  Q --> L
+  O -- "Malformed event" --> D["Dead-letter + diagnostics"]
 ```
+
+| Katman | Karar |
+|---|---|
+| Uygulama | Expo SDK 54, React Native 0.81, React 19, Expo Router |
+| Tip sınırı | TypeScript strict + `noUncheckedIndexedAccess`; network/storage/import/DB girişlerinde runtime validation |
+| Yerel veri | `expo-sqlite` async API + Drizzle `sqlite-proxy`; UI doğrudan SQL çağırmaz |
+| Veri erişimi | [repo.ts](src/data/repo.ts) kararlı facade; odaklı implementasyonlar `src/data/repo/` altında |
+| Sync | Atomik write + outbox, server-authoritative `updated_at`, keyset pull, LWW merge, dead-letter |
+| Remote | Supabase Auth/PostgreSQL; owner-aware FK/constraint ve authenticated RLS policy’leri |
+| Para/tarih | Integer minor units; `YYYY-MM-DD` local dates ve `YYYY-MM` month keys |
+| Test | Vitest, remote pgTAP, Playwright + axe + responsive screenshot diff |
+
+</details>
+
+### Klasör haritası
+
+```text
 src/
-├── app/        # expo-router routes (dashboard, cash flow, subscriptions, calculator, settings)
-├── domain/     # pure TS money engines — no I/O, fully unit-tested
-├── db/         # Drizzle schema + expo-sqlite setup
-├── data/       # live queries + stable repo facade backed by focused data services
-├── sync/       # outbox, push/pull, last-write-wins merge
-├── services/   # FX rates, notifications, backup (JSON export/import)
-├── auth/       # Supabase auth + Face ID lock
-├── i18n/       # Turkish UI strings (the only place UI copy lives)
-└── ui/         # shared components (sticky table, calculator, forms) + theming
+├── app/        Expo Router ekranları ve route grupları
+├── domain/     saf para, tarih, bakiye, recurrence ve analiz kuralları
+├── db/         Drizzle şeması, async SQLite client ve local migration’lar
+├── data/       live query’ler + kararlı repository facade
+├── sync/       outbox, push/pull, session epoch ve dead-letter
+├── services/   import/export, FX, piyasa, bildirim ve platform sınırları
+├── auth/       Supabase oturumu, recovery ve cihaz kilidi
+├── i18n/       kullanıcıya görünen bütün Türkçe metinler
+└── ui/         ortak component, tablo, grafik, motion ve tema sistemi
 ```
 
-Contributor notes and architecture invariants live in [AGENTS.md](AGENTS.md);
-manual test scenarios for the critical flows are in [docs/TESTING.md](docs/TESTING.md).
+Kalıcı mimari kurallar [AGENTS.md](AGENTS.md), yayın sırası
+[docs/RELEASE.md](docs/RELEASE.md), denetim durumları
+[docs/AUDIT_TRACKER.md](docs/AUDIT_TRACKER.md) içindedir.
 
-## Roadmap
+## Platform ve bilinen sınırlar
 
-Helix already handles the day-to-day. On the horizon, drawn from the real
-backlog:
+- Web otomatik olarak GitHub Pages’e yayımlanır; iOS/Android OTA ayrı bir EAS
+  Update adımıdır.
+- iOS yerel cihaz build’i bu projenin doğrulanmış kurulu uygulama yoludur.
+  Android kodu ve OTA paketi üretilir, ancak production store build/kabulü
+  tamamlanmış sayılmaz.
+- Native config, Expo SDK, icon/splash veya runtime değişikliği OTA ile
+  teslim edilemez; yeniden cihaz build’i gerekir.
+- Expo SDK 54 dependency advisory zinciri ve özellikle ertelenmiş ürün/teknoloji
+  fikirleri [tracker backlog’unda](docs/AUDIT_TRACKER.md#açıkça-ertelenen-backlog)
+  tutulur; tamamlanmış özellikler roadmap gibi yeniden listelenmez.
 
-- Budget alerts and a calendar view.
-- Home-screen widgets and richer web notifications.
-- Weekly recurring-income cycles (today rules are monthly/yearly).
-- Field-level merge for concurrent edits (today: row-level last-write-wins).
-- Encrypted-at-rest local database and a performance-profiling pass.
-- Expo SDK upgrade once the installed-build line moves past SDK 54.
+## Lisans / License
 
-## License
+**Proprietary — all rights reserved.** © 2026 Ömer Toprak Şavlı.
 
-**Proprietary — all rights reserved.** © 2026 Ömer Toprak Şavlı, sole developer
-and maintainer. The source is published here for transparency and reference
-only; it is *not* open-source. You may view the code and fork within GitHub to
-propose contributions, but running, copying, modifying, redistributing, or
-otherwise using the Software requires prior written permission. See the full
-terms in [LICENSE](LICENSE), and contact the author for any licensing request.
+Kaynak; şeffaflık ve inceleme için görünürdür, açık kaynak değildir. Yazılı izin
+olmadan çalıştırma, kopyalama, değiştirme, dağıtma veya ticari kullanım hakkı
+vermez. Tam koşullar [LICENSE](LICENSE) içindedir.

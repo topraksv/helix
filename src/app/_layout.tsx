@@ -130,7 +130,7 @@ export default function RootLayout() {
               </Pressable>
             </>
           ) : (
-            <ActivityIndicator color={primary} />
+            <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={primary} />
           )}
         </View>
       )}
@@ -261,7 +261,7 @@ function RootLayoutInner() {
             />
           </View>
         ) : awaitingFirstPull || !guard.redirect ? (
-          <ActivityIndicator color={theme.palette.primary} />
+          <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={theme.palette.primary} />
         ) : null}
       </View>
     );
