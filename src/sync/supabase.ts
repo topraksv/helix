@@ -7,6 +7,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import type { Database } from "./database.types";
 
 const CHUNK = 1900;
 const MAX_AUTH_CHUNKS = 64;
@@ -58,7 +59,7 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(url && anonKey);
 
-let client: SupabaseClient | null = null;
+let client: SupabaseClient<Database> | null = null;
 let passwordRecoveryDetected = false;
 
 /** True only when Supabase itself completed a recovery URL before the route mounted. */
@@ -70,10 +71,10 @@ export function clearPasswordRecoveryDetected(): void {
   passwordRecoveryDetected = false;
 }
 
-export function getSupabase(): SupabaseClient | null {
+export function getSupabase(): SupabaseClient<Database> | null {
   if (!isSupabaseConfigured) return null;
   if (!client) {
-    client = createClient(url!, anonKey!, {
+    client = createClient<Database>(url!, anonKey!, {
       auth: {
         storage: Platform.OS === "web" ? undefined : secureChunkedStorage,
         autoRefreshToken: true,

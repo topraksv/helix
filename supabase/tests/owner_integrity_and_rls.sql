@@ -1,6 +1,9 @@
 begin;
 
-select plan(17);
+create extension if not exists pgtap with schema extensions;
+set local search_path = public, extensions;
+
+select plan(19);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -84,6 +87,16 @@ select results_eq(
     where id = '10000000-0000-4000-8000-000000000011'$$,
   $$values ('RLS A'::text)$$,
   'user A can read the owned person'
+);
+
+select results_eq(
+  $$with changed as (
+      update public.persons set name = 'RLS A updated'
+      where id = '10000000-0000-4000-8000-000000000011'
+      returning name
+    ) select name from changed$$,
+  $$values ('RLS A updated'::text)$$,
+  'user A can update the owned person'
 );
 
 reset role;
@@ -247,5 +260,19 @@ select results_eq(
 );
 
 reset role;
-select * from finish();
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select results_eq(
+  $$with removed as (
+      delete from public.persons
+      where id = '10000000-0000-4000-8000-000000000011'
+      returning 1
+    ) select count(*)::bigint from removed$$,
+  $$values (1::bigint)$$,
+  'user A can delete the owned person'
+);
+
+reset role;
+select * from finish(true);
 rollback;
