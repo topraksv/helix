@@ -9,22 +9,24 @@ lags behind them.
 
 - Updated: 2026-07-18 (Europe/Istanbul)
 - Branch: `main`
-- Completed remediation package: P5; release commit: `e04fc39`
+- Completed remediation package: P6; release commit: `40c0fea`
 - Toolchain used: Node 22
-- Verification: typecheck, full tests, zero-warning Expo lint, 50-route static
-  web export, measured bundle budget, required remote quality/Pages run, live
-  root/settings HTTP 200 and EAS update metadata/insights. Browser discovery
-  returned no backend; Xcode had no simulator destination and the physical
-  phone was offline, so installed-device/a11y delivery was not available.
-- Test baseline: 43 files, 268 tests passing
+- Verification: typecheck, full tests, zero-warning Expo lint, 53-route static
+  web export, measured bundle budget, linked Supabase migration/lint/pgTAP,
+  required remote quality/Pages run, live product-route HTTP 200 and EAS update
+  metadata. Browser discovery returned no backend; Xcode had no simulator
+  destination and the physical phone was offline, so installed-device/a11y
+  delivery was not available.
+- Test baseline: 48 files, 281 tests passing
 
 ## Active working tree
 
 An eight-package remediation of Codex's independent 2026-07-17 audit is
-active. P0–P5 are complete: scope registry; data integrity; CI/GitHub/EAS
+active. P0–P6 are complete: scope registry; data integrity; CI/GitHub/EAS
 release contracts; linked database/type boundaries; and architecture, measured
-performance plus production diagnostics; UI/UX/a11y/privacy. P6 (product and
-information architecture) is next.
+performance plus production diagnostics; UI/UX/a11y/privacy; product planning
+and information architecture. P7 (persistent test automation, README and final
+closure) is next.
 `docs/AUDIT_TRACKER.md` is the ID/status source of truth.
 
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
@@ -88,6 +90,31 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit remediation package 6: product and IA)
+
+- Base `3a59927`; implementation branch `agent/p6-product-ia`, protected PR
+  #18, squash release commit `40c0fea`.
+- Onboarding now defaults to a one-action quick start with optional balance and
+  progressively disclosed advanced/import paths. Dashboard removed duplicate
+  analysis; account freeze moved under Security; backup/export/restore is a
+  distinct task group. Shell sync health stays quiet unless a real error or an
+  outbox item has waited at least five minutes.
+- Analytics gained bounded transaction search by text, period, type, category
+  and payment source. A unified upcoming timeline combines subscriptions,
+  recurring income, future transactions and credit-card statements with
+  month groups, source drill-down and explicit stale/offline states.
+- Added synced category budgets and monthly/weekly/biweekly income cadence.
+  Linked migration 7 is live; local/remote versions 1–7 match, linked lint has
+  zero errors and 24/24 pgTAP assertions passed in one rollback transaction.
+- Checks: typecheck; 48 files/281 tests; zero-warning lint; 53-route export;
+  bundle budget and diff check. PR run `29643400089` and main Pages run
+  `29643476129` passed; live root/upcoming/budgets/analytics returned 200.
+- EAS `preview` group `ea6a17fd-610c-4370-8ce7-91cbb753bcb4`, runtime `1.0.0`
+  (iOS `019f751c-90ad-7ff5-82d3-fb4bbcdc34e3`, Android
+  `019f751c-90ad-7fd6-932d-7fcac54ae74b`) published from `40c0fea`. Installed
+  delivery remains unverified; P7 owns permanent E2E/SQLite/device matrices,
+  README/privacy/release documentation and final tracker closure.
 
 ### 2026-07-18 — Codex (audit remediation package 5: UI, a11y and privacy)
 
@@ -207,27 +234,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   installed iPhone remains unverified until the user runs
   `npx expo run:ios --device`; after that build, two cold starts must prove the
   `preview` channel delivery. This is the only P2 external acceptance gap.
-
-### 2026-07-18 — Codex (audit remediation package 1: data integrity)
-
-- Base `f6009a5`, branch `main`; P1 shipped as `f8f536e`.
-- Replaced the unsafe inner `JSON.parse` sync boundary with table-aware
-  outbound validation. Malformed JSONB, unknown columns and invalid numerics
-  become `invalid_row` dead letters while healthy rows in the same batch keep
-  moving; rejected events no longer create a permanent retry loop.
-- Added one synchronous operation guard and applied it across critical
-  financial, onboarding, auth/recovery, security and settings mutations.
-  Transaction/plan/bulk creates accept operation identities; bulk child rows
-  and workspace template categories converge deterministically.
-- Recurring income now requires a live, owner-scoped income category at the
-  repository boundary. Regression tests cover poison-row isolation,
-  same-tick operation locking and category ownership/kind validation.
-- Checks: typecheck; 27 files/224 tests; zero-warning Expo lint; diff check;
-  49-route production web export. Browser runtime discovery returned no
-  available backend, so no new visual flow is claimed.
-- GitHub Pages run `29636759953` succeeded. EAS `preview` update group
-  `df604f34-b0e7-46b0-a190-b0cfe5e52e7a` published for runtime `1.0.0`
-  (iOS `019f743f-d498-7f21-bc10-8f3da79f1164`, Android
-  `019f743f-d498-73c8-ac58-aed4b37988f3`). Insights immediately after publish
-  showed 0 installs/users; installed-device delivery remains unverified and is
-  addressed by P2's native channel contract.
