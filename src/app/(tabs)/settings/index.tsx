@@ -22,6 +22,7 @@ import {
   KeyRound,
   LogOut,
   PiggyBank,
+  Target,
   ScanFace,
   Trash2,
   Users,
@@ -203,6 +204,7 @@ export default function SettingsScreen() {
         <ListRow icon={Wallet} title={tr.settings.sources} subtitle={tr.settings.sourcesDesc} chevron onPress={() => router.push("/settings/payment-sources")} />
         <ListRow icon={Users} title={tr.settings.persons} subtitle={tr.settings.personsDesc} chevron onPress={() => router.push("/settings/persons")} />
         <ListRow icon={Banknote} title={tr.settings.incomeRules} subtitle={tr.settings.incomeRulesDesc} chevron onPress={() => router.push("/settings/incomes")} />
+        <ListRow icon={Target} title={tr.budgets.title} subtitle={tr.budgets.settingsDesc} chevron onPress={() => router.push("/settings/budgets" as Href)} />
       </Card>
 
       <SectionHeader>{tr.settings.appSection}</SectionHeader>

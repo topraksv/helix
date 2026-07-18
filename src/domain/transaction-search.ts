@@ -34,6 +34,6 @@ export function filterTransactions<T extends SearchableTransaction>(
     (filters.to == null || transaction.effectiveDate <= filters.to),
   );
   return matches
-    .toSorted((left, right) => right.effectiveDate.localeCompare(left.effectiveDate) || right.id.localeCompare(left.id))
+    .sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate) || right.id.localeCompare(left.id))
     .slice(0, Math.max(0, limit));
 }

@@ -53,6 +53,8 @@ export const naturalKeys = {
   confirmTx: (expectedId: string) => `confirmtx:${expectedId}`,
   /** One note per (month, category) cell — deterministic so re-import overwrites. */
   cellNote: (userId: string, month: string, categoryId: string) => `cellnote:${userId}:${month}:${categoryId}`,
+  /** One monthly target per expense category; edits and multi-device writes converge. */
+  categoryBudget: (userId: string, month: string, categoryId: string) => `budget:${userId}:${month}:${categoryId}`,
   /** The "set current balance" reconciliation adjustment for a given day —
    *  deterministic so re-correcting the same day updates one row instead of
    *  stacking a new adjustment each time. */

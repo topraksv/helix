@@ -354,6 +354,24 @@ export function useComputedColumns() {
   return useComputedColumnsState().data;
 }
 
+export function useCategoryBudgets() {
+  return useCategoryBudgetsState().data;
+}
+
+export function useCategoryBudgetsState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `category_budgets:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.categoryBudgets)
+        .where(and(eq(s.categoryBudgets.userId, userId), isNull(s.categoryBudgets.deletedAt)))
+        .orderBy(asc(s.categoryBudgets.month), asc(s.categoryBudgets.categoryId)),
+    ["category_budgets"],
+  );
+}
+
 export function useComputedColumnsState() {
   const userId = useUserId();
   return useSharedLive(

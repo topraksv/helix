@@ -4,18 +4,19 @@
 
 import React, { useDeferredValue, useState } from "react";
 import { Pressable, Text, useWindowDimensions, View } from "react-native";
-import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, Inbox } from "lucide-react-native";
+import { useRouter, type Href } from "expo-router";
+import { ChevronLeft, ChevronRight, Inbox, Target } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { filterTransactions } from "../../../domain/transaction-search";
+import { budgetProgress } from "../../../domain/budgets";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { monthName, shortMonthLabel, tr } from "../../../i18n/tr";
-import { toTxLike, useAllTransactions, useCategories, usePersons, useSources } from "../../../data/hooks";
+import { toTxLike, useAllTransactions, useCategoryBudgets, useCategories, usePersons, useSources } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
-import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, seriesColor, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { spacing, type, useTheme } from "../../../ui/theme";
@@ -38,6 +39,7 @@ export default function AnalysisScreen() {
   const categories = useCategories();
   const persons = usePersons();
   const sources = useSources();
+  const budgets = useCategoryBudgets();
   const allTx = useAllTransactions();
   const router = useRouter();
   const { palette } = useTheme();
@@ -178,6 +180,8 @@ export default function AnalysisScreen() {
   // The table already scrolls horizontally; size each numeric column for the
   // longest actual value so amounts remain on one line instead of wrapping.
   const analysisCellWidth = Math.min(240, Math.max(compact ? 120 : 128, Math.ceil(maxAmountChars * 7.5) + spacing.lg * 2));
+  const activeBudgetRows = budgetProgress(budgets, txLike, endMonth, today)
+    .filter((budget) => categoryById.has(budget.categoryId));
 
   return (
     <Screen>
@@ -303,6 +307,39 @@ export default function AnalysisScreen() {
           )}
         </Card>
       ) : null}
+
+      <Card>
+        {activeBudgetRows.length === 0 ? (
+          <ListRow
+            icon={Target}
+            title={tr.budgets.emptyAnalysisTitle}
+            subtitle={tr.budgets.emptyAnalysisHint}
+            chevron
+            onPress={() => router.push("/(tabs)/settings/budgets" as Href)}
+          />
+        ) : (
+          <>
+            <Spread style={{ marginBottom: spacing.sm }}>
+              <Heading style={{ marginTop: 0, marginBottom: 0 }}>{tr.budgets.analysisTitle(monthName(endMonth))}</Heading>
+              <Button label={tr.common.edit} size="sm" variant="ghost" onPress={() => router.push("/(tabs)/settings/budgets" as Href)} />
+            </Spread>
+            {activeBudgetRows.map((budget) => (
+              <ListRow
+                key={budget.id}
+                title={categoryById.get(budget.categoryId)?.name ?? tr.common.none}
+                subtitle={tr.budgets.progress(formatMinorCompact(budget.spentMinor), formatMinorCompact(budget.amountMinor))}
+                right={
+                  <Badge
+                    text={budget.remainingMinor < 0 ? tr.budgets.over(formatMinorCompact(-budget.remainingMinor)) : tr.budgets.remaining(formatMinorCompact(budget.remainingMinor))}
+                    tone={budget.remainingMinor < 0 ? "negative" : budget.ratio >= 0.8 ? "warning" : "positive"}
+                  />
+                }
+                stackRightOnNarrow
+              />
+            ))}
+          </>
+        )}
+      </Card>
 
       {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
         <Card>

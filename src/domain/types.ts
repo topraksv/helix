@@ -87,6 +87,8 @@ export interface RecurringIncomeLike {
   defaultAmountMinor: Minor;
   currency: string;
   payDay: number; // nominal day of month, clamped per month
+  recurrence?: "monthly" | "weekly" | "biweekly";
+  anchorDate?: ISODate | null;
   isActive: boolean;
   personIsSelf: boolean;
 }
