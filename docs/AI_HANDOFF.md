@@ -8,7 +8,7 @@ lags behind them.
 ## Last verified state
 
 - Updated: 2026-07-18 (Europe/Istanbul)
-- Branch: `agent/sdk54-dependabot-backlog` from `be95258`
+- Branch: `agent/dependabot-sdk-matrix-v2` from `ec2c0d3`
 - Completed remediation package: P7 plus SDK 54 dependency-policy closure
 - Toolchain used: Node 22
 - Verification: typecheck, 49 files/287 tests, zero-warning Expo lint,
@@ -97,22 +97,28 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
 
 ### 2026-07-18 — Codex (SDK 54 dependency-policy closure)
 
-- Base `be95258`; branch `agent/sdk54-dependabot-backlog`.
-- Closed Dependabot PRs #5–#8 and #21 because they crossed the Expo SDK 54
-  React/React Native/native-library compatibility boundary; PR #21 also had an
-  invalid generated lockfile. The coordinated upgrade remains
-  `BACKLOG-SDK-01`, not silently abandoned work.
-- Dependabot now ignores Expo-managed minor/major version updates, including
-  React Native's pre-1.0 breaking minor line. Patch and security updates remain
-  eligible. A release-contract test locks the policy, and `AGENTS.md` records
-  when it may be removed.
-- Changed `.github/dependabot.yml`, `tests/release-config.test.ts`,
-  `docs/AUDIT_TRACKER.md`, `docs/AI_HANDOFF.md` and `AGENTS.md`.
-- Checks: Dependabot YAML parsed, diff check clean, typecheck, 49 files/287
-  tests and zero-warning Expo lint passed. Delivery uses the protected PR
-  quality gate and automatic Pages workflow. No app/runtime/native bytes
-  changed, so OTA group `105fffc1-1ea0-4db7-bed8-ec5bc03ca930` remains current
-  and no native rebuild is required.
+- Base `be95258`; policy PR #23 released as `66c77bf`; SHA-pinned
+  `actions/upload-artifact` v7 PR #24 released as `ec2c0d3`; final branch
+  `agent/dependabot-sdk-matrix-v2` starts from that commit.
+- Closed Dependabot PRs #5–#8, #21 and #25–#28 because they crossed the Expo
+  SDK 54 React/React Native/Babel/lint compatibility boundary or attempted an
+  unplanned TypeScript major; the npm PRs also generated lockfiles that failed
+  `npm ci`. The coordinated upgrade remains `BACKLOG-SDK-01`, not silently
+  abandoned work.
+- Dependabot ignores routine SDK-managed version updates at every SemVer level,
+  including React Native's pre-1.0 line, and guards ESLint/TypeScript majors.
+  Security updates and independent package updates remain eligible. Compatible
+  `lucide-react-native` 1.25.0 was applied separately with a clean lockfile.
+- Changed `.github/dependabot.yml`, package manifests,
+  `tests/release-config.test.ts`, `docs/AUDIT_TRACKER.md`, `docs/AI_HANDOFF.md`
+  and `AGENTS.md`.
+- Checks: Dependabot YAML parsed; clean `npm ci`; Expo dependency check;
+  Expo Doctor 18/18; diff check; typecheck; 49 files/287 tests; zero-warning
+  lint; 53-route export; bundle budget; and 7/7 Playwright passed. Delivery
+  uses the protected PR quality gate and automatic Pages workflow. Lucide
+  changes app JavaScript, so the protected merge receives a new `preview` OTA;
+  it does not require a native rebuild. EAS history is authoritative for the
+  resulting update group.
 - No implementation work remains. Five intentional backlog and five
   installed-device/two-client acceptance rows remain explicitly tracked.
 

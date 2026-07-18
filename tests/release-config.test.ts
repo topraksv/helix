@@ -7,6 +7,14 @@ const eas = JSON.parse(readFileSync(resolve(process.cwd(), "eas.json"), "utf8"))
 const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy-web.yml"), "utf8");
 const dependabot = readFileSync(resolve(process.cwd(), ".github/dependabot.yml"), "utf8");
 
+function dependabotRule(dependency: string) {
+  const marker = `      - dependency-name: "${dependency}"`;
+  const start = dependabot.indexOf(marker);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const next = dependabot.indexOf("\n      - dependency-name:", start + marker.length);
+  return dependabot.slice(start, next === -1 ? undefined : next);
+}
+
 describe("release contract", () => {
   it("embeds the preview channel for local CNG builds", () => {
     expect(app.expo.updates.requestHeaders["expo-channel-name"]).toBe("preview");
@@ -30,9 +38,10 @@ describe("release contract", () => {
     for (const ref of actionRefs) expect(ref).toMatch(/@[0-9a-f]{40}$/);
   });
 
-  it("keeps SDK-managed minor and major updates in the coordinated Expo backlog", () => {
+  it("keeps SDK-managed version updates in the coordinated Expo backlog", () => {
     for (const dependency of [
       "expo*",
+      "babel-preset-expo",
       "react",
       "react-dom",
       "@types/react",
@@ -43,9 +52,13 @@ describe("release contract", () => {
       "react-native-svg",
       "eslint-config-expo",
     ]) {
-      expect(dependabot).toContain(`dependency-name: "${dependency}"`);
+      const rule = dependabotRule(dependency);
+      expect(rule).toContain("version-update:semver-patch");
+      expect(rule).toContain("version-update:semver-minor");
+      expect(rule).toContain("version-update:semver-major");
     }
-    expect(dependabot).toContain("version-update:semver-minor");
-    expect(dependabot).toContain("version-update:semver-major");
+    for (const dependency of ["eslint", "typescript"]) {
+      expect(dependabotRule(dependency)).toContain("version-update:semver-major");
+    }
   });
 });
