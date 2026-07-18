@@ -10,7 +10,7 @@
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
-    "@supabase/supabase-js": "^2.110.0",
+    "@supabase/supabase-js": "^2.110.7",
     "babel-preset-expo": "~54.0.12",
     "drizzle-orm": "^0.45.2",
     "expo": "~54.0.36",
