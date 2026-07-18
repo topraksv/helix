@@ -99,6 +99,24 @@ describe("backup validation", () => {
     expect(isValidImportRow("credit_card_statements", { ...statement, due_date: "2026-02-30" })).toBe(false);
   });
 
+  it("keeps legacy monthly-income backups readable and validates new schedules/budgets", () => {
+    const legacyIncome = {
+      id: id(11), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      name: "Maaş", kind: "salary", default_amount_minor: 50_000_00, currency: "TRY", pay_day: 15,
+      person_id: personId, category_id: null, is_active: 1, note: null,
+    };
+    expect(isValidImportRow("recurring_incomes", legacyIncome)).toBe(true);
+    expect(isValidImportRow("recurring_incomes", { ...legacyIncome, recurrence: "weekly", anchor_date: null })).toBe(false);
+    expect(isValidImportRow("recurring_incomes", { ...legacyIncome, recurrence: "biweekly", anchor_date: "2026-07-18" })).toBe(true);
+
+    const budget = {
+      id: id(12), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      category_id: categoryId, month: "2026-07", amount_minor: 10_000_00,
+    };
+    expect(isValidImportRow("category_budgets", budget)).toBe(true);
+    expect(isValidImportRow("category_budgets", { ...budget, amount_minor: 0 })).toBe(false);
+  });
+
   it("rejects one invalid row before returning any restore plan", () => {
     const bundle = {
       version: 1,

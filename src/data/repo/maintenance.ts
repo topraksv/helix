@@ -276,6 +276,8 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       defaultAmountMinor: r.default_amount_minor as number,
       currency: r.currency as string,
       payDay: r.pay_day as number,
+      recurrence: (r.recurrence as "monthly" | "weekly" | "biweekly" | undefined) ?? "monthly",
+      anchorDate: (r.anchor_date as string | null | undefined) ?? null,
       isActive: Boolean(r.is_active),
       personIsSelf: Boolean(r.is_self),
     })),

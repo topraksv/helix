@@ -89,6 +89,47 @@ export type Database = {
         }
         Relationships: []
       }
+      category_budgets: {
+        Row: {
+          amount_minor: number
+          category_id: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          month: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_minor: number
+          category_id: string
+          created_at?: string
+          deleted_at?: string | null
+          id: string
+          month: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          amount_minor?: number
+          category_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          month?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "category_budgets_user_category_fk"
+            columns: ["user_id", "category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
       cell_notes: {
         Row: {
           body: string
@@ -534,6 +575,7 @@ export type Database = {
       }
       recurring_incomes: {
         Row: {
+          anchor_date: string | null
           category_id: string | null
           created_at: string
           currency: string
@@ -546,10 +588,12 @@ export type Database = {
           note: string | null
           pay_day: number
           person_id: string
+          recurrence: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          anchor_date?: string | null
           category_id?: string | null
           created_at?: string
           currency?: string
@@ -562,10 +606,12 @@ export type Database = {
           note?: string | null
           pay_day: number
           person_id: string
+          recurrence?: string
           updated_at?: string
           user_id?: string
         }
         Update: {
+          anchor_date?: string | null
           category_id?: string | null
           created_at?: string
           currency?: string
@@ -578,6 +624,7 @@ export type Database = {
           note?: string | null
           pay_day?: number
           person_id?: string
+          recurrence?: string
           updated_at?: string
           user_id?: string
         }

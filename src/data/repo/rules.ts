@@ -264,6 +264,8 @@ export interface RecurringIncomeInput {
   defaultAmountMinor: Minor;
   currency: string;
   payDay: number;
+  recurrence?: "monthly" | "weekly" | "biweekly";
+  anchorDate?: ISODate | null;
   personId: string;
   categoryId: string | null;
   isActive: boolean;
@@ -281,6 +283,11 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
   );
   if (!person) throw new Error("Recurring income person is required");
   await assertRecurringIncomeCategory(userId, input.categoryId);
+  const recurrence = input.recurrence ?? "monthly";
+  const anchorDate = recurrence === "monthly" ? null : input.anchorDate ?? null;
+  if ((recurrence === "weekly" || recurrence === "biweekly") && !anchorDate) {
+    throw new Error("Recurring income anchor date is required");
+  }
   const id = input.id ?? newId();
   const writes: RowWrite[] = [
     {
@@ -292,6 +299,8 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
         defaultAmountMinor: input.defaultAmountMinor,
         currency: input.currency,
         payDay: input.payDay,
+        recurrence,
+        anchorDate,
         personId: input.personId,
         categoryId: input.categoryId,
         isActive: input.isActive,
@@ -306,6 +315,8 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
         defaultAmountMinor: input.defaultAmountMinor,
         currency: input.currency,
         payDay: input.payDay,
+        recurrence,
+        anchorDate,
         isActive: input.isActive,
         personIsSelf: Boolean(person.is_self),
       },
