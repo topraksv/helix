@@ -29,8 +29,11 @@ export interface Palette {
   focus: string;
 }
 
-// Claude's warm neutral/clay palette. Semantic text roles deliberately use the
-// supplied neutral foregrounds when a chromatic token is not AA at body size.
+// Warm neutral/clay ramp with semantic accents tuned to the paper palette:
+// income/positive is a garden green, expense/negative a brick red, warning a
+// warm ochre. Purple and blue accents are banned (the sole blue is the focus
+// ring, an a11y convention). `*Text` variants are the AA-safe foregrounds for
+// body-size text; the base tokens are fills/chart marks (3:1 contract).
 export const lightPalette: Palette = {
   background: "#F8F8F7",
   surface: "#F5F4EF",
@@ -49,12 +52,12 @@ export const lightPalette: Palette = {
   primaryText: "#0F0F0D",
   onPrimary: "#FFFFFF",
   onNegative: "#FFFFFF",
-  positive: "#207FDE",
-  positiveText: "#535146",
+  positive: "#2E8B47",
+  positiveText: "#1F6B33",
   negative: "#A72519",
   negativeText: "#A72519",
-  warning: "#5645A1",
-  warningText: "#535146",
+  warning: "#A87B17",
+  warningText: "#7A5A10",
   focus: "#207FDE",
 };
 
@@ -76,14 +79,17 @@ export const darkPalette: Palette = {
   primaryText: "#FAF9F5",
   onPrimary: "#1A1A19",
   onNegative: "#0F0F0D",
-  positive: "#4594E3",
-  positiveText: "#B6B5AF",
+  positive: "#57B76B",
+  positiveText: "#7CC98F",
   negative: "#DD493C",
-  negativeText: "#EFEEEC",
-  warning: "#8979D2",
-  warningText: "#B6B5AF",
+  negativeText: "#FF8277",
+  warning: "#E0A83C",
+  warningText: "#E3B978",
   focus: "#4594E3",
 };
+
+/** Shared modal scrim — warm ink, matching `textStrong`'s hue. */
+export const scrim = "rgba(15, 15, 13, 0.55)";
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 // Ultra-soft organic corners in the 12–16px editorial range.

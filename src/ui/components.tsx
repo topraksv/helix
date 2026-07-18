@@ -31,7 +31,7 @@ import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
-import { cardShadow, radius, spacing, type, useTheme, type Palette } from "./theme";
+import { cardShadow, radius, scrim, spacing, type, useTheme, type Palette } from "./theme";
 import { useReducedMotion } from "./motion";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
@@ -760,7 +760,7 @@ export function Select<T extends string>({
         <Modal transparent animationType="fade" visible onRequestClose={() => setOpen(false)}>
           <Pressable
             accessible={false}
-            style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", justifyContent: "center", padding: spacing.lg }}
+            style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
             onPress={() => setOpen(false)}
           >
             <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
@@ -944,7 +944,15 @@ export function ChipPicker<T extends string>({
   );
 }
 
-export function Badge({ text, tone = "muted" }: { text: string; tone?: "muted" | "positive" | "negative" | "warning" | "primary" }) {
+export function Badge({
+  text,
+  tone = "muted",
+  icon: IconCmp,
+}: {
+  text: string;
+  tone?: "muted" | "positive" | "negative" | "warning" | "primary";
+  icon?: LucideIcon;
+}) {
   const { palette } = useTheme();
   const colors = {
     muted: { bg: palette.surfaceAlt, fg: palette.textSecondary },
@@ -954,8 +962,20 @@ export function Badge({ text, tone = "muted" }: { text: string; tone?: "muted" |
     primary: { bg: palette.primarySoft, fg: palette.primaryText },
   }[tone];
   return (
-    <View style={{ backgroundColor: colors.bg, borderRadius: radius.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 3, alignSelf: "flex-start" }}>
-      <Text style={[type.small, { color: colors.fg, fontFamily: "Inter_500Medium" }]}>{text}</Text>
+    <View
+      style={{
+        backgroundColor: colors.bg,
+        borderRadius: radius.full,
+        paddingHorizontal: spacing.sm + 2,
+        paddingVertical: 3,
+        alignSelf: "flex-start",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.xs,
+      }}
+    >
+      {IconCmp ? <IconCmp accessible={false} size={12} color={colors.fg} strokeWidth={2} /> : null}
+      <Text style={[type.small, { color: colors.fg, fontFamily: "Inter_500Medium", flexShrink: 1 }]}>{text}</Text>
     </View>
   );
 }

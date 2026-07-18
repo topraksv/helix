@@ -6,14 +6,15 @@
  * read-only helper never opens a separate network request or writes a row.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { ArrowDownUp } from "lucide-react-native";
 import { formatMinor, roundHalfAwayFromZero } from "../domain/money";
-import { loadRateCache, lookupRate, SUPPORTED_CURRENCIES, useFxRates, type Currency } from "../services/fx-fetch";
+import { ensureFreshRates, loadRateCache, lookupRate, SUPPORTED_CURRENCIES, useFxRates, type Currency } from "../services/fx-fetch";
 import { marketSellRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
-import { tr } from "../i18n/tr";
+import { dateLabel, tr } from "../i18n/tr";
 import { Badge, Body, Label, MoneyField, Segmented } from "./components";
 import { radius, spacing, type, useTheme } from "./theme";
 
@@ -36,14 +37,26 @@ export function CurrencyConverter() {
 
   const converterRate = (currency: Currency) => {
     const liveRateTry = marketSellRateTry(currency);
-    if (liveRateTry != null) return { rateTry: liveRateTry, isStale: false };
+    if (liveRateTry != null) return { rateTry: liveRateTry, isStale: false, rateDate: null };
     const cached = lookupRate(userId, currency);
-    return cached == null ? null : { rateTry: cached.rate.rateTry, isStale: cached.isStale };
+    return cached == null
+      ? null
+      : { rateTry: cached.rate.rateTry, isStale: cached.isStale, rateDate: cached.rate.rateDate };
   };
   const rateFrom = converterRate(from);
   const rateTo = converterRate(to);
   const ready = rateFrom != null && rateTo != null;
   const stale = (rateFrom?.isStale ?? false) || (rateTo?.isStale ?? false);
+  const staleDate = rateFrom?.isStale ? rateFrom.rateDate : rateTo?.isStale ? rateTo?.rateDate : null;
+
+  // A stale or missing rate refreshes while the screen is open — never require
+  // an app restart. Throttled + session-scoped inside `ensureFreshRates`.
+  const needsRefresh = !ready || stale;
+  useFocusEffect(
+    useCallback(() => {
+      if (needsRefresh) ensureFreshRates(userId);
+    }, [needsRefresh, userId]),
+  );
   const converted = minor != null && ready
     ? roundHalfAwayFromZero((minor * rateFrom!.rateTry) / rateTo!.rateTry)
     : null;
@@ -116,7 +129,10 @@ export function CurrencyConverter() {
       </View>
       {stale && ready ? (
         <View style={{ marginTop: spacing.sm, alignItems: "flex-start" }}>
-          <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" />
+          <Badge
+            text={`⚠ ${staleDate ? tr.calc.staleRateDated(dateLabel(staleDate)) : tr.tx.staleRate}`}
+            tone="warning"
+          />
         </View>
       ) : null}
     </View>

@@ -47,24 +47,60 @@ function expectBodyTextContrast(palette: Palette): void {
   }
 }
 
+function channels(hex: string): [number, number, number] {
+  const parts = hex.match(/[0-9a-f]{2}/gi);
+  if (!parts || parts.length !== 3) throw new Error(`Unsupported color: ${hex}`);
+  return [Number.parseInt(parts[0]!, 16), Number.parseInt(parts[1]!, 16), Number.parseInt(parts[2]!, 16)];
+}
+
+/** Income reads green, expense reads red, warning reads warm amber — and no
+ *  semantic accent may drift purple/blue again (the sole blue is `focus`). */
+function expectSemanticHues(palette: Palette): void {
+  for (const green of [palette.positive, palette.positiveText]) {
+    const [r, g, b] = channels(green);
+    expect(g, `${green} should be green-dominant`).toBeGreaterThan(r);
+    expect(g, `${green} should be green-dominant`).toBeGreaterThan(b);
+  }
+  for (const red of [palette.negative, palette.negativeText]) {
+    const [r, g, b] = channels(red);
+    expect(r, `${red} should be red-dominant`).toBeGreaterThan(g);
+    expect(r, `${red} should be red-dominant`).toBeGreaterThan(b);
+  }
+  for (const accent of [palette.primary, palette.warning, palette.warningText, palette.positive, palette.negative]) {
+    const [r, g, b] = channels(accent);
+    expect(b, `${accent} must not be blue/purple-dominant`).toBeLessThanOrEqual(Math.max(r, g));
+  }
+  {
+    const [r, g, b] = channels(palette.warning);
+    expect(r, `${palette.warning} should be a warm amber`).toBeGreaterThan(b);
+    expect(g, `${palette.warning} should be a warm amber`).toBeGreaterThan(b);
+  }
+}
+
 describe("semantic theme contrast", () => {
-  it("keeps the requested Claude palette exact", () => {
+  it("keeps the warm neutral ramp exact", () => {
     expect(lightPalette).toMatchObject({
       background: "#F8F8F7", surface: "#F5F4EF", surfaceAlt: "#F0EEE5",
       surfaceHover: "#E8E5D8", surfaceStrong: "#DED8C4", textStrong: "#0F0F0D",
       text: "#29261B", textSecondary: "#535146", textMuted: "#737163",
       primary: "#BA5B38", accentText: "#AB5235", primaryStrong: "#C96442",
-      primarySoft: "#F2E0DA", border: "#706B57", focus: "#207FDE",
-      warning: "#5645A1", negative: "#A72519",
+      primarySoft: "#F2E0DA", border: "#706B57",
     });
     expect(darkPalette).toMatchObject({
       background: "#1A1A19", surface: "#222220", surfaceAlt: "#2D2D2A",
       surfaceHover: "#393937", surfaceStrong: "#494946", textStrong: "#FAF9F5",
       text: "#EFEEEC", textSecondary: "#B6B5AF", textMuted: "#989790",
       primary: "#D56E48", accentText: "#D97959", primaryStrong: "#CC5933",
-      primarySoft: "#493027", border: "#514F48", focus: "#4594E3",
-      warning: "#8979D2", negative: "#DD493C",
+      primarySoft: "#493027", border: "#514F48",
     });
+  });
+
+  it("keeps light semantic accents on the green/red/amber contract", () => {
+    expectSemanticHues(lightPalette);
+  });
+
+  it("keeps dark semantic accents on the green/red/amber contract", () => {
+    expectSemanticHues(darkPalette);
   });
 
   it("keeps every light-theme body foreground at WCAG AA", () => {

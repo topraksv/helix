@@ -56,6 +56,10 @@ export function useFirstPullGrace(input: {
   online: boolean;
   newSignup: boolean;
   onboarded: boolean | null;
+  /** Completion time of the live `onboarded` query feeding the route guard. */
+  onboardedUpdatedAt: Date | undefined;
+  /** Forces that query to re-run immediately (bypasses its debounce). */
+  refreshOnboarded: () => void;
 }): boolean {
   const [grace, setGrace] = useState(false);
   const lastSyncAt = useSyncStatus((state) => state.lastSyncAt);
@@ -70,9 +74,21 @@ export function useFirstPullGrace(input: {
     return undefined;
   }, [input.userId, input.online, input.newSignup]);
 
+  // The first pull can finish before the live `onboarded` query re-reads what
+  // it wrote. Dropping the grace on `lastSyncAt` alone let the guard route on
+  // that pre-sync `false` snapshot — the logout→login "Quick Start flash". So
+  // the grace lifts only after the query has completed AT/AFTER the sync; a
+  // forced refresh keeps that deterministic instead of waiting for the 8 s cap.
+  const syncedAtMs = lastSyncAt ? Date.parse(lastSyncAt) : null;
+  const queryAtMs = input.onboardedUpdatedAt?.getTime() ?? null;
+  const querySettled = syncedAtMs != null && queryAtMs != null && queryAtMs >= syncedAtMs;
+  const { refreshOnboarded } = input;
   useEffect(() => {
-    if (lastSyncAt) setGrace(false);
-  }, [lastSyncAt]);
+    if (grace && syncedAtMs != null && !querySettled) refreshOnboarded();
+  }, [grace, syncedAtMs, querySettled, refreshOnboarded]);
+  useEffect(() => {
+    if (querySettled) setGrace(false);
+  }, [querySettled]);
 
   return grace && input.onboarded === false;
 }

@@ -8,11 +8,15 @@ import { create } from "zustand";
 import { io, type Socket } from "socket.io-client";
 import { tr } from "../i18n/tr";
 import { freshMarketQuote, validMarketQuote } from "../domain/market";
+import { kv } from "../lib/kv";
 
 const FEED_URL = "wss://hrmsocketonly.haremaltin.com";
 const THROTTLE_MS = 3000;
 const MARKET_STALE_MS = 60_000;
 const LIFECYCLE_GRACE_MS = 5000;
+/** Device-local last-known public quotes (no user data), for instant display. */
+const SNAPSHOT_KEY = "helix.markets.snapshot";
+const SNAPSHOT_PERSIST_MS = 30_000;
 
 /** Provider code → display label; order = display order. */
 export const MARKET_SYMBOLS = [
@@ -35,6 +39,9 @@ interface MarketPrice {
 
 interface MarketsState {
   prices: Record<string, MarketPrice>;
+  /** `stale` keeps showing the last-known quotes (feed silent/disconnected);
+   *  `error` means there is nothing to show at all. Conversion freshness is
+   *  separate: `marketSellRateTry` checks each quote's own `receivedAt`. */
   status: "idle" | "connecting" | "live" | "stale" | "error";
   lastEventAt: number | null;
 }
@@ -60,11 +67,57 @@ function validEntry(entry: FeedEntry | undefined): entry is FeedEntry {
   return Boolean(entry && validMarketQuote(entry.alis, entry.satis));
 }
 
+/** Persist the last verified quotes so the card is never empty on reopen. */
+let lastPersistAt = 0;
+function persistSnapshot(prices: Record<string, MarketPrice>, lastEventAt: number): void {
+  if (lastEventAt - lastPersistAt < SNAPSHOT_PERSIST_MS) return;
+  lastPersistAt = lastEventAt;
+  void kv.set(SNAPSHOT_KEY, JSON.stringify({ prices, lastEventAt })).catch(() => {});
+}
+
+/** Show the previous session's quotes (dated, trend cleared) while connecting.
+ *  Their original `receivedAt` is kept, so conversion freshness still fails —
+ *  a snapshot is display data, never a live rate. Exported for tests; the
+ *  production caller is `connectMarkets`. */
+export async function hydrateSnapshot(): Promise<void> {
+  try {
+    const raw = await kv.get(SNAPSHOT_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { prices?: Record<string, MarketPrice>; lastEventAt?: number };
+    const prices: Record<string, MarketPrice> = {};
+    for (const { code } of MARKET_SYMBOLS) {
+      const price = parsed.prices?.[code];
+      if (!price || !validMarketQuote(price.buyTry, price.sellTry) || !Number.isFinite(price.receivedAt)) continue;
+      prices[code] = {
+        code,
+        buyTry: Number(price.buyTry),
+        sellTry: Number(price.sellTry),
+        direction: "",
+        at: typeof price.at === "string" ? price.at : "",
+        receivedAt: Number(price.receivedAt),
+      };
+    }
+    const state = useMarkets.getState();
+    // Live data may have landed while reading — never overwrite it.
+    if (Object.keys(prices).length === 0 || Object.keys(state.prices).length > 0) return;
+    if (state.status !== "connecting" && state.status !== "error") return;
+    useMarkets.setState({
+      prices,
+      lastEventAt: Number.isFinite(parsed.lastEventAt) ? Number(parsed.lastEventAt) : null,
+    });
+  } catch {
+    // corrupt snapshot: live data will replace it
+  }
+}
+
 function markStaleAfterSilence(): void {
   if (staleTimer) clearTimeout(staleTimer);
   staleTimer = setTimeout(() => {
     staleTimer = null;
-    useMarkets.setState({ prices: {}, status: "error" });
+    // Keep showing the last-known quotes with their timestamp; only the
+    // conversion path (per-quote `receivedAt`) treats them as expired.
+    const hasData = Object.keys(useMarkets.getState().prices).length > 0;
+    useMarkets.setState({ status: hasData ? "stale" : "error" });
   }, MARKET_STALE_MS);
 }
 
@@ -136,6 +189,7 @@ export function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
     status: Object.keys(prices).length > 0 ? "live" : "error",
     lastEventAt: now,
   });
+  if (Object.keys(prices).length > 0) persistSnapshot(prices, now);
 }
 
 /** Fresh live sell ("satış") price in TRY, or null when unavailable.
@@ -158,6 +212,7 @@ export function connectMarkets(): void {
   }
   if (socket) return;
   useMarkets.setState({ status: "connecting" });
+  void hydrateSnapshot();
   socket = io(FEED_URL, {
     transports: ["websocket"],
     reconnectionDelay: 5_000,

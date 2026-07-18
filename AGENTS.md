@@ -286,11 +286,14 @@ tests/          vitest suites for src/domain.
 The look is **Warm Organic Editorial / Vintage Botanical Modernism** (moved off
 the old indigo fintech palette 2026-07). Keep it; don't regress to indigo.
 
-- **Palette:** `src/ui/theme.ts` is the only source for the user-approved Claude
-  light/dark neutral, clay, link, purple and error tokens. Charts derive their
-  series from those roles; do not reintroduce screen-local hex palettes. Neutral
-  semantic text roles are used when a chromatic token misses WCAG AA at body
-  size. Anthropic fonts are proprietary, so Inter + Fraunces remain the closest
+- **Palette:** `src/ui/theme.ts` is the only source for the warm neutral/clay
+  ramp and the semantic accents: income/positive is green, expense/negative is
+  red, warning is warm amber. **Purple is banned everywhere; the only blue is
+  the `focus` ring.** `tests/theme-contrast.test.ts` enforces both the hue
+  contract and WCAG AA for every `*Text` role — change colors only with that
+  test. Charts derive their series from those roles; do not reintroduce
+  screen-local hex palettes. Modal scrims use the shared `scrim` token.
+  Anthropic fonts are proprietary, so Inter + Fraunces remain the closest
   shippable pair.
 - **Typography:** headings and amounts are the serif **Fraunces**
   (`@expo-google-fonts/fraunces`), body is **Inter**. Font tokens (`font.serif`

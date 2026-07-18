@@ -9,7 +9,7 @@ import { Modal, Platform, Pressable, ScrollView, Text, View } from "react-native
 import { Delete } from "lucide-react-native";
 import { formatMinor, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
 import { tr } from "../i18n/tr";
-import { cardShadow, radius, spacing, type, useTheme } from "./theme";
+import { cardShadow, radius, scrim, spacing, type, useTheme } from "./theme";
 import { Button, FadeIn } from "./components";
 import { calculatorKeyHaptic } from "./calculator-feedback";
 import { haptic } from "./haptics";
@@ -303,7 +303,7 @@ export function CalculatorModal({
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <Pressable
         accessible={false}
-        style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", alignItems: "center", justifyContent: "center", padding: spacing.lg }}
+        style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
         <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 340 }}>

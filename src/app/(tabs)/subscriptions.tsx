@@ -4,19 +4,20 @@
 import React from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Pencil, Plus, RefreshCw, Repeat, Trash2 } from "lucide-react-native";
+import { Plus, RefreshCw, Repeat } from "lucide-react-native";
 import { normalizedMonthlyLoadMinor, subscriptionLoadTry } from "../../domain/analytics";
 import { todayISO } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
-import { dateLabel, tr } from "../../i18n/tr";
+import { shortDateLabel, tr } from "../../i18n/tr";
 import { usePersons, useSubscriptions, useUserId } from "../../data/hooks";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Body, Button, Card, CardList, EmptyState, IconButton, ListRow, Row, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Body, Button, Card, CardList, EmptyState, Screen, SectionHeader, Spread } from "../../ui/components";
+import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
-import { spacing, useTheme } from "../../ui/theme";
+import { spacing } from "../../ui/theme";
 
 export default function SubscriptionsScreen() {
   const userId = useUserId();
@@ -25,7 +26,6 @@ export default function SubscriptionsScreen() {
   const router = useRouter();
   const undo = useUndo();
   const today = todayISO();
-  const { palette } = useTheme();
   // Re-render when FX rates land after a cold start so foreign-currency totals
   // settle on the real TRY value instead of the raw amount.
   useFxRates();
@@ -54,37 +54,30 @@ export default function SubscriptionsScreen() {
 
   const renderSub = (s: (typeof subscriptions)[number]) => {
     const inTrial = s.trialEndDate != null && s.trialEndDate >= today;
+    const badges: RuleBadge[] = s.isActive
+      ? [
+          { text: tr.subs.nextDue(shortDateLabel(s.nextDueDate)) },
+          ...(inTrial ? [{ text: tr.subs.trialEnds(shortDateLabel(s.trialEndDate!)), tone: "warning" as const }] : []),
+          ...(s.autoPay ? [{ text: tr.subs.autoPay, tone: "primary" as const, icon: Repeat }] : []),
+        ]
+      : [{ text: tr.subs.canceled, tone: "negative" as const }];
+    const openEdit = () => router.push({ pathname: "/subscription-form", params: { id: s.id } });
     return (
-      <ListRow
+      <RuleRow
         key={s.id}
         leading={<Logo name={s.name} domain={s.websiteDomain} size={40} />}
         title={s.name}
-        subtitle={
-          (s.isActive ? tr.subs.nextDue(dateLabel(s.nextDueDate)) : tr.subs.canceled) +
-          (inTrial ? ` · ${tr.subs.trialEnds(dateLabel(s.trialEndDate!))}` : "")
+        badges={badges}
+        amountMinor={s.amountMinor}
+        currency={s.currency}
+        amountNote={
+          s.intervalMonths > 1
+            ? tr.subs.perMonth(formatMinor(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))
+            : undefined
         }
-        onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })}
-        right={
-          // alignItems:center (Row default) keeps the edit/delete controls
-          // vertically centred against the price column and the whole row.
-          <Row gap={spacing.sm}>
-            {/* At most two lines (amount + /ay); the trial tag lives in the
-                subtitle so it never grows this column or crowds the amount. */}
-            <View style={{ alignItems: "flex-end", justifyContent: "center", gap: 2 }}>
-              <Row gap={spacing.xs}>
-                {s.autoPay ? <Repeat accessibilityRole="image" accessibilityLabel={tr.subs.autoPay} size={13} color={palette.primary} /> : null}
-                <Amount minor={s.amountMinor} currency={s.currency} colorized={false} />
-              </Row>
-              {s.intervalMonths > 1 ? (
-                <Body muted style={{ fontSize: 12 }}>
-                  {tr.subs.perMonth(formatMinor(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))}
-                </Body>
-              ) : null}
-            </View>
-            <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/subscription-form", params: { id: s.id } })} />
-            <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(s.id, s.name)} />
-          </Row>
-        }
+        onPress={openEdit}
+        onEdit={openEdit}
+        onDelete={() => void remove(s.id, s.name)}
       />
     );
   };

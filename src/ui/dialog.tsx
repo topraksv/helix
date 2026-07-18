@@ -15,7 +15,7 @@ import React, { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
-import { cardShadow, radius, spacing, type, useTheme } from "./theme";
+import { cardShadow, radius, scrim, spacing, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { INPUT_LIMITS } from "../domain/input";
 import { useModalAccessibility } from "./accessibility";
@@ -123,7 +123,7 @@ export function PromptHost() {
     <Modal transparent animationType="fade" visible onRequestClose={() => close(null)}>
       <Pressable
         accessible={false}
-        style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", justifyContent: "center", padding: spacing.lg }}
+        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
         onPress={() => close(null)}
       >
         <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
@@ -197,7 +197,7 @@ export function DialogHost() {
     <Modal transparent animationType="fade" visible onRequestClose={() => close(current.cancelLabel == null)}>
       <Pressable
         accessible={false}
-        style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", justifyContent: "center", padding: spacing.lg }}
+        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
         onPress={() => close(current.cancelLabel == null)}
       >
         <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>

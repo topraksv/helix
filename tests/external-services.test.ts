@@ -3,9 +3,20 @@ import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
+
+const kvStore = new Map<string, string>();
+vi.mock("../src/lib/kv", () => ({
+  kv: {
+    get: async (key: string) => kvStore.get(key) ?? null,
+    set: async (key: string, value: string) => void kvStore.set(key, value),
+    remove: async (key: string) => void kvStore.delete(key),
+  },
+}));
+
 import {
   applyFeed,
   disconnectMarkets,
+  hydrateSnapshot,
   markMarketConnectionInterrupted,
   marketSellRateTry,
   MARKET_SYMBOLS,
@@ -15,6 +26,7 @@ import {
 
 afterEach(() => {
   disconnectMarkets();
+  kvStore.clear();
   vi.useRealTimers();
 });
 
@@ -118,24 +130,74 @@ describe("live market freshness", () => {
     expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_020);
   });
 
-  it("keeps verified prices through a brief reconnect but expires them after silence", () => {
+  it("keeps showing last-known prices after silence while conversion freshness expires", () => {
     vi.useFakeTimers();
     useMarkets.setState({
       status: "live",
       prices: {
-        ALTIN: { code: "ALTIN", buyTry: 4_000, sellTry: 4_010, direction: "", at: "", receivedAt: 1_000 },
+        USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: 1_000 },
       },
       lastEventAt: 1_000,
     });
 
     markMarketConnectionInterrupted();
     expect(useMarkets.getState().status).toBe("stale");
-    expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_010);
+    expect(useMarkets.getState().prices.USDTRY?.sellTry).toBe(40.5);
 
-    vi.advanceTimersByTime(59_999);
-    expect(useMarkets.getState().prices.ALTIN).toBeDefined();
-    vi.advanceTimersByTime(1);
-    expect(useMarkets.getState()).toMatchObject({ prices: {}, status: "error" });
+    // After a full minute of silence the card still shows the dated quote…
+    vi.advanceTimersByTime(60_000);
+    expect(useMarkets.getState().status).toBe("stale");
+    expect(useMarkets.getState().prices.USDTRY?.sellTry).toBe(40.5);
+    expect(useMarkets.getState().lastEventAt).toBe(1_000);
+    // …but the conversion path refuses the expired quote.
+    expect(marketSellRateTry("USD", 1_000 + 60_001)).toBeNull();
+  });
+
+  it("reports a hard error after silence only when there is nothing to show", () => {
+    vi.useFakeTimers();
+    useMarkets.setState({ status: "connecting", prices: {}, lastEventAt: null });
+    markMarketConnectionInterrupted();
+    expect(useMarkets.getState().status).toBe("error");
+  });
+
+  it("hydrates the persisted snapshot as dated display data, never as live rates", async () => {
+    kvStore.set(
+      "helix.markets.snapshot",
+      JSON.stringify({
+        lastEventAt: 5_000,
+        prices: {
+          USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "up", at: "dün", receivedAt: 5_000 },
+          BAD: { code: "BAD", buyTry: -1, sellTry: 0, direction: "", at: "", receivedAt: 5_000 },
+        },
+      }),
+    );
+    useMarkets.setState({ status: "connecting", prices: {}, lastEventAt: null });
+    await hydrateSnapshot();
+    const state = useMarkets.getState();
+    expect(state.prices.USDTRY?.sellTry).toBe(40.5);
+    expect(state.prices.USDTRY?.direction).toBe(""); // old trend is meaningless
+    expect(state.prices.BAD).toBeUndefined();
+    expect(state.lastEventAt).toBe(5_000);
+    // The snapshot keeps its original receipt time: conversion stays blocked.
+    expect(marketSellRateTry("USD", 5_000 + 60_001)).toBeNull();
+  });
+
+  it("never lets a snapshot overwrite live quotes that already arrived", async () => {
+    kvStore.set(
+      "helix.markets.snapshot",
+      JSON.stringify({
+        lastEventAt: 5_000,
+        prices: { USDTRY: { code: "USDTRY", buyTry: 39, sellTry: 39.5, direction: "", at: "", receivedAt: 5_000 } },
+      }),
+    );
+    useMarkets.setState({
+      status: "live",
+      prices: { USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: 9_000 } },
+      lastEventAt: 9_000,
+    });
+    await hydrateSnapshot();
+    expect(useMarkets.getState().prices.USDTRY?.sellTry).toBe(40.5);
+    expect(useMarkets.getState().lastEventAt).toBe(9_000);
   });
 
   it("keeps one socket lifecycle alive through a transient app-state change", () => {
