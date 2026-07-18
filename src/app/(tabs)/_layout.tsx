@@ -28,15 +28,13 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarStyle: {
           backgroundColor: palette.surface,
-          borderTopColor: palette.border,
+          borderTopColor: palette.surfaceHover,
           height: barHeight,
           paddingBottom: bottomPad,
           paddingTop: 8,
         },
-        // Labels are 11px; the clay fill is only 3.12:1 on white. The paired
-        // text token preserves the hue while meeting 4.5:1 in both themes.
-        tabBarActiveTintColor: palette.primaryText,
-        tabBarInactiveTintColor: palette.textMuted,
+        tabBarActiveTintColor: palette.accentText,
+        tabBarInactiveTintColor: palette.textSecondary,
         tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11, lineHeight: 15, paddingTop: 1 },
         tabBarIconStyle: { marginBottom: 0 },
         sceneStyle: { backgroundColor: palette.background },
@@ -57,6 +55,7 @@ export default function TabsLayout() {
           title: tr.tabs.cashflow,
           tabBarLabel: tr.tabBar.cashflow,
           tabBarAccessibilityLabel: tr.tabs.cashflow,
+          popToTopOnBlur: true,
           tabBarIcon: ({ color, size }) => <WalletCards color={color} size={size - 2} strokeWidth={2} />,
         }}
       />
@@ -84,6 +83,7 @@ export default function TabsLayout() {
           title: tr.tabs.settings,
           tabBarLabel: tr.tabBar.settings,
           tabBarAccessibilityLabel: tr.tabs.settings,
+          popToTopOnBlur: true,
           tabBarIcon: ({ color, size }) => <Settings color={color} size={size - 2} strokeWidth={2} />,
         }}
       />

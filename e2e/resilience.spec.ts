@@ -53,7 +53,30 @@ test("protected and modal deep links keep deterministic navigation", async ({ pa
     await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
   }
   await page.goto("/helix/transaction");
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  const back = page.getByRole("button", { name: "Geri", exact: true });
+  await expect(back).toBeVisible();
+  expect(await back.boundingBox()).toMatchObject({ width: 44, height: 44 });
+  await back.click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("budget summary keeps its forecast, charts and cash-flow tab route", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await addMarketExpense(page, "Aylık grafik", "820,00");
+
+  await page.getByRole("tab", { name: "Bütçe Özeti" }).click();
+  await expect(page.getByRole("button", { name: /Ay sonu tahmini/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Halka grafik/ })).toBeVisible();
+  await page.getByRole("radio", { name: "Sütun", exact: true }).click();
+  await expect(page.getByRole("img", { name: /Sütun grafik/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /Net değişim/ }).click();
+  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Bütçe Özeti" }).click();
+  await page.getByRole("tab", { name: "Mali Tablo" }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -106,6 +129,7 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   await expect(page.getByText("Uzun Açıklamalı Aylık Düzenli Maaş Geliri", { exact: true })).toBeVisible();
 
   await page.goto("/helix/");
+  await expect(page.getByRole("button", { name: /Ay sonu tahmini/ })).toBeVisible();
   const upcomingTitle = page.getByText("Uzun Açıklamalı Aylık Düzenli Maaş Geliri", { exact: true });
   const received = page.getByRole("button", { name: "Alındı", exact: true });
   await expect(upcomingTitle).toBeVisible();

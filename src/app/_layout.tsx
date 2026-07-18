@@ -33,6 +33,7 @@ import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../lib/device-preferences";
 import { HeaderBackButton } from "../ui/header-back";
+import { stackScreenOptions } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { PrivacyCover } from "../ui/privacy-cover";
 import {
@@ -276,14 +277,7 @@ function RootLayoutInner() {
         <ErrorBoundary>
         <Stack
           screenOptions={{
-            headerStyle: { backgroundColor: theme.palette.surface },
-            headerTintColor: theme.palette.text,
-            headerTitleStyle: { color: theme.palette.text, fontFamily: "Inter_600SemiBold" },
-            headerBackTitle: tr.common.back,
-            headerBackTitleStyle: { fontFamily: "Inter_500Medium" },
-            headerShadowVisible: false,
-            gestureEnabled: true,
-            contentStyle: { backgroundColor: theme.palette.background },
+            ...stackScreenOptions(theme.palette),
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

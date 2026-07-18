@@ -9,7 +9,7 @@ export interface CategoryBudgetLike {
   amountMinor: number;
 }
 
-export interface BudgetProgress extends CategoryBudgetLike {
+interface BudgetProgress extends CategoryBudgetLike {
   spentMinor: number;
   remainingMinor: number;
   ratio: number;

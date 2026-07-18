@@ -92,7 +92,7 @@ export default function ItemBreakdownScreen() {
       ) : (
         <Card padded={false}>
           <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderColor: palette.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={[type.label, { color: palette.textMuted }]}>{tr.cashflow.yearTotal(year)}</Text>
+            <Text style={[type.label, { color: palette.textSecondary }]}>{tr.cashflow.yearTotal(year)}</Text>
             <Amount minor={total} />
           </View>
           {rows.map((r, i) => {
@@ -117,9 +117,9 @@ export default function ItemBreakdownScreen() {
                   {monthLabel(r.month)}
                 </Text>
                 {r.value == null ? (
-                  <Text style={[type.amountSm, { color: palette.textMuted }]}>—</Text>
+                  <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
                 ) : (
-                  <Text style={[type.amountSm, { color: r.value < 0 ? palette.negativeText : r.value === 0 ? palette.textMuted : palette.text }]}>
+                  <Text style={[type.amountSm, { color: r.value < 0 ? palette.negativeText : r.value === 0 ? palette.textSecondary : palette.text }]}>
                     {r.value === 0 ? "—" : formatMinor(r.value)}
                   </Text>
                 )}

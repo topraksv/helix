@@ -218,12 +218,12 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               marginBottom: spacing.sm,
             }}
           >
-            <IconCmp size={20} color={selected ? palette.primary : palette.textMuted} />
+            <IconCmp size={20} color={selected ? palette.primary : palette.textSecondary} />
             <View style={{ flex: 1 }}>
               <Text style={[type.body, { color: palette.text, fontFamily: "Inter_600SemiBold" }]}>
                 {tr.computed.ops[value].title}
               </Text>
-              <Text style={[type.small, { color: palette.textMuted, marginTop: 1 }]}>{tr.computed.ops[value].description}</Text>
+              <Text style={[type.small, { color: palette.textSecondary, marginTop: 1 }]}>{tr.computed.ops[value].description}</Text>
             </View>
           </Pressable>
         );
@@ -270,7 +270,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               marginBottom: spacing.md,
             }}
           >
-            <Text style={[type.small, { color: palette.textMuted }]}>
+            <Text style={[type.small, { color: palette.textSecondary }]}>
               {tr.computed.previewLabel(monthLabel(monthKeyOf(today)))}
             </Text>
             <Text style={[type.amount, { color: palette.text, fontSize: 18, marginTop: 2 }]}>{formatMinor(preview)}</Text>
@@ -328,9 +328,9 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                             justifyContent: "center",
                           }}
                         >
-                          <GripVertical size={18} color={palette.textMuted} />
+                          <GripVertical size={18} color={palette.textSecondary} />
                         </View>
-                        <Calculator size={16} color={palette.textMuted} />
+                        <Calculator size={16} color={palette.textSecondary} />
                         <Body style={{ flex: 1 }}>{column.name}</Body>
                       </View>
                       <Row gap={spacing.sm}>

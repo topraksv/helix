@@ -94,14 +94,14 @@ export function upcomingCardStatements(
   });
 }
 
-export interface ExpectedTimelineSource {
+interface ExpectedTimelineSource {
   id: string;
   name: string;
   sourceType: "subscription" | "recurring_income";
   categoryName: string | null;
 }
 
-export interface TimelineCategory {
+interface TimelineCategory {
   id: string;
   name: string;
 }

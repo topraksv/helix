@@ -1,8 +1,4 @@
-/**
- * Shared UI primitives — the design system's single implementation point.
- * Accessible touch targets (min 44pt), TR money formatting, identical
- * rendering on iOS and web. Typeface: Inter; icons: lucide.
- */
+/** Shared accessible UI primitives for native and web. */
 
 import React, { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
@@ -35,24 +31,26 @@ import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
-import { cardShadow, radius, spacing, type, useTheme } from "./theme";
+import { cardShadow, radius, spacing, type, useTheme, type Palette } from "./theme";
 import { useReducedMotion } from "./motion";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-/**
- * Springy press feedback used by tappable primitives — a small, quick scale-in
- * on press and a gentle settle back, giving surfaces a native-iOS liveliness
- * without attention-grabbing motion. Returns a stable animated scale value.
- */
+function controlStateStyle(palette: Palette, active: boolean, error = false) {
+  return {
+    backgroundColor: palette.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: error ? palette.negative : active ? palette.focus : "transparent",
+  };
+}
+
+/** Interruptible shared press feedback. */
 function useSpringPress(pressedScale = 0.96) {
   const scale = useRef(new Animated.Value(1)).current;
   const reducedMotion = useReducedMotion();
   useEffect(() => () => scale.stopAnimation(), [scale]);
-  // Interruptible by construction: each press starts a fresh spring from the
-  // current (possibly mid-flight) value, so reversing never glitches.
   const onPressIn = () => reducedMotion
     ? scale.setValue(1)
     : Animated.spring(scale, { toValue: pressedScale, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
@@ -62,11 +60,7 @@ function useSpringPress(pressedScale = 0.96) {
   return { scale, onPressIn, onPressOut };
 }
 
-/**
- * Motion system: one iOS-flavored entrance used everywhere — quick fade with
- * a soft rise (220ms, decelerating). Consistent across web and native, never
- * attention-grabbing.
- */
+/** Shared reduced-motion-aware entrance. */
 export function FadeIn({
   children,
   delay = 0,
@@ -85,8 +79,6 @@ export function FadeIn({
       progress.setValue(1);
       return;
     }
-    // Spring-driven entrance (mass/stiffness feel) — weighted and organic
-    // rather than a fixed-duration curve, matching the app-wide motion system.
     const anim = Animated.spring(progress, {
       toValue: 1,
       delay,
@@ -114,11 +106,7 @@ export function FadeIn({
   );
 }
 
-/**
- * Screen scaffold: themed background, safe-area padding, optional large
- * title header (replaces the native header inside tabs so titles never
- * appear twice), and content centering on wide viewports.
- */
+/** Screen scaffold with safe areas and bounded wide-screen content. */
 export function Screen({
   children,
   scroll = true,
@@ -170,7 +158,7 @@ export function Screen({
         <View style={{ flex: 1 }}>
           <Text accessibilityRole="header" style={[type.title, { color: palette.text }]}>{title}</Text>
           {subtitle ? (
-            <Text style={[type.body, { color: palette.textMuted, marginTop: 2 }]}>{subtitle}</Text>
+            <Text style={[type.body, { color: palette.textSecondary, marginTop: 2 }]}>{subtitle}</Text>
           ) : null}
         </View>
         {right}
@@ -228,9 +216,6 @@ export function Card({
     {
       backgroundColor: palette.surface,
       borderRadius: radius.lg,
-      // Razor-thin border on both themes (editorial look), not a heavy shadow.
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: palette.border,
       padding: padded ? spacing.lg : 0,
       marginBottom: spacing.md,
       overflow: "hidden",
@@ -256,20 +241,17 @@ export function Card({
 
 /** Quiet tonal hero container for the dashboard balance. */
 export function HeroCard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  const { palette, scheme } = useTheme();
+  const { palette } = useTheme();
   return (
     <View
       style={[
         {
           backgroundColor: palette.primarySoft,
           borderRadius: radius.lg,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: palette.border,
           padding: spacing.xl,
           marginBottom: spacing.md,
           overflow: "hidden",
         },
-        scheme === "light" && cardShadow,
         style,
       ]}
     >
@@ -280,7 +262,7 @@ export function HeroCard({ children, style }: { children: ReactNode; style?: Sty
 
 export function Title({ children }: { children: ReactNode }) {
   const { palette } = useTheme();
-  return <Text accessibilityRole="header" style={[type.title, { color: palette.text, marginBottom: spacing.md }]}>{children}</Text>;
+  return <Text accessibilityRole="header" style={[type.title, { color: palette.textStrong, marginBottom: spacing.md }]}>{children}</Text>;
 }
 
 export function Heading({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
@@ -300,7 +282,7 @@ export function Body({
 } & Omit<TextProps, "children" | "style">) {
   const { palette } = useTheme();
   return (
-    <Text {...props} style={[type.body, { color: muted ? palette.textMuted : palette.text }, style]}>
+    <Text {...props} style={[type.body, { color: muted ? palette.textSecondary : palette.text }, style]}>
       {children}
     </Text>
   );
@@ -308,7 +290,7 @@ export function Body({
 
 export function Label({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
   const { palette } = useTheme();
-  return <Text style={[type.label, { color: palette.textMuted, marginBottom: spacing.xs + 2 }, style]}>{children}</Text>;
+  return <Text style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }, style]}>{children}</Text>;
 }
 
 /** Section title used between card groups. */
@@ -320,7 +302,7 @@ export function SectionHeader({ children }: { children: ReactNode }) {
       style={[
         type.label,
         {
-          color: palette.textMuted,
+          color: palette.textSecondary,
           textTransform: "uppercase",
           letterSpacing: 0.8,
           fontSize: 12,
@@ -353,9 +335,7 @@ export function Amount({
   const { palette } = useTheme();
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
   const formatted = formatMinor(minor, currency);
-  // Keep full figures legible by stepping the font down as the string grows.
-  // Fixed table cells use formatMinorCompact; exact detail totals can pair this
-  // with an unconstrained horizontal container as a final no-wrap fallback.
+  // Detail amounts remain exact; only their font size adapts to available width.
   const fittedSize = formatted.length > 22
     ? (large ? 15 : 11)
     : formatted.length > 18
@@ -414,22 +394,12 @@ export function Button({
   accessibilityHint?: string;
 }) {
   const { palette } = useTheme();
-  const background =
-    variant === "primary"
-      ? palette.text
-      : variant === "danger"
-        ? palette.negative
-        : variant === "secondary"
-          ? palette.surfaceAlt
-          : "transparent";
-  const color =
-    variant === "primary"
-      ? palette.background
-      : variant === "danger"
-        ? palette.onNegative
-        : variant === "ghost"
-          ? palette.primaryText
-          : palette.text;
+  const colors = {
+    primary: { background: palette.primary, foreground: palette.onPrimary },
+    secondary: { background: palette.surfaceAlt, foreground: palette.text },
+    danger: { background: palette.negative, foreground: palette.onNegative },
+    ghost: { background: "transparent", foreground: palette.accentText },
+  }[variant];
   const small = size === "sm";
   const press = useSpringPress(0.97);
   return (
@@ -450,7 +420,7 @@ export function Button({
       }}
       style={[
         {
-          backgroundColor: background,
+          backgroundColor: colors.background,
           borderRadius: radius.sm + 2,
           paddingVertical: small ? spacing.sm : spacing.md + 1,
           paddingHorizontal: small ? spacing.md : spacing.lg,
@@ -465,12 +435,12 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator accessibilityLabel={label} color={color} />
+        <ActivityIndicator accessibilityLabel={label} color={colors.foreground} />
       ) : (
         <>
-          {IconCmp ? <IconCmp accessible={false} size={small ? 15 : 17} color={color} strokeWidth={2.2} /> : null}
+          {IconCmp ? <IconCmp accessible={false} size={small ? 15 : 17} color={colors.foreground} strokeWidth={2.2} /> : null}
           <Text
-            style={[type.label, { color, fontSize: small ? 13 : 15, textAlign: "center", flexShrink: 1 }]}
+            style={[type.label, { color: colors.foreground, fontSize: small ? 13 : 15, textAlign: "center", flexShrink: 1 }]}
           >
             {label}
           </Text>
@@ -499,7 +469,7 @@ export function IconButton({
   haptic?: HapticKind;
 }) {
   const { palette } = useTheme();
-  const color = tone === "danger" ? palette.negativeText : tone === "primary" ? palette.primaryText : palette.textMuted;
+  const color = tone === "danger" ? palette.negative : tone === "primary" ? palette.accentText : palette.textSecondary;
   return (
     <Pressable
       accessibilityRole="button"
@@ -516,10 +486,10 @@ export function IconButton({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: palette.surfaceAlt,
+          backgroundColor: pressed ? palette.surfaceHover : palette.surfaceAlt,
           alignItems: "center",
           justifyContent: "center",
-          opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
+          opacity: disabled ? 0.4 : 1,
         },
       ]}
     >
@@ -528,11 +498,7 @@ export function IconButton({
   );
 }
 
-/**
- * Month navigator: ‹ Temmuz 2026 › — reused by the transaction form (which
- * month an entry belongs to), the installments view and anywhere a period is
- * stepped. `min`/`max` (inclusive) disable stepping past a bound.
- */
+/** Bounded month navigator. */
 export function MonthStepper({
   value,
   onChange,
@@ -581,10 +547,10 @@ export function Field({
   );
   return (
     <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
-      {label ? <Text nativeID={labelId} style={[type.label, { color: palette.textMuted, marginBottom: spacing.xs + 2 }]}>{label}</Text> : null}
+      {label ? <Text nativeID={labelId} style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }]}>{label}</Text> : null}
       <View>
         <TextInput
-          placeholderTextColor={palette.textMuted}
+          placeholderTextColor={palette.textSecondary}
           {...props}
           accessibilityLabel={props.accessibilityLabel ?? label}
           accessibilityLabelledBy={label ? labelId : props.accessibilityLabelledBy}
@@ -602,11 +568,9 @@ export function Field({
           }}
           style={[
             {
-              backgroundColor: palette.surfaceAlt,
+              ...controlStateStyle(palette, focused, Boolean(error)),
               color: palette.text,
               borderRadius: radius.sm,
-              borderWidth: error || focused ? 1.5 : StyleSheet.hairlineWidth,
-              borderColor: error ? palette.negative : focused ? palette.focus : palette.border,
               paddingHorizontal: spacing.md,
               paddingRight: secure ? 44 : spacing.md,
               minHeight: 48,
@@ -629,7 +593,7 @@ export function Field({
             hitSlop={8}
             style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
           >
-            {hidden ? <Eye accessible={false} size={18} color={palette.textMuted} /> : <EyeOff accessible={false} size={18} color={palette.textMuted} />}
+            {hidden ? <Eye accessible={false} size={18} color={palette.textSecondary} /> : <EyeOff accessible={false} size={18} color={palette.textSecondary} />}
           </Pressable>
         ) : null}
       </View>
@@ -665,15 +629,12 @@ export function MoneyField({
   const [focused, setFocused] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
   const calculatorTriggerRef = useRef<View>(null);
-  // Display is the live-grouped form; parsing accepts single amounts and sums
-  // ("400+500"), grouped or ungrouped, so an initial "15000,00" shows as
-  // "15.000,00" and a typed sum evaluates.
   const display = formatMoneyInputLive(value);
   const minor = value.trim() === "" ? null : parseAmountExpression(display);
   const invalid = value.trim() !== "" && minor === null;
   return (
     <View style={{ marginBottom: spacing.md }}>
-      {label ? <Text nativeID={labelId} style={[type.label, { color: palette.textMuted, marginBottom: spacing.xs + 2 }]}>{label}</Text> : null}
+      {label ? <Text nativeID={labelId} style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }]}>{label}</Text> : null}
       <View>
         <TextInput
           value={display}
@@ -690,15 +651,13 @@ export function MoneyField({
           keyboardType={expression ? "numbers-and-punctuation" : "decimal-pad"}
           inputMode={expression ? "text" : "decimal"}
           placeholder={placeholder}
-          placeholderTextColor={palette.textMuted}
+          placeholderTextColor={palette.textSecondary}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           style={{
-            backgroundColor: palette.surfaceAlt,
-            color: invalid ? palette.negativeText : disabled ? palette.textMuted : palette.text,
+            ...controlStateStyle(palette, focused, invalid),
+            color: invalid ? palette.negativeText : disabled ? palette.textSecondary : palette.text,
             borderRadius: radius.sm,
-            borderWidth: invalid || focused ? 1.5 : StyleSheet.hairlineWidth,
-            borderColor: invalid ? palette.negative : focused ? palette.focus : palette.border,
             paddingHorizontal: spacing.md,
             paddingRight: 44,
             minHeight: 48,
@@ -718,7 +677,7 @@ export function MoneyField({
             hitSlop={8}
             style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
           >
-            <CalculatorIcon accessible={false} size={18} color={palette.textMuted} />
+            <CalculatorIcon accessible={false} size={18} color={palette.textSecondary} />
           </Pressable>
         )}
       </View>
@@ -777,26 +736,25 @@ export function Select<T extends string>({
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
           {
-            backgroundColor: palette.surfaceAlt,
+            ...controlStateStyle(palette, open),
             borderRadius: radius.sm,
-            borderWidth: open ? 1.5 : StyleSheet.hairlineWidth,
-            borderColor: open ? palette.focus : palette.border,
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm,
             minHeight: 48,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
+            opacity: disabled ? 0.5 : 1,
+            ...(pressed && !disabled ? { backgroundColor: palette.surfaceHover } : null),
           },
         ]}
       >
         <Text
-          style={[type.body, { color: current ? palette.text : palette.textMuted, flex: 1 }]}
+          style={[type.body, { color: current ? palette.text : palette.textSecondary, flex: 1 }]}
         >
           {current?.label ?? placeholder ?? ""}
         </Text>
-        <ChevronDown accessible={false} size={17} color={palette.textMuted} />
+        <ChevronDown accessible={false} size={17} color={palette.textSecondary} />
       </Pressable>
       {open ? (
         <Modal transparent animationType="fade" visible onRequestClose={() => setOpen(false)}>
@@ -871,7 +829,7 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
   noMargin?: boolean;
 }) {
-  const { palette, scheme } = useTheme();
+  const { palette } = useTheme();
   return (
     <View
       style={{
@@ -903,17 +861,14 @@ export function Segmented<T extends string>({
                 borderRadius: radius.sm - 1,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: selected ? palette.surface : "transparent",
+                backgroundColor: selected ? palette.surfaceStrong : "transparent",
               },
-              selected && scheme === "light" && cardShadow,
             ]}
           >
             <Text
               style={[
                 type.label,
-                // Constant metrics: only color changes on selection, so labels
-                // never shift or look off-center when the thumb moves.
-                { color: selected ? palette.primaryText : palette.textMuted, fontFamily: "Inter_600SemiBold", textAlign: "center", width: "100%" },
+                { color: selected ? palette.primaryText : palette.textSecondary, fontFamily: "Inter_600SemiBold", textAlign: "center", width: "100%" },
               ]}
             >
               {option.label}
@@ -992,7 +947,7 @@ export function ChipPicker<T extends string>({
 export function Badge({ text, tone = "muted" }: { text: string; tone?: "muted" | "positive" | "negative" | "warning" | "primary" }) {
   const { palette } = useTheme();
   const colors = {
-    muted: { bg: palette.surfaceAlt, fg: palette.textMuted },
+    muted: { bg: palette.surfaceAlt, fg: palette.textSecondary },
     positive: { bg: palette.positive + "1F", fg: palette.positiveText },
     negative: { bg: palette.negative + "1F", fg: palette.negativeText },
     warning: { bg: palette.warning + "1F", fg: palette.warningText },
@@ -1005,12 +960,9 @@ export function Badge({ text, tone = "muted" }: { text: string; tone?: "muted" |
   );
 }
 
-/** Shared action-slot width so a status pill and an action button form a
- *  symmetric, equally sized pair in a list row (dashboard "Yaklaşan Ödemeler"). */
+/** Shared width for matching status and action controls. */
 export const STATUS_W = 88;
 
-/** A status pill sized to match a small Button (same height and corner), so a
- *  status + action pair reads as one aligned unit. Fills the STATUS_W slot. */
 export function StatusPill({ label, color, foreground = color }: { label: string; color: string; foreground?: string }) {
   return (
     <View
@@ -1050,21 +1002,16 @@ export function EmptyState({ icon: IconCmp, title, hint }: { icon?: LucideIcon; 
             marginBottom: spacing.xs,
           }}
         >
-          <IconCmp accessible={false} size={26} color={palette.textMuted} strokeWidth={1.8} />
+          <IconCmp accessible={false} size={26} color={palette.textSecondary} strokeWidth={1.8} />
         </View>
       ) : null}
       <Text accessibilityRole="header" style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
-      {hint ? <Text style={[type.body, { color: palette.textMuted, textAlign: "center" }]}>{hint}</Text> : null}
+      {hint ? <Text style={[type.body, { color: palette.textSecondary, textAlign: "center" }]}>{hint}</Text> : null}
     </View>
   );
 }
 
-/**
- * Honest feedback for local live-query failures. Last known data stays visible
- * while stale; a first-load failure is never presented as a genuine empty
- * account. Refreshing is intentionally quiet because the current snapshot is
- * still valid and most refreshes finish within a frame or two.
- */
+/** Distinguishes first-load failure from a genuine empty account. */
 export function DataStateNotice({
   status,
   retry,
@@ -1115,12 +1062,7 @@ export function Divider() {
   return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.sm }} />;
 }
 
-/**
- * A Card that renders a list of items with dividers *between* them only —
- * never a trailing line under the last (or only) row — and renders nothing at
- * all when the list is empty (no stray empty box). The single reusable answer
- * for every settings/list screen.
- */
+/** Card list with separators only between rows. */
 export function CardList<T>({
   items,
   keyExtractor,
@@ -1150,10 +1092,7 @@ export function CardList<T>({
   );
 }
 
-/**
- * List row: icon chip + title/subtitle + right accessory. The workhorse of
- * settings and list screens.
- */
+/** Shared icon/title/accessory list row. */
 export function ListRow({
   icon: IconCmp,
   iconColor,
@@ -1202,13 +1141,13 @@ export function ListRow({
           {title}
         </Text>
         {subtitle ? (
-          <Text style={[type.small, { color: palette.textMuted, marginTop: 1, flexShrink: 1 }]}>
+          <Text style={[type.small, { color: palette.textSecondary, marginTop: 1, flexShrink: 1 }]}>
             {subtitle}
           </Text>
         ) : null}
       </View>
       {stackRight ? null : right}
-      {chevron ? <ChevronRight accessible={false} size={17} color={palette.textMuted} /> : null}
+      {chevron ? <ChevronRight accessible={false} size={17} color={palette.textSecondary} /> : null}
       </View>
       {stackRight ? (
         <View style={{ marginTop: spacing.sm, marginLeft: IconCmp || leading ? 36 + spacing.md : 0, alignItems: "flex-end" }}>
@@ -1237,13 +1176,7 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
   );
 }
 
-/**
- * Themed on/off toggle — a hand-built pill (not RN's bare `Switch`) so it looks
- * identical on iOS, Android and web and belongs to the warm-organic system. The
- * platform Switch renders the OS green on web/Android and ignored our track
- * tint; this animates its own track colour (border → clay) and springs the
- * thumb across, matching the app's motion language.
- */
+/** Cross-platform toggle with one theme-aware geometry. */
 const TOGGLE_W = 46;
 const TOGGLE_H = 28;
 const TOGGLE_PAD = 3;
@@ -1271,7 +1204,7 @@ export function Toggle({
     animation.start();
     return () => animation.stop();
   }, [value, progress, reducedMotion]);
-  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.surfaceAlt, palette.primarySoft] });
+  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.surfaceStrong, palette.primarySoft] });
   const thumbX = progress.interpolate({ inputRange: [0, 1], outputRange: [TOGGLE_PAD, TOGGLE_W - TOGGLE_THUMB - TOGGLE_PAD] });
   return (
     <Pressable
@@ -1284,19 +1217,15 @@ export function Toggle({
       onPress={() => onValueChange(!value)}
       style={{ opacity: disabled ? 0.5 : 1 }}
     >
-      <Animated.View style={{ width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, backgroundColor: trackColor, justifyContent: "center" }}>
+      <Animated.View style={{ width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2, backgroundColor: trackColor, justifyContent: "center" }}>
         <Animated.View
           style={{
             width: TOGGLE_THUMB,
             height: TOGGLE_THUMB,
             borderRadius: TOGGLE_THUMB / 2,
-            backgroundColor: value ? palette.primaryText : palette.textMuted,
+            backgroundColor: value ? palette.primary : palette.textSecondary,
             transform: [{ translateX: thumbX }],
-            shadowColor: "#000",
-            shadowOpacity: 0.18,
-            shadowRadius: 2,
-            shadowOffset: { width: 0, height: 1 },
-            elevation: 2,
+            boxShadow: "0 1px 3px rgba(15, 15, 13, 0.22)",
           }}
         />
       </Animated.View>

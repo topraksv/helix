@@ -2,14 +2,14 @@
  * one concise monthly insight. Detailed exploration belongs to Analysis. */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { buildUpcomingTimeline } from "../../domain/upcoming";
-import { dateLabel, dateTimeLabel, tr } from "../../i18n/tr";
+import { dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
 import {
   daysBetween,
@@ -30,7 +30,8 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W } from "../../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, Divider, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Segmented, Spread, STATUS_W } from "../../ui/components";
+import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
@@ -40,8 +41,7 @@ import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
-// Fixed column widths keep buy/sell figures right-aligned across rows (and
-// give the connecting-state placeholders the exact final geometry).
+// Fixed widths prevent quote rows from shifting as values arrive.
 const MARKET_BUY_W = 78;
 const MARKET_SELL_W = 92;
 const MARKET_TREND_W = 15;
@@ -49,10 +49,6 @@ const MARKET_TREND_W = 15;
 function MarketsCard() {
   const { palette } = useTheme();
   const { prices, status } = useMarkets();
-  // While connecting, the card renders at full height with per-symbol "—"
-  // placeholders instead of returning null — quotes fill in without the card
-  // popping in above the content (layout shift). A dead feed remains visible
-  // as an honest unavailable state so the feature never silently disappears.
   if (status === "idle") return null;
 
   const priceText = (v: number) =>
@@ -71,8 +67,8 @@ function MarketsCard() {
             : tr.markets.refreshingShort}
         >
           {/* The dot claims liveness only once real quotes are flowing. */}
-          <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textMuted }} />
-          <Text style={[type.small, { color: palette.textMuted }]}>
+          <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textSecondary }} />
+          <Text style={[type.small, { color: palette.textSecondary }]}>
             {status === "live"
               ? tr.markets.live
               : tr.markets.refreshingShort}
@@ -84,8 +80,8 @@ function MarketsCard() {
       <Spread style={{ marginBottom: spacing.xs }}>
         <View />
         <Row gap={spacing.sm}>
-          <Text style={[type.small, { color: palette.textMuted, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{tr.markets.buy}</Text>
-          <Text style={[type.small, { color: palette.textMuted, minWidth: MARKET_SELL_W, textAlign: "right" }]}>{tr.markets.sell}</Text>
+          <Text style={[type.small, { color: palette.textSecondary, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{tr.markets.buy}</Text>
+          <Text style={[type.small, { color: palette.textSecondary, minWidth: MARKET_SELL_W, textAlign: "right" }]}>{tr.markets.sell}</Text>
           <View style={{ width: MARKET_TREND_W }} />
         </Row>
       </Spread>
@@ -103,7 +99,7 @@ function MarketsCard() {
           <Spread key={code} accessible accessibilityLabel={accessibilityLabel} style={{ paddingVertical: spacing.sm - 2 }}>
             <Body>{label}</Body>
             <Row gap={spacing.sm}>
-              <Text style={[type.amountSm, { color: palette.textMuted, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{p ? priceText(p.buyTry) : "—"}</Text>
+              <Text style={[type.amountSm, { color: palette.textSecondary, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{p ? priceText(p.buyTry) : "—"}</Text>
               <Text style={[type.amount, { color: palette.text, minWidth: MARKET_SELL_W, textAlign: "right" }]}>
                 {p ? `${priceText(p.sellTry)} ₺` : "—"}
               </Text>
@@ -164,8 +160,6 @@ export default function DashboardScreen() {
   ];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const retryData = () => {
-    // Ledger already retries settings, persons, categories, transactions and
-    // adjustments; retry only the remaining independent sources once.
     ledgerState.retry();
     expectedState.retry();
     subscriptionsState.retry();
@@ -176,13 +170,11 @@ export default function DashboardScreen() {
   const router = useRouter();
   const undo = useUndo();
   const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const chartColors = useSeriesColors();
   // Re-render when FX rates land so foreign-currency projections settle.
   useFxRates();
 
-  // No manual useMemo here: the React Compiler (enabled app-wide) memoizes
-  // these derivations automatically and bails out when useMemo is hand-rolled.
-  // Reuse the ledger's already-built txLike instead of running a second
-  // full-table live query (useAllTransactions) + toTxLike on the same data.
   const txLike = bundle?.txLike ?? [];
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const categoryById = new Map(categories.map((category) => [category.id, category]));
@@ -192,12 +184,7 @@ export default function DashboardScreen() {
   const catName = (id: string | null) => (id ? categoryById.get(id)?.name : undefined);
   const nameOf = (e: (typeof expected)[number]) =>
     subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
-  // Convert an expected amount to TRY minor for projections using the best
-  // available rate (fresh live quote → dated local cache). Returns null when no rate is
-  // known — such an item is left out of the projection rather than counted at
-  // its raw foreign value (which would silently distort the figure). Foreign
-  // subscriptions were previously dropped entirely; now they count when a rate
-  // exists (the common USD/EUR case, once TCMB has been cached).
+  // Missing FX stays missing; a foreign amount is never treated as TRY.
   const expectedTryMinor = (currency: string, amountMinor: number): number | null => {
     if (currency === "TRY") return amountMinor;
     const rateTry = marketSellRateTry(currency) ?? lookupRate(userId, currency)?.rate.rateTry ?? null;
@@ -247,28 +234,31 @@ export default function DashboardScreen() {
     card_statement: tr.dashboard.cardStatement,
   })[sourceType];
 
-  // Everything still to happen between today and month end, as ONE flow set, so
-  // the month-end forecast and its breakdown reconcile exactly:
-  //   forecast = current balance + incoming − outgoing.
-  // Installment tx are already pending transactions, so expected items cover only
-  // subs/incomes → no double count. Pending (not yet realized) items from today
-  // onward are what isn't in the actual balance yet.
-  const hasForecast = incomingMinor > 0 || remainingFixedMinor > 0;
   const projected = model.projectedMinor;
   const monthIncomeMinor = model.distribution.incomeTotalMinor;
   const monthOutflowMinor = model.distribution.expenseTotalMinor + model.distribution.transferTotalMinor;
   const monthNetMinor = monthIncomeMinor - monthOutflowMinor;
+  const monthDonut = distributionDonutData(
+    model.distribution,
+    chartColors,
+    (id) => categoryById.get(id)?.name ?? tr.common.none,
+  );
+  const hasMonthFlow = monthIncomeMinor !== 0 || monthDonut.slices.length > 0 || monthDonut.supplementalSlices.length > 0;
+  const monthBars = [{
+    label: monthName(month),
+    values: [monthIncomeMinor, model.distribution.expenseTotalMinor, model.distribution.transferTotalMinor],
+  }];
+  const monthBarSeries = [
+    { label: tr.cashflow.income, color: chartColors[1] },
+    { label: tr.cashflow.expense, color: chartColors[5] },
+    { label: tr.cashflow.transfer, color: chartColors[4] },
+  ];
 
-  // Marking an expected item paid picks the day it was actually paid. This lets
-  // the user record an early/manual payment ("due the 15th, I paid it on the
-  // 12th") — the amount then becomes a realized expense on that day and drops
-  // out of the month-end forecast, instead of staying a projected future flow.
-  // Default: the due date if it has already passed, else today.
+  // A paid item realizes on its actual payment day, not its planned due day.
   const [showForecast, setShowForecast] = React.useState(false);
+  const [chartType, setChartType] = React.useState<"pie" | "bars">("pie");
   const [paying, setPaying] = React.useState<(typeof expected)[number] | null>(null);
   const defaultPaidDate = (dueDate: string): ISODate => (dueDate <= today ? (dueDate as ISODate) : today);
-  // One confirmation at a time: the button shows a spinner while the write is
-  // in flight, so a double-tap can't submit the same expected item twice.
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
   const operationGuard = useOperationGuard();
   const confirm = async (e: (typeof expected)[number], paidOn: ISODate) => {
@@ -287,8 +277,6 @@ export default function DashboardScreen() {
         undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
       } catch (err) {
         errorNotice();
-        // Foreign-currency item confirmed before any FX rate was cached: tell the
-        // user to retry online instead of writing a corrupt TRY amount.
         if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
         else {
           devError("confirm", err);
@@ -335,17 +323,12 @@ export default function DashboardScreen() {
                 <Body>{tr.dashboard.pendingConfirm(late.length)}</Body>
                 <Body muted>{tr.dashboard.catchUp}</Body>
               </View>
-              <ChevronRight accessible={false} size={18} color={palette.textMuted} />
+              <ChevronRight accessible={false} size={18} color={palette.textSecondary} />
             </Row>
           </Card>
         </Pressable>
       ) : null}
 
-      {/* Hero balance + a single month-end forecast line (tap to expand the
-          breakdown). One representation of the projected number, not the old
-          hero-chip AND a duplicate card. While the ledger is still loading the
-          card keeps its place with quiet placeholder bars — a transient "₺0"
-          balance or a popping-in hero both read as glitches in a finance app. */}
       {bundle ? (
         <HeroCard>
           <Text style={[type.label, { color: palette.primaryText, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
@@ -355,7 +338,7 @@ export default function DashboardScreen() {
             style={[
               type.amountLg,
               {
-                color: palette.textMuted,
+                color: palette.textSecondary,
                 fontSize: actualBalanceText.length > 20
                   ? 20
                   : actualBalanceText.length > 16
@@ -368,31 +351,31 @@ export default function DashboardScreen() {
           >
             {actualBalanceText}
           </Text>
-          {hasForecast && projected != null ? (
+          {projected != null ? (
             <Pressable
               accessibilityRole="button"
+              accessibilityState={{ expanded: showForecast }}
               onPress={() => setShowForecast((v) => !v)}
-              style={{
+              style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
                 gap: spacing.sm,
                 marginTop: spacing.md,
-                backgroundColor: palette.surface,
-                alignSelf: "flex-start",
-                borderRadius: radius.full,
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.xs + 2,
-              }}
+                backgroundColor: pressed ? palette.surfaceHover : palette.surface,
+                borderRadius: radius.md,
+                padding: spacing.md,
+              })}
             >
               {projectedDelta != null && projectedDelta >= 0 ? (
-                <TrendingUp size={14} color={palette.primaryText} />
+                <TrendingUp size={18} color={palette.accentText} />
               ) : (
-                <TrendingDown size={14} color={palette.primaryText} />
+                <TrendingDown size={18} color={palette.accentText} />
               )}
-              <Text style={[type.amountSm, { color: palette.primaryText }]}>
-                {tr.dashboard.forecastToggle} · {formatMinor(projected)}
-              </Text>
-              {showForecast ? <ChevronUp size={15} color={palette.primaryText} /> : <ChevronDown size={15} color={palette.primaryText} />}
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
+                <Text style={[type.amount, { color: palette.textStrong }]}>{formatMinor(projected)}</Text>
+              </View>
+              {showForecast ? <ChevronUp size={18} color={palette.accentText} /> : <ChevronDown size={18} color={palette.accentText} />}
             </Pressable>
           ) : null}
         </HeroCard>
@@ -404,9 +387,7 @@ export default function DashboardScreen() {
         </HeroCard>
       )}
 
-      {/* Breakdown, revealed on demand: current balance + what's still coming in
-          − what's still going out = the month-end estimate. */}
-      {bundle && showForecast && hasForecast && projected != null ? (
+      {bundle && showForecast && projected != null ? (
         <Card>
           <Body muted style={{ fontSize: 12, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
           <Spread style={{ marginBottom: spacing.xs }}>
@@ -514,8 +495,40 @@ export default function DashboardScreen() {
           title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
           subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
           chevron
-          onPress={() => router.push("/cash-flow/analytics")}
+          onPress={() => router.push("/(tabs)/cash-flow/analytics" as Href)}
         />
+        <Divider />
+        {hasMonthFlow ? (
+          <>
+            <Segmented
+              noMargin
+              options={[
+                { value: "pie", label: tr.analysis.chartPie },
+                { value: "bars", label: tr.analysis.chartBars },
+              ]}
+              value={chartType}
+              onChange={setChartType}
+            />
+            <View style={{ marginTop: spacing.lg, alignItems: "center" }}>
+              {chartType === "pie" ? (
+                <Donut
+                  slices={monthDonut.slices}
+                  supplementalSlices={monthDonut.supplementalSlices}
+                  totalMinor={monthDonut.totalMinor}
+                  size={width < 390 ? 144 : 168}
+                />
+              ) : (
+                <Bars
+                  width={Math.max(240, Math.min(width - spacing.xxl * 2, 640))}
+                  groups={monthBars}
+                  series={monthBarSeries}
+                />
+              )}
+            </View>
+          </>
+        ) : (
+          <Body muted style={{ marginTop: spacing.md }}>{tr.analysis.noResults}</Body>
+        )}
       </Card>
     </Screen>
   );

@@ -1,6 +1,6 @@
 /** Pure password-recovery deep-link parsing for web and native URLs. */
 
-export type RecoveryLink =
+type RecoveryLink =
   | { kind: "code"; code: string }
   | { kind: "tokens"; accessToken: string; refreshToken: string }
   | { kind: "expired" }

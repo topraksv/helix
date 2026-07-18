@@ -27,7 +27,7 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { InitialsBadge } from "./components";
-import { radius, useTheme } from "./theme";
+import { darkPalette, lightPalette, radius, useTheme } from "./theme";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** Utility/service keywords → icon + accent (checked before brand lookup). */
@@ -165,14 +165,14 @@ function domainFor(name: string, override?: string | null): string | null {
   return BRAND_DOMAIN[key] ?? (firstWord ? BRAND_DOMAIN[firstWord] : undefined) ?? null;
 }
 
-/** Perceived luminance → pick black or white ink for legible contrast. */
+/** Perceived luminance → pick the palette's dark or light ink. */
 function inkFor(hex: string): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.62 ? "#1a1918" : "#ffffff";
+  return lum > 0.62 ? lightPalette.textStrong : darkPalette.textStrong;
 }
 
 export function Logo({
@@ -244,7 +244,7 @@ export function Logo({
           height: size,
           borderRadius: radius.sm,
           backgroundColor: brand.color,
-          borderWidth: ink === "#1a1918" ? 1 : 0,
+          borderWidth: ink === lightPalette.textStrong ? 1 : 0,
           borderColor: palette.border,
           alignItems: "center",
           justifyContent: "center",

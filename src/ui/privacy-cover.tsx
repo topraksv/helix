@@ -61,7 +61,7 @@ export function PrivacyCover({ enabled }: { enabled: boolean }) {
               {tr.privacy.coverTitle}
             </Text>
           </View>
-          <Text style={[type.body, { color: palette.textMuted, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
+          <Text style={[type.body, { color: palette.textSecondary, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
             {framed ? tr.privacy.framedBody : tr.privacy.coverBody}
           </Text>
           {framed ? (
