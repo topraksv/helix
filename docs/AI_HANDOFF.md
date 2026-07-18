@@ -8,10 +8,10 @@ lags behind them.
 ## Last verified state
 
 - Updated: 2026-07-18 (Europe/Istanbul)
-- Branch: `main`
-- Completed remediation package: P7; release commit: `14547c8`
+- Branch: `agent/sdk54-dependabot-backlog` from `be95258`
+- Completed remediation package: P7 plus SDK 54 dependency-policy closure
 - Toolchain used: Node 22
-- Verification: typecheck, 49 files/286 tests, zero-warning Expo lint,
+- Verification: typecheck, 49 files/287 tests, zero-warning Expo lint,
   53-route static web export, measured bundle budget and 7/7 Playwright flows
   (real browser SQLite/restore/offline/deep-link, axe and 13 screenshot
   baselines). Protected PR quality and main quality→Pages passed; live static
@@ -19,7 +19,7 @@ lags behind them.
   insights were queried. Browser discovery returned `[]`, and no installed
   device was available, so physical screen-reader/OS/privacy/OTA acceptance is
   not claimed.
-- Test baseline: 49 files, 286 Vitest tests plus 7 Playwright flows passing
+- Test baseline: 49 files, 287 Vitest tests plus 7 Playwright flows passing
 
 ## Active working tree
 
@@ -95,6 +95,27 @@ diff and running checks proportionate to the change.
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
 
+### 2026-07-18 — Codex (SDK 54 dependency-policy closure)
+
+- Base `be95258`; branch `agent/sdk54-dependabot-backlog`.
+- Closed Dependabot PRs #5–#8 and #21 because they crossed the Expo SDK 54
+  React/React Native/native-library compatibility boundary; PR #21 also had an
+  invalid generated lockfile. The coordinated upgrade remains
+  `BACKLOG-SDK-01`, not silently abandoned work.
+- Dependabot now ignores Expo-managed minor/major version updates, including
+  React Native's pre-1.0 breaking minor line. Patch and security updates remain
+  eligible. A release-contract test locks the policy, and `AGENTS.md` records
+  when it may be removed.
+- Changed `.github/dependabot.yml`, `tests/release-config.test.ts`,
+  `docs/AUDIT_TRACKER.md`, `docs/AI_HANDOFF.md` and `AGENTS.md`.
+- Checks: Dependabot YAML parsed, diff check clean, typecheck, 49 files/287
+  tests and zero-warning Expo lint passed. Delivery uses the protected PR
+  quality gate and automatic Pages workflow. No app/runtime/native bytes
+  changed, so OTA group `105fffc1-1ea0-4db7-bed8-ec5bc03ca930` remains current
+  and no native rebuild is required.
+- No implementation work remains. Five intentional backlog and five
+  installed-device/two-client acceptance rows remain explicitly tracked.
+
 ### 2026-07-18 — Codex (audit remediation package 7: automation and closure)
 
 - Base `9e31eaa`; implementation branch `agent/p7-tests-docs`, protected PR
@@ -121,9 +142,12 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
 - EAS `preview` group `105fffc1-1ea0-4db7-bed8-ec5bc03ca930`, runtime `1.0.0`
   (iOS `019f7573-3f9e-7b34-b594-a5d55164c5bd`, Android
   `019f7573-3f9e-7d5f-ae18-ee8a9d4dc999`) published from `14547c8`. Initial
-  insights showed zero installs/failures on both platforms. All automatable
-  audit work is closed; five intentional backlog and five device/client-blocked
-  acceptance rows remain explicitly tracked.
+  insights showed zero installs/failures on both platforms. Dependabot PRs
+  #5–#8 and mixed SDK-stack PR #21 were closed under `BACKLOG-SDK-01`; npm
+  version updates now ignore SDK-managed minor/major jumps while security
+  updates remain eligible. All automatable audit work is closed; five
+  intentional backlog and five device/client-blocked acceptance rows remain
+  explicitly tracked.
 
 ### 2026-07-18 — Codex (audit remediation package 6: product and IA)
 
@@ -211,34 +235,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   preload completed the unchanged third upload and was deleted. Immediate
   insights: zero installs/users/failures, so installed-device delivery remains
   unverified. P5 owns UI/a11y/privacy; P7 owns real SQLite/E2E/device matrices.
-
-### 2026-07-18 — Codex (audit remediation package 3: DB and type boundaries)
-
-- Base `6f16977`, branch `main`; P3 shipped through protected PRs as
-  `8776f70`, `fa2988e` and `b2bd29a`.
-- Enabled `noUncheckedIndexedAccess` and replaced unsafe collection access at
-  UI, domain, import, sync and test boundaries with explicit guards/helpers.
-  Linked Supabase types are generated in `src/sync/database.types.ts`; the
-  typed client has one documented dynamic-table cast after runtime validation.
-- Remote migration 6 added and validated 19 owner-aware composite FKs,
-  category-kind/polymorphic-reference triggers, and 60 owner policies scoped
-  to `authenticated` with init-plan `(select auth.uid())`. Its fail-safe first
-  attempt rolled back on 121 legacy refund rows; anonymous aggregate evidence
-  showed exactly `income + positive + expense category`. The final migration
-  canonicalized them to signed expense refunds without changing balance effect.
-  Post-migration aggregate: zero mismatches, 19 validated FKs, 60 authenticated
-  and 60 init-plan policies.
-- Remote verification: migration list local/remote 1–6 identical; linked DB
-  lint zero errors; pgTAP 19/19 (`finish(true)`) covered A own CRUD, B isolation,
-  owner change/cross-owner relation rejection, category/ref corruption and anon
-  denial. CLI's linked runner required unavailable Docker, so the same SQL ran
-  via Supabase's official Management API in one rollback transaction.
-- Checks: typecheck; 28 files/227 tests; zero-warning lint; 49-route export;
-  required PR quality runs `29637897894`, `29638087647`, `29638400078`; final
-  Pages run `29638482754` succeeded. No browser backend was available.
-- EAS `preview` group `fb85064c-5fd9-4644-b547-129562a232e5` published from
-  clean commit `b2bd29a` for runtime `1.0.0` (iOS
-  `019f7476-fcd4-79a8-b88c-4cb2797d6f9d`, Android
-  `019f7476-fcd4-7044-84b7-4f4ef69f50f9`). Immediate insights showed zero
-  users/installs. Installed-device delivery is not verified; P2's local native
-  rebuild and two-cold-start requirement still applies.

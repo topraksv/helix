@@ -133,7 +133,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 
 | ID | Durum | Neden / tekrar değerlendirme tetikleyicisi |
 |---|---|---|
-| `BACKLOG-SDK-01` | BACKLOG | Expo SDK 54 zincirindeki 17 moderate advisory; user yeni SDK istediğinde ve installed build hattı SDK 57’ye geçebildiğinde |
+| `BACKLOG-SDK-01` | BACKLOG | Expo SDK 54 zincirindeki 17 moderate advisory; Dependabot SDK-managed Expo/React/React Native major+minor version PR’larını koordineli native upgrade’e kadar susturuyor, security update’leri açık kalıyor. User yeni SDK istediğinde ve installed build hattı SDK 57’ye geçebildiğinde tekrar açılacak |
 | `BACKLOG-TECH-01` | BACKLOG | Expo/Supabase/PostgreSQL/SQLite/Drizzle/Zustand değişimi; mevcut teknolojiler kanıtlı kök neden değil |
 | `BACKLOG-PRODUCT-01` | BACKLOG | Calculator tab’ını kaldırma/taşıma; gerçek kullanım metriği olmadan IA değişmeyecek |
 | `BACKLOG-PRODUCT-02` | BACKLOG | Banka entegrasyonu, server push, widget ve çoklu kullanıcı; çekirdek kalite tamamlanıp talep doğrulanınca |
