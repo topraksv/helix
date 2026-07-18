@@ -71,7 +71,7 @@ export function UndoSnackbar() {
             }}
             hitSlop={8}
           >
-            <Text style={[type.label, { color: palette.primary, fontSize: 15 }]}>{tr.common.undo}</Text>
+            <Text style={[type.label, { color: palette.primaryText, fontSize: 15 }]}>{tr.common.undo}</Text>
           </Pressable>
         ) : null}
       </View>

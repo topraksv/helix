@@ -17,6 +17,7 @@ import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function BulkEntryModal() {
   const userId = useUserId();
@@ -28,6 +29,7 @@ export default function BulkEntryModal() {
   const [busy, setBusy] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const operationGuard = useOperationGuard();
+  const allowExit = useDirtyExitGuard(Object.values(values).some((value) => value.raw.trim() !== "") && !busy);
 
   const selfId = persons.find((p) => p.isSelf)?.id;
   const rows = [...categories].sort((a, b) => (a.kind === b.kind ? a.sortOrder - b.sortOrder : a.kind === "expense" ? -1 : 1));
@@ -96,7 +98,7 @@ export default function BulkEntryModal() {
       {savedMsg ? <Body style={{ marginBottom: spacing.md }}>✅ {savedMsg}</Body> : null}
       <View style={{ gap: spacing.sm }}>
         <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
-        <Button label={tr.common.done} variant="secondary" onPress={() => navigateBack(router, "/(tabs)/cash-flow")} />
+        <Button label={tr.common.done} variant="secondary" onPress={() => allowExit(() => navigateBack(router, "/(tabs)/cash-flow"))} />
       </View>
     </Screen>
   );

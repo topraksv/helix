@@ -13,6 +13,7 @@ import { appAlert } from "../ui/dialog";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function AccountSecurityScreen() {
   const { email, verifyPassword, changeEmail, changePassword, requestPasswordReset } = useSession();
@@ -27,6 +28,7 @@ export default function AccountSecurityScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+  const allowExit = useDirtyExitGuard(Boolean(newEmail || emailPassword || currentPassword || newPassword));
 
   const emailValid = /.+@.+\..+/.test(newEmail.trim());
 
@@ -72,7 +74,7 @@ export default function AccountSecurityScreen() {
         setCurrentPassword("");
         setNewPassword("");
         void appAlert(tr.account.passwordChanged);
-        navigateBack(router, "/(tabs)/settings");
+        allowExit(() => navigateBack(router, "/(tabs)/settings"));
       } finally {
         setPwBusy(false);
       }
@@ -103,6 +105,8 @@ export default function AccountSecurityScreen() {
           onChangeText={setNewEmail}
           autoCapitalize="none"
           keyboardType="email-address"
+          autoComplete="email"
+          textContentType="emailAddress"
           placeholder="ornek@eposta.com"
         />
         <Field
@@ -110,6 +114,8 @@ export default function AccountSecurityScreen() {
           value={emailPassword}
           onChangeText={setEmailPassword}
           secure
+          autoComplete="current-password"
+          textContentType="password"
           placeholder={tr.account.currentPasswordPlaceholder}
         />
         <Button label={tr.account.changeEmail} onPress={() => void submitEmail()} loading={emailBusy} disabled={!emailValid || emailPassword.length < 6} />
@@ -125,6 +131,8 @@ export default function AccountSecurityScreen() {
           value={currentPassword}
           onChangeText={setCurrentPassword}
           secure
+          autoComplete="current-password"
+          textContentType="password"
           placeholder={tr.account.currentPasswordPlaceholder}
         />
         <Field
@@ -132,6 +140,8 @@ export default function AccountSecurityScreen() {
           value={newPassword}
           onChangeText={setNewPassword}
           secure
+          autoComplete="new-password"
+          textContentType="newPassword"
           placeholder={tr.account.newPasswordPlaceholder}
           error={newPassword.length > 0 && newPassword.length < 6 ? tr.auth.passwordMin : null}
         />

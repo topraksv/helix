@@ -56,7 +56,7 @@ export default function ResetPasswordScreen() {
   if (state === "checking") {
     return (
       <Screen scroll={false} maxWidth={440}>
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <View accessible accessibilityLiveRegion="polite" accessibilityLabel={tr.dataState.loading} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={palette.primary} />
         </View>
       </Screen>
@@ -70,9 +70,10 @@ export default function ResetPasswordScreen() {
       <Screen scroll={false} maxWidth={440}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md }}>
           <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: (success ? palette.positive : palette.negative) + "16" }}>
-            {success ? <CheckCircle2 size={28} color={palette.positive} /> : <AlertCircle size={28} color={palette.negative} />}
+            {success ? <CheckCircle2 accessible={false} size={28} color={palette.positive} /> : <AlertCircle accessible={false} size={28} color={palette.negative} />}
           </View>
           <Text
+            accessibilityRole="header"
             style={[type.heading, { color: palette.text, textAlign: "center" }]}
           >
             {success ? tr.auth.resetSuccessTitle : state === "expired" ? tr.auth.resetExpiredTitle : tr.auth.resetInvalidTitle}
@@ -90,9 +91,9 @@ export default function ResetPasswordScreen() {
     <Screen maxWidth={440}>
       <View style={{ paddingVertical: spacing.xxl }}>
         <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: palette.primary + "16", marginBottom: spacing.lg }}>
-          <KeyRound size={27} color={palette.primary} />
+          <KeyRound accessible={false} size={27} color={palette.primary} />
         </View>
-        <Text style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>{tr.auth.resetTitle}</Text>
+        <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>{tr.auth.resetTitle}</Text>
         <Body muted style={{ marginBottom: spacing.lg }}>{tr.auth.resetSubtitle}</Body>
         <Field
           label={tr.auth.newPassword}
@@ -122,8 +123,8 @@ export default function ResetPasswordScreen() {
         />
         {error ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: palette.negative + "16", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
-            <AlertCircle size={17} color={palette.negative} />
-            <Text style={[type.label, { color: palette.negative, flex: 1 }]}>{error}</Text>
+            <AlertCircle accessible={false} size={17} color={palette.negative} />
+            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.label, { color: palette.negativeText, flex: 1 }]}>{error}</Text>
           </View>
         ) : null}
         <Button label={tr.auth.resetSave} onPress={() => void save()} loading={busy} disabled={!valid} />

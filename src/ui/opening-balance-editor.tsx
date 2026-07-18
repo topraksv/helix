@@ -26,6 +26,7 @@ import { errorNotice, successNotice } from "./haptics";
 import { spacing } from "./theme";
 import { useUndo } from "./undo";
 import { navigateBack } from "./navigation";
+import { useDirtyExitGuard } from "./dirty-exit";
 
 export function OpeningBalanceEditor() {
   const userId = useUserId();
@@ -53,7 +54,7 @@ export function OpeningBalanceEditor() {
       await setCurrentBalance(userId, effectiveTarget, computed, tr.settings.balanceAdjustmentNote);
       scheduleSync(userId);
       successNotice();
-      close();
+      allowExit(close);
     } catch (e) {
       errorNotice();
       void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
@@ -76,6 +77,7 @@ export function OpeningBalanceEditor() {
   const openingDirty = openingMinor !== currentOpening || startMonth !== currentStart;
 
   const close = () => navigateBack(router, "/(tabs)/cash-flow");
+  const allowExit = useDirtyExitGuard((balanceDirty || openingDirty) && !savingBalance && !savingOpening);
 
   const saveOpening = async () => {
     if (openingMinor == null) return;
@@ -84,7 +86,7 @@ export function OpeningBalanceEditor() {
       await writeSetting(userId, "start_month", startMonth);
       await writeSetting(userId, "opening_balance_minor", openingMinor);
       scheduleSync(userId);
-      close();
+      allowExit(close);
     } catch (e) {
       void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
     } finally {

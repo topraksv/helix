@@ -243,14 +243,14 @@ export default function SetupScreen() {
         <Row gap={spacing.md} style={{ marginBottom: spacing.lg }}>
           <BrandMark size={44} />
           <View>
-            <Text style={[type.title, { color: palette.text }]}>{tr.onboarding.welcome}</Text>
+            <Text accessibilityRole="header" style={[type.title, { color: palette.text }]}>{tr.onboarding.welcome}</Text>
             <Body muted>{tr.onboarding.intro}</Body>
           </View>
         </Row>
 
         {hasImport ? (
           <Card style={{ borderColor: palette.positive, backgroundColor: palette.positive + "14" }}>
-            <Body style={{ color: palette.positive }}>{tr.onboarding.importedBanner(importedYears.join(", "))}</Body>
+            <Body style={{ color: palette.positiveText }}>{tr.onboarding.importedBanner(importedYears.join(", "))}</Body>
           </Card>
         ) : null}
 
@@ -316,7 +316,7 @@ export default function SetupScreen() {
             editingPerson === i ? (
               <Row key={`edit-${i}`} gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
                 <View style={{ flex: 1 }}>
-                  <Field noMargin value={editPersonName} onChangeText={setEditPersonName} autoFocus />
+                  <Field accessibilityLabel={`${tr.common.edit} · ${tr.onboarding.addPerson}`} noMargin value={editPersonName} onChangeText={setEditPersonName} autoFocus />
                 </View>
                 <Button
                   label={tr.common.save}
@@ -348,7 +348,7 @@ export default function SetupScreen() {
           )}
           <Row style={{ alignItems: "center" }}>
             <View style={{ flex: 1 }}>
-              <Field noMargin value={newPerson} onChangeText={setNewPerson} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
+              <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={newPerson} onChangeText={setNewPerson} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
             </View>
             <Button
               label={tr.onboarding.addPerson}
@@ -388,7 +388,7 @@ export default function SetupScreen() {
               </Row>
             </Spread>
           ))}
-          <Field value={newSource} onChangeText={setNewSource} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
+          <Field accessibilityLabel={tr.onboarding.addSource} value={newSource} onChangeText={setNewSource} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
           <ChipPicker
             options={SOURCE_TYPES.map((t) => ({ value: t.value, label: t.label }))}
             value={newSourceType}

@@ -75,7 +75,7 @@ export default function SignInScreen() {
           </Body>
         </View>
 
-        <Text style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>
+        <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>
           {mode === "signIn" ? tr.auth.welcomeBack : mode === "signUp" ? tr.auth.signUpTitle : tr.auth.forgotTitle}
         </Text>
         <Body muted style={{ marginBottom: spacing.lg }}>
@@ -125,8 +125,8 @@ export default function SignInScreen() {
               marginBottom: spacing.md,
             }}
           >
-            <CheckCircle2 size={17} color={palette.positive} />
-            <Text style={[type.label, { color: palette.positive, flex: 1 }]}>{tr.auth.resetSent}</Text>
+            <CheckCircle2 accessible={false} size={17} color={palette.positive} />
+            <Text accessibilityLiveRegion="polite" style={[type.label, { color: palette.positiveText, flex: 1 }]}>{tr.auth.resetSent}</Text>
           </View>
         ) : null}
 
@@ -142,8 +142,8 @@ export default function SignInScreen() {
               marginBottom: spacing.md,
             }}
           >
-            <AlertCircle size={17} color={palette.negative} />
-            <Text style={[type.label, { color: palette.negative, flex: 1 }]}>{error}</Text>
+            <AlertCircle accessible={false} size={17} color={palette.negative} />
+            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.label, { color: palette.negativeText, flex: 1 }]}>{error}</Text>
           </View>
         ) : null}
 
@@ -163,7 +163,7 @@ export default function SignInScreen() {
           <Body muted>{mode === "signIn" ? tr.auth.noAccount : mode === "signUp" ? tr.auth.haveAccount : tr.auth.rememberedPassword}</Body>
           <Pressable accessibilityRole="button" onPress={switchMode} hitSlop={8}>
             <Text
-              style={[type.body, { color: palette.primary, fontFamily: "Inter_600SemiBold" }]}
+              style={[type.body, { color: palette.primaryText, fontFamily: "Inter_600SemiBold" }]}
             >
               {mode === "signIn" ? tr.auth.signUpAction : tr.auth.signInAction}
             </Text>

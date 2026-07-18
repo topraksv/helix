@@ -8,6 +8,7 @@ import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
 import { radius, spacing, type, useTheme } from "./theme";
+import { useModalAccessibility } from "./accessibility";
 
 const TOUR_KEY = "helix.tour.done";
 
@@ -36,6 +37,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
   const { palette } = useTheme();
   const { width } = useWindowDimensions();
   const [step, setStep] = useState(0);
+  const titleRef = useModalAccessibility(true);
   const slide = SLIDES[step] ?? SLIDES[0];
   const IconCmp = slide.icon;
   const last = step === SLIDES.length - 1;
@@ -44,6 +46,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", alignItems: "center", justifyContent: "center", padding: spacing.lg }}>
         <FadeIn
+          accessibilityViewIsModal
           style={{
             width: Math.min(width - spacing.lg * 2, 420),
             backgroundColor: palette.surface,
@@ -63,12 +66,21 @@ export function TourModal({ onClose }: { onClose: () => void }) {
               marginBottom: spacing.lg,
             }}
           >
-            <IconCmp size={30} color={palette.primary} strokeWidth={1.9} />
+            <IconCmp accessible={false} size={30} color={palette.primary} strokeWidth={1.9} />
           </View>
-          {/* Fixed height covering the tallest slide so the dots + button never
-              move between steps (the longest body is ~190px tall). */}
-          <View style={{ height: 210, justifyContent: "flex-start" }}>
-            <Text style={[type.heading, { color: palette.text, textAlign: "center", fontSize: 19 }]}>{slide.title}</Text>
+          {/* A minimum keeps ordinary slides stable while larger Dynamic Type
+              may grow naturally instead of clipping the explanation. */}
+          <View style={{ minHeight: 210, justifyContent: "flex-start" }}>
+            <View
+              ref={titleRef}
+              accessible
+              accessibilityRole="header"
+              accessibilityLiveRegion="polite"
+              accessibilityLabel={tr.a11y.tourStep(step + 1, SLIDES.length, slide.title)}
+              tabIndex={-1}
+            >
+              <Text style={[type.heading, { color: palette.text, textAlign: "center", fontSize: 19 }]}>{slide.title}</Text>
+            </View>
             <Text style={[type.body, { color: palette.textMuted, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
               {slide.body}
             </Text>
@@ -79,6 +91,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
             {SLIDES.map((_, i) => (
               <View
                 key={i}
+                accessible={false}
                 style={{
                   width: i === step ? 20 : 7,
                   height: 7,
@@ -99,9 +112,9 @@ export function TourModal({ onClose }: { onClose: () => void }) {
           />
           {/* Reserve the skip row's height on every slide (shown only when not
               last) so the card height — and thus the button — never shifts. */}
-          <View style={{ height: 20, marginTop: spacing.md, justifyContent: "center" }}>
+          <View style={{ minHeight: 44, marginTop: spacing.sm, justifyContent: "center" }}>
             {!last ? (
-              <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center" }} hitSlop={8}>
+              <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center", minHeight: 44, justifyContent: "center" }}>
                 <Text style={[type.label, { color: palette.textMuted }]}>{tr.tour.skip}</Text>
               </Pressable>
             ) : null}

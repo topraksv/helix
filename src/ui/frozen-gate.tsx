@@ -60,7 +60,7 @@ export function FrozenGate() {
     <Screen scroll={false}>
       <View style={{ flex: 1, justifyContent: "center", gap: spacing.lg }}>
         <View style={{ alignItems: "center", gap: spacing.md }}>
-          <ShieldCheck size={48} color={palette.primary} />
+          <ShieldCheck accessible={false} size={48} color={palette.primary} />
           <Title>{tr.account.frozenTitle}</Title>
           <Body muted style={{ textAlign: "center" }}>{tr.account.frozenBody}</Body>
         </View>

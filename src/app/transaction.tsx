@@ -27,6 +27,7 @@ import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 type EntryType = "expense" | "income" | "transfer";
 
@@ -83,6 +84,23 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const [countStr, setCountStr] = useState("2");
   const [paidStr, setPaidStr] = useState("0");
   const [busy, setBusy] = useState(false);
+  const draftSnapshot = JSON.stringify({
+    entryType,
+    amountRaw,
+    isReversal,
+    currency,
+    showCurrency,
+    ...(isEdit ? { categoryId, sourceId, personChoice } : {}),
+    dateMode,
+    monthKey,
+    dateStr,
+    note,
+    installment,
+    countStr,
+    paidStr,
+  });
+  const initialDraftSnapshot = React.useRef(draftSnapshot).current;
+  const allowExit = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
 
   // Smart defaults (new entries only): remember last used category/source.
   React.useEffect(() => {
@@ -177,7 +195,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
             note: note.trim() || null,
           });
           scheduleSync(userId);
-          close();
+          allowExit(close);
           return;
         }
         if (installment) {
@@ -226,7 +244,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           setIsReversal(false);
           setNote("");
         } else {
-          close();
+          allowExit(close);
         }
       } catch (e) {
         // Never surface a raw engine error (English, technical) to the user.
@@ -286,14 +304,14 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           backgroundColor: isReversal ? palette.primarySoft : palette.surfaceAlt,
           borderRadius: radius.md,
           borderWidth: 1,
-          borderColor: isReversal ? palette.primary : palette.border,
+          borderColor: isReversal ? palette.primaryText : palette.controlBorder,
           padding: spacing.md,
           marginBottom: spacing.md,
         }}
       >
-        <Undo2 size={20} color={isReversal ? palette.primary : palette.textMuted} />
+        <Undo2 accessible={false} size={20} color={isReversal ? palette.primary : palette.textMuted} />
         <View style={{ flex: 1 }}>
-          <Body style={{ color: isReversal ? palette.primary : palette.text }}>{tr.tx.refundToggleLabel}</Body>
+          <Body style={{ color: isReversal ? palette.primaryText : palette.text }}>{tr.tx.refundToggleLabel}</Body>
           <Body muted style={{ fontSize: 12, marginTop: 2 }}>
             {isReversal ? tr.tx.reversalHint(entryType) : tr.tx.refundToggleHint(entryType)}
           </Body>

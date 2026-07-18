@@ -21,6 +21,7 @@ import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholde
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
+import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 
 export default function PersonsScreen() {
   const userId = useUserId();
@@ -34,6 +35,10 @@ export default function PersonsScreen() {
   const [resolving, setResolving] = useState<{ person: (typeof persons)[number]; usage: PersonReferenceUsage } | null>(null);
   const [replacementId, setReplacementId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const editingPerson = editingId ? persons.find((person) => person.id === editingId) : null;
+  useDirtyExitGuard(editingPerson
+    ? editName.trim() !== editingPerson.name
+    : name.trim() !== "");
 
   const rename = async (p: (typeof persons)[number], newName: string) => {
     await writeRows(userId, [{ table: "persons", row: { ...p, name: newName.trim() } }]);
@@ -126,7 +131,7 @@ export default function PersonsScreen() {
       <Card>
         <Row>
           <View style={{ flex: 1 }}>
-            <Field noMargin value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
+            <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
           </View>
           <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
         </Row>
@@ -162,7 +167,7 @@ export default function PersonsScreen() {
           editingId === p.id ? (
             <Row style={{ paddingVertical: spacing.sm }}>
               <View style={{ flex: 1 }}>
-                <Field noMargin value={editName} onChangeText={setEditName} autoFocus />
+                <Field accessibilityLabel={`${tr.common.edit} · ${p.name}`} noMargin value={editName} onChangeText={setEditName} autoFocus />
               </View>
               <Button label={tr.common.save} variant="secondary" disabled={!editName.trim()} onPress={() => void rename(p, editName)} />
               <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />

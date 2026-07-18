@@ -4,7 +4,7 @@
  * rendering on iOS and web. Typeface: Inter; icons: lucide.
  */
 
-import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import React, { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -21,7 +21,9 @@ import {
   type LayoutChangeEvent,
   type StyleProp,
   type TextInputProps,
+  type TextProps,
   type TextStyle,
+  type ViewProps,
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,6 +38,8 @@ import type { LiveQueryStatus } from "../data/live-state";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 import { useReducedMotion } from "./motion";
+import { useModalAccessibility } from "./accessibility";
+import { shouldStackListActions } from "./responsive";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -64,7 +68,17 @@ function useSpringPress(pressedScale = 0.96) {
  * a soft rise (220ms, decelerating). Consistent across web and native, never
  * attention-grabbing.
  */
-export function FadeIn({ children, delay = 0, style }: { children: ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
+export function FadeIn({
+  children,
+  delay = 0,
+  style,
+  accessibilityViewIsModal,
+}: {
+  children: ReactNode;
+  delay?: number;
+  style?: StyleProp<ViewStyle>;
+  accessibilityViewIsModal?: boolean;
+}) {
   const [progress] = useState(() => new Animated.Value(0));
   const reducedMotion = useReducedMotion();
   useEffect(() => {
@@ -87,6 +101,7 @@ export function FadeIn({ children, delay = 0, style }: { children: ReactNode; de
   }, [progress, delay, reducedMotion]);
   return (
     <Animated.View
+      accessibilityViewIsModal={accessibilityViewIsModal}
       style={[
         {
           opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }),
@@ -154,7 +169,7 @@ export function Screen({
       <View style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
         {leading}
         <View style={{ flex: 1 }}>
-          <Text style={[type.title, { color: palette.text }]}>{title}</Text>
+          <Text accessibilityRole="header" style={[type.title, { color: palette.text }]}>{title}</Text>
           {subtitle ? (
             <Text style={[type.body, { color: palette.textMuted, marginTop: 2 }]}>{subtitle}</Text>
           ) : null}
@@ -260,26 +275,27 @@ export function HeroCard({ children, style }: { children: ReactNode; style?: Sty
 
 export function Title({ children }: { children: ReactNode }) {
   const { palette } = useTheme();
-  return <Text style={[type.title, { color: palette.text, marginBottom: spacing.md }]}>{children}</Text>;
+  return <Text accessibilityRole="header" style={[type.title, { color: palette.text, marginBottom: spacing.md }]}>{children}</Text>;
 }
 
 export function Heading({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
   const { palette } = useTheme();
-  return <Text style={[type.heading, { color: palette.text, marginVertical: spacing.sm }, style]}>{children}</Text>;
+  return <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginVertical: spacing.sm }, style]}>{children}</Text>;
 }
 
 export function Body({
   children,
   muted,
   style,
+  ...props
 }: {
   children: ReactNode;
   muted?: boolean;
   style?: StyleProp<TextStyle>;
-}) {
+} & Omit<TextProps, "children" | "style">) {
   const { palette } = useTheme();
   return (
-    <Text style={[type.body, { color: muted ? palette.textMuted : palette.text }, style]}>
+    <Text {...props} style={[type.body, { color: muted ? palette.textMuted : palette.text }, style]}>
       {children}
     </Text>
   );
@@ -295,6 +311,7 @@ export function SectionHeader({ children }: { children: ReactNode }) {
   const { palette } = useTheme();
   return (
     <Text
+      accessibilityRole="header"
       style={[
         type.label,
         {
@@ -329,7 +346,7 @@ export function Amount({
   style?: StyleProp<TextStyle>;
 }) {
   const { palette } = useTheme();
-  const resolved = color ?? (colorized && minor < 0 ? palette.negative : palette.text);
+  const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
   const formatted = formatMinor(minor, currency);
   // Keep full figures legible by stepping the font down as the string grows.
   // Fixed table cells use formatMinorCompact; exact detail totals can pair this
@@ -355,12 +372,19 @@ export function Amount({
   );
 }
 
-export function Row({ children, style, gap = spacing.md }: { children: ReactNode; style?: StyleProp<ViewStyle>; gap?: number }) {
-  return <View style={[{ flexDirection: "row", alignItems: "center", gap }, style]}>{children}</View>;
+export function Row({ children, style, gap = spacing.md, ...props }: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  gap?: number;
+} & Omit<ViewProps, "children" | "style">) {
+  return <View {...props} style={[{ flexDirection: "row", alignItems: "center", gap }, style]}>{children}</View>;
 }
 
-export function Spread({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, style]}>{children}</View>;
+export function Spread({ children, style, ...props }: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+} & Omit<ViewProps, "children" | "style">) {
+  return <View {...props} style={[{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, style]}>{children}</View>;
 }
 
 export function Button({
@@ -372,6 +396,7 @@ export function Button({
   icon: IconCmp,
   size = "md",
   haptic: hapticKind = "light",
+  accessibilityHint,
 }: {
   label: string;
   onPress: () => void;
@@ -381,6 +406,7 @@ export function Button({
   icon?: LucideIcon;
   size?: "md" | "sm";
   haptic?: HapticKind;
+  accessibilityHint?: string;
 }) {
   const { palette } = useTheme();
   const background =
@@ -395,15 +421,18 @@ export function Button({
     variant === "primary"
       ? palette.onPrimary
       : variant === "danger"
-        ? palette.onPrimary
+        ? palette.onNegative
         : variant === "ghost"
-          ? palette.primary
+          ? palette.primaryText
           : palette.text;
   const small = size === "sm";
   const press = useSpringPress(0.97);
   return (
     <AnimatedPressable
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       disabled={disabled || loading}
       // A small button's visual height stays compact (36) to fit inline rows,
       // but hitSlop lifts its effective touch target to the ~44pt minimum.
@@ -434,7 +463,7 @@ export function Button({
         <ActivityIndicator color={color} />
       ) : (
         <>
-          {IconCmp ? <IconCmp size={small ? 15 : 17} color={color} strokeWidth={2.2} /> : null}
+          {IconCmp ? <IconCmp accessible={false} size={small ? 15 : 17} color={color} strokeWidth={2.2} /> : null}
           <Text
             style={[type.label, { color, fontSize: small ? 13 : 15, textAlign: "center", flexShrink: 1 }]}
           >
@@ -465,11 +494,12 @@ export function IconButton({
   haptic?: HapticKind;
 }) {
   const { palette } = useTheme();
-  const color = tone === "danger" ? palette.negative : tone === "primary" ? palette.primary : palette.textMuted;
+  const color = tone === "danger" ? palette.negativeText : tone === "primary" ? palette.primaryText : palette.textMuted;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
       onPress={() => {
         haptic(hapticKind);
@@ -488,7 +518,7 @@ export function IconButton({
         },
       ]}
     >
-      <IconCmp size={size * 0.5} color={color} strokeWidth={2.2} />
+      <IconCmp accessible={false} size={size * 0.5} color={color} strokeWidth={2.2} />
     </Pressable>
   );
 }
@@ -529,6 +559,8 @@ export function Field({
   ...props
 }: TextInputProps & { label?: string; error?: string | null; secure?: boolean; noMargin?: boolean }) {
   const { palette } = useTheme();
+  const fieldId = useId();
+  const labelId = `${fieldId}-label`;
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(secure === true);
   const maxLength = props.maxLength ?? (
@@ -544,11 +576,15 @@ export function Field({
   );
   return (
     <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? <Text nativeID={labelId} style={[type.label, { color: palette.textMuted, marginBottom: spacing.xs + 2 }]}>{label}</Text> : null}
       <View>
         <TextInput
           placeholderTextColor={palette.textMuted}
           {...props}
+          accessibilityLabel={props.accessibilityLabel ?? label}
+          accessibilityLabelledBy={label ? labelId : props.accessibilityLabelledBy}
+          accessibilityHint={error ? [props.accessibilityHint, tr.a11y.fieldError(error)].filter(Boolean).join(". ") : props.accessibilityHint}
+          accessibilityState={{ ...props.accessibilityState, disabled: props.editable === false }}
           maxLength={maxLength}
           secureTextEntry={secure ? hidden : props.secureTextEntry}
           onFocus={(e) => {
@@ -565,7 +601,7 @@ export function Field({
               color: palette.text,
               borderRadius: radius.sm,
               borderWidth: 1.5,
-              borderColor: error ? palette.negative : focused ? palette.focus : "transparent",
+              borderColor: error ? palette.negative : focused ? palette.focus : palette.controlBorder,
               paddingHorizontal: spacing.md,
               paddingRight: secure ? 44 : spacing.md,
               minHeight: 48,
@@ -582,15 +618,17 @@ export function Field({
         {secure ? (
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={hidden ? tr.a11y.showPassword : tr.a11y.hidePassword}
+            accessibilityHint={label}
             onPress={() => setHidden(!hidden)}
             hitSlop={8}
             style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
           >
-            {hidden ? <Eye size={18} color={palette.textMuted} /> : <EyeOff size={18} color={palette.textMuted} />}
+            {hidden ? <Eye accessible={false} size={18} color={palette.textMuted} /> : <EyeOff accessible={false} size={18} color={palette.textMuted} />}
           </Pressable>
         ) : null}
       </View>
-      {error ? <Text style={[type.small, { color: palette.negative, marginTop: spacing.xs }]}>{error}</Text> : null}
+      {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.small, { color: palette.negativeText, marginTop: spacing.xs }]}>{error}</Text> : null}
     </View>
   );
 }
@@ -605,6 +643,7 @@ export function MoneyField({
   placeholder = "0,00",
   expression = false,
   disabled = false,
+  accessibilityLabel,
 }: {
   label?: string;
   value: string;
@@ -612,10 +651,15 @@ export function MoneyField({
   placeholder?: string;
   expression?: boolean;
   disabled?: boolean;
+  /** Screen-reader label when a nearby visible section heading labels the field. */
+  accessibilityLabel?: string;
 }) {
   const { palette } = useTheme();
+  const fieldId = useId();
+  const labelId = `${fieldId}-label`;
   const [focused, setFocused] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
+  const calculatorTriggerRef = useRef<View>(null);
   // Display is the live-grouped form; parsing accepts single amounts and sums
   // ("400+500"), grouped or ungrouped, so an initial "15000,00" shows as
   // "15.000,00" and a typed sum evaluates.
@@ -624,10 +668,14 @@ export function MoneyField({
   const invalid = value.trim() !== "" && minor === null;
   return (
     <View style={{ marginBottom: spacing.md }}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? <Text nativeID={labelId} style={[type.label, { color: palette.textMuted, marginBottom: spacing.xs + 2 }]}>{label}</Text> : null}
       <View>
         <TextInput
           value={display}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityLabelledBy={label ? labelId : undefined}
+          accessibilityHint={invalid ? tr.a11y.fieldError(tr.common.amountLimit) : undefined}
+          accessibilityState={{ disabled }}
           maxLength={INPUT_LIMITS.money}
           editable={!disabled}
           onChangeText={(raw) => {
@@ -642,10 +690,10 @@ export function MoneyField({
           onBlur={() => setFocused(false)}
           style={{
             backgroundColor: palette.surfaceAlt,
-            color: invalid ? palette.negative : disabled ? palette.textMuted : palette.text,
+            color: invalid ? palette.negativeText : disabled ? palette.textMuted : palette.text,
             borderRadius: radius.sm,
             borderWidth: 1.5,
-            borderColor: invalid ? palette.negative : focused ? palette.focus : "transparent",
+            borderColor: invalid ? palette.negative : focused ? palette.focus : palette.controlBorder,
             paddingHorizontal: spacing.md,
             paddingRight: 44,
             minHeight: 48,
@@ -657,18 +705,22 @@ export function MoneyField({
         />
         {disabled ? null : (
           <Pressable
+            ref={calculatorTriggerRef}
             accessibilityRole="button"
+            accessibilityLabel={tr.a11y.openCalculator}
+            accessibilityHint={accessibilityLabel ?? label}
             onPress={() => setCalcOpen(true)}
             hitSlop={8}
             style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
           >
-            <CalculatorIcon size={18} color={palette.textMuted} />
+            <CalculatorIcon accessible={false} size={18} color={palette.textMuted} />
           </Pressable>
         )}
       </View>
-      {invalid ? <Text style={[type.small, { color: palette.negative, marginTop: spacing.xs }]}>{tr.common.amountLimit}</Text> : null}
+      {invalid ? <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.small, { color: palette.negativeText, marginTop: spacing.xs }]}>{tr.common.amountLimit}</Text> : null}
       {calcOpen ? (
         <LazyCalculatorModal
+          returnFocusRef={calculatorTriggerRef}
           onClose={() => setCalcOpen(false)}
           onResult={(major) => {
             const raw = (Math.round(major * 100) / 100).toFixed(2).replace(".", ",");
@@ -681,7 +733,7 @@ export function MoneyField({
 }
 
 /** Indirection avoids a static components ⇄ calculator import cycle. */
-function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: number) => void }) {
+function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: number) => void; returnFocusRef?: React.RefObject<View | null> }) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { CalculatorModal } = require("./calculator") as typeof import("./calculator");
   return <CalculatorModal {...props} />;
@@ -703,19 +755,24 @@ export function Select<T extends string>({
 }) {
   const { palette, scheme } = useTheme();
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<View>(null);
+  const modalTitleRef = useModalAccessibility(open, triggerRef);
   const current = options.find((o) => o.value === value);
   return (
     <View style={{ marginBottom: spacing.md }}>
       {label ? <Label>{label}</Label> : null}
       <Pressable
+        ref={triggerRef}
         accessibilityRole="button"
+        accessibilityLabel={label ?? placeholder ?? current?.label}
+        accessibilityState={{ expanded: open }}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
           {
             backgroundColor: palette.surfaceAlt,
             borderRadius: radius.sm,
             borderWidth: 1.5,
-            borderColor: open ? palette.focus : "transparent",
+            borderColor: open ? palette.focus : palette.controlBorder,
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm,
             minHeight: 48,
@@ -731,29 +788,35 @@ export function Select<T extends string>({
         >
           {current?.label ?? placeholder ?? ""}
         </Text>
-        <ChevronDown size={17} color={palette.textMuted} />
+        <ChevronDown accessible={false} size={17} color={palette.textMuted} />
       </Pressable>
       {open ? (
         <Modal transparent animationType="fade" visible onRequestClose={() => setOpen(false)}>
           <Pressable
+            accessible={false}
             style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", justifyContent: "center", padding: spacing.lg }}
             onPress={() => setOpen(false)}
           >
-            <Pressable onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
+            <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
               <FadeIn
                 style={[
                   { backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: spacing.sm, maxHeight: 420 },
                   scheme === "light" && cardShadow,
                 ]}
               >
+                <View ref={modalTitleRef} accessible accessibilityRole="header" tabIndex={-1}>
+                  <Text style={[type.heading, { color: palette.text, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}>
+                    {label ?? tr.a11y.selectOption}
+                  </Text>
+                </View>
                 <ScrollView>
                   {options.map((option) => {
                     const selected = option.value === value;
                     return (
                       <Pressable
                         key={option.value}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: selected, selected }}
                         onPress={() => {
                           onChange(option.value);
                           setOpen(false);
@@ -769,7 +832,7 @@ export function Select<T extends string>({
                         <Text
                           style={[
                             type.body,
-                            { color: selected ? palette.primary : palette.text, fontFamily: selected ? "Inter_600SemiBold" : "Inter_400Regular" },
+                            { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? "Inter_600SemiBold" : "Inter_400Regular" },
                           ]}
                         >
                           {option.label}
@@ -819,8 +882,8 @@ export function Segmented<T extends string>({
               selectionTapIfChanged(value, option.value);
               onChange(option.value);
             }}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected, selected }}
             style={[
               {
                 flex: 1,
@@ -828,6 +891,8 @@ export function Segmented<T extends string>({
                 borderRadius: radius.sm - 1,
                 alignItems: "center",
                 backgroundColor: selected ? palette.surface : "transparent",
+                borderWidth: 1.5,
+                borderColor: selected ? palette.primaryText : "transparent",
               },
               selected && scheme === "light" && cardShadow,
             ]}
@@ -882,15 +947,15 @@ export function ChipPicker<T extends string>({
                 onChange?.(option.value);
               }
             }}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
+            accessibilityRole={multi ? "checkbox" : "radio"}
+            accessibilityState={{ checked: selected, selected }}
             hitSlop={4}
             style={{
               paddingVertical: spacing.sm + 2,
               paddingHorizontal: spacing.md + 2,
               borderRadius: radius.full,
               borderWidth: 1.5,
-              borderColor: selected ? palette.primary : palette.border,
+              borderColor: selected ? palette.primaryText : palette.controlBorder,
               backgroundColor: selected ? palette.primarySoft : palette.surface,
               minHeight: 44,
               justifyContent: "center",
@@ -900,7 +965,7 @@ export function ChipPicker<T extends string>({
               style={[
                 type.label,
                 {
-                  color: selected ? palette.primary : palette.text,
+                  color: selected ? palette.primaryText : palette.text,
                   fontFamily: selected ? "Inter_600SemiBold" : "Inter_500Medium",
                 },
               ]}
@@ -918,10 +983,10 @@ export function Badge({ text, tone = "muted" }: { text: string; tone?: "muted" |
   const { palette } = useTheme();
   const colors = {
     muted: { bg: palette.surfaceAlt, fg: palette.textMuted },
-    positive: { bg: palette.positive + "1F", fg: palette.positive },
-    negative: { bg: palette.negative + "1F", fg: palette.negative },
-    warning: { bg: palette.warning + "1F", fg: palette.warning },
-    primary: { bg: palette.primarySoft, fg: palette.primary },
+    positive: { bg: palette.positive + "1F", fg: palette.positiveText },
+    negative: { bg: palette.negative + "1F", fg: palette.negativeText },
+    warning: { bg: palette.warning + "1F", fg: palette.warningText },
+    primary: { bg: palette.primarySoft, fg: palette.primaryText },
   }[tone];
   return (
     <View style={{ backgroundColor: colors.bg, borderRadius: radius.full, paddingHorizontal: spacing.sm + 2, paddingVertical: 3, alignSelf: "flex-start" }}>
@@ -936,21 +1001,22 @@ export const STATUS_W = 88;
 
 /** A status pill sized to match a small Button (same height and corner), so a
  *  status + action pair reads as one aligned unit. Fills the STATUS_W slot. */
-export function StatusPill({ label, color }: { label: string; color: string }) {
+export function StatusPill({ label, color, foreground = color }: { label: string; color: string; foreground?: string }) {
   return (
     <View
       style={{
         width: STATUS_W,
-        height: 36,
+        minHeight: 36,
         borderRadius: radius.sm + 2,
         backgroundColor: color + "1F",
         alignItems: "center",
         justifyContent: "center",
         paddingHorizontal: spacing.xs,
+        paddingVertical: spacing.sm,
       }}
     >
       <Text
-        style={[type.label, { color, fontSize: 13, textAlign: "center" }]}
+        style={[type.label, { color: foreground, fontSize: 13, textAlign: "center" }]}
       >
         {label}
       </Text>
@@ -974,10 +1040,10 @@ export function EmptyState({ icon: IconCmp, title, hint }: { icon?: LucideIcon; 
             marginBottom: spacing.xs,
           }}
         >
-          <IconCmp size={26} color={palette.textMuted} strokeWidth={1.8} />
+          <IconCmp accessible={false} size={26} color={palette.textMuted} strokeWidth={1.8} />
         </View>
       ) : null}
-      <Text style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
+      <Text accessibilityRole="header" style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
       {hint ? <Text style={[type.body, { color: palette.textMuted, textAlign: "center" }]}>{hint}</Text> : null}
     </View>
   );
@@ -1001,6 +1067,7 @@ export function DataStateNotice({
   if (status === "loading") {
     return (
       <View
+        accessible
         accessibilityLiveRegion="polite"
         accessibilityLabel={tr.dataState.loading}
         style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}
@@ -1014,6 +1081,7 @@ export function DataStateNotice({
   return (
     <View
       accessibilityLiveRegion="assertive"
+      accessibilityRole="alert"
       style={{
         backgroundColor: (stale ? palette.warning : palette.negative) + "14",
         borderColor: (stale ? palette.warning : palette.negative) + "55",
@@ -1085,6 +1153,7 @@ export function ListRow({
   right,
   onPress,
   chevron = false,
+  stackRightOnNarrow = false,
 }: {
   icon?: LucideIcon;
   iconColor?: string;
@@ -1094,10 +1163,15 @@ export function ListRow({
   right?: ReactNode;
   onPress?: () => void;
   chevron?: boolean;
+  /** Moves a wide action cluster below the label on phone-width viewports. */
+  stackRightOnNarrow?: boolean;
 }) {
   const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const stackRight = Boolean(right && stackRightOnNarrow && shouldStackListActions(width));
   const content = (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md - 2 }}>
+    <View style={{ paddingVertical: spacing.md - 2 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
       {leading}
       {IconCmp ? (
         <View
@@ -1110,7 +1184,7 @@ export function ListRow({
             justifyContent: "center",
           }}
         >
-          <IconCmp size={18} color={iconColor ?? palette.primary} strokeWidth={2} />
+          <IconCmp accessible={false} size={18} color={iconColor ?? palette.primary} strokeWidth={2} />
         </View>
       ) : null}
       <View style={{ flex: 1 }}>
@@ -1123,8 +1197,14 @@ export function ListRow({
           </Text>
         ) : null}
       </View>
-      {right}
-      {chevron ? <ChevronRight size={17} color={palette.textMuted} /> : null}
+      {stackRight ? null : right}
+      {chevron ? <ChevronRight accessible={false} size={17} color={palette.textMuted} /> : null}
+      </View>
+      {stackRight ? (
+        <View style={{ marginTop: spacing.sm, marginLeft: IconCmp || leading ? 36 + spacing.md : 0, alignItems: "flex-end" }}>
+          {right}
+        </View>
+      ) : null}
     </View>
   );
   if (!onPress) return content;
@@ -1181,7 +1261,7 @@ export function Toggle({
     animation.start();
     return () => animation.stop();
   }, [value, progress, reducedMotion]);
-  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.border, palette.primary] });
+  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.controlBorder, palette.primary] });
   const thumbX = progress.interpolate({ inputRange: [0, 1], outputRange: [TOGGLE_PAD, TOGGLE_W - TOGGLE_THUMB - TOGGLE_PAD] });
   return (
     <Pressable
