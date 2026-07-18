@@ -15,6 +15,9 @@ import { SessionEpoch, SessionEpochCancelledError, type SessionEpochToken } from
 import { isUuidShaped, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
 import { prepareOutboundBatch } from "./outbound-validation";
+import type { Database } from "./database.types";
+
+type SyncedInsert = Database["public"]["Tables"][SyncedTableName]["Insert"];
 
 const isAuthError = (raw: string) => /jwt|token|401|unauthorized|not authenticated/i.test(raw);
 
@@ -162,7 +165,9 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
         assertActive(token);
         const { data, error } = await supabase
           .from(table)
-          .upsert(rows, { onConflict: "id" })
+          // prepareOutboundBatch performs table-aware runtime validation. This
+          // cast is the one dynamic-table bridge into generated Supabase types.
+          .upsert(rows as SyncedInsert[], { onConflict: "id" })
           .select("*")
           .abortSignal(token.signal);
         if (error) throw new Error(`push ${table}: ${error.message}`);

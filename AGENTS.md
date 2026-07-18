@@ -129,7 +129,10 @@ agent-to-agent communication that did not occur.
 - **Supabase migration history must be reproducible.** Never name a timestamped
   migration with the reserved `_init.sql` suffix: the CLI skips it. After any
   migration change, `supabase migration list --linked` must show identical
-  local/remote versions and `supabase db lint --linked` must stay clean.
+  local/remote versions and `supabase db lint --linked` must stay clean. After
+  the linked migration is applied, regenerate `src/sync/database.types.ts`
+  with `npx --no-install supabase gen types typescript --linked`; that file is
+  generated from the remote schema and must not be edited by hand.
 - **Money is integer minor units** (kuruş) everywhere; format only at the edge
   with `formatMinor` (hero/detail figures, always full) or `formatMinorCompact`
   (fixed-width table cells, which abbreviate to deterministic `M`/`B` above
@@ -205,7 +208,7 @@ src/domain/     pure functions with unit tests (balance, installments,
                 analytics, dates, money, recurrence). No React, no I/O.
 src/db/         drizzle schema, async client, migrations.
 src/data/       hooks + stable repo facade; repo/ contains focused I/O services.
-src/sync/       Supabase outbox engine + status.
+src/sync/       Supabase outbox engine + status + generated remote DB types.
 src/services/   side-effecting integrations (fx, markets, notifications,
                 import/export).
 src/i18n/tr.ts  every user-facing string (Turkish). Code stays English.

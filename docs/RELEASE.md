@@ -52,6 +52,28 @@ prebuild sırasında native iOS/Android config'e gömülür. P2 bu alanı ekledi
 için kurulu eski binary'nin OTA alacağı iddia edilemez; bir sonraki yerel iOS
 build'inden sonra `Updates.channel`/EAS teslimi iki cold start ile görülmelidir.
 
+## Supabase migration
+
+Migration önce korumalı PR/`quality` kapısından geçer; remote şema Git'teki
+uygulamanın önüne geçirilmez. Merge sonrasında sırasıyla:
+
+```bash
+export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+npx --no-install supabase db push --linked
+npx --no-install supabase migration list --linked
+npx --no-install supabase db lint --linked
+npx --no-install supabase test db --linked supabase/tests
+npx --no-install supabase gen types typescript --linked > src/sync/database.types.ts
+```
+
+`migration list` local/remote sürümlerini birebir göstermeli, lint sıfır schema
+hatasıyla bitmeli ve pgTAP suite başarılı olmalıdır. Linked pgTAP komutu test
+runner için Docker bulunmayan bir makinede çalışmıyorsa test SQL'i Supabase'in
+resmî Management API database-query endpoint'inde `finish(true)` ile aynı
+transaction içinde çalıştırılır; fixture'lar `rollback` ile kalıcılaşmaz.
+Generated type dosyası elle değiştirilmez ve typecheck'ten geçirilmeden paket
+kapanmaz.
+
 ## Rollback
 
 Hatalı son grubu, onun grup ID'siyle bir önceki update'e döndür:
@@ -72,6 +94,7 @@ Pages geçmişindeki mutable artefact'a güvenme.
 - Typecheck, bütün testler, zero-warning lint ve production export temiz.
 - PR `quality` check'i ve Pages deploy'u başarılı.
 - App code değiştiyse `preview` update aynı commit'ten yayımlanmış.
+- Migration varsa linked list/lint/pgTAP ve generated DB types güncel.
 - Native config değiştiyse OTA “teslim edildi” sayılmamış; cihaz build/kabul
   durumu açıkça kaydedilmiş.
 - Tracker ve `docs/AI_HANDOFF.md` gerçek commit/run/update kimlikleriyle güncel.
