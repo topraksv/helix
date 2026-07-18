@@ -599,9 +599,10 @@ Claude raporu ve bu bağımsız Codex denetimi birlikte değerlendirildiğinde H
 Bu bölüm tarihsel §0–§11'i silmez. Oradaki bulguların uygulamadan sonraki
 durumunu, 18 Temmuz kullanıcı geri bildirimini ve yeniden çalıştırılan kanıtları
 gösterir. Tekil ID/durum kaynağı
-[`AUDIT_TRACKER.md`](AUDIT_TRACKER.md)'dir. Bu ekin yazıldığı dalın tabanı
-`6b85f1c`; release commit/run/update kimlikleri P8–P10 yayın kaydına sonradan
-işlenecektir.
+[`AUDIT_TRACKER.md`](AUDIT_TRACKER.md)'dir. Uygulama tabanı `6b85f1c`; korumalı
+PR #32 sonrası main release `a249492`, PR quality `29652848214`, main
+quality→Pages `29653031390` ve EAS `preview` group
+`1d2ed181-0dcd-48be-abae-3985d414854b` olarak kanıtlandı.
 
 ### §12.0 Sonuç
 
