@@ -144,9 +144,23 @@ alter table public.recurring_incomes validate constraint recurring_incomes_user_
 alter table public.expected_payments validate constraint expected_payments_user_transaction_fk;
 alter table public.cell_notes validate constraint cell_notes_user_category_fk;
 
--- Existing category/ref mismatches are not silently normalized. They make the
--- migration fail transactionally so an explicit, reviewable repair can precede
--- enforcement.
+-- Older clients represented a refund in an expense category as `income +A`.
+-- Canonical form is `expense -A`: the balance effect remains +A while category
+-- analytics can net it consistently. This is the same deterministic repair as
+-- local maintenance and updates the server timestamp so every device pulls it.
+update public.transactions t
+set type = c.kind,
+    amount_minor = -t.amount_minor,
+    amount_try_minor = -t.amount_try_minor
+from public.categories c
+where c.user_id = t.user_id
+  and c.id = t.category_id
+  and t.type <> 'transfer'
+  and t.type <> c.kind;
+
+-- Anything not covered by the behavior-preserving legacy repair is not
+-- rewritten. It aborts the migration so a separate explicit repair is needed.
+
 do $$
 begin
   if exists (
