@@ -235,6 +235,15 @@ agent-to-agent communication that did not occur.
 - The static web export is release-budgeted by `npm run bundle:check`; keep the
   CI step after `expo export` and change a threshold only with a measured export
   and an explanation in the package handoff.
+- GitHub Pages dynamic routes use a copied root `dist/index.html` as
+  `dist/404.html`. Never copy Expo Router's `+not-found` output there: it
+  hydrates the wrong route before the client resolves the deep link and causes
+  React error #418.
+- Playwright's committed visual baselines are rendered on macOS. Local visual
+  diffs stay capped at 1%; Linux CI allows only the measured 4% glyph-edge
+  rasterization budget and must keep exact semantic/visible-label assertions.
+  Do not raise either threshold without inspecting the uploaded actual/diff
+  evidence and recording why the change is layout-safe.
 
 ## Directory layout
 

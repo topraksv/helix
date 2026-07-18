@@ -9,24 +9,25 @@ lags behind them.
 
 - Updated: 2026-07-18 (Europe/Istanbul)
 - Branch: `main`
-- Completed remediation package: P6; release commit: `40c0fea`
+- Completed remediation package: P7; release commit: `14547c8`
 - Toolchain used: Node 22
-- Verification: typecheck, full tests, zero-warning Expo lint, 53-route static
-  web export, measured bundle budget, linked Supabase migration/lint/pgTAP,
-  required remote quality/Pages run, live product-route HTTP 200 and EAS update
-  metadata. Browser discovery returned no backend; Xcode had no simulator
-  destination and the physical phone was offline, so installed-device/a11y
-  delivery was not available.
-- Test baseline: 48 files, 281 tests passing
+- Verification: typecheck, 49 files/286 tests, zero-warning Expo lint,
+  53-route static web export, measured bundle budget and 7/7 Playwright flows
+  (real browser SQLite/restore/offline/deep-link, axe and 13 screenshot
+  baselines). Protected PR quality and main quality→Pages passed; live static
+  routes and dynamic fallback shell responded; EAS OTA metadata and initial
+  insights were queried. Browser discovery returned `[]`, and no installed
+  device was available, so physical screen-reader/OS/privacy/OTA acceptance is
+  not claimed.
+- Test baseline: 49 files, 286 Vitest tests plus 7 Playwright flows passing
 
 ## Active working tree
 
-An eight-package remediation of Codex's independent 2026-07-17 audit is
-active. P0–P6 are complete: scope registry; data integrity; CI/GitHub/EAS
-release contracts; linked database/type boundaries; and architecture, measured
-performance plus production diagnostics; UI/UX/a11y/privacy; product planning
-and information architecture. P7 (persistent test automation, README and final
-closure) is next.
+The eight-package remediation of Codex's independent 2026-07-17 audit is
+complete and shipped. P0–P7 cover the scope registry; data integrity;
+CI/GitHub/EAS release contracts; linked database/type boundaries; architecture,
+measured performance and diagnostics; UI/UX/a11y/privacy; product and IA; plus
+persistent browser automation and final documentation.
 `docs/AUDIT_TRACKER.md` is the ID/status source of truth.
 
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
@@ -60,12 +61,15 @@ Read `AGENTS.md` for the complete, canonical rules and shipping procedure.
 
 ## Open audit backlog
 
-`docs/AUDIT_TRACKER.md` is now the authoritative audit backlog. Only its five
+`docs/AUDIT_TRACKER.md` is the authoritative audit backlog. Its five
 `BACKLOG-*` items are intentionally deferred: the SDK 54 advisory chain,
 unnecessary technology rewrites, calculator-tab removal without usage data,
 bank/server-push/widget/multi-user expansion, and enterprise architecture
-patterns. Physical VoiceOver/TalkBack/gesture/OTA acceptance still requires an
-installed device; code/config work and every automatable check remain in scope.
+patterns. Five acceptance rows remain `BLOCKED` only on an installed device or
+two disposable authenticated clients: account-switch late work, remote outbox
+drain after offline relaunch, physical screen readers/Dynamic Type, low-memory
+hostile-import stress, and OS notification/privacy behavior. No automatable P7
+implementation work remains.
 
 ## Handoff update contract
 
@@ -90,6 +94,36 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit remediation package 7: automation and closure)
+
+- Base `9e31eaa`; implementation branch `agent/p7-tests-docs`, protected PR
+  #20, squash release commit `14547c8`.
+- Added release-blocking browser SQLite coverage for onboarding, transaction
+  add/edit/delete/undo, backup clean-context restore, relational invalid zero
+  write, offline cold relaunch and deterministic deep links. Axe covers six
+  primary routes; 13 versioned baselines cover 320/390/768/1440 light/dark and
+  all five tabs. Ubuntu's measured 2–3% glyph-only rasterization delta has a 4%
+  CI ceiling while macOS remains at 1%.
+- Fixed web picked-file reading, local-only backup owner validation, decorative
+  image/spinner/checked-state semantics, readable active-tab color and 320px
+  full tab labels. Pages dynamic fallback now uses the root shell without React
+  hydration #418. Supabase client moved to 2.110.7; SheetJS 0.20.3 remains the
+  current official CDN tarball.
+- README is task-first with real product screenshots and a user-facing flow;
+  `TESTING.md`, `PRIVACY.md` and `RELEASE.md` now state the executable quality,
+  privacy, environment, rollback and device-acceptance contracts.
+- Checks: local typecheck; 49 files/286 tests; zero-warning lint; 53-route
+  export; bundle budget; 7/7 Playwright. PR run `29646126353` and main
+  quality→Pages run `29646280246` passed. Live root/upcoming/settings/
+  diagnostics returned 200; the dynamic month URL served the expected root
+  `404.html` shell. Browser discovery returned `[]`, so no live visual claim.
+- EAS `preview` group `105fffc1-1ea0-4db7-bed8-ec5bc03ca930`, runtime `1.0.0`
+  (iOS `019f7573-3f9e-7b34-b594-a5d55164c5bd`, Android
+  `019f7573-3f9e-7d5f-ae18-ee8a9d4dc999`) published from `14547c8`. Initial
+  insights showed zero installs/failures on both platforms. All automatable
+  audit work is closed; five intentional backlog and five device/client-blocked
+  acceptance rows remain explicitly tracked.
 
 ### 2026-07-18 — Codex (audit remediation package 6: product and IA)
 
@@ -208,29 +242,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   `019f7476-fcd4-7044-84b7-4f4ef69f50f9`). Immediate insights showed zero
   users/installs. Installed-device delivery is not verified; P2's local native
   rebuild and two-cold-start requirement still applies.
-
-### 2026-07-18 — Codex (audit remediation package 2: release contract)
-
-- Base `965bc54`, branch `main`; release config/workflow commit `28ef0a6` and
-  verified Dependabot Actions update `886daa8`.
-- Pages now has one release-blocking `quality` job: Node 22 install, typecheck,
-  all tests, zero-warning lint and 49-route export must succeed before the
-  immutable artefact reaches `deploy`. Third-party Actions are full-SHA pinned;
-  npm/Actions Dependabot schedules are checked in.
-- GitHub remote verification: `main` requires an up-to-date PR and `quality`;
-  admin enforcement is on, force-push/delete are off. Secret scanning, push
-  protection and Dependabot security updates were enabled and read back. The
-  generated SDK 57 PR was closed against `BACKLOG-SDK-01`; Actions v7 PR #2
-  passed `quality` and merged through the new protection.
-- `preview` channel exists and maps to `preview`. `app.json` now embeds its
-  CNG request header, `eas.json` defines preview/production profiles, and the
-  Android placeholder application ID is replaced by `com.toprak.helix`.
-  Release/rollback steps live in `docs/RELEASE.md`; config regressions have a
-  dedicated test.
-- Checks: local typecheck; 28 files/227 tests; zero-warning lint; prebuild/EAS
-  iOS+Android config resolution; 49-route export; remote workflow
-  `29637115841` quality and deploy succeeded. Browser runtime was unavailable.
-- This package changes native config, so no misleading OTA was published. The
-  installed iPhone remains unverified until the user runs
-  `npx expo run:ios --device`; after that build, two cold starts must prove the
-  `preview` channel delivery. This is the only P2 external acceptance gap.
