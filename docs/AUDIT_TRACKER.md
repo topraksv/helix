@@ -141,7 +141,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | P0 | `f6009a5` | [Pages run 29636105664](https://github.com/topraksv/helix/actions/runs/29636105664) başarılı | Gerekmez | VERIFIED |
 | P1 | `f8f536e` | [Pages run 29636759953](https://github.com/topraksv/helix/actions/runs/29636759953) başarılı | [EAS group df604f34](https://expo.dev/accounts/topraksv/projects/helix/updates/df604f34-b0e7-46b0-a190-b0cfe5e52e7a), runtime `1.0.0`; install henüz `0` | RESOLVED |
 | P2 | `28ef0a6`, `886daa8` | [quality→Pages run 29637115841](https://github.com/topraksv/helix/actions/runs/29637115841) başarılı | `preview` channel→branch remote doğrulandı; native rebuild gerekli, OTA bilerek yok | RESOLVED |
-| P3 | `8776f70`, `fa2988e` + kapanış PR'ı | 49-route export + 28/227 test yerelde/remote quality temiz | migration 6 remote, list/lint/19 pgTAP doğrulandı; web/OTA kapanışı bekliyor | IN PROGRESS |
+| P3 | `8776f70`, `fa2988e`, `b2bd29a` | [quality→Pages run 29638482754](https://github.com/topraksv/helix/actions/runs/29638482754) başarılı | migration 6 + 19 pgTAP verified; [EAS group fb85064c](https://expo.dev/accounts/topraksv/projects/helix/updates/fb85064c-5fd9-4644-b547-129562a232e5), runtime `1.0.0`, install henüz `0` | RESOLVED |
 | P4 | — | — | — | NOT STARTED |
 | P5 | — | — | — | NOT STARTED |
 | P6 | — | — | — | NOT STARTED |
