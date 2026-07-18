@@ -139,7 +139,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | Paket | Commit | Web | OTA / remote | Sonuç |
 |---|---|---|---|---|
 | P0 | `f6009a5` | [Pages run 29636105664](https://github.com/topraksv/helix/actions/runs/29636105664) başarılı | Gerekmez | VERIFIED |
-| P1 | Hazırlanıyor | 49-route production export başarılı | Yayın bekliyor | IN PROGRESS |
+| P1 | `f8f536e` | [Pages run 29636759953](https://github.com/topraksv/helix/actions/runs/29636759953) başarılı | [EAS group df604f34](https://expo.dev/accounts/topraksv/projects/helix/updates/df604f34-b0e7-46b0-a190-b0cfe5e52e7a), runtime `1.0.0`; install henüz `0` | RESOLVED |
 | P2 | — | — | — | NOT STARTED |
 | P3 | — | — | — | NOT STARTED |
 | P4 | — | — | — | NOT STARTED |
