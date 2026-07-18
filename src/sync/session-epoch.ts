@@ -61,3 +61,23 @@ export class SessionEpoch {
     this.epoch += 1;
   }
 }
+
+/** Two-phase task guard used by the engine and independently regression-tested. */
+export async function runSessionEpochTask<T>(
+  epoch: SessionEpoch,
+  userId: string,
+  task: (signal: AbortSignal) => Promise<T>,
+): Promise<T | undefined> {
+  const token = epoch.capture(userId);
+  if (!token) return undefined;
+  try {
+    const result = await task(token.signal);
+    epoch.assertCurrent(token);
+    return result;
+  } catch (error) {
+    if (error instanceof SessionEpochCancelledError || token.signal.aborted || !epoch.isCurrent(token)) {
+      return undefined;
+    }
+    throw error;
+  }
+}

@@ -21,6 +21,7 @@ import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading,
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { spacing, type, useTheme } from "../../../ui/theme";
+import { INITIAL_TRANSACTION_ROWS, nextVisibleTransactionCount } from "../../../ui/progressive-list";
 
 export default function MonthDetailScreen() {
   const { month } = useLocalSearchParams<{ month: string }>();
@@ -32,6 +33,7 @@ export default function MonthDetailScreen() {
   const transactions = useTransactionsBetween(firstDayOf(month!), lastDayOf(month!));
   const bundle = useLedger(yearOf(month!));
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [visibleTransactions, setVisibleTransactions] = useState(INITIAL_TRANSACTION_ROWS);
   const { palette } = useTheme();
   const undo = useUndo();
 
@@ -118,6 +120,7 @@ export default function MonthDetailScreen() {
               onPress={() => {
                 selectionTapIfChanged(expanded, open ? "" : categoryId);
                 setExpanded(open ? null : categoryId);
+                setVisibleTransactions(INITIAL_TRANSACTION_ROWS);
               }}
               accessibilityRole="button"
             >
@@ -137,7 +140,7 @@ export default function MonthDetailScreen() {
             </Pressable>
             {open ? (
               <View style={{ marginTop: spacing.md }}>
-                {txs.map((t, index) => {
+                {txs.slice(0, visibleTransactions).map((t, index) => {
                   const installmentTitle = t.installmentPlanId
                     ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)
                     : null;
@@ -164,10 +167,18 @@ export default function MonthDetailScreen() {
                         <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void removeTx(t.id)} />
                       </Row>
                     </Spread>
-                    {index < txs.length - 1 ? <Divider /> : null}
+                    {index < Math.min(txs.length, visibleTransactions) - 1 ? <Divider /> : null}
                   </View>
                   );
                 })}
+                {txs.length > visibleTransactions ? (
+                  <Button
+                    label={tr.common.showMore(txs.length - visibleTransactions)}
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => setVisibleTransactions(nextVisibleTransactionCount(txs.length, visibleTransactions))}
+                  />
+                ) : null}
                 {category ? <CellNoteEditor userId={userId} month={month!} categoryId={category.id} existing={note} /> : null}
               </View>
             ) : null}

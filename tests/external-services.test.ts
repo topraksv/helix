@@ -89,11 +89,12 @@ describe("live market freshness", () => {
         USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: now },
         EURTRY: { code: "EURTRY", buyTry: 47, sellTry: 47.5, direction: "", at: "", receivedAt: now - 60_001 },
       },
+      lastEventAt: now,
     });
     expect(marketSellRateTry("USD", now)).toBe(40.5);
     expect(marketSellRateTry("EUR", now)).toBeNull();
     expect(marketSellRateTry("GBP", now)).toBeNull();
-    useMarkets.setState({ prices: {}, status: "idle" });
+    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
   });
 
   it("defers a burst's newest quote to the trailing edge instead of dropping it", () => {
@@ -116,10 +117,11 @@ describe("live market freshness", () => {
       prices: {
         ALTIN: { code: "ALTIN", buyTry: 4_000, sellTry: 4_010, direction: "", at: "", receivedAt: 1_000 },
       },
+      lastEventAt: 1_000,
     });
 
     markMarketConnectionInterrupted();
-    expect(useMarkets.getState().status).toBe("connecting");
+    expect(useMarkets.getState().status).toBe("stale");
     expect(useMarkets.getState().prices.ALTIN?.sellTry).toBe(4_010);
 
     vi.advanceTimersByTime(59_999);

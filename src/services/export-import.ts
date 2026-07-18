@@ -8,21 +8,33 @@ import { Platform } from "react-native";
 import { File, Paths } from "expo-file-system";
 import { getSqliteAsync } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
-import { fromDbShape, writeRows } from "../db/mutations";
-import { EXPORT_VERSION, validateBundleRelationships, validateExportBundle, type ExistingImportIds, type ExportBundle } from "./backup-validation";
+import { fromDbShape, writeRowBatchesAtomically } from "../db/mutations";
+import {
+  ExportTextBuilder,
+  validateBundleRelationships,
+  validateExportBundle,
+  type ExistingImportIds,
+} from "./backup-validation";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
 export type { ExportBundle } from "./backup-validation";
 
-export async function buildExportBundle(userId: string): Promise<ExportBundle> {
+/**
+ * Build a restorable JSON file one table at a time. This never retains all
+ * SQLite row arrays alongside the final string. The output is rejected if this
+ * app could not safely import it back.
+ */
+export async function buildExportText(userId: string): Promise<string> {
   const sqlite = await getSqliteAsync();
-  const tables: Record<string, Record<string, unknown>[]> = {};
+  const exportedAt = new Date().toISOString();
+  const builder = new ExportTextBuilder(exportedAt);
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-    tables[table] = await sqlite.getAllAsync<Record<string, unknown>>(
+    const rows = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM ${table} WHERE user_id = ?`,
       [userId],
     );
+    builder.addTable(table, rows);
   }
-  return { version: EXPORT_VERSION, exportedAt: new Date().toISOString(), tables };
+  return builder.finish();
 }
 
 export async function buildTransactionsCsv(userId: string): Promise<string> {
@@ -100,7 +112,6 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
   const bundle = validateExportBundle(input);
   const sqlite = await getSqliteAsync();
   let imported = 0;
-  const writes = [] as { table: SyncedTableName; row: Record<string, unknown> }[];
   const localState = {} as Record<SyncedTableName, { updatedAt: Map<string, number>; ids: Set<string> }>;
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     const localRows = await sqlite.getAllAsync<{ id: string; updated_at: string }>(
@@ -116,19 +127,27 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
     bundle,
     Object.fromEntries(Object.entries(localState).map(([table, state]) => [table, state.ids])) as ExistingImportIds,
   );
-  for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
-    const rows = bundle.tables[table];
-    if (!Array.isArray(rows)) continue;
-    for (const raw of rows) {
-      const incoming = Date.parse(String(raw.updated_at));
-      const local = localState[table].updatedAt.get(String(raw.id));
-      if (local != null && local >= incoming) continue;
-      writes.push({ table, row: { ...fromDbShape(table, raw as Record<string, unknown>), userId } });
-      imported++;
+  function* restoreBatches(): Generator<{ table: SyncedTableName; row: Record<string, unknown> }[]> {
+    let batch: { table: SyncedTableName; row: Record<string, unknown> }[] = [];
+    for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+      const rows = bundle.tables[table];
+      if (!Array.isArray(rows)) continue;
+      for (const raw of rows) {
+        const incoming = Date.parse(String(raw.updated_at));
+        const local = localState[table].updatedAt.get(String(raw.id));
+        if (local != null && local >= incoming) continue;
+        batch.push({ table, row: { ...fromDbShape(table, raw as Record<string, unknown>), userId } });
+        imported += 1;
+        if (batch.length === 400) {
+          yield batch;
+          batch = [];
+        }
+      }
     }
+    if (batch.length > 0) yield batch;
   }
   // One transaction for every table: a malformed/out-of-space restore can no
   // longer leave half the backup applied.
-  if (writes.length > 0) await writeRows(userId, writes, false);
+  await writeRowBatchesAtomically(userId, restoreBatches(), false);
   return { imported, skipped: 0 };
 }

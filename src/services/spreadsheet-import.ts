@@ -12,7 +12,7 @@
  * `sheet_to_json` would drop both.
  */
 
-import * as XLSX from "xlsx";
+import type * as XLSXTypes from "xlsx";
 import { tr } from "../i18n/tr";
 import type { MonthKey } from "../domain/dates";
 import { addMonthsToKey, yearOf } from "../domain/dates";
@@ -24,6 +24,12 @@ const MAX_WORKBOOK_ROWS_PER_SHEET = 20_000;
 const MAX_WORKBOOK_COLUMNS_PER_SHEET = 500;
 const MAX_WORKBOOK_CELLS = 750_000;
 const MAX_CELL_TEXT_LENGTH = 20_000;
+const MAX_ZIP_ENTRIES = 2_048;
+const MAX_ZIP_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
+const MAX_ZIP_ENTRY_BYTES = 32 * 1024 * 1024;
+const MAX_ZIP_RATIO = 200;
+
+type XlsxModule = typeof import("xlsx");
 
 /** One spreadsheet cell, with its value plus any formula/comment metadata. */
 export interface CellData {
@@ -470,15 +476,15 @@ export function isInstallmentCell(columnLabel: string, comment: string | null): 
 }
 
 /** Convert a SheetJS worksheet into a dense grid of RawCells over its range. */
-function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
+function worksheetToRawGrid(ws: XLSXTypes.WorkSheet, xlsx: XlsxModule): RawCell[][] {
   const ref = ws["!ref"];
   if (!ref) return [];
-  const range = XLSX.utils.decode_range(ref);
+  const range = xlsx.utils.decode_range(ref);
   const grid: RawCell[][] = [];
   for (let r = range.s.r; r <= range.e.r; r++) {
     const row: RawCell[] = [];
     for (let col = range.s.c; col <= range.e.c; col++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c: col })] as
+      const cell = ws[xlsx.utils.encode_cell({ r, c: col })] as
         | { v?: unknown; f?: string; c?: { t?: string }[] }
         | undefined;
       if (
@@ -496,7 +502,7 @@ function worksheetToRawGrid(ws: XLSX.WorkSheet): RawCell[][] {
 }
 
 /** Parse every sheet in a workbook; unparseable sheets are reported, not dropped. */
-export function parseWorkbook(wb: XLSX.WorkBook): ParsedWorkbook {
+export function parseWorkbook(wb: XLSXTypes.WorkBook, xlsx: XlsxModule): ParsedWorkbook {
   if (wb.SheetNames.length > MAX_WORKBOOK_SHEETS) throw new Error(tr.importer.workbookTooComplex);
   const sheets: ParsedSheet[] = [];
   const unparsed: UnparsedSheet[] = [];
@@ -507,7 +513,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): ParsedWorkbook {
     if (!worksheet) throw new Error(tr.importer.workbookTooComplex);
     const ref = worksheet?.["!fullref"] ?? worksheet?.["!ref"];
     if (ref) {
-      const range = XLSX.utils.decode_range(ref);
+      const range = xlsx.utils.decode_range(ref);
       const rows = range.e.r - range.s.r + 1;
       const columns = range.e.c - range.s.c + 1;
       totalCells += rows * columns;
@@ -519,7 +525,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): ParsedWorkbook {
         throw new Error(tr.importer.workbookTooComplex);
       }
     }
-    const grid = worksheetToRawGrid(worksheet);
+    const grid = worksheetToRawGrid(worksheet, xlsx);
     for (const row of grid) {
       for (const cell of row) {
         const s = typeof cell?.v === "string" ? cell.v : "";
@@ -536,15 +542,72 @@ export function parseWorkbook(wb: XLSX.WorkBook): ParsedWorkbook {
   return { sheets, unparsed, informationalCards: [...informational] };
 }
 
-/** Decode uploaded bytes (xlsx/xlsm/csv/ods) and parse all sheets. */
-export function parseWorkbookBytes(data: Uint8Array): ParsedWorkbook {
+/**
+ * Inspect ZIP central-directory sizes before SheetJS inflates OOXML/ODS data.
+ * This blocks tiny compressed files that claim hundreds of MB of XML. Legacy
+ * binary XLS and CSV are not ZIP containers and continue to the normal parser.
+ */
+export function validateWorkbookContainer(data: Uint8Array): void {
   if (data.byteLength > MAX_WORKBOOK_BYTES) throw new Error(tr.importer.fileTooLarge);
-  const wb = XLSX.read(data, {
+  if (data.byteLength < 4) return;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getUint32(0, true) !== 0x04034b50 && view.getUint32(0, true) !== 0x06054b50) return;
+
+  const searchStart = Math.max(0, data.byteLength - 65_557);
+  let eocd = -1;
+  for (let offset = data.byteLength - 22; offset >= searchStart; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error(tr.importer.workbookTooComplex);
+  const entryCount = view.getUint16(eocd + 10, true);
+  const centralSize = view.getUint32(eocd + 12, true);
+  const centralOffset = view.getUint32(eocd + 16, true);
+  if (
+    entryCount > MAX_ZIP_ENTRIES ||
+    centralOffset + centralSize > eocd ||
+    centralOffset + centralSize > data.byteLength
+  ) {
+    throw new Error(tr.importer.workbookTooComplex);
+  }
+
+  let offset = centralOffset;
+  let totalUncompressed = 0;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + 46 > data.byteLength || view.getUint32(offset, true) !== 0x02014b50) {
+      throw new Error(tr.importer.workbookTooComplex);
+    }
+    const compressed = view.getUint32(offset + 20, true);
+    const uncompressed = view.getUint32(offset + 24, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    totalUncompressed += uncompressed;
+    const ratio = compressed === 0 ? (uncompressed === 0 ? 1 : Number.POSITIVE_INFINITY) : uncompressed / compressed;
+    if (
+      uncompressed > MAX_ZIP_ENTRY_BYTES ||
+      totalUncompressed > MAX_ZIP_UNCOMPRESSED_BYTES ||
+      ratio > MAX_ZIP_RATIO
+    ) {
+      throw new Error(tr.importer.workbookTooComplex);
+    }
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  if (offset !== centralOffset + centralSize) throw new Error(tr.importer.workbookTooComplex);
+}
+
+/** Decode uploaded bytes on demand; the heavy XLSX module is not in startup JS. */
+export async function parseWorkbookBytes(data: Uint8Array): Promise<ParsedWorkbook> {
+  validateWorkbookContainer(data);
+  const xlsx = await import("xlsx");
+  const workbook = xlsx.read(data, {
     type: "array",
     cellDates: true,
     cellFormula: true,
     sheetStubs: true,
     sheetRows: MAX_WORKBOOK_ROWS_PER_SHEET + 1,
   });
-  return parseWorkbook(wb);
+  return parseWorkbook(workbook, xlsx);
 }

@@ -2,12 +2,13 @@ import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { fromDbShape, nowIso, readSetting, writeRows, type RowWrite } from "../../db/mutations";
 import { addMonthsToKey, todayISO, yearOf, type MonthKey } from "../../domain/dates";
-import type { PaymentSourceType, TransactionType } from "../../domain/types";
+import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
-import { collectInstallmentPlans, isInstallmentCell, planImportCell, type ParsedSheet } from "../../services/spreadsheet-import";
+import { collectInstallmentPlans, type ParsedSheet } from "../../services/spreadsheet-import";
 import { suggestCategoryIcon } from "../category-icons";
 import { CreditCardCycleRequiredError } from "./errors";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
+import { buildSpreadsheetImportPlan, importCategoryKey } from "./import-plan";
 
 // ---------------------------------------------------------------------------
 // Spreadsheet import (faithful, multi-year, per-year columns)
@@ -203,8 +204,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     [userId],
   );
   const normalizedName = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
-  const categoryKey = (name: string, kind: "expense" | "income") => `${normalizedName(name)}|${kind}`;
-  const idByNameAndKind = new Map(existing.map((c) => [categoryKey(c.name, c.kind), c.id]));
+  const idByNameAndKind = new Map(existing.map((c) => [importCategoryKey(c.name, c.kind), c.id]));
   let sortSeed = existing.reduce((m, c) => Math.max(m, c.sort_order), -1) + 1;
   // Query payment sources up front too, so the whole import — categories, rows,
   // reconstructed installment cards + plans — flushes in ONE writeRows. A read
@@ -231,7 +231,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   const catWrites: RowWrite[] = [];
   const ensureCategory = (label: string, kind: "expense" | "income"): string => {
     const cleanLabel = label.trim();
-    const key = categoryKey(cleanLabel, kind);
+    const key = importCategoryKey(cleanLabel, kind);
     let id = idByNameAndKind.get(key);
     if (!id) {
       id = newId();
@@ -286,78 +286,67 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     return b;
   };
 
+  // Resolve categories before invoking the pure planner. No SQL/write happens
+  // while cells are mapped, and invalid plans cannot partially commit.
   for (const sheet of req.sheets) {
-    const active = sheet.columns.map((c, i) => ({ ...c, index: i })).filter((c) => !req.excludedLabels.includes(c.label));
-    const orderedCatIds = active.map((col) => ensureCategory(col.label, col.kindGuess));
-
-    for (const [r, month] of sheet.months.entries()) {
-      const year = yearOf(month);
-      if (!yearAllowed(year)) continue;
-      const priorColumns = columnYearsUpdates.get(year) ?? [];
-      columnYearsUpdates.set(year, [...new Set([...priorColumns, ...orderedCatIds])]);
-      const batch = batchFor(year);
-      for (const [ci, col] of active.entries()) {
-        const catId = orderedCatIds[ci];
-        if (!catId) continue;
-        // Excel cells carry no day — only a month. Anchor every imported row to
-        // the FIRST of its month and mark it dateless (isAggregate below), so the
-        // current month reads as realized (counts in the balance + this month's
-        // analytics) instead of a mid-month future date that stays pending and
-        // pollutes "upcoming payments". Status still derives from the date, so a
-        // genuinely future month imports as pending (shown, realized on arrival).
-        const effectiveDate = `${month}-01`;
-        const status: "realized" | "pending" = effectiveDate <= today ? "realized" : "pending";
-        // A "…Taksitli…" cell stores its card installments in the comment; those
-        // become real self-scheduling plans (collected separately, below), so the
-        // cell's aggregate/cell-note is skipped to avoid double-counting.
-        const cellData = sheet.cells[r]?.[col.index];
-        if (!cellData) continue;
-        if (isInstallmentCell(col.label, cellData.comment)) continue;
-        const plan = planImportCell(cellData);
-        if (!plan) continue;
-        for (const item of plan.items) {
-          const id = newId();
-          // Keep reversals signed in their original category. A refund reduces
-          // expense distribution instead of masquerading as income under an
-          // expense category.
-          const baseType: TransactionType = col.isInvestment ? "transfer" : col.kindGuess;
-          const amount = item.amountMinor;
-          txWrites.push({
-            table: "transactions",
-            row: {
-              id,
-              type: baseType,
-              amountMinor: amount,
-              currency: "TRY",
-              fxRate: null,
-              amountTryMinor: amount,
-              entryDate: today,
-              purchaseDate: null,
-              effectiveDate,
-              status,
-              categoryId: catId,
-              paymentSourceId: null,
-              personId: req.selfId,
-              installmentPlanId: null,
-              installmentNo: null,
-              cardStatementId: null,
-              subscriptionId: null,
-              // Every imported row is dateless (month-level): shown by month and
-              // never surfaced as an upcoming payment, whatever the cell shape.
-              isAggregate: true,
-              note: item.note,
-              deletedAt: null,
-            },
-          });
-          batch.transactions.push(id);
-          imported++;
-        }
-        if (plan.cellNote) {
-          const noteId = await deterministicId(naturalKeys.cellNote(userId, month, catId));
-          noteWrites.push({ table: "cell_notes", row: { id: noteId, month, categoryId: catId, body: plan.cellNote, deletedAt: null } });
-          batch.cellNotes.push(noteId);
-        }
-      }
+    if (!sheet.months.some((month) => yearAllowed(yearOf(month)))) continue;
+    for (const column of sheet.columns) {
+      if (!req.excludedLabels.includes(column.label)) ensureCategory(column.label, column.kindGuess);
+    }
+  }
+  const sheetPlan = buildSpreadsheetImportPlan({
+    sheets: req.sheets,
+    excludedLabels: new Set(req.excludedLabels),
+    selectedYears,
+    categoryIds: idByNameAndKind,
+    today,
+  });
+  for (const [year, ids] of sheetPlan.columnYears) columnYearsUpdates.set(year, ids);
+  for (const cell of sheetPlan.cells) {
+    const batch = batchFor(cell.year);
+    for (const item of cell.items) {
+      const id = newId();
+      // Keep reversals signed in their original category. A refund reduces
+      // expense distribution instead of masquerading as income under an
+      // expense category.
+      const amount = item.amountMinor;
+      txWrites.push({
+        table: "transactions",
+        row: {
+          id,
+          type: cell.type,
+          amountMinor: amount,
+          currency: "TRY",
+          fxRate: null,
+          amountTryMinor: amount,
+          entryDate: today,
+          purchaseDate: null,
+          effectiveDate: cell.effectiveDate,
+          status: cell.status,
+          categoryId: cell.categoryId,
+          paymentSourceId: null,
+          personId: req.selfId,
+          installmentPlanId: null,
+          installmentNo: null,
+          cardStatementId: null,
+          subscriptionId: null,
+          // Every imported row is dateless (month-level): shown by month and
+          // never surfaced as an upcoming payment, whatever the cell shape.
+          isAggregate: true,
+          note: item.note,
+          deletedAt: null,
+        },
+      });
+      batch.transactions.push(id);
+      imported++;
+    }
+    if (cell.cellNote) {
+      const noteId = await deterministicId(naturalKeys.cellNote(userId, cell.month, cell.categoryId));
+      noteWrites.push({
+        table: "cell_notes",
+        row: { id: noteId, month: cell.month, categoryId: cell.categoryId, body: cell.cellNote, deletedAt: null },
+      });
+      batch.cellNotes.push(noteId);
     }
   }
 
@@ -425,8 +414,8 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
         personId: req.selfId,
         personIsSelf: true,
         categoryId:
-          idByNameAndKind.get(categoryKey(spec.columnLabel, "expense")) ??
-          idByNameAndKind.get(categoryKey(spec.columnLabel, "income")) ??
+          idByNameAndKind.get(importCategoryKey(spec.columnLabel, "expense")) ??
+          idByNameAndKind.get(importCategoryKey(spec.columnLabel, "income")) ??
           null,
         note: null,
         tryFactor: 1,
