@@ -54,12 +54,12 @@ her paket bölümünün altındaki release kaydına eklenir.
 
 | ID / eşleşme | P | Paket | Durum | Sorun | Çözüm ve kabul ölçütü |
 |---|---:|---:|---|---|---|
-| `HLX-01` · `CDX-DEVOPS-03` | P1 | P2 | IN PROGRESS | `main` deploy’unda typecheck/test/lint kapısı ve branch protection yok | `quality` job typecheck/test/lint/export sonrası Pages artefact’ı üretiyor; required-check branch protection commit sonrası remote’da etkinleştirilecek |
+| `HLX-01` · `CDX-DEVOPS-03` | P1 | P2 | VERIFIED | `main` deploy’unda typecheck/test/lint kapısı ve branch protection yok | Remote `main`: PR + strict `quality` + admin enforcement; force-push/delete kapalı. Pages run `29637115841` quality→deploy zinciri başarılı; Dependabot PR #2 aynı kapıdan geçti |
 | `HLX-07` · `CDX-TEST-02` | P2 | P7 | NOT STARTED | Dokümante kalıcı Playwright smoke repoda yok | Static export üzerinde auth/deep-link/protected local flow; CI’da release-blocking |
 | `HLX-11` · `CDX-DEVOPS-01` | P1 | P2 | RESOLVED | EAS branch var, channel/build header sözleşmesi yok | Remote `preview` channel→branch doğrulandı; CNG header + EAS profile eklendi; Android placeholder ID `com.toprak.helix` oldu. Native rebuild/iki-cold-start kabulü henüz `VERIFIED` değil |
 | `CDX-DEVOPS-02` · `CDX-PRODUCT-08` | P2 | P4 | NOT STARTED | Prod crash/sync/dead-letter ve incident kanıtı görünmüyor | PII’siz local diagnostics ekranı/export; update ID, queue age/count, dead-letter ve son hata görünür |
 | `HLX-13A` | P3 | P2 | RESOLVED | GitHub Actions tag ref kullanıyor | Bütün third-party actions doğrulanmış 40-haneli commit SHA’larına pinli; npm + Actions haftalık Dependabot politikası eklendi ve config testi ref’leri koruyor |
-| `HLX-13F` | P2 | P2 | IN PROGRESS | Secret scanning/push protection/Dependabot security updates kapalı | Repo config hazır; secret scanning, push protection ve Dependabot security updates commit sonrası remote’da açılıp API’den okunacak |
+| `HLX-13F` | P2 | P2 | VERIFIED | Secret scanning/push protection/Dependabot security updates kapalı | GitHub API’den secret scanning, push protection ve Dependabot security updates `enabled` geri okundu; SDK 57 PR #3 `BACKLOG-SDK-01` gerekçesiyle kapatıldı |
 | `HLX-13E` | P3 | P4 | NOT STARTED | Harem market feed’i resmî/SLA’lı değil | Kaynak etiketi, sessizlik/stale davranışı, fallback/health; yanlış “canlı” iddiası yok |
 | `HLX-13B` | P3 | P7 | RESOLVED | Supabase client patch güncelliği | `@supabase/supabase-js` 2.110.0 denetimde güncel doğrulandı; final dependency check tekrar koşacak |
 | `HLX-13D` | P4 | P7 | RESOLVED | Boş catch’ler hata yutuyor olabilir | Denetimde uygulama catch’lerinin çoğu kasıtlı fallback/cleanup; final source scan ve lint tekrar koşacak |
@@ -140,7 +140,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 |---|---|---|---|---|
 | P0 | `f6009a5` | [Pages run 29636105664](https://github.com/topraksv/helix/actions/runs/29636105664) başarılı | Gerekmez | VERIFIED |
 | P1 | `f8f536e` | [Pages run 29636759953](https://github.com/topraksv/helix/actions/runs/29636759953) başarılı | [EAS group df604f34](https://expo.dev/accounts/topraksv/projects/helix/updates/df604f34-b0e7-46b0-a190-b0cfe5e52e7a), runtime `1.0.0`; install henüz `0` | RESOLVED |
-| P2 | Hazırlanıyor | Local `quality` eşdeğeri + 49-route export başarılı | Remote ayarlar/yayın bekliyor | IN PROGRESS |
+| P2 | `28ef0a6`, `886daa8` | [quality→Pages run 29637115841](https://github.com/topraksv/helix/actions/runs/29637115841) başarılı | `preview` channel→branch remote doğrulandı; native rebuild gerekli, OTA bilerek yok | RESOLVED |
 | P3 | — | — | — | NOT STARTED |
 | P4 | — | — | — | NOT STARTED |
 | P5 | — | — | — | NOT STARTED |

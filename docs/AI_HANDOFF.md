@@ -9,20 +9,21 @@ lags behind them.
 
 - Updated: 2026-07-18 (Europe/Istanbul)
 - Branch: `main`
-- Completed remediation package: P1; application commit: `f8f536e`
+- Completed remediation package: P2; release commits: `28ef0a6`, `886daa8`
 - Toolchain used: Node 22
 - Verification: typecheck, full tests, zero-warning Expo lint, 49-route static
-  web export, successful Pages deploy and published iOS/Android EAS update.
-  No browser backend or installed-device delivery was available.
-- Test baseline: 27 files, 224 tests passing
+  web export, successful required remote quality/Pages run, protected `main`,
+  remote security settings and EAS channel/config resolution. No browser
+  backend or installed-device native rebuild was available.
+- Test baseline: 28 files, 227 tests passing
 
 ## Active working tree
 
 An eight-package remediation of Codex's independent 2026-07-17 audit is
-active. P0 (scope registry) and P1 (sync poison-row isolation, mutation
-locking/idempotency and recurring-income category boundary) are complete.
-P2 (CI, GitHub protection and EAS channel/native release contract) is next.
-`docs/AUDIT_TRACKER.md` is the ID/status source of truth.
+active. P0–P2 are complete: scope registry; data integrity; and CI/GitHub/EAS
+release contracts. P3 (linked Supabase integrity, RLS optimization and strict
+TypeScript index safety) is next. `docs/AUDIT_TRACKER.md` is the ID/status
+source of truth.
 
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
 1 hygiene/docs (`98fa44f`), 2 data-layer/web hardening (`0692027`),
@@ -85,6 +86,32 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit remediation package 2: release contract)
+
+- Base `965bc54`, branch `main`; release config/workflow commit `28ef0a6` and
+  verified Dependabot Actions update `886daa8`.
+- Pages now has one release-blocking `quality` job: Node 22 install, typecheck,
+  all tests, zero-warning lint and 49-route export must succeed before the
+  immutable artefact reaches `deploy`. Third-party Actions are full-SHA pinned;
+  npm/Actions Dependabot schedules are checked in.
+- GitHub remote verification: `main` requires an up-to-date PR and `quality`;
+  admin enforcement is on, force-push/delete are off. Secret scanning, push
+  protection and Dependabot security updates were enabled and read back. The
+  generated SDK 57 PR was closed against `BACKLOG-SDK-01`; Actions v7 PR #2
+  passed `quality` and merged through the new protection.
+- `preview` channel exists and maps to `preview`. `app.json` now embeds its
+  CNG request header, `eas.json` defines preview/production profiles, and the
+  Android placeholder application ID is replaced by `com.toprak.helix`.
+  Release/rollback steps live in `docs/RELEASE.md`; config regressions have a
+  dedicated test.
+- Checks: local typecheck; 28 files/227 tests; zero-warning lint; prebuild/EAS
+  iOS+Android config resolution; 49-route export; remote workflow
+  `29637115841` quality and deploy succeeded. Browser runtime was unavailable.
+- This package changes native config, so no misleading OTA was published. The
+  installed iPhone remains unverified until the user runs
+  `npx expo run:ios --device`; after that build, two cold starts must prove the
+  `preview` channel delivery. This is the only P2 external acceptance gap.
 
 ### 2026-07-18 — Codex (audit remediation package 1: data integrity)
 
@@ -192,46 +219,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   `019f7006-acdf-7c92-b7a3-cca4f389d55e`, runtime `1.0.0`); applies on the
   next full close + reopen. Physical feel of the snackbar clearance and the
   hero skeleton still deserve one installed-device glance.
-
-### 2026-07-17 — Claude (audit package 2: data-layer and web hardening)
-
-- Base `4e77a04`, branch `main`. Second audit-remediation package.
-- Supabase migration `00000000000005_sync_indexes_and_bounds.sql`: composite
-  `(user_id, updated_at, id)` pull index on all 15 synced tables (13 had none
-  and seq-scanned every sync; the covered `idx_tx_user_updated` is dropped),
-  safe-integer magnitude CHECKs on every money column (blocks rows that would
-  crash other devices' `assertMinor`), `installment_no >= 1`, and the
-  cell_notes one-live-note-per-cell partial unique index preceded by a
-  deterministic keep-newest dedup (tombstones, so LWW propagates them).
-  **NOT yet applied remotely** — `supabase db push` was permission-blocked in
-  this session (list --linked verified 1–4 in sync, 5 local-only). Applying
-  later is safe: the new client write order is harmless against the old
-  server schema, only the reverse order was dangerous.
-- `saveCellNote` writes the legacy tombstone BEFORE the canonical row so one
-  push batch never transiently violates the new index. Local unique mirrors
-  were deliberately rejected (documented in the schema header): pulled rows
-  sharing one server `updated_at` arrive id-ordered, so a local index could
-  wedge the merge.
-- Sync pull now requires UUID-shaped server row ids (`isUuidShaped` in
-  merge-policy + test) before they become the keyset cursor interpolated into
-  the PostgREST `.or()` filter.
-- `verifyPassword` returns an error string (null = ok) like every other
-  session method: precise wrong-password copy, honest network errors (a
-  network failure used to display "Şifre hatalı"), and a local 5-failure/30 s
-  cooldown because each verify is a real sign-in against the shared rate
-  limit. Both caller screens updated.
-- Web shell: CSP meta (connect-src pinned to Supabase/Frankfurter/Harem/self;
-  script-src keeps 'unsafe-inline' because the export emits per-build inline
-  bootstraps, 'wasm-unsafe-eval' + worker-src keep sqlite booting) and the
-  `maximum-scale=1` pinch-zoom lock removed (WCAG 1.4.4).
-- Checks: typecheck, 24 files/215 tests, zero-warning lint, 49-route export.
-  Headless chromium against the served export under `/helix/`: sign-in screen
-  reached (sqlite WASM worker booted), zero CSP violations, zero console
-  errors. FX/socket hosts in connect-src were verified against the source
-  constants; live post-auth traffic still deserves one installed/web pass.
-- Shipped as `0692027`, pushed; Pages redeploys. EAS `preview` update group
-  `cf25c807-47d9-4f9e-b818-c981451f6d93` published (iOS
-  `019f6f34-547d-7109-af99-1218082e000c`, Android
-  `019f6f34-547d-7c1d-8de4-e7a7d4e48163`, runtime `1.0.0`); applies on the
-  next full close + reopen. Remaining risk: until migration 5 is applied, the
-  new indexes/bounds simply don't exist yet — no behavioral mismatch.
