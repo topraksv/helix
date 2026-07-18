@@ -63,7 +63,7 @@ export function CalendarSheet({
             </View>
             <View style={{ flexDirection: "row" }}>
               {tr.common.weekdays.map((d) => (
-                <Text key={d} style={[type.small, { color: palette.textMuted, width: `${100 / 7}%`, textAlign: "center", marginBottom: spacing.xs }]}>
+                <Text key={d} style={[type.small, { color: palette.textSecondary, width: `${100 / 7}%`, textAlign: "center", marginBottom: spacing.xs }]}>
                   {d}
                 </Text>
               ))}
@@ -164,10 +164,10 @@ export function DateField({
           },
         ]}
       >
-        <Text style={[type.body, { color: value ? palette.text : palette.textMuted }]}>
+        <Text style={[type.body, { color: value ? palette.text : palette.textSecondary }]}>
           {value ? dateLabel(value) : (placeholder ?? tr.common.pickDate)}
         </Text>
-        <CalendarDays accessible={false} size={17} color={palette.textMuted} />
+        <CalendarDays accessible={false} size={17} color={palette.textSecondary} />
       </Pressable>
       {open ? <CalendarSheet value={value} onSelect={onChange} onClose={() => setOpen(false)} returnFocusRef={triggerRef} /> : null}
     </View>

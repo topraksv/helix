@@ -113,7 +113,7 @@ export default function InstallmentsScreen() {
           </View>
           <Row gap={spacing.xs} style={{ flexShrink: 0, paddingTop: 1 }}>
             {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} /> : null}
-            <ChevronRight size={16} color={palette.textMuted} />
+            <ChevronRight size={16} color={palette.textSecondary} />
           </Row>
         </Spread>
       </Pressable>

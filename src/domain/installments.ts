@@ -113,7 +113,7 @@ export function deriveStartMonth(
   return addMonthsToKey(nextUnpaidMonth, -paidCount);
 }
 
-export interface PlanProgress {
+interface PlanProgress {
   paid: number;
   total: number;
   remaining: number;

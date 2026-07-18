@@ -10,7 +10,7 @@ export interface SearchableTransaction {
   searchText: string;
 }
 
-export interface TransactionSearchFilters {
+interface TransactionSearchFilters {
   query: string;
   type: TransactionType | null;
   categoryId: string | null;

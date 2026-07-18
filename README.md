@@ -13,18 +13,18 @@
 *An offline-first personal finance workspace for cash flow, installments,
 subscriptions and budgets—with a spreadsheet mind and a mobile heart.*
 
-[![Helix'i aç](https://img.shields.io/badge/Helix'i_aç-d97757?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
+[![Helix'i aç](https://img.shields.io/badge/Helix'i_aç-BA5B38?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
 
 [![quality](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml)
-[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-1a1918?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
-[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict%20%2B%20checked%20indexes-1a1918?logo=typescript&logoColor=3178C6)](tsconfig.json)
-[![Playwright + Vitest](https://img.shields.io/badge/tests-Playwright%20%2B%20Vitest-1a1918?logo=playwright&logoColor=45BA4B)](docs/TESTING.md)
-[![Proprietary](https://img.shields.io/badge/license-proprietary-d97757)](#lisans--license)
+[![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-0F0F0D?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
+[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict%20%2B%20checked%20indexes-0F0F0D?logo=typescript&logoColor=3178C6)](tsconfig.json)
+[![Playwright + Vitest](https://img.shields.io/badge/tests-Playwright%20%2B%20Vitest-0F0F0D?logo=playwright&logoColor=45BA4B)](docs/TESTING.md)
+[![Proprietary](https://img.shields.io/badge/license-proprietary-BA5B38)](#lisans--license)
 
 </div>
 
 <p align="center">
-  <img src="e2e/__screenshots__/tab-dashboard-phone-390-light.png" alt="Helix Bütçe Özeti ekranı" width="260">
+  <img src="e2e/__screenshots__/dashboard-phone-390-light.png" alt="Helix Bütçe Özeti ekranı" width="260">
   &nbsp;&nbsp;
   <img src="e2e/__screenshots__/dashboard-phone-390-dark.png" alt="Helix koyu tema Bütçe Özeti ekranı" width="260">
 </p>
@@ -61,7 +61,7 @@ eyleme dönük sonucu gösterir, teknik tanılama ayrıntısını kullanıcıya 
 
 | İhtiyacın | Gideceğin yer | Yapabileceklerin |
 |---|---|---|
-| **Şu anki durumum ne?** | **Özet** | Güncel bakiye, yaklaşan ödemeler, aylık net değişim, canlı piyasa özeti |
+| **Şu anki durumum ne?** | **Özet** | Güncel bakiye, ay sonu tahmini, yaklaşan ödemeler, o aya ait pasta/sütun grafikler ve canlı piyasalar |
 | **Ay ay ayrıntı görmek** | **Mali Tablo** | Satır/sütun/ay odaklı matris, geçmiş–gelecek aylar, hücre detayı, analiz ve işlem arama |
 | **Tekrarlayan ödemeleri izlemek** | **Abonelikler** | Aylık/yıllık maliyet, ödeme günü, deneme dönemi, yaklaşan kayıtlar |
 | **Hızlı hesap ve kur dönüşümü** | **Hesap** | Dört işlem, TRY/USD/EUR/GBP dönüşümü, kaynak tarihli kur fallback’i |
@@ -104,17 +104,17 @@ eyleme dönük sonucu gösterir, teknik tanılama ayrıntısını kullanıcıya 
   ayrıntı varsayılan olarak gizlidir ve ayrıntılı önizleme cihaz bazında ayrıca
   açılır.
 - **Dış kaynaklar:** Piyasa/kur ve izin verilen favicon istekleri salt okunur,
-  sınırlı ve doğrulamalıdır; resmî olmayan piyasa akışının SLA garantisi yoktur.
+  sınırlı ve doğrulanmış girdilerle yapılır.
 
 Veri türleri, saklama, silme, export, üçüncü taraflar ve bilinen sınırlar için
 [Gizlilik ve Veri Kullanımı](docs/PRIVACY.md) belgesine bak.
 
 ## Tasarım dili
 
-Helix klasik mavi fintech görünümünü kullanmaz. **Warm Organic Editorial** dili;
-kil, sıcak gri, Fraunces başlıklar, Inter gövde metni ve botanik çift sarmal
-işaretinden oluşur. Light/dark renk rolleri, durum renkleri, odak sınırları ve
-kontrast eşikleri [theme.ts](src/ui/theme.ts) içinde tek kaynaktır.
+Helix, Claude’un sıcak nötr ve kil paletini **Warm Organic Editorial** bir dille
+birleştirir: Fraunces başlıklar, Inter gövde metni ve botanik çift sarmal işareti.
+Light/dark roller ve kontrast sözleşmesi [theme.ts](src/ui/theme.ts) içinde tek
+kaynaktır.
 
 - Bütün dokunma alanları ortak primitive’lerden gelir; metin üç noktayla
   saklanmaz.
@@ -132,7 +132,7 @@ kontrast eşikleri [theme.ts](src/ui/theme.ts) içinde tek kaynaktır.
 ```bash
 git clone https://github.com/topraksv/helix.git
 cd helix
-npm install
+npm ci
 cp .env.example .env
 
 npm run web                 # web development

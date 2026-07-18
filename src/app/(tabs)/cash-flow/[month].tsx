@@ -133,11 +133,11 @@ export default function MonthDetailScreen() {
                     {category ? `${categoryIcon(category)} ` : ""}
                     {title}
                   </Heading>
-                  {note ? <StickyNote accessible={false} size={14} color={palette.textMuted} /> : null}
+                  {note ? <StickyNote accessible={false} size={14} color={palette.textSecondary} /> : null}
                 </Row>
                 <Row gap={spacing.sm}>
                   <Amount minor={selfSum} />
-                  {open ? <ChevronUp accessible={false} size={16} color={palette.textMuted} /> : <ChevronDown accessible={false} size={16} color={palette.textMuted} />}
+                  {open ? <ChevronUp accessible={false} size={16} color={palette.textSecondary} /> : <ChevronDown accessible={false} size={16} color={palette.textSecondary} />}
                 </Row>
               </Spread>
             </Pressable>
@@ -158,7 +158,7 @@ export default function MonthDetailScreen() {
                           {t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : ""}
                           {!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : ""}
                         </Body>
-                        {t.note && t.note !== installmentTitle ? <Text style={[type.small, { color: palette.textMuted }]}>{t.note}</Text> : null}
+                        {t.note && t.note !== installmentTitle ? <Text style={[type.small, { color: palette.textSecondary }]}>{t.note}</Text> : null}
                         {t.amountTryMinor < 0 ? (
                           <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
                         ) : null}

@@ -285,7 +285,7 @@ export function usePlans() {
   return usePlansState().data;
 }
 
-export function usePlansState() {
+function usePlansState() {
   const userId = useUserId();
   return useSharedLive(
     `installment_plans:${userId}`,
@@ -341,7 +341,7 @@ export function useCategoryBudgets() {
   return useCategoryBudgetsState().data;
 }
 
-export function useCategoryBudgetsState() {
+function useCategoryBudgetsState() {
   const userId = useUserId();
   return useSharedLive(
     `category_budgets:${userId}`,
@@ -391,7 +391,7 @@ export function useTransactionsBetween(from: string, to: string) {
   return useTransactionsBetweenState(from, to).data;
 }
 
-export function useTransactionsBetweenState(from: string, to: string) {
+function useTransactionsBetweenState(from: string, to: string) {
   const userId = useUserId();
   return useLive(
     getDb()
@@ -451,10 +451,6 @@ export function useAdjustmentsState() {
  * device the flag arrives via sync after sign-in, and the guard must lift
  * without an app restart. `null` = still resolving (or signed out).
  */
-export function useOnboarded(userId: string | null): boolean | null {
-  return useOnboardedState(userId).data;
-}
-
 export function useOnboardedState(userId: string | null): LiveValueResult<boolean | null> {
   const res = useLive(
     getDb()
@@ -478,10 +474,6 @@ export function useOnboardedState(userId: string | null): LiveValueResult<boolea
  * every device. `null` while still resolving (or signed out) so the gate never
  * flashes before the real value is known.
  */
-export function useAccountFrozen(userId: string | null): boolean | null {
-  return useAccountFrozenState(userId).data;
-}
-
 export function useAccountFrozenState(userId: string | null): LiveValueResult<boolean | null> {
   const res = useLive(
     getDb()

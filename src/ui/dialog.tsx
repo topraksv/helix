@@ -136,7 +136,7 @@ export function PromptHost() {
             <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
               <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{current.title}</Text>
             </View>
-            <Text style={[type.body, { color: palette.textMuted, marginBottom: spacing.md }]}>{current.message}</Text>
+            <Text style={[type.body, { color: palette.textSecondary, marginBottom: spacing.md }]}>{current.message}</Text>
             <TextInput
               value={value}
               maxLength={current.secure ? INPUT_LIMITS.password : INPUT_LIMITS.text}
@@ -145,7 +145,7 @@ export function PromptHost() {
               accessibilityLabel={current.placeholder || current.title}
               accessibilityHint={current.message}
               placeholder={current.placeholder}
-              placeholderTextColor={palette.textMuted}
+              placeholderTextColor={palette.textSecondary}
               autoFocus
               autoCapitalize="none"
               autoCorrect={false}
@@ -210,7 +210,7 @@ export function DialogHost() {
             <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
               <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{current.title}</Text>
             </View>
-            <Text style={[type.body, { color: palette.textMuted, marginBottom: spacing.lg }]}>{current.message}</Text>
+            <Text style={[type.body, { color: palette.textSecondary, marginBottom: spacing.lg }]}>{current.message}</Text>
             <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
               {current.cancelLabel != null ? (
                 <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />

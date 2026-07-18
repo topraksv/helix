@@ -1,32 +1,30 @@
-/**
- * Chart primitives (react-native-svg, universal iOS+web).
- * Method: dataviz skill — validated categorical palette (light+dark selected
- * separately), 2px surface gaps between fills, thin marks, recessive grid,
- * direct labels; every chart is paired with a labeled value list (relief rule
- * for the low-contrast light slots + table-view accessibility).
- */
+/** Accessible SVG chart primitives shared by native and web. */
 
 import React from "react";
 import { Text, View } from "react-native";
 import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
+import type { Distribution } from "../domain/analytics";
 import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { spacing, type, useTheme } from "./theme";
 
-// Warm editorial categorical palette — earth tones spanning distinct hues.
-// Index 1 (sage) reads as income, index 5 (brick) as expense on the dashboard.
-const LIGHT_SERIES = ["#C9623F", "#7D8370", "#C5A07F", "#5E7A8C", "#A9772F", "#A8432B", "#6E8B5F", "#B08A3E"] as const;
-const DARK_SERIES = ["#D97757", "#96A085", "#D6B48F", "#7C99AB", "#CBA15E", "#D45A3E", "#8FAA7C", "#CBA85C"] as const;
+export type SeriesColors = readonly [string, string, string, string, string, string, string, string];
 
-export function useSeriesColors(): typeof LIGHT_SERIES | typeof DARK_SERIES {
-  const { scheme } = useTheme();
-  return scheme === "dark" ? DARK_SERIES : LIGHT_SERIES;
+export function useSeriesColors(): SeriesColors {
+  const { palette } = useTheme();
+  return [
+    palette.primary,
+    palette.positive,
+    palette.surfaceStrong,
+    palette.textSecondary,
+    palette.warning,
+    palette.negative,
+    palette.primaryStrong,
+    palette.accentText,
+  ];
 }
 
-export function seriesColor(
-  colors: typeof LIGHT_SERIES | typeof DARK_SERIES,
-  index: number,
-): string {
+function seriesColor(colors: SeriesColors, index: number): string {
   return colors[index % colors.length] ?? colors[0];
 }
 
@@ -34,6 +32,41 @@ export interface DonutSlice {
   label: string;
   valueMinor: number;
   color: string;
+}
+
+export function distributionDonutData(
+  distribution: Distribution,
+  colors: SeriesColors,
+  categoryName: (id: string) => string,
+): { slices: DonutSlice[]; supplementalSlices: DonutSlice[]; totalMinor: number } {
+  const rows = [...distribution.expenseByCategory]
+    .map(([id, valueMinor]) => ({ label: categoryName(id), valueMinor }))
+    .concat(distribution.uncategorizedExpenseMinor === 0
+      ? []
+      : [{ label: tr.common.none, valueMinor: distribution.uncategorizedExpenseMinor }])
+    .sort((a, b) => b.valueMinor - a.valueMinor);
+  const positive = rows.filter((row) => row.valueMinor > 0);
+  const remainder = positive.slice(7).reduce((sum, row) => sum + row.valueMinor, 0);
+  return {
+    slices: [
+      ...positive.slice(0, 7).map((row, index) => ({ ...row, color: seriesColor(colors, index) })),
+      ...(remainder > 0 ? [{ label: tr.common.other, valueMinor: remainder, color: colors[7] }] : []),
+      ...(distribution.transferTotalMinor > 0
+        ? [{ label: tr.dashboard.investmentAside, valueMinor: distribution.transferTotalMinor, color: colors[4] }]
+        : []),
+    ],
+    supplementalSlices: [
+      ...rows.filter((row) => row.valueMinor < 0).map((row) => ({
+        label: tr.dashboard.refundAside(row.label),
+        valueMinor: row.valueMinor,
+        color: colors[1],
+      })),
+      ...(distribution.transferTotalMinor < 0
+        ? [{ label: tr.dashboard.investmentRefundAside, valueMinor: distribution.transferTotalMinor, color: colors[1] }]
+        : []),
+    ],
+    totalMinor: distribution.expenseTotalMinor + distribution.transferTotalMinor,
+  };
 }
 
 /**
@@ -62,13 +95,15 @@ export function Donut({
   const cy = size / 2;
   const strokeWidth = 22;
 
-  const arcs = slices
-    .filter((s) => s.valueMinor > 0)
-    .reduce<(DonutSlice & { path: string; sweep: number })[]>((acc, s) => {
-      const start = -90 + acc.reduce((deg, a) => deg + a.sweep, 0);
-      const sweep = arcTotal > 0 ? (s.valueMinor / arcTotal) * 360 : 0;
-      return [...acc, { ...s, path: describeArc(cx, cy, r, start, start + sweep), sweep }];
-    }, []);
+  const arcs: (DonutSlice & { path: string; sweep: number; end: number })[] = [];
+  let start = -90;
+  for (const slice of slices) {
+    if (slice.valueMinor <= 0) continue;
+    const sweep = arcTotal > 0 ? (slice.valueMinor / arcTotal) * 360 : 0;
+    const end = start + sweep;
+    arcs.push({ ...slice, path: describeArc(cx, cy, r, start, end), sweep, end });
+    start = end;
+  }
   const chartSummary = tr.a11y.donutChart(
     formatMinorCompact(displayTotal),
     [...slices, ...supplementalSlices]
@@ -96,10 +131,9 @@ export function Donut({
           )}
           {/* 2px surface gaps between segments */}
           {arcs.length > 1
-            ? arcs.map((_, i) => {
-                const boundary = arcs.slice(0, i + 1).reduce((deg, x) => deg + x.sweep, -90);
-                const p1 = polar(cx, cy, r - strokeWidth / 2 - 1, boundary);
-                const p2 = polar(cx, cy, r + strokeWidth / 2 + 1, boundary);
+            ? arcs.map((arc, i) => {
+                const p1 = polar(cx, cy, r - strokeWidth / 2 - 1, arc.end);
+                const p2 = polar(cx, cy, r + strokeWidth / 2 + 1, arc.end);
                 return <SvgLine key={`gap-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={palette.surface} strokeWidth={2} />;
               })
             : null}
@@ -117,7 +151,7 @@ export function Donut({
               <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: s.color }} />
               <Text style={[type.small, { color: palette.text, flex: 1 }]}>{s.label}</Text>
               <Text
-                style={[type.small, { color: palette.textMuted, fontVariant: ["tabular-nums"] }]}
+                style={[type.small, { color: palette.textSecondary, fontVariant: ["tabular-nums"] }]}
               >
                 {supplemental
                   ? formatMinorCompact(s.valueMinor)
@@ -131,7 +165,7 @@ export function Donut({
   );
 }
 
-export interface LineSeries {
+interface LineSeries {
   label: string;
   color: string;
   /** One value per x slot (minor units); null = missing. */
@@ -189,7 +223,7 @@ export function Lines({
                     x={x(lastIdx) + 6}
                     y={y(s.points[lastIdx]!) + 4}
                     fontSize={10}
-                    fill={palette.textMuted}
+                    fill={palette.textSecondary}
                   >
                     {s.label}
                   </SvgText>
@@ -200,7 +234,7 @@ export function Lines({
         })}
         {xLabels.map((l, i) =>
           xLabels.length <= 6 || i % Math.ceil(xLabels.length / 6) === 0 ? (
-            <SvgText key={i} x={x(i)} y={height - 6} fontSize={9} fill={palette.textMuted} textAnchor="middle">
+            <SvgText key={i} x={x(i)} y={height - 6} fontSize={9} fill={palette.textSecondary} textAnchor="middle">
               {l}
             </SvgText>
           ) : null,
@@ -210,7 +244,7 @@ export function Lines({
   );
 }
 
-export interface BarGroup {
+interface BarGroup {
   label: string;
   /** One value per series (minor units); null/0 renders no bar. */
   values: (number | null)[];
@@ -271,7 +305,7 @@ export function Bars({
           })}
           {groups.map((g, gi) =>
             gi % everyN === 0 ? (
-              <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 6} fontSize={9} fill={palette.textMuted} textAnchor="middle">
+              <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 6} fontSize={9} fill={palette.textSecondary} textAnchor="middle">
                 {g.label}
               </SvgText>
             ) : null,
@@ -283,42 +317,11 @@ export function Bars({
           {series.map((s) => (
             <View key={s.label} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: s.color }} />
-              <Text style={[type.small, { color: palette.textMuted }]}>{s.label}</Text>
+              <Text style={[type.small, { color: palette.textSecondary }]}>{s.label}</Text>
             </View>
           ))}
         </View>
       ) : null}
-    </View>
-  );
-}
-
-/** Two-part proportional bar (fixed vs variable) with 2px gap + labels. */
-export function SplitBar({ parts }: { parts: { label: string; valueMinor: number; color: string }[] }) {
-  const { palette } = useTheme();
-  const total = parts.reduce((sum, p) => sum + Math.max(p.valueMinor, 0), 0);
-  return (
-    <View style={{ gap: spacing.sm }}>
-      <View accessible={false} style={{ flexDirection: "row", height: 14, borderRadius: 4, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
-        {parts.map((p, i) => (
-          <View
-            key={p.label}
-            style={{
-              flex: total > 0 ? Math.max(p.valueMinor, 0) : 1,
-              backgroundColor: p.color,
-              marginLeft: i > 0 ? 2 : 0,
-            }}
-          />
-        ))}
-      </View>
-      {parts.map((p) => (
-        <View key={p.label} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: p.color }} />
-          <Text style={[type.small, { color: palette.text, flex: 1 }]}>{p.label}</Text>
-          <Text style={[type.small, { color: palette.textMuted, fontVariant: ["tabular-nums"] }]}>
-            {formatMinorCompact(p.valueMinor)}
-          </Text>
-        </View>
-      ))}
     </View>
   );
 }

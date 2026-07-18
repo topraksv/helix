@@ -36,6 +36,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | P8 · Follow-up sadelik ve UX | Atıl kod, görsel sistem, yaklaşanlar, analiz, bakiye geçmişi, ay sonu | Web + `preview` OTA |
 | P9 · Follow-up runtime güvenilirliği | Harem yaşam döngüsü, çok cihazlı sync, geri/jest ve Face ID autofill | Web + `preview` OTA |
 | P10 · Follow-up kapanış | Denetim yeniden teyidi, E2E/görsel/remote kanıt ve doküman | GitHub + EAS remote |
+| P11 · Sadelik ve UI regresyonu | Atıl API/dependency/asset temizliği, Claude paleti, geri kontrolü, dashboard tahmin/grafik/navigasyon | Web + `preview` OTA |
 
 ## 18 Temmuz kullanıcı geri bildirimi
 
@@ -53,6 +54,17 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-UX-07` | P2 | P8 | VERIFIED | Tanılama ve shell sync-health son kullanıcıya teknik, gereksiz bir yüzey | Route/badge/export UI ve domain modeli tamamen kaldırıldı; Settings yalnız eyleme dönük kısa sync durumu gösteriyor; route/metin yokluğu browser testinde |
 | `CDX-NAV-01` | P1 | P9 | RESOLVED | Özel geri kontrolü küçük/optik offsetli; modal sunumu iOS sağ-silme jestini engelliyor | Tek markalı 44pt kontrol, deterministic dismiss/back ve stack card sunumu; direct-link browser geri testi geçti. Fiziksel iOS edge-swipe kabulü `BLOCKED` |
 | `CDX-AUTH-01` | P1 | P9 | RESOLVED | Sign-in Face ID autofill sırasında privacy cover auth formunu kapatıyor | Native cover yalnız authenticated finans içeriğinde; sign-in/autofill yolu açık; policy testi geçti. Gerçek Face ID kabulü cihaz yokluğu nedeniyle `BLOCKED` |
+
+## 18 Temmuz sadelik ve regresyon geri bildirimi
+
+| ID | P | Paket | Durum | Sorun | Çözüm ve kabul ölçütü |
+|---|---:|---:|---|---|---|
+| `CDX-CODE-08` | P2 | P11 | RESOLVED | Son geliştirmeler atıl export, bağımlılık, asset, tekrar ve uzun doküman bırakmış olabilir | Sıkı TS unused + import graph + public-export taraması temiz; kullanılmayan `expo-constants`, iki lockup ve test-only production helper kaldırıldı; chart dönüşümü tek geçiş; net diff 1.000+ satır ekside |
+| `CDX-UI-05` | P1 | P11 | RESOLVED | CTA ve kontrol renkleri istenen Claude light/dark paletiyle uyuşmuyor | Verilen roller `theme.ts` tek kaynağına birebir işlendi; button/field/toggle/card/segment ortak primitive'leri tonal sisteme geçti; gerçek kullanılan metin rolleri AA kontrast testinde |
+| `CDX-NAV-02` | P1 | P11 | RESOLVED | Geri kontrolü özel pill gibi duruyor ve stack'lerde farklı uygulanıyor | Tek 44×44 icon-only kontrol ve tek `stackScreenOptions`; direct-link deterministic parent E2E geçti. Fiziksel iOS edge-swipe kabulü hâlâ cihaz gerektiriyor |
+| `CDX-UX-08` | P1 | P11 | RESOLVED | Ay sonu tahmini dar mobilde kayboluyor, web yerleşimi tutarsız | Tahmin pending akış olmasa da her bakiye modelinde görünür; tam genişlik tonal satır 320/390/768/1440 sözleşmesine girdi |
+| `CDX-NAV-03` | P1 | P11 | RESOLVED | Özet'ten Analytics'e gittikten sonra Mali Tablo sekmesi nested route'ta kalıyor | Cash Flow ve Settings tab'ları blur'da kök route'a dönüyor; Analytics → Özet → Mali Tablo kalıcı E2E akışı geçti |
+| `CDX-PRODUCT-09` | P2 | P11 | RESOLVED | Özet, seçili aya ait gider dağılımı ve gelir/gider grafiğini göstermiyor | Analytics ile aynı saf donut verisi ve chart primitive'leri kullanılarak Özet'e tek pasta/sütun seçici eklendi; ayrıntılı analiz ayrı route'ta kaldı |
 
 ## Güvenlik, veri bütünlüğü ve kod
 
@@ -111,7 +123,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `HLX-12` · `CDX-SEC-02` · `CDX-PRODUCT-04` | P2 | P5 | RESOLVED | Notification lock-screen metni ad/tutar gösterebilir | Varsayılan nötr preview, ayrı device-local onay, kapatma/account switch’te fail-closed clear ve en yakın 60 plan; pure+boundary testleri yeşil, cihaz kabulü `CDX-TEST-15`’te |
 | `CDX-SEC-01` | P2 | P5 | RESOLVED | App switcher snapshot privacy cover yok; Pages frame header sınırlı | Native inactive/background ve framed web için izole, değersiz privacy modalı var; policy/source testi yeşil. OS snapshot zamanlaması fiziksel cihazda P7’de kesinleşecek |
 | `CDX-IA-02` | P3 | P6 | RESOLVED | Account freeze Settings’in ana seviyesinde dağınık | Dondurma Account Security altında toplandı; local-only modda da erişiliyor, deterministic back/deep-link sözleşmesi korunuyor |
-| `CDX-IA-03` | P3 | P6 | RESOLVED | Dashboard üç analitik kartla Analytics’i tekrar ediyor | Dashboard bakiye, yaklaşanlar, piyasalar ve tek aylık içgörüye odaklandı; dağılım/trend Analytics’e taşındı |
+| `CDX-IA-03` | P3 | P6/P11 | RESOLVED | Dashboard üç analitik kartla Analytics’i tekrar ediyor | Eski üçlü tekrar kaldırıldı; kullanıcı talebiyle yalnız seçili ayın tek değiştirilebilir pasta/sütun kartı geri geldi. Arama, bütçe ayrıntısı ve trendler Analytics'te kaldı (`CDX-PRODUCT-09`) |
 | `CDX-IA-04` | P3 | P6/P8 | RESOLVED | Var olan JSON/CSV export yeterince keşfedilebilir değil | Ayarlar’da “Verilerini Taşı ve Koru” görev grubu tanılama yüzeyinden bağımsız; backup/export/restore açık görev diliyle sunuluyor |
 
 ## Ürün kapsamı
@@ -174,3 +186,4 @@ her paket bölümünün altındaki release kaydına eklenir.
 | P8 | `a249492` ([PR #32](https://github.com/topraksv/helix/pull/32)) | PR quality `29652848214` + [main quality→Pages `29653031390`](https://github.com/topraksv/helix/actions/runs/29653031390) başarılı; root/analytics/transaction/payment-sources canlı 200 | [EAS group 1d2ed181](https://expo.dev/accounts/topraksv/projects/helix/updates/1d2ed181-0dcd-48be-abae-3985d414854b), runtime `1.0.0`, commit `a249492` | VERIFIED |
 | P9 | `a249492` ([PR #32](https://github.com/topraksv/helix/pull/32)) | Aynı required quality/Pages zinciri ve canlı route probe | Aynı EAS group; canlı Harem browser doğrulandı. İki-client, Face ID ve iOS edge-swipe installed kabulü `BLOCKED` | RESOLVED |
 | P10 | `a249492` + release record | [main run `29653031390`](https://github.com/topraksv/helix/actions/runs/29653031390) başarılı | Linked migration 1–7 eşit, DB lint 0, pgTAP 24/24; EAS commit/runtime/platform metadata eşleşti | VERIFIED |
+| P11 | Yayın bekliyor | Local: strict unused typecheck, 48/290 Vitest, lint, Expo dependency check, 10/10 Playwright ve 20 baseline temiz | SDK 54 zincirindeki 17 moderate `BACKLOG-SDK-01`; uygulama kodu OTA gerektiriyor | RESOLVED |

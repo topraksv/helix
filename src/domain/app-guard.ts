@@ -1,9 +1,9 @@
 /** Pure root-route guard. Effects consume `redirect`; rendering consumes `view`. */
 
 export type RootRouteArea = "auth" | "recovery" | "onboarding" | "setup-helper" | "protected" | "root";
-export type RootGuardRedirect = "/(auth)/sign-in" | "/(onboarding)/setup" | "/(tabs)";
+type RootGuardRedirect = "/(auth)/sign-in" | "/(onboarding)/setup" | "/(tabs)";
 
-export interface RootGuardInput {
+interface RootGuardInput {
   ready: boolean;
   locked: boolean | null;
   userId: string | null;
@@ -12,7 +12,7 @@ export interface RootGuardInput {
   route: RootRouteArea;
 }
 
-export interface RootGuardDecision {
+interface RootGuardDecision {
   view: "wait" | "stack";
   redirect: RootGuardRedirect | null;
 }

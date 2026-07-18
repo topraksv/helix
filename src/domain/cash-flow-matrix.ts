@@ -6,12 +6,12 @@ import { evaluateComputedColumn, parseDefinition } from "./computed-columns";
 import { makeMonthKey, type ISODate, type MonthKey } from "./dates";
 import type { TxLike } from "./types";
 
-export interface MatrixCategoryLike {
+interface MatrixCategoryLike {
   id: string;
   name: string;
 }
 
-export interface MatrixComputedColumnLike {
+interface MatrixComputedColumnLike {
   id: string;
   name: string;
   definition: string;
@@ -26,12 +26,12 @@ export interface CashFlowMatrixColumn {
   values: Map<MonthKey, number | null>;
 }
 
-export interface CashFlowMonthSlot {
+interface CashFlowMonthSlot {
   month: MonthKey;
   data: MonthLedger | null;
 }
 
-export interface CashFlowMatrixModel {
+interface CashFlowMatrixModel {
   months: CashFlowMonthSlot[];
   columns: CashFlowMatrixColumn[];
   hasUncategorized: boolean;

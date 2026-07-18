@@ -720,4 +720,26 @@ health kanıtı tamamlanarak kazanılabilir.
   manager, VoiceOver/TalkBack/Dynamic Type, lock-screen/app-switcher snapshot,
   düşük bellek import stresi ve yeni OTA'nın kurulu telefonda uygulanması.
 
+## §13 18 Temmuz Sadelik ve UI Regresyon Teyidi
+
+Bu ek, §12 sonrasında bildirilen altı UI regresyonunu ve “yeni kod gerçekten
+gerekli mi?” sorusunu aynı davranış sözleşmesine göre yeniden denetler. Ayrıntılı
+durum/ID kaydı `AUDIT_TRACKER.md` P11 satırlarıdır.
+
+| Alan | Sonuç | Kanıt | Güven |
+|---|---|---|---|
+| YAGNI / atıl kod | Kullanılmayan doğrudan dependency, iki binary lockup, bir test-only production modülü ve kullanılmayan public export'lar kaldırıldı | `tsc --noUnused*`, import/export taraması, package graph; net 1.000+ satır azalma | Yüksek |
+| DRY / KISS | Üç stack header config'i tek seçeneğe, Analytics/Özet donut dönüşümü tek saf helper'a indi; O(N²) spread/reduce tek geçiş oldu | Diff + 48/290 unit/boundary test | Kesin |
+| Dizin | Route/domain/data/service/ui sınırlarında orphan ya da yanlış katmana ait aktif modül bulunmadı; dosyaları sırf küçültmek için wrapper'lara bölme önerilmedi | Import graph, route ve klasör taraması | Yüksek |
+| Palette / CTA | Verilen light/dark kodlar tek token kaynağında; button/field/toggle/card/segment ortak primitive'lerde | Exact token + AA contrast test, 20 Chromium baseline | Kesin |
+| Geri / tab route | 44×44 icon-only ortak back; nested tab blur köke döner | Direct-link ve Analytics → Özet → Mali Tablo E2E | Kesin (web); native jest için Orta |
+| Tahmin / grafik | Ay sonu tahmini 320px dahil sürekli görünür; seçili ay pasta/sütun grafiği Özet'te, ayrıntı Analytics'te | 10/10 browser flow, responsive screenshot matrisi | Kesin (web) |
+| Doküman hijyeni | README görev odaklı kaldı; `.gitignore` proje çıktısı/secret/test sınırlarına indirildi; handoff arşivi Git tarihine yönlenen kısa indeks oldu | Diff ve tracking taraması | Yüksek |
+
+Bu çalışma “daha az dosya” uğruna repository/domain sınırlarını birleştirmedi;
+`components.tsx`, import ve sync gibi uzun ama farklı davranış sözleşmeleri taşıyan
+dosyalar kanıtsız yeniden mimariye zorlanmadı. SDK 54 advisory zinciri kullanıcı
+talebiyle `BACKLOG-SDK-01` olarak kaldı. Fiziksel iOS edge-swipe, Face ID,
+VoiceOver/Dynamic Type ve iki kurulu client eşzamanı hâlâ cihaz/ortam kabulüdür.
+
 Claude raporu ve bu bağımsız Codex denetimi birlikte değerlendirildiğinde Helix'in production, kod kalitesi, güvenlik, görsel tasarım ve gerçek kullanıcı deneyimi açısından durumu: [Aktif P0/P1 uygulama açıkları kapatılmış, web/runtime ve linked veritabanı kanıtları güçlü, production'a koşullu hazır; kalan mesafe fiziksel cihaz ve iki-client kabul kanıtıdır]
