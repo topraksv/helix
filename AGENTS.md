@@ -54,10 +54,12 @@ agent-to-agent communication that did not occur.
 - Dependabot ignores routine version updates at every SemVer level for the
   Expo-managed React/React Native/native-library matrix. React Native is
   pre-1.0, so incompatible SDK jumps can appear as “minor” updates, and even
-  patch versions can leave Expo's supported matrix. ESLint/TypeScript majors
-  are guarded with the same coordinated `BACKLOG-SDK-01` toolchain upgrade.
-  Remove those guards only in that upgrade/native rebuild; Dependabot security
-  updates and independent dependency version updates stay active.
+  patch versions can leave Expo's supported matrix. Routine ESLint versions
+  and TypeScript majors are guarded with the same coordinated
+  `BACKLOG-SDK-01` toolchain upgrade; Dependabot currently generates invalid
+  npm lockfiles for those updates, so apply a proven compatible patch manually
+  when needed. Remove those guards only in that upgrade/native rebuild;
+  Dependabot security updates and independent dependency updates stay active.
 - iOS on a real phone: `npx expo run:ios --device` (free Apple ID, re-sign
   every 7 days). Expo Go can't open the project across SDK lines reliably.
 

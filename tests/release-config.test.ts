@@ -57,8 +57,10 @@ describe("release contract", () => {
       expect(rule).toContain("version-update:semver-minor");
       expect(rule).toContain("version-update:semver-major");
     }
-    for (const dependency of ["eslint", "typescript"]) {
-      expect(dependabotRule(dependency)).toContain("version-update:semver-major");
-    }
+    const eslintRule = dependabotRule("eslint");
+    expect(eslintRule).toContain("version-update:semver-patch");
+    expect(eslintRule).toContain("version-update:semver-minor");
+    expect(eslintRule).toContain("version-update:semver-major");
+    expect(dependabotRule("typescript")).toContain("version-update:semver-major");
   });
 });

@@ -8,7 +8,7 @@ lags behind them.
 ## Last verified state
 
 - Updated: 2026-07-18 (Europe/Istanbul)
-- Branch: `agent/dependabot-sdk-matrix-v2` from `ec2c0d3`
+- Branch: `agent/final-release-record` from `8164caa`
 - Completed remediation package: P7 plus SDK 54 dependency-policy closure
 - Toolchain used: Node 22
 - Verification: typecheck, 49 files/287 tests, zero-warning Expo lint,
@@ -98,15 +98,17 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
 ### 2026-07-18 — Codex (SDK 54 dependency-policy closure)
 
 - Base `be95258`; policy PR #23 released as `66c77bf`; SHA-pinned
-  `actions/upload-artifact` v7 PR #24 released as `ec2c0d3`; final branch
-  `agent/dependabot-sdk-matrix-v2` starts from that commit.
-- Closed Dependabot PRs #5–#8, #21 and #25–#28 because they crossed the Expo
+  `actions/upload-artifact` v7 PR #24 released as `ec2c0d3`; dependency-policy
+  PR #29 released as `8164caa`; final record branch starts from that commit.
+- Closed Dependabot PRs #5–#8, #21, #25–#28 and #30 because they crossed the Expo
   SDK 54 React/React Native/Babel/lint compatibility boundary or attempted an
   unplanned TypeScript major; the npm PRs also generated lockfiles that failed
-  `npm ci`. The coordinated upgrade remains `BACKLOG-SDK-01`, not silently
+  `npm ci`. Compatible ESLint 9.39.5 was applied manually with a minimal valid
+  lockfile. The coordinated upgrade remains `BACKLOG-SDK-01`, not silently
   abandoned work.
 - Dependabot ignores routine SDK-managed version updates at every SemVer level,
-  including React Native's pre-1.0 line, and guards ESLint/TypeScript majors.
+  including React Native's pre-1.0 line, and guards routine ESLint versions plus
+  TypeScript majors.
   Security updates and independent package updates remain eligible. Compatible
   `lucide-react-native` 1.25.0 was applied separately with a clean lockfile.
 - Changed `.github/dependabot.yml`, package manifests,
@@ -115,10 +117,14 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
 - Checks: Dependabot YAML parsed; clean `npm ci`; Expo dependency check;
   Expo Doctor 18/18; diff check; typecheck; 49 files/287 tests; zero-warning
   lint; 53-route export; bundle budget; and 7/7 Playwright passed. Delivery
-  uses the protected PR quality gate and automatic Pages workflow. Lucide
-  changes app JavaScript, so the protected merge receives a new `preview` OTA;
-  it does not require a native rebuild. EAS history is authoritative for the
-  resulting update group.
+  used protected PR run `29647921636`; final `main` quality→Pages run
+  `29648089748` passed and live root/settings returned 200. Lucide changed app
+  JavaScript, so EAS `preview` group
+  `885cbc8e-47b3-4bfb-bc31-389379d1a76f` was published from `8164caa`, runtime
+  `1.0.0` (iOS `019f75a5-d221-797b-a673-13b5aac1c79d`, Android
+  `019f75a5-d221-7b85-92d9-dff47f02577a`). The final record/ESLint lockfile
+  follow-up changes no app/native bytes, so it requires Pages only and no
+  additional OTA or native rebuild.
 - No implementation work remains. Five intentional backlog and five
   installed-device/two-client acceptance rows remain explicitly tracked.
 
