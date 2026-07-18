@@ -11,5 +11,15 @@ const SYMBOL_DARK = require("../../assets/brand/symbol-dark-t.png");
 export function BrandMark({ size = 56, onGradient = false }: { size?: number; onGradient?: boolean }) {
   const { scheme } = useTheme();
   const source = onGradient || scheme === "dark" ? SYMBOL_DARK : SYMBOL_LIGHT;
-  return <Image accessible={false} source={source} style={{ width: size, height: size }} contentFit="contain" />;
+  return (
+    <Image
+      accessible={false}
+      accessibilityRole="none"
+      accessibilityLabel=""
+      alt=""
+      source={source}
+      style={{ width: size, height: size }}
+      contentFit="contain"
+    />
+  );
 }

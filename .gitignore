@@ -7,6 +7,7 @@ node_modules/
 .expo/
 dist/
 dist-local/
+dist-e2e/
 web-build/
 expo-env.d.ts
 
@@ -15,6 +16,8 @@ expo-env.d.ts
 # (e.g. tests/fixtures/*.xlsx) remain possible.
 vshots/
 profile-*/
+playwright-report/
+test-results/
 /*.xlsm
 /*.xlsx
 

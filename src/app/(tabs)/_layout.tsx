@@ -39,7 +39,9 @@ export default function TabsLayout() {
           paddingBottom: bottomPad,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: palette.primary,
+        // Labels are 11px; the clay fill is only 3.12:1 on white. The paired
+        // text token preserves the hue while meeting 4.5:1 in both themes.
+        tabBarActiveTintColor: palette.primaryText,
         tabBarInactiveTintColor: palette.textMuted,
         tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11, lineHeight: 15, paddingTop: 1 },
         tabBarIconStyle: { marginBottom: 0 },
@@ -50,6 +52,8 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: tr.tabs.dashboard,
+          tabBarLabel: tr.tabBar.dashboard,
+          tabBarAccessibilityLabel: tr.tabs.dashboard,
           tabBarIcon: ({ color, size }) => <ChartPie color={color} size={size - 2} strokeWidth={2} />,
         }}
       />
@@ -57,6 +61,8 @@ export default function TabsLayout() {
         name="cash-flow"
         options={{
           title: tr.tabs.cashflow,
+          tabBarLabel: tr.tabBar.cashflow,
+          tabBarAccessibilityLabel: tr.tabs.cashflow,
           tabBarIcon: ({ color, size }) => <WalletCards color={color} size={size - 2} strokeWidth={2} />,
         }}
       />
@@ -64,6 +70,8 @@ export default function TabsLayout() {
         name="subscriptions"
         options={{
           title: tr.tabs.subscriptions,
+          tabBarLabel: tr.tabBar.subscriptions,
+          tabBarAccessibilityLabel: tr.tabs.subscriptions,
           tabBarIcon: ({ color, size }) => <RefreshCw color={color} size={size - 2} strokeWidth={2} />,
         }}
       />
@@ -71,6 +79,8 @@ export default function TabsLayout() {
         name="calculator"
         options={{
           title: tr.tabs.calculator,
+          tabBarLabel: tr.tabBar.calculator,
+          tabBarAccessibilityLabel: tr.tabs.calculator,
           tabBarIcon: ({ color, size }) => <Calculator color={color} size={size - 2} strokeWidth={2} />,
         }}
       />
@@ -78,6 +88,7 @@ export default function TabsLayout() {
         name="settings"
         options={{
           title: tr.tabs.settings,
+          tabBarLabel: tr.tabBar.settings,
           tabBarAccessibilityLabel:
             syncHealth === "error"
               ? tr.sync.shellError

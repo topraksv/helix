@@ -2,6 +2,7 @@ import { getTableColumns } from "drizzle-orm";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { parseDefinition, type ComputedColumnDefinition } from "../domain/computed-columns";
 import { tr } from "../i18n/tr";
+import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 
 export const EXPORT_VERSION = 1;
 export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
@@ -113,6 +114,7 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     if (typeof value === "string" && value.length > 50_000) return false;
   }
   for (const [key, value] of Object.entries(raw)) {
+    if (key === "user_id" && value === LOCAL_ONLY_USER_ID) continue;
     if ((key === "id" || key.endsWith("_id")) && value != null && (typeof value !== "string" || !UUID_RE.test(value))) return false;
   }
   for (const key of TIMESTAMP_COLUMNS) {

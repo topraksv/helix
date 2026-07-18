@@ -201,6 +201,9 @@ export function Logo({
       <View style={{ width: size, height: size, borderRadius: radius.sm, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: palette.border }}>
         <Image
           accessible={false}
+          accessibilityRole="none"
+          accessibilityLabel=""
+          alt=""
           source={{ uri: faviconUrl }}
           onError={() => setFailedDomain(faviconDomain)}
           // Fill the whole frame instead of floating at 72% inside it, which

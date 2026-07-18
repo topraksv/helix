@@ -26,6 +26,8 @@ describe("accessibility source contract", () => {
     expect(components).toContain('accessibilityLiveRegion="assertive"');
     expect(components).toContain("busy: Boolean(loading)");
     expect(components).toContain('accessibilityRole="radio"');
+    expect(components).toContain('aria-checked={selected}');
+    expect(components).toContain('ActivityIndicator accessibilityLabel={tr.dataState.loading}');
   });
 
   it("keeps every custom modal surface isolated from background focus", () => {
@@ -38,5 +40,9 @@ describe("accessibility source contract", () => {
     expect(source("src/ui/charts.tsx")).toContain('accessibilityRole="image"');
     expect(source("src/app/(auth)/sign-in.tsx")).toContain('autoComplete="email"');
     expect(source("src/app/(auth)/sign-in.tsx")).toContain('autoComplete={mode === "signIn" ? "current-password" : "new-password"}');
+    expect(source("src/ui/brand.tsx")).toContain('accessibilityRole="none"');
+    expect(source("src/ui/brand.tsx")).toContain('accessibilityLabel=""');
+    expect(source("src/ui/logo.tsx")).toContain('accessibilityRole="none"');
+    expect(source("src/ui/logo.tsx")).toContain('accessibilityLabel=""');
   });
 });
