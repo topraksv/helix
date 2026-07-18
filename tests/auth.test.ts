@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { friendlyAuthError } from "../src/auth/auth-errors";
 import {
   loadPreviousLogin,
   recordSuccessfulLogin,
@@ -7,6 +8,7 @@ import {
   type LoginHistoryStorage,
 } from "../src/auth/login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "../src/auth/recovery";
+import { tr } from "../src/i18n/tr";
 
 function memoryStorage(): LoginHistoryStorage {
   const values = new Map<string, string>();
@@ -38,6 +40,27 @@ describe("successful login history", () => {
     await seedCurrentLogin(storage, "u1", "2026-07-15T08:00:00.000Z");
     await seedCurrentLogin(storage, "u1", "2026-07-15T09:00:00.000Z");
     expect(await recordSuccessfulLogin(storage, "u1", "2026-07-16T10:00:00.000Z")).toBe("2026-07-15T08:00:00.000Z");
+  });
+});
+
+describe("friendly auth errors", () => {
+  it("maps the distinct Supabase failure families to their own Turkish messages", () => {
+    expect(friendlyAuthError("Invalid login credentials")).toBe(tr.auth.errInvalidCredentials);
+    expect(friendlyAuthError("User already registered")).toBe(tr.auth.errUserExists);
+    expect(friendlyAuthError("Request rate limit reached")).toBe(tr.auth.errRateLimit);
+    expect(friendlyAuthError("TypeError: Network request failed")).toBe(tr.auth.errNetwork);
+    expect(friendlyAuthError("Failed to fetch")).toBe(tr.auth.errNetwork);
+    expect(friendlyAuthError("Password should be at least 6 characters")).toBe(tr.auth.errWeakPassword);
+    expect(friendlyAuthError("Email not confirmed")).toBe(tr.auth.errEmailNotConfirmed);
+    expect(friendlyAuthError("Unable to validate email address: invalid format")).toBe(tr.auth.errInvalidEmail);
+  });
+
+  it("maps expired sessions and server failures instead of a generic fallback", () => {
+    expect(friendlyAuthError("Invalid Refresh Token: Refresh Token Not Found")).toBe(tr.auth.errSessionExpired);
+    expect(friendlyAuthError("JWT expired")).toBe(tr.auth.errSessionExpired);
+    expect(friendlyAuthError("Internal Server Error")).toBe(tr.auth.errService);
+    expect(friendlyAuthError("Error 503: Service Unavailable")).toBe(tr.auth.errService);
+    expect(friendlyAuthError("something unexpected")).toBe(tr.auth.errGeneric);
   });
 });
 

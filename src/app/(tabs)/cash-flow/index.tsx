@@ -38,9 +38,55 @@ import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Scr
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { lightTap } from "../../../ui/haptics";
-import { PHONE_TOOL_GAP, PHONE_TOOL_SIZE } from "../../../ui/responsive";
 
 type MatrixMode = "cards" | "rows" | "columns";
+
+/** Phone toolbar item: icon + always-visible mini caption. The stack fits the
+ *  same 44px band the old icon-only row used, so the table area is unchanged
+ *  while every tool's purpose stays readable without a long-press. */
+function MatrixTool({
+  icon: IconCmp,
+  caption,
+  label,
+  onPress,
+}: {
+  icon: React.ComponentType<{ size?: number; color?: string; accessible?: boolean; strokeWidth?: number }>;
+  caption: string;
+  label: string;
+  onPress: () => void;
+}) {
+  const { palette } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={() => {
+        lightTap();
+        onPress();
+      }}
+      hitSlop={6}
+      style={{ flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", gap: 2 }}
+    >
+      {({ pressed }) => (
+        <>
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: pressed ? palette.surfaceHover : palette.surfaceAlt,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <IconCmp accessible={false} size={15} color={palette.textSecondary} strokeWidth={2} />
+          </View>
+          <Text style={[type.small, { fontSize: 10, color: palette.textSecondary, textAlign: "center" }]}>{caption}</Text>
+        </>
+      )}
+    </Pressable>
+  );
+}
 
 function FlowStat({
   icon: Icon,
@@ -189,12 +235,12 @@ export default function CashflowScreen() {
           <View>
             <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
           </View>
-          <Row gap={PHONE_TOOL_GAP} style={{ justifyContent: "space-between" }}>
-            {showTable ? <IconButton icon={Pencil} size={PHONE_TOOL_SIZE} label={editLabel} onPress={editColumns} /> : null}
-            <IconButton icon={CreditCard} size={PHONE_TOOL_SIZE} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
-            <IconButton icon={ChartNoAxesColumn} size={PHONE_TOOL_SIZE} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
-            <IconButton icon={CalendarPlus} size={PHONE_TOOL_SIZE} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
-            <IconButton icon={PiggyBank} size={PHONE_TOOL_SIZE} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
+          <Row gap={spacing.xs} style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            {showTable ? <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} /> : null}
+            <MatrixTool icon={CreditCard} caption={tr.cashflow.toolInstallments} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
+            <MatrixTool icon={ChartNoAxesColumn} caption={tr.cashflow.toolAnalysis} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
+            <MatrixTool icon={CalendarPlus} caption={tr.cashflow.toolBulk} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
+            <MatrixTool icon={PiggyBank} caption={tr.cashflow.toolOpening} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
           </Row>
         </View>
       )}

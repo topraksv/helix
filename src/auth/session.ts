@@ -22,6 +22,7 @@ import { clearRateCache, loadRateCache } from "../services/fx-fetch";
 import { clearAccountNotifications, rescheduleAll } from "../services/notifications";
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
+import { friendlyAuthError } from "./auth-errors";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "./recovery";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
@@ -35,20 +36,10 @@ let verifyFailures = 0;
 let verifyBlockedUntil = 0;
 
 const LAST_USER_KEY = "helix.last_user_id";
+/** Signed-in e-mail, persisted so an offline bootstrap can still re-auth. */
+const LAST_EMAIL_KEY = "helix.last_email";
 /** Owner of the data currently in the local DB (for account-switch detection). */
 const LOCAL_OWNER_KEY = "helix.local_owner";
-
-/** Supabase auth errors arrive in English; map them to the Turkish UI. */
-function friendlyAuthError(raw: string): string {
-  if (/invalid login credentials|invalid_credentials/i.test(raw)) return tr.auth.errInvalidCredentials;
-  if (/already registered|already exists/i.test(raw)) return tr.auth.errUserExists;
-  if (/rate limit|too many/i.test(raw)) return tr.auth.errRateLimit;
-  if (/network|fetch|timeout/i.test(raw)) return tr.auth.errNetwork;
-  if (/password should be|weak password/i.test(raw)) return tr.auth.errWeakPassword;
-  if (/email not confirmed/i.test(raw)) return tr.auth.errEmailNotConfirmed;
-  if (/invalid.*email|email.*invalid|validate email/i.test(raw)) return tr.auth.errInvalidEmail;
-  return tr.auth.errGeneric;
-}
 
 /**
  * Ensure the local DB belongs to `userId`. If a different account previously
@@ -150,6 +141,7 @@ export const useSession = create<SessionStore>((set, get) => ({
           return;
         }
         await kv.set(LAST_USER_KEY, data.session.user.id);
+        if (data.session.user.email) await kv.set(LAST_EMAIL_KEY, data.session.user.email);
         await seedCurrentLogin(
           kv,
           data.session.user.id,
@@ -172,8 +164,9 @@ export const useSession = create<SessionStore>((set, get) => ({
       }
     }
     const previousLoginAt = lastUser ? await loadPreviousLogin(kv, lastUser) : null;
+    const lastEmail = lastUser ? await kv.get(LAST_EMAIL_KEY) : null;
     if (lastUser) startSyncSession(lastUser);
-    set({ userId: lastUser, ready: true, isOnlineSession: false, isNewSignup: false, previousLoginAt });
+    set({ userId: lastUser, email: lastEmail, ready: true, isOnlineSession: false, isNewSignup: false, previousLoginAt });
   },
 
   signIn: async (email, password) => {
@@ -187,6 +180,7 @@ export const useSession = create<SessionStore>((set, get) => ({
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
+    await kv.set(LAST_EMAIL_KEY, data.user.email ?? email);
     const previousLoginAt = await recordSuccessfulLogin(
       kv,
       data.user.id,
@@ -213,6 +207,7 @@ export const useSession = create<SessionStore>((set, get) => ({
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
+    await kv.set(LAST_EMAIL_KEY, data.user.email ?? email);
     await startLoginHistory(kv, data.user.id, new Date().toISOString());
     // A brand-new account has no cloud data to pull → go straight to onboarding
     // (isNewSignup), skipping the "await first pull" hold used for existing
@@ -310,6 +305,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
+    await kv.remove(LAST_EMAIL_KEY);
     set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
     return null;
   },
@@ -334,7 +330,11 @@ export const useSession = create<SessionStore>((set, get) => ({
         const { error } = await supabase.rpc("delete_own_account");
         if (error) {
           startSyncSession(userId);
-          return `${tr.account.deleteCloudFailed} (${error.message})`;
+          // An expired session gets its precise remedy; every other failure
+          // (offline, RPC missing, server error) keeps the accurate "nothing
+          // was deleted" message instead of a raw English engine string.
+          const friendly = friendlyAuthError(error.message);
+          return friendly === tr.auth.errSessionExpired ? friendly : tr.account.deleteCloudFailed;
         }
       }
     }
@@ -362,15 +362,31 @@ export const useSession = create<SessionStore>((set, get) => ({
     }
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
+    await kv.remove(LAST_EMAIL_KEY);
     set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
     return null;
   },
 
   verifyPassword: async (password) => {
     const supabase = getSupabase();
-    const email = get().email;
-    if (!supabase || !email) return tr.errors.supabaseNotConfigured;
+    if (!supabase) return tr.errors.supabaseNotConfigured;
     if (Date.now() < verifyBlockedUntil) return tr.auth.errRateLimit;
+    // The store's e-mail is empty after an offline bootstrap (no live Supabase
+    // session at launch). Recover it from the auth session or the device record
+    // before failing — returning "Supabase not configured" here mislabeled
+    // every verification (including a merely wrong password) with a setup error.
+    let email = get().email;
+    if (!email) {
+      try {
+        const { data } = await supabase.auth.getUser();
+        email = data.user?.email ?? null;
+      } catch {
+        email = null;
+      }
+      if (!email) email = await kv.get(LAST_EMAIL_KEY);
+      if (!email) return tr.auth.errSessionExpired;
+      set({ email });
+    }
     // Re-authenticate with the current e-mail: a successful sign-in confirms
     // the password. It re-issues tokens for the same account (no identity
     // change), which is exactly the "recent login" Supabase wants before a

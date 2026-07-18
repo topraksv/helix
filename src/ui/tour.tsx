@@ -7,7 +7,7 @@ import { Banknote, CalendarCheck, ChartPie, CloudUpload, PlusCircle, Table2, typ
 import { kv } from "../lib/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
-import { radius, spacing, type, useTheme } from "./theme";
+import { radius, scrim, spacing, type, useTheme } from "./theme";
 import { useModalAccessibility } from "./accessibility";
 
 const TOUR_KEY = "helix.tour.done";
@@ -44,7 +44,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", alignItems: "center", justifyContent: "center", padding: spacing.lg }}>
+      <View style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}>
         <FadeIn
           accessibilityViewIsModal
           style={{

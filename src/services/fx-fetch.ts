@@ -9,6 +9,7 @@ import { create } from "zustand";
 import { deterministicId, naturalKeys } from "../db/ids";
 import { writeRows } from "../db/mutations";
 import { getSqliteAsync } from "../db/client";
+import { runSyncSessionTask } from "../sync/engine";
 import { todayISO, type ISODate } from "../domain/dates";
 import { pickRate, type FxRate, type RateLookup } from "../domain/fx";
 import {
@@ -151,7 +152,21 @@ export function clearRateCache(): void {
   cacheRequest += 1;
   rateCacheUserId = null;
   rateCache = [];
+  lastEnsureAt = 0;
   useFxCacheVersion.setState((s) => ({ version: s.version + 1 }));
+}
+
+/**
+ * Screen-triggered refresh: screens whose rates are stale or missing call this
+ * on focus so a rate never requires an app restart to update. Session-scoped
+ * (a late response can't write across accounts) and throttled, so callers can
+ * invoke it freely.
+ */
+let lastEnsureAt = 0;
+export function ensureFreshRates(userId: string): void {
+  if (Date.now() - lastEnsureAt < 60_000) return;
+  lastEnsureAt = Date.now();
+  void runSyncSessionTask(userId, (signal) => refreshRates(userId, signal)).catch(() => {});
 }
 
 /** Cached rate lookup for entry forms; null when this user's cache is absent. */
