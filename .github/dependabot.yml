@@ -11,6 +11,32 @@ updates:
     groups:
       safe-npm-updates:
         update-types: [minor, patch]
+    # Expo SDK owns the compatible React/React Native/native-library matrix.
+    # Dependabot treats React Native's pre-1.0 minor jumps as ordinary minors,
+    # even when they require a coordinated Expo SDK/native rebuild. Patch
+    # security updates remain eligible; remove these guards only in the SDK
+    # upgrade package tracked by BACKLOG-SDK-01.
+    ignore:
+      - dependency-name: "expo*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-native-web"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-native-safe-area-context"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-native-screens"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-native-svg"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "eslint-config-expo"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
