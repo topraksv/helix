@@ -7,8 +7,8 @@ and old chronology in `docs/handoffs/`.
 ## Current state
 
 - Updated: 2026-07-18 (Europe/Istanbul)
-- Work: branch `agent/simplicity-ui-fixes`, base/main `5c2304b`; P11 release is
-  not committed or deployed yet.
+- Work: P11 shipped through PR #34/main `93e12ab`; this docs-only release-record
+  branch starts from that commit.
 - Outcome: exact requested light/dark palette; shared quiet controls; standard
   44×44 back; nested tab reset; always-visible month-end forecast; current-month
   donut/bar chart on Summary; unused exports/dependency/assets removed. Current
@@ -19,8 +19,11 @@ and old chronology in `docs/handoffs/`.
   export/bundle and diff checks. SDK 54 still has 17 moderate transitive
   advisories; its only offered audit fix jumps to SDK 57 and remains
   `BACKLOG-SDK-01`.
-- Pending: protected PR/main Pages, live probes and EAS `preview` OTA. No native
-  config changed, so no rebuild is expected.
+- Release: PR quality `29655641593` and main quality→Pages `29655797800`
+  passed; live root/Analytics/Transaction return 200. EAS `preview` group
+  `5abb5e1b-f99a-47da-9e63-ceeab5a864de`, runtime `1.0.0`, iOS+Android and
+  commit `93e12ab`; initial health is 0 install/0 failure. No native config
+  changed, so no rebuild is needed. Installed delivery remains unverified.
 
 ## Stable system and open limits
 
@@ -46,12 +49,13 @@ without inspecting its diff and running proportional checks.
 
 ### 2026-07-18 — Codex · P11 simplicity and UI regression
 
-- Base `5c2304b`; branch `agent/simplicity-ui-fixes`; release pending.
+- Base `5c2304b`; implementation PR #34; main `93e12ab`; Pages run
+  `29655797800`; EAS group `5abb5e1b-f99a-47da-9e63-ceeab5a864de`.
 - Removed dead API/dependency/assets and duplicate chart/header logic; exact
   Claude palette and quieter shared controls; corrected back/tab routing,
   forecast visibility and Summary charts.
-- Local gates listed under Current state pass. Physical native acceptance and
-  protected release remain outstanding.
+- Local, protected PR and main gates passed; live routes and EAS commit/runtime/
+  platform metadata match. Physical native acceptance remains outstanding.
 
 ### 2026-07-18 — Codex · P8–P10 follow-up
 
