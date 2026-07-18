@@ -9,22 +9,20 @@ lags behind them.
 
 - Updated: 2026-07-18 (Europe/Istanbul)
 - Branch: `main`
-- Completed remediation package: P3; release commits: `8776f70`, `fa2988e`,
-  `b2bd29a`
+- Completed remediation package: P4; release commit: `775cf9e`
 - Toolchain used: Node 22
-- Verification: typecheck, full tests, zero-warning Expo lint, 49-route static
-  web export, successful required remote quality/Pages run, linked migration
-  list/lint, 19-test remote pgTAP, owner-integrity catalog aggregates, generated
-  DB types and EAS channel/update metadata. No browser backend or installed-
-  device native rebuild was available.
-- Test baseline: 28 files, 227 tests passing
+- Verification: typecheck, full tests, zero-warning Expo lint, 50-route static
+  web export, measured bundle budget, required remote quality/Pages run, live
+  root/diagnostics HTTP 200 and EAS update metadata/insights. Browser discovery
+  returned no backend; installed-device delivery was not available.
+- Test baseline: 37 files, 250 tests passing
 
 ## Active working tree
 
 An eight-package remediation of Codex's independent 2026-07-17 audit is
-active. P0–P3 are complete: scope registry; data integrity; CI/GitHub/EAS
-release contracts; and linked database/type boundaries. P4 (architecture,
-measured performance and production diagnostics) is next.
+active. P0–P4 are complete: scope registry; data integrity; CI/GitHub/EAS
+release contracts; linked database/type boundaries; and architecture, measured
+performance plus production diagnostics. P5 (UI/UX/a11y/privacy) is next.
 `docs/AUDIT_TRACKER.md` is the ID/status source of truth.
 
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
@@ -88,6 +86,40 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit remediation package 4: architecture, scale and diagnostics)
+
+- Base `c89c589`; implementation branch
+  `agent/p4-architecture-performance-diagnostics`, protected PR #14, squash
+  release commit `775cf9e`.
+- Live SQLite snapshots now distinguish loading/refreshing/ready/stale/error,
+  preserve last-good data and expose retry. Dashboard and Mali Tablo consume
+  explicit state; root guard query failure cannot mount protected screens.
+  Dashboard, matrix, import planner and route guard are pure models with parity
+  tests; biometric/maintenance/market lifecycle left the root component.
+- Ledger keeps its measured O(T+M) model but drops the normal second balance
+  scan; dashboard aggregates in one pass; card splits scan once, not per month;
+  long nested transaction lists render 80-row pages. The permanent benchmark
+  covers 1k/10k/100k ledger plus 100k dashboard/matrix budgets.
+- XLSX is a lazy web chunk and ZIP size/ratio is inspected before inflation.
+  Backup exports build table-by-table; restore consumes 400-row batches in one
+  transaction. Web entry measured 5.07→4.60 MB, fonts 36→8 and total export
+  ~15→9.48 MB; `bundle:check` now blocks regressions in CI.
+- Added a PII-free device-local diagnostics screen/export: update/runtime,
+  sync/outbox age, dead-letter distribution, migration and a 12-event redacted
+  ring. Market feed now states its unofficial source and exposes live/stale/
+  unavailable/fallback health instead of silently disappearing.
+- Checks: local typecheck; 37 files/250 tests; lint; 50-route export and bundle
+  budget. PR quality run `29640068231` and final Pages run `29640137815`
+  succeeded; live `/helix/` and `/helix/diagnostics` returned 200. Browser
+  discovery returned no backend, so no viewport click/screenshot is claimed.
+- EAS `preview` group `57ded800-43bf-444f-abf8-780d67eddd27`, runtime `1.0.0`
+  (iOS `019f74b1-b48d-71eb-b5d9-cdfa5bb83bc0`, Android
+  `019f74b1-b48d-79f3-bc22-539ca2e543f4`) published from `775cf9e`. Two uploads
+  hit the known Google Storage `getaddrinfo` failure; a command-scoped resolver
+  preload completed the unchanged third upload and was deleted. Immediate
+  insights: zero installs/users/failures, so installed-device delivery remains
+  unverified. P5 owns UI/a11y/privacy; P7 owns real SQLite/E2E/device matrices.
 
 ### 2026-07-18 — Codex (audit remediation package 3: DB and type boundaries)
 
@@ -184,39 +216,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
 - Package 0 is documentation-only; no application code, dependency, migration,
   remote data or OTA changes. Commit/push/web state and verification are filled
   in when this package closes; the audit remains a snapshot of `115baf8`.
-
-### 2026-07-17 — Claude (audit package 4: scale and final hardening)
-
-- Base `9840b08`, branch `main`. Fourth and final audit-remediation package.
-- Shared live queries: the eleven identity-stable hooks (persons, categories,
-  transactions, settings…) now run through one reference-counted entry per
-  (hook, user) — first subscriber creates it, last one tears it down, same
-  debounce/backoff/retry semantics as `useLive`, which remains for parametric
-  month windows. Before this, every mounted tab screen re-executed its own
-  copy of the same full-table scan on every write.
-- Removed all 90 `as never[]` SQL parameter casts after an experiment proved
-  them cargo-cult (plain arrays typecheck). The two genuine dynamic-row
-  boundaries (`writeRows` upsert args, pull-merge upsert args) each carry one
-  narrow, documented `SQLiteBindValue` conversion. Five unrelated `as never`
-  UI-generics casts remain (noted in the backlog).
-- iOS `NSFileProtectionComplete` entitlement added to `app.json` (rationale
-  and rollback trigger recorded in AGENTS.md); verified it resolves in the
-  prebuild config. Activates at the next local `npx expo run:ios --device`.
-- Checks: typecheck, 24 files/216 tests, zero-warning lint, 49-route export,
-  sign-in smoke on the normal build. NEW: a protected-flow smoke on a
-  local-only (env-less, cache-cleared) export — headless chromium completed
-  onboarding via "Kaydet ve Kullanmaya Başla", reached the dashboard (shared
-  hooks + ledger + hero), skipped the first-run tour, switched to Mali Tablo
-  and back; zero CSP violations, zero page errors. This is the first
-  authenticated-surface browser pass recorded in this repo.
-- Shipped as `00eb8f3`, pushed; Pages redeploys. EAS `preview` update group
-  `6d7b90e6-f511-48f8-9a6e-bbc9c90e5182` published (iOS
-  `019f7014-2d9b-70f7-a9e0-2a02ac2548e5`, Android
-  `019f7014-2d9b-76b4-a5b5-b4780f574c11`, runtime `1.0.0`); applies on the
-  next full close + reopen.
-- Addendum (same day): the user ran `supabase db push` for migration 5;
-  Claude independently re-verified — `migration list --linked` 1–5 identical,
-  `db lint --linked` clean. `db dump` object inspection is unavailable
-  without Docker, but the transactional apply recording version 5 proves
-  every statement (including the cell_notes dedup + partial unique index)
-  succeeded. Production root probed 200 with the CSP meta in served HTML.
