@@ -199,6 +199,30 @@ async function runMaintenanceInner(userId: string): Promise<void> {
   // financial history.
   await repairCardStatementLinks(userId, today);
 
+  // 0e) Budgets cascade with their category; older builds left orphans behind.
+  // Tombstone a live budget only when its category row PROVABLY exists as
+  // deleted — a missing category may simply not have synced yet on a fresh
+  // device, and cleaning those would destroy data mid-first-pull.
+  const orphanBudgets = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT cb.* FROM category_budgets cb
+     WHERE cb.user_id = ? AND cb.deleted_at IS NULL
+       AND EXISTS (
+         SELECT 1 FROM categories c
+         WHERE c.user_id = cb.user_id AND c.id = cb.category_id AND c.deleted_at IS NOT NULL
+       )`,
+    [userId],
+  );
+  if (orphanBudgets.length > 0) {
+    await writeRows(
+      userId,
+      orphanBudgets.map((row) => ({
+        table: "category_budgets" as const,
+        row: { ...fromDbShape("category_budgets", row), deletedAt: nowIso() },
+      })),
+      false,
+    );
+  }
+
   // 1) §2.7 — pending transactions whose effective date arrived become realized.
   const due = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT * FROM transactions WHERE user_id = ? AND status = 'pending' AND effective_date <= ? AND deleted_at IS NULL`,

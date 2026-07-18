@@ -5,9 +5,9 @@ import React, { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { newId } from "../../../db/ids";
-import { restoreRow, softDelete, writeRows } from "../../../db/mutations";
+import { writeRows } from "../../../db/mutations";
 import { useCategories, useUserId } from "../../../data/hooks";
-import { countTransactionsForCategory } from "../../../data/repo";
+import { countTransactionsForCategory, deleteCategoryWithBudgets, restoreCategoryWithBudgets } from "../../../data/repo";
 import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { appConfirm } from "../../../ui/dialog";
@@ -104,9 +104,15 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
       });
       if (!ok) return;
     }
-    const snapshot = await softDelete(userId, "categories", c.id);
+    // The category's monthly budgets go with it in the same atomic write, so
+    // no orphan budget row can linger in lists or totals; undo restores both.
+    const snapshot = await deleteCategoryWithBudgets(userId, c.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "categories", snapshot), "warning");
+    if (snapshot) {
+      undo.show(`${c.name} · ${tr.common.deleted}`, () => {
+        void restoreCategoryWithBudgets(userId, snapshot).then(() => scheduleSync(userId));
+      }, "warning");
+    }
   };
 
   return (

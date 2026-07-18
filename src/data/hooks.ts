@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
-import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
@@ -346,12 +346,23 @@ function useCategoryBudgetsState() {
   return useSharedLive(
     `category_budgets:${userId}`,
     () =>
+      // Budgets exist only for live categories: a soft-deleted category's
+      // budgets are cascade-deleted, and any orphan arriving out-of-order via
+      // sync must never surface as a nameless "budget" or join a total.
       getDb()
-        .select()
+        .select({ ...getTableColumns(s.categoryBudgets) })
         .from(s.categoryBudgets)
+        .innerJoin(
+          s.categories,
+          and(
+            eq(s.categories.id, s.categoryBudgets.categoryId),
+            eq(s.categories.userId, s.categoryBudgets.userId),
+            isNull(s.categories.deletedAt),
+          ),
+        )
         .where(and(eq(s.categoryBudgets.userId, userId), isNull(s.categoryBudgets.deletedAt)))
         .orderBy(asc(s.categoryBudgets.month), asc(s.categoryBudgets.categoryId)),
-    ["category_budgets"],
+    ["category_budgets", "categories"],
   );
 }
 

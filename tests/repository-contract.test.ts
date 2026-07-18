@@ -71,6 +71,10 @@ const publicRuntimeExports = [
   "hasImportedData",
   "importSheets",
   "runMaintenance",
+  "upsertCategoryBudget",
+  "deleteCategoryBudget",
+  "deleteCategoryWithBudgets",
+  "restoreCategoryWithBudgets",
 ] as const;
 
 describe("repository compatibility contract", () => {

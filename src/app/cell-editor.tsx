@@ -26,7 +26,6 @@ import { Amount, Badge, Body, Button, Divider, EmptyState, Field, IconButton, Mo
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
-import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
 import { INITIAL_TRANSACTION_ROWS, nextVisibleTransactionCount } from "../ui/progressive-list";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
@@ -91,7 +90,6 @@ export default function CellEditorModal() {
         const baseType = category.name.toLocaleLowerCase("tr-TR").includes("yatırım") ? "transfer" : category.kind;
         const hasExpr = entryRaw.includes("+") || entryRaw.trim().slice(1).includes("-");
         await addTransaction(userId, {
-          operationId: newId(),
           type: baseType,
           amountMinor: entryMinor,
           currency: "TRY",

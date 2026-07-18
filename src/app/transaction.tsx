@@ -25,7 +25,6 @@ import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { radius, spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
-import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 
@@ -176,7 +175,6 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     if (!canSave || !personId) return;
     await operationGuard.run(async () => {
       setBusy(true);
-      const operationId = newId();
       try {
         assertISODate(effectiveDate);
         const fxRate = currency === "TRY" ? null : String(effectiveRateTry);
@@ -219,10 +217,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
             categoryId: categoryId!,
             note: note.trim() || null,
             tryFactor: currency === "TRY" ? 1 : effectiveRateTry!,
-          }, operationId);
+          });
         } else {
           await addTransaction(userId, {
-            operationId,
             type: entryType,
             amountMinor: signedAmountMinor!,
             currency,

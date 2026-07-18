@@ -219,8 +219,8 @@ export async function countInstallmentsForPlan(userId: string, planId: string): 
 }
 
 /** Create the plan and materialize one transaction per month (deterministic ids). */
-export async function createInstallmentPlan(userId: string, input: NewPlan, operationId = newId()): Promise<string> {
-  const planId = operationId;
+export async function createInstallmentPlan(userId: string, input: NewPlan): Promise<string> {
+  const planId = newId();
   await writePlanWithSchedule(userId, planId, input);
   return planId;
 }

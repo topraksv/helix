@@ -15,7 +15,6 @@ import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
-import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 
@@ -57,7 +56,6 @@ export default function BulkEntryModal() {
             amountMinor: e.minor!,
             isInvestment: e.category.name.toLocaleLowerCase("tr-TR").includes("yatırım"),
           })),
-          newId(),
         );
         scheduleSync(userId);
         setSavedMsg(tr.bulk.saved(monthLabel(month)));
