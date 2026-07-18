@@ -8,26 +8,30 @@ lags behind them.
 ## Last verified state
 
 - Updated: 2026-07-18 (Europe/Istanbul)
-- Branch: `agent/final-release-record` from `8164caa`
-- Completed remediation package: P7 plus SDK 54 dependency-policy closure
+- Branch: `agent/followup-release-record` from main `a249492`
+- Completed remediation packages: P8–P10 audit follow-up and release record
 - Toolchain used: Node 22
-- Verification: typecheck, 49 files/287 tests, zero-warning Expo lint,
-  53-route static web export, measured bundle budget and 7/7 Playwright flows
-  (real browser SQLite/restore/offline/deep-link, axe and 13 screenshot
-  baselines). Protected PR quality and main quality→Pages passed; live static
-  routes and dynamic fallback shell responded; EAS OTA metadata and initial
-  insights were queried. Browser discovery returned `[]`, and no installed
-  device was available, so physical screen-reader/OS/privacy/OTA acceptance is
-  not claimed.
-- Test baseline: 49 files, 287 Vitest tests plus 7 Playwright flows passing
+- Verification: typecheck, 48 files/289 tests, zero-warning Expo lint,
+  52-route static web export, measured bundle budget and 9/9 Playwright flows
+  (real browser SQLite/restore/offline/deep-link/follow-up UX, axe and 21
+  screenshot baselines). Linked migrations 1–7 match, linked DB lint is clean
+  and remote pgTAP remains 24/24. Protected PR quality passed; main Pages run
+  and live route probes are recorded in `AUDIT_TRACKER.md`. EAS `preview` OTA
+  group `1d2ed181-0dcd-48be-abae-3985d414854b` was published from `a249492`.
+  No installed device was available, so physical screen-reader/OS/privacy/OTA,
+  Face ID/edge-swipe and two-client sync acceptance are not claimed.
+- Test baseline: 48 files, 289 Vitest tests plus 9 Playwright flows passing
 
 ## Active working tree
 
-The eight-package remediation of Codex's independent 2026-07-17 audit is
-complete and shipped. P0–P7 cover the scope registry; data integrity;
-CI/GitHub/EAS release contracts; linked database/type boundaries; architecture,
-measured performance and diagnostics; UI/UX/a11y/privacy; product and IA; plus
-persistent browser automation and final documentation.
+The remediation of Codex's independent 2026-07-17 audit and the 2026-07-18
+follow-up is complete and shipped. P0–P10 cover scope/data integrity;
+CI/GitHub/EAS; linked DB/type boundaries; architecture and measured scale;
+UI/UX/a11y/privacy; product/IA; persistent automation; plus follow-up simplicity,
+market/sync/navigation/auth reliability and final documentation. The technical
+diagnostics screen/global sync badge introduced earlier were removed at the
+user's request; bounded PII-free breadcrumbs and action-level sync feedback
+remain without exposing an end-user health console.
 `docs/AUDIT_TRACKER.md` is the ID/status source of truth.
 
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
@@ -40,8 +44,8 @@ index on cell_notes creating successfully also proves the dedup left no
 conflicting live rows.) Those packages remain the trusted baseline; the newer
 Codex audit found additional work now tracked by ID. The user explicitly keeps
 the audit's “şimdi yapılmamalı” items and Expo SDK 54 advisories in backlog;
-everything else is active scope. Always re-check `git status`; Git remains
-authoritative.
+all other automatable findings are resolved. Always re-check `git status`; Git
+remains authoritative.
 
 ## Current architecture summary
 
@@ -68,8 +72,9 @@ bank/server-push/widget/multi-user expansion, and enterprise architecture
 patterns. Five acceptance rows remain `BLOCKED` only on an installed device or
 two disposable authenticated clients: account-switch late work, remote outbox
 drain after offline relaunch, physical screen readers/Dynamic Type, low-memory
-hostile-import stress, and OS notification/privacy behavior. No automatable P7
-implementation work remains.
+hostile-import stress, and OS notification/privacy behavior. Physical Face ID
+autofill and iOS edge-swipe are also part of those installed-device checks. No
+automatable P8–P10 implementation work remains.
 
 ## Handoff update contract
 
@@ -94,6 +99,38 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit follow-up P8–P10: simplicity, UX and reliability)
+
+- Base `6b85f1c`; implementation branch `agent/audit-followup-polish`, protected
+  PR #32, squash main release `a249492`; this record branch starts there.
+- Re-read the complete independent audit and appended §12 with all 19 sections,
+  every finding state, the 12-item user feedback matrix, explicit confidence and
+  a non-inflated 90/100 score. Tracker P8–P10 is the current ID/status record.
+- Removed the end-user diagnostics route, global sync-health badge/model,
+  unused outbox hook and gradient dependency. Source+test code shrank net 198
+  lines while retaining the bounded redacted internal breadcrumb boundary.
+- Reworked shared hero/button/field/chip/toggle/segmented states; fixed upcoming
+  action wrapping, Analytics source→period behavior and Investment language;
+  added shared calendar-safe “Ayın sonu” entry and historical opening-balance UX.
+- Stabilized the single Harem socket with lifecycle grace/backoff and verified
+  all five live quotes plus hard reload in real Chromium. Active authenticated
+  sessions now pull immediately on foreground/resume and every 30 seconds;
+  dead-letter completion is account-scoped and cannot appear healthy.
+- Native finance privacy starts only after auth so password-manager Face ID can
+  fill sign-in. All stack forms use deterministic 44pt back controls, card
+  presentation and enabled gestures; direct-link navigation passed in browser.
+- Checks: clean diff; typecheck; 48 files/289 tests; zero-warning lint; 52-route
+  export; web budget; Expo dependency check; 9/9 Playwright; 21 inspected visual
+  baselines; linked migrations 1–7 equal and lint 0; remote pgTAP 24/24 retained;
+  PR required run `29652848214` passed. Live Harem feed was verified; the in-app
+  browser connector returned no browser, so headless Chromium was used.
+- Web main run `29653031390` and live probes are recorded in the tracker. EAS
+  `preview` group `1d2ed181-0dcd-48be-abae-3985d414854b`, runtime `1.0.0`
+  (iOS `019f762b-ff84-7dcf-a1b7-e05b9a09827f`, Android
+  `019f762b-ff84-7142-816f-c9b93cd7d2c3`) published from `a249492`. Installed
+  delivery, two-client sync, Face ID/edge-swipe, screen readers/Dynamic Type,
+  OS privacy/notification and low-memory stress remain explicitly `BLOCKED`.
 
 ### 2026-07-18 — Codex (SDK 54 dependency-policy closure)
 
@@ -213,37 +250,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   `019f74f5-c06d-7c15-b3fd-55e183817336`) published from `e04fc39`. Immediate
   insights were zero installs/users/failures. P6 owns onboarding/product/IA;
   P7 owns persistent component/E2E/screenshot/device acceptance.
-
-### 2026-07-18 — Codex (audit remediation package 4: architecture, scale and diagnostics)
-
-- Base `c89c589`; implementation branch
-  `agent/p4-architecture-performance-diagnostics`, protected PR #14, squash
-  release commit `775cf9e`.
-- Live SQLite snapshots now distinguish loading/refreshing/ready/stale/error,
-  preserve last-good data and expose retry. Dashboard and Mali Tablo consume
-  explicit state; root guard query failure cannot mount protected screens.
-  Dashboard, matrix, import planner and route guard are pure models with parity
-  tests; biometric/maintenance/market lifecycle left the root component.
-- Ledger keeps its measured O(T+M) model but drops the normal second balance
-  scan; dashboard aggregates in one pass; card splits scan once, not per month;
-  long nested transaction lists render 80-row pages. The permanent benchmark
-  covers 1k/10k/100k ledger plus 100k dashboard/matrix budgets.
-- XLSX is a lazy web chunk and ZIP size/ratio is inspected before inflation.
-  Backup exports build table-by-table; restore consumes 400-row batches in one
-  transaction. Web entry measured 5.07→4.60 MB, fonts 36→8 and total export
-  ~15→9.48 MB; `bundle:check` now blocks regressions in CI.
-- Added a PII-free device-local diagnostics screen/export: update/runtime,
-  sync/outbox age, dead-letter distribution, migration and a 12-event redacted
-  ring. Market feed now states its unofficial source and exposes live/stale/
-  unavailable/fallback health instead of silently disappearing.
-- Checks: local typecheck; 37 files/250 tests; lint; 50-route export and bundle
-  budget. PR quality run `29640068231` and final Pages run `29640137815`
-  succeeded; live `/helix/` and `/helix/diagnostics` returned 200. Browser
-  discovery returned no backend, so no viewport click/screenshot is claimed.
-- EAS `preview` group `57ded800-43bf-444f-abf8-780d67eddd27`, runtime `1.0.0`
-  (iOS `019f74b1-b48d-71eb-b5d9-cdfa5bb83bc0`, Android
-  `019f74b1-b48d-79f3-bc22-539ca2e543f4`) published from `775cf9e`. Two uploads
-  hit the known Google Storage `getaddrinfo` failure; a command-scoped resolver
-  preload completed the unchanged third upload and was deleted. Immediate
-  insights: zero installs/users/failures, so installed-device delivery remains
-  unverified. P5 owns UI/a11y/privacy; P7 owns real SQLite/E2E/device matrices.
