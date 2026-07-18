@@ -9,20 +9,22 @@ lags behind them.
 
 - Updated: 2026-07-18 (Europe/Istanbul)
 - Branch: `main`
-- Completed remediation package: P4; release commit: `775cf9e`
+- Completed remediation package: P5; release commit: `e04fc39`
 - Toolchain used: Node 22
 - Verification: typecheck, full tests, zero-warning Expo lint, 50-route static
   web export, measured bundle budget, required remote quality/Pages run, live
-  root/diagnostics HTTP 200 and EAS update metadata/insights. Browser discovery
-  returned no backend; installed-device delivery was not available.
-- Test baseline: 37 files, 250 tests passing
+  root/settings HTTP 200 and EAS update metadata/insights. Browser discovery
+  returned no backend; Xcode had no simulator destination and the physical
+  phone was offline, so installed-device/a11y delivery was not available.
+- Test baseline: 43 files, 268 tests passing
 
 ## Active working tree
 
 An eight-package remediation of Codex's independent 2026-07-17 audit is
-active. P0–P4 are complete: scope registry; data integrity; CI/GitHub/EAS
+active. P0–P5 are complete: scope registry; data integrity; CI/GitHub/EAS
 release contracts; linked database/type boundaries; and architecture, measured
-performance plus production diagnostics. P5 (UI/UX/a11y/privacy) is next.
+performance plus production diagnostics; UI/UX/a11y/privacy. P6 (product and
+information architecture) is next.
 `docs/AUDIT_TRACKER.md` is the ID/status source of truth.
 
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
@@ -86,6 +88,34 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit remediation package 5: UI, a11y and privacy)
+
+- Base `627c297`; implementation branch `agent/p5-ui-a11y-privacy`, protected
+  PR #16, squash release commit `e04fc39`.
+- Shared controls now expose persistent labels, role/state/hint, announced
+  errors/loading, heading focus/return for custom modals and full chart/table
+  summaries. Accent fills are separate from AA foreground roles; light/dark
+  contrast and no-truncation contracts are automated.
+- Cash-flow keeps every feature visible at 320px with a full-width primary CTA
+  and bounded tool row; payment actions stack below copy on narrow phones.
+  Critical forms share a real-snapshot dirty-exit guard without prompting for
+  untouched inline editors or async defaults.
+- Lock-screen copy is neutral by default, financial detail requires explicit
+  device-local consent, pending previews clear fail-closed, and the queue keeps
+  the soonest 60. Native inactive/background and framed web states render an
+  isolated sensitive-data-safe privacy modal.
+- Checks: typecheck; 43 files/268 tests; zero-warning lint; 50-route export;
+  bundle budget and diff check. PR run `29642256028` and main Pages run
+  `29642316030` passed; live root/settings returned 200.
+- Browser discovery returned `[]`; Xcode had no simulator destination and the
+  physical phone was offline, so no viewport, VoiceOver/TalkBack or app-switcher
+  timing claim is made. No EAS simulator session/build was started.
+- EAS `preview` group `6eaac67f-9986-426a-ba39-951a49dc5489`, runtime `1.0.0`
+  (iOS `019f74f5-c06d-768a-8985-5cd724369654`, Android
+  `019f74f5-c06d-7c15-b3fd-55e183817336`) published from `e04fc39`. Immediate
+  insights were zero installs/users/failures. P6 owns onboarding/product/IA;
+  P7 owns persistent component/E2E/screenshot/device acceptance.
 
 ### 2026-07-18 — Codex (audit remediation package 4: architecture, scale and diagnostics)
 
@@ -201,18 +231,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   `019f743f-d498-73c8-ac58-aed4b37988f3`). Insights immediately after publish
   showed 0 installs/users; installed-device delivery remains unverified and is
   addressed by P2's native channel contract.
-
-### 2026-07-18 — Codex (audit remediation package 0: scope registry)
-
-- Base `115baf8`, branch `main`; the working tree was clean before this task.
-- Recovered the previously delivered 2026-07-17 independent audit from the
-  local Codex session record as `docs/HELIX_CODEX_AUDIT_2026-07-17.md`; its two
-  hard-break trailing-space markers were normalized to blank Markdown lines so
-  the repository's whitespace gate remains clean.
-- Added `docs/AUDIT_TRACKER.md`, mapping every audit finding, refactor,
-  performance task, product opportunity and required test to an ID, package,
-  status and acceptance criterion. Only the audit's explicitly deferred ideas
-  and Expo SDK 54 advisories are marked `BACKLOG`.
-- Package 0 is documentation-only; no application code, dependency, migration,
-  remote data or OTA changes. Commit/push/web state and verification are filled
-  in when this package closes; the audit remains a snapshot of `115baf8`.
