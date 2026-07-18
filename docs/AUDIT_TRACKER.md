@@ -79,12 +79,12 @@ her paket bölümünün altındaki release kaydına eklenir.
 
 | ID / eşleşme | P | Paket | Durum | Sorun | Çözüm ve kabul ölçütü |
 |---|---:|---:|---|---|---|
-| `HLX-02` · `CDX-A11Y-01` | P2 | P5 | NOT STARTED | Shared form/chart/icon/modal semantics, focus ve announcements eksik | Label/role/state/hint, heading, chart özeti, modal focus restore, live error/loading; a11y tests + manual checklist |
-| `HLX-03` · `CDX-A11Y-02` | P2 | P5 | NOT STARTED | Primary ve semantic foreground kontrastları WCAG AA altında | Role-based foreground token; light/dark tüm token çiftleri otomatik ≥4.5:1 (large text istisnası açık) |
-| `CDX-UX-01` | P2 | P5 | NOT STARTED | 320px cash-flow ve late-payment action satırları sıkışıyor | Primary CTA + overflow/stacked layout; 320/390/768/1440 overflow testleri |
-| `CDX-UX-02` · `CDX-PRODUCT-03` | P2 | P5/P6 | NOT STARTED | Onboarding ağır; dirty form geri dönüşte sessiz veri kaybediyor | Ortak dirty-exit guard/draft; P6’da hızlı başlangıç; navigation tests |
-| `HLX-12` · `CDX-SEC-02` · `CDX-PRODUCT-04` | P2 | P5 | NOT STARTED | Notification lock-screen metni ad/tutar gösterebilir | Device-local opt-in detail preference; varsayılan nötr body; sign-out cleanup testleri |
-| `CDX-SEC-01` | P2 | P5 | NOT STARTED | App switcher snapshot privacy cover yok; Pages frame header sınırlı | Native `inactive` overlay; web mümkünse header, değilse sensitive re-auth + dokümante residual |
+| `HLX-02` · `CDX-A11Y-01` | P2 | P5 | RESOLVED | Shared form/chart/icon/modal semantics, focus ve announcements eksik | Shared field/control role-state-hint, heading, chart tam değer özeti, modal focus/return ve live error/loading eklendi; source contract testleri yeşil. Fiziksel VoiceOver/TalkBack kabulü `CDX-TEST-12` ile P7’de |
+| `HLX-03` · `CDX-A11Y-02` | P2 | P5 | RESOLVED | Primary ve semantic foreground kontrastları WCAG AA altında | Accent/fill ile `*Text`/`on*` rolleri ayrıldı; light/dark body çiftleri ≥4.5:1, control/focus sınırları ≥3:1 otomatik testte |
+| `CDX-UX-01` | P2 | P5 | RESOLVED | 320px cash-flow ve late-payment action satırları sıkışıyor | Primary CTA tam genişlik, beş araç dengeli satır, geniş payment aksiyonu <430px’de alt satır; 320/390/768/1440 matematiksel no-overflow testi yeşil |
+| `CDX-UX-02` · `CDX-PRODUCT-03` | P2 | P5/P6 | IN PROGRESS | Onboarding ağır; dirty form geri dönüşte sessiz veri kaybediyor | Kritik formlar gerçek snapshot’a dayalı ortak dirty-exit guard kullanıyor ve untouched inline edit prompt vermiyor; P6 hızlı başlangıç/onboarding kaldı |
+| `HLX-12` · `CDX-SEC-02` · `CDX-PRODUCT-04` | P2 | P5 | RESOLVED | Notification lock-screen metni ad/tutar gösterebilir | Varsayılan nötr preview, ayrı device-local onay, kapatma/account switch’te fail-closed clear ve en yakın 60 plan; pure+boundary testleri yeşil, cihaz kabulü `CDX-TEST-15`’te |
+| `CDX-SEC-01` | P2 | P5 | RESOLVED | App switcher snapshot privacy cover yok; Pages frame header sınırlı | Native inactive/background ve framed web için izole, değersiz privacy modalı var; policy/source testi yeşil. OS snapshot zamanlaması fiziksel cihazda P7’de kesinleşecek |
 | `CDX-IA-02` | P3 | P6 | NOT STARTED | Account freeze Settings’in ana seviyesinde dağınık | Account Security altında tek güvenlik grubu; deep link/back parity |
 | `CDX-IA-03` | P3 | P6 | NOT STARTED | Dashboard üç analitik kartla Analytics’i tekrar ediyor | Balance/upcoming + tek eylemli insight; tam analiz için belirgin geçiş |
 | `CDX-IA-04` | P3 | P6 | NOT STARTED | Var olan JSON/CSV export yeterince keşfedilebilir değil | Veri ve senkron grubunda açık “Dışa aktar / Geri yükle” görev dili |
@@ -112,12 +112,12 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-TEST-08` | P1 | P4/P7 | IN PROGRESS | Account-switch late task integration testi eksik | Saf epoch regression’ında A’nın geç cevabı B epoch’unda `undefined` ve sıfır commit; gerçek SQLite lifecycle entegrasyonu P7’de |
 | `CDX-TEST-09` | P1 | P4/P7 | IN PROGRESS | Backup temiz DB round-trip integration testi eksik | 15 tablo export envelope + ilişki validator parity var; gerçek clean SQLite export→restore ve invalidte sıfır write P7’de |
 | `CDX-TEST-10` | P1 | P7 | NOT STARTED | Offline→relaunch→online sync kalıcı testi eksik | Tekil veri korunur, queue boşalır, duplicate yok |
-| `CDX-TEST-11` | P2 | P5/P7 | NOT STARTED | Form invalid/loading/error/dirty/password-manager tests yok | Her kritik form state’i ve accessible error beklenen davranışta |
-| `CDX-TEST-12` | P2 | P5/P7 | NOT STARTED | Automated + cihaz a11y matrisi yok | Semantics/contrast/keyboard automated; VoiceOver/TalkBack checklist |
+| `CDX-TEST-11` | P2 | P5/P7 | IN PROGRESS | Form invalid/loading/error/dirty/password-manager tests yok | Shared error/loading/dirty ve auth metadata contractları var; gerçek component/navigation form matrisi P7’de |
+| `CDX-TEST-12` | P2 | P5/P7 | IN PROGRESS | Automated + cihaz a11y matrisi yok | Semantics/contrast/modal/chart/table keyboard contractları yeşil; VoiceOver/TalkBack cihaz checklist’i ortam olmadığı için P7’de |
 | `CDX-TEST-13` | P1 | P4/P7 | IN PROGRESS | Hostile workbook/büyük backup stress testi yok | Yüksek sıkıştırma oranlı ZIP SheetJS öncesi, >100k backup iterasyon/yazım öncesi reddediliyor; cihaz heap/invalid-write integration P7’de |
 | `CDX-TEST-14` | P2 | P7 | NOT STARTED | Locale/timezone/DST matrisi eksik | TR comma, Istanbul/UTC, DST, leap ve ay sınırları CI’da |
-| `CDX-TEST-15` | P2 | P5/P7 | NOT STARTED | Notification consent/privacy/64-cap cihaz testi eksik | Default neutral, opt-in detail, sign-out clears, cap korunur |
-| `CDX-TEST-16` | P2 | P5/P7 | NOT STARTED | 320/390/768/1440 light/dark visual regression yok | Screenshot diff bütçesi ve no-overflow assertions |
+| `CDX-TEST-15` | P2 | P5/P7 | IN PROGRESS | Notification consent/privacy/64-cap cihaz testi eksik | Default neutral/opt-in redaction, stale preference race, sign-out wiring ve 60-cap otomatik; OS notification cihaz testi P7’de |
+| `CDX-TEST-16` | P2 | P5/P7 | IN PROGRESS | 320/390/768/1440 light/dark visual regression yok | 320/390/768/1440 no-overflow hesapları ve light/dark token kontrastı yeşil; kalıcı screenshot diff P7’de |
 | `CDX-TEST-17` | P2 | P4/P7 | IN PROGRESS | 1k/10k/100k performance bütçesi yok | Kalıcı Vitest benchmark’ı 1k/10k/100k ledger ve 100k dashboard/matrix için 4 sn release eşiği koyuyor; P7 final CI/E2E ile kapanacak |
 | `HLX-10` · `CDX-DOC-03` | P4 | P7 | NOT STARTED | Dokümanda sabit test sayısı drift ediyor | Sabit sayı kaldırılır veya otomatik üretilir |
 | `HLX-13C` · `CDX-DOC-04` | P2 | P7 | NOT STARTED | Privacy, retention, release/rollback ve third-party feed açıklaması eksik | README/docs’ta kullanıcı ve maintainer bölümleri, gerçek sınırlar |
@@ -143,6 +143,6 @@ her paket bölümünün altındaki release kaydına eklenir.
 | P2 | `28ef0a6`, `886daa8` | [quality→Pages run 29637115841](https://github.com/topraksv/helix/actions/runs/29637115841) başarılı | `preview` channel→branch remote doğrulandı; native rebuild gerekli, OTA bilerek yok | RESOLVED |
 | P3 | `8776f70`, `fa2988e`, `b2bd29a` | [quality→Pages run 29638482754](https://github.com/topraksv/helix/actions/runs/29638482754) başarılı | migration 6 + 19 pgTAP verified; [EAS group fb85064c](https://expo.dev/accounts/topraksv/projects/helix/updates/fb85064c-5fd9-4644-b547-129562a232e5), runtime `1.0.0`, install henüz `0` | RESOLVED |
 | P4 | `775cf9e` | [quality→Pages run 29640137815](https://github.com/topraksv/helix/actions/runs/29640137815) başarılı; canlı root/diagnostics 200 | [EAS group 57ded800](https://expo.dev/accounts/topraksv/projects/helix/updates/57ded800-43bf-444f-abf8-780d67eddd27), runtime `1.0.0`; install henüz `0` | RESOLVED |
-| P5 | — | — | — | NOT STARTED |
+| P5 | `e04fc39` | [quality→Pages run 29642316030](https://github.com/topraksv/helix/actions/runs/29642316030) başarılı; canlı root/settings 200 | [EAS group 6eaac67f](https://expo.dev/accounts/topraksv/projects/helix/updates/6eaac67f-9986-426a-ba39-951a49dc5489), runtime `1.0.0`; ilk insights 0 install/user | RESOLVED |
 | P6 | — | — | — | NOT STARTED |
 | P7 | — | — | — | NOT STARTED |
