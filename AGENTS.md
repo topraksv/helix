@@ -82,6 +82,13 @@ agent-to-agent communication that did not occur.
   unpaid derivatives; paid/skipped history is immutable. Watch-only rules never
   create balance-affecting expected rows. Deleting a subscription/income rule
   and its pending/late rows is one write and undo restores the same snapshot.
+  Recurring incomes declare `monthly | weekly | biweekly`; weekly cadences use
+  an explicit ISO calendar-date anchor and advance by 7/14 days, never by a
+  timezone timestamp. Missing anchors fail closed instead of inventing dates.
+- **Category budgets are monthly targets, not financial movements.** One
+  deterministic synced row exists per user/month/live expense category. Budget
+  progress is derived from realized expense flows (refunds reduce spending);
+  creating or editing a budget must never alter balance, forecast or ledger.
 - **Referenced persons/payment sources cannot be directly deleted.** Count and
   show live usages, then require an explicit atomic reassignment (a payment
   source may be cleared because its references are nullable) before tombstoning.

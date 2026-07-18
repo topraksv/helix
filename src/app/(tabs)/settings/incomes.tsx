@@ -19,8 +19,11 @@ import { spacing } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { newId } from "../../../db/ids";
+import { todayISO } from "../../../domain/dates";
+import { DateField } from "../../../ui/calendar";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
+type IncomeRecurrence = "monthly" | "weekly" | "biweekly";
 const KINDS: IncomeKind[] = ["salary", "rent", "allowance", "other"];
 const QUICK_DAYS = ["1", "5", "10", "15", "25", "28"] as const;
 
@@ -38,6 +41,8 @@ export default function IncomeRulesScreen() {
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
   const [payDayStr, setPayDayStr] = useState("15");
+  const [recurrence, setRecurrence] = useState<IncomeRecurrence>("monthly");
+  const [anchorDate, setAnchorDate] = useState(todayISO());
   const [busy, setBusy] = useState(false);
   // persons/categories load async (live queries) — derive the defaults.
   const [personChoice, setPersonChoice] = useState<string | null>(null);
@@ -61,6 +66,8 @@ export default function IncomeRulesScreen() {
       effectiveName.trim() !== editingIncome.name ||
       amountRaw !== editingAmountRaw ||
       payDayStr !== String(editingIncome.payDay) ||
+      recurrence !== editingIncome.recurrence ||
+      anchorDate !== (editingIncome.anchorDate ?? todayISO()) ||
       personId !== editingIncome.personId ||
       categoryId !== editingIncome.categoryId
     : Boolean(
@@ -68,6 +75,8 @@ export default function IncomeRulesScreen() {
       amountRaw.trim() ||
       kind !== "salary" ||
       payDayStr !== "15" ||
+      recurrence !== "monthly" ||
+      anchorDate !== todayISO() ||
       personChoice ||
       categoryChoice
     );
@@ -75,7 +84,8 @@ export default function IncomeRulesScreen() {
 
   const payDay = Number(payDayStr);
   const dayValid = Number.isInteger(payDay) && payDay >= 1 && payDay <= 31;
-  const valid = effectiveName.trim() !== "" && amountMinor != null && amountMinor > 0 && dayValid && personId != null && categoryId != null;
+  const scheduleValid = recurrence === "monthly" ? dayValid : Boolean(anchorDate);
+  const valid = effectiveName.trim() !== "" && amountMinor != null && amountMinor > 0 && scheduleValid && personId != null && categoryId != null;
 
   const resetForm = () => {
     setEditingId(null);
@@ -85,6 +95,8 @@ export default function IncomeRulesScreen() {
     setAmountRaw("");
     setAmountMinor(null);
     setPayDayStr("15");
+    setRecurrence("monthly");
+    setAnchorDate(todayISO());
     setPersonChoice(null);
     setCategoryChoice(null);
   };
@@ -97,6 +109,8 @@ export default function IncomeRulesScreen() {
     setAmountRaw((r.defaultAmountMinor / 100).toFixed(2).replace(".", ","));
     setAmountMinor(r.defaultAmountMinor);
     setPayDayStr(String(r.payDay));
+    setRecurrence(r.recurrence);
+    setAnchorDate(r.anchorDate ?? todayISO());
     setPersonChoice(r.personId);
     setCategoryChoice(r.categoryId ?? null);
   };
@@ -113,7 +127,9 @@ export default function IncomeRulesScreen() {
           kind,
           defaultAmountMinor: amountMinor!,
           currency: "TRY",
-          payDay,
+          payDay: recurrence === "monthly" ? payDay : Number(anchorDate.slice(8, 10)),
+          recurrence,
+          anchorDate: recurrence === "monthly" ? null : anchorDate,
           personId,
           categoryId,
           isActive: existing ? existing.isActive : true,
@@ -160,19 +176,35 @@ export default function IncomeRulesScreen() {
             setAmountMinor(minor);
           }}
         />
-        <Label>{tr.settings.payDay}</Label>
-        <ChipPicker
-          options={QUICK_DAYS.map((d) => ({ value: d, label: d }))}
-          value={(QUICK_DAYS as readonly string[]).includes(payDayStr) ? (payDayStr as (typeof QUICK_DAYS)[number]) : null}
-          onChange={setPayDayStr}
+        <Label>{tr.incomes.recurrenceLabel}</Label>
+        <Segmented
+          options={[
+            { value: "monthly", label: tr.incomes.monthly },
+            { value: "weekly", label: tr.incomes.weekly },
+            { value: "biweekly", label: tr.incomes.biweekly },
+          ]}
+          value={recurrence}
+          onChange={setRecurrence}
         />
-        <Field
-          label={tr.incomes.customDay}
-          value={payDayStr}
-          onChangeText={setPayDayStr}
-          keyboardType="number-pad"
-          error={payDayStr !== "" && !dayValid ? tr.incomes.dayError : null}
-        />
+        {recurrence === "monthly" ? (
+          <>
+            <Label>{tr.settings.payDay}</Label>
+            <ChipPicker
+              options={QUICK_DAYS.map((d) => ({ value: d, label: d }))}
+              value={(QUICK_DAYS as readonly string[]).includes(payDayStr) ? (payDayStr as (typeof QUICK_DAYS)[number]) : null}
+              onChange={setPayDayStr}
+            />
+            <Field
+              label={tr.incomes.customDay}
+              value={payDayStr}
+              onChangeText={setPayDayStr}
+              keyboardType="number-pad"
+              error={payDayStr !== "" && !dayValid ? tr.incomes.dayError : null}
+            />
+          </>
+        ) : (
+          <DateField label={tr.incomes.firstPaymentDate} value={anchorDate} onChange={setAnchorDate} />
+        )}
         {persons.length > 1 ? (
           <>
             <Label>{tr.tx.person}</Label>
@@ -188,7 +220,7 @@ export default function IncomeRulesScreen() {
           />
         ) : null}
         <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>
-          {tr.incomes.behaviorHint(dayValid ? payDay : 15)}
+          {recurrence === "monthly" ? tr.incomes.behaviorHint(dayValid ? payDay : 15) : tr.incomes.intervalHint(recurrence)}
         </Body>
         {editingId ? (
           <Row>
@@ -213,7 +245,7 @@ export default function IncomeRulesScreen() {
               <View style={{ flex: 1, paddingRight: spacing.sm }}>
                 <Body>{r.name}</Body>
                 <Body muted>
-                  {tr.incomeKinds[r.kind]} · {formatMinor(r.defaultAmountMinor, r.currency)} · {tr.incomes.everyMonth(r.payDay)}
+                  {tr.incomeKinds[r.kind]} · {formatMinor(r.defaultAmountMinor, r.currency)} · {r.recurrence === "monthly" ? tr.incomes.everyMonth(r.payDay) : tr.incomes.everyInterval(r.recurrence)}
                 </Body>
               </View>
               <Row gap={spacing.sm}>

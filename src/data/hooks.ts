@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
-import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
@@ -111,6 +111,23 @@ export function useUserId(): string {
   const userId = useSession((st) => st.userId);
   if (!userId) throw new Error("useUserId used outside an authenticated screen");
   return userId;
+}
+
+/** Local sync queue summary for calm, account-scoped shell feedback. */
+export function useOutboxSummary() {
+  const userId = useUserId();
+  const result = useSharedLive(
+    `outbox-summary:${userId}`,
+    () =>
+      getDb()
+        .select({
+          pendingCount: sql<number>`count(*)`,
+          oldestPendingAt: sql<string | null>`min(${s.outbox.createdAt})`,
+        })
+        .from(s.outbox),
+    ["outbox"],
+  );
+  return result.data[0] ?? { pendingCount: 0, oldestPendingAt: null };
 }
 
 /**
@@ -335,6 +352,24 @@ export function useRecurringIncomesState() {
 
 export function useComputedColumns() {
   return useComputedColumnsState().data;
+}
+
+export function useCategoryBudgets() {
+  return useCategoryBudgetsState().data;
+}
+
+export function useCategoryBudgetsState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `category_budgets:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.categoryBudgets)
+        .where(and(eq(s.categoryBudgets.userId, userId), isNull(s.categoryBudgets.deletedAt)))
+        .orderBy(asc(s.categoryBudgets.month), asc(s.categoryBudgets.categoryId)),
+    ["category_budgets"],
+  );
 }
 
 export function useComputedColumnsState() {

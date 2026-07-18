@@ -1,15 +1,15 @@
-/** Dashboard: catch-up banner, actual vs projected balance (§2.7),
- *  upcoming/late expected items with confirm, distribution, trend. */
+/** Dashboard: current balance, action-needed payments, upcoming timeline and
+ * one concise monthly insight. Detailed exploration belongs to Analysis. */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { useRouter } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter, type Href } from "expo-router";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
-import { standaloneUpcomingTransactions, upcomingCardStatements } from "../../domain/upcoming";
-import { dateLabel, dateTimeLabel, monthLabel, shortMonthLabel, tr } from "../../i18n/tr";
+import { buildUpcomingTimeline } from "../../domain/upcoming";
+import { dateLabel, dateTimeLabel, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
 import {
   daysBetween,
@@ -27,12 +27,10 @@ import { combineLiveQueryStatus } from "../../data/live-state";
 import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
 import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
-import { projectedTransactionFlow } from "../../domain/transactions";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
-import { Bars, Donut, seriesColor, SplitBar, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
@@ -195,9 +193,7 @@ export default function DashboardScreen() {
     cardStatementsState.retry();
   };
   const router = useRouter();
-  const colors = useSeriesColors();
   const undo = useUndo();
-  const { width } = useWindowDimensions();
   const { palette } = useTheme();
   // Re-render when FX rates land so foreign-currency projections settle.
   useFxRates();
@@ -208,7 +204,6 @@ export default function DashboardScreen() {
   // full-table live query (useAllTransactions) + toTxLike on the same data.
   const txLike = bundle?.txLike ?? [];
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
-  const creditCardIds = new Set(sources.filter((source) => source.type === "credit_card").map((source) => source.id));
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
   const incomeById = new Map(incomes.map((income) => [income.id, income]));
@@ -240,74 +235,36 @@ export default function DashboardScreen() {
     year,
     expectedTryMinor,
   });
-  const { pendingItems, lateItems: late, incomingMinor, outgoingMinor: remainingFixedMinor } = model;
-  // Upcoming = the next ~31 days of everything you'll pay/receive on a fixed
-  // schedule: subscriptions + recurring incomes (expected items) AND your own
-  // future-dated one-off entries (a bill you scheduled ahead). A month-wide
-  // window so each monthly obligation shows once, auto-pay or not.
-  const upcoming: {
-    key: string;
-    kind: "expected" | "tx";
-    expectedId?: string;
-    direction: "in" | "out";
-    name: string;
-    typeLabel: string;
-    amountMinor: number;
-    currency: string;
-    date: string;
-  }[] = [
-    ...pendingItems
-      .filter((e) => e.status === "pending" && e.dueDate >= today && daysBetween(today, e.dueDate) <= 31)
-      .map((e) => ({
-        key: e.id,
-        kind: "expected" as const,
-        expectedId: e.id,
-        direction: e.direction,
-        name: nameOf(e),
-        typeLabel:
-          e.direction === "in"
-            ? tr.dashboard.expectedIncome
-            : catName(subscriptionById.get(e.refId)?.categoryId ?? null) ?? tr.subs.title,
-        amountMinor: e.amountMinor,
-        currency: e.currency,
-        date: e.dueDate,
+  const { lateItems: late, incomingMinor, outgoingMinor: remainingFixedMinor } = model;
+  const upcoming = buildUpcomingTimeline({
+    expected,
+    transactions: txLike,
+    expectedSources: [
+      ...subscriptions.map((subscription) => ({
+        id: subscription.id,
+        name: subscription.name,
+        sourceType: "subscription" as const,
+        categoryName: catName(subscription.categoryId) ?? null,
       })),
-    ...standaloneUpcomingTransactions(txLike, creditCardIds, today)
-      .map((t) => {
-        const flow = projectedTransactionFlow(t);
-        return {
-          key: t.id,
-          kind: "tx" as const,
-          direction: flow.direction,
-          name: catName(t.categoryId) ?? tr.dashboard.scheduledTx,
-          typeLabel: tr.dashboard.scheduledTx,
-          amountMinor: flow.amountTryMinor,
-          currency: "TRY",
-          date: t.effectiveDate,
-        };
-      }),
-    // One consolidated statement per credit card — you pay the card once, not
-    // each purchase. Only for cards that HAVE a due day; a card with no known
-    // due date shows nothing (never a fabricated "in N days"). The amount is the
-    // card's next unpaid statement month (its earliest pending installments).
-    ...upcomingCardStatements(
-      txLike,
-      sources.filter((source) => source.type === "credit_card"),
-      cardStatements,
-      today,
-    ).map((statement) => ({
-          key: `card-${statement.cardId}`,
-          kind: "tx" as const,
-          direction: "out" as const,
-          name: statement.cardName,
-          typeLabel: tr.dashboard.cardStatement,
-          amountMinor: statement.amountMinor,
-          currency: "TRY",
-          date: statement.dueDate,
-        })),
-  ]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 12);
+      ...incomes.map((income) => ({
+        id: income.id,
+        name: income.name,
+        sourceType: "recurring_income" as const,
+        categoryName: catName(income.categoryId) ?? null,
+      })),
+    ],
+    categories: categories.map((category) => ({ id: category.id, name: category.name })),
+    cards: sources.filter((source) => source.type === "credit_card"),
+    statements: cardStatements,
+    today,
+    horizonDays: 31,
+  }).filter((item) => item.status === "upcoming").slice(0, 12);
+  const timelineTypeLabel = (sourceType: (typeof upcoming)[number]["sourceType"]) => ({
+    recurring_income: tr.dashboard.expectedIncome,
+    subscription: tr.subs.title,
+    scheduled_transaction: tr.dashboard.scheduledTx,
+    card_statement: tr.dashboard.cardStatement,
+  })[sourceType];
 
   // Everything still to happen between today and month end, as ONE flow set, so
   // the month-end forecast and its breakdown reconcile exactly:
@@ -317,43 +274,9 @@ export default function DashboardScreen() {
   // onward are what isn't in the actual balance yet.
   const hasForecast = incomingMinor > 0 || remainingFixedMinor > 0;
   const projected = model.projectedMinor;
-  const dist = model.distribution;
-  const fv = { fixedMinor: model.fixedMinor, variableMinor: model.variableMinor };
-
-  const donutEntries = [...dist.expenseByCategory.entries()]
-    .map(([id, v]) => ({ label: categoryById.get(id)?.name ?? tr.common.none, valueMinor: v }))
-    .concat(dist.uncategorizedExpenseMinor !== 0 ? [{ label: tr.common.none, valueMinor: dist.uncategorizedExpenseMinor }] : [])
-    .sort((a, b) => b.valueMinor - a.valueMinor);
-  const positiveDonutEntries = donutEntries.filter((entry) => entry.valueMinor > 0);
-  const refundEntries = donutEntries.filter((entry) => entry.valueMinor < 0);
-  const donutRest = positiveDonutEntries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
-  const donutSlices = [
-    ...positiveDonutEntries.slice(0, 7).map((e, i) => ({ ...e, color: seriesColor(colors, i) })),
-    ...(donutRest > 0 ? [{ label: tr.common.other, valueMinor: donutRest, color: colors[7] }] : []),
-    ...(dist.transferTotalMinor > 0
-      ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: colors[4] }]
-      : []),
-  ];
-  const donutSupplemental = [
-    ...refundEntries.map((entry) => ({
-      label: tr.dashboard.refundAside(entry.label),
-      valueMinor: entry.valueMinor,
-      color: palette.positive,
-    })),
-    ...(dist.transferTotalMinor < 0
-      ? [{ label: tr.dashboard.investmentRefundAside, valueMinor: dist.transferTotalMinor, color: palette.positive }]
-      : []),
-  ];
-  const distributionTotalMinor = dist.expenseTotalMinor + dist.transferTotalMinor;
-
-  const trendMonths = model.trendMonths;
-  // Grouped income-vs-expense bars read far clearer than three overlapping
-  // lines where a cumulative balance dwarfed the monthly flows.
-  const trendGroups =
-    trendMonths.length >= 2
-      ? trendMonths.map((m) => ({ label: shortMonthLabel(m.month), values: [m.incomeMinor, m.expenseMinor] }))
-      : null;
-  const thisMonthNet = trendMonths.find((m) => m.month === month);
+  const monthIncomeMinor = model.distribution.incomeTotalMinor;
+  const monthOutflowMinor = model.distribution.expenseTotalMinor + model.distribution.transferTotalMinor;
+  const monthNetMinor = monthIncomeMinor - monthOutflowMinor;
 
   // Marking an expected item paid picks the day it was actually paid. This lets
   // the user record an early/manual payment ("due the 15th, I paid it on the
@@ -577,8 +500,8 @@ export default function DashboardScreen() {
               key={u.key}
               icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
               iconColor={u.direction === "in" ? palette.positive : undefined}
-              title={u.name}
-              subtitle={`${u.typeLabel} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
+              title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
+              subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
               stackRightOnNarrow
               right={
                 u.kind === "expected" && u.expectedId ? (
@@ -599,6 +522,7 @@ export default function DashboardScreen() {
               }
             />
           ))}
+          <Button label={tr.dashboard.allUpcoming} variant="ghost" onPress={() => router.push("/upcoming" as Href)} />
         </Card>
       ) : (
         <Card>
@@ -609,48 +533,16 @@ export default function DashboardScreen() {
       {/* Live markets */}
       <MarketsCard />
 
-      {/* Expense distribution */}
-      {donutSlices.length > 0 || donutSupplemental.length > 0 ? (
-        <Card>
-          <Heading style={{ marginTop: 0 }}>
-            {tr.dashboard.distribution} · {monthLabel(month)}
-          </Heading>
-          <Donut slices={donutSlices} supplementalSlices={donutSupplemental} totalMinor={distributionTotalMinor} />
-        </Card>
-      ) : null}
-
-      {/* Fixed vs variable */}
-      {fv.fixedMinor !== 0 || fv.variableMinor !== 0 ? (
-        <Card>
-          <Heading style={{ marginTop: 0 }}>{tr.dashboard.fixedVsVariable}</Heading>
-          <SplitBar
-            parts={[
-              { label: tr.dashboard.fixed, valueMinor: fv.fixedMinor, color: colors[0] },
-              { label: tr.dashboard.variable, valueMinor: fv.variableMinor, color: colors[2] },
-            ]}
-          />
-        </Card>
-      ) : null}
-
-      {/* Monthly income vs expense */}
-      {trendGroups ? (
-        <Card>
-          <Spread style={{ marginBottom: spacing.xs }}>
-            <Heading style={{ marginTop: 0, marginBottom: 0 }}>{tr.dashboard.trend}</Heading>
-            {thisMonthNet ? (
-              <Body muted style={{ fontSize: 12 }}>{tr.dashboard.trendNet(formatMinor(thisMonthNet.incomeMinor - thisMonthNet.expenseMinor))}</Body>
-            ) : null}
-          </Spread>
-          <Bars
-            width={Math.min(width - spacing.lg * 4, 640)}
-            groups={trendGroups}
-            series={[
-              { label: tr.cashflow.income, color: colors[1] },
-              { label: tr.cashflow.expense, color: colors[5] },
-            ]}
-          />
-        </Card>
-      ) : null}
+      <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
+      <Card>
+        <ListRow
+          icon={ChartNoAxesColumn}
+          title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
+          subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
+          chevron
+          onPress={() => router.push("/cash-flow/analytics")}
+        />
+      </Card>
     </Screen>
   );
 }

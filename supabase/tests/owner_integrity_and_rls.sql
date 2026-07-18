@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(19);
+select plan(24);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -45,11 +45,11 @@ select is(
         'persons','payment_sources','categories','computed_columns',
         'installment_plans','credit_card_statements','transactions',
         'subscriptions','price_history','recurring_incomes','expected_payments',
-        'balance_adjustments','cell_notes','settings','fx_rates'
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
       ])
   ),
-  60::bigint,
-  'all 15 synced tables have four owner policies'
+  64::bigint,
+  'all 16 synced tables have four owner policies'
 );
 
 select is(
@@ -61,11 +61,11 @@ select is(
         'persons','payment_sources','categories','computed_columns',
         'installment_plans','credit_card_statements','transactions',
         'subscriptions','price_history','recurring_incomes','expected_payments',
-        'balance_adjustments','cell_notes','settings','fx_rates'
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
       ])
       and roles = array['authenticated']::name[]
   ),
-  60::bigint,
+  64::bigint,
   'every owner policy is restricted to authenticated'
 );
 
@@ -163,6 +163,70 @@ select lives_ok(
       'Expense', 'expense'
     )$$,
   'user B can insert an owned expense category'
+);
+
+select lives_ok(
+  $$insert into public.category_budgets (id, user_id, category_id, month, amount_minor)
+    values (
+      '20000000-0000-4000-8000-000000000029',
+      '20000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000023', '2026-08', 50000
+    )$$,
+  'an owned budget accepts a live expense category'
+);
+
+select lives_ok(
+  $$insert into public.categories (id, user_id, name, kind)
+    values (
+      '20000000-0000-4000-8000-000000000030',
+      '20000000-0000-4000-8000-000000000002',
+      'Income', 'income'
+    )$$,
+  'user B can insert an owned income category'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.category_budgets (id, user_id, category_id, month, amount_minor)
+    values (
+      '20000000-0000-4000-8000-000000000031',
+      '20000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000030', '2026-08', 50000
+    )
+  $command$),
+  '23514',
+  'a budget rejects an income category'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.recurring_incomes (
+      id, user_id, name, default_amount_minor, pay_day, recurrence,
+      person_id, category_id
+    ) values (
+      '20000000-0000-4000-8000-000000000032',
+      '20000000-0000-4000-8000-000000000002',
+      'Missing anchor', 10000, 1, 'weekly',
+      '20000000-0000-4000-8000-000000000021',
+      '20000000-0000-4000-8000-000000000030'
+    )
+  $command$),
+  '23514',
+  'a weekly income requires an anchor date'
+);
+
+select lives_ok(
+  $$insert into public.recurring_incomes (
+      id, user_id, name, default_amount_minor, pay_day, recurrence, anchor_date,
+      person_id, category_id
+    ) values (
+      '20000000-0000-4000-8000-000000000033',
+      '20000000-0000-4000-8000-000000000002',
+      'Weekly income', 10000, 1, 'weekly', '2026-08-01',
+      '20000000-0000-4000-8000-000000000021',
+      '20000000-0000-4000-8000-000000000030'
+    )$$,
+  'a weekly income accepts a valid anchor date'
 );
 
 select is(

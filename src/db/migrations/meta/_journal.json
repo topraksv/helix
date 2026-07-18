@@ -29,6 +29,13 @@
       "when": 1784133863986,
       "tag": "0003_uneven_ultragirl",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784374997577,
+      "tag": "0004_category_budgets_and_income_recurrence",
+      "breakpoints": true
     }
   ]
 }

@@ -67,6 +67,7 @@ const RELATIONS = [
   ["price_history", "subscription_id", "subscriptions"],
   ["recurring_incomes", "person_id", "persons"],
   ["recurring_incomes", "category_id", "categories"],
+  ["category_budgets", "category_id", "categories"],
   ["expected_payments", "transaction_id", "transactions"],
   ["cell_notes", "category_id", "categories"],
 ] as const satisfies readonly (readonly [SyncedTableName, string, SyncedTableName])[];
@@ -99,6 +100,9 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
   for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
     const value = raw[column.name];
     if (value == null) {
+      // Version-1 backups produced before cadence support have no recurrence
+      // key. SQLite/Postgres both default those legacy rows to monthly.
+      if (table === "recurring_incomes" && column.name === "recurrence" && !(column.name in raw)) continue;
       if (column.notNull) return false;
       continue;
     }
@@ -138,6 +142,11 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     } catch {
       return false;
     }
+  }
+  if (table === "category_budgets" && (typeof raw.amount_minor !== "number" || raw.amount_minor <= 0)) return false;
+  if (table === "recurring_incomes") {
+    const recurrence = raw.recurrence ?? "monthly";
+    if ((recurrence === "weekly" || recurrence === "biweekly") && !isIsoDate(raw.anchor_date)) return false;
   }
   return true;
 }

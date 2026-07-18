@@ -6,17 +6,23 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
+import { Snowflake } from "lucide-react-native";
 import { useSession } from "../auth/session";
+import { useUserId } from "../data/hooks";
+import { pendingOutboxCount, writeSetting } from "../db/mutations";
 import { tr } from "../i18n/tr";
 import { Body, Button, Card, Field, Heading, Screen } from "../ui/components";
-import { appAlert } from "../ui/dialog";
+import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { scheduleSync, syncNow } from "../sync/engine";
+import { isSupabaseConfigured } from "../sync/supabase";
 
 export default function AccountSecurityScreen() {
-  const { email, verifyPassword, changeEmail, changePassword, requestPasswordReset } = useSession();
+  const { email, verifyPassword, changeEmail, changePassword, requestPasswordReset, signOut } = useSession();
+  const userId = useUserId();
   const router = useRouter();
   const operationGuard = useOperationGuard();
 
@@ -28,6 +34,7 @@ export default function AccountSecurityScreen() {
   const [newPassword, setNewPassword] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+  const [freezing, setFreezing] = useState(false);
   const allowExit = useDirtyExitGuard(Boolean(newEmail || emailPassword || currentPassword || newPassword));
 
   const emailValid = /.+@.+\..+/.test(newEmail.trim());
@@ -94,8 +101,60 @@ export default function AccountSecurityScreen() {
     });
   };
 
+  const freezeAccount = async () => {
+    if (freezing) return;
+    const accepted = await appConfirm(tr.account.freezeConfirmTitle, tr.account.freezeConfirmBody, {
+      confirmLabel: tr.account.freezeConfirm,
+      danger: true,
+    });
+    if (!accepted) return;
+    if (isSupabaseConfigured) {
+      const password = await appPrompt(tr.account.confirmPasswordTitle, tr.account.freezePasswordBody, {
+        secure: true,
+        placeholder: tr.auth.password,
+        confirmLabel: tr.account.freezeConfirm,
+        danger: true,
+      });
+      if (password == null) return;
+      const verifyError = await verifyPassword(password);
+      if (verifyError) {
+        void appAlert(verifyError, tr.errors.title);
+        return;
+      }
+    }
+    setFreezing(true);
+    useSession.setState({ isFreezing: true });
+    try {
+      await writeSetting(userId, "account_frozen", true);
+      if (!isSupabaseConfigured) {
+        scheduleSync(userId);
+        useSession.setState({ isFreezing: false });
+        return;
+      }
+      const synced = await syncNow(userId);
+      if (!synced || (await pendingOutboxCount()) > 0) {
+        await writeSetting(userId, "account_frozen", false);
+        scheduleSync(userId);
+        useSession.setState({ isFreezing: false });
+        void appAlert(tr.account.freezeSyncFailed, tr.errors.title);
+        return;
+      }
+      const signOutError = await signOut();
+      if (signOutError) {
+        await writeSetting(userId, "account_frozen", false);
+        scheduleSync(userId);
+        useSession.setState({ isFreezing: false });
+        void appAlert(signOutError, tr.errors.title);
+      }
+    } finally {
+      setFreezing(false);
+    }
+  };
+
   return (
     <Screen>
+      {isSupabaseConfigured ? (
+        <>
       <Card>
         <Heading style={{ marginTop: 0 }}>{tr.account.changeEmail}</Heading>
         {email ? <Body muted style={{ marginBottom: spacing.md }}>{tr.account.currentEmail(email)}</Body> : null}
@@ -164,6 +223,22 @@ export default function AccountSecurityScreen() {
           onPress={() => void sendResetLink()}
           loading={resetBusy}
           disabled={!email || resetBusy}
+        />
+      </Card>
+
+      <View style={{ height: spacing.md }} />
+        </>
+      ) : null}
+
+      <Card>
+        <Heading style={{ marginTop: 0 }}>{tr.account.freeze}</Heading>
+        <Body muted style={{ marginBottom: spacing.md }}>{tr.account.freezeDesc}</Body>
+        <Button
+          icon={Snowflake}
+          label={tr.account.freeze}
+          variant="danger"
+          onPress={() => void freezeAccount()}
+          loading={freezing}
         />
       </Card>
     </Screen>

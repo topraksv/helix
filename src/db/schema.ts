@@ -176,11 +176,24 @@ export const recurringIncomes = sqliteTable("recurring_incomes", {
   defaultAmountMinor: integer("default_amount_minor").notNull(),
   currency: text("currency").notNull().default("TRY"),
   payDay: integer("pay_day").notNull(),
+  recurrence: text("recurrence", { enum: ["monthly", "weekly", "biweekly"] }).notNull().default("monthly"),
+  anchorDate: text("anchor_date"),
   personId: text("person_id").notNull(),
   categoryId: text("category_id"),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   note: text("note"),
 });
+
+export const categoryBudgets = sqliteTable(
+  "category_budgets",
+  {
+    ...syncColumns,
+    categoryId: text("category_id").notNull(),
+    month: text("month").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+  },
+  (t) => [index("idx_budget_month_category").on(t.month, t.categoryId)],
+);
 
 export const expectedPayments = sqliteTable(
   "expected_payments",
@@ -260,6 +273,7 @@ export const syncState = sqliteTable("sync_state", {
 export const SYNCED_TABLES = {
   persons,
   categories: categories,
+  category_budgets: categoryBudgets,
   payment_sources: paymentSources,
   computed_columns: computedColumns,
   installment_plans: installmentPlans,

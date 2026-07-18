@@ -6,6 +6,7 @@
 
 import {
   addMonthsToKey,
+  addDaysISO,
   clampDayToMonth,
   monthKeyOf,
   monthOf,
@@ -79,6 +80,30 @@ export function dueDatesInRange(
   for (let i = 0; due <= toInclusive && i < MAX_RECURRENCE_STEPS; i++) {
     if (due >= fromInclusive) dates.push(due);
     due = advanceDueDate(due, intervalMonths, billingDay);
+  }
+  return dates;
+}
+
+/** Calendar-day recurrence that stays stable across timezone/DST boundaries. */
+export function dayIntervalDatesInRange(
+  anchor: ISODate,
+  intervalDays: number,
+  fromInclusive: ISODate,
+  toInclusive: ISODate,
+): ISODate[] {
+  if (!Number.isInteger(intervalDays) || intervalDays < 1 || anchor > toInclusive) return [];
+  let due = anchor;
+  if (due < fromInclusive) {
+    const elapsedDays = Math.floor(
+      (Date.parse(`${fromInclusive}T12:00:00Z`) - Date.parse(`${anchor}T12:00:00Z`)) / 86_400_000,
+    );
+    due = addDaysISO(anchor, Math.floor(elapsedDays / intervalDays) * intervalDays);
+    if (due < fromInclusive) due = addDaysISO(due, intervalDays);
+  }
+  const dates: ISODate[] = [];
+  for (let i = 0; due <= toInclusive && i < MAX_RECURRENCE_STEPS; i++) {
+    if (due >= fromInclusive) dates.push(due);
+    due = addDaysISO(due, intervalDays);
   }
   return dates;
 }

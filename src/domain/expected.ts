@@ -7,7 +7,7 @@
  */
 
 import { addMonthsToKey, lastDayOf, monthKeyOf, type ISODate } from "./dates";
-import { dueDateInMonth, dueDatesInRange } from "./recurrence";
+import { dayIntervalDatesInRange, dueDateInMonth, dueDatesInRange } from "./recurrence";
 import type {
   ExpectedPaymentLike,
   RecurringIncomeLike,
@@ -93,6 +93,22 @@ export function generateExpected(
 
   for (const income of incomes) {
     if (!income.isActive || !income.personIsSelf) continue;
+    if (income.recurrence === "weekly" || income.recurrence === "biweekly") {
+      if (!income.anchorDate) continue;
+      const intervalDays = income.recurrence === "weekly" ? 7 : 14;
+      for (const dueDate of dayIntervalDatesInRange(income.anchorDate, intervalDays, today, horizon)) {
+        const draft: ExpectedDraft = {
+          direction: "in",
+          kind: "recurring_income",
+          refId: income.id,
+          dueDate,
+          amountMinor: income.defaultAmountMinor,
+          currency: income.currency,
+        };
+        if (!seen.has(expectedKey(draft))) drafts.push(draft);
+      }
+      continue;
+    }
     let month = monthKeyOf(today);
     for (let i = 0; i <= horizonMonths; i++) {
       const dueDate = dueDateInMonth(month, income.payDay);

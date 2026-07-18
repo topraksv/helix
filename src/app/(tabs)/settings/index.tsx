@@ -22,8 +22,8 @@ import {
   KeyRound,
   LogOut,
   PiggyBank,
+  Target,
   ScanFace,
-  Snowflake,
   Trash2,
   Users,
   Wallet,
@@ -33,7 +33,7 @@ import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
 import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
 import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
-import { scheduleSync, syncNow } from "../../../sync/engine";
+import { syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalThemePreference } from "../../_layout";
@@ -168,50 +168,6 @@ export default function SettingsScreen() {
     return true;
   };
 
-  const [freezing, setFreezing] = useState(false);
-  const handleFreeze = async () => {
-    if (freezing) return;
-    const ok = await appConfirm(tr.account.freezeConfirmTitle, tr.account.freezeConfirmBody, {
-      confirmLabel: tr.account.freezeConfirm,
-      danger: true,
-    });
-    if (!ok) return;
-    if (!(await confirmWithPassword(tr.account.freezePasswordBody, tr.account.freezeConfirm))) return;
-    setFreezing(true);
-    // Suppress the frozen gate on THIS device while we write the flag + push +
-    // sign out (otherwise it flashes before the sign-out lands).
-    useSession.setState({ isFreezing: true });
-    try {
-      await writeSetting(userId, "account_frozen", true);
-      if (isSupabaseConfigured) {
-        // Push the flag to the cloud, then sign out to the login screen. Data is
-        // preserved (it lives in the cloud); logging back in re-hydrates it and
-        // clears the freeze. A different account can be used from here too.
-        const synced = await syncNow(userId);
-        if (!synced || (await pendingOutboxCount()) > 0) {
-          await writeSetting(userId, "account_frozen", false);
-          scheduleSync(userId);
-          useSession.setState({ isFreezing: false });
-          void appAlert(tr.account.freezeSyncFailed, tr.errors.title);
-          return;
-        }
-        const signOutError = await signOut(); // resets isFreezing on success
-        if (signOutError) {
-          await writeSetting(userId, "account_frozen", false);
-          scheduleSync(userId);
-          useSession.setState({ isFreezing: false });
-          void appAlert(signOutError, tr.errors.title);
-        }
-      } else {
-        // Local-only (no cloud): keep the session and lock in place via the gate.
-        scheduleSync(userId);
-        useSession.setState({ isFreezing: false });
-      }
-    } finally {
-      setFreezing(false);
-    }
-  };
-
   const [deleting, setDeleting] = useState(false);
   const handleDeleteAccount = async () => {
     if (deleting) return;
@@ -248,6 +204,7 @@ export default function SettingsScreen() {
         <ListRow icon={Wallet} title={tr.settings.sources} subtitle={tr.settings.sourcesDesc} chevron onPress={() => router.push("/settings/payment-sources")} />
         <ListRow icon={Users} title={tr.settings.persons} subtitle={tr.settings.personsDesc} chevron onPress={() => router.push("/settings/persons")} />
         <ListRow icon={Banknote} title={tr.settings.incomeRules} subtitle={tr.settings.incomeRulesDesc} chevron onPress={() => router.push("/settings/incomes")} />
+        <ListRow icon={Target} title={tr.budgets.title} subtitle={tr.budgets.settingsDesc} chevron onPress={() => router.push("/settings/budgets" as Href)} />
       </Card>
 
       <SectionHeader>{tr.settings.appSection}</SectionHeader>
@@ -361,7 +318,7 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <SectionHeader>{tr.settings.dataSection}</SectionHeader>
+      <SectionHeader>{tr.settings.syncSection}</SectionHeader>
       <Card>
         <ListRow
           icon={CloudUpload}
@@ -388,11 +345,15 @@ export default function SettingsScreen() {
         <Body muted style={{ fontSize: 12, marginTop: spacing.xs, marginBottom: spacing.sm }}>
           {tr.settings.syncExplain}
         </Body>
+        <ListRow icon={Activity} title={tr.diagnostics.title} subtitle={tr.diagnostics.settingsDesc} chevron onPress={() => router.push("/diagnostics" as Href)} />
+      </Card>
+
+      <SectionHeader>{tr.settings.transferSection}</SectionHeader>
+      <Card>
         <ListRow icon={FileDown} title={tr.settings.export} subtitle={tr.settings.exportDesc} chevron onPress={() => void exportJson()} />
         <ListRow icon={FileSpreadsheet} title={tr.settings.exportCsv} subtitle={tr.settings.exportCsvDesc} chevron onPress={() => void exportCsv()} />
         <ListRow icon={FileUp} title={tr.settings.import} subtitle={tr.settings.importDesc} chevron onPress={() => void importJson()} />
         <ListRow icon={FileSpreadsheet} title={tr.importer.title} subtitle={tr.importer.settingsDesc} chevron onPress={() => router.push("/import-wizard")} />
-        <ListRow icon={Activity} title={tr.diagnostics.title} subtitle={tr.diagnostics.settingsDesc} chevron onPress={() => router.push("/diagnostics" as Href)} />
       </Card>
 
       <Card>
@@ -403,11 +364,8 @@ export default function SettingsScreen() {
       <Card>
         {/* `as Href`: expo-router typegen only refreshes the route-literal union
             on `expo start`, so a freshly added route isn't in it yet. */}
-        {isSupabaseConfigured ? (
-          <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
-        ) : null}
+        <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
         <ListRow icon={LogOut} title={tr.auth.signOut} onPress={() => void handleSignOut()} />
-        <ListRow icon={Snowflake} title={tr.account.freeze} subtitle={tr.account.freezeDesc} onPress={() => void handleFreeze()} />
         <ListRow
           icon={Trash2}
           iconColor={palette.negative}

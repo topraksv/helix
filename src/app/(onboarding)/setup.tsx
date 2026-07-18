@@ -67,7 +67,10 @@ export default function SetupScreen() {
   const [editingSource, setEditingSource] = useState<number | null>(null);
   const [seeded, setSeeded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [advancedSetup, setAdvancedSetup] = useState(false);
   const operationGuard = useOperationGuard();
+  const personPlaceholder = useRotatingPlaceholder(placeholderPools.person);
+  const sourcePlaceholder = useRotatingPlaceholder(placeholderPools.source);
 
   // Once an import lands, drop the pre-selected template so we don't seed empty
   // template columns beside the imported ones. Guarded so the user can still
@@ -254,6 +257,39 @@ export default function SetupScreen() {
           </Card>
         ) : null}
 
+        {!advancedSetup ? (
+          <Card>
+            <Heading style={{ marginTop: 0 }}>{tr.onboarding.quickTitle}</Heading>
+            <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.quickHint}</Body>
+            <MoneyField
+              label={tr.onboarding.quickBalance}
+              value={hasImport ? "" : openingRaw}
+              disabled={hasImport}
+              onChangeMinor={(raw, minor) => {
+                setOpeningRaw(raw);
+                setOpeningMinor(minor);
+              }}
+            />
+            <Body muted style={{ fontSize: 12, marginBottom: spacing.md }}>
+              {hasImport ? tr.onboarding.importedOpeningNote : tr.onboarding.quickDefaults(selectedTemplate.length)}
+            </Body>
+            <Button label={tr.onboarding.quickStart} onPress={() => void commit()} loading={busy} />
+            <Button
+              label={tr.onboarding.customizeSetup}
+              variant="ghost"
+              onPress={() => setAdvancedSetup(true)}
+            />
+            {!hasImport ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Heading>{tr.onboarding.existingDataTitle}</Heading>
+                <Body muted style={{ marginBottom: spacing.xs }}>{tr.onboarding.existingDataHint}</Body>
+                <ListRow icon={FileSpreadsheet} title={tr.onboarding.historyExcel} subtitle={tr.onboarding.historyExcelDesc} chevron onPress={() => void openImporter("excel")} />
+                <ListRow icon={FileUp} title={tr.onboarding.historyJson} subtitle={tr.onboarding.historyJsonDesc} chevron onPress={() => void openImporter("json")} />
+              </View>
+            ) : null}
+          </Card>
+        ) : (
+          <>
         <Card>
           <Heading>1 · {tr.onboarding.templateTitle}</Heading>
           <Body muted style={{ marginBottom: spacing.sm }}>{hasImport ? tr.onboarding.importedTemplateNote : tr.onboarding.templateHint}</Body>
@@ -348,7 +384,7 @@ export default function SetupScreen() {
           )}
           <Row style={{ alignItems: "center" }}>
             <View style={{ flex: 1 }}>
-              <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={newPerson} onChangeText={setNewPerson} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
+              <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={newPerson} onChangeText={setNewPerson} placeholder={personPlaceholder} />
             </View>
             <Button
               label={tr.onboarding.addPerson}
@@ -388,7 +424,7 @@ export default function SetupScreen() {
               </Row>
             </Spread>
           ))}
-          <Field accessibilityLabel={tr.onboarding.addSource} value={newSource} onChangeText={setNewSource} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
+          <Field accessibilityLabel={tr.onboarding.addSource} value={newSource} onChangeText={setNewSource} placeholder={sourcePlaceholder} />
           <ChipPicker
             options={SOURCE_TYPES.map((t) => ({ value: t.value, label: t.label }))}
             value={newSourceType}
@@ -456,6 +492,9 @@ export default function SetupScreen() {
         </Card>
 
         <Button label={tr.onboarding.finishStart} onPress={() => void commit()} loading={busy} />
+        <Button label={tr.onboarding.quickMode} variant="ghost" onPress={() => setAdvancedSetup(false)} />
+          </>
+        )}
         <View style={{ height: spacing.xl }} />
       </View>
     </Screen>
