@@ -203,6 +203,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
           <Pressable
             key={value}
             accessibilityRole="radio"
+            aria-checked={selected}
             accessibilityState={{ checked: selected, selected }}
             onPress={() => setOp(value)}
             style={{

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ExportTextBuilder, isValidImportRow, MAX_BACKUP_ROWS, parseExportBundleText, validateBundleRelationships, validateExportBundle } from "../src/services/backup-validation";
 import { SYNCED_TABLES, type SyncedTableName } from "../src/db/schema";
+import { LOCAL_ONLY_USER_ID } from "../src/domain/user-id";
 
 const timestamp = "2026-07-15T12:00:00.000Z";
 const id = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -91,6 +92,12 @@ describe("backup validation", () => {
     expect(isValidImportRow("transactions", { ...transaction, id: "tx-1" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, person_id: "person-1" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, user_id: "source-user" })).toBe(false);
+  });
+
+  it("accepts only the stable legacy local owner outside the UUID rule", () => {
+    expect(isValidImportRow("transactions", { ...transaction, user_id: LOCAL_ONLY_USER_ID })).toBe(true);
+    expect(isValidImportRow("transactions", { ...transaction, user_id: "local-user" })).toBe(false);
+    expect(isValidImportRow("transactions", { ...transaction, person_id: LOCAL_ONLY_USER_ID })).toBe(false);
   });
 
   it("validates persisted statement months and dates", () => {

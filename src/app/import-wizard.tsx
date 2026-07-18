@@ -8,10 +8,9 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import { File } from "expo-file-system";
 import { CheckCircle2, FileSpreadsheet, Upload } from "lucide-react-native";
 import { importSheets, importedYears } from "../data/repo";
 import { usePersons, useSources, useUserId } from "../data/hooks";
@@ -25,6 +24,7 @@ import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { readPickedBytes } from "../services/picked-file";
 
 // --- visual format guide ---------------------------------------------------
 function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
@@ -171,11 +171,7 @@ export default function ImportWizardModal() {
         });
         if (picked.canceled || !picked.assets[0]) return;
         if ((picked.assets[0].size ?? 0) > MAX_WORKBOOK_BYTES) throw new Error(tr.importer.fileTooLarge);
-        const uri = picked.assets[0].uri;
-        const bytes =
-          Platform.OS === "web"
-            ? new Uint8Array(await (await fetch(uri)).arrayBuffer())
-            : await new File(uri).bytes();
+        const bytes = await readPickedBytes(picked.assets[0]);
         const parsed = await parseWorkbookBytes(bytes);
         if (parsed.sheets.length === 0) {
           setError(parsed.unparsed[0]?.reason ?? tr.importer.parseError);

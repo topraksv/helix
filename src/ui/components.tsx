@@ -460,7 +460,7 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={color} />
+        <ActivityIndicator accessibilityLabel={label} color={color} />
       ) : (
         <>
           {IconCmp ? <IconCmp accessible={false} size={small ? 15 : 17} color={color} strokeWidth={2.2} /> : null}
@@ -816,6 +816,7 @@ export function Select<T extends string>({
                       <Pressable
                         key={option.value}
                         accessibilityRole="radio"
+                        aria-checked={selected}
                         accessibilityState={{ checked: selected, selected }}
                         onPress={() => {
                           onChange(option.value);
@@ -883,6 +884,7 @@ export function Segmented<T extends string>({
               onChange(option.value);
             }}
             accessibilityRole="radio"
+            aria-checked={selected}
             accessibilityState={{ checked: selected, selected }}
             style={[
               {
@@ -948,6 +950,7 @@ export function ChipPicker<T extends string>({
               }
             }}
             accessibilityRole={multi ? "checkbox" : "radio"}
+            aria-checked={selected}
             accessibilityState={{ checked: selected, selected }}
             hitSlop={4}
             style={{
@@ -1072,7 +1075,7 @@ export function DataStateNotice({
         accessibilityLabel={tr.dataState.loading}
         style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}
       >
-        <ActivityIndicator color={palette.primary} />
+        <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} />
         <Body muted>{tr.dataState.loading}</Body>
       </View>
     );
@@ -1267,6 +1270,7 @@ export function Toggle({
     <Pressable
       accessibilityRole="switch"
       accessibilityLabel={label}
+      aria-checked={value}
       accessibilityState={{ checked: value, disabled }}
       hitSlop={10}
       disabled={disabled}

@@ -47,6 +47,8 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1",
     "@types/react": "~19.1.10",
     "babel-plugin-inline-import": "^3.0.0",
     "drizzle-kit": "^0.31.10",
@@ -63,6 +65,9 @@
     "lint": "expo lint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e:export": "node scripts/export-e2e-web.mjs",
+    "test:e2e": "npm run test:e2e:export && playwright test",
+    "test:e2e:update": "npm run test:e2e:export && playwright test --update-snapshots",
     "typecheck": "tsc --noEmit",
     "bundle:check": "node scripts/check-web-budget.mjs dist"
   },

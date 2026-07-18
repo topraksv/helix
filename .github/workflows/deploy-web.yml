@@ -45,11 +45,17 @@ jobs:
       - run: npx expo lint
       - run: npx expo export -p web
       - run: npm run bundle:check
+      # Exercise the real browser SQLite/OPFS implementation in local-only
+      # mode. This is intentionally after the production export/budget: E2E's
+      # blank Supabase env must never become the Pages artifact.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       # GitHub Pages serves 404.html for unknown paths (e.g. deep links to
-      # dynamic routes like /cash-flow/2026-05); the not-found page loads the
-      # router bundle, which then renders the real route client-side.
+      # dynamic routes like /cash-flow/2026-05). Use the root shell: copying
+      # +not-found hydrates the wrong server route before the client resolves
+      # the real URL and emits React hydration error #418.
       - if: github.event_name != 'pull_request'
-        run: cp dist/+not-found.html dist/404.html
+        run: cp dist/index.html dist/404.html
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
