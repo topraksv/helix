@@ -10,6 +10,7 @@ import { findSubscriptionCategory } from "../../domain/subscriptions";
 import { isValidCardCycle } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError, SubscriptionCategoryRequiredError } from "./errors";
 import { livePaymentSource } from "./transactions";
+import { assertRecurringIncomeCategory } from "./rule-validation";
 
 // ---------------------------------------------------------------------------
 // Subscriptions
@@ -279,6 +280,7 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
     [input.personId, userId],
   );
   if (!person) throw new Error("Recurring income person is required");
+  await assertRecurringIncomeCategory(userId, input.categoryId);
   const id = input.id ?? newId();
   const writes: RowWrite[] = [
     {

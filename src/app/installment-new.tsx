@@ -19,6 +19,8 @@ import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
+import { newId } from "../db/ids";
+import { useOperationGuard } from "../ui/operation-guard";
 
 export default function PlanModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -33,6 +35,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
   const userId = useUserId();
   const sources = useSources();
   const persons = usePersons();
+  const operationGuard = useOperationGuard();
   const categories = useCategories();
   const router = useRouter();
   const isEdit = existing != null;
@@ -86,43 +89,45 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
 
   const save = async () => {
     if (!valid || !personId) return;
-    setBusy(true);
-    try {
-      const person = persons.find((p) => p.id === personId)!;
-      const input = {
-        title: title.trim(),
-        kind,
-        totalAmountMinor: kind === "card_installment" ? amountMinor! : null,
-        monthlyAmountMinor: kind === "loan" ? amountMinor! : null,
-        installmentCount: count,
-        currency: "TRY",
-        fxRate: null,
-        startMonth: resolvedStart,
-        dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
-        paymentSourceId: sourceId,
-        personId,
-        personIsSelf: person.isSelf,
-        categoryId,
-        note: existing?.note ?? null,
-        tryFactor: 1,
-      };
-      if (isEdit) await updateInstallmentPlan(userId, existing!.id, input);
-      else await createInstallmentPlan(userId, input);
-      scheduleSync(userId);
-      close();
-    } catch (e) {
-      devError("installment.save", e);
-      void appAlert(
-        e instanceof CreditCardCycleRequiredError
-          ? tr.sources.cycleRequired
-          : e instanceof InstallmentHistoryConflictError
-            ? tr.installments.historyConflict
-            : tr.errors.saveFailed,
-        tr.errors.title,
-      );
-    } finally {
-      setBusy(false);
-    }
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        const person = persons.find((p) => p.id === personId)!;
+        const input = {
+          title: title.trim(),
+          kind,
+          totalAmountMinor: kind === "card_installment" ? amountMinor! : null,
+          monthlyAmountMinor: kind === "loan" ? amountMinor! : null,
+          installmentCount: count,
+          currency: "TRY",
+          fxRate: null,
+          startMonth: resolvedStart,
+          dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
+          paymentSourceId: sourceId,
+          personId,
+          personIsSelf: person.isSelf,
+          categoryId,
+          note: existing?.note ?? null,
+          tryFactor: 1,
+        };
+        if (isEdit) await updateInstallmentPlan(userId, existing!.id, input);
+        else await createInstallmentPlan(userId, input, newId());
+        scheduleSync(userId);
+        close();
+      } catch (e) {
+        devError("installment.save", e);
+        void appAlert(
+          e instanceof CreditCardCycleRequiredError
+            ? tr.sources.cycleRequired
+            : e instanceof InstallmentHistoryConflictError
+              ? tr.installments.historyConflict
+              : tr.errors.saveFailed,
+          tr.errors.title,
+        );
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const confirmDelete = () => {

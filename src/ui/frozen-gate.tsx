@@ -19,6 +19,7 @@ import { tr } from "../i18n/tr";
 import { Body, Button, Screen, Title } from "./components";
 import { appAlert } from "./dialog";
 import { spacing, useTheme } from "./theme";
+import { useOperationGuard } from "./operation-guard";
 
 export function FrozenGate() {
   const userId = useUserId();
@@ -26,6 +27,7 @@ export function FrozenGate() {
   const { signOut } = useSession();
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
+  const operationGuard = useOperationGuard();
   const useBiometric = Platform.OS !== "web" && biometricEnabled;
 
   useEffect(() => {
@@ -38,8 +40,14 @@ export function FrozenGate() {
   };
 
   const unlockBiometric = async () => {
-    const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.account.reactivate });
-    if (result.success) await unlock();
+    await operationGuard.run(async () => {
+      const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.account.reactivate });
+      if (result.success) await unlock();
+    });
+  };
+
+  const unlockDirectly = async () => {
+    await operationGuard.run(unlock);
   };
 
   // Auto-prompt Face ID when the gate opens with biometrics enabled.
@@ -65,17 +73,19 @@ export function FrozenGate() {
             variant={useBiometric ? "secondary" : "primary"}
             loading={busy}
             onPress={async () => {
-              setBusy(true);
-              try {
-                const error = await signOut();
-                if (error) void appAlert(error, tr.errors.title);
-              } finally {
-                setBusy(false);
-              }
+              await operationGuard.run(async () => {
+                setBusy(true);
+                try {
+                  const error = await signOut();
+                  if (error) void appAlert(error, tr.errors.title);
+                } finally {
+                  setBusy(false);
+                }
+              });
             }}
           />
         ) : (
-          <Button label={tr.account.reactivate} onPress={() => void unlock()} />
+          <Button label={tr.account.reactivate} onPress={() => void unlockDirectly()} />
         )}
       </View>
     </Screen>

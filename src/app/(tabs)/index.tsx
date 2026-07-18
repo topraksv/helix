@@ -40,6 +40,7 @@ import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
+import { useOperationGuard } from "../../ui/operation-guard";
 
 // Fixed column widths keep buy/sell figures right-aligned across rows (and
 // give the connecting-state placeholders the exact final geometry).
@@ -301,31 +302,34 @@ export default function DashboardScreen() {
   // One confirmation at a time: the button shows a spinner while the write is
   // in flight, so a double-tap can't submit the same expected item twice.
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
+  const operationGuard = useOperationGuard();
   const confirm = async (e: (typeof expected)[number], paidOn: ISODate) => {
-    if (!selfPersonId || confirmingId) return;
-    setConfirmingId(e.id);
-    try {
-      const sub = subscriptionById.get(e.refId);
-      const income = incomeById.get(e.refId);
-      await confirmExpected(userId, e.id, {
-        personId: sub?.personId ?? income?.personId ?? selfPersonId,
-        categoryId: sub?.categoryId ?? income?.categoryId ?? null,
-        paidOn,
-      });
-      scheduleSync(userId);
-      undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
-    } catch (err) {
-      errorNotice();
-      // Foreign-currency item confirmed before any FX rate was cached: tell the
-      // user to retry online instead of writing a corrupt TRY amount.
-      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
-      else {
-        devError("confirm", err);
-        void appAlert(tr.errors.saveFailed);
+    if (!selfPersonId) return;
+    await operationGuard.run(async () => {
+      setConfirmingId(e.id);
+      try {
+        const sub = subscriptionById.get(e.refId);
+        const income = incomeById.get(e.refId);
+        await confirmExpected(userId, e.id, {
+          personId: sub?.personId ?? income?.personId ?? selfPersonId,
+          categoryId: sub?.categoryId ?? income?.categoryId ?? null,
+          paidOn,
+        });
+        scheduleSync(userId);
+        undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+      } catch (err) {
+        errorNotice();
+        // Foreign-currency item confirmed before any FX rate was cached: tell the
+        // user to retry online instead of writing a corrupt TRY amount.
+        if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
+        else {
+          devError("confirm", err);
+          void appAlert(tr.errors.saveFailed);
+        }
+      } finally {
+        setConfirmingId(null);
       }
-    } finally {
-      setConfirmingId(null);
-    }
+    });
   };
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;

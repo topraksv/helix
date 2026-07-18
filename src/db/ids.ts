@@ -41,6 +41,9 @@ export const naturalKeys = {
   expected: (userId: string, kind: string, refId: string, dueDate: string) =>
     `expected:${userId}:${kind}:${refId}:${dueDate}`,
   installmentTx: (planId: string, installmentNo: number) => `insttx:${planId}:${installmentNo}`,
+  /** One aggregate transaction per category inside a user operation. Retrying
+   *  the same operation converges instead of appending another month copy. */
+  bulkTransaction: (operationId: string, categoryId: string) => `bulktx:${operationId}:${categoryId}`,
   /** One immutable credit-card statement row per card and statement month. */
   cardStatement: (userId: string, sourceId: string, periodMonth: string) =>
     `cardstatement:${userId}:${sourceId}:${periodMonth}`,

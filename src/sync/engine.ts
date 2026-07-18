@@ -12,8 +12,9 @@ import { getSupabase } from "./supabase";
 import { useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, type SessionEpochToken } from "./session-epoch";
-import { classifyOutboxBatch, isUuidShaped, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
+import { isUuidShaped, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
+import { prepareOutboundBatch } from "./outbound-validation";
 
 const isAuthError = (raw: string) => /jwt|token|401|unauthorized|not authenticated/i.test(raw);
 
@@ -45,7 +46,6 @@ const PULL_PAGE = 1000;
 const PUSH_BATCH = 200;
 
 /** Columns needing type coercion between SQLite and Postgres. */
-const JSONB_COLUMNS: Record<string, Set<string>> = { computed_columns: new Set(["definition"]) };
 const NUMERIC_COLUMNS: Record<string, Set<string>> = {
   transactions: new Set(["fx_rate"]),
   fx_rates: new Set(["rate_try"]),
@@ -72,21 +72,6 @@ for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
   KNOWN_COLUMNS.set(table, new Set(Object.values(getTableColumns(SYNCED_TABLES[table])).map((c) => c.name)));
 }
 
-/** SQLite payload → PostgREST payload. */
-function toRemote(table: SyncedTableName, row: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...row };
-  for (const col of BOOLEAN_COLUMNS.get(table)!) {
-    if (col in out && out[col] !== null) out[col] = Boolean(out[col]);
-  }
-  for (const col of JSONB_COLUMNS[table] ?? []) {
-    if (typeof out[col] === "string") out[col] = JSON.parse(out[col] as string);
-  }
-  for (const col of NUMERIC_COLUMNS[table] ?? []) {
-    if (out[col] != null) out[col] = Number(out[col]);
-  }
-  return out;
-}
-
 /** PostgREST row → SQLite-storable row (canonical ISO timestamps for LWW). */
 function toLocal(table: SyncedTableName, row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...row };
@@ -102,8 +87,8 @@ function toLocal(table: SyncedTableName, row: Record<string, unknown>): Record<s
   for (const col of BOOLEAN_COLUMNS.get(table)!) {
     if (col in out && out[col] !== null) out[col] = out[col] ? 1 : 0;
   }
-  for (const col of JSONB_COLUMNS[table] ?? []) {
-    if (out[col] != null && typeof out[col] !== "string") out[col] = JSON.stringify(out[col]);
+  if (table === "computed_columns" && out.definition != null && typeof out.definition !== "string") {
+    out.definition = JSON.stringify(out.definition);
   }
   for (const col of NUMERIC_COLUMNS[table] ?? []) {
     if (out[col] != null) out[col] = String(out[col]);
@@ -168,9 +153,10 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
       // Keep only the newest event per row. Invalid/cross-account payloads are
       // quarantined below; they are never silently discarded or sent under the
       // wrong RLS identity.
-      const { latestByRow, rejected } = classifyOutboxBatch(events, userId);
-      const pushedEvents = [...latestByRow.values()];
-      const rows = pushedEvents.map((event) => toRemote(table, event.row));
+      const { rejected, pushedEvents, rows } = prepareOutboundBatch(table, events, userId, {
+        allowedColumns: KNOWN_COLUMNS.get(table)!,
+        booleanColumns: BOOLEAN_COLUMNS.get(table)!,
+      });
       let acknowledged: Record<string, unknown>[] = [];
       if (rows.length > 0) {
         assertActive(token);
@@ -215,7 +201,6 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
       });
       if (rejected.length > 0) {
         devWarning("sync", `${rejected.length} invalid outbox event(s) quarantined`);
-        throw new Error(`push ${table}: invalid local outbox data quarantined`);
       }
     }
   }

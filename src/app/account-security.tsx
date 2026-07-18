@@ -12,10 +12,12 @@ import { Body, Button, Card, Field, Heading, Screen } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
+import { useOperationGuard } from "../ui/operation-guard";
 
 export default function AccountSecurityScreen() {
   const { email, verifyPassword, changeEmail, changePassword, requestPasswordReset } = useSession();
   const router = useRouter();
+  const operationGuard = useOperationGuard();
 
   const [newEmail, setNewEmail] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
@@ -29,59 +31,65 @@ export default function AccountSecurityScreen() {
   const emailValid = /.+@.+\..+/.test(newEmail.trim());
 
   const submitEmail = async () => {
-    if (emailBusy || !emailValid || emailPassword.length < 6) return;
-    setEmailBusy(true);
-    try {
-      const verifyError = await verifyPassword(emailPassword);
-      if (verifyError) {
-        void appAlert(verifyError, tr.errors.title);
-        return;
+    if (!emailValid || emailPassword.length < 6) return;
+    await operationGuard.run(async () => {
+      setEmailBusy(true);
+      try {
+        const verifyError = await verifyPassword(emailPassword);
+        if (verifyError) {
+          void appAlert(verifyError, tr.errors.title);
+          return;
+        }
+        const err = await changeEmail(newEmail.trim());
+        if (err) {
+          void appAlert(err, tr.errors.title);
+          return;
+        }
+        setNewEmail("");
+        setEmailPassword("");
+        void appAlert(tr.account.emailChangeSent);
+      } finally {
+        setEmailBusy(false);
       }
-      const err = await changeEmail(newEmail.trim());
-      if (err) {
-        void appAlert(err, tr.errors.title);
-        return;
-      }
-      setNewEmail("");
-      setEmailPassword("");
-      void appAlert(tr.account.emailChangeSent);
-    } finally {
-      setEmailBusy(false);
-    }
+    });
   };
 
   const submitPassword = async () => {
-    if (pwBusy || currentPassword.length < 6 || newPassword.length < 6) return;
-    setPwBusy(true);
-    try {
-      const verifyError = await verifyPassword(currentPassword);
-      if (verifyError) {
-        void appAlert(verifyError, tr.errors.title);
-        return;
+    if (currentPassword.length < 6 || newPassword.length < 6) return;
+    await operationGuard.run(async () => {
+      setPwBusy(true);
+      try {
+        const verifyError = await verifyPassword(currentPassword);
+        if (verifyError) {
+          void appAlert(verifyError, tr.errors.title);
+          return;
+        }
+        const err = await changePassword(newPassword);
+        if (err) {
+          void appAlert(err, tr.errors.title);
+          return;
+        }
+        setCurrentPassword("");
+        setNewPassword("");
+        void appAlert(tr.account.passwordChanged);
+        navigateBack(router, "/(tabs)/settings");
+      } finally {
+        setPwBusy(false);
       }
-      const err = await changePassword(newPassword);
-      if (err) {
-        void appAlert(err, tr.errors.title);
-        return;
-      }
-      setCurrentPassword("");
-      setNewPassword("");
-      void appAlert(tr.account.passwordChanged);
-      navigateBack(router, "/(tabs)/settings");
-    } finally {
-      setPwBusy(false);
-    }
+    });
   };
 
   const sendResetLink = async () => {
-    if (!email || resetBusy) return;
-    setResetBusy(true);
-    try {
-      const error = await requestPasswordReset(email);
-      void appAlert(error ?? tr.auth.resetSent, error ? tr.errors.title : tr.account.resetLinkTitle);
-    } finally {
-      setResetBusy(false);
-    }
+    if (!email) return;
+    await operationGuard.run(async () => {
+      setResetBusy(true);
+      try {
+        const error = await requestPasswordReset(email);
+        void appAlert(error ?? tr.auth.resetSent, error ? tr.errors.title : tr.account.resetLinkTitle);
+      } finally {
+        setResetBusy(false);
+      }
+    });
   };
 
   return (

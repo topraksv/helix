@@ -15,6 +15,8 @@ import { CreditCardCycleRequiredError } from "./errors";
 // ---------------------------------------------------------------------------
 
 export interface NewTransaction {
+  /** Stable for one UI operation; a retry with the same id converges. */
+  operationId?: string;
   type: TransactionType;
   amountMinor: Minor;
   currency: string;
@@ -134,7 +136,8 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
   assertInputWithinLimit(input.note, "note");
   await assertTransactionCategory(userId, input.type, input.categoryId, true);
   const today = todayISO();
-  const id = newId();
+  const id = input.operationId ?? newId();
+  const { operationId: _operationId, ...transactionInput } = input;
   const dates = await resolveSingleTransactionDates(userId, input);
   await writeRows(userId, [
     ...(dates.statementWrite ? [dates.statementWrite] : []),
@@ -142,7 +145,7 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
       table: "transactions",
       row: {
         id,
-        ...input,
+        ...transactionInput,
         purchaseDate: dates.purchaseDate,
         effectiveDate: dates.effectiveDate,
         cardStatementId: dates.cardStatementId,
@@ -275,6 +278,7 @@ export async function bulkMonthEntry(
   month: MonthKey,
   personId: string,
   entries: { categoryId: string; kind: "expense" | "income"; amountMinor: Minor; isInvestment?: boolean }[],
+  operationId = newId(),
 ): Promise<void> {
   if (isCurrentOrFutureMonth(month)) throw new Error("Bulk history accepts past months only");
   entries.forEach((entry) => assertSupportedMinorAmount(entry.amountMinor, false));
@@ -286,28 +290,30 @@ export async function bulkMonthEntry(
   const today = todayISO();
   const effectiveDate = `${month}-15`; // mid-month anchor for aggregates
   const status = "realized" as const;
-  const writes: RowWrite[] = entries.map((e) => ({
-    table: "transactions",
-    row: {
-      id: newId(),
-      type: e.isInvestment ? "transfer" : e.kind,
-      amountMinor: e.amountMinor,
-      currency: "TRY",
-      fxRate: null,
-      amountTryMinor: e.amountMinor,
-      entryDate: today,
-      effectiveDate,
-      status,
-      categoryId: e.categoryId,
-      paymentSourceId: null,
-      personId,
-      installmentPlanId: null,
-      installmentNo: null,
-      subscriptionId: null,
-      isAggregate: true,
-      note: null,
-      deletedAt: null,
-    },
-  }));
+  const writes: RowWrite[] = await Promise.all(
+    entries.map(async (entry) => ({
+      table: "transactions" as const,
+      row: {
+        id: await deterministicId(naturalKeys.bulkTransaction(operationId, entry.categoryId)),
+        type: entry.isInvestment ? "transfer" : entry.kind,
+        amountMinor: entry.amountMinor,
+        currency: "TRY",
+        fxRate: null,
+        amountTryMinor: entry.amountMinor,
+        entryDate: today,
+        effectiveDate,
+        status,
+        categoryId: entry.categoryId,
+        paymentSourceId: null,
+        personId,
+        installmentPlanId: null,
+        installmentNo: null,
+        subscriptionId: null,
+        isAggregate: true,
+        note: null,
+        deletedAt: null,
+      },
+    })),
+  );
   await writeRows(userId, writes);
 }

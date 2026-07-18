@@ -8,6 +8,7 @@ import { tr } from "../../i18n/tr";
 import { Body, Button, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { radius, spacing, type, useTheme } from "../../ui/theme";
+import { useOperationGuard } from "../../ui/operation-guard";
 
 type RecoveryState = "checking" | "ready" | "expired" | "invalid" | "success";
 
@@ -21,6 +22,7 @@ export default function ResetPasswordScreen() {
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const operationGuard = useOperationGuard();
 
   useEffect(() => {
     let active = true;
@@ -37,12 +39,17 @@ export default function ResetPasswordScreen() {
   const valid = password.length >= 6 && confirmation === password && !busy;
   const save = async () => {
     if (!valid) return;
-    setBusy(true);
-    setError(null);
-    const result = await completePasswordRecovery(password);
-    setBusy(false);
-    if (result) setError(result);
-    else setState("success");
+    await operationGuard.run(async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await completePasswordRecovery(password);
+        if (result) setError(result);
+        else setState("success");
+      } finally {
+        setBusy(false);
+      }
+    });
   };
   useSubmitOnEnter(() => void save(), valid);
 

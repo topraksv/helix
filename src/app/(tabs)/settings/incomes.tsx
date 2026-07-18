@@ -16,6 +16,8 @@ import { tr } from "../../../i18n/tr";
 import { Body, Button, Card, CardList, ChipPicker, EmptyState, Field, IconButton, Label, MoneyField, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
+import { useOperationGuard } from "../../../ui/operation-guard";
+import { newId } from "../../../db/ids";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
 const KINDS: IncomeKind[] = ["salary", "rent", "allowance", "other"];
@@ -27,6 +29,7 @@ export default function IncomeRulesScreen() {
   const persons = usePersons();
   const categories = useCategories();
   const undo = useUndo();
+  const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [kind, setKind] = useState<IncomeKind>("salary");
   const [name, setName] = useState("");
@@ -51,7 +54,7 @@ export default function IncomeRulesScreen() {
 
   const payDay = Number(payDayStr);
   const dayValid = Number.isInteger(payDay) && payDay >= 1 && payDay <= 31;
-  const valid = effectiveName.trim() !== "" && amountMinor != null && amountMinor > 0 && dayValid && personId != null;
+  const valid = effectiveName.trim() !== "" && amountMinor != null && amountMinor > 0 && dayValid && personId != null && categoryId != null;
 
   const resetForm = () => {
     setEditingId(null);
@@ -78,27 +81,29 @@ export default function IncomeRulesScreen() {
   };
 
   const save = async () => {
-    if (busy || !valid || !personId) return;
-    setBusy(true);
-    try {
-      const existing = editingId ? incomes.find((r) => r.id === editingId) : null;
-      await upsertRecurringIncome(userId, {
-        id: editingId ?? undefined,
-        name: effectiveName.trim(),
-        kind,
-        defaultAmountMinor: amountMinor!,
-        currency: "TRY",
-        payDay,
-        personId,
-        categoryId,
-        isActive: existing ? existing.isActive : true,
-        note: existing?.note ?? null,
-      });
-      scheduleSync(userId);
-      resetForm();
-    } finally {
-      setBusy(false);
-    }
+    if (!valid || !personId || !categoryId) return;
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        const existing = editingId ? incomes.find((r) => r.id === editingId) : null;
+        await upsertRecurringIncome(userId, {
+          id: editingId ?? newId(),
+          name: effectiveName.trim(),
+          kind,
+          defaultAmountMinor: amountMinor!,
+          currency: "TRY",
+          payDay,
+          personId,
+          categoryId,
+          isActive: existing ? existing.isActive : true,
+          note: existing?.note ?? null,
+        });
+        scheduleSync(userId);
+        resetForm();
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const remove = async (r: (typeof incomes)[number]) => {
