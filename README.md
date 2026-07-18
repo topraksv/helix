@@ -54,8 +54,8 @@ flowchart LR
 ```
 
 Bu akışta ağ, uygulamayı kullanmanın ön koşulu değildir. Sync gecikir veya hata
-verirse verin cihazında kalır; Ayarlar’daki durum ve tanılama yüzeyi ne olduğunu
-gösterir.
+verirse verin cihazında kalır; Ayarlar’daki **Cihazlarını Güncelle** satırı yalnız
+eyleme dönük sonucu gösterir, teknik tanılama ayrıntısını kullanıcıya yüklemez.
 
 ## Her özellik bir görevin yanında
 
@@ -170,7 +170,7 @@ flowchart LR
   P --> S[("Supabase Postgres\nowner-only RLS")]
   S --> Q["Keyset pull + row validation"]
   Q --> L
-  O -- "Malformed event" --> D["Dead-letter + diagnostics"]
+  O -- "Malformed event" --> D["Safe local quarantine"]
 ```
 
 | Katman | Karar |

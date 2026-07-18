@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { classifyOutboxBatch, isUuidShaped, remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
+import { completedSyncState } from "../src/sync/status";
 
 describe("sync merge policy", () => {
+  it("never reports a completed sync as healthy while quarantined rows remain", () => {
+    expect(completedSyncState(0)).toBe("idle");
+    expect(completedSyncState(1)).toBe("attention");
+  });
+
   it("keeps the newest valid event per row and quarantines invalid ownership", () => {
     const result = classifyOutboxBatch(
       [

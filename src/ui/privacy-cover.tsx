@@ -18,9 +18,11 @@ function framedOnWeb(): boolean {
   }
 }
 
-export function PrivacyCover() {
+export function PrivacyCover({ enabled }: { enabled: boolean }) {
   const { palette } = useTheme();
-  const [covered, setCovered] = useState(() => shouldCoverSensitiveUi(Platform.OS, AppState.currentState, framedOnWeb()));
+  const [covered, setCovered] = useState(() =>
+    shouldCoverSensitiveUi(Platform.OS, AppState.currentState, framedOnWeb(), enabled),
+  );
   const titleRef = useModalAccessibility(covered);
 
   useEffect(() => {
@@ -28,9 +30,12 @@ export function PrivacyCover() {
       setCovered(framedOnWeb());
       return;
     }
-    const subscription = AppState.addEventListener("change", (state) => setCovered(shouldCoverSensitiveUi(Platform.OS, state, false)));
+    setCovered(shouldCoverSensitiveUi(Platform.OS, AppState.currentState, false, enabled));
+    const subscription = AppState.addEventListener("change", (state) =>
+      setCovered(shouldCoverSensitiveUi(Platform.OS, state, false, enabled)),
+    );
     return () => subscription.remove();
-  }, []);
+  }, [enabled]);
 
   if (!covered) return null;
   const framed = Platform.OS === "web";

@@ -17,6 +17,7 @@ export default function CashflowLayout() {
         headerBackTitle: tr.common.back,
         headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" />,
         headerShadowVisible: false,
+        gestureEnabled: true,
         contentStyle: { backgroundColor: palette.background },
       }}
     >

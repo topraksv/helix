@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
@@ -95,16 +95,16 @@ export function CalendarSheet({
                         borderRadius: 17,
                         alignItems: "center",
                         justifyContent: "center",
-                        backgroundColor: selected ? palette.primary : "transparent",
-                        borderWidth: isToday && !selected ? 1.5 : 0,
-                        borderColor: palette.primary,
+                        backgroundColor: selected ? palette.primarySoft : "transparent",
+                        borderWidth: isToday && !selected ? StyleSheet.hairlineWidth : 0,
+                        borderColor: palette.primaryText,
                         opacity: disabled ? 0.3 : 1,
                       }}
                     >
                       <Text
                         style={[
                           type.label,
-                          { color: selected ? palette.onPrimary : palette.text, fontVariant: ["tabular-nums"] },
+                          { color: selected ? palette.primaryText : palette.text, fontVariant: ["tabular-nums"] },
                         ]}
                       >
                         {day}
@@ -153,8 +153,8 @@ export function DateField({
           {
             backgroundColor: palette.surfaceAlt,
             borderRadius: radius.sm,
-            borderWidth: 1.5,
-            borderColor: open ? palette.focus : palette.controlBorder,
+            borderWidth: open ? 1.5 : StyleSheet.hairlineWidth,
+            borderColor: open ? palette.focus : palette.border,
             paddingHorizontal: spacing.md,
             minHeight: 48,
             flexDirection: "row",

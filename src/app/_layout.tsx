@@ -38,6 +38,7 @@ import { PrivacyCover } from "../ui/privacy-cover";
 import {
   useBiometricLock,
   useFirstPullGrace,
+  useForegroundSync,
   useMarketLifecycle,
   useWorkspaceMaintenance,
 } from "../ui/root-lifecycle";
@@ -191,6 +192,7 @@ function RootLayoutInner() {
   }, [ready]);
 
   useWorkspaceMaintenance(ready, userId, locked === false);
+  useForegroundSync(ready, userId, locked === false);
   useMarketLifecycle(ready, userId, locked === false);
 
   const guard = resolveRootGuard({
@@ -280,6 +282,7 @@ function RootLayoutInner() {
             headerBackTitle: tr.common.back,
             headerBackTitleStyle: { fontFamily: "Inter_500Medium" },
             headerShadowVisible: false,
+            gestureEnabled: true,
             contentStyle: { backgroundColor: theme.palette.background },
           }}
         >
@@ -287,16 +290,15 @@ function RootLayoutInner() {
           <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
-          <Stack.Screen name="transaction" options={{ presentation: "modal", title: tr.tx.new, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="installment-new" options={{ presentation: "modal", title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
-          <Stack.Screen name="subscription-form" options={{ presentation: "modal", title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
-          <Stack.Screen name="bulk-entry" options={{ presentation: "modal", title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="cell-editor" options={{ presentation: "modal", title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="import-wizard" options={{ presentation: "modal", title: tr.importer.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
-          <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
-          <Stack.Screen name="opening-balance" options={{ presentation: "modal", title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="account-security" options={{ presentation: "modal", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
-          <Stack.Screen name="diagnostics" options={{ presentation: "card", title: tr.diagnostics.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="transaction" options={{ presentation: "card", title: tr.tx.new, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="installment-new" options={{ presentation: "card", title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
+          <Stack.Screen name="subscription-form" options={{ presentation: "card", title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
+          <Stack.Screen name="bulk-entry" options={{ presentation: "card", title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="cell-editor" options={{ presentation: "card", title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="import-wizard" options={{ presentation: "card", title: tr.importer.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="workspace-template" options={{ presentation: "card", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
+          <Stack.Screen name="opening-balance" options={{ presentation: "card", title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="account-security" options={{ presentation: "card", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           {/* Keep the shared column editor in a normal stack card. An iOS sheet
               owns the same vertical pan used by the reorder grip, even when
               swipe-to-dismiss is disabled; the Settings entry point works
@@ -309,7 +311,7 @@ function RootLayoutInner() {
         <UndoSnackbar />
         <DialogHost />
         <PromptHost />
-        <PrivacyCover />
+        <PrivacyCover enabled={Boolean(userId)} />
       </View>
     </ThemeContext.Provider>
   );

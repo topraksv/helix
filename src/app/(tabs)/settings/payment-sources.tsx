@@ -26,6 +26,8 @@ import { appAlert, appConfirm } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { newId } from "../../../db/ids";
+import { isMonthDay } from "../../../domain/dates";
+import { MonthDayField, monthDayLabel } from "../../../ui/month-day-field";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const NO_SOURCE = "__none__";
@@ -67,7 +69,7 @@ export default function SourcesScreen() {
       statementDayStr.trim()
     );
   useDirtyExitGuard(sourceDraftDirty && !busy);
-  const validDay = (day: number | null) => day != null && Number.isInteger(day) && day >= 1 && day <= 31;
+  const validDay = (day: number | null) => day != null && isMonthDay(day);
   const cycleValid = sourceType !== "credit_card" || (validDay(statementDay) && validDay(dueDay));
   const formValid = Boolean(name.trim() && personId && cycleValid);
 
@@ -211,10 +213,10 @@ export default function SourcesScreen() {
           <>
             <Row>
               <View style={{ flex: 1 }}>
-                <Field label={tr.sources.statementDay} placeholder={tr.sources.dayPlaceholder} value={statementDayStr} onChangeText={setStatementDayStr} keyboardType="number-pad" />
+                <MonthDayField label={tr.sources.statementDay} value={statementDayStr} onChange={setStatementDayStr} />
               </View>
               <View style={{ flex: 1 }}>
-                <Field label={tr.sources.dueDay} placeholder={tr.sources.dayPlaceholder} value={dueDayStr} onChangeText={setDueDayStr} keyboardType="number-pad" />
+                <MonthDayField label={tr.sources.dueDay} value={dueDayStr} onChange={setDueDayStr} />
               </View>
             </Row>
             <Body muted style={{ marginBottom: spacing.md }}>{tr.sources.cycleHint}</Body>
@@ -305,8 +307,8 @@ export default function SourcesScreen() {
                   <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs }}>
                     {s.statementDay && s.dueDay ? (
                       <>
-                        <Badge text={`${tr.sources.statementDayShort}: ${s.statementDay}`} />
-                        <Badge text={`${tr.sources.dueDayShort}: ${s.dueDay}`} tone="primary" />
+                        <Badge text={`${tr.sources.statementDayShort}: ${monthDayLabel(s.statementDay)}`} />
+                        <Badge text={`${tr.sources.dueDayShort}: ${monthDayLabel(s.dueDay)}`} tone="primary" />
                       </>
                     ) : (
                       <Badge text={tr.sources.cycleMissing} tone="warning" />

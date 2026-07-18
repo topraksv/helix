@@ -591,3 +591,132 @@ flowchart LR
 - Repo talimatındaki handoff güncellemesi, kullanıcının açık salt-okunur yasağı nedeniyle yapılmadı.
 
 Claude raporu ve bu bağımsız Codex denetimi birlikte değerlendirildiğinde Helix'in production, kod kalitesi, güvenlik, görsel tasarım ve gerçek kullanıcı deneyimi açısından durumu: [Çekirdek mimarisi ve veri güvenliği güçlü, ancak P1 senkron, mükerrer yazım, CI ve OTA dağıtım riskleri giderilmeden production'a hazır değil]
+
+---
+
+## §12 18 Temmuz 2026 Uygulama Sonrası Bağımsız Yeniden Teyit
+
+Bu bölüm tarihsel §0–§11'i silmez. Oradaki bulguların uygulamadan sonraki
+durumunu, 18 Temmuz kullanıcı geri bildirimini ve yeniden çalıştırılan kanıtları
+gösterir. Tekil ID/durum kaynağı
+[`AUDIT_TRACKER.md`](AUDIT_TRACKER.md)'dir. Bu ekin yazıldığı dalın tabanı
+`6b85f1c`; release commit/run/update kimlikleri P8–P10 yayın kaydına sonradan
+işlenecektir.
+
+### §12.0 Sonuç
+
+**Güncel karar: Koşullu hazır. Güven: Yüksek.** İlk denetimdeki P1 kod/config
+riskleri kapatıldı. 18 Temmuz geri bildirimindeki on iki başlığın tamamı kod,
+otomatik test veya gerçek Chromium ile ele alındı. Bununla birlikte iki kurulu
+authenticated client, fiziksel iOS Face ID/edge-swipe, VoiceOver/TalkBack,
+Dynamic Type, OS notification/privacy ve düşük bellek stresi bu ortamda yoktu;
+bu yüzden ürün yapay biçimde %100 ilan edilmedi.
+
+En önemli değişim yalnız yeni davranış eklemek değil, yüzeyi küçültmek oldu:
+son kullanıcı diagnostics route'u, global sync-health rozeti/modeli, kullanılmayan
+outbox hook'u, gradient bağımlılığı ve bunlara ait test/kopyalar kaldırıldı.
+Senkron sorunu teknik bir panel yerine kullanıcı eylemi üzerinde anlaşılır
+durum, foreground/resume pull ve 30 saniyelik aktif pull ile çözüldü.
+
+### §12.1 Kapsam yeniden teyit çizelgesi
+
+| Bölüm / ana alt maddeler | Durum | Güncel kanıt | Kısıt / güven |
+|---|---|---|---|
+| B1 · Onboarding, auth, ilk veri, gelir/gider/taksit/abonelik, tablo/dashboard, edit/delete/undo, ay, arama, backup/import/restore, sync, bildirim, ayarlar | Tam incelendi · Runtime doğrulandı | Kalıcı core-flow/resilience Playwright; gerçek browser SQLite; follow-up akışları | Fiziksel auth/notification ve iki-client sync yok · Yüksek |
+| B2 · Route envanteri; amaç/CTA/giriş/çıkış; hiyerarşi, action, yoğunluk, durumlar, mobile/web/tablet, metin/güven | Tam incelendi · Runtime doğrulandı | 52-route export; direct-link geri; beş tab + form/settings görsel matrisi | Native sheet/gesture yalnız koddan çıkarım · Yüksek |
+| B3 · Tab gereği/sırası, calculator, dashboard/analytics, Mali Tablo, Settings grupları, tekrar/kaybolma | Tam incelendi · Runtime doğrulandı | Dashboard sade, analytics görev odaklı, diagnostics kaldırıldı, taşı/koru grubu ayrı | Calculator taşıma kullanım metriği olmadan backlog · Yüksek |
+| B4 · Kompozisyon, hiyerarşi, tipografi, spacing, renk/kart, sayı/grafik, motion, marka, bitmişlik | Tam incelendi · Runtime doğrulandı | 21 light/dark baseline; 320/390/768/1440; ortak tonal token/primitive | Gerçek OLED/Dynamic Type yok · Yüksek |
+| B5 · Alan sırası/required/default; TR para; tarih/timezone; kategori; label/keyboard/validation; duplicate/dirty/edit/success/undo | Tam incelendi · Runtime doğrulandı | `MonthDayField`; shared fields; mutation guard; dirty-exit; browser create/edit/undo | Native klavye/password manager fiziksel kabulü yok · Yüksek |
+| B6 · Loading/refresh/empty/filter/error/offline/stale/pending/conflict/retry/success/delete/session/rate-limit ve feedback türü | Tam incelendi · Runtime doğrulandı | Typed live snapshot, offline E2E, sync attention/error/loading, inline/banner/undo sözleşmeleri | Remote conflict iki cihazda koşulmadı · Yüksek |
+| B7 · Reader/role/state/hint/order, focus/headings/chart/color/contrast, Dynamic Type/target/motion/keyboard/RTL/error/loading/auth paste | Kısmen incelendi · Runtime gerekli-yapılamadı | Axe A/AA, contract/contrast testleri, 44pt back, reduced-motion ve browser keyboard | VoiceOver/TalkBack, Dynamic Type, RTL/native password manager cihaz yok · Orta-Yüksek |
+| B8.1 · God/uzun/koşul/tekrar/abstraction/side-effect/magic/error/cleanup/stale closure | Tam incelendi | Saf dashboard/matrix/import modelleri korunuyor; follow-up route/domain/hook/dep silindi | Davranış kaybettiren kısaltma yapılmadı · Yüksek |
+| B8.2 · 3+ tekrar/wrapper/repository değeri/derived state/if-chain/array taraması/clone/isim/yorum | Tam incelendi | Import grafiği ve TS unused taraması; diagnostics ve gradient zinciri kaldırıldı; shared month-day/control | Test-only contrast modülü bilinçli tutuldu · Yüksek |
+| B8.3 · Compiler flags/any/cast/runtime sınırı/domain type/union/null/date/currency | Tam incelendi | strict + `noUncheckedIndexedAccess`; integer minor; boundary validation; linked generated DB types | Expo SDK kaynaklı advisory tip güvenliği bulgusu değil · Kesin |
+| B9 · Feature/dependency yönü, local-first/state/hook/repo/guard/circular/shared/platform/error/transaction/offline/compat | Tam incelendi | Repo facade, async SQLite, session epoch, atomic outbox, pure route guard; circular/import taraması | Enterprise katman eklenmedi · Yüksek |
+| B10 · Algoritma/render/list/DB/bellek/cleanup/async/sync/startup/asset/bundle | Tam incelendi · Runtime doğrulandı | 1k/10k/100k benchmark; progressive list; lazy XLSX; bundle budget; socket lifecycle/backoff | Düşük bellek fiziksel cihaz stresi yok · Yüksek |
+| B11 · Tablo/kolon/migration; index; RLS; RPC/search_path/grants/storage/realtime/service role | Tam incelendi · Remote doğrulandı | Linked migration 1–7 eşit; db lint 0; rollback transaction içinde pgTAP 24/24 | Supabase Dashboard Auth policy yalnız API/CLI görünen kapsamda · Kesin |
+| B12 · Auth/authz/deep-link/sync/import/export/local/notification/log/web/supply-chain/abuse/privacy | Tam incelendi · Remote doğrulandı | PKCE/RLS/session tests; ZIP preflight; neutral preview; prod logger; SHA pins/branch policy/audit | Fiziksel snapshot/notification ve third-party crash telemetry yok · Yüksek |
+| B13 · `.gitignore`, klasör/god/utils/circular/deep/barrel/case/lock/build/binary/secret/assets/root | Tam incelendi | Git tracking/import/unused taramaları; tek lockfile; generated/build/cache tracked değil | Secret geçmişi GitHub scanning ile, local tam history yeniden yazılmadı · Yüksek |
+| B14 · CI/branch/EAS/OTA/rollback/env/secret/sign/migration-client/artifact/monitoring | Remote doğrulandı | Strict required `quality`; admin enforcement; Pages zinciri; preview channel; runtime `1.0.0`; release/rollback runbook | Bu OTA'nın installed delivery'si ancak yayın sonrası telefonda görülebilir · Yüksek |
+| B15 · Boundary/rejection/crash/source map/log redaction/dead-letter/retry/user error/release health/incident | Kısmen incelendi · Remote doğrulandı | Sync dead-letter hiçbir zaman idle görünmüyor; bounded PII'siz breadcrumb; EAS release health; kullanıcıya action mesajı | Harici crash SaaS ve son kullanıcı diagnostics bilinçli yok · Orta-Yüksek |
+| B16 · Unit/hook/component/integration/DB/E2E/a11y/offline/lifecycle/release/locale/security sınıfları | Tam incelendi · Runtime ve remote doğrulandı | Vitest, 9 Playwright, 21 baseline, 24 pgTAP, required CI; cihaz matrisi dokümante | Beş fiziksel/iki-client kabul satırı açık `BLOCKED` · Yüksek |
+| B17 · Mutlaka/güçlü/şimdilik değil; değer/keşif/maliyet/risk/metrik/zamanlama; yanlış yerleşim | Tam incelendi | Arama/bütçe/haftalık gelir/takvim shipped; diagnostics kaldırıldı; calculator/entegrasyonlar backlog | Kullanım analitiği olmadan IA spekülasyonu yapılmadı · Yüksek |
+| B18 · Hero/görsel/değer/mimari/güvenlik/kurulum/env/Supabase/test/release/sınır/privacy/drift | Tam incelendi · Runtime doğrulandı | Canlı task-first README, gerçek screenshots, iki katmanlı Mermaid; TESTING/PRIVACY/RELEASE | GitHub render yayın sonrası remote tekrar kontrol edilecek · Yüksek |
+| B19 · Expo/RN/Router/TS/Supabase/Postgres/Drizzle/Zustand/live-query/Vitest/chart/notification/XLSX/Pages/EAS | Tam incelendi | Hepsi için önceki “koru/optimize et” kararı güncel kök nedenlerle tekrar karşılaştırıldı | SDK 54 upgrade/advisory kullanıcının açık backlog'u · Yüksek |
+
+### §12.2 Claude ve Codex bulgularının güncel kapanışı
+
+Claude'un `HLX-01`–`HLX-13` bulguları yeniden kod/config/test/remote kanıtıyla
+karşılaştırıldı: 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 ve 13'ün
+uygulanabilir alt maddeleri `RESOLVED` veya `VERIFIED`; Expo SDK 54 advisory
+zinciri yalnız `BACKLOG-SDK-01`; fiziksel native kabul isteyen kısımlar
+`BLOCKED` olarak kaldı. Önceki production hükmü körü körüne taşınmadı.
+
+Codex'in `CDX-ARCH/CODE/UX/A11Y/PERF/DB/SEC/DEVOPS/TEST/DOC/PRODUCT`
+bulgularının tekil kanıtı ve son durumu tracker'da korunur. Sessizce düşürülen
+ID yoktur. `CDX-TEST-08/10/12/13/15`, installed-device/iki-client kabulü olmadığı
+için açık; `BACKLOG-*` maddeleri kullanıcının açık ertelemesidir. Diğer aktif
+uygulama işi kalmamıştır. **Güven: Yüksek.**
+
+### §12.3 18 Temmuz geri bildirim matrisi
+
+| İstek | ID / durum | Uygulanan davranış | Kanıt / güven |
+|---|---|---|---|
+| 1 · Denetimi yeniden oku/uygunluğu kontrol et | `CDX-VERIFY-01` · RESOLVED | Bu §12 ve tracker yeniden sınıflandırması | Code/test/runtime/remote · Yüksek |
+| 2 · Atıl/gereksiz kodu temizle ve kısalt | `CDX-CODE-07` · RESOLVED | Diagnostics route/domain/test, outbox hook, gradient dependency kaldırıldı; shared ay-günü alanı | Diff/import/unused/full suite · Yüksek |
+| 3.1 · Sert bakiye/accent/toggle | `CDX-UI-04` · VERIFIED | Bakiye muted ink; tonal hero, seçili state ve toggle; nötr primary action | 21 baseline + contrast · Yüksek |
+| 3.2 · Yaklaşan ödeme satırı | `CDX-UX-04` · VERIFIED | Metin sarar; buton sağdaki sabit eylem slotunda | 320px uzun başlık E2E · Kesin |
+| 3.3 · Canlı piyasalar | `CDX-MARKET-01` · VERIFIED | Tek socket + lifecycle grace/backoff; teknik kaynak/SLA/TCMB kopyası yok | Gerçek Harem fiyatı ve hard reload · Kesin |
+| 3.4 · Analiz yöntem/dönem | `CDX-UX-05` · VERIFIED | Yöntem yokken dönem disabled; kaynakla gerçek dönem uygulanır | Browser seçim ve sonuç testi · Kesin |
+| 3.5 · Tür segmenti | `CDX-UX-05` · VERIFIED | Tümü/Gider/Gelir/Yatırım; tek satır, eşit ve ortalı | 320px layout assertion · Kesin |
+| 3.6 · Bakiye “gelişmiş” UX | `CDX-UX-06` · VERIFIED | “Geçmiş Başlangıç Noktası” ikincil, açıklamalı ve kapanabilir | Light/dark browser baseline · Yüksek |
+| 3.7 · Ayın sonu | `CDX-DATE-01` · VERIFIED | 31 doğal ay-sonu sentinel'i; bütün ilgili formlarda ortak kontrol | Unit + browser E2E · Kesin |
+| 3.8 · Güvenilir sync | `CDX-SYNC-01` · RESOLVED | Resume/foreground anlık + 30sn pull, manual busy/result, dead-letter attention | Unit/source; iki cihaz kabulü yok · Yüksek |
+| 3.9 · Tanılama/sync health kaldır | `CDX-UX-07` · VERIFIED | Son kullanıcı route, badge, export ve teknik model kaldırıldı | Import/route/browser absence · Kesin |
+| 3.10 · Border/demode UI | `CDX-UI-04` · VERIFIED | Field/chip/dialog/card seçili halleri border yerine tonal yüzey ve focus affordance | Light/dark follow-up baseline · Yüksek |
+| 3.11 · Geri ve iOS swipe | `CDX-NAV-01` · RESOLVED | Markalı 44pt back, deterministic parent, card presentation, gesture enabled | Direct-link E2E; fiziksel swipe yok · Yüksek |
+| 3.12 · Face ID autofill cover | `CDX-AUTH-01` · RESOLVED | Auth ekranı privacy cover dışında; finansal ekranlar korunuyor | Policy test; fiziksel Face ID yok · Yüksek |
+
+### §12.4 Güncel skor kartı
+
+| Alan | /100 | Kısa kanıt |
+|---|---:|---|
+| Ürün değeri | 92 | Arama, bütçe, takvim ve recurrence çekirdek göreve bağlı |
+| Kullanım kolaylığı | 90 | Teknik yüzeyler kalktı; kritik takip akışları browser'da geçti |
+| Görsel kalite | 91 | Tonal sistem ve 21 iki-temalı baseline; cihaz font/OLED kabulü eksik |
+| Bilgi mimarisi | 90 | Dashboard/Analytics ayrık; taşı/koru açık; diagnostics yok |
+| Erişilebilirlik | 83 | Axe/semantics/contrast güçlü; fiziksel screen reader/Dynamic Type yok |
+| Kod kalitesi | 91 | Boundary ve pure model sözleşmeleri testli; atıl zincir temizlendi |
+| Kod sadeliği | 88 | Net kod azaltımı ve shared primitive; davranış kaybettiren rewrite yok |
+| Mimari | 93 | Local-first/repo/outbox/session sınırları korunuyor |
+| TypeScript | 93 | Strict + unchecked index + runtime sınır doğrulaması |
+| Performans | 90 | 100k bütçeleri, lazy XLSX, bounded render/socket lifecycle |
+| Veritabanı | 95 | Linked 1–7, lint 0, remote pgTAP 24/24 |
+| Güvenlik | 92 | RLS/session/PKCE/import/privacy kontrolleri; fiziksel OS kabulü eksik |
+| Test | 91 | Çok katmanlı unit/browser/DB/visual; beş cihaz kabulü açık |
+| DevOps/release | 93 | Protected required CI, Pages, EAS channel/runtime/rollback |
+| Gözlemlenebilirlik | 77 | Sync/release görünür; harici crash telemetry bilinçli yok |
+| Dokümantasyon | 94 | Tracker + testing/privacy/release + görev odaklı README güncel |
+
+**Dengeli toplam: 90/100. Güven: Yüksek.** Kalan on puan yeni özellik
+ekleyerek değil, fiziksel cihaz/iki-client kabulü ve privacy-aware crash/release
+health kanıtı tamamlanarak kazanılabilir.
+
+### §12.5 Nihai hüküm ve açık sınır
+
+- **P0:** Yok. **Güven: Yüksek.**
+- **P1 uygulama açığı:** Yok. **P1 kabul açığı:** İki kurulu client sync ve
+  fiziksel Face ID/navigation doğrulaması. **Güven: Yüksek.**
+- Kullanıcı ana akışları açıklama okumadan tamamlayabilir; ileri veri taşıma ve
+  geçmiş başlangıç noktası progressive disclosure ile geri plandadır.
+- UI, doğrulanan web viewport'larında production kalitesindedir; native cihaz
+  kabulü olmadan bütün platformlar için “Kesin” denmez.
+- En büyük sadeleştirme bu turda gerçekleştirildi: teknik diagnostics/shell
+  health yüzeyi ve tekrar eden ay-günü girişleri tek ürün dili/primitive'e indi.
+- Expo SDK, Supabase, SQLite, Drizzle, Zustand veya Router sırf daha yeni/kurumsal
+  görünsün diye değiştirilmeyecek; SDK 54 işi backlog'da kalacak.
+- Kesinleşmeyenler: iki gerçek cihaz eşzamanı, iOS edge-swipe, Face ID/password
+  manager, VoiceOver/TalkBack/Dynamic Type, lock-screen/app-switcher snapshot,
+  düşük bellek import stresi ve yeni OTA'nın kurulu telefonda uygulanması.
+
+Claude raporu ve bu bağımsız Codex denetimi birlikte değerlendirildiğinde Helix'in production, kod kalitesi, güvenlik, görsel tasarım ve gerçek kullanıcı deneyimi açısından durumu: [Aktif P0/P1 uygulama açıkları kapatılmış, web/runtime ve linked veritabanı kanıtları güçlü, production'a koşullu hazır; kalan mesafe fiziksel cihaz ve iki-client kabul kanıtıdır]

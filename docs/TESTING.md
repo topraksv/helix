@@ -31,7 +31,7 @@ artefact’ına karışamaz.
 | P1 | Onboarding → işlem yaşam döngüsü | Browser E2E | quick start → gider ekle → ay detayı → edit → delete/undo → JSON export | Gerçek browser SQLite’ta tek ve geri alınabilir kayıt | `e2e/core-flow.spec.ts` |
 | P1 | Temiz DB restore/atomiklik | Browser E2E | export → yeni context restore; dangling ref’li bundle | Geçerli bundle 1:1 gelir; invalid bundle sıfır satır yazar | `e2e/core-flow.spec.ts`, `backup-validation` |
 | P1 | Offline cold relaunch | Browser E2E | service worker cache → offline reload → online | SQLite veri korunur; yeniden mount duplicate üretmez | `e2e/resilience.spec.ts` |
-| P1 | İki-user yetkilendirme | Remote pgTAP | A CRUD, B izolasyonu, owner değiştirme, anon erişim, cross-owner FK | 24 assertion; fixture rollback | `supabase/tests/rls_policies.sql` |
+| P1 | İki-user yetkilendirme | Remote pgTAP | A CRUD, B izolasyonu, owner değiştirme, anon erişim, cross-owner FK | 24 assertion; fixture rollback | `supabase/tests/owner_integrity_and_rls.sql` |
 | P1 | Hostile import/backup | Unit/stress | yüksek oranlı ZIP, büyük entry, >100k row, duplicate/mixed owner | SheetJS/write öncesi bounded red | `spreadsheet-import`, `backup-validation`, `import-plan` |
 | P2 | Route/guard/deep link | Browser E2E + unit | protected ve modal direkt URL; auth/onboarding/recovery guard | Hata ekranı/hydration exception yok; deterministic parent | `e2e/resilience.spec.ts`, `app-guard`, `navigation` |
 | P2 | Form durumları | Unit + browser component | invalid limit, dirty exit, loading/busy, password-manager metadata | Hata görünür/duyurulur; veri sessiz kaybolmaz; double submit yok | `input-policy`, `dirty-exit`, `accessibility-contract`, core E2E |
@@ -98,7 +98,7 @@ matris **BLOCKED** kaldı; kod başarısız değil, dış kabul kanıtı yok.
 | iOS/Android | Reduced Motion | Press/list/modal hareketleri azalır; işlev kaybı yok | BLOCKED — cihaz yok |
 | iOS/Android | App switcher/screenshot privacy | Background anında finansal içerik yerine privacy cover snapshot’lanır | BLOCKED — OS timing cihaz ister |
 | iOS/Android | Bildirim | Boot’ta izin sorulmaz; nötr preview varsayılan; opt-in detail; sign-out tüm account detail’i temizler; en yakın 60 planlanır | BLOCKED — OS scheduler cihaz ister |
-| Installed OTA | `preview` teslimi | Doğru runtime/channel; ilk cold start indirir, ikinci cold start yeni update’i açar; diagnostics commit/runtime gösterir | BLOCKED — installed binary erişilemedi |
+| Installed OTA | `preview` teslimi | Doğru runtime/channel; ilk cold start indirir, ikinci cold start hedef sürümün görünür kabul akışını açar | BLOCKED — installed binary erişilemedi |
 | İki installed client | Account switch/sync | A’nın geç işi B’ye yazmaz; offline event online olunca tek kez gider; delete/undo iki tarafta eşit | BLOCKED — iki client yok |
 | Düşük bellek cihaz | Büyük geçerli import | Limit içindeki dosya tamamlanır veya kontrollü hata verir; crash/yarım write yok | BLOCKED — cihaz profili yok |
 

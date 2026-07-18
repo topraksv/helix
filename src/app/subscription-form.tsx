@@ -7,7 +7,7 @@ import { CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscri
 import { useCategories, usePersons, useSources, useSubscriptions, useUserId } from "../data/hooks";
 import { categoryIcon } from "../data/category-icons";
 import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
-import { monthKeyOf, todayISO } from "../domain/dates";
+import { isMonthDay, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
@@ -23,10 +23,11 @@ import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { newId } from "../db/ids";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { MonthDayField } from "../ui/month-day-field";
 
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
-const QUICK_DAYS = ["1", "5", "10", "15", "25", "28"] as const;
+const QUICK_DAYS = [1, 5, 10, 15, 25, 28] as const;
 
 export default function SubscriptionFormModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -105,9 +106,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     name.trim() !== "" &&
     amountMinor != null &&
     amountMinor > 0 &&
-    Number.isInteger(billingDay) &&
-    billingDay >= 1 &&
-    billingDay <= 31 &&
+    isMonthDay(billingDay) &&
     Number.isInteger(intervalMonths) &&
     intervalMonths >= 1 &&
     trialValid &&
@@ -227,13 +226,13 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         </>
       ) : null}
 
-      <Label>{tr.subs.billingDay}</Label>
-      <ChipPicker
-        options={QUICK_DAYS.map((d) => ({ value: d, label: d }))}
-        value={(QUICK_DAYS as readonly string[]).includes(billingDayStr) ? (billingDayStr as (typeof QUICK_DAYS)[number]) : null}
+      <MonthDayField
+        label={tr.subs.billingDay}
+        value={billingDayStr}
         onChange={setBillingDayStr}
+        quickDays={QUICK_DAYS}
+        error={billingDayStr !== "" && !isMonthDay(billingDayStr) ? tr.incomes.dayError : null}
       />
-      <Field accessibilityLabel={tr.subs.billingDay} value={billingDayStr} onChangeText={setBillingDayStr} keyboardType="number-pad" placeholder={tr.subs.billingDay} />
       <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.billingDayHint}</Body>
 
       <Label>{tr.tx.category}</Label>
@@ -248,7 +247,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         />
       ) : null}
       {showCategoryOffer && !selectedCategoryId ? (
-        <Card style={{ borderColor: palette.primary }}>
+        <Card style={{ backgroundColor: palette.primarySoft }}>
           <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
           <Row gap={spacing.sm} style={{ alignItems: "center", flexWrap: "wrap" }}>
             <Button

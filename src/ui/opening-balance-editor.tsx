@@ -3,7 +3,7 @@
  * the user types the real total in their account and the difference is stored
  * as one adjustment dated today — the month-by-month chain and every prior
  * month stay exactly as they were. Editing the START MONTH + opening balance
- * (which recomputes the WHOLE table) is demoted to an advanced, collapsed
+ * (which recomputes the WHOLE table) is demoted to a historical, collapsed
  * section, since doing that was what silently "blew up" the Mali Tablo values.
  *
  * Shared body used by the Settings sub-screen and a top-level modal opened from
@@ -13,14 +13,14 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, History, Trash2 } from "lucide-react-native";
 import { restoreRow, softDelete, writeSetting } from "../db/mutations";
 import { setCurrentBalance } from "../data/repo";
 import { settingValue, useAdjustments, useLedger, useSettingsMap, useUserId } from "../data/hooks";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Body, Button, Card, CardList, Heading, IconButton, MoneyField, Row, Screen, Spread } from "./components";
+import { Amount, Body, Button, Card, CardList, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "./components";
 import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { spacing } from "./theme";
@@ -63,10 +63,11 @@ export function OpeningBalanceEditor() {
     }
   };
 
-  // --- advanced: start month + opening balance (recomputes everything) -------
+  // Historical anchor: rarely needed, but necessary when the original setup
+  // month/balance was wrong. Keep it separate from today's reconciliation.
   const currentStart = settingValue<string>(settings, "start_month", monthKeyOf(todayISO()));
   const currentOpening = settingValue<number>(settings, "opening_balance_minor", 0);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [draftStart, setDraftStart] = useState<string | null>(null);
   const [draftRaw, setDraftRaw] = useState<string | null>(null);
   const [draftMinor, setDraftMinor] = useState<number | null>(null);
@@ -167,10 +168,13 @@ export function OpeningBalanceEditor() {
         )}
       />
 
-      {showAdvanced ? (
+      {showHistory ? (
         <Card>
-          <Heading style={{ marginTop: 0 }}>{tr.settings.advancedOpeningTitle}</Heading>
-          <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.advancedOpeningHint}</Body>
+          <Spread style={{ marginBottom: spacing.sm }}>
+            <Heading style={{ marginTop: 0, marginBottom: 0, flex: 1 }}>{tr.settings.historyOpeningTitle}</Heading>
+            <Button label={tr.common.close} variant="ghost" size="sm" onPress={() => setShowHistory(false)} />
+          </Spread>
+          <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.historyOpeningHint}</Body>
           <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.startMonth}</Body>
           <Spread style={{ marginBottom: spacing.lg }}>
             <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setDraftStart(addMonthsToKey(startMonth, -1))} />
@@ -193,7 +197,15 @@ export function OpeningBalanceEditor() {
           <Button label={tr.common.save} onPress={() => void saveOpening()} disabled={!openingDirty || openingMinor == null} loading={savingOpening} />
         </Card>
       ) : (
-        <Button variant="ghost" size="sm" label={tr.settings.advancedOpeningShow} onPress={() => setShowAdvanced(true)} />
+        <Card>
+          <ListRow
+            icon={History}
+            title={tr.settings.historyOpeningTitle}
+            subtitle={tr.settings.historyOpeningSummary}
+            chevron
+            onPress={() => setShowHistory(true)}
+          />
+        </Card>
       )}
 
       <View style={{ height: spacing.xl }} />

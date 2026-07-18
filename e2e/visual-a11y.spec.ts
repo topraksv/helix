@@ -86,3 +86,28 @@ test("every primary tab has a permanent mobile visual baseline", async ({ page }
   }
   await assertNoRuntimeErrors(errors, testInfo);
 });
+
+test("follow-up forms keep the quiet control system in both themes", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  const routes = [
+    { name: "transaction", route: "/helix/transaction", heading: "Yeni İşlem" },
+    { name: "analytics", route: "/helix/cash-flow/analytics", heading: "Analiz" },
+    { name: "payment-sources", route: "/helix/settings/payment-sources", heading: "Ödeme Yöntemleri" },
+    { name: "opening-balance", route: "/helix/opening-balance", heading: "Bakiye Düzeltme" },
+  ];
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    for (const { name, route, heading } of routes) {
+      await page.goto(route);
+      await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
+      await expect(page).toHaveScreenshot(`follow-up-${name}-phone-390-${scheme}.png`, {
+        animations: "disabled",
+        caret: "hide",
+        maxDiffPixelRatio: maxVisualDiffPixelRatio,
+      });
+    }
+  }
+  await assertNoRuntimeErrors(errors, testInfo);
+});

@@ -3,7 +3,15 @@ import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
-import { applyFeed, disconnectMarkets, markMarketConnectionInterrupted, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../src/services/markets";
+import {
+  applyFeed,
+  disconnectMarkets,
+  markMarketConnectionInterrupted,
+  marketSellRateTry,
+  MARKET_SYMBOLS,
+  suspendMarkets,
+  useMarkets,
+} from "../src/services/markets";
 
 afterEach(() => {
   disconnectMarkets();
@@ -128,6 +136,23 @@ describe("live market freshness", () => {
     expect(useMarkets.getState().prices.ALTIN).toBeDefined();
     vi.advanceTimersByTime(1);
     expect(useMarkets.getState()).toMatchObject({ prices: {}, status: "error" });
+  });
+
+  it("keeps one socket lifecycle alive through a transient app-state change", () => {
+    vi.useFakeTimers();
+    useMarkets.setState({
+      status: "live",
+      prices: {
+        ALTIN: { code: "ALTIN", buyTry: 4_000, sellTry: 4_010, direction: "", at: "", receivedAt: 1_000 },
+      },
+      lastEventAt: 1_000,
+    });
+
+    suspendMarkets(1_200);
+    vi.advanceTimersByTime(1_199);
+    expect(useMarkets.getState().status).toBe("live");
+    vi.advanceTimersByTime(1);
+    expect(useMarkets.getState()).toMatchObject({ prices: {}, status: "idle" });
   });
 });
 

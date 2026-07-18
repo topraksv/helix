@@ -14,17 +14,18 @@ import * as DocumentPicker from "expo-document-picker";
 import { CheckCircle2, FileSpreadsheet, Upload } from "lucide-react-native";
 import { importSheets, importedYears } from "../data/repo";
 import { usePersons, useSources, useUserId } from "../data/hooks";
-import { yearOf } from "../domain/dates";
+import { isMonthDay, yearOf } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, Card, ChipPicker, Field, Row, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, Card, ChipPicker, Row, Screen, SectionHeader } from "../ui/components";
 import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { readPickedBytes } from "../services/picked-file";
+import { MonthDayField } from "../ui/month-day-field";
 
 // --- visual format guide ---------------------------------------------------
 function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
@@ -209,13 +210,9 @@ export default function ImportWizardModal() {
       dueDay: existing?.dueDay == null ? "" : String(existing.dueDay),
     };
   };
-  const validCycleDay = (value: string) => {
-    const day = Number(value);
-    return value.trim() !== "" && Number.isInteger(day) && day >= 1 && day <= 31;
-  };
   const cardCyclesValid = installmentCards.every((card) => {
     const cycle = cycleDraft(card);
-    return validCycleDay(cycle.statementDay) && validCycleDay(cycle.dueDay);
+    return isMonthDay(cycle.statementDay) && isMonthDay(cycle.dueDay);
   });
 
   const startImport = async () => {
@@ -383,27 +380,23 @@ export default function ImportWizardModal() {
                         <Body style={{ marginBottom: spacing.xs }}>{card}</Body>
                         <Row>
                           <View style={{ flex: 1 }}>
-                            <Field
+                            <MonthDayField
                               label={tr.sources.statementDay}
                               value={cycle.statementDay}
-                              onChangeText={(statementDay) => setCardCycleDrafts((current) => ({
+                              onChange={(statementDay) => setCardCycleDrafts((current) => ({
                                 ...current,
                                 [card]: { ...cycleDraft(card), statementDay },
                               }))}
-                              placeholder={tr.sources.dayPlaceholder}
-                              keyboardType="number-pad"
                             />
                           </View>
                           <View style={{ flex: 1 }}>
-                            <Field
+                            <MonthDayField
                               label={tr.sources.dueDay}
                               value={cycle.dueDay}
-                              onChangeText={(dueDay) => setCardCycleDrafts((current) => ({
+                              onChange={(dueDay) => setCardCycleDrafts((current) => ({
                                 ...current,
                                 [card]: { ...cycleDraft(card), dueDay },
                               }))}
-                              placeholder={tr.sources.dayPlaceholder}
-                              keyboardType="number-pad"
                             />
                           </View>
                         </Row>
