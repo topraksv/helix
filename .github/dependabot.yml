@@ -41,7 +41,7 @@ updates:
       - dependency-name: "eslint-config-expo"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "eslint"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
