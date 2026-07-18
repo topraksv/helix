@@ -13,28 +13,28 @@ import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxes
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
-import { creditCardSplit } from "../../../domain/analytics";
-import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
+import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
-import { makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
+import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { monthLabel, monthName, tr } from "../../../i18n/tr";
 import {
   settingValue,
   toTxLike,
-  useAllTransactions,
-  useCategories,
-  useComputedColumns,
-  useLedger,
+  useAllTransactionsState,
+  useCategoriesState,
+  useComputedColumnsState,
+  useLedgerState,
   useLive,
-  usePersons,
-  useSettingsMap,
-  useSources,
+  usePersonsState,
+  useSettingsMapState,
+  useSourcesState,
   useUserId,
+  type LedgerBundle,
 } from "../../../data/hooks";
-import type { MonthLedger } from "../../../domain/balance";
+import { combineLiveQueryStatus } from "../../../data/live-state";
 import { kv } from "../../../lib/kv";
-import { Amount, Button, Card, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { lightTap } from "../../../ui/haptics";
@@ -75,15 +75,30 @@ function FlowStat({
 export default function CashflowScreen() {
   const currentYear = yearOf(todayISO());
   const [year, setYear] = useState(currentYear);
-  const bundle = useLedger(year);
-  const categories = useCategories();
-  const computed = useComputedColumns();
-  const settings = useSettingsMap();
+  const ledgerState = useLedgerState(year);
+  const categoriesState = useCategoriesState();
+  const computedState = useComputedColumnsState();
+  const settingsState = useSettingsMapState();
+  const sourcesState = useSourcesState();
+  const personsState = usePersonsState();
+  const allTxState = useAllTransactionsState();
+  const bundle = ledgerState.data;
+  const categories = categoriesState.data;
+  const computed = computedState.data;
+  const settings = settingsState.data;
   const hiddenComputed = settingValue<string[]>(settings, "computed_columns_hidden", []);
   const visibleComputed = computed.filter((c) => !hiddenComputed.includes(c.id));
-  const sources = useSources();
-  const persons = usePersons();
-  const allTx = useAllTransactions();
+  const sources = sourcesState.data;
+  const persons = personsState.data;
+  const allTx = allTxState.data;
+  const liveStates = [ledgerState, categoriesState, computedState, settingsState, sourcesState, personsState, allTxState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const retryData = () => {
+    // Ledger owns the settings/person/category/transaction query retries.
+    ledgerState.retry();
+    computedState.retry();
+    sourcesState.retry();
+  };
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   const router = useRouter();
@@ -178,11 +193,15 @@ export default function CashflowScreen() {
         </Row>
       )}
 
+      <DataStateNotice status={dataStatus} retry={retryData} />
+
       {!bundle ? (
-        <View style={{ gap: spacing.md }}>
-          <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
-          <Button icon={PiggyBank} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />
-        </View>
+        dataStatus === "loading" || dataStatus === "error" ? null : (
+          <View style={{ gap: spacing.md }}>
+            <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
+            <Button icon={PiggyBank} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />
+          </View>
+        )
       ) : (
         <View style={{ flex: 1 }}>
           {/* Full-width segmented so the month-orientation labels never clip
@@ -257,25 +276,6 @@ export default function CashflowScreen() {
   );
 }
 
-interface ColumnDef {
-  key: string;
-  label: string;
-  /** Category columns open the cell editor; derived columns are read-only. */
-  categoryId: string | null;
-  /** True for user-defined computed (formula) columns — marked with an icon. */
-  computed?: boolean;
-  /** null = not computable (e.g. a broken computed-column definition) — the
-   *  cell renders empty instead of a misleading 0. */
-  value: (m: MonthLedger) => number | null;
-  /** Optional action for derived columns (e.g. cc split → Taksitler screen). */
-  action?: () => void;
-}
-
-interface MonthSlot {
-  month: MonthKey;
-  data: MonthLedger | null;
-}
-
 function MatrixTable({
   year,
   bundle,
@@ -291,9 +291,9 @@ function MatrixTable({
   onTogglePin,
 }: {
   year: number;
-  bundle: NonNullable<ReturnType<typeof useLedger>>;
-  columnCategories: ReturnType<typeof useCategories>;
-  computedColumns: ReturnType<typeof useComputedColumns>;
+  bundle: LedgerBundle;
+  columnCategories: (typeof s.categories.$inferSelect)[];
+  computedColumns: (typeof s.computedColumns.$inferSelect)[];
   creditCardIds: Set<string>;
   liveCategoryIds: Set<string>;
   txLike: ReturnType<typeof toTxLike>;
@@ -316,60 +316,19 @@ function MatrixTable({
   ).data;
   const noteByCell = new Map(cellNotes.map((note) => [`${note.month}:${note.categoryId}`, note.body]));
 
-  const dataByMonth = new Map(bundle.yearMonths.map((month) => [month.month, month]));
-  const months: MonthSlot[] = Array.from({ length: 12 }, (_, index) => {
-    const month = makeMonthKey(year, index + 1);
-    return { month, data: dataByMonth.get(month) ?? null };
+  const matrix = buildCashFlowMatrixModel({
+    year,
+    yearMonths: bundle.yearMonths,
+    categories: columnCategories,
+    computedColumns,
+    transactions: txLike,
+    creditCardIds,
+    liveCategoryIds,
+    today,
+    openingLabel: tr.cashflow.opening,
+    closingLabel: tr.cashflow.closing,
   });
-
-  const ccByMonth = new Map<string, ReturnType<typeof creditCardSplit>>();
-  for (const month of bundle.yearMonths) {
-    ccByMonth.set(month.month, creditCardSplit(txLike, creditCardIds, month.month, today));
-  }
-
-  // Sum of amounts booked to a category that no longer exists (deleted) — kept
-  // visible so deleting a category never makes its money disappear from the table.
-  const uncategorizedValue = (m: MonthLedger): number => {
-    let sum = m.uncategorizedMinor;
-    m.byCategory.forEach((v, cid) => {
-      if (!liveCategoryIds.has(cid)) sum += v;
-    });
-    return sum;
-  };
-  const hasUncategorized = bundle.yearMonths.some((m) => uncategorizedValue(m) !== 0);
-  const uncategorizedTotal = bundle.yearMonths.reduce((sum, month) => sum + uncategorizedValue(month), 0);
-
-  const columns: ColumnDef[] = [
-    ...columnCategories.map<ColumnDef>((category) => ({
-      key: category.id,
-      label: category.name,
-      categoryId: category.id,
-      value: (month) => month.byCategory.get(category.id) ?? 0,
-    })),
-    ...computedColumns.map<ColumnDef>((column) => ({
-      key: column.id,
-      label: column.name,
-      categoryId: null,
-      computed: true,
-      value: (month) => {
-        const cc = ccByMonth.get(month.month);
-        try {
-          return evaluateComputedColumn(parseDefinition(JSON.parse(column.definition)), {
-            month: month.month,
-            byCategory: month.byCategory,
-            incomeMinor: month.incomeMinor,
-            expenseMinor: month.expenseMinor,
-            ccSingleMinor: cc?.singleMinor ?? 0,
-            ccInstallmentMinor: cc?.installmentMinor ?? 0,
-          });
-        } catch {
-          return null; // broken definition → empty cell, not a fake 0
-        }
-      },
-    })),
-    { key: "opening", label: tr.cashflow.opening, categoryId: null, value: (month) => month.openingMinor },
-    { key: "closing", label: tr.cashflow.closing, categoryId: null, value: (month) => month.closingMinor },
-  ];
+  const { months, columns, hasUncategorized, uncategorizedTotal } = matrix;
 
   const CELL_W = compact ? 104 : 128;
   const HEAD_W = compact ? 80 : 132;
@@ -412,10 +371,9 @@ function MatrixTable({
   // (no transactions to edit) so their cells open the breakdown — the same as
   // tapping their header — so no visible cell is ever a dead tap. Opening/
   // closing stay non-interactive by design.
-  const pressFor = (c: ColumnDef, month: MonthKey): (() => void) | undefined => {
+  const pressFor = (c: CashFlowMatrixColumn, month: MonthKey): (() => void) | undefined => {
     if (c.categoryId) return () => router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId! } });
-    if (c.action) return c.action;
-    if (c.key === "opening" || c.key === "closing") return undefined;
+    if (c.system) return undefined;
     return () => openBreakdown(c.key); // computed column cell → its breakdown
   };
 
@@ -441,7 +399,7 @@ function MatrixTable({
       rowHighlight: slot.month === currentMonth,
       cells: columns.map((c) =>
         cell(
-          slot.data ? c.value(slot.data) : null,
+          c.values.get(slot.month) ?? null,
           c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
           pressFor(c, slot.month),
           false,
@@ -459,7 +417,7 @@ function MatrixTable({
       onLabelPress: breakdownFor(c.key),
       cells: months.map((slot) =>
         cell(
-          slot.data ? c.value(slot.data) : null,
+          c.values.get(slot.month) ?? null,
           c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
           pressFor(c, slot.month),
           slot.month === currentMonth,

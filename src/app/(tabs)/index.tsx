@@ -5,8 +5,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
-import { distributionForRange, fixedVsVariable } from "../../domain/analytics";
-import { projectedBalance } from "../../domain/balance";
+import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { standaloneUpcomingTransactions, upcomingCardStatements } from "../../domain/upcoming";
@@ -14,16 +13,17 @@ import { dateLabel, dateTimeLabel, monthLabel, shortMonthLabel, tr } from "../..
 import { useSession } from "../../auth/session";
 import {
   daysBetween,
-  useCategories,
-  useCreditCardStatements,
-  useLedger,
-  usePendingExpected,
-  usePersons,
-  useRecurringIncomes,
-  useSources,
-  useSubscriptions,
+  useCategoriesState,
+  useCreditCardStatementsState,
+  useLedgerState,
+  usePendingExpectedState,
+  usePersonsState,
+  useRecurringIncomesState,
+  useSourcesState,
+  useSubscriptionsState,
   useUserId,
 } from "../../data/hooks";
+import { combineLiveQueryStatus } from "../../data/live-state";
 import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
 import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
@@ -31,7 +31,7 @@ import { projectedTransactionFlow } from "../../domain/transactions";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
 import { Bars, Donut, seriesColor, SplitBar, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
@@ -53,23 +53,41 @@ function MarketsCard() {
   const { prices, status } = useMarkets();
   // While connecting, the card renders at full height with per-symbol "—"
   // placeholders instead of returning null — quotes fill in without the card
-  // popping in above the content (layout shift). A dead feed ("error") still
-  // omits the card entirely, per the product rule.
-  if (status === "error" || status === "idle") return null;
+  // popping in above the content (layout shift). A dead feed remains visible
+  // as an honest unavailable state so the feature never silently disappears.
+  if (status === "idle") return null;
 
   const priceText = (v: number) =>
     new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
   return (
     <Card>
-      <Spread style={{ marginBottom: spacing.xs }}>
-        <Heading style={{ marginVertical: 0 }}>{tr.markets.title}</Heading>
+      <Spread style={{ marginBottom: spacing.xs, alignItems: "flex-start" }}>
+        <View style={{ flex: 1, paddingRight: spacing.md }}>
+          <Heading style={{ marginVertical: 0 }}>{tr.markets.title}</Heading>
+          <Text style={[type.small, { color: palette.textMuted, marginTop: 2 }]}>{tr.markets.source}</Text>
+        </View>
         <Row gap={spacing.xs}>
           {/* The dot claims liveness only once real quotes are flowing. */}
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textMuted }} />
-          <Text style={[type.small, { color: palette.textMuted }]}>{tr.markets.source}</Text>
+          <Text style={[type.small, { color: palette.textMuted }]}>
+            {status === "live"
+              ? tr.markets.live
+              : status === "stale"
+                ? tr.markets.reconnecting
+                : status === "connecting"
+                  ? tr.markets.connecting
+                  : tr.markets.unavailableShort}
+          </Text>
         </Row>
       </Spread>
+      {status === "error" ? (
+        <View style={{ paddingVertical: spacing.md }}>
+          <Body muted>{tr.markets.unavailable}</Body>
+          <Body muted style={{ fontSize: 12, marginTop: spacing.xs }}>{tr.markets.fallback}</Body>
+        </View>
+      ) : (
+        <>
       {/* column headers over the price columns */}
       <Spread style={{ marginBottom: spacing.xs }}>
         <View />
@@ -100,6 +118,8 @@ function MarketsCard() {
           </Spread>
         );
       })}
+        </>
+      )}
     </Card>
   );
 }
@@ -118,14 +138,43 @@ export default function DashboardScreen() {
   const today = todayISO();
   const year = yearOf(today);
   const month = monthKeyOf(today);
-  const bundle = useLedger(year);
-  const categories = useCategories();
-  const persons = usePersons();
-  const expected = usePendingExpected();
-  const subscriptions = useSubscriptions();
-  const incomes = useRecurringIncomes();
-  const sources = useSources();
-  const cardStatements = useCreditCardStatements();
+  const ledgerState = useLedgerState(year);
+  const categoriesState = useCategoriesState();
+  const personsState = usePersonsState();
+  const expectedState = usePendingExpectedState();
+  const subscriptionsState = useSubscriptionsState();
+  const incomesState = useRecurringIncomesState();
+  const sourcesState = useSourcesState();
+  const cardStatementsState = useCreditCardStatementsState();
+  const bundle = ledgerState.data;
+  const categories = categoriesState.data;
+  const persons = personsState.data;
+  const expected = expectedState.data;
+  const subscriptions = subscriptionsState.data;
+  const incomes = incomesState.data;
+  const sources = sourcesState.data;
+  const cardStatements = cardStatementsState.data;
+  const liveStates = [
+    ledgerState,
+    categoriesState,
+    personsState,
+    expectedState,
+    subscriptionsState,
+    incomesState,
+    sourcesState,
+    cardStatementsState,
+  ];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const retryData = () => {
+    // Ledger already retries settings, persons, categories, transactions and
+    // adjustments; retry only the remaining independent sources once.
+    ledgerState.retry();
+    expectedState.retry();
+    subscriptionsState.retry();
+    incomesState.retry();
+    sourcesState.retry();
+    cardStatementsState.retry();
+  };
   const router = useRouter();
   const colors = useSeriesColors();
   const undo = useUndo();
@@ -145,9 +194,6 @@ export default function DashboardScreen() {
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
   const incomeById = new Map(incomes.map((income) => [income.id, income]));
 
-  const pendingItems = expected.filter((e) => e.status === "pending" || e.status === "late");
-  const late = pendingItems.filter((e) => e.status === "late" || (e.status === "pending" && e.dueDate < today));
-
   const catName = (id: string | null) => (id ? categoryById.get(id)?.name : undefined);
   const nameOf = (e: (typeof expected)[number]) =>
     subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
@@ -162,6 +208,20 @@ export default function DashboardScreen() {
     const rateTry = marketSellRateTry(currency) ?? lookupRate(userId, currency)?.rate.rateTry ?? null;
     return rateTry == null ? null : convertToTryMinor(amountMinor, rateTry);
   };
+  const monthEnd = lastDayOf(month);
+  const model = buildDashboardModel({
+    transactions: txLike,
+    expected,
+    ledger: bundle?.ledger ?? [],
+    actualBalanceMinor: bundle?.actualBalanceMinor ?? null,
+    today,
+    monthStart: firstDayOf(month),
+    monthEnd,
+    currentMonth: month,
+    year,
+    expectedTryMinor,
+  });
+  const { pendingItems, lateItems: late, incomingMinor, outgoingMinor: remainingFixedMinor } = model;
   // Upcoming = the next ~31 days of everything you'll pay/receive on a fixed
   // schedule: subscriptions + recurring incomes (expected items) AND your own
   // future-dated one-off entries (a bill you scheduled ahead). A month-wide
@@ -236,25 +296,10 @@ export default function DashboardScreen() {
   // Installment tx are already pending transactions, so expected items cover only
   // subs/incomes → no double count. Pending (not yet realized) items from today
   // onward are what isn't in the actual balance yet.
-  const monthEnd = lastDayOf(month);
-  const monthEndFlows = [
-    ...txLike
-      .filter((t) => t.personIsSelf && t.status === "pending" && t.effectiveDate >= today && t.effectiveDate <= monthEnd)
-      .map((t) => ({ ...projectedTransactionFlow(t), date: t.effectiveDate })),
-    ...pendingItems
-      .filter((e) => e.dueDate >= today && e.dueDate <= monthEnd)
-      .flatMap((e) => {
-        const m = expectedTryMinor(e.currency, e.amountMinor);
-        return m == null ? [] : [{ direction: e.direction, amountTryMinor: m, date: e.dueDate }];
-      }),
-  ];
-  const incomingMinor = monthEndFlows.filter((f) => f.direction === "in").reduce((sum, f) => sum + f.amountTryMinor, 0);
-  const remainingFixedMinor = monthEndFlows.filter((f) => f.direction === "out").reduce((sum, f) => sum + f.amountTryMinor, 0);
   const hasForecast = incomingMinor > 0 || remainingFixedMinor > 0;
-  const projected = bundle ? projectedBalance(bundle.actualBalanceMinor, monthEndFlows, monthEnd) : null;
-
-  const dist = distributionForRange(txLike, firstDayOf(month), lastDayOf(month), today);
-  const fv = fixedVsVariable(txLike, firstDayOf(month), lastDayOf(month), today);
+  const projected = model.projectedMinor;
+  const dist = model.distribution;
+  const fv = { fixedMinor: model.fixedMinor, variableMinor: model.variableMinor };
 
   const donutEntries = [...dist.expenseByCategory.entries()]
     .map(([id, v]) => ({ label: categoryById.get(id)?.name ?? tr.common.none, valueMinor: v }))
@@ -282,7 +327,7 @@ export default function DashboardScreen() {
   ];
   const distributionTotalMinor = dist.expenseTotalMinor + dist.transferTotalMinor;
 
-  const trendMonths = bundle ? bundle.ledger.filter((m) => yearOf(m.month) === year && m.month <= month) : [];
+  const trendMonths = model.trendMonths;
   // Grouped income-vs-expense bars read far clearer than three overlapping
   // lines where a cumulative balance dwarfed the monthly flows.
   const trendGroups =
@@ -338,6 +383,7 @@ export default function DashboardScreen() {
   return (
     <Screen title={greeting()} subtitle={dateLabel(today)} leading={<BrandMark size={40} />}>
       <FirstRunTour />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       {previousLoginAt ? (
         <Body muted style={{ marginBottom: spacing.sm }}>
           {tr.dashboard.lastLogin(dateTimeLabel(previousLoginAt))}
@@ -478,7 +524,7 @@ export default function DashboardScreen() {
 
       {/* Upcoming payments */}
       <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
-      {(late.length > 0 || upcoming.length > 0) && selfPersonId ? (
+      {dataStatus === "loading" || dataStatus === "error" ? null : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
         <Card>
           {late.map((e) => (
             <ListRow

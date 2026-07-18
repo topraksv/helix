@@ -10,6 +10,7 @@ import {
   parseSheetAmount,
   parseWorkbook,
   planImportCell,
+  validateWorkbookContainer,
   type CellData,
   type ParsedSheet,
   type RawCell,
@@ -32,6 +33,34 @@ const asSheet = (r: ReturnType<typeof parseSheet>) => {
 };
 const sheetCell = (sheet: ParsedSheet, rowIndex: number, columnIndex: number): CellData =>
   required(required(sheet.cells[rowIndex], `sheet row ${rowIndex}`)[columnIndex], `sheet cell ${rowIndex}:${columnIndex}`);
+
+function fakeZipSizes(compressed: number, uncompressed: number): Uint8Array {
+  const bytes = new Uint8Array(30 + 46 + 22);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, 0x04034b50, true); // local header
+  const central = 30;
+  view.setUint32(central, 0x02014b50, true);
+  view.setUint32(central + 20, compressed, true);
+  view.setUint32(central + 24, uncompressed, true);
+  const end = central + 46;
+  view.setUint32(end, 0x06054b50, true);
+  view.setUint16(end + 8, 1, true);
+  view.setUint16(end + 10, 1, true);
+  view.setUint32(end + 12, 46, true);
+  view.setUint32(end + 16, central, true);
+  return bytes;
+}
+
+describe("workbook container preflight", () => {
+  it("rejects a high-ratio ZIP before SheetJS can inflate it", () => {
+    expect(() => validateWorkbookContainer(fakeZipSizes(1, 10_000))).toThrow();
+  });
+
+  it("accepts bounded ZIP metadata and non-ZIP CSV bytes", () => {
+    expect(() => validateWorkbookContainer(fakeZipSizes(1_000, 10_000))).not.toThrow();
+    expect(() => validateWorkbookContainer(new TextEncoder().encode("Ay;Kira\nOcak;100"))).not.toThrow();
+  });
+});
 
 // A vertical 2026-style block: months down column A, balance columns present.
 const sheet2026 = (): RawCell[][] => [
@@ -257,7 +286,7 @@ describe("parseWorkbook — multi-sheet, different columns per year", () => {
       "Gelir-Gider 2025",
     );
 
-    const parsed = parseWorkbook(wb);
+    const parsed = parseWorkbook(wb, XLSX);
     expect(parsed.sheets.map((s) => s.sheetName)).toEqual(["Gelir-Gider 2026", "Gelir-Gider 2025"]);
     expect(parsed.unparsed.map((s) => s.sheetName)).toEqual(["Yatırım"]);
 

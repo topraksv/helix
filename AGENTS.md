@@ -99,6 +99,11 @@ agent-to-agent communication that did not occur.
   `stopSyncSession`. Maintenance, FX, notifications, or any other async work
   that can outlive a render must run through `runSyncSessionTask`. A late
   response from user A must never write after user B becomes active.
+- **Live SQLite reads expose state, not ambiguous empty arrays.** New
+  data-critical screens consume the `*State` hooks (`loading`, `ready`,
+  `refreshing`, `stale`, `error`), keep the last good snapshot, and offer the
+  shared retry notice. The legacy array/value hooks are compatibility facades;
+  never use an initial `[]`/`null` as proof that the account is empty.
 - **External financial data is bounded and dated.** FX fetches follow the
   session abort signal, time out, validate response size/shape and persist the
   provider's declared business date (never a fabricated "today"). The in-memory
@@ -181,9 +186,16 @@ agent-to-agent communication that did not occur.
   success/warning/error notifications describe completed outcomes. Native
   haptic failures must never block the underlying action.
 - **Production diagnostics stay silent.** App-owned diagnostics go through
-  `src/services/logger.ts`; it emits only in development and must never receive
-  tokens, passwords or raw imported data. Do not reintroduce direct console
-  logging in application code.
+  `src/services/logger.ts`; raw detail emits only in development. Production
+  persists only the bounded, device-local `{time,scope,severity,category}`
+  event shape and the user can export a PII-free health snapshot. Never persist
+  or export tokens, passwords, row payloads, notes, e-mails, ids or amounts; do
+  not reintroduce direct console logging in application code.
+- **Workbook bytes are hostile until preflight passes.** Keep XLSX as a dynamic
+  import, inspect ZIP central-directory entry/size/ratio limits before SheetJS
+  inflates it, then enforce the existing sheet/row/cell/text limits. Large JSON
+  restores validate completely first and consume bounded batches inside one
+  SQLite transaction; do not trade all-or-nothing behavior for chunking.
 - **UI strings live only in `src/i18n/tr.ts`.** Code is English, UI is Turkish.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint
@@ -191,6 +203,9 @@ agent-to-agent communication that did not occur.
   demands a stable identity.
 - Shared primitives live in `src/ui/components.tsx`; reuse them, don't restyle
   inline. Design tokens are in `src/ui/theme.ts`.
+- The static web export is release-budgeted by `npm run bundle:check`; keep the
+  CI step after `expo export` and change a threshold only with a measured export
+  and an explanation in the package handoff.
 
 ## Directory layout
 

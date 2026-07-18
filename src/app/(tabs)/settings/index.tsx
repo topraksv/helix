@@ -8,6 +8,7 @@ import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import {
   Banknote,
+  Activity,
   Bell,
   BookOpen,
   CalendarClock,
@@ -29,7 +30,7 @@ import {
 import { useSession } from "../../../auth/session";
 import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
 import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
-import { buildExportBundle, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
+import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
 import { disableNotifications, enableNotifications, rescheduleAll } from "../../../services/notifications";
 import { scheduleSync, syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
@@ -109,10 +110,9 @@ export default function SettingsScreen() {
   };
 
   const exportJson = async () => {
-    const bundle = await buildExportBundle(userId);
     const path = await saveTextFile(
       `helix-yedek-${new Date().toISOString().slice(0, 10)}.json`,
-      JSON.stringify(bundle, null, 1),
+      await buildExportText(userId),
       "application/json",
     );
     if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "application/json" });
@@ -359,6 +359,7 @@ export default function SettingsScreen() {
         <ListRow icon={FileSpreadsheet} title={tr.settings.exportCsv} subtitle={tr.settings.exportCsvDesc} chevron onPress={() => void exportCsv()} />
         <ListRow icon={FileUp} title={tr.settings.import} subtitle={tr.settings.importDesc} chevron onPress={() => void importJson()} />
         <ListRow icon={FileSpreadsheet} title={tr.importer.title} subtitle={tr.importer.settingsDesc} chevron onPress={() => router.push("/import-wizard")} />
+        <ListRow icon={Activity} title={tr.diagnostics.title} subtitle={tr.diagnostics.settingsDesc} chevron onPress={() => router.push("/diagnostics" as Href)} />
       </Card>
 
       <Card>

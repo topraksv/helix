@@ -5,13 +5,33 @@ import { tr } from "../i18n/tr";
 
 export const EXPORT_VERSION = 1;
 export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
-const MAX_BACKUP_ROWS = 100_000;
+export const MAX_BACKUP_ROWS = 100_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface ExportBundle {
   version: number;
   exportedAt: string;
   tables: Record<string, Record<string, unknown>[]>;
+}
+
+/** Bounded, one-table-at-a-time JSON envelope used by device exports. */
+export class ExportTextBuilder {
+  private readonly parts: string[] = [];
+  private totalRows = 0;
+
+  constructor(private readonly exportedAt: string) {}
+
+  addTable(table: SyncedTableName, rows: readonly Record<string, unknown>[]): void {
+    this.totalRows += rows.length;
+    if (this.totalRows > MAX_BACKUP_ROWS) throw new Error(tr.errors.backupTooLarge);
+    this.parts.push(`${JSON.stringify(table)}:${JSON.stringify(rows)}`);
+  }
+
+  finish(): string {
+    const content = `{"version":${EXPORT_VERSION},"exportedAt":${JSON.stringify(this.exportedAt)},"tables":{${this.parts.join(",")}}}`;
+    if (utf8ByteLength(content) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
+    return content;
+  }
 }
 
 const DATE_COLUMNS = new Set([
@@ -207,7 +227,7 @@ export function validateExportBundle(raw: unknown): ExportBundle {
 
 /** Parse a picked backup with a hard pre-JSON size bound. */
 export function parseExportBundleText(content: string): ExportBundle {
-  if (content.length > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
+  if (utf8ByteLength(content) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
   try {
     return validateExportBundle(JSON.parse(content));
   } catch (error) {
@@ -219,4 +239,14 @@ export function parseExportBundleText(content: string): ExportBundle {
     }
     throw new Error(tr.errors.invalidBackupFile);
   }
+}
+
+/** Cross-platform UTF-8 byte count without allocating another encoded copy. */
+export function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+  }
+  return bytes;
 }

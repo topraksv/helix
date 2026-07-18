@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isValidImportRow, parseExportBundleText, validateBundleRelationships, validateExportBundle } from "../src/services/backup-validation";
+import { ExportTextBuilder, isValidImportRow, MAX_BACKUP_ROWS, parseExportBundleText, validateBundleRelationships, validateExportBundle } from "../src/services/backup-validation";
+import { SYNCED_TABLES, type SyncedTableName } from "../src/db/schema";
 
 const timestamp = "2026-07-15T12:00:00.000Z";
 const id = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -113,6 +114,24 @@ describe("backup validation", () => {
     expect(() => parseExportBundleText("{")).toThrow("Geçersiz yedek dosyası");
   });
 
+  it("builds a restorable envelope for every synced table one table at a time", () => {
+    const builder = new ExportTextBuilder(timestamp);
+    for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+      const rows = table === "persons"
+        ? [person]
+        : table === "categories"
+          ? [category]
+          : table === "transactions"
+            ? [transaction]
+            : [];
+      builder.addTable(table, rows);
+    }
+    const bundle = parseExportBundleText(builder.finish());
+
+    expect(Object.keys(bundle.tables)).toHaveLength(Object.keys(SYNCED_TABLES).length);
+    expect(() => validateBundleRelationships(bundle)).not.toThrow();
+  });
+
   it("accepts real cancellation/payment timestamps instead of date-only text", () => {
     const subscription = {
       id: id(9), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
@@ -163,5 +182,13 @@ describe("backup validation", () => {
       exportedAt: timestamp,
       tables: { persons: [person], categories: [{ ...category, user_id: id(99) }] },
     })).toThrow("Geçersiz yedek dosyası");
+  });
+
+  it("rejects an oversized restore plan before iterating or writing its rows", () => {
+    expect(() => validateExportBundle({
+      version: 1,
+      exportedAt: timestamp,
+      tables: { transactions: Array(MAX_BACKUP_ROWS + 1).fill(transaction) },
+    })).toThrow("Yedek dosyası güvenli içe aktarma sınırını aşıyor.");
   });
 });

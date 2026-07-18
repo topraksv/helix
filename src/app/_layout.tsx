@@ -4,42 +4,42 @@
  * fully offline; sync, FX and notifications run opportunistically.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, AppState, Platform, Text, useColorScheme, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Platform, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
-import * as LocalAuthentication from "expo-local-authentication";
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  Inter_800ExtraBold,
-  useFonts,
-} from "@expo-google-fonts/inter";
-import { Fraunces_500Medium, Fraunces_600SemiBold, Fraunces_700Bold } from "@expo-google-fonts/fraunces";
+import { useFonts } from "expo-font";
+import { Inter_400Regular } from "@expo-google-fonts/inter/400Regular";
+import { Inter_500Medium } from "@expo-google-fonts/inter/500Medium";
+import { Inter_600SemiBold } from "@expo-google-fonts/inter/600SemiBold";
+import { Inter_700Bold } from "@expo-google-fonts/inter/700Bold";
+import { Inter_800ExtraBold } from "@expo-google-fonts/inter/800ExtraBold";
+import { Fraunces_500Medium } from "@expo-google-fonts/fraunces/500Medium";
+import { Fraunces_600SemiBold } from "@expo-google-fonts/fraunces/600SemiBold";
+import { Fraunces_700Bold } from "@expo-google-fonts/fraunces/700Bold";
 import { migrateDb } from "../db/migrate";
 import { useSession } from "../auth/session";
-import { useAccountFrozen, useOnboarded } from "../data/hooks";
-import { runMaintenance } from "../data/repo";
-import { loadRateCache, refreshRates } from "../services/fx-fetch";
-import { rescheduleAll } from "../services/notifications";
-import { connectMarkets, disconnectMarkets } from "../services/markets";
-import { runSyncSessionTask, syncNow } from "../sync/engine";
-import { useSyncStatus } from "../sync/status";
+import { useAccountFrozenState, useOnboardedState } from "../data/hooks";
+import { classifyRootRoute, resolveRootGuard } from "../domain/app-guard";
 import { kv } from "../lib/kv";
 import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
-import { devWarning } from "../services/logger";
 import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../lib/device-preferences";
 import { HeaderBackButton } from "../ui/header-back";
+import { devError } from "../services/logger";
+import {
+  useBiometricLock,
+  useFirstPullGrace,
+  useMarketLifecycle,
+  useWorkspaceMaintenance,
+} from "../ui/root-lifecycle";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -77,7 +77,10 @@ export default function RootLayout() {
     setDbError(null);
     migrateDb().then(
       () => !cancelled && setDbReady(true),
-      (e) => !cancelled && setDbError(String(e)),
+      (error) => {
+        devError("database-migration", error);
+        if (!cancelled) setDbError(String(error));
+      },
     );
     return () => {
       cancelled = true;
@@ -132,12 +135,15 @@ function RootLayoutInner() {
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const { userId, ready, bootstrap, isOnlineSession, isNewSignup, isFreezing } = useSession();
-  const [locked, setLocked] = useState<boolean | null>(null);
-  const onboarded = useOnboarded(userId);
-  const frozen = useAccountFrozen(userId);
+  const { locked, unlock } = useBiometricLock(ready, userId);
+  const onboardedState = useOnboardedState(userId);
+  const frozenState = useAccountFrozenState(userId);
+  const onboarded = onboardedState.data;
+  const frozen = frozenState.data;
   const segments = useSegments();
   const router = useRouter();
-  const inRecovery = segments[0] === "(auth)" && (segments as string[])[1] === "reset-password";
+  const routeArea = classifyRootRoute(segments as string[]);
+  const inRecovery = routeArea === "recovery";
 
   // On a fresh device an already-onboarded account's `onboarded` flag arrives
   // only with the first sync pull; until then the local query returns false and
@@ -146,28 +152,12 @@ function RootLayoutInner() {
   // onboarding redirect. This is a plain timer (no external-store subscription),
   // so it can't drive a re-render loop. A brand-new signup skips the grace
   // (isNewSignup) and reaches onboarding immediately.
-  const [pullGrace, setPullGrace] = useState(false);
-  const lastSyncAt = useSyncStatus((st) => st.lastSyncAt);
-  useEffect(() => {
-    if (userId && isOnlineSession && !isNewSignup) {
-      setPullGrace(true);
-      // 8 s is only a fallback cap for an offline / erroring first sync; the
-      // effect below lifts the hold the instant the pull actually lands.
-      const t = setTimeout(() => setPullGrace(false), 8000);
-      return () => clearTimeout(t);
-    }
-    setPullGrace(false);
-    return undefined;
-  }, [userId, isOnlineSession, isNewSignup]);
-  // Lift the grace the moment the first sync pass completes (the onboarded flag
-  // and any cloud data have landed) instead of blindly waiting the full 8 s.
-  // For an account with no cloud data this ends the post-login hold in a few
-  // hundred ms rather than seconds. lastSyncAt is reset to null on sign-out, so
-  // it is always null again by the next sign-in.
-  useEffect(() => {
-    if (lastSyncAt) setPullGrace(false);
-  }, [lastSyncAt]);
-  const awaitingFirstPull = pullGrace && onboarded === false;
+  const awaitingFirstPull = useFirstPullGrace({
+    userId,
+    online: isOnlineSession,
+    newSignup: isNewSignup,
+    onboarded,
+  });
 
   const scheme: "light" | "dark" =
     themePref === "system" ? (systemScheme === "dark" ? "dark" : "light") : themePref;
@@ -189,122 +179,24 @@ function RootLayoutInner() {
     void bootstrap(); // DB is migrated before this component mounts
   }, [bootstrap]);
 
-  // Biometric gate (spec §2.3) — local check, works offline.
-  useEffect(() => {
-    if (!ready) return;
-    void (async () => {
-      if (!userId) {
-        setLocked(false);
-        return;
-      }
-      const enabled = (await kv.get("helix.biometric")) === "true";
-      setLocked(enabled && Platform.OS !== "web");
-    })();
-  }, [ready, userId]);
-
-  const unlock = useCallback(async () => {
-    const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.lock.prompt });
-    if (result.success) setLocked(false);
-  }, []);
-
-  // Re-arm the biometric gate whenever the app is backgrounded, so Face ID
-  // protects the data on every return — not only on a cold start. We listen for
-  // "background" (a real app switch) rather than "inactive" (which also fires
-  // for the Face ID overlay itself, which would loop the prompt).
-  useEffect(() => {
-    if (Platform.OS === "web" || !userId) return;
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state !== "background") return;
-      void kv.get("helix.biometric").then((v) => {
-        if (v === "true") setLocked(true);
-      });
-    });
-    return () => sub.remove();
-  }, [userId]);
-
-  useEffect(() => {
-    // Auto-prompt Face ID when the gate closes; setState happens only after
-    // the async authentication resolves, not synchronously in the effect.
-    if (locked === true) void unlock();
-  }, [locked, unlock]);
-
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
 
-  // Opportunistic background work on open + foreground (never blocks UI).
-  // Throttled: on web, "active" fires on every tab focus — rapid tab switches
-  // must not re-run the full maintenance + FX + sync pass each time. The
-  // throttle is per-user so an account switch always gets its initial pass.
-  const lastKickAt = React.useRef(0);
-  const lastKickUser = React.useRef<string | null>(null);
-  useEffect(() => {
-    if (!ready || !userId || locked !== false) return;
-    const kick = () => {
-      if (lastKickUser.current === userId && Date.now() - lastKickAt.current < 60_000) return;
-      lastKickUser.current = userId;
-      lastKickAt.current = Date.now();
-      // Run maintenance BEFORE sync (not concurrently): maintenance writes land
-      // in the outbox first, so the initial pull/push runs once instead of being
-      // re-triggered mid-flight by those writes. All DB transactions are
-      // serialized (see db/client withTransaction), but sequencing here also
-      // avoids a rerun storm right after sign-in.
-      void runSyncSessionTask(userId, async (signal) => {
-        await runMaintenance(userId);
-        if (signal.aborted) return;
-        await rescheduleAll(userId);
-      })
-        .catch((e) => devWarning("maintenance", String(e)))
-        .finally(() => void syncNow(userId));
-      void runSyncSessionTask(userId, async (signal) => {
-        await loadRateCache(userId);
-        if (!signal.aborted) await refreshRates(userId, signal);
-      }).catch(() => {});
-    };
-    kick();
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") kick();
-    });
-    return () => sub.remove();
-  }, [ready, userId, locked]);
+  useWorkspaceMaintenance(ready, userId, locked === false);
+  useMarketLifecycle(ready, userId, locked === false);
 
-  // Keep the live market stream only while an authenticated workspace is
-  // actively visible. Backgrounding closes the socket immediately; foreground
-  // opens one idempotent connection. This avoids stale prices, radio/battery
-  // use and orphan reconnect loops after account changes.
+  const guard = resolveRootGuard({
+    ready,
+    locked,
+    userId,
+    onboarded,
+    awaitingFirstPull,
+    route: routeArea,
+  });
   useEffect(() => {
-    if (!ready || !userId || locked !== false) {
-      disconnectMarkets();
-      return;
-    }
-    const update = (state: string) => {
-      if (state === "active") connectMarkets();
-      else disconnectMarkets();
-    };
-    update(AppState.currentState);
-    const sub = AppState.addEventListener("change", update);
-    return () => {
-      sub.remove();
-      disconnectMarkets();
-    };
-  }, [ready, userId, locked]);
-
-  // Route guards.
-  useEffect(() => {
-    if (!ready || locked !== false) return;
-    if (userId && onboarded === null) return;
-    const inAuth = segments[0] === "(auth)";
-    const inOnboarding = segments[0] === "(onboarding)";
-    // Setup can seed the workspace then push an importer (Excel / bulk history)
-    // BEFORE marking onboarded, so those routes are allowed while onboarded is
-    // still false; closing them returns to the onboarding screen.
-    const inSetupHelper = segments[0] === "import-wizard" || segments[0] === "bulk-entry";
-    if (!userId && !inAuth) router.replace("/(auth)/sign-in");
-    else if (userId && onboarded === false && !awaitingFirstPull && !inRecovery && !inOnboarding && !inSetupHelper) router.replace("/(onboarding)/setup");
-    else if (userId && onboarded === true && !inRecovery && (inAuth || inOnboarding || (segments as string[]).length === 0)) {
-      router.replace("/(tabs)");
-    }
-  }, [ready, locked, userId, onboarded, awaitingFirstPull, inRecovery, segments, router]);
+    if (guard.redirect) router.replace(guard.redirect);
+  }, [guard.redirect, router]);
 
   if (!ready || locked === null) {
     return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
@@ -335,28 +227,30 @@ function RootLayoutInner() {
     );
   }
 
-  // Don't render protected screens until the user is signed in AND onboarded:
-  // their hooks require a user, and mounting the dashboard's query burst
-  // against a freshly created database (mid sign-up, pre-seed) has proven
-  // fragile on the web sqlite worker.
-  const inAuth = segments[0] === "(auth)";
-  const inOnboarding = segments[0] === "(onboarding)";
-  // Importers launched from onboarding (workspace seeded, not yet finalized)
-  // must render even though onboarded is still false.
-  const inSetupHelper = segments[0] === "import-wizard" || segments[0] === "bulk-entry";
-  const blocked = inRecovery
-    ? false
-    : inAuth
-    ? !!userId && (onboarded === true || awaitingFirstPull)
-    : inOnboarding || inSetupHelper
-      ? !userId
-      : !userId || onboarded !== true;
-  if (blocked) {
+  const guardQueryFailed = Boolean(
+    userId &&
+    ((onboardedState.status === "error" && !onboardedState.updatedAt) ||
+      (frozenState.status === "error" && !frozenState.updatedAt)),
+  );
+  if (guard.view === "wait" || guardQueryFailed) {
     // While an existing account's first pull is still landing, show a spinner
     // rather than a bare background so the hold never reads as a white screen.
     return (
       <View style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}>
-        {awaitingFirstPull ? <ActivityIndicator color={theme.palette.primary} /> : null}
+        {guardQueryFailed ? (
+          <View style={{ width: "100%", maxWidth: 420, padding: 24, gap: 16 }}>
+            <Title>{tr.errors.database}</Title>
+            <Button
+              label={tr.common.retry}
+              onPress={() => {
+                onboardedState.retry();
+                frozenState.retry();
+              }}
+            />
+          </View>
+        ) : awaitingFirstPull || !guard.redirect ? (
+          <ActivityIndicator color={theme.palette.primary} />
+        ) : null}
       </View>
     );
   }
@@ -390,6 +284,7 @@ function RootLayoutInner() {
           <Stack.Screen name="workspace-template" options={{ presentation: "modal", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
           <Stack.Screen name="opening-balance" options={{ presentation: "modal", title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="account-security" options={{ presentation: "modal", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="diagnostics" options={{ presentation: "card", title: tr.diagnostics.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           {/* Keep the shared column editor in a normal stack card. An iOS sheet
               owns the same vertical pan used by the reorder grip, even when
               swipe-to-dismiss is disabled; the Settings entry point works

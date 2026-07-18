@@ -44,6 +44,7 @@ jobs:
       - run: npm test
       - run: npx expo lint
       - run: npx expo export -p web
+      - run: npm run bundle:check
       # GitHub Pages serves 404.html for unknown paths (e.g. deep links to
       # dynamic routes like /cash-flow/2026-05); the not-found page loads the
       # router bundle, which then renders the real route client-side.

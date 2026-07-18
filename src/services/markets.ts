@@ -1,7 +1,7 @@
 /**
  * Live gold and currency prices from a public, read-only socket feed. No API
- * key is used; updates are validated and throttled into the store. If the
- * socket cannot connect, the UI simply omits the unavailable card.
+ * key is used; updates are validated and throttled into the store. The UI
+ * keeps an explicit unavailable state instead of silently hiding the feed.
  */
 
 import { create } from "zustand";
@@ -34,10 +34,11 @@ interface MarketPrice {
 
 interface MarketsState {
   prices: Record<string, MarketPrice>;
-  status: "idle" | "connecting" | "live" | "error";
+  status: "idle" | "connecting" | "live" | "stale" | "error";
+  lastEventAt: number | null;
 }
 
-export const useMarkets = create<MarketsState>(() => ({ prices: {}, status: "idle" }));
+export const useMarkets = create<MarketsState>(() => ({ prices: {}, status: "idle", lastEventAt: null }));
 
 let socket: Socket | null = null;
 let lastApplied = 0;
@@ -78,7 +79,7 @@ export function markMarketConnectionInterrupted(): void {
     useMarkets.setState({ status: "error" });
     return;
   }
-  useMarkets.setState({ status: "connecting" });
+  useMarkets.setState({ status: "stale" });
   if (!staleTimer) markStaleAfterSilence();
 }
 
@@ -128,7 +129,11 @@ export function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
       receivedAt: now,
     };
   }
-  useMarkets.setState({ prices, status: Object.keys(prices).length > 0 ? "live" : "error" });
+  useMarkets.setState({
+    prices,
+    status: Object.keys(prices).length > 0 ? "live" : "error",
+    lastEventAt: now,
+  });
 }
 
 /** Fresh live sell ("satış") price in TRY, or null when unavailable.
@@ -184,5 +189,5 @@ export function disconnectMarkets(): void {
     socket = null;
   }
   lastApplied = 0;
-  useMarkets.setState({ prices: {}, status: "idle" });
+  useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
 }

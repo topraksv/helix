@@ -3,22 +3,33 @@
  * writes instantly (and to sync merges, via SQLite change events).
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
 import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
 import { buildLedger, currentBalance, resolveLedgerAnchor, type MonthLedger } from "../domain/balance";
-import { makeMonthKey, todayISO, yearOf, type MonthKey } from "../domain/dates";
+import { makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { devError } from "../services/logger";
+import {
+  combineLiveQueryStatus,
+  completeLiveQuery,
+  failLiveQuery,
+  initialLiveSnapshot,
+  startLiveQuery,
+  type LiveSnapshot,
+} from "./live-state";
 
-interface LiveResult<T> {
+export interface LiveResult<T> extends LiveSnapshot<T[]> {
   data: T[];
-  /** Undefined until the first query resolves — the "still loading" signal
-   *  that separates an empty result from data that has not arrived yet. */
-  updatedAt: Date | undefined;
+  /** Immediately bypass the current backoff timer and try again. */
+  retry: () => void;
+}
+
+export interface LiveValueResult<T> extends LiveSnapshot<T> {
+  retry: () => void;
 }
 
 /**
@@ -32,7 +43,9 @@ interface LiveResult<T> {
  * used when the platform doesn't report the changed table).
  */
 export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly string[]): LiveResult<T> {
-  const [state, setState] = useState<LiveResult<T>>({ data: [], updatedAt: undefined });
+  const retryRef = useRef<() => void>(() => {});
+  const retry = useCallback(() => retryRef.current(), []);
+  const [state, setState] = useState<LiveResult<T>>({ ...initialLiveSnapshot<T[]>([]), retry });
 
   // The builder object is recreated every render, but it only *changes*
   // when deps change — the effect closure capturing it is deps-accurate,
@@ -43,11 +56,12 @@ export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: re
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const run = () => {
+      setState((previous) => ({ ...startLiveQuery(previous), retry }));
       query.then(
         (data) => {
           if (cancelled) return;
           attempt = 0;
-          setState({ data, updatedAt: new Date() });
+          setState({ ...completeLiveQuery(data, new Date()), retry });
         },
         (error) => {
           if (cancelled) return;
@@ -55,13 +69,20 @@ export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: re
           // oversight: abandoning after N tries left screens frozen on empty
           // data (a wedged sqlite worker never recovered, and route guards
           // keyed off this query showed a permanent blank screen). Failures
-          // never touch state, so screens keep the loading signal (or the
-          // last good data) instead of asserting an empty result.
+          // preserve the last good data and expose an explicit error/stale
+          // state instead of asserting an empty result.
           if (attempt < 3) devError("live-query", error);
-          const delay = Math.min(250 * 2 ** attempt++, 5000);
+          attempt += 1;
+          setState((previous) => ({ ...failLiveQuery(previous, attempt, new Date()), retry }));
+          const delay = Math.min(250 * 2 ** (attempt - 1), 5000);
           timer = setTimeout(run, delay);
         },
       );
+    };
+    retryRef.current = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      run();
     };
     run();
 
@@ -76,6 +97,7 @@ export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: re
     });
     return () => {
       cancelled = true;
+      retryRef.current = () => {};
       listener.remove();
       if (timer) clearTimeout(timer);
     };
@@ -107,7 +129,8 @@ interface SharedLiveEntry {
   teardown: () => void;
 }
 
-const EMPTY_LIVE: LiveResult<never> = { data: [], updatedAt: undefined };
+const noopRetry = () => {};
+const EMPTY_LIVE: LiveResult<never> = { ...initialLiveSnapshot<never[]>([]), retry: noopRetry };
 const sharedLive = new Map<string, SharedLiveEntry>();
 
 function acquireSharedLive<T>(
@@ -120,8 +143,14 @@ function acquireSharedLive<T>(
   let attempt = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let cancelled = false;
+  let run: () => void = () => {};
+  const retry = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    run();
+  };
   const entry: SharedLiveEntry = {
-    state: EMPTY_LIVE,
+    state: { ...initialLiveSnapshot<unknown[]>([]), retry },
     listeners: new Set(),
     teardown: () => {
       cancelled = true;
@@ -130,19 +159,24 @@ function acquireSharedLive<T>(
       sharedLive.delete(key);
     },
   };
-  const run = () => {
+  run = () => {
+    entry.state = { ...startLiveQuery(entry.state), retry };
+    for (const notify of entry.listeners) notify();
     query().then(
       (data) => {
         if (cancelled) return;
         attempt = 0;
-        entry.state = { data, updatedAt: new Date() };
+        entry.state = { ...completeLiveQuery(data, new Date()), retry };
         for (const notify of entry.listeners) notify();
       },
       (error) => {
         if (cancelled) return;
         // Same retry-forever rationale as useLive below.
         if (attempt < 3) devError("live-query", error);
-        const delay = Math.min(250 * 2 ** attempt++, 5000);
+        attempt += 1;
+        entry.state = { ...failLiveQuery(entry.state, attempt, new Date()), retry };
+        for (const notify of entry.listeners) notify();
+        const delay = Math.min(250 * 2 ** (attempt - 1), 5000);
         timer = setTimeout(run, delay);
       },
     );
@@ -183,15 +217,23 @@ function useSharedLive<T>(key: string, query: () => PromiseLike<T[]>, tables: re
 }
 
 export function usePersons() {
+  return usePersonsState().data;
+}
+
+export function usePersonsState() {
   const userId = useUserId();
   return useSharedLive(
     `persons:${userId}`,
     () => getDb().select().from(s.persons).where(and(eq(s.persons.userId, userId), isNull(s.persons.deletedAt))),
     ["persons"],
-  ).data;
+  );
 }
 
 export function useCategories() {
+  return useCategoriesState().data;
+}
+
+export function useCategoriesState() {
   const userId = useUserId();
   return useSharedLive(
     `categories:${userId}`,
@@ -202,10 +244,14 @@ export function useCategories() {
         .where(and(eq(s.categories.userId, userId), isNull(s.categories.deletedAt)))
         .orderBy(asc(s.categories.sortOrder)),
     ["categories"],
-  ).data;
+  );
 }
 
 export function useSources() {
+  return useSourcesState().data;
+}
+
+export function useSourcesState() {
   const userId = useUserId();
   return useSharedLive(
     `payment_sources:${userId}`,
@@ -215,10 +261,14 @@ export function useSources() {
         .from(s.paymentSources)
         .where(and(eq(s.paymentSources.userId, userId), isNull(s.paymentSources.deletedAt))),
     ["payment_sources"],
-  ).data;
+  );
 }
 
 export function useSubscriptions() {
+  return useSubscriptionsState().data;
+}
+
+export function useSubscriptionsState() {
   const userId = useUserId();
   return useSharedLive(
     `subscriptions:${userId}`,
@@ -228,10 +278,14 @@ export function useSubscriptions() {
         .from(s.subscriptions)
         .where(and(eq(s.subscriptions.userId, userId), isNull(s.subscriptions.deletedAt))),
     ["subscriptions"],
-  ).data;
+  );
 }
 
 export function usePlans() {
+  return usePlansState().data;
+}
+
+export function usePlansState() {
   const userId = useUserId();
   return useSharedLive(
     `installment_plans:${userId}`,
@@ -241,10 +295,14 @@ export function usePlans() {
         .from(s.installmentPlans)
         .where(and(eq(s.installmentPlans.userId, userId), isNull(s.installmentPlans.deletedAt))),
     ["installment_plans"],
-  ).data;
+  );
 }
 
 export function useCreditCardStatements() {
+  return useCreditCardStatementsState().data;
+}
+
+export function useCreditCardStatementsState() {
   const userId = useUserId();
   return useSharedLive(
     `credit_card_statements:${userId}`,
@@ -255,10 +313,14 @@ export function useCreditCardStatements() {
         .where(and(eq(s.creditCardStatements.userId, userId), isNull(s.creditCardStatements.deletedAt)))
         .orderBy(asc(s.creditCardStatements.dueDate)),
     ["credit_card_statements"],
-  ).data;
+  );
 }
 
 export function useRecurringIncomes() {
+  return useRecurringIncomesState().data;
+}
+
+export function useRecurringIncomesState() {
   const userId = useUserId();
   return useSharedLive(
     `recurring_incomes:${userId}`,
@@ -268,10 +330,14 @@ export function useRecurringIncomes() {
         .from(s.recurringIncomes)
         .where(and(eq(s.recurringIncomes.userId, userId), isNull(s.recurringIncomes.deletedAt))),
     ["recurring_incomes"],
-  ).data;
+  );
 }
 
 export function useComputedColumns() {
+  return useComputedColumnsState().data;
+}
+
+export function useComputedColumnsState() {
   const userId = useUserId();
   return useSharedLive(
     `computed_columns:${userId}`,
@@ -282,10 +348,14 @@ export function useComputedColumns() {
         .where(and(eq(s.computedColumns.userId, userId), isNull(s.computedColumns.deletedAt)))
         .orderBy(asc(s.computedColumns.sortOrder)),
     ["computed_columns"],
-  ).data;
+  );
 }
 
 export function usePendingExpected() {
+  return usePendingExpectedState().data;
+}
+
+export function usePendingExpectedState() {
   const userId = useUserId();
   return useSharedLive(
     `expected_payments:${userId}`,
@@ -296,10 +366,14 @@ export function usePendingExpected() {
         .where(and(eq(s.expectedPayments.userId, userId), isNull(s.expectedPayments.deletedAt)))
         .orderBy(asc(s.expectedPayments.dueDate)),
     ["expected_payments"],
-  ).data;
+  );
 }
 
 export function useTransactionsBetween(from: string, to: string) {
+  return useTransactionsBetweenState(from, to).data;
+}
+
+export function useTransactionsBetweenState(from: string, to: string) {
   const userId = useUserId();
   return useLive(
     getDb()
@@ -316,10 +390,14 @@ export function useTransactionsBetween(from: string, to: string) {
       .orderBy(asc(s.transactions.effectiveDate)),
     [userId, from, to],
     ["transactions"],
-  ).data;
+  );
 }
 
 export function useAllTransactions() {
+  return useAllTransactionsState().data;
+}
+
+export function useAllTransactionsState() {
   const userId = useUserId();
   return useSharedLive(
     `transactions:${userId}`,
@@ -330,10 +408,14 @@ export function useAllTransactions() {
         .where(and(eq(s.transactions.userId, userId), isNull(s.transactions.deletedAt)))
         .orderBy(asc(s.transactions.effectiveDate)),
     ["transactions"],
-  ).data;
+  );
 }
 
 export function useAdjustments() {
+  return useAdjustmentsState().data;
+}
+
+export function useAdjustmentsState() {
   const userId = useUserId();
   return useSharedLive(
     `balance_adjustments:${userId}`,
@@ -343,7 +425,7 @@ export function useAdjustments() {
         .from(s.balanceAdjustments)
         .where(and(eq(s.balanceAdjustments.userId, userId), isNull(s.balanceAdjustments.deletedAt))),
     ["balance_adjustments"],
-  ).data;
+  );
 }
 
 /**
@@ -352,6 +434,10 @@ export function useAdjustments() {
  * without an app restart. `null` = still resolving (or signed out).
  */
 export function useOnboarded(userId: string | null): boolean | null {
+  return useOnboardedState(userId).data;
+}
+
+export function useOnboardedState(userId: string | null): LiveValueResult<boolean | null> {
   const res = useLive(
     getDb()
       .select()
@@ -360,12 +446,12 @@ export function useOnboarded(userId: string | null): boolean | null {
     [userId],
     ["settings"],
   );
-  if (!userId) return null;
-  if (res.updatedAt == null) return null; // first query still in flight
+  if (!userId) return { data: null, status: "ready", error: null, updatedAt: res.updatedAt, retry: res.retry };
+  if (res.updatedAt == null) return { ...res, data: null }; // first query still in flight
   try {
-    return JSON.parse(res.data[0]?.value ?? "false") === true;
+    return { ...res, data: JSON.parse(res.data[0]?.value ?? "false") === true };
   } catch {
-    return false;
+    return { ...res, data: false };
   }
 }
 
@@ -375,6 +461,10 @@ export function useOnboarded(userId: string | null): boolean | null {
  * flashes before the real value is known.
  */
 export function useAccountFrozen(userId: string | null): boolean | null {
+  return useAccountFrozenState(userId).data;
+}
+
+export function useAccountFrozenState(userId: string | null): LiveValueResult<boolean | null> {
   const res = useLive(
     getDb()
       .select()
@@ -383,23 +473,27 @@ export function useAccountFrozen(userId: string | null): boolean | null {
     [userId],
     ["settings"],
   );
-  if (!userId) return null;
-  if (res.updatedAt == null) return null;
+  if (!userId) return { data: null, status: "ready", error: null, updatedAt: res.updatedAt, retry: res.retry };
+  if (res.updatedAt == null) return { ...res, data: null };
   try {
-    return JSON.parse(res.data[0]?.value ?? "false") === true;
+    return { ...res, data: JSON.parse(res.data[0]?.value ?? "false") === true };
   } catch {
-    return false;
+    return { ...res, data: false };
   }
 }
 
 export function useSettingsMap(): Map<string, string> {
+  return useSettingsMapState().data;
+}
+
+export function useSettingsMapState(): LiveValueResult<Map<string, string>> {
   const userId = useUserId();
-  const rows = useSharedLive(
+  const result = useSharedLive(
     `settings:${userId}`,
     () => getDb().select().from(s.settings).where(and(eq(s.settings.userId, userId), isNull(s.settings.deletedAt))),
     ["settings"],
-  ).data;
-  return new Map(rows.map((r) => [r.key, r.value]));
+  );
+  return { ...result, data: new Map(result.data.map((row) => [row.key, row.value])) };
 }
 
 export function settingValue<T>(map: Map<string, string>, key: string, fallback: T): T {
@@ -448,14 +542,43 @@ export interface LedgerBundle {
 
 /** Full chained ledger from start month through the requested year. */
 export function useLedger(year: number): LedgerBundle | null {
-  const settings = useSettingsMap();
-  const persons = usePersons();
-  const categories = useCategories();
-  const transactions = useAllTransactions();
-  const adjustments = useAdjustments();
+  return useLedgerState(year).data;
+}
+
+export function useLedgerState(year: number): LiveValueResult<LedgerBundle | null> {
+  const settingsState = useSettingsMapState();
+  const personsState = usePersonsState();
+  const categoriesState = useCategoriesState();
+  const transactionsState = useAllTransactionsState();
+  const adjustmentsState = useAdjustmentsState();
+  const settings = settingsState.data;
+  const persons = personsState.data;
+  const categories = categoriesState.data;
+  const transactions = transactionsState.data;
+  const adjustments = adjustmentsState.data;
+  const sources: LiveSnapshot<unknown>[] = [
+    settingsState,
+    personsState,
+    categoriesState,
+    transactionsState,
+    adjustmentsState,
+  ];
+  const status = combineLiveQueryStatus(sources);
+  const error = sources.find((source) => source.error)?.error ?? null;
+  const timestamps = sources.flatMap((source) => source.updatedAt ? [source.updatedAt] : []);
+  const updatedAt = timestamps.length === sources.length
+    ? new Date(Math.min(...timestamps.map((timestamp) => timestamp.getTime())))
+    : undefined;
+  const retry = () => {
+    settingsState.retry();
+    personsState.retry();
+    categoriesState.retry();
+    transactionsState.retry();
+    adjustmentsState.retry();
+  };
 
   const configuredStart = settingValue<string | null>(settings, "start_month", null);
-  if (!configuredStart) return null;
+  if (!configuredStart) return { data: null, status, error, updatedAt, retry };
   const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
   const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
   const today = todayISO();
@@ -482,7 +605,13 @@ export function useLedger(year: number): LedgerBundle | null {
     today,
     includePendingInCells,
   });
-  const actualBalanceMinor = currentBalance({
+  // buildLedger already scanned every transaction and applies the same
+  // realized/today rules. Its current-month close is the actual balance, so a
+  // normal render does not need a second O(N) currentBalance pass. Keep the
+  // direct calculation only for the unusual case where the configured anchor
+  // starts after the current month.
+  const currentLedgerMonth = ledger.find((entry) => entry.month === monthKeyOf(today));
+  const actualBalanceMinor = currentLedgerMonth?.closingMinor ?? currentBalance({
     openingBalanceMinor: openingAtStart,
     startMonth,
     transactions: txLike,
@@ -490,11 +619,17 @@ export function useLedger(year: number): LedgerBundle | null {
     today,
   });
   return {
-    ledger,
-    yearMonths: ledger.filter((m) => yearOf(m.month) === year),
-    startMonth,
-    actualBalanceMinor,
-    txLike,
+    data: {
+      ledger,
+      yearMonths: ledger.filter((m) => yearOf(m.month) === year),
+      startMonth,
+      actualBalanceMinor,
+      txLike,
+    },
+    status,
+    error,
+    updatedAt,
+    retry,
   };
 }
 

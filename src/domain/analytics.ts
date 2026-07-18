@@ -154,17 +154,30 @@ export function creditCardSplit(
   month: MonthKey,
   today: ISODate,
 ): { singleMinor: Minor; installmentMinor: Minor } {
-  let single = 0;
-  let installment = 0;
+  return creditCardSplitsByMonth(transactions, creditCardSourceIds, today).get(month) ?? {
+    singleMinor: 0,
+    installmentMinor: 0,
+  };
+}
+
+/** One pass for every month used by the cash-flow matrix. */
+export function creditCardSplitsByMonth(
+  transactions: TxLike[],
+  creditCardSourceIds: ReadonlySet<string>,
+  today: ISODate,
+): Map<MonthKey, { singleMinor: Minor; installmentMinor: Minor }> {
+  const result = new Map<MonthKey, { singleMinor: Minor; installmentMinor: Minor }>();
   for (const tx of transactions) {
     const flow = financialFlow(tx);
     if (!countsTowardBalance(tx, today) || flow.type !== "expense") continue;
-    if (monthKeyOf(tx.effectiveDate) !== month) continue;
     if (!tx.paymentSourceId || !creditCardSourceIds.has(tx.paymentSourceId)) continue;
-    if (tx.installmentPlanId) installment += flow.amountTryMinor;
-    else single += flow.amountTryMinor;
+    const month = monthKeyOf(tx.effectiveDate);
+    const bucket = result.get(month) ?? { singleMinor: 0, installmentMinor: 0 };
+    if (tx.installmentPlanId) bucket.installmentMinor += flow.amountTryMinor;
+    else bucket.singleMinor += flow.amountTryMinor;
+    result.set(month, bucket);
   }
-  return { singleMinor: single, installmentMinor: installment };
+  return result;
 }
 
 /** Yearly subscription cost normalized to a true monthly load (spec §3.1). */
