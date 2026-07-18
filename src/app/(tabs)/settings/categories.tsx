@@ -19,6 +19,7 @@ import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholde
 import { useUndo } from "../../../ui/undo";
 import { spacing, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
+import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 
 export default function CategoriesScreen({ header }: { header?: ReactNode } = {}) {
   const userId = useUserId();
@@ -35,6 +36,10 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   // Freeze the screen's scroll while a row is being dragged, so the vertical
   // drag reorders instead of scrolling the page.
   const [dragging, setDragging] = useState(false);
+  const editingCategory = editingId ? categories.find((category) => category.id === editingId) : null;
+  useDirtyExitGuard(editingCategory
+    ? editName.trim() !== editingCategory.name
+    : name.trim() !== "");
 
   const add = async () => {
     if (!name.trim()) return;
@@ -146,7 +151,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                   <View>
                     <Row style={{ paddingVertical: spacing.sm }}>
                       <View style={{ flex: 1 }}>
-                        <Field noMargin value={editName} onChangeText={setEditName} autoFocus />
+                        <Field accessibilityLabel={`${tr.common.edit} · ${c.name}`} noMargin value={editName} onChangeText={setEditName} autoFocus />
                       </View>
                       <Button
                         label={tr.common.save}

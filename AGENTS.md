@@ -118,9 +118,16 @@ agent-to-agent communication that did not occur.
 - **Notification consent is device-local and opt-in.** Do not request
   notification permission during boot. Disabled notifications clear legacy
   schedules; sign-out/account switch clears scheduled and presented account
-  details. Subscription logos resolve automatically: utilities and unknowns
+  details. Lock-screen content is neutral by default; names and amounts require
+  a separate device-local confirmation. Turning details off or leaving an
+  account cancels existing previews before any reschedule, and the next 60
+  notifications are the bounded platform queue. Subscription logos resolve automatically: utilities and unknowns
   stay local; a known/stored domain may use Google's favicon service only after
   strict public-host validation/encoding, with disk cache and a local fallback.
+- **Sensitive UI is covered outside the active app.** Keep the root
+  `PrivacyCover`: native `inactive`/`background` states render an isolated modal
+  before app-switcher capture, and framed web pages expose only the safe direct-
+  open explanation. Do not put financial values in that cover.
 - **Every back action has a deterministic parent.** Use `HeaderBackButton` for
   stack headers and `navigateBack` for explicit close/done actions; raw
   `router.back()` is not sufficient for direct links with no history. Nested
@@ -197,6 +204,21 @@ agent-to-agent communication that did not occur.
   restores validate completely first and consume bounded batches inside one
   SQLite transaction; do not trade all-or-nothing behavior for chunking.
 - **UI strings live only in `src/i18n/tr.ts`.** Code is English, UI is Turkish.
+- **Forms with an in-memory draft use `useDirtyExitGuard`.** Compare the real
+  persisted/default snapshot, not merely whether an editor is open; successful
+  save/delete exits call the returned `allowExit` wrapper. Never prompt for a
+  derived async default or for an untouched inline editor.
+- **Accessibility behavior lives in shared primitives.** Fields expose
+  persistent labels and announced inline errors; custom modals isolate their
+  contents, focus a heading and return focus where a trigger ref exists; charts
+  expose a complete textual value summary and never rely on color alone. Keep
+  modal container Pressables `accessible={false}` so they do not swallow their
+  children. Physical VoiceOver/TalkBack remains a release acceptance check.
+- **Color tokens separate accents from readable foregrounds.** Use
+  `primary/positive/negative/warning` for fills, chart marks and essential
+  boundaries; use the matching `*Text` token for text. Inputs use
+  `controlBorder`, and primary/danger button copy uses `onPrimary`/`onNegative`.
+  Every light/dark role pair stays under the automated contrast contract.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint
   error `preserve-manual-memoization`). Keep `useMemo` only where a hook rule

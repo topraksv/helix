@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
-import { normalizeReminderDays, uniqueNotifications } from "../src/domain/notifications";
+import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
 import { applyFeed, disconnectMarkets, markMarketConnectionInterrupted, marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../src/services/markets";
 
 afterEach(() => {
@@ -143,5 +143,22 @@ describe("notification planning guards", () => {
     const a = { date: "2026-07-20", title: "Yaklaşan", body: "Kira" };
     const b = { date: "2026-07-20", title: "Yaklaşan", body: "Elektrik" };
     expect(uniqueNotifications([a, a, b])).toEqual([a, b]);
+  });
+
+  it("redacts merchant and amount unless lock-screen detail is explicitly enabled", () => {
+    const detailed = { title: "Bugün son gün", body: "Elektrik (₺1.250,00) ödendi mi?" };
+    const neutral = { title: "Helix hatırlatması", body: "Planını görmek için Helix'i aç." };
+    expect(privateNotificationContent(false, detailed, neutral)).toEqual(neutral);
+    expect(privateNotificationContent(true, detailed, neutral)).toEqual(detailed);
+    expect(JSON.stringify(privateNotificationContent(false, detailed, neutral))).not.toContain("Elektrik");
+    expect(JSON.stringify(privateNotificationContent(false, detailed, neutral))).not.toContain("1.250");
+  });
+
+  it("keeps the soonest reminders under the platform's 64-slot ceiling", () => {
+    const rows = Array.from({ length: 80 }, (_, index) => ({ id: index, fireAt: new Date(80 - index) }));
+    const limited = boundedScheduledNotifications(rows, 60);
+    expect(limited).toHaveLength(60);
+    expect(limited[0]?.fireAt.getTime()).toBe(1);
+    expect(limited.at(-1)?.fireAt.getTime()).toBe(60);
   });
 });

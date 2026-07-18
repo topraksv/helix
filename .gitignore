@@ -54,3 +54,4 @@ supabase/.temp/
 
 # local secrets
 .env
+.env.eas-simulator

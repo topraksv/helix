@@ -67,9 +67,20 @@ function MarketsCard() {
           <Heading style={{ marginVertical: 0 }}>{tr.markets.title}</Heading>
           <Text style={[type.small, { color: palette.textMuted, marginTop: 2 }]}>{tr.markets.source}</Text>
         </View>
-        <Row gap={spacing.xs}>
+        <Row
+          gap={spacing.xs}
+          accessible
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={status === "live"
+            ? tr.markets.live
+            : status === "stale"
+              ? tr.markets.reconnecting
+              : status === "connecting"
+                ? tr.markets.connecting
+                : tr.markets.unavailableShort}
+        >
           {/* The dot claims liveness only once real quotes are flowing. */}
-          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textMuted }} />
+          <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textMuted }} />
           <Text style={[type.small, { color: palette.textMuted }]}>
             {status === "live"
               ? tr.markets.live
@@ -82,7 +93,7 @@ function MarketsCard() {
         </Row>
       </Spread>
       {status === "error" ? (
-        <View style={{ paddingVertical: spacing.md }}>
+        <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ paddingVertical: spacing.md }}>
           <Body muted>{tr.markets.unavailable}</Body>
           <Body muted style={{ fontSize: 12, marginTop: spacing.xs }}>{tr.markets.fallback}</Body>
         </View>
@@ -99,8 +110,16 @@ function MarketsCard() {
       </Spread>
       {MARKET_SYMBOLS.map(({ code, label }) => {
         const p = prices[code];
+        const direction = p?.direction === "up"
+          ? tr.markets.rising
+          : p?.direction === "down"
+            ? tr.markets.falling
+            : tr.markets.unchanged;
+        const accessibilityLabel = p
+          ? tr.markets.quote(label, priceText(p.buyTry), `${priceText(p.sellTry)} ₺`, direction)
+          : tr.markets.quoteUnavailable(label);
         return (
-          <Spread key={code} style={{ paddingVertical: spacing.sm - 2 }}>
+          <Spread key={code} accessible accessibilityLabel={accessibilityLabel} style={{ paddingVertical: spacing.sm - 2 }}>
             <Body>{label}</Body>
             <Row gap={spacing.sm}>
               <Text style={[type.amountSm, { color: palette.textMuted, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{p ? priceText(p.buyTry) : "—"}</Text>
@@ -108,9 +127,9 @@ function MarketsCard() {
                 {p ? `${priceText(p.sellTry)} ₺` : "—"}
               </Text>
               {p?.direction === "up" ? (
-                <TrendingUp size={MARKET_TREND_W} color={palette.positive} />
+                <TrendingUp accessible={false} size={MARKET_TREND_W} color={palette.positive} />
               ) : p?.direction === "down" ? (
-                <TrendingDown size={MARKET_TREND_W} color={palette.negative} />
+                <TrendingDown accessible={false} size={MARKET_TREND_W} color={palette.negative} />
               ) : (
                 <View style={{ width: MARKET_TREND_W }} />
               )}
@@ -407,12 +426,12 @@ export default function DashboardScreen() {
         <Pressable onPress={() => router.push("/reconciliation")} accessibilityRole="button">
           <Card style={{ backgroundColor: palette.warning + "14", borderWidth: 0 }}>
             <Row>
-              <History size={20} color={palette.warning} />
+              <History accessible={false} size={20} color={palette.warning} />
               <View style={{ flex: 1 }}>
                 <Body>{tr.dashboard.pendingConfirm(late.length)}</Body>
                 <Body muted>{tr.dashboard.catchUp}</Body>
               </View>
-              <ChevronRight size={18} color={palette.textMuted} />
+              <ChevronRight accessible={false} size={18} color={palette.textMuted} />
             </Row>
           </Card>
         </Pressable>
@@ -425,7 +444,7 @@ export default function DashboardScreen() {
           balance or a popping-in hero both read as glitches in a finance app. */}
       {bundle ? (
         <HeroCard>
-          <Text style={[type.label, { color: "rgba(255,255,255,0.75)", textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
+          <Text style={[type.label, { color: palette.onPrimary, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
             {tr.dashboard.actualBalance}
           </Text>
           <Text
@@ -533,11 +552,12 @@ export default function DashboardScreen() {
               iconColor={palette.negative}
               title={nameOf(e)}
               subtitle={`${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
+              stackRightOnNarrow
               right={
                 // The "Geciken" status and the confirm button are rendered as
                 // one symmetric pair — identical width and height, centred.
                 <Row gap={spacing.sm}>
-                  <StatusPill label={tr.dashboard.late} color={palette.negative} />
+                  <StatusPill label={tr.dashboard.late} color={palette.negative} foreground={palette.negativeText} />
                   <View style={{ width: STATUS_W }}>
                     <Button
                       size="sm"
@@ -559,6 +579,7 @@ export default function DashboardScreen() {
               iconColor={u.direction === "in" ? palette.positive : undefined}
               title={u.name}
               subtitle={`${u.typeLabel} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
+              stackRightOnNarrow
               right={
                 u.kind === "expected" && u.expectedId ? (
                   <View style={{ width: STATUS_W }}>

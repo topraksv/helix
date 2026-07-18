@@ -113,13 +113,13 @@ export default function ItemBreakdownScreen() {
                   backgroundColor: isCurrent ? palette.primarySoft + "55" : pressed ? palette.surfaceAlt : "transparent",
                 })}
               >
-                <Text style={[type.body, { color: isCurrent ? palette.primary : palette.text, fontFamily: isCurrent ? "Inter_700Bold" : "Inter_500Medium" }]}>
+                <Text style={[type.body, { color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? "Inter_700Bold" : "Inter_500Medium" }]}>
                   {monthLabel(r.month)}
                 </Text>
                 {r.value == null ? (
                   <Text style={[type.amountSm, { color: palette.textMuted }]}>—</Text>
                 ) : (
-                  <Text style={[type.amountSm, { color: r.value < 0 ? palette.negative : r.value === 0 ? palette.textMuted : palette.text }]}>
+                  <Text style={[type.amountSm, { color: r.value < 0 ? palette.negativeText : r.value === 0 ? palette.textMuted : palette.text }]}>
                     {r.value === 0 ? "—" : formatMinor(r.value)}
                   </Text>
                 )}

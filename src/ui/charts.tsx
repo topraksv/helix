@@ -10,6 +10,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import { formatMinorCompact } from "../domain/money";
+import { tr } from "../i18n/tr";
 import { spacing, type, useTheme } from "./theme";
 
 // Warm editorial categorical palette — earth tones spanning distinct hues.
@@ -68,37 +69,45 @@ export function Donut({
       const sweep = arcTotal > 0 ? (s.valueMinor / arcTotal) * 360 : 0;
       return [...acc, { ...s, path: describeArc(cx, cy, r, start, start + sweep), sweep }];
     }, []);
+  const chartSummary = tr.a11y.donutChart(
+    formatMinorCompact(displayTotal),
+    [...slices, ...supplementalSlices]
+      .map((slice) => `${slice.label}: ${formatMinorCompact(slice.valueMinor)}`)
+      .join(", "),
+  );
 
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg, flexWrap: "wrap" }}>
-      <Svg width={size} height={size}>
-        {arcs.map((a, i) =>
-          a.sweep >= 359.9 ? (
-            <Circle key={i} cx={cx} cy={cy} r={r} stroke={a.color} strokeWidth={strokeWidth} fill="none" />
-          ) : (
-            <Path
-              key={i}
-              d={a.path}
-              stroke={a.color}
-              strokeWidth={strokeWidth}
-              fill="none"
-              strokeLinecap="butt"
-            />
-          ),
-        )}
-        {/* 2px surface gaps between segments */}
-        {arcs.length > 1
-          ? arcs.map((_, i) => {
-              const boundary = arcs.slice(0, i + 1).reduce((deg, x) => deg + x.sweep, -90);
-              const p1 = polar(cx, cy, r - strokeWidth / 2 - 1, boundary);
-              const p2 = polar(cx, cy, r + strokeWidth / 2 + 1, boundary);
-              return <SvgLine key={`gap-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={palette.surface} strokeWidth={2} />;
-            })
-          : null}
-        <SvgText x={cx} y={cy + 5} textAnchor="middle" fontSize={13} fontWeight="600" fill={palette.text}>
-          {formatMinorCompact(displayTotal)}
-        </SvgText>
-      </Svg>
+      <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
+        <Svg accessible={false} width={size} height={size}>
+          {arcs.map((a, i) =>
+            a.sweep >= 359.9 ? (
+              <Circle key={i} cx={cx} cy={cy} r={r} stroke={a.color} strokeWidth={strokeWidth} fill="none" />
+            ) : (
+              <Path
+                key={i}
+                d={a.path}
+                stroke={a.color}
+                strokeWidth={strokeWidth}
+                fill="none"
+                strokeLinecap="butt"
+              />
+            ),
+          )}
+          {/* 2px surface gaps between segments */}
+          {arcs.length > 1
+            ? arcs.map((_, i) => {
+                const boundary = arcs.slice(0, i + 1).reduce((deg, x) => deg + x.sweep, -90);
+                const p1 = polar(cx, cy, r - strokeWidth / 2 - 1, boundary);
+                const p2 = polar(cx, cy, r + strokeWidth / 2 + 1, boundary);
+                return <SvgLine key={`gap-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={palette.surface} strokeWidth={2} />;
+              })
+            : null}
+          <SvgText x={cx} y={cy + 5} textAnchor="middle" fontSize={13} fontWeight="600" fill={palette.text}>
+            {formatMinorCompact(displayTotal)}
+          </SvgText>
+        </Svg>
+      </View>
       {/* Paired legend list: identity never color-alone (relief rule) */}
       <View style={{ flex: 1, minWidth: 160, gap: 6 }}>
         {[...slices, ...supplementalSlices].map((s, i) => {
@@ -151,10 +160,17 @@ export function Lines({
   const max = Math.max(...values, 1);
   const x = (i: number) => padding.left + (xLabels.length <= 1 ? plotW / 2 : (i / (xLabels.length - 1)) * plotW);
   const y = (v: number) => padding.top + plotH - ((v - min) / (max - min)) * plotH;
+  const chartSummary = tr.a11y.lineChart(series.map((item) => {
+    const itemValues = item.points
+      .map((point, index) => point == null ? null : `${xLabels[index] ?? index + 1}: ${formatMinorCompact(point)}`)
+      .filter((point): point is string => point != null)
+      .join(", ");
+    return `${item.label}: ${itemValues}`;
+  }).join(". "));
 
   return (
-    <View>
-      <Svg width={width} height={height}>
+    <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
+      <Svg accessible={false} width={width} height={height}>
         {/* recessive grid: zero line + top */}
         <SvgLine x1={padding.left} y1={y(0)} x2={padding.left + plotW} y2={y(0)} stroke={palette.border} strokeWidth={1} />
         {series.map((s) => {
@@ -231,29 +247,37 @@ export function Bars({
   const y = (v: number) => pad.top + plotH - ((v - min) / span) * plotH;
   const zeroY = y(0);
   const everyN = groups.length <= 6 ? 1 : Math.ceil(groups.length / 6);
+  const chartSummary = tr.a11y.barChart(groups.map((group) => {
+    const groupValues = group.values.map((value, index) =>
+      `${series[index]?.label ?? index + 1}: ${formatMinorCompact(value ?? 0)}`,
+    ).join(", ");
+    return `${group.label}: ${groupValues}`;
+  }).join(". "));
 
   return (
     <View>
-      <Svg width={width} height={height}>
-        <SvgLine x1={pad.left} y1={zeroY} x2={pad.left + plotW} y2={zeroY} stroke={palette.border} strokeWidth={1} />
-        {groups.map((g, gi) => {
-          const gx = pad.left + gi * groupW + groupW * 0.16;
-          return g.values.map((v, si) => {
-            if (v == null || v === 0) return null;
-            const top = v > 0 ? y(v) : zeroY;
-            const h = Math.abs(y(v) - zeroY);
-            const bx = gx + si * (barW + barGap);
-            return <Rect key={`${gi}-${si}`} x={bx} y={top} width={barW} height={Math.max(1, h)} rx={2} fill={series[si]?.color ?? palette.primary} />;
-          });
-        })}
-        {groups.map((g, gi) =>
-          gi % everyN === 0 ? (
-            <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 6} fontSize={9} fill={palette.textMuted} textAnchor="middle">
-              {g.label}
-            </SvgText>
-          ) : null,
-        )}
-      </Svg>
+      <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
+        <Svg accessible={false} width={width} height={height}>
+          <SvgLine x1={pad.left} y1={zeroY} x2={pad.left + plotW} y2={zeroY} stroke={palette.border} strokeWidth={1} />
+          {groups.map((g, gi) => {
+            const gx = pad.left + gi * groupW + groupW * 0.16;
+            return g.values.map((v, si) => {
+              if (v == null || v === 0) return null;
+              const top = v > 0 ? y(v) : zeroY;
+              const h = Math.abs(y(v) - zeroY);
+              const bx = gx + si * (barW + barGap);
+              return <Rect key={`${gi}-${si}`} x={bx} y={top} width={barW} height={Math.max(1, h)} rx={2} fill={series[si]?.color ?? palette.primary} />;
+            });
+          })}
+          {groups.map((g, gi) =>
+            gi % everyN === 0 ? (
+              <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 6} fontSize={9} fill={palette.textMuted} textAnchor="middle">
+                {g.label}
+              </SvgText>
+            ) : null,
+          )}
+        </Svg>
+      </View>
       {series.length > 1 ? (
         <View style={{ flexDirection: "row", gap: spacing.md, justifyContent: "center", marginTop: 2 }}>
           {series.map((s) => (
@@ -274,7 +298,7 @@ export function SplitBar({ parts }: { parts: { label: string; valueMinor: number
   const total = parts.reduce((sum, p) => sum + Math.max(p.valueMinor, 0), 0);
   return (
     <View style={{ gap: spacing.sm }}>
-      <View style={{ flexDirection: "row", height: 14, borderRadius: 4, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
+      <View accessible={false} style={{ flexDirection: "row", height: 14, borderRadius: 4, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
         {parts.map((p, i) => (
           <View
             key={p.label}

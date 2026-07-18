@@ -15,3 +15,23 @@ export function uniqueNotifications<T extends { date: string; title: string; bod
     return true;
   });
 }
+
+export interface NotificationContent {
+  title: string;
+  body: string;
+}
+
+/** Detailed lock-screen copy is an explicit device-local opt-in. */
+export function privateNotificationContent(
+  detailsEnabled: boolean,
+  detailed: NotificationContent,
+  neutral: NotificationContent,
+): NotificationContent {
+  return detailsEnabled ? detailed : neutral;
+}
+
+export function boundedScheduledNotifications<T extends { fireAt: Date }>(rows: T[], limit: number): T[] {
+  return [...rows]
+    .sort((a, b) => a.fireAt.getTime() - b.fireAt.getTime())
+    .slice(0, Math.max(0, limit));
+}

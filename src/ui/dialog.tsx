@@ -18,6 +18,7 @@ import { Button, FadeIn } from "./components";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { INPUT_LIMITS } from "../domain/input";
+import { useModalAccessibility } from "./accessibility";
 
 interface DialogRequest {
   title: string;
@@ -106,6 +107,7 @@ export function PromptHost() {
   const { palette, scheme } = useTheme();
   const current = usePromptStore((s) => s.current);
   const [value, setValue] = useState("");
+  const titleRef = useModalAccessibility(current != null, undefined, current?.title, false);
   // Reset the field each time a new prompt opens.
   React.useEffect(() => {
     if (current) setValue("");
@@ -120,23 +122,28 @@ export function PromptHost() {
   return (
     <Modal transparent animationType="fade" visible onRequestClose={() => close(null)}>
       <Pressable
+        accessible={false}
         style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", justifyContent: "center", padding: spacing.lg }}
         onPress={() => close(null)}
       >
-        <Pressable onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
+        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
           <FadeIn
             style={[
               { backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg },
               scheme === "light" && cardShadow,
             ]}
           >
-            <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{current.title}</Text>
+            <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
+              <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{current.title}</Text>
+            </View>
             <Text style={[type.body, { color: palette.textMuted, marginBottom: spacing.md }]}>{current.message}</Text>
             <TextInput
               value={value}
               maxLength={current.secure ? INPUT_LIMITS.password : INPUT_LIMITS.text}
               onChangeText={setValue}
               secureTextEntry={current.secure}
+              accessibilityLabel={current.placeholder || current.title}
+              accessibilityHint={current.message}
               placeholder={current.placeholder}
               placeholderTextColor={palette.textMuted}
               autoFocus
@@ -145,7 +152,7 @@ export function PromptHost() {
               onSubmitEditing={() => value.trim() !== "" && close(value)}
               style={{
                 borderWidth: 1,
-                borderColor: palette.border,
+                borderColor: palette.controlBorder,
                 borderRadius: radius.sm,
                 paddingHorizontal: spacing.md,
                 paddingVertical: spacing.sm + 2,
@@ -156,7 +163,7 @@ export function PromptHost() {
                 fontSize: 16,
               }}
             />
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm }}>
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
               <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />
               <Button
                 label={current.confirmLabel}
@@ -176,6 +183,7 @@ export function PromptHost() {
 export function DialogHost() {
   const { palette, scheme } = useTheme();
   const current = useDialogStore((s) => s.current);
+  const titleRef = useModalAccessibility(current != null, undefined, current?.title);
   if (!current) return null;
 
   const close = (ok: boolean) => {
@@ -188,19 +196,22 @@ export function DialogHost() {
   return (
     <Modal transparent animationType="fade" visible onRequestClose={() => close(current.cancelLabel == null)}>
       <Pressable
+        accessible={false}
         style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", justifyContent: "center", padding: spacing.lg }}
         onPress={() => close(current.cancelLabel == null)}
       >
-        <Pressable onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
+        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
           <FadeIn
             style={[
               { backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg },
               scheme === "light" && cardShadow,
             ]}
           >
-            <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{current.title}</Text>
+            <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
+              <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{current.title}</Text>
+            </View>
             <Text style={[type.body, { color: palette.textMuted, marginBottom: spacing.lg }]}>{current.message}</Text>
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm }}>
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
               {current.cancelLabel != null ? (
                 <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />
               ) : null}

@@ -18,6 +18,7 @@ import {
   FileDown,
   FileSpreadsheet,
   FileUp,
+  Eye,
   KeyRound,
   LogOut,
   PiggyBank,
@@ -31,7 +32,7 @@ import { useSession } from "../../../auth/session";
 import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
 import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
 import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
-import { disableNotifications, enableNotifications, rescheduleAll } from "../../../services/notifications";
+import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
 import { scheduleSync, syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
@@ -56,6 +57,7 @@ export default function SettingsScreen() {
   const [biometric, setBiometric] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const notifications = useDevicePreferences((state) => state.notifications);
+  const notificationDetails = useDevicePreferences((state) => state.notificationDetails);
   const [notificationBusy, setNotificationBusy] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
@@ -318,6 +320,37 @@ export default function SettingsScreen() {
                 />
               }
             />
+            {notifications ? (
+              <ListRow
+                icon={Eye}
+                title={tr.settings.notificationDetails}
+                subtitle={tr.settings.notificationDetailsHint}
+                right={
+                  <Toggle
+                    label={tr.settings.notificationDetails}
+                    value={notificationDetails}
+                    disabled={notificationBusy}
+                    onValueChange={(enabled) => {
+                      if (notificationBusy) return;
+                      setNotificationBusy(true);
+                      void (async () => {
+                        if (enabled) {
+                          const accepted = await appConfirm(
+                            tr.settings.notificationDetails,
+                            tr.settings.notificationDetailsConfirm,
+                            { confirmLabel: tr.settings.notificationDetailsEnable },
+                          );
+                          if (!accepted) return;
+                        }
+                        await updateNotificationDetails(userId, enabled);
+                      })()
+                        .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title))
+                        .finally(() => setNotificationBusy(false));
+                    }}
+                  />
+                }
+              />
+            ) : null}
           </>
         ) : null}
         <ListRow
@@ -350,7 +383,7 @@ export default function SettingsScreen() {
           }
         />
         {sync.error ? (
-          <Body style={{ fontSize: 12, marginTop: spacing.xs, color: palette.negative }}>{sync.error}</Body>
+          <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ fontSize: 12, marginTop: spacing.xs, color: palette.negativeText }}>{sync.error}</Body>
         ) : null}
         <Body muted style={{ fontSize: 12, marginTop: spacing.xs, marginBottom: spacing.sm }}>
           {tr.settings.syncExplain}

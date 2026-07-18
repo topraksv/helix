@@ -24,11 +24,12 @@ import { Body, Button, Card, ChipPicker, Field, Row, Screen, SectionHeader } fro
 import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 // --- visual format guide ---------------------------------------------------
 function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
   const bg = tone === "month" ? palette.primarySoft : tone === "head" ? palette.surfaceAlt : palette.surface;
-  const color = tone === "month" ? palette.primary : palette.textMuted;
+  const color = tone === "month" ? palette.primaryText : palette.textMuted;
   return (
     <View
       style={{
@@ -85,7 +86,7 @@ function ExampleRow({ label, value }: { label: string; value: string }) {
   const { palette } = useTheme();
   return (
     <View style={{ flexDirection: "row", marginBottom: spacing.xs, flexWrap: "wrap" }}>
-      <Text style={[type.small, { color: palette.primary, fontFamily: "Inter_600SemiBold", width: 78 }]}>{label}</Text>
+      <Text style={[type.small, { color: palette.primaryText, fontFamily: "Inter_600SemiBold", width: 78 }]}>{label}</Text>
       <Text style={[type.small, { color: palette.textMuted, flex: 1, minWidth: 180 }]}>{value}</Text>
     </View>
   );
@@ -113,7 +114,7 @@ function FormatGuide({ wide }: { wide: boolean }) {
           <Text style={[type.label, { color: palette.text, marginBottom: spacing.sm }]}>{tr.importer.autoTitle}</Text>
           {[tr.importer.auto1, tr.importer.auto2, tr.importer.auto3].map((line) => (
             <View key={line} style={{ flexDirection: "row", marginBottom: spacing.xs }}>
-              <Text style={[type.small, { color: palette.primary, marginRight: spacing.xs }]}>•</Text>
+              <Text style={[type.small, { color: palette.primaryText, marginRight: spacing.xs }]}>•</Text>
               <Text style={[type.small, { color: palette.textMuted, flex: 1 }]}>{line}</Text>
             </View>
           ))}
@@ -144,6 +145,7 @@ export default function ImportWizardModal() {
   const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
   const scrollRef = useRef<ScrollView>(null);
   const operationGuard = useOperationGuard();
+  useDirtyExitGuard(workbook != null && doneCount == null && !busy);
 
   useEffect(() => {
     if (doneCount == null) return;
@@ -281,9 +283,9 @@ export default function ImportWizardModal() {
       <Screen scrollRef={scrollRef}>
         <Card style={{ borderColor: palette.positive }}>
           <Row gap={spacing.md} style={{ alignItems: "center" }}>
-            <CheckCircle2 size={26} color={palette.positive} />
+            <CheckCircle2 accessible={false} size={26} color={palette.positive} />
             <View style={{ flex: 1 }}>
-              <Text style={[type.heading, { color: palette.text }]}>{tr.importer.doneTitle(doneCount)}</Text>
+              <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>{tr.importer.doneTitle(doneCount)}</Text>
               <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.doneHint}</Body>
             </View>
           </Row>
@@ -322,7 +324,7 @@ export default function ImportWizardModal() {
       {error ? (
         <Card style={{ marginTop: spacing.md, borderColor: palette.negative }}>
           <SectionHeader>{tr.importer.errorTitle}</SectionHeader>
-          <Body style={{ color: palette.negative, marginBottom: spacing.sm }}>{error}</Body>
+          <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: palette.negativeText, marginBottom: spacing.sm }}>{error}</Body>
         </Card>
       ) : null}
 
@@ -439,7 +441,7 @@ export default function ImportWizardModal() {
                           if (!cell) return null;
                           return (
                             <Text key={c.label} style={[type.amountSm, { color: palette.textMuted, width: 108, textAlign: "right" }]}>
-                              {hasBreakdown(cell) ? <Text style={{ color: palette.primary }}>• </Text> : null}
+                              {hasBreakdown(cell) ? <Text style={{ color: palette.primaryText }}>• </Text> : null}
                               {cell.valueMinor != null ? formatMinor(cell.valueMinor) : ""}
                             </Text>
                           );

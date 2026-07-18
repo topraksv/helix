@@ -22,6 +22,7 @@ import { spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { newId } from "../db/ids";
+import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
@@ -72,6 +73,25 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const [showCategoryOffer, setShowCategoryOffer] = useState(false);
   const operationGuard = useOperationGuard();
   const [draftId] = useState(() => existing?.id ?? newId());
+  const draftSnapshot = JSON.stringify({
+    name,
+    amountRaw,
+    currency,
+    showCurrency,
+    cycle,
+    intervalStr,
+    billingDayStr,
+    categoryId,
+    sourceId,
+    personChoice,
+    isActive,
+    autoPay,
+    isTrial,
+    trialDate,
+    note,
+  });
+  const initialDraftSnapshot = React.useRef(draftSnapshot).current;
+  const allowExit = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
 
   const billingDay = Number(billingDayStr);
   const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);
@@ -125,7 +145,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       note: note.trim() || null,
     });
     scheduleSync(userId);
-    close();
+    allowExit(close);
   };
 
   const save = async () => {
@@ -213,7 +233,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         value={(QUICK_DAYS as readonly string[]).includes(billingDayStr) ? (billingDayStr as (typeof QUICK_DAYS)[number]) : null}
         onChange={setBillingDayStr}
       />
-      <Field value={billingDayStr} onChangeText={setBillingDayStr} keyboardType="number-pad" placeholder={tr.subs.billingDay} />
+      <Field accessibilityLabel={tr.subs.billingDay} value={billingDayStr} onChangeText={setBillingDayStr} keyboardType="number-pad" placeholder={tr.subs.billingDay} />
       <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.billingDayHint}</Body>
 
       <Label>{tr.tx.category}</Label>

@@ -24,6 +24,7 @@ import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
+import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { newId } from "../../../db/ids";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
@@ -51,6 +52,21 @@ export default function SourcesScreen() {
 
   const dueDay = dueDayStr.trim() === "" ? null : Number(dueDayStr);
   const statementDay = statementDayStr.trim() === "" ? null : Number(statementDayStr);
+  const editingSource = editingId ? sources.find((source) => source.id === editingId) : null;
+  const sourceDraftDirty = editingSource
+    ? name.trim() !== editingSource.name ||
+      sourceType !== editingSource.type ||
+      personId !== editingSource.personId ||
+      dueDay !== editingSource.dueDay ||
+      statementDay !== editingSource.statementDay
+    : Boolean(
+      name.trim() ||
+      sourceType !== "credit_card" ||
+      personChoice ||
+      dueDayStr.trim() ||
+      statementDayStr.trim()
+    );
+  useDirtyExitGuard(sourceDraftDirty && !busy);
   const validDay = (day: number | null) => day != null && Number.isInteger(day) && day >= 1 && day <= 31;
   const cycleValid = sourceType !== "credit_card" || (validDay(statementDay) && validDay(dueDay));
   const formValid = Boolean(name.trim() && personId && cycleValid);

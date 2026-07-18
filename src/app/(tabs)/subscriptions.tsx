@@ -72,7 +72,7 @@ export default function SubscriptionsScreen() {
                 subtitle so it never grows this column or crowds the amount. */}
             <View style={{ alignItems: "flex-end", justifyContent: "center", gap: 2 }}>
               <Row gap={spacing.xs}>
-                {s.autoPay ? <Repeat size={13} color={palette.primary} /> : null}
+                {s.autoPay ? <Repeat accessibilityRole="image" accessibilityLabel={tr.subs.autoPay} size={13} color={palette.primary} /> : null}
                 <Amount minor={s.amountMinor} currency={s.currency} colorized={false} />
               </Row>
               {s.intervalMonths > 1 ? (

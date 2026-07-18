@@ -76,15 +76,15 @@ export function CurrencyConverter() {
           onPress={swap}
           hitSlop={8}
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
+            width: 44,
+            height: 44,
+            borderRadius: 22,
             backgroundColor: palette.surfaceAlt,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <ArrowDownUp size={18} color={palette.primary} />
+          <ArrowDownUp accessible={false} size={18} color={palette.primary} />
         </Pressable>
       </View>
 

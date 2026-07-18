@@ -16,7 +16,7 @@ import * as s from "../../../db/schema";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
-import { formatMinorCompact } from "../../../domain/money";
+import { formatMinor, formatMinorCompact } from "../../../domain/money";
 import { monthLabel, monthName, tr } from "../../../i18n/tr";
 import {
   settingValue,
@@ -38,6 +38,7 @@ import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Scr
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { lightTap } from "../../../ui/haptics";
+import { PHONE_TOOL_GAP, PHONE_TOOL_SIZE } from "../../../ui/responsive";
 
 type MatrixMode = "cards" | "rows" | "columns";
 
@@ -46,11 +47,13 @@ function FlowStat({
   label,
   amountMinor,
   color,
+  foreground = color,
 }: {
-  icon: React.ComponentType<{ size?: number; color?: string }>;
+  icon: React.ComponentType<{ size?: number; color?: string; accessible?: boolean }>;
   label: string;
   amountMinor: number;
   color: string;
+  foreground?: string;
 }) {
   return (
     <View style={{ flex: 1, minWidth: 0, alignItems: "center", paddingHorizontal: 2 }}>
@@ -64,10 +67,10 @@ function FlowStat({
           backgroundColor: color + "1A",
         }}
       >
-        <Icon size={15} color={color} />
+        <Icon accessible={false} size={15} color={color} />
       </View>
-      <Text style={[type.small, { color, textAlign: "center", marginTop: spacing.xs, minHeight: 32 }]}>{label}</Text>
-      <Text style={[type.amountSm, { color, textAlign: "center", fontSize: 12 }]}>{formatMinorCompact(amountMinor)}</Text>
+      <Text style={[type.small, { color: foreground, textAlign: "center", marginTop: spacing.xs, minHeight: 32 }]}>{label}</Text>
+      <Text style={[type.amountSm, { color: foreground, textAlign: "center", fontSize: 12 }]}>{formatMinorCompact(amountMinor)}</Text>
     </View>
   );
 }
@@ -169,8 +172,9 @@ export default function CashflowScreen() {
 
   return (
     <Screen title={tr.cashflow.title} right={yearSwitcher} maxWidth={wide ? 1200 : 760} scroll={false} padded>
-      {/* On phones keep the table the focus: one action row — a primary
-          "İşlem Ekle" plus icon-only secondaries — instead of two wrapped rows. */}
+      {/* On phones keep the primary action full-width, then expose every
+          secondary tool in one balanced icon row. This remains overflow-free
+          at 320px without hiding features behind an undiscoverable menu. */}
       {wide ? (
         <Row gap={spacing.sm} style={{ marginBottom: spacing.md, flexWrap: "wrap" }}>
           <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
@@ -181,16 +185,18 @@ export default function CashflowScreen() {
           <Button icon={PiggyBank} size="sm" label={tr.cashflow.openingLink} variant="ghost" onPress={() => router.push("/opening-balance")} />
         </Row>
       ) : (
-        <Row gap={spacing.sm} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
-          <View style={{ flex: 1 }}>
+        <View style={{ marginBottom: spacing.sm, gap: spacing.sm }}>
+          <View>
             <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
           </View>
-          {showTable ? <IconButton icon={Pencil} size={40} label={editLabel} onPress={editColumns} /> : null}
-          <IconButton icon={CreditCard} size={40} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
-          <IconButton icon={ChartNoAxesColumn} size={40} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
-          <IconButton icon={CalendarPlus} size={40} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
-          <IconButton icon={PiggyBank} size={40} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
-        </Row>
+          <Row gap={PHONE_TOOL_GAP} style={{ justifyContent: "space-between" }}>
+            {showTable ? <IconButton icon={Pencil} size={PHONE_TOOL_SIZE} label={editLabel} onPress={editColumns} /> : null}
+            <IconButton icon={CreditCard} size={PHONE_TOOL_SIZE} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
+            <IconButton icon={ChartNoAxesColumn} size={PHONE_TOOL_SIZE} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
+            <IconButton icon={CalendarPlus} size={PHONE_TOOL_SIZE} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
+            <IconButton icon={PiggyBank} size={PHONE_TOOL_SIZE} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
+          </Row>
+        </View>
       )}
 
       <DataStateNotice status={dataStatus} retry={retryData} />
@@ -257,12 +263,12 @@ export default function CashflowScreen() {
                     }
                   >
                     <Spread>
-                      <Text style={[type.heading, { color: isCurrent ? palette.primary : palette.text }]}>{monthLabel(m.month)}</Text>
+                      <Text style={[type.heading, { color: isCurrent ? palette.primaryText : palette.text }]}>{monthLabel(m.month)}</Text>
                       <Amount minor={m.closingMinor} />
                     </Spread>
                     <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.md, alignItems: "stretch" }}>
-                      <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={m.incomeMinor} color={palette.positive} />
-                      <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={m.expenseMinor} color={palette.negative} />
+                      <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={m.incomeMinor} color={palette.positive} foreground={palette.positiveText} />
+                      <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={m.expenseMinor} color={palette.negative} foreground={palette.negativeText} />
                       <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={m.transferMinor} color={palette.textMuted} />
                     </View>
                   </Card>
@@ -377,8 +383,27 @@ function MatrixTable({
     return () => openBreakdown(c.key); // computed column cell → its breakdown
   };
 
-  const cell = (value: number | null, note: string | undefined, onPress: (() => void) | undefined, highlighted: boolean) => (
-    <MatrixCell value={value} note={note} onPress={onPress} highlighted={highlighted} fontSize={fontSize} />
+  const cell = (
+    value: number | null,
+    note: string | undefined,
+    onPress: (() => void) | undefined,
+    highlighted: boolean,
+    month: MonthKey,
+    columnLabel: string,
+  ) => (
+    <MatrixCell
+      value={value}
+      note={note}
+      onPress={onPress}
+      highlighted={highlighted}
+      fontSize={fontSize}
+      accessibilityLabel={tr.a11y.matrixCell(
+        monthLabel(month),
+        columnLabel,
+        value == null ? tr.a11y.emptyValue : formatMinor(value),
+        Boolean(note),
+      )}
+    />
   );
   const breakdownFor = (key: string): (() => void) | undefined =>
     key === "opening" || key === "closing" ? undefined : () => openBreakdown(key);
@@ -403,6 +428,8 @@ function MatrixTable({
           c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
           pressFor(c, slot.month),
           false,
+          slot.month,
+          c.label,
         ),
       ),
     }));
@@ -421,6 +448,8 @@ function MatrixTable({
           c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
           pressFor(c, slot.month),
           slot.month === currentMonth,
+          slot.month,
+          c.label,
         ),
       ),
     }));
@@ -469,8 +498,8 @@ function MatrixTable({
             <Text style={[type.label, { color: palette.text }]}>{tr.cashflow.uncategorizedLegacy}</Text>
             <Text style={[type.small, { color: palette.textMuted }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
           </View>
-          <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negative : palette.text }]}>{formatMinorCompact(uncategorizedTotal)}</Text>
-          <ChevronRight size={16} color={palette.textMuted} />
+          <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negativeText : palette.text }]}>{formatMinorCompact(uncategorizedTotal)}</Text>
+          <ChevronRight accessible={false} size={16} color={palette.textMuted} />
         </Pressable>
       ) : null}
       <Text style={[type.small, { color: palette.textMuted, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, textAlign: "center" }]}>
@@ -486,12 +515,14 @@ function MatrixCell({
   highlighted,
   onPress,
   fontSize,
+  accessibilityLabel,
 }: {
   value: number | null;
   note?: string;
   highlighted?: boolean;
   onPress?: () => void;
   fontSize: number;
+  accessibilityLabel: string;
 }) {
   const { palette } = useTheme();
   const [hovered, setHovered] = useState(false);
@@ -505,6 +536,7 @@ function MatrixCell({
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={accessibilityLabel}
       accessibilityHint={note}
       style={[
         { flex: 1, justifyContent: "center", paddingHorizontal: spacing.sm },
@@ -515,7 +547,7 @@ function MatrixCell({
       <Text
         style={[
           type.amountSm,
-          { fontSize, color: value == null || value === 0 ? palette.textMuted : value < 0 ? palette.negative : palette.text, textAlign: "right" },
+          { fontSize, color: value == null || value === 0 ? palette.textMuted : value < 0 ? palette.negativeText : palette.text, textAlign: "right" },
         ]}
       >
         {value == null || value === 0 ? "" : formatMinorCompact(value)}
