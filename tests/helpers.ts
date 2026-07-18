@@ -23,6 +23,12 @@ export function tx(overrides: Partial<TxLike> & Pick<TxLike, "type" | "amountTry
 /** "18.822,92" → 1882292 (test readability for Excel golden values). */
 export function tl(s: string): number {
   const [intPart, frac = "00"] = s.replace(/\./g, "").split(",");
+  if (intPart == null) throw new Error(`Invalid test amount: ${s}`);
   const sign = intPart.startsWith("-") ? -1 : 1;
   return sign * (Math.abs(Number(intPart)) * 100 + Number((frac + "00").slice(0, 2)));
+}
+
+export function required<T>(value: T | undefined, context = "required test value"): T {
+  if (value === undefined) throw new Error(`Missing ${context}`);
+  return value;
 }

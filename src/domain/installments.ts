@@ -124,7 +124,8 @@ export interface PlanProgress {
 
 /** Progress summary "(paid/total), kalan X ay × ₺Y" from a plan's generated items. */
 export function planProgress(items: GeneratedInstallment[]): PlanProgress {
-  if (items.length === 0) throw new Error("Plan has no installments");
+  const last = items.at(-1);
+  if (!last) throw new Error("Plan has no installments");
   const paid = items.filter((i) => i.status === "realized").length;
   const unpaid = items.filter((i) => i.status === "pending");
   return {
@@ -132,7 +133,7 @@ export function planProgress(items: GeneratedInstallment[]): PlanProgress {
     total: items.length,
     remaining: unpaid.length,
     remainingMinor: unpaid.reduce((sum, i) => sum + i.amountMinor, 0),
-    monthlyMinor: unpaid.length > 0 ? unpaid[0].amountMinor : 0,
-    endMonth: items[items.length - 1].month,
+    monthlyMinor: unpaid[0]?.amountMinor ?? 0,
+    endMonth: last.month,
   };
 }

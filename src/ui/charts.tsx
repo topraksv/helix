@@ -14,12 +14,19 @@ import { spacing, type, useTheme } from "./theme";
 
 // Warm editorial categorical palette — earth tones spanning distinct hues.
 // Index 1 (sage) reads as income, index 5 (brick) as expense on the dashboard.
-const LIGHT_SERIES = ["#C9623F", "#7D8370", "#C5A07F", "#5E7A8C", "#A9772F", "#A8432B", "#6E8B5F", "#B08A3E"];
-const DARK_SERIES = ["#D97757", "#96A085", "#D6B48F", "#7C99AB", "#CBA15E", "#D45A3E", "#8FAA7C", "#CBA85C"];
+const LIGHT_SERIES = ["#C9623F", "#7D8370", "#C5A07F", "#5E7A8C", "#A9772F", "#A8432B", "#6E8B5F", "#B08A3E"] as const;
+const DARK_SERIES = ["#D97757", "#96A085", "#D6B48F", "#7C99AB", "#CBA15E", "#D45A3E", "#8FAA7C", "#CBA85C"] as const;
 
-export function useSeriesColors(): string[] {
+export function useSeriesColors(): typeof LIGHT_SERIES | typeof DARK_SERIES {
   const { scheme } = useTheme();
   return scheme === "dark" ? DARK_SERIES : LIGHT_SERIES;
+}
+
+export function seriesColor(
+  colors: typeof LIGHT_SERIES | typeof DARK_SERIES,
+  index: number,
+): string {
+  return colors[index % colors.length] ?? colors[0];
 }
 
 export interface DonutSlice {

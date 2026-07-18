@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
-import { addMonthsToKey, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
+import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
 import { Button, FadeIn, IconButton, Label } from "./components";
@@ -15,14 +15,12 @@ import { pushOverlay } from "./keyboard";
 const WEEKDAYS = ["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz"];
 
 function daysInMonth(month: MonthKey): number {
-  const [y, m] = month.split("-").map(Number);
-  return new Date(y, m, 0).getDate();
+  return new Date(yearOf(month), monthOf(month), 0).getDate();
 }
 
 /** Monday-based weekday index of the month's first day. */
 function firstWeekday(month: MonthKey): number {
-  const [y, m] = month.split("-").map(Number);
-  return (new Date(y, m - 1, 1).getDay() + 6) % 7;
+  return (new Date(yearOf(month), monthOf(month) - 1, 1).getDay() + 6) % 7;
 }
 
 export function CalendarSheet({

@@ -53,7 +53,7 @@ interface FeedEntry {
   dir?: { satis_dir?: string };
 }
 
-function validEntry(entry: FeedEntry | undefined): boolean {
+function validEntry(entry: FeedEntry | undefined): entry is FeedEntry {
   return Boolean(entry && validMarketQuote(entry.alis, entry.satis));
 }
 

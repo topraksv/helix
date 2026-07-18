@@ -7,10 +7,10 @@ import { useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { distributionForRange, fixedVsVariable } from "../../domain/analytics";
 import { projectedBalance } from "../../domain/balance";
-import { firstDayOf, lastDayOf, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
+import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { standaloneUpcomingTransactions, upcomingCardStatements } from "../../domain/upcoming";
-import { dateLabel, dateTimeLabel, monthLabel, tr } from "../../i18n/tr";
+import { dateLabel, dateTimeLabel, monthLabel, shortMonthLabel, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
 import {
   daysBetween,
@@ -32,7 +32,7 @@ import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Body, Button, Card, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
-import { Bars, Donut, SplitBar, useSeriesColors } from "../../ui/charts";
+import { Bars, Donut, seriesColor, SplitBar, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
@@ -264,7 +264,7 @@ export default function DashboardScreen() {
   const refundEntries = donutEntries.filter((entry) => entry.valueMinor < 0);
   const donutRest = positiveDonutEntries.slice(7).reduce((sum, e) => sum + e.valueMinor, 0);
   const donutSlices = [
-    ...positiveDonutEntries.slice(0, 7).map((e, i) => ({ ...e, color: colors[i % colors.length] })),
+    ...positiveDonutEntries.slice(0, 7).map((e, i) => ({ ...e, color: seriesColor(colors, i) })),
     ...(donutRest > 0 ? [{ label: tr.common.other, valueMinor: donutRest, color: colors[7] }] : []),
     ...(dist.transferTotalMinor > 0
       ? [{ label: tr.dashboard.investmentAside, valueMinor: dist.transferTotalMinor, color: colors[4] }]
@@ -287,7 +287,7 @@ export default function DashboardScreen() {
   // lines where a cumulative balance dwarfed the monthly flows.
   const trendGroups =
     trendMonths.length >= 2
-      ? trendMonths.map((m) => ({ label: tr.months[monthOf(m.month) - 1].slice(0, 3), values: [m.incomeMinor, m.expenseMinor] }))
+      ? trendMonths.map((m) => ({ label: shortMonthLabel(m.month), values: [m.incomeMinor, m.expenseMinor] }))
       : null;
   const thisMonthNet = trendMonths.find((m) => m.month === month);
 

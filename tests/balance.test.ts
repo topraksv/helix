@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildLedger, currentBalance, projectedBalance, reconciliationDelta } from "../src/domain/balance";
 import type { TxLike } from "../src/domain/types";
-import { tl, tx } from "./helpers";
+import { required, tl, tx } from "./helpers";
 
 /**
  * Golden test: the user's real Excel (Gelir-Gider 2026, Ocak–Temmuz) verified
@@ -49,22 +49,22 @@ describe("balance chain (Excel golden)", () => {
   it("reproduces every monthly closing balance from the Excel sheet", () => {
     const ledger = buildLedger(input);
     for (const [i, m] of MONTHS.entries()) {
-      expect(ledger[i].closingMinor, `closing of ${m.month}`).toBe(tl(m.closing));
+      expect(required(ledger[i], m.month).closingMinor, `closing of ${m.month}`).toBe(tl(m.closing));
     }
   });
 
   it("chains openings: next month's opening equals this month's closing", () => {
     const ledger = buildLedger(input);
     for (let i = 1; i < ledger.length; i++) {
-      expect(ledger[i].openingMinor).toBe(ledger[i - 1].closingMinor);
+      expect(required(ledger[i], `ledger ${i}`).openingMinor).toBe(required(ledger[i - 1], `ledger ${i - 1}`).closingMinor);
     }
-    expect(ledger[0].openingMinor).toBe(tl("2.004,00"));
+    expect(required(ledger[0]).openingMinor).toBe(tl("2.004,00"));
   });
 
   it("supports a negative closing balance (Temmuz 2026)", () => {
     const ledger = buildLedger(input);
-    expect(ledger[6].closingMinor).toBe(tl("-18.773,03"));
-    expect(ledger[6].closingMinor).toBeLessThan(0);
+    expect(required(ledger[6]).closingMinor).toBe(tl("-18.773,03"));
+    expect(required(ledger[6]).closingMinor).toBeLessThan(0);
   });
 
   it("recomputes the whole chain when a past month gains a transaction", () => {
@@ -74,7 +74,7 @@ describe("balance chain (Excel golden)", () => {
     };
     const ledger = buildLedger(withExtra);
     for (const [i, m] of MONTHS.entries()) {
-      expect(ledger[i].closingMinor).toBe(tl(m.closing) - 100_00);
+      expect(required(ledger[i], m.month).closingMinor).toBe(tl(m.closing) - 100_00);
     }
   });
 });
@@ -159,8 +159,8 @@ describe("balance adjustments (reconciliation)", () => {
       ],
       today: "2026-07-31",
     });
-    expect(ledger[0].closingMinor).toBe(950_00);
-    expect(ledger[1].closingMinor).toBe(975_00);
+    expect(required(ledger[0]).closingMinor).toBe(950_00);
+    expect(required(ledger[1]).closingMinor).toBe(975_00);
   });
 
   it("leaves the opening and every prior month unchanged", () => {
@@ -173,10 +173,10 @@ describe("balance adjustments (reconciliation)", () => {
     };
     const without = buildLedger({ ...base, adjustments: [] });
     const corrected = buildLedger({ ...base, adjustments: [{ date: "2026-07-15", amountMinor: -125_00 }] });
-    expect(corrected[0].openingMinor).toBe(1000_00);
+    expect(required(corrected[0]).openingMinor).toBe(1000_00);
     expect(corrected.slice(0, 6)).toEqual(without.slice(0, 6));
-    expect(corrected[6].openingMinor).toBe(without[6].openingMinor);
-    expect(corrected[6].closingMinor).toBe(without[6].closingMinor - 125_00);
+    expect(required(corrected[6]).openingMinor).toBe(required(without[6]).openingMinor);
+    expect(required(corrected[6]).closingMinor).toBe(required(without[6]).closingMinor - 125_00);
   });
 });
 
@@ -198,23 +198,23 @@ describe("pending rows in table cells (display-only)", async () => {
 
   it("keeps balances realized-only but surfaces pending in byCategory when asked", () => {
     const withFlag = buildLedger({ ...base, transactions: [pendingTx], includePendingInCells: true });
-    expect(withFlag[1].byCategory.get("cat")).toBe(50_00);
-    expect(withFlag[1].expenseMinor).toBe(0);
-    expect(withFlag[1].closingMinor).toBe(100_00);
+    expect(required(withFlag[1]).byCategory.get("cat")).toBe(50_00);
+    expect(required(withFlag[1]).expenseMinor).toBe(0);
+    expect(required(withFlag[1]).closingMinor).toBe(100_00);
     const without = buildLedger({ ...base, transactions: [pendingTx] });
-    expect(without[1].byCategory.get("cat")).toBeUndefined();
+    expect(required(without[1]).byCategory.get("cat")).toBeUndefined();
   });
 
   it("keeps categoryless legacy rows visible without inventing a category", () => {
     const realized = { ...pendingTx, id: "t2", status: "realized" as const, categoryId: null, effectiveDate: "2026-07-05" };
     const pending = { ...pendingTx, id: "t3", categoryId: null };
     const withFlag = buildLedger({ ...base, transactions: [realized, pending], includePendingInCells: true });
-    expect(withFlag[0].uncategorizedMinor).toBe(50_00);
-    expect(withFlag[1].uncategorizedMinor).toBe(50_00);
-    expect(withFlag[0].byCategory.size).toBe(0);
-    expect(withFlag[0].expenseMinor).toBe(50_00);
+    expect(required(withFlag[0]).uncategorizedMinor).toBe(50_00);
+    expect(required(withFlag[1]).uncategorizedMinor).toBe(50_00);
+    expect(required(withFlag[0]).byCategory.size).toBe(0);
+    expect(required(withFlag[0]).expenseMinor).toBe(50_00);
     const withoutFlag = buildLedger({ ...base, transactions: [realized, pending] });
-    expect(withoutFlag[1].uncategorizedMinor).toBe(0);
+    expect(required(withoutFlag[1]).uncategorizedMinor).toBe(0);
   });
 });
 

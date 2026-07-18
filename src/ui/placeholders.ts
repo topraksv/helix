@@ -31,6 +31,6 @@ export function useRotatingPlaceholder(pool: readonly string[], opts?: { prefix?
     const timer = setInterval(() => setOffset((o) => o + 1), ROTATE_MS);
     return () => clearInterval(timer);
   }, []);
-  const sample = pool[(start + offset) % pool.length];
+  const sample = pool[(start + offset) % pool.length] ?? "";
   return opts?.prefix === false ? sample : `Ör. ${sample}`;
 }

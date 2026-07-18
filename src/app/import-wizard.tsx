@@ -435,7 +435,8 @@ export default function ImportWizardModal() {
                       <View key={m} style={{ flexDirection: "row", marginTop: spacing.sm }}>
                         <Text style={[type.small, { color: palette.text, width: 96 }]}>{monthLabel(m)}</Text>
                         {preview.columns.map((c, i) => {
-                          const cell = preview.cells[r][i];
+                          const cell = preview.cells[r]?.[i];
+                          if (!cell) return null;
                           return (
                             <Text key={c.label} style={[type.amountSm, { color: palette.textMuted, width: 108, textAlign: "right" }]}>
                               {hasBreakdown(cell) ? <Text style={{ color: palette.primary }}>• </Text> : null}
