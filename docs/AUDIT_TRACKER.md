@@ -48,7 +48,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-ARCH-05` | P2 | P4 | RESOLVED | Import SQL snapshot, mapping ve write planı tek I/O fonksiyonunda | Saf, lazy spreadsheet planı SQL/write’tan ayrıldı; category/year/breakdown/note parity testi ve tek atomik commit korundu |
 | `HLX-06` | P3 | P3 | RESOLVED | `noUncheckedIndexedAccess` kapalı | Flag kalıcı açık; source + test indeksleri runtime guard/helper ile explicit; typecheck ve generated remote `Database` istemci tipi temiz |
 | `CDX-DB-01` | P2 | P3 | VERIFIED | Own-data ilişkileri ve cross-kind kuralları remote DB’de yalnız client tarafından korunuyor | Remote migration 6: 19 owner-aware FK doğrulandı, category/polymorphic ref triggerları aktif, legacy 121 refund nakit etkisi korunarak kanonikleşti; son aggregate mismatch `0`; `database.types.ts` linked şemadan üretildi |
-| `HLX-04` | P3 | P3 | VERIFIED | RLS policy’leri doğrudan `auth.uid()` çağırıyor ve role scope açık değil | Remote 60/60 policy `TO authenticated` ve init-plan `(select auth.uid())`; linked migration 1–6 eşit, DB lint sıfır hata |
+| `HLX-04` | P3 | P3/P6 | VERIFIED | RLS policy’leri doğrudan `auth.uid()` çağırıyor ve role scope açık değil | Remote 64/64 policy `TO authenticated` ve init-plan `(select auth.uid())`; linked migration 1–7 eşit, DB lint sıfır hata |
 
 ## Release, supply chain ve gözlemlenebilirlik
 
@@ -82,22 +82,22 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `HLX-02` · `CDX-A11Y-01` | P2 | P5 | RESOLVED | Shared form/chart/icon/modal semantics, focus ve announcements eksik | Shared field/control role-state-hint, heading, chart tam değer özeti, modal focus/return ve live error/loading eklendi; source contract testleri yeşil. Fiziksel VoiceOver/TalkBack kabulü `CDX-TEST-12` ile P7’de |
 | `HLX-03` · `CDX-A11Y-02` | P2 | P5 | RESOLVED | Primary ve semantic foreground kontrastları WCAG AA altında | Accent/fill ile `*Text`/`on*` rolleri ayrıldı; light/dark body çiftleri ≥4.5:1, control/focus sınırları ≥3:1 otomatik testte |
 | `CDX-UX-01` | P2 | P5 | RESOLVED | 320px cash-flow ve late-payment action satırları sıkışıyor | Primary CTA tam genişlik, beş araç dengeli satır, geniş payment aksiyonu <430px’de alt satır; 320/390/768/1440 matematiksel no-overflow testi yeşil |
-| `CDX-UX-02` · `CDX-PRODUCT-03` | P2 | P5/P6 | IN PROGRESS | Onboarding ağır; dirty form geri dönüşte sessiz veri kaybediyor | Kritik formlar gerçek snapshot’a dayalı ortak dirty-exit guard kullanıyor ve untouched inline edit prompt vermiyor; P6 hızlı başlangıç/onboarding kaldı |
+| `CDX-UX-02` · `CDX-PRODUCT-03` | P2 | P5/P6 | RESOLVED | Onboarding ağır; dirty form geri dönüşte sessiz veri kaybediyor | Kritik formlarda gerçek snapshot’a dayalı dirty-exit guard var; onboarding varsayılan kategori/kişiyle tek ana eylemli hızlı başlangıca indi, mevcut bakiye ve ileri kurulum/import isteğe bağlı kaldı |
 | `HLX-12` · `CDX-SEC-02` · `CDX-PRODUCT-04` | P2 | P5 | RESOLVED | Notification lock-screen metni ad/tutar gösterebilir | Varsayılan nötr preview, ayrı device-local onay, kapatma/account switch’te fail-closed clear ve en yakın 60 plan; pure+boundary testleri yeşil, cihaz kabulü `CDX-TEST-15`’te |
 | `CDX-SEC-01` | P2 | P5 | RESOLVED | App switcher snapshot privacy cover yok; Pages frame header sınırlı | Native inactive/background ve framed web için izole, değersiz privacy modalı var; policy/source testi yeşil. OS snapshot zamanlaması fiziksel cihazda P7’de kesinleşecek |
-| `CDX-IA-02` | P3 | P6 | NOT STARTED | Account freeze Settings’in ana seviyesinde dağınık | Account Security altında tek güvenlik grubu; deep link/back parity |
-| `CDX-IA-03` | P3 | P6 | NOT STARTED | Dashboard üç analitik kartla Analytics’i tekrar ediyor | Balance/upcoming + tek eylemli insight; tam analiz için belirgin geçiş |
-| `CDX-IA-04` | P3 | P6 | NOT STARTED | Var olan JSON/CSV export yeterince keşfedilebilir değil | Veri ve senkron grubunda açık “Dışa aktar / Geri yükle” görev dili |
+| `CDX-IA-02` | P3 | P6 | RESOLVED | Account freeze Settings’in ana seviyesinde dağınık | Dondurma Account Security altında toplandı; local-only modda da erişiliyor, deterministic back/deep-link sözleşmesi korunuyor |
+| `CDX-IA-03` | P3 | P6 | RESOLVED | Dashboard üç analitik kartla Analytics’i tekrar ediyor | Dashboard bakiye, yaklaşanlar, piyasalar ve tek aylık içgörüye odaklandı; dağılım/trend Analytics’e taşındı |
+| `CDX-IA-04` | P3 | P6 | RESOLVED | Var olan JSON/CSV export yeterince keşfedilebilir değil | Ayarlar’da senkron/diagnostics ile “Verilerini Taşı ve Koru” görev grubu ayrıldı; backup/export/restore açık görev diliyle sunuluyor |
 
 ## Ürün kapsamı
 
 | ID | P | Paket | Durum | Problem / değer | Çözüm ve kabul ölçütü |
 |---|---:|---:|---|---|---|
-| `CDX-PRODUCT-01` | P2 | P6 | NOT STARTED | Büyüyen işlem geçmişinde kayıt bulmak zor | Metin+tarih+tür+kategori/kaynak filtreleri; sıfır sonuç, temizle ve keyboard erişimi |
-| `CDX-PRODUCT-02` · `CDX-IA-01` | P2 | P6 | NOT STARTED | Sync sağlığı yalnız Settings’te ve teknik | Shell seviyesinde sakin durum; pending yaşı/hata varsa eylemli detay, sağlıklıyken gürültü yok |
-| `CDX-PRODUCT-05` | P2 | P6 | NOT STARTED | Forecast var ama kullanıcı hedef/variance tanımlayamıyor | Aylık kategori bütçesi, aşım/remaining; para ve sync invariants; CRUD/analytics tests |
-| `CDX-PRODUCT-06` | P2 | P6 | NOT STARTED | Haftalık/iki haftalık gelir kuralları modellenemiyor | Recurrence union ve UI; DST/ay sınırı/skip-history tests; backward compatible migration |
-| `CDX-PRODUCT-07` | P2 | P6 | NOT STARTED | Expected/card/subscription takvimi ayrı yüzeylerde | Tek upcoming timeline/calendar; kaynağa drill-down ve empty/offline state |
+| `CDX-PRODUCT-01` | P2 | P6 | RESOLVED | Büyüyen işlem geçmişinde kayıt bulmak zor | Analytics’te metin+tarih kapsamı+tür+kategori+kaynak filtreleri, bounded newest-first sonuç, sıfır sonuç/temizle ve edit drill-down var; saf arama testleri yeşil |
+| `CDX-PRODUCT-02` · `CDX-IA-01` | P2 | P6 | RESOLVED | Sync sağlığı yalnız Settings’te ve teknik | Shell badge yalnız gerçek hata veya ≥5 dk bekleyen outbox’ta görünür; sağlıklı, kısa bekleme ve local-only durumlar sessiz; saf durum testleri yeşil |
+| `CDX-PRODUCT-05` | P2 | P6 | VERIFIED | Forecast var ama kullanıcı hedef/variance tanımlayamıyor | Synced aylık expense-category bütçesi CRUD/undo/progress/remaining ve Analytics görünümü eklendi; migration 7 remote, 24 pgTAP ve domain/backup testleri yeşil |
+| `CDX-PRODUCT-06` | P2 | P6 | VERIFIED | Haftalık/iki haftalık gelir kuralları modellenemiyor | `monthly/weekly/biweekly` union’ı, ISO anchor, 7/14 günlük üretim ve backward-compatible migration var; remote constraint ve recurrence/backup testleri yeşil |
+| `CDX-PRODUCT-07` | P2 | P6 | RESOLVED | Expected/card/subscription takvimi ayrı yüzeylerde | Abonelik, düzenli gelir, gelecek işlem ve kart ekstresini ay bazında birleştiren `/upcoming` eklendi; dashboard preview, empty/offline/stale ve kaynak drill-down testli |
 
 ## Test ve dokümantasyon
 
@@ -107,7 +107,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-TEST-03` | P1 | P2/P7 | RESOLVED | OTA channel/runtime/rollback gerçek kabul testi yok | Config regression testi, remote channel/group metadata ve çalıştırılabilir rollback/iki-cold-start checklist tamam; fiziksel cihaz sonucu olmadığı için `VERIFIED` değil |
 | `CDX-TEST-04` | P1 | P1 | RESOLVED | Poison outbox regression testi yok | Bozuk JSONB/unknown column/non-finite numeric karantinada; sağlıklı sonraki row push planında kalıyor |
 | `CDX-TEST-05` | P1 | P1 | RESOLVED | Duplicate submit testi yok | Aynı tick iki invocation tek operation callback; success/error sonrası guard deterministik serbest |
-| `CDX-TEST-06` | P1 | P3 | VERIFIED | İki-user RLS izolasyon testi yok | Remote pgTAP 19/19: A own CRUD, B read/update/delete/owner-change ve cross-owner ref reddi, category/ref corruption reddi, anon sıfır row; `finish(true)` + rollback |
+| `CDX-TEST-06` | P1 | P3/P6 | VERIFIED | İki-user RLS izolasyon testi yok | Remote pgTAP 24/24: önceki A/B/anon/FK/category kapsamına owned budget ve expense-kind/weekly-anchor constraintleri eklendi; `finish(true)` + rollback |
 | `CDX-TEST-07` | P1 | P7 | NOT STARTED | Core kalıcı E2E yok | Onboarding→transaction→table→edit/delete/undo→backup smoke |
 | `CDX-TEST-08` | P1 | P4/P7 | IN PROGRESS | Account-switch late task integration testi eksik | Saf epoch regression’ında A’nın geç cevabı B epoch’unda `undefined` ve sıfır commit; gerçek SQLite lifecycle entegrasyonu P7’de |
 | `CDX-TEST-09` | P1 | P4/P7 | IN PROGRESS | Backup temiz DB round-trip integration testi eksik | 15 tablo export envelope + ilişki validator parity var; gerçek clean SQLite export→restore ve invalidte sıfır write P7’de |
@@ -144,5 +144,5 @@ her paket bölümünün altındaki release kaydına eklenir.
 | P3 | `8776f70`, `fa2988e`, `b2bd29a` | [quality→Pages run 29638482754](https://github.com/topraksv/helix/actions/runs/29638482754) başarılı | migration 6 + 19 pgTAP verified; [EAS group fb85064c](https://expo.dev/accounts/topraksv/projects/helix/updates/fb85064c-5fd9-4644-b547-129562a232e5), runtime `1.0.0`, install henüz `0` | RESOLVED |
 | P4 | `775cf9e` | [quality→Pages run 29640137815](https://github.com/topraksv/helix/actions/runs/29640137815) başarılı; canlı root/diagnostics 200 | [EAS group 57ded800](https://expo.dev/accounts/topraksv/projects/helix/updates/57ded800-43bf-444f-abf8-780d67eddd27), runtime `1.0.0`; install henüz `0` | RESOLVED |
 | P5 | `e04fc39` | [quality→Pages run 29642316030](https://github.com/topraksv/helix/actions/runs/29642316030) başarılı; canlı root/settings 200 | [EAS group 6eaac67f](https://expo.dev/accounts/topraksv/projects/helix/updates/6eaac67f-9986-426a-ba39-951a49dc5489), runtime `1.0.0`; ilk insights 0 install/user | RESOLVED |
-| P6 | — | — | — | NOT STARTED |
+| P6 | `40c0fea` | [quality→Pages run 29643476129](https://github.com/topraksv/helix/actions/runs/29643476129) başarılı; canlı root/upcoming/budgets/analytics 200 | migration 7 + 24 pgTAP verified; [EAS group ea6a17fd](https://expo.dev/accounts/topraksv/projects/helix/updates/ea6a17fd-610c-4370-8ce7-91cbb753bcb4), runtime `1.0.0` | VERIFIED |
 | P7 | — | — | — | NOT STARTED |
