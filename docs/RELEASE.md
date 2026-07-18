@@ -103,8 +103,8 @@ Aşağıdaki kanıtlar eşleşmeden paket teslim edildi sayılmaz:
 - bundle upload iki platformda başarılı.
 
 Kurulu binary update’i ilk cold start’ta indirir, bir sonraki cold start’ta açar.
-Bu yüzden **iki tam kapat/aç** + diagnostics commit/runtime kontrolü olmadan installed
-delivery `VERIFIED` değildir. EAS insights’ta `0` install/user olması yayın hatası
+Bu yüzden **iki tam kapat/aç** + hedef sürümdeki görünür kabul akışı doğrulanmadan installed
+delivery `VERIFIED` değildir. EAS insights'ta `0` install/user olması yayın hatası
 kanıtı değildir ama gerçek cihaz teslimini de kanıtlamaz.
 
 ### OTA rollback
@@ -202,10 +202,10 @@ ekran/console içeriği kontrol edilir.
   değişikliğinde upstream release ayrıca kontrol edilir.
 - Bundle bütçesi entry, lazy XLSX, font ve toplam export büyümesini bloklar.
 - Şu anda merkezi crash reporting, release-health alert ve uploaded source-map
-  pipeline yoktur. Production logger sessizdir; kullanıcı PII’siz diagnostics export
-  paylaşabilir.
+  pipeline yoktur. Production logger kullanıcıya teknik bir yüzey göstermez;
+  yalnız PII'siz, cihaz-içi sınıflandırılmış hata kırıntıları tutar.
 - Minimum incident kanıtı: Git commit, Pages run, EAS group/platform IDs,
-  runtime/channel, migration list/lint/pgTAP sonucu, diagnostics export ve kullanıcı
+  runtime/channel, migration list/lint/pgTAP sonucu ve kullanıcı
   adımları. Token, ham payload, backup veya finansal tutar incident issue’suna eklenmez.
 - Web availability GitHub Pages run + live route probe; OTA health EAS insights ile
   kontrol edilir. Sessiz single-user app hatalarının otomatik alarmı olmadığı açıkça

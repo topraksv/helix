@@ -9,7 +9,7 @@ import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
-import { useSyncStatus } from "./status";
+import { completedSyncState, useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, runSessionEpochTask, type SessionEpochToken } from "./session-epoch";
 import { isUuidShaped, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
@@ -337,8 +337,18 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     await pushOutbox(userId, token);
     await pullAndMerge(userId, token);
     assertActive(token);
+    const sqlite = await getSqliteAsync();
+    const deadLetters = await sqlite.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM sync_dead_letters WHERE user_id = ?",
+      userId,
+    );
+    const completionState = completedSyncState(deadLetters?.count ?? 0);
     retryAttempt = 0;
-    status.set({ state: "idle", lastSyncAt: new Date().toISOString(), error: null });
+    status.set({
+      state: completionState,
+      lastSyncAt: new Date().toISOString(),
+      error: completionState === "attention" ? tr.sync.errQuarantined : null,
+    });
     return true;
   } catch (e) {
     if (e instanceof SessionEpochCancelledError || !sessionEpoch.isCurrent(token) || token.signal.aborted) {

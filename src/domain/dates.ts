@@ -7,6 +7,12 @@ export type ISODate = string; // YYYY-MM-DD
 export type MonthKey = string; // YYYY-MM
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export const MONTH_END_DAY = 31;
+
+export function isMonthDay(value: string | number): boolean {
+  const day = Number(value);
+  return Number.isInteger(day) && day >= 1 && day <= MONTH_END_DAY;
+}
 
 export function assertISODate(value: string): ISODate {
   if (!ISO_DATE_RE.test(value)) throw new Error(`Invalid ISO date: ${value}`);
@@ -77,7 +83,7 @@ export function firstDayOf(key: MonthKey): ISODate {
 }
 
 export function lastDayOf(key: MonthKey): ISODate {
-  return clampDayToMonth(yearOf(key), monthOf(key), 31);
+  return clampDayToMonth(yearOf(key), monthOf(key), MONTH_END_DAY);
 }
 
 export function todayISO(now: Date = new Date()): ISODate {

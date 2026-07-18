@@ -2,7 +2,7 @@
  *  future-dated payments (§2.7) and inline installment plan creation. */
 
 import React, { useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Undo2 } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
@@ -303,8 +303,8 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           gap: spacing.md,
           backgroundColor: isReversal ? palette.primarySoft : palette.surfaceAlt,
           borderRadius: radius.md,
-          borderWidth: 1,
-          borderColor: isReversal ? palette.primaryText : palette.controlBorder,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border,
           padding: spacing.md,
           marginBottom: spacing.md,
         }}

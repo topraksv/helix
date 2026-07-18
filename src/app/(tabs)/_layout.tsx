@@ -4,18 +4,12 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Calculator, ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
-import { useOutboxSummary } from "../../data/hooks";
-import { shellSyncHealth } from "../../domain/sync-health";
-import { useSyncStatus } from "../../sync/status";
 import { selectionTapIfChanged } from "../../ui/haptics";
 import { TAB_BAR, tabBarHeight, useTheme } from "../../ui/theme";
 
 export default function TabsLayout() {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  const sync = useSyncStatus();
-  const outbox = useOutboxSummary();
-  const syncHealth = shellSyncHealth(sync.state, outbox.pendingCount, outbox.oldestPendingAt);
   // Metrics come from the shared TAB_BAR tokens (theme.ts) so overlays that
   // must clear the bar (undo snackbar) can never drift from the real height.
   const isWeb = Platform.OS === "web";
@@ -89,21 +83,7 @@ export default function TabsLayout() {
         options={{
           title: tr.tabs.settings,
           tabBarLabel: tr.tabBar.settings,
-          tabBarAccessibilityLabel:
-            syncHealth === "error"
-              ? tr.sync.shellError
-              : syncHealth === "attention"
-                ? tr.sync.shellPending
-                : tr.tabs.settings,
-          tabBarBadge: syncHealth === "quiet" ? undefined : "!",
-          tabBarBadgeStyle: {
-            backgroundColor: syncHealth === "error" ? palette.negative : palette.warning,
-            color: syncHealth === "error" ? palette.onNegative : palette.warningText,
-            fontSize: 10,
-            minWidth: 16,
-            height: 16,
-            lineHeight: 15,
-          },
+          tabBarAccessibilityLabel: tr.tabs.settings,
           tabBarIcon: ({ color, size }) => <Settings color={color} size={size - 2} strokeWidth={2} />,
         }}
       />

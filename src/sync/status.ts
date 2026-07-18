@@ -2,7 +2,11 @@
 
 import { create } from "zustand";
 
-type SyncState = "idle" | "syncing" | "error" | "unconfigured";
+type SyncState = "idle" | "syncing" | "attention" | "error" | "unconfigured";
+
+export function completedSyncState(deadLetterCount: number): SyncState {
+  return deadLetterCount > 0 ? "attention" : "idle";
+}
 
 interface SyncStatusStore {
   state: SyncState;

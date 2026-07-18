@@ -19,13 +19,14 @@ import { spacing } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { newId } from "../../../db/ids";
-import { todayISO } from "../../../domain/dates";
+import { isMonthDay, todayISO } from "../../../domain/dates";
 import { DateField } from "../../../ui/calendar";
+import { MonthDayField } from "../../../ui/month-day-field";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
 type IncomeRecurrence = "monthly" | "weekly" | "biweekly";
 const KINDS: IncomeKind[] = ["salary", "rent", "allowance", "other"];
-const QUICK_DAYS = ["1", "5", "10", "15", "25", "28"] as const;
+const QUICK_DAYS = [1, 5, 10, 15, 25, 28] as const;
 
 export default function IncomeRulesScreen() {
   const userId = useUserId();
@@ -83,7 +84,7 @@ export default function IncomeRulesScreen() {
   useDirtyExitGuard(incomeDraftDirty && !busy);
 
   const payDay = Number(payDayStr);
-  const dayValid = Number.isInteger(payDay) && payDay >= 1 && payDay <= 31;
+  const dayValid = isMonthDay(payDayStr);
   const scheduleValid = recurrence === "monthly" ? dayValid : Boolean(anchorDate);
   const valid = effectiveName.trim() !== "" && amountMinor != null && amountMinor > 0 && scheduleValid && personId != null && categoryId != null;
 
@@ -187,21 +188,13 @@ export default function IncomeRulesScreen() {
           onChange={setRecurrence}
         />
         {recurrence === "monthly" ? (
-          <>
-            <Label>{tr.settings.payDay}</Label>
-            <ChipPicker
-              options={QUICK_DAYS.map((d) => ({ value: d, label: d }))}
-              value={(QUICK_DAYS as readonly string[]).includes(payDayStr) ? (payDayStr as (typeof QUICK_DAYS)[number]) : null}
-              onChange={setPayDayStr}
-            />
-            <Field
-              label={tr.incomes.customDay}
-              value={payDayStr}
-              onChangeText={setPayDayStr}
-              keyboardType="number-pad"
-              error={payDayStr !== "" && !dayValid ? tr.incomes.dayError : null}
-            />
-          </>
+          <MonthDayField
+            label={tr.settings.payDay}
+            value={payDayStr}
+            onChange={setPayDayStr}
+            quickDays={QUICK_DAYS}
+            error={payDayStr !== "" && !dayValid ? tr.incomes.dayError : null}
+          />
         ) : (
           <DateField label={tr.incomes.firstPaymentDate} value={anchorDate} onChange={setAnchorDate} />
         )}

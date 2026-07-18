@@ -28,7 +28,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
@@ -255,21 +254,27 @@ export function Card({
   return <View style={[base, style]} onLayout={onLayout}>{children}</View>;
 }
 
-/** Gradient hero container (dashboard balance, auth brand panel). */
+/** Quiet tonal hero container for the dashboard balance. */
 export function HeroCard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  const { palette } = useTheme();
+  const { palette, scheme } = useTheme();
   return (
-    <LinearGradient
-      colors={[palette.gradientFrom, palette.gradientTo]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1.1, y: 1.2 }}
+    <View
       style={[
-        { borderRadius: radius.lg, padding: spacing.xl, marginBottom: spacing.md, overflow: "hidden" },
+        {
+          backgroundColor: palette.primarySoft,
+          borderRadius: radius.lg,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border,
+          padding: spacing.xl,
+          marginBottom: spacing.md,
+          overflow: "hidden",
+        },
+        scheme === "light" && cardShadow,
         style,
       ]}
     >
       {children}
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -411,7 +416,7 @@ export function Button({
   const { palette } = useTheme();
   const background =
     variant === "primary"
-      ? palette.primary
+      ? palette.text
       : variant === "danger"
         ? palette.negative
         : variant === "secondary"
@@ -419,7 +424,7 @@ export function Button({
           : "transparent";
   const color =
     variant === "primary"
-      ? palette.onPrimary
+      ? palette.background
       : variant === "danger"
         ? palette.onNegative
         : variant === "ghost"
@@ -600,8 +605,8 @@ export function Field({
               backgroundColor: palette.surfaceAlt,
               color: palette.text,
               borderRadius: radius.sm,
-              borderWidth: 1.5,
-              borderColor: error ? palette.negative : focused ? palette.focus : palette.controlBorder,
+              borderWidth: error || focused ? 1.5 : StyleSheet.hairlineWidth,
+              borderColor: error ? palette.negative : focused ? palette.focus : palette.border,
               paddingHorizontal: spacing.md,
               paddingRight: secure ? 44 : spacing.md,
               minHeight: 48,
@@ -692,8 +697,8 @@ export function MoneyField({
             backgroundColor: palette.surfaceAlt,
             color: invalid ? palette.negativeText : disabled ? palette.textMuted : palette.text,
             borderRadius: radius.sm,
-            borderWidth: 1.5,
-            borderColor: invalid ? palette.negative : focused ? palette.focus : palette.controlBorder,
+            borderWidth: invalid || focused ? 1.5 : StyleSheet.hairlineWidth,
+            borderColor: invalid ? palette.negative : focused ? palette.focus : palette.border,
             paddingHorizontal: spacing.md,
             paddingRight: 44,
             minHeight: 48,
@@ -746,12 +751,14 @@ export function Select<T extends string>({
   value,
   onChange,
   placeholder,
+  disabled = false,
 }: {
   label?: string;
   options: { value: T; label: string }[];
   value: T | null;
   onChange: (v: T) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const { palette, scheme } = useTheme();
   const [open, setOpen] = useState(false);
@@ -765,21 +772,22 @@ export function Select<T extends string>({
         ref={triggerRef}
         accessibilityRole="button"
         accessibilityLabel={label ?? placeholder ?? current?.label}
-        accessibilityState={{ expanded: open }}
+        accessibilityState={{ disabled, expanded: open }}
+        disabled={disabled}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
           {
             backgroundColor: palette.surfaceAlt,
             borderRadius: radius.sm,
-            borderWidth: 1.5,
-            borderColor: open ? palette.focus : palette.controlBorder,
+            borderWidth: open ? 1.5 : StyleSheet.hairlineWidth,
+            borderColor: open ? palette.focus : palette.border,
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm,
             minHeight: 48,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            opacity: pressed ? 0.85 : 1,
+            opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
           },
         ]}
       >
@@ -889,12 +897,13 @@ export function Segmented<T extends string>({
             style={[
               {
                 flex: 1,
-                paddingVertical: spacing.sm + 2,
+                minHeight: 44,
+                paddingVertical: spacing.sm,
+                paddingHorizontal: 2,
                 borderRadius: radius.sm - 1,
                 alignItems: "center",
+                justifyContent: "center",
                 backgroundColor: selected ? palette.surface : "transparent",
-                borderWidth: 1.5,
-                borderColor: selected ? palette.primaryText : "transparent",
               },
               selected && scheme === "light" && cardShadow,
             ]}
@@ -904,7 +913,7 @@ export function Segmented<T extends string>({
                 type.label,
                 // Constant metrics: only color changes on selection, so labels
                 // never shift or look off-center when the thumb moves.
-                { color: selected ? palette.text : palette.textMuted, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+                { color: selected ? palette.primaryText : palette.textMuted, fontFamily: "Inter_600SemiBold", textAlign: "center", width: "100%" },
               ]}
             >
               {option.label}
@@ -957,9 +966,7 @@ export function ChipPicker<T extends string>({
               paddingVertical: spacing.sm + 2,
               paddingHorizontal: spacing.md + 2,
               borderRadius: radius.full,
-              borderWidth: 1.5,
-              borderColor: selected ? palette.primaryText : palette.controlBorder,
-              backgroundColor: selected ? palette.primarySoft : palette.surface,
+              backgroundColor: selected ? palette.primarySoft : palette.surfaceAlt,
               minHeight: 44,
               justifyContent: "center",
             }}
@@ -1190,12 +1197,12 @@ export function ListRow({
           <IconCmp accessible={false} size={18} color={iconColor ?? palette.primary} strokeWidth={2} />
         </View>
       ) : null}
-      <View style={{ flex: 1 }}>
-        <Text style={[type.body, { color: palette.text, fontFamily: "Inter_500Medium" }]}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[type.body, { color: palette.text, fontFamily: "Inter_500Medium", flexShrink: 1 }]}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={[type.small, { color: palette.textMuted, marginTop: 1 }]}>
+          <Text style={[type.small, { color: palette.textMuted, marginTop: 1, flexShrink: 1 }]}>
             {subtitle}
           </Text>
         ) : null}
@@ -1264,7 +1271,7 @@ export function Toggle({
     animation.start();
     return () => animation.stop();
   }, [value, progress, reducedMotion]);
-  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.controlBorder, palette.primary] });
+  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.surfaceAlt, palette.primarySoft] });
   const thumbX = progress.interpolate({ inputRange: [0, 1], outputRange: [TOGGLE_PAD, TOGGLE_W - TOGGLE_THUMB - TOGGLE_PAD] });
   return (
     <Pressable
@@ -1277,13 +1284,13 @@ export function Toggle({
       onPress={() => onValueChange(!value)}
       style={{ opacity: disabled ? 0.5 : 1 }}
     >
-      <Animated.View style={{ width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2, backgroundColor: trackColor, justifyContent: "center" }}>
+      <Animated.View style={{ width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, backgroundColor: trackColor, justifyContent: "center" }}>
         <Animated.View
           style={{
             width: TOGGLE_THUMB,
             height: TOGGLE_THUMB,
             borderRadius: TOGGLE_THUMB / 2,
-            backgroundColor: palette.onPrimary,
+            backgroundColor: value ? palette.primaryText : palette.textMuted,
             transform: [{ translateX: thumbX }],
             shadowColor: "#000",
             shadowOpacity: 0.18,

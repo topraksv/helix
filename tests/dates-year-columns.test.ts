@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDaysISO, dateForMonthEntry } from "../src/domain/dates";
+import { addDaysISO, clampDayToMonth, dateForMonthEntry, isMonthDay } from "../src/domain/dates";
 import { resolveYearColumns } from "../src/domain/year-columns";
 
 describe("addDaysISO", () => {
@@ -30,6 +30,21 @@ describe("dateForMonthEntry", () => {
   it("uses a deterministic day when another month was explicitly selected", () => {
     expect(dateForMonthEntry("2026-06", "2026-07-16")).toBe("2026-06-15");
     expect(dateForMonthEntry("2026-08", "2026-07-16")).toBe("2026-08-15");
+  });
+});
+
+describe("recurring month days", () => {
+  it("accepts 31 as the stable month-end sentinel", () => {
+    expect(isMonthDay("31")).toBe(true);
+    expect(clampDayToMonth(2026, 2, 31)).toBe("2026-02-28");
+    expect(clampDayToMonth(2024, 2, 31)).toBe("2024-02-29");
+    expect(clampDayToMonth(2026, 4, 31)).toBe("2026-04-30");
+  });
+
+  it("rejects days outside a calendar month", () => {
+    for (const value of ["", "0", "32", "2.5", "not-a-day"]) {
+      expect(isMonthDay(value)).toBe(false);
+    }
   });
 });
 

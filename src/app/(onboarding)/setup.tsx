@@ -7,7 +7,7 @@ import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES
 import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/export-import";
 import { useSession } from "../../auth/session";
 import { useSettingsMap } from "../../data/hooks";
-import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../../domain/dates";
+import { addMonthsToKey, isCurrentOrFutureMonth, isMonthDay, monthKeyOf, todayISO } from "../../domain/dates";
 import { remapDraftOwnerIndex } from "../../domain/onboarding";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
@@ -18,6 +18,7 @@ import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders"
 import { spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { readPickedText } from "../../services/picked-file";
+import { MonthDayField, monthDayLabel } from "../../ui/month-day-field";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const ALL_TEMPLATES: TemplateCategory[] = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
@@ -406,7 +407,9 @@ export default function SetupScreen() {
               <View style={{ flex: 1, paddingRight: spacing.sm }}>
                 <Body>
                   {src.name} · {SOURCE_TYPES.find((t) => t.value === src.type)?.label}
-                  {src.type === "credit_card" ? ` · ${src.statementDay}/${src.dueDay}` : ""}
+                  {src.type === "credit_card" && src.statementDay != null && src.dueDay != null
+                    ? ` · ${monthDayLabel(src.statementDay)}/${monthDayLabel(src.dueDay)}`
+                    : ""}
                   {persons.length > 1 ? ` · ${persons[src.personIndex] ?? persons[0]}` : ""}
                 </Body>
               </View>
@@ -434,22 +437,10 @@ export default function SetupScreen() {
             <>
               <Row>
                 <View style={{ flex: 1 }}>
-                  <Field
-                    label={tr.sources.statementDay}
-                    value={newSourceStatementDay}
-                    onChangeText={setNewSourceStatementDay}
-                    placeholder={tr.sources.dayPlaceholder}
-                    keyboardType="number-pad"
-                  />
+                  <MonthDayField label={tr.sources.statementDay} value={newSourceStatementDay} onChange={setNewSourceStatementDay} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Field
-                    label={tr.sources.dueDay}
-                    value={newSourceDueDay}
-                    onChangeText={setNewSourceDueDay}
-                    placeholder={tr.sources.dayPlaceholder}
-                    keyboardType="number-pad"
-                  />
+                  <MonthDayField label={tr.sources.dueDay} value={newSourceDueDay} onChange={setNewSourceDueDay} />
                 </View>
               </Row>
               <Body muted style={{ marginBottom: spacing.md }}>{tr.sources.cycleHint}</Body>
@@ -470,10 +461,7 @@ export default function SetupScreen() {
                 disabled={
                   !newSource.trim() ||
                   (newSourceType === "credit_card" &&
-                    ![newSourceStatementDay, newSourceDueDay].every((value) => {
-                      const day = Number(value);
-                      return value.trim() !== "" && Number.isInteger(day) && day >= 1 && day <= 31;
-                    }))
+                    ![newSourceStatementDay, newSourceDueDay].every(isMonthDay))
                 }
                 onPress={submitSource}
               />

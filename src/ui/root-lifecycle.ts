@@ -6,7 +6,7 @@ import * as LocalAuthentication from "expo-local-authentication";
 import { kv } from "../lib/kv";
 import { runMaintenance } from "../data/repo";
 import { loadRateCache, refreshRates } from "../services/fx-fetch";
-import { connectMarkets, disconnectMarkets } from "../services/markets";
+import { connectMarkets, disconnectMarkets, suspendMarkets } from "../services/markets";
 import { rescheduleAll } from "../services/notifications";
 import { devWarning } from "../services/logger";
 import { runSyncSessionTask, syncNow } from "../sync/engine";
@@ -107,6 +107,30 @@ export function useWorkspaceMaintenance(ready: boolean, userId: string | null, u
   }, [ready, userId, unlocked]);
 }
 
+/** Pull changes made on another active device without requiring a button tap. */
+export function useForegroundSync(ready: boolean, userId: string | null, unlocked: boolean): void {
+  useEffect(() => {
+    if (!ready || !userId || !unlocked) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    const start = () => {
+      stop();
+      void syncNow(userId);
+      timer = setInterval(() => void syncNow(userId), 30_000);
+    };
+    const update = (state: string) => state === "active" ? start() : stop();
+    update(AppState.currentState);
+    const subscription = AppState.addEventListener("change", update);
+    return () => {
+      stop();
+      subscription.remove();
+    };
+  }, [ready, userId, unlocked]);
+}
+
 export function useMarketLifecycle(ready: boolean, userId: string | null, unlocked: boolean): void {
   useEffect(() => {
     if (!ready || !userId || !unlocked) {
@@ -115,13 +139,13 @@ export function useMarketLifecycle(ready: boolean, userId: string | null, unlock
     }
     const update = (state: string) => {
       if (state === "active") connectMarkets();
-      else disconnectMarkets();
+      else suspendMarkets();
     };
     update(AppState.currentState);
     const subscription = AppState.addEventListener("change", update);
     return () => {
       subscription.remove();
-      disconnectMarkets();
+      suspendMarkets();
     };
   }, [ready, userId, unlocked]);
 }

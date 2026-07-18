@@ -24,12 +24,12 @@ vermemelidir.
 | Veri | Local-only | Hesaplı mod | Not |
 |---|---|---|---|
 | İşlem, kategori, taksit, abonelik, düzenli gelir, kişi, ödeme yöntemi, bütçe, not, ayar | Cihaz SQLite | Cihaz SQLite + Supabase Postgres | Uygulamanın temel finansal verisi |
-| Sync outbox/dead-letter/cursor | Cihaz SQLite | Cihaz SQLite; geçerli satırlar sync için Supabase’e gider | Tanılama payload içeriğini göstermez |
+| Sync outbox/dead-letter/cursor | Cihaz SQLite | Cihaz SQLite; geçerli satırlar sync için Supabase’e gider | Bozuk event local karantinada kalır; payload UI’da gösterilmez |
 | E-posta, auth identity | Yok | Supabase Auth | Şifre Helix tablolarında saklanmaz |
 | Auth session | Yok | Native’de SecureStore; web’de Supabase’in browser storage’ı | Web browser profiline erişebilen kişi session’a erişebilir |
 | Bildirim tercihi ve planı | Cihaz | Cihaz | Device-local; hesap değişiminde temizlenir |
 | Kur cache’i | Cihaz | Kullanıcı-scoped cihaz/remote satırları | Kaynak tarihiyle tutulur |
-| Diagnostics event ring | Cihaz | Cihaz | Bounded ve redacted; tutar/not/e-posta/token/payload kabul etmez |
+| İç hata kırıntısı halkası | Cihaz | Cihaz | Bounded ve redacted; tutar/not/e-posta/token/payload kabul etmez; son kullanıcı ekranı değildir |
 
 İşletim sistemi ve browser kendi backup/cache davranışına sahip olabilir. iOS native
 build `NSFileProtectionComplete` entitlement’ı kullanır; app-created dosyalar cihaz
@@ -67,9 +67,9 @@ Supabase anon/publishable anahtarını taşır; asıl erişim sınırı RLS’ti
 | Harem Altın websocket | Canlı altın/döviz piyasa kartı | Salt okunur socket bağlantısı | Resmî SLA yok; 60 sn feed sessizliğinde veri canlı sayılmaz |
 | Google favicon | Bilinen abonelik logosu | Sıkı doğrulanmış/encode edilmiş public domain | Utility, unknown, IP/local/invalid host gönderilmez; local fallback var |
 
-Uygulama production’da kendi doğrudan console log’unu üretmez. Development logger
+Uygulama production'da kendi doğrudan console log'unu üretmez. Development logger
 token, şifre veya ham import verisi almamalıdır. Şu anda merkezi crash reporting
-yoktur; kullanıcı Ayarlar’daki redacted diagnostics export’unu kendisi paylaşabilir.
+yoktur; yalnız kapsam, hata sınıfı ve zamanı içeren küçük bir cihaz-içi halka tutulur.
 
 ## Bildirim ve ekran gizliliği
 
@@ -123,12 +123,12 @@ kullanıcının sorumluluğundadır. Helix export’u parola ile şifrelediğini
 - Biometric app lock’ı desteklenen native cihazda açmak.
 - JSON yedek ve CSV export almak; restore/import sonucunu uygulamada doğrulamak.
 - Ayarlar → Hesap Güvenliği’nden çıkış, dondurma veya kalıcı hesap silme.
-- Ayarlar → Tanılama’dan redacted teknik durum export etmek.
 
 ## Bilinen sınırlar ve iletişim
 
-- Production telemetry/crash reporting olmadığı için tek kullanıcılı sessiz hata,
-  kullanıcı diagnostics ekranını açmadıkça maintainer’a otomatik ulaşmaz.
+- Production telemetry/crash reporting olmadığı için sessiz hata maintainer'a
+  otomatik ulaşmaz; destek sırasında kullanıcıdan yalnız sürüm ve yeniden üretim
+  adımları istenir, finansal veri veya yedek istenmez.
 - Android production store build’i ve fiziksel TalkBack/notification kabulü henüz
   doğrulanmış değildir; ayrıntı [TESTING.md](TESTING.md) cihaz matrisindedir.
 - Harem akışı resmî değildir; yatırım kararı için kaynak kabul edilmemelidir.

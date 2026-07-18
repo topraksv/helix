@@ -17,6 +17,7 @@ export default function SettingsLayout() {
         headerBackTitle: tr.common.back,
         headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" />,
         headerShadowVisible: false,
+        gestureEnabled: true,
         contentStyle: { backgroundColor: palette.background },
       }}
     >
