@@ -46,9 +46,9 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-ARCH-03` | P3 | P4 | NOT STARTED | Cash-flow matrix model, orientation ve navigation iç içe | Saf matrix model + ince orientation adapters; mevcut tablo parity ve 320/desktop testleri |
 | `CDX-ARCH-04` | P2 | P4 | NOT STARTED | Root layout auth/lock/maintenance/market/guard effectleri tek orchestration’da | Ayrı lifecycle/maintenance hooks ve saf guard state machine; account-switch/cleanup testleri |
 | `CDX-ARCH-05` | P2 | P4 | NOT STARTED | Import SQL snapshot, mapping ve write planı tek I/O fonksiyonunda | Saf import planner + tek atomik commit; mevcut fixture parity ve invalid inputte sıfır write |
-| `HLX-06` | P3 | P3 | IN PROGRESS | `noUncheckedIndexedAccess` kapalı | Compiler flag açık; tüm kaynak typecheck, riskli indeksler explicit guardlı |
-| `CDX-DB-01` | P2 | P3 | IN PROGRESS | Own-data ilişkileri ve cross-kind kuralları remote DB’de yalnız client tarafından korunuyor | Sync sırasını bozmayan owner-aware constraint/validator; corruption fixture reddedilir |
-| `HLX-04` | P3 | P3 | IN PROGRESS | RLS policy’leri doğrudan `auth.uid()` çağırıyor ve role scope açık değil | `(select auth.uid())`, `TO authenticated`; linked lint ve iki-kullanıcı izolasyon testi |
+| `HLX-06` | P3 | P3 | RESOLVED | `noUncheckedIndexedAccess` kapalı | Flag kalıcı açık; source + test indeksleri runtime guard/helper ile explicit; typecheck ve generated remote `Database` istemci tipi temiz |
+| `CDX-DB-01` | P2 | P3 | VERIFIED | Own-data ilişkileri ve cross-kind kuralları remote DB’de yalnız client tarafından korunuyor | Remote migration 6: 19 owner-aware FK doğrulandı, category/polymorphic ref triggerları aktif, legacy 121 refund nakit etkisi korunarak kanonikleşti; son aggregate mismatch `0`; `database.types.ts` linked şemadan üretildi |
+| `HLX-04` | P3 | P3 | VERIFIED | RLS policy’leri doğrudan `auth.uid()` çağırıyor ve role scope açık değil | Remote 60/60 policy `TO authenticated` ve init-plan `(select auth.uid())`; linked migration 1–6 eşit, DB lint sıfır hata |
 
 ## Release, supply chain ve gözlemlenebilirlik
 
@@ -107,7 +107,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-TEST-03` | P1 | P2/P7 | RESOLVED | OTA channel/runtime/rollback gerçek kabul testi yok | Config regression testi, remote channel/group metadata ve çalıştırılabilir rollback/iki-cold-start checklist tamam; fiziksel cihaz sonucu olmadığı için `VERIFIED` değil |
 | `CDX-TEST-04` | P1 | P1 | RESOLVED | Poison outbox regression testi yok | Bozuk JSONB/unknown column/non-finite numeric karantinada; sağlıklı sonraki row push planında kalıyor |
 | `CDX-TEST-05` | P1 | P1 | RESOLVED | Duplicate submit testi yok | Aynı tick iki invocation tek operation callback; success/error sonrası guard deterministik serbest |
-| `CDX-TEST-06` | P1 | P3 | IN PROGRESS | İki-user RLS izolasyon testi yok | A kendi CRUD; B read/update/delete/owner change reddedilir; anon sıfır row |
+| `CDX-TEST-06` | P1 | P3 | VERIFIED | İki-user RLS izolasyon testi yok | Remote pgTAP 19/19: A own CRUD, B read/update/delete/owner-change ve cross-owner ref reddi, category/ref corruption reddi, anon sıfır row; `finish(true)` + rollback |
 | `CDX-TEST-07` | P1 | P7 | NOT STARTED | Core kalıcı E2E yok | Onboarding→transaction→table→edit/delete/undo→backup smoke |
 | `CDX-TEST-08` | P1 | P4/P7 | NOT STARTED | Account-switch late task integration testi eksik | A response’u B sessionında hiçbir write yapmaz |
 | `CDX-TEST-09` | P1 | P4/P7 | NOT STARTED | Backup temiz DB round-trip integration testi eksik | 15 tablo ve ilişkiler 1:1, invalid bundle sıfır write |
@@ -141,7 +141,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | P0 | `f6009a5` | [Pages run 29636105664](https://github.com/topraksv/helix/actions/runs/29636105664) başarılı | Gerekmez | VERIFIED |
 | P1 | `f8f536e` | [Pages run 29636759953](https://github.com/topraksv/helix/actions/runs/29636759953) başarılı | [EAS group df604f34](https://expo.dev/accounts/topraksv/projects/helix/updates/df604f34-b0e7-46b0-a190-b0cfe5e52e7a), runtime `1.0.0`; install henüz `0` | RESOLVED |
 | P2 | `28ef0a6`, `886daa8` | [quality→Pages run 29637115841](https://github.com/topraksv/helix/actions/runs/29637115841) başarılı | `preview` channel→branch remote doğrulandı; native rebuild gerekli, OTA bilerek yok | RESOLVED |
-| P3 | — | 49-route export + 28/227 test yerelde temiz | linked migration/test bekliyor | IN PROGRESS |
+| P3 | `8776f70`, `fa2988e` + kapanış PR'ı | 49-route export + 28/227 test yerelde/remote quality temiz | migration 6 remote, list/lint/19 pgTAP doğrulandı; web/OTA kapanışı bekliyor | IN PROGRESS |
 | P4 | — | — | — | NOT STARTED |
 | P5 | — | — | — | NOT STARTED |
 | P6 | — | — | — | NOT STARTED |
