@@ -9,21 +9,23 @@ lags behind them.
 
 - Updated: 2026-07-18 (Europe/Istanbul)
 - Branch: `main`
-- Completed remediation package: P2; release commits: `28ef0a6`, `886daa8`
+- Completed remediation package: P3; release commits: `8776f70`, `fa2988e`,
+  `b2bd29a`
 - Toolchain used: Node 22
 - Verification: typecheck, full tests, zero-warning Expo lint, 49-route static
-  web export, successful required remote quality/Pages run, protected `main`,
-  remote security settings and EAS channel/config resolution. No browser
-  backend or installed-device native rebuild was available.
+  web export, successful required remote quality/Pages run, linked migration
+  list/lint, 19-test remote pgTAP, owner-integrity catalog aggregates, generated
+  DB types and EAS channel/update metadata. No browser backend or installed-
+  device native rebuild was available.
 - Test baseline: 28 files, 227 tests passing
 
 ## Active working tree
 
 An eight-package remediation of Codex's independent 2026-07-17 audit is
-active. P0–P2 are complete: scope registry; data integrity; and CI/GitHub/EAS
-release contracts. P3 (linked Supabase integrity, RLS optimization and strict
-TypeScript index safety) is next. `docs/AUDIT_TRACKER.md` is the ID/status
-source of truth.
+active. P0–P3 are complete: scope registry; data integrity; CI/GitHub/EAS
+release contracts; and linked database/type boundaries. P4 (architecture,
+measured performance and production diagnostics) is next.
+`docs/AUDIT_TRACKER.md` is the ID/status source of truth.
 
 The four-package 2026-07-17 audit remediation is COMPLETE and fully deployed:
 1 hygiene/docs (`98fa44f`), 2 data-layer/web hardening (`0692027`),
@@ -86,6 +88,37 @@ diff and running checks proportionate to the change.
 
 Older entries are archived verbatim in `docs/handoffs/` (currently
 `2026-07.md`); only the newest entries live here.
+
+### 2026-07-18 — Codex (audit remediation package 3: DB and type boundaries)
+
+- Base `6f16977`, branch `main`; P3 shipped through protected PRs as
+  `8776f70`, `fa2988e` and `b2bd29a`.
+- Enabled `noUncheckedIndexedAccess` and replaced unsafe collection access at
+  UI, domain, import, sync and test boundaries with explicit guards/helpers.
+  Linked Supabase types are generated in `src/sync/database.types.ts`; the
+  typed client has one documented dynamic-table cast after runtime validation.
+- Remote migration 6 added and validated 19 owner-aware composite FKs,
+  category-kind/polymorphic-reference triggers, and 60 owner policies scoped
+  to `authenticated` with init-plan `(select auth.uid())`. Its fail-safe first
+  attempt rolled back on 121 legacy refund rows; anonymous aggregate evidence
+  showed exactly `income + positive + expense category`. The final migration
+  canonicalized them to signed expense refunds without changing balance effect.
+  Post-migration aggregate: zero mismatches, 19 validated FKs, 60 authenticated
+  and 60 init-plan policies.
+- Remote verification: migration list local/remote 1–6 identical; linked DB
+  lint zero errors; pgTAP 19/19 (`finish(true)`) covered A own CRUD, B isolation,
+  owner change/cross-owner relation rejection, category/ref corruption and anon
+  denial. CLI's linked runner required unavailable Docker, so the same SQL ran
+  via Supabase's official Management API in one rollback transaction.
+- Checks: typecheck; 28 files/227 tests; zero-warning lint; 49-route export;
+  required PR quality runs `29637897894`, `29638087647`, `29638400078`; final
+  Pages run `29638482754` succeeded. No browser backend was available.
+- EAS `preview` group `fb85064c-5fd9-4644-b547-129562a232e5` published from
+  clean commit `b2bd29a` for runtime `1.0.0` (iOS
+  `019f7476-fcd4-79a8-b88c-4cb2797d6f9d`, Android
+  `019f7476-fcd4-7044-84b7-4f4ef69f50f9`). Immediate insights showed zero
+  users/installs. Installed-device delivery is not verified; P2's local native
+  rebuild and two-cold-start requirement still applies.
 
 ### 2026-07-18 — Codex (audit remediation package 2: release contract)
 
@@ -187,35 +220,3 @@ Older entries are archived verbatim in `docs/handoffs/` (currently
   without Docker, but the transactional apply recording version 5 proves
   every statement (including the cell_notes dedup + partial unique index)
   succeeded. Production root probed 200 with the CSP meta in served HTML.
-
-### 2026-07-17 — Claude (audit package 3: liveliness and perceived stability)
-
-- Base `b1d886a`, branch `main`. Third audit-remediation package.
-- Markets: the 3 s throttle defers a burst payload to the trailing edge
-  (payloads merge, later entries win) instead of dropping it — the provider
-  re-sends a symbol only on price change, so a dropped payload froze that
-  symbol until its next move. Deferred state clears on disconnect; fake-timer
-  test added. The card's green dot now claims liveness only in "live" status.
-- Hooks: removed the dead `LiveResult.error` surface (zero consumers; the
-  promised retry affordance never existed). Retry-forever kept deliberately;
-  comments now match behavior. `updatedAt === undefined` is the documented
-  loading signal.
-- Dashboard: hero balance shows placeholder bars until the ledger loads (no
-  transient "₺0"), and the markets card renders full-height with per-symbol
-  dashes while connecting instead of popping in (CLS).
-- Theme: shared `TAB_BAR` metrics + `tabBarHeight()` now feed both the tab
-  layout and the undo snackbar (previously a drifting hardcoded `bottom: 96`);
-  new `overlayShadow` token replaces the snackbar's hand-rolled `#000` shadow;
-  markets column widths are named constants; sticky-table keyboard steps
-  derive from the real `rowHeight`/`cellWidth` props.
-- Imports: legacy batch-upgrade SHA-256 digests compute via `Promise.all`.
-  Service worker prunes cached assets above 120 entries during an online
-  navigation (content-hashed names grew the cache by one build per deploy).
-- Checks: typecheck, 24 files/216 tests, zero-warning lint, 49-route export,
-  headless smoke (sign-in reached, zero CSP violations, zero console errors).
-- Shipped as `5ac5205`, pushed; Pages redeploys. EAS `preview` update group
-  `85069d45-a2f1-4e85-b8bf-cc8c5c2d9059` published (iOS
-  `019f7006-acdf-77a7-a3e7-2f591d54b7e7`, Android
-  `019f7006-acdf-7c92-b7a3-cca4f389d55e`, runtime `1.0.0`); applies on the
-  next full close + reopen. Physical feel of the snackbar clearance and the
-  hero skeleton still deserve one installed-device glance.
