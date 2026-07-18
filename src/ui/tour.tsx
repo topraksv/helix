@@ -11,14 +11,14 @@ import { radius, spacing, type, useTheme } from "./theme";
 
 const TOUR_KEY = "helix.tour.done";
 
-const SLIDES: { icon: LucideIcon; title: string; body: string }[] = [
+const SLIDES = [
   { icon: ChartPie, title: tr.tour.s1Title, body: tr.tour.s1Body },
   { icon: PlusCircle, title: tr.tour.s2Title, body: tr.tour.s2Body },
   { icon: Table2, title: tr.tour.s3Title, body: tr.tour.s3Body },
   { icon: CalendarCheck, title: tr.tour.s4Title, body: tr.tour.s4Body },
   { icon: Banknote, title: tr.tour.s5Title, body: tr.tour.s5Body },
   { icon: CloudUpload, title: tr.tour.s6Title, body: tr.tour.s6Body },
-];
+] as const satisfies readonly { icon: LucideIcon; title: string; body: string }[];
 
 /** Mounts on the dashboard; shows itself only on the first visit. */
 export function FirstRunTour() {
@@ -36,7 +36,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
   const { palette } = useTheme();
   const { width } = useWindowDimensions();
   const [step, setStep] = useState(0);
-  const slide = SLIDES[step];
+  const slide = SLIDES[step] ?? SLIDES[0];
   const IconCmp = slide.icon;
   const last = step === SLIDES.length - 1;
 

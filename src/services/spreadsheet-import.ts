@@ -106,15 +106,21 @@ export function extractDueDay(label: string): { label: string; dueDay: number | 
   // range "05-15" / "(15-20)" → the later day is the deadline
   let m = /^(.+?)\s+\(?(\d{1,2})\s*[-–]\s*(\d{1,2})\)?$/.exec(trimmed);
   if (m) {
-    const a = Number(m[2]);
-    const b = Number(m[3]);
-    if (a >= 1 && a <= 31 && b >= 1 && b <= 31 && hasLetter(m[1])) return { label: m[1].trim(), dueDay: Math.max(a, b) };
+    const [, rawLabel, rawA, rawB] = m;
+    const a = Number(rawA);
+    const b = Number(rawB);
+    if (rawLabel && rawA && rawB && a >= 1 && a <= 31 && b >= 1 && b <= 31 && hasLetter(rawLabel)) {
+      return { label: rawLabel.trim(), dueDay: Math.max(a, b) };
+    }
   }
   // single trailing day, optionally parenthesised
   m = /^(.+?)\s+\(?(\d{1,2})\)?$/.exec(trimmed);
   if (m) {
-    const day = Number(m[2]);
-    if (day >= 1 && day <= 31 && hasLetter(m[1])) return { label: m[1].trim(), dueDay: day };
+    const [, rawLabel, rawDay] = m;
+    const day = Number(rawDay);
+    if (rawLabel && rawDay && day >= 1 && day <= 31 && hasLetter(rawLabel)) {
+      return { label: rawLabel.trim(), dueDay: day };
+    }
   }
   return { label: trimmed, dueDay: null };
 }
@@ -127,18 +133,19 @@ export function parseMonthLabel(value: unknown): MonthKey | null {
   const s = String(value ?? "").trim().toLocaleLowerCase("tr-TR");
   if (s === "") return null;
   let m = /^(\d{4})[-/.](\d{1,2})$/.exec(s);
-  if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) return `${m[1]}-${String(Number(m[2])).padStart(2, "0")}`;
+  if (m?.[1] && m[2] && Number(m[2]) >= 1 && Number(m[2]) <= 12) return `${m[1]}-${String(Number(m[2])).padStart(2, "0")}`;
   m = /^(\d{1,2})[-/.](\d{4})$/.exec(s);
-  if (m && Number(m[1]) >= 1 && Number(m[1]) <= 12) return `${m[2]}-${String(Number(m[1])).padStart(2, "0")}`;
+  if (m?.[1] && m[2] && Number(m[1]) >= 1 && Number(m[1]) <= 12) return `${m[2]}-${String(Number(m[1])).padStart(2, "0")}`;
   // "2025 Ocak" | "Ocak 2025" | "Oca'25" — a month name with a nearby year.
   const nameMatch = /([a-zçğıöşü]{3,})/.exec(s);
   const yearMatch = /(\d{2,4})/.exec(s);
   if (nameMatch && yearMatch) {
     const name = nameMatch[1];
+    const raw = yearMatch[1];
+    if (!name || !raw) return null;
     let idx = MONTH_NAMES.indexOf(name);
     if (idx < 0) idx = MONTH_ABBR.indexOf(name.slice(0, 3));
     if (idx >= 0) {
-      const raw = yearMatch[1];
       const year = Number(raw.length === 2 ? `20${raw}` : raw);
       return `${year}-${String(idx + 1).padStart(2, "0")}`;
     }
@@ -193,8 +200,9 @@ function parseCommentParts(comment: string): { label: string; amountMinor: Minor
     .filter(Boolean)
     .map((line) => {
       const m = /^(.*\S)[\s:=]+([₺]?\s*-?\d[\d.,]*)\s*(?:tl|₺)?$/i.exec(line);
-      const amount = m ? parseSheetAmount(m[2]) : null;
-      return amount != null ? { label: m![1].trim(), amountMinor: amount } : { label: line, amountMinor: null };
+      const label = m?.[1];
+      const amount = m?.[2] ? parseSheetAmount(m[2]) : null;
+      return amount != null && label ? { label: label.trim(), amountMinor: amount } : { label: line, amountMinor: null };
     });
 }
 
@@ -241,7 +249,9 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
 
   // Contiguous month block: stop at the first blank / non-month row.
   let endRow = firstMonthRow;
-  while (endRow < normalized.length && !rowIsBlank(normalized[endRow]) && parseMonthLabel(normalized[endRow][0]?.v) != null) {
+  while (endRow < normalized.length) {
+    const row = normalized[endRow];
+    if (!row || rowIsBlank(row) || parseMonthLabel(row[0]?.v) == null) break;
     endRow++;
   }
   const body = normalized.slice(firstMonthRow, endRow);
@@ -249,7 +259,11 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   const header = headerRow.slice(1).map((c) => String(c?.v ?? "").trim());
   if (body.length === 0 || header.every((h) => h === "")) return fail(tr.importer.reasonNoColumns);
 
-  const months = body.map((r) => parseMonthLabel(r[0]?.v)!);
+  const parsedMonths = body.map((r) => parseMonthLabel(r[0]?.v));
+  if (parsedMonths.some((month) => month == null)) return fail(tr.importer.reasonNoMonths);
+  const months = parsedMonths.filter((month): month is MonthKey => month != null);
+  const firstMonth = months[0];
+  if (!firstMonth) return fail(tr.importer.reasonNoMonths);
 
   const keepIdx: number[] = [];
   const skippedColumns: string[] = [];
@@ -265,7 +279,7 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   });
 
   const columns: ParsedColumn[] = keepIdx.map((i) => {
-    const { label, dueDay } = extractDueDay(header[i]);
+    const { label, dueDay } = extractDueDay(header[i] ?? "");
     return {
       label,
       kindGuess: INCOME_HINTS.test(label) ? "income" : "expense",
@@ -278,12 +292,12 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   let openingBalance: ParsedSheet["openingBalance"] = null;
   if (openingColIdx >= 0) {
     const minor = parseSheetAmount(body[0]?.[openingColIdx + 1]?.v);
-    if (minor != null) openingBalance = { month: months[0], minor };
+    if (minor != null) openingBalance = { month: firstMonth, minor };
   }
 
   return {
     sheetName,
-    year: yearOf(months[0]),
+    year: yearOf(firstMonth),
     months,
     columns,
     cells,
@@ -318,7 +332,10 @@ export function planImportCell(cell: CellData): CellPlan | null {
 
   // 1) literal formula whose part count matches the comment lines → labeled items
   if (fp && cp && cp.length === fp.length) {
-    return { items: fp.map((amt, i) => ({ amountMinor: amt, note: cp[i].label || null, isAggregate: false })), cellNote: null };
+    return {
+      items: fp.map((amt, i) => ({ amountMinor: amt, note: cp[i]?.label || null, isAggregate: false })),
+      cellNote: null,
+    };
   }
   // 2) literal formula only → itemize (unlabeled); keep any comment as cell note
   if (fp) {
@@ -371,7 +388,7 @@ export function parseInstallmentComment(comment: string): InstallmentNote[] {
     const line = raw.trim();
     if (line === "") continue;
     const sec = SECTION_BANNER.exec(line);
-    if (sec) {
+    if (sec?.[1]) {
       card = sec[1].replace(/ℹ️|ℹ/g, "").trim();
       continue;
     }
@@ -379,11 +396,14 @@ export function parseInstallmentComment(comment: string): InstallmentNote[] {
     if (!tail) continue;
     const paidNo = Number(tail[1]);
     const total = Number(tail[2]);
+    if (!tail[1] || !tail[2]) continue;
     if (total < 1 || total > 600 || paidNo < 1 || paidNo > total) continue;
     // Everything before the "n/m": "<name>  <amount>" — amount is the last token.
     const parts = line.slice(0, tail.index).trim().split(/\s+/);
     if (parts.length < 2) continue;
-    const amount = parseSheetAmount(parts[parts.length - 1]);
+    const amountToken = parts.at(-1);
+    if (!amountToken) continue;
+    const amount = parseSheetAmount(amountToken);
     if (amount == null || amount <= 0) continue; // skip refunds/negatives + unparseable
     const name = parts.slice(0, -1).join(" ").trim();
     if (name === "") continue;
@@ -425,8 +445,7 @@ export function collectInstallmentPlans(
   for (const sheet of sheets) {
     sheet.columns.forEach((col, index) => {
       if (excluded.has(col.label) || !/taksit/i.test(col.label)) return;
-      for (let r = 0; r < sheet.months.length; r++) {
-        const month = sheet.months[r];
+      for (const [r, month] of sheet.months.entries()) {
         if (!allow(yearOf(month))) continue;
         const comment = sheet.cells[r]?.[index]?.comment;
         if (!comment) continue;
@@ -485,6 +504,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): ParsedWorkbook {
   let totalCells = 0;
   for (const name of wb.SheetNames) {
     const worksheet = wb.Sheets[name];
+    if (!worksheet) throw new Error(tr.importer.workbookTooComplex);
     const ref = worksheet?.["!fullref"] ?? worksheet?.["!ref"];
     if (ref) {
       const range = XLSX.utils.decode_range(ref);

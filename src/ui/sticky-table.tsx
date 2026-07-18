@@ -219,9 +219,11 @@ export function StickyTable({
     if (focusRowKey && bodyViewH > 0) {
       const idx = rows.findIndex((r) => r.key === focusRowKey);
       if (idx >= 0) {
+        const focusedRowHeight = resolvedRowHeights[idx];
+        if (focusedRowHeight == null) return;
         const contentH = resolvedRowHeights.reduce((sum, value) => sum + value, 0);
         const rowTop = resolvedRowHeights.slice(0, idx).reduce((sum, value) => sum + value, 0);
-        const target = Math.max(0, Math.min(rowTop + resolvedRowHeights[idx] / 2 - bodyViewH / 2, contentH - bodyViewH));
+        const target = Math.max(0, Math.min(rowTop + focusedRowHeight / 2 - bodyViewH / 2, contentH - bodyViewH));
         vRef.current?.scrollTo({ y: target, animated: false });
         focusedSig.current = sig;
       }

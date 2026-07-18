@@ -18,7 +18,7 @@ import { evaluateComputedColumn, parseDefinition } from "../../../domain/compute
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
-import { monthLabel, tr } from "../../../i18n/tr";
+import { monthLabel, monthName, tr } from "../../../i18n/tr";
 import {
   settingValue,
   toTxLike,
@@ -123,7 +123,8 @@ export default function CashflowScreen() {
   // Year switcher bounds: back to the earliest data, forward only while there
   // is actual data (e.g. installments spilling into next year).
   const minYear = bundle ? yearOf(bundle.startMonth) : currentYear;
-  const lastDataYear = allTx.length > 0 ? yearOf(allTx[allTx.length - 1].effectiveDate) : currentYear;
+  const lastTransaction = allTx.at(-1);
+  const lastDataYear = lastTransaction ? yearOf(lastTransaction.effectiveDate) : currentYear;
   const maxYear = Math.max(currentYear, lastDataYear);
 
   // Per-year columns (see domain/year-columns.ts for the resolution rules).
@@ -434,7 +435,7 @@ function MatrixTable({
     stickyColumns = columns.map((c) => ({ key: c.key, label: c.label, icon: c.computed ? Sigma : undefined }));
     stickyRows = months.map((slot) => ({
       key: slot.month,
-      label: compact ? monthLabel(slot.month).split(" ")[0] : monthLabel(slot.month),
+      label: compact ? monthName(slot.month) : monthLabel(slot.month),
       onLabelPress: () => router.push(`/cash-flow/${slot.month}`),
       labelHighlight: slot.month === currentMonth,
       rowHighlight: slot.month === currentMonth,
@@ -449,7 +450,7 @@ function MatrixTable({
     }));
   } else {
     cornerLabel = tr.cashflow.itemHeader;
-    stickyColumns = months.map((slot) => ({ key: slot.month, label: monthLabel(slot.month).split(" ")[0] }));
+    stickyColumns = months.map((slot) => ({ key: slot.month, label: monthName(slot.month) }));
     currentColumnKey = currentMonth;
     stickyRows = columns.map((c) => ({
       key: c.key,

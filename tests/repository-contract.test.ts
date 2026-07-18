@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { required } from "./helpers";
 
 const dependencies = vi.hoisted(() => ({
   getSqliteAsync: vi.fn(),
@@ -101,7 +102,7 @@ describe("repository compatibility contract", () => {
     });
 
     expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
-    const [, writes] = dependencies.writeRows.mock.calls[0];
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
     expect(writes.map((write: { table: string }) => write.table)).toEqual([
       "persons",
       "persons",

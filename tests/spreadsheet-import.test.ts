@@ -15,6 +15,7 @@ import {
   type RawCell,
 } from "../src/services/spreadsheet-import";
 import * as XLSX from "xlsx";
+import { required } from "./helpers";
 
 // --- helpers ---------------------------------------------------------------
 const c = (v: unknown, opts?: { f?: string; note?: string }): RawCell => ({
@@ -29,6 +30,8 @@ const asSheet = (r: ReturnType<typeof parseSheet>) => {
   if (!("year" in r)) throw new Error(`expected parsed sheet, got: ${r.reason}`);
   return r;
 };
+const sheetCell = (sheet: ParsedSheet, rowIndex: number, columnIndex: number): CellData =>
+  required(required(sheet.cells[rowIndex], `sheet row ${rowIndex}`)[columnIndex], `sheet cell ${rowIndex}:${columnIndex}`);
 
 // A vertical 2026-style block: months down column A, balance columns present.
 const sheet2026 = (): RawCell[][] => [
@@ -85,9 +88,9 @@ describe("parseSheet — vertical block", () => {
     expect(s.year).toBe(2026);
     expect(s.months).toEqual(["2026-01", "2026-02", "2026-03"]);
     expect(s.columns.map((col) => col.label)).toEqual(["KK Taksitli Harcamalar", "Fatura ve Abonelikler", "Ek Gelirler"]);
-    expect(s.columns[2].kindGuess).toBe("income"); // Ek Gelirler
+    expect(required(s.columns[2]).kindGuess).toBe("income"); // Ek Gelirler
     expect(s.skippedColumns).toEqual(["Ay Başında Eldeki Para", "Güncel Bakiye"]);
-    expect(s.cells[0][0].valueMinor).toBe(1882292);
+    expect(sheetCell(s, 0, 0).valueMinor).toBe(1882292);
   });
 
   it("captures the earliest month's opening balance", () => {
@@ -121,7 +124,7 @@ describe("parseSheet — horizontal layout", () => {
     const s = asSheet(parseSheet(grid, "Gelir-Gider 2025"));
     expect(s.months).toEqual(["2025-01", "2025-02"]);
     expect(s.columns.map((col) => col.label)).toEqual(["KK Taksitli Harcamalar", "Maaş"]);
-    expect(s.cells[0][0].valueMinor).toBe(1350100);
+    expect(sheetCell(s, 0, 0).valueMinor).toBe(1350100);
   });
 });
 
@@ -131,7 +134,7 @@ describe("parseSheet — formula + comment breakdown", () => {
       row("", "Ek Gelirler"),
       row("2026 Ocak", c(20480, { f: "12000+8480", note: "Ocak Kira Geliri 12.000\nSigorta Gözlük Parası 8.480" })),
     ];
-    const cell = asSheet(parseSheet(grid, "2026")).cells[0][0];
+    const cell = sheetCell(asSheet(parseSheet(grid, "2026")), 0, 0);
     expect(cell.valueMinor).toBe(2048000);
     expect(cell.formulaParts).toEqual([1200000, 848000]);
     expect(cell.commentParts).toEqual([
@@ -145,7 +148,7 @@ describe("parseSheet — formula + comment breakdown", () => {
       row("", "Ek Giderler"),
       row("2026 Ocak", c(2216.76, { note: "beklenmedik masraf" })),
     ];
-    const cell = asSheet(parseSheet(grid, "2026")).cells[0][0];
+    const cell = sheetCell(asSheet(parseSheet(grid, "2026")), 0, 0);
     expect(cell.comment).toBe("beklenmedik masraf");
     expect(cell.commentParts).toEqual([{ label: "beklenmedik masraf", amountMinor: null }]);
   });
@@ -155,7 +158,7 @@ describe("parseSheet — negatives", () => {
   it("keeps negative cell values", () => {
     const grid = [row("", "Güncel Fark"), row("2026 Temmuz", -43754.43)];
     const s = asSheet(parseSheet(grid, "2026"));
-    expect(s.cells[0][0].valueMinor).toBe(-4375443);
+    expect(sheetCell(s, 0, 0).valueMinor).toBe(-4375443);
   });
 });
 
@@ -326,7 +329,7 @@ describe("parseInstallmentComment", () => {
 
   it("strips the ℹ️ marker from an informational card banner", () => {
     const comment = ["══════ Aile Kartı ℹ️ ══════", "Spor Mont          2.000,00   (5/9)"].join("\n");
-    expect(parseInstallmentComment(comment)[0].card).toBe("Aile Kartı");
+    expect(required(parseInstallmentComment(comment)[0]).card).toBe("Aile Kartı");
   });
 });
 
@@ -358,7 +361,7 @@ const cell = (comment: string | null): CellData => ({ valueMinor: 100, formulaPa
 /** One-taksit-column sheet: [month, comment] rows. */
 const taksitSheet = (name: string, rows: [string, string | null][], label = "KK Taksitli Harcamalar"): ParsedSheet => ({
   sheetName: name,
-  year: Number(rows[0][0].slice(0, 4)),
+  year: Number(required(required(rows[0])[0]).slice(0, 4)),
   months: rows.map((r) => r[0]),
   columns: [col(label)],
   cells: rows.map((r) => [cell(r[1])]),
@@ -375,7 +378,7 @@ describe("collectInstallmentPlans", () => {
     ]);
     const plans = collectInstallmentPlans([sheet]);
     expect(plans).toHaveLength(1);
-    expect(plans[0]).toEqual({
+    expect(required(plans[0])).toEqual({
       card: "Kart A",
       name: "Robot Süpürge",
       monthlyMinor: 277767,
@@ -391,8 +394,8 @@ describe("collectInstallmentPlans", () => {
     // processed in workbook order → 2026 sheet first here
     const plans = collectInstallmentPlans([newer, older]);
     expect(plans).toHaveLength(1);
-    expect(plans[0].card).toBe("Kart Yeni"); // first mention wins
-    expect(plans[0].startMonth).toBe("2025-12");
+    expect(required(plans[0]).card).toBe("Kart Yeni"); // first mention wins
+    expect(required(plans[0]).startMonth).toBe("2025-12");
   });
 
   it("keeps genuinely different purchases (name/amount/count/start) separate", () => {
@@ -408,7 +411,7 @@ describe("collectInstallmentPlans", () => {
     ]);
     const plans = collectInstallmentPlans([sheet], { informationalCards: ["Aile Kartı"] });
     expect(plans).toHaveLength(1);
-    expect(plans[0].card).toBe("Kart A");
+    expect(required(plans[0]).card).toBe("Kart A");
   });
 
   it("skips excluded columns and non-selected years", () => {

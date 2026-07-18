@@ -122,7 +122,9 @@ export function DraggableList<T>({
     const target = Math.max(0, Math.min(n - 1, startIndex.current + Math.round(dy / H)));
     if (target !== curIndex.current) {
       const next = [...orderRef.current];
-      const [moved] = next.splice(curIndex.current, 1);
+      const moved = next[curIndex.current];
+      if (moved == null) return;
+      next.splice(curIndex.current, 1);
       next.splice(target, 0, moved);
       curIndex.current = target;
       // Pan events can arrive faster than React renders. Update the imperative
@@ -166,7 +168,11 @@ export function DraggableList<T>({
     const target = index + delta;
     if (index < 0 || target < 0 || target >= current.length) return;
     const next = [...current];
-    [next[index], next[target]] = [next[target], next[index]];
+    const item = next[index];
+    const targetItem = next[target];
+    if (item == null || targetItem == null) return;
+    next[index] = targetItem;
+    next[target] = item;
     orderRef.current = next;
     setOrder(next);
     selectionTap();

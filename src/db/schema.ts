@@ -246,7 +246,7 @@ export const syncDeadLetters = sqliteTable("sync_dead_letters", {
   tableName: text("table_name").notNull(),
   rowId: text("row_id").notNull(),
   payload: text("payload").notNull(),
-  reason: text("reason", { enum: ["malformed_payload", "wrong_user"] }).notNull(),
+  reason: text("reason", { enum: ["malformed_payload", "wrong_user", "invalid_row"] }).notNull(),
   quarantinedAt: text("quarantined_at").notNull(),
 });
 

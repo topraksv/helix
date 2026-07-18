@@ -57,7 +57,8 @@ export function splitIntoInstallments(totalMinor: Minor, count: number): Minor[]
   const base = Math.trunc(totalMinor / count);
   const remainder = totalMinor - base * count;
   const shares = Array.from({ length: count }, () => base);
-  shares[count - 1] += remainder;
+  const lastIndex = count - 1;
+  shares[lastIndex] = (shares[lastIndex] ?? base) + remainder;
   return shares;
 }
 

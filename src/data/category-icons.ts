@@ -33,8 +33,8 @@ const RULES: [RegExp, string][] = [
 // Aesthetic fallbacks when the name matches no keyword: picked deterministically
 // from the name so different columns get different (but stable) icons instead of
 // all sharing one emoji.
-const EXPENSE_FALLBACKS = ["🧾", "🛍️", "📦", "💸", "🗂️", "🎯", "🧩", "📌", "🏷️", "🪙"];
-const INCOME_FALLBACKS = ["💰", "💵", "🪙", "📈", "🏦", "💳", "🤝", "✨"];
+const EXPENSE_FALLBACKS = ["🧾", "🛍️", "📦", "💸", "🗂️", "🎯", "🧩", "📌", "🏷️", "🪙"] as const;
+const INCOME_FALLBACKS = ["💰", "💵", "🪙", "📈", "🏦", "💳", "🤝", "✨"] as const;
 
 function hashString(s: string): number {
   let h = 0;
@@ -45,7 +45,7 @@ function hashString(s: string): number {
 export function suggestCategoryIcon(name: string, kind: "expense" | "income"): string {
   for (const [pattern, icon] of RULES) if (pattern.test(name)) return icon;
   const pool = kind === "income" ? INCOME_FALLBACKS : EXPENSE_FALLBACKS;
-  return pool[hashString(name.trim().toLocaleLowerCase("tr-TR")) % pool.length];
+  return pool[hashString(name.trim().toLocaleLowerCase("tr-TR")) % pool.length] ?? pool[0];
 }
 
 /** Display icon for a category row (stored icon, else a live suggestion). */

@@ -35,7 +35,9 @@ function isLeapYear(year: number): boolean {
 
 export function daysInMonth(year: number, month: number): number {
   const lengths = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return lengths[month - 1];
+  const days = lengths[month - 1];
+  if (days == null) throw new Error(`Invalid month: ${month}`);
+  return days;
 }
 
 export function makeMonthKey(year: number, month: number): MonthKey {
