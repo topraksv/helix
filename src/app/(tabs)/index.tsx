@@ -30,7 +30,7 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W, StatusPill } from "../../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Spread, STATUS_W } from "../../ui/components";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
@@ -61,42 +61,25 @@ function MarketsCard() {
   return (
     <Card>
       <Spread style={{ marginBottom: spacing.xs, alignItems: "flex-start" }}>
-        <View style={{ flex: 1, paddingRight: spacing.md }}>
-          <Heading style={{ marginVertical: 0 }}>{tr.markets.title}</Heading>
-          <Text style={[type.small, { color: palette.textMuted, marginTop: 2 }]}>{tr.markets.source}</Text>
-        </View>
+        <Heading style={{ marginVertical: 0, flex: 1 }}>{tr.markets.title}</Heading>
         <Row
           gap={spacing.xs}
           accessible
           accessibilityLiveRegion="polite"
           accessibilityLabel={status === "live"
             ? tr.markets.live
-            : status === "stale"
-              ? tr.markets.reconnecting
-              : status === "connecting"
-                ? tr.markets.connecting
-                : tr.markets.unavailableShort}
+            : tr.markets.refreshingShort}
         >
           {/* The dot claims liveness only once real quotes are flowing. */}
           <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textMuted }} />
           <Text style={[type.small, { color: palette.textMuted }]}>
             {status === "live"
               ? tr.markets.live
-              : status === "stale"
-                ? tr.markets.reconnecting
-                : status === "connecting"
-                  ? tr.markets.connecting
-                  : tr.markets.unavailableShort}
+              : tr.markets.refreshingShort}
           </Text>
         </Row>
       </Spread>
-      {status === "error" ? (
-        <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ paddingVertical: spacing.md }}>
-          <Body muted>{tr.markets.unavailable}</Body>
-          <Body muted style={{ fontSize: 12, marginTop: spacing.xs }}>{tr.markets.fallback}</Body>
-        </View>
-      ) : (
-        <>
+      {status === "error" ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.markets.refreshing}</Body> : null}
       {/* column headers over the price columns */}
       <Spread style={{ marginBottom: spacing.xs }}>
         <View />
@@ -135,8 +118,6 @@ function MarketsCard() {
           </Spread>
         );
       })}
-        </>
-      )}
     </Card>
   );
 }
@@ -367,14 +348,14 @@ export default function DashboardScreen() {
           balance or a popping-in hero both read as glitches in a finance app. */}
       {bundle ? (
         <HeroCard>
-          <Text style={[type.label, { color: palette.onPrimary, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
+          <Text style={[type.label, { color: palette.primaryText, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
             {tr.dashboard.actualBalance}
           </Text>
           <Text
             style={[
               type.amountLg,
               {
-                color: palette.onPrimary,
+                color: palette.textMuted,
                 fontSize: actualBalanceText.length > 20
                   ? 20
                   : actualBalanceText.length > 16
@@ -396,7 +377,7 @@ export default function DashboardScreen() {
                 alignItems: "center",
                 gap: spacing.sm,
                 marginTop: spacing.md,
-                backgroundColor: "rgba(255,255,255,0.14)",
+                backgroundColor: palette.surface,
                 alignSelf: "flex-start",
                 borderRadius: radius.full,
                 paddingHorizontal: spacing.md,
@@ -404,22 +385,22 @@ export default function DashboardScreen() {
               }}
             >
               {projectedDelta != null && projectedDelta >= 0 ? (
-                <TrendingUp size={14} color={palette.onPrimary} />
+                <TrendingUp size={14} color={palette.primaryText} />
               ) : (
-                <TrendingDown size={14} color={palette.onPrimary} />
+                <TrendingDown size={14} color={palette.primaryText} />
               )}
-              <Text style={[type.amountSm, { color: palette.onPrimary }]}>
+              <Text style={[type.amountSm, { color: palette.primaryText }]}>
                 {tr.dashboard.forecastToggle} · {formatMinor(projected)}
               </Text>
-              {showForecast ? <ChevronUp size={15} color={palette.onPrimary} /> : <ChevronDown size={15} color={palette.onPrimary} />}
+              {showForecast ? <ChevronUp size={15} color={palette.primaryText} /> : <ChevronDown size={15} color={palette.primaryText} />}
             </Pressable>
           ) : null}
         </HeroCard>
       ) : (
         <HeroCard>
           {/* Same label/amount line heights as the loaded state. */}
-          <View style={{ width: 120, height: 13, borderRadius: radius.sm, backgroundColor: "rgba(255,255,255,0.30)" }} />
-          <View style={{ width: 208, height: 38, borderRadius: radius.sm, backgroundColor: "rgba(255,255,255,0.22)", marginTop: spacing.xs }} />
+          <View style={{ width: 120, height: 13, borderRadius: radius.sm, backgroundColor: palette.border }} />
+          <View style={{ width: 208, height: 38, borderRadius: radius.sm, backgroundColor: palette.border, marginTop: spacing.xs }} />
         </HeroCard>
       )}
 
@@ -474,24 +455,18 @@ export default function DashboardScreen() {
               icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
               iconColor={palette.negative}
               title={nameOf(e)}
-              subtitle={`${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
-              stackRightOnNarrow
+              subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
               right={
-                // The "Geciken" status and the confirm button are rendered as
-                // one symmetric pair — identical width and height, centred.
-                <Row gap={spacing.sm}>
-                  <StatusPill label={tr.dashboard.late} color={palette.negative} foreground={palette.negativeText} />
-                  <View style={{ width: STATUS_W }}>
-                    <Button
-                      size="sm"
-                      label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
-                      variant="secondary"
-                      loading={confirmingId === e.id}
-                      disabled={confirmingId != null}
-                      onPress={() => setPaying(e)}
-                    />
-                  </View>
-                </Row>
+                <View style={{ width: STATUS_W }}>
+                  <Button
+                    size="sm"
+                    label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                    variant="secondary"
+                    loading={confirmingId === e.id}
+                    disabled={confirmingId != null}
+                    onPress={() => setPaying(e)}
+                  />
+                </View>
               }
             />
           ))}
@@ -502,7 +477,6 @@ export default function DashboardScreen() {
               iconColor={u.direction === "in" ? palette.positive : undefined}
               title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
               subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
-              stackRightOnNarrow
               right={
                 u.kind === "expected" && u.expectedId ? (
                   <View style={{ width: STATUS_W }}>

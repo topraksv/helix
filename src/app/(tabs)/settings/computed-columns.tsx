@@ -6,7 +6,7 @@
  */
 
 import React, { useState, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Calculator, CreditCard, GripVertical, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows, writeSetting } from "../../../db/mutations";
@@ -212,8 +212,8 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               gap: spacing.md,
               padding: spacing.md,
               borderRadius: radius.md,
-              borderWidth: 1.5,
-              borderColor: selected ? palette.primaryText : palette.controlBorder,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: palette.border,
               backgroundColor: selected ? palette.primarySoft : palette.surface,
               marginBottom: spacing.sm,
             }}

@@ -248,7 +248,7 @@ export default function CashflowScreen() {
                   <Card
                     key={m.month}
                     onPress={() => router.push(`/cash-flow/${m.month}`)}
-                    style={isCurrent ? { borderWidth: 1.5, borderColor: palette.primary } : undefined}
+                    style={isCurrent ? { backgroundColor: palette.primarySoft } : undefined}
                     onLayout={
                       isCurrent
                         ? (e) => {

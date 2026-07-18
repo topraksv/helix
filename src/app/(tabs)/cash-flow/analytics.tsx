@@ -13,7 +13,7 @@ import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { filterTransactions } from "../../../domain/transaction-search";
 import { budgetProgress } from "../../../domain/budgets";
 import { transactionDateText } from "../../../ui/transaction-date";
-import { monthName, shortMonthLabel, tr } from "../../../i18n/tr";
+import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import { toTxLike, useAllTransactions, useCategoryBudgets, useCategories, usePersons, useSources } from "../../../data/hooks";
 import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
@@ -54,6 +54,7 @@ export default function AnalysisScreen() {
       ? [makeMonthKey(year, 1), year === currentYear ? currentMonth : makeMonthKey(year, 12)]
       : [addMonthsToKey(currentMonth, -(Number(period.replace("m", "")) - 1)), currentMonth];
   const monthKeys = monthRange(startMonth, endMonth);
+  const searchPeriodLabel = `${monthLabel(startMonth)} – ${monthLabel(endMonth)}`;
 
   // No manual useMemo: the React Compiler (enabled app-wide) memoizes these
   // and bails out when it finds hand-rolled memoization on unstable deps.
@@ -237,21 +238,36 @@ export default function AnalysisScreen() {
             label={tr.analysis.searchSource}
             options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name }))]}
             value={sourceFilter ?? ""}
-            onChange={(value) => setSourceFilter(value || null)}
+            onChange={(value) => {
+              const next = value || null;
+              setSourceFilter(next);
+              if (!next) setSearchScope("period");
+            }}
           />
         </View>
         <View style={{ flex: 1 }}>
           <Select
             label={tr.analysis.searchPeriod}
             options={[
-              { value: "period", label: tr.analysis.selectedPeriod },
+              {
+                value: "period",
+                label: sourceFilter == null
+                  ? tr.analysis.searchPeriodDisabled
+                  : tr.analysis.selectedPeriod(searchPeriodLabel),
+              },
               { value: "all", label: tr.analysis.allTime },
             ]}
             value={searchScope}
             onChange={setSearchScope}
+            disabled={sourceFilter == null}
           />
         </View>
       </Row>
+      {sourceFilter == null ? (
+        <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
+          {tr.analysis.searchPeriodRequiresSource}
+        </Body>
+      ) : null}
       {searchActive ? (
         <Card>
           {searchResults.length === 0 ? (
@@ -267,6 +283,7 @@ export default function AnalysisScreen() {
                   setCategoryFilter(null);
                   setSelected(null);
                   setSourceFilter(null);
+                  setSearchScope("period");
                 }}
               />
             </View>

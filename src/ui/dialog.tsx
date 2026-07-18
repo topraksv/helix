@@ -12,7 +12,7 @@
  */
 
 import React, { useState } from "react";
-import { Modal, Pressable, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
 import { cardShadow, radius, spacing, type, useTheme } from "./theme";
@@ -151,8 +151,8 @@ export function PromptHost() {
               autoCorrect={false}
               onSubmitEditing={() => value.trim() !== "" && close(value)}
               style={{
-                borderWidth: 1,
-                borderColor: palette.controlBorder,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: palette.border,
                 borderRadius: radius.sm,
                 paddingHorizontal: spacing.md,
                 paddingVertical: spacing.sm + 2,

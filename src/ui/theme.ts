@@ -11,15 +11,12 @@ export interface Palette {
   surface: string;
   surfaceAlt: string;
   border: string;
-  /** Essential form/control boundary (WCAG non-text contrast). */
-  controlBorder: string;
   text: string;
   textMuted: string;
   primary: string;
   primarySoft: string; // tinted background for icon chips / selected states
   /** AA text/icon foregrounds; accents above remain available for fills/lines. */
   primaryText: string;
-  onPrimary: string;
   onNegative: string;
   positive: string;
   positiveText: string;
@@ -28,9 +25,6 @@ export interface Palette {
   warning: string;
   warningText: string;
   focus: string;
-  /** Hero gradient (balance card, auth backdrop accents). */
-  gradientFrom: string;
-  gradientTo: string;
 }
 
 // Warm Organic Editorial, aligned to Claude's design tokens: clay accent
@@ -44,13 +38,11 @@ export const lightPalette: Palette = {
   surface: "#ffffff", // gray-000
   surfaceAlt: "#f0eee6", // gray-150
   border: "#e8e6dc", // gray-200
-  controlBorder: "#8a8982",
   text: "#1a1918", // gray-900
   textMuted: "#6d6c66", // accessible warm gray foreground
   primary: "#d97757", // clay
   primarySoft: "#f6e7df", // clay tint (derived)
   primaryText: "#a94428",
-  onPrimary: "#1a1918",
   onNegative: "#ffffff",
   positive: "#1e9f3c", // extended-green (light)
   positiveText: "#13782b",
@@ -59,8 +51,6 @@ export const lightPalette: Palette = {
   warning: "#98801f", // extended-yellow (light)
   warningText: "#6e5b00",
   focus: "#2c84db", // color-focus
-  gradientFrom: "#d97757", // clay
-  gradientTo: "#ca6848", // accessible clay shadow
 };
 
 export const darkPalette: Palette = {
@@ -68,13 +58,11 @@ export const darkPalette: Palette = {
   surface: "#262624", // bg-tertiary (cards)
   surfaceAlt: "#30302e", // gray-750
   border: "#3d3d3a", // border-secondary
-  controlBorder: "#8e8c84",
   text: "#faf9f5", // fg-primary
   textMuted: "#b0aea5", // fg-secondary
   primary: "#d97757", // clay
   primarySoft: "#3a2a22", // clay tint dark (derived)
   primaryText: "#f28b68",
-  onPrimary: "#1a1918",
   onNegative: "#ffffff",
   positive: "#4dcb6b", // extended-green (dark)
   positiveText: "#4dcb6b",
@@ -83,8 +71,6 @@ export const darkPalette: Palette = {
   warning: "#ffd014", // extended-yellow (dark)
   warningText: "#ffd014",
   focus: "#2c84db", // color-focus
-  gradientFrom: "#d97757", // clay
-  gradientTo: "#c46849", // clay-dark
 };
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;

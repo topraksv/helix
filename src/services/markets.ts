@@ -12,6 +12,7 @@ import { freshMarketQuote, validMarketQuote } from "../domain/market";
 const FEED_URL = "wss://hrmsocketonly.haremaltin.com";
 const THROTTLE_MS = 3000;
 const MARKET_STALE_MS = 60_000;
+const LIFECYCLE_GRACE_MS = 5000;
 
 /** Provider code → display label; order = display order. */
 export const MARKET_SYMBOLS = [
@@ -45,6 +46,7 @@ let lastApplied = 0;
 let staleTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingFeed: Record<string, FeedEntry> | null = null;
 let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface FeedEntry {
   code: string;
@@ -150,11 +152,17 @@ export function marketSellRateTry(currency: string, now = Date.now()): number | 
 
 /** Idempotent: first caller opens the socket; it lives for the app session. */
 export function connectMarkets(): void {
+  if (disconnectTimer) {
+    clearTimeout(disconnectTimer);
+    disconnectTimer = null;
+  }
   if (socket) return;
   useMarkets.setState({ status: "connecting" });
   socket = io(FEED_URL, {
     transports: ["websocket"],
-    reconnectionDelayMax: 30_000,
+    reconnectionDelay: 5_000,
+    reconnectionDelayMax: 60_000,
+    randomizationFactor: 0.5,
     timeout: 10_000,
   });
   socket.on("price_changed", (payload: { data?: Record<string, FeedEntry> }) => {
@@ -169,11 +177,28 @@ export function connectMarkets(): void {
 }
 
 /**
+ * Pause after a short grace instead of closing during transient React/iOS
+ * lifecycle changes. An immediate close+open can make the provider rate-limit
+ * the replacement socket; a real background/sign-out still tears down soon.
+ */
+export function suspendMarkets(delayMs = LIFECYCLE_GRACE_MS): void {
+  if (disconnectTimer) return;
+  disconnectTimer = setTimeout(() => {
+    disconnectTimer = null;
+    disconnectMarkets();
+  }, delayMs);
+}
+
+/**
  * Tear down the feed (close socket, drop listeners, reset state). Called on
  * sign-out so a signed-out session never keeps a live financial-data stream
  * open (battery/data), and so the next sign-in starts clean.
  */
 export function disconnectMarkets(): void {
+  if (disconnectTimer) {
+    clearTimeout(disconnectTimer);
+    disconnectTimer = null;
+  }
   if (staleTimer) {
     clearTimeout(staleTimer);
     staleTimer = null;

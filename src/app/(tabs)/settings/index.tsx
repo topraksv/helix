@@ -7,7 +7,6 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
 import {
   Banknote,
-  Activity,
   Bell,
   BookOpen,
   CalendarClock,
@@ -335,7 +334,8 @@ export default function SettingsScreen() {
               variant="secondary"
               size="sm"
               onPress={() => void syncNow(userId)}
-              disabled={!isSupabaseConfigured}
+              disabled={!isSupabaseConfigured || sync.state === "syncing"}
+              loading={sync.state === "syncing"}
             />
           }
         />
@@ -345,7 +345,6 @@ export default function SettingsScreen() {
         <Body muted style={{ fontSize: 12, marginTop: spacing.xs, marginBottom: spacing.sm }}>
           {tr.settings.syncExplain}
         </Body>
-        <ListRow icon={Activity} title={tr.diagnostics.title} subtitle={tr.diagnostics.settingsDesc} chevron onPress={() => router.push("/diagnostics" as Href)} />
       </Card>
 
       <SectionHeader>{tr.settings.transferSection}</SectionHeader>

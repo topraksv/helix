@@ -29,10 +29,30 @@ her paket bölümünün altındaki release kaydına eklenir.
 | P1 · Veri bütünlüğü | Outbox doğrulama, mutation idempotency, recurring-income category | Web + `preview` OTA |
 | P2 · CI ve release | Quality gate, branch protection, EAS channel/native sözleşme, rollback | GitHub + EAS remote |
 | P3 · DB ve tip sınırı | RLS optimizasyonu, DB integrity, generated types, unchecked index | Supabase migration + web/OTA |
-| P4 · Mimari, performans, diagnostics | Live-query state, lifecycle/view-model/import plan, ölçümlü ölçek | Web + OTA |
+| P4 · Mimari, performans, gözlemlenebilirlik | Live-query state, lifecycle/view-model/import plan, ölçümlü ölçek | Web + OTA |
 | P5 · UI/UX/a11y/privacy | Shared semantics, contrast, mobile layout, dirty form, notification privacy | Web + OTA |
-| P6 · Ürün ve IA | Arama, sync health, onboarding, bütçe, haftalık gelir, takvim, özellik keşfi | Web + OTA |
+| P6 · Ürün ve IA | Arama, kullanıcı odaklı sync geri bildirimi, onboarding, bütçe, haftalık gelir, takvim, özellik keşfi | Web + OTA |
 | P7 · Test, README ve kapanış | Kalıcı E2E/integration/a11y/perf, README, privacy/release dokümanı | Web + OTA gerekiyorsa |
+| P8 · Follow-up sadelik ve UX | Atıl kod, görsel sistem, yaklaşanlar, analiz, bakiye geçmişi, ay sonu | Web + `preview` OTA |
+| P9 · Follow-up runtime güvenilirliği | Harem yaşam döngüsü, çok cihazlı sync, geri/jest ve Face ID autofill | Web + `preview` OTA |
+| P10 · Follow-up kapanış | Denetim yeniden teyidi, E2E/görsel/remote kanıt ve doküman | GitHub + EAS remote |
+
+## 18 Temmuz kullanıcı geri bildirimi
+
+| ID | P | Paket | Durum | Sorun | Kabul ölçütü |
+|---|---:|---:|---|---|---|
+| `CDX-VERIFY-01` | P1 | P10 | RESOLVED | 17 Temmuz denetimindeki kapanışların güncel uygulamayla yeniden teyidi gerekli | Audit §12, bütün ID'leri code/test/runtime/remote kanıtıyla yeniden sınıflandırdı; cihaz/iki-client sınırları `BLOCKED`, Expo 54 kapsamı `BACKLOG`, diğer aktif işler kapalı |
+| `CDX-CODE-07` | P2 | P8 | RESOLVED | Son paketler gereksiz route, export ve tekrar üretmiş olabilir | Kullanılmayan diagnostics route/domain/testi, outbox hook’u ve gradient bağımlılığı silindi; import/TS unused taraması temiz; net kaynak küçüldü ve tam suite korunuyor |
+| `CDX-UI-04` | P2 | P8 | VERIFIED | Hero, turuncu dolgular, toggle ve input sınırları iki temada fazla sert | Tonal yüzeyler ve nötr primary action ortak primitive/token’da; 21 adet 320–1440 açık/koyu gerçek Chromium baseline’ı ve kontrast testleri |
+| `CDX-UX-04` | P1 | P8 | VERIFIED | Yaklaşan ödeme eylemi metinden kopup alt satıra düşüyor, metin daralmıyor | Kopya esnek metin kolonunda sarıyor, eylem 88px sağ slotta kalıyor; uzun başlıklı 320px browser akışı yatay taşmadan geçti |
+| `CDX-MARKET-01` | P1 | P9 | VERIFIED | Harem bağlantısı kısa lifecycle cleanup sonrası yeniden açılıp 429'a düşebiliyor; UI teknik metin gösteriyor | Tek socket, 5sn lifecycle grace ve bounded jitter backoff; gerçek Chromium’da beş sembol canlı fiyat ve hard reload doğrulandı; kaynak/SLA/TCMB metni yok |
+| `CDX-UX-05` | P1 | P8 | VERIFIED | Analiz ödeme yöntemi/dönem bağı belirsiz; kapsam seçimi etkisiz görünüyor; tür segmenti yamuk ve “transfer” dili içeriyor | Dönem kaynaksız disabled, seçili kaynakla gerçek tarih kapsamı uygulanıyor; Tümü/Gider/Gelir/Yatırım 320px’de eşit ve tek satır; browser davranış testi geçti |
+| `CDX-UX-06` | P2 | P8 | VERIFIED | Bakiye başlangıç ayarı “gelişmiş” dili ve disclosure'ıyla kullanıcıyı yönlendirmiyor | Güncel bakiye birincil; “Geçmiş Başlangıç Noktası” açıklamalı, açılıp kapanabilen ikincil düzenleyici; iki temada browser baseline’ı incelendi |
+| `CDX-DATE-01` | P1 | P8 | VERIFIED | Tekrarlayan gün alanlarında açık “Ayın sonu” seçeneği yok | Ortak `MonthDayField`; 31 kalıcı “Ayın sonu” anlamında; Şubat/leap/30/31 clamp unit testi ve browser seçim akışı geçti |
+| `CDX-SYNC-01` | P1 | P9 | RESOLVED | Manuel sync sonucu belirsiz; iki aktif cihaz diğerinin yazısını düzenli çekmiyor | Foreground/resume anlık ve 30sn periyodik pull, mevcut single-flight/rerun korunuyor; manuel loading/sonuç ve dead-letter attention var. İki gerçek kurulu client kabulü `CDX-TEST-10` nedeniyle `BLOCKED` |
+| `CDX-UX-07` | P2 | P8 | VERIFIED | Tanılama ve shell sync-health son kullanıcıya teknik, gereksiz bir yüzey | Route/badge/export UI ve domain modeli tamamen kaldırıldı; Settings yalnız eyleme dönük kısa sync durumu gösteriyor; route/metin yokluğu browser testinde |
+| `CDX-NAV-01` | P1 | P9 | RESOLVED | Özel geri kontrolü küçük/optik offsetli; modal sunumu iOS sağ-silme jestini engelliyor | Tek markalı 44pt kontrol, deterministic dismiss/back ve stack card sunumu; direct-link browser geri testi geçti. Fiziksel iOS edge-swipe kabulü `BLOCKED` |
+| `CDX-AUTH-01` | P1 | P9 | RESOLVED | Sign-in Face ID autofill sırasında privacy cover auth formunu kapatıyor | Native cover yalnız authenticated finans içeriğinde; sign-in/autofill yolu açık; policy testi geçti. Gerçek Face ID kabulü cihaz yokluğu nedeniyle `BLOCKED` |
 
 ## Güvenlik, veri bütünlüğü ve kod
 
@@ -60,10 +80,10 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `HLX-07` · `CDX-TEST-02` | P2 | P7 | VERIFIED | Dokümante kalıcı Playwright smoke repoda yok | Local-only static export, gerçek browser SQLite/OPFS, service-worker offline, deep link, axe ve screenshot suite’i remote required `quality` job’unda release-blocking; production `dist` test env’inden önce üretiliyor |
 | `CDX-DEVOPS-04` | P1 | P7 | VERIFIED | Pages dynamic route fallback’i `+not-found` shell’ini hydrate edip React #418 ile açılışı bozuyor | Production ve E2E `404.html` root `index.html` shell’inden üretiliyor; protected/modal/dynamic direct-link CI Playwright testi page exception olmadan geçti ve canlı deep-link aynı root shell’i sundu |
 | `HLX-11` · `CDX-DEVOPS-01` | P1 | P2 | RESOLVED | EAS branch var, channel/build header sözleşmesi yok | Remote `preview` channel→branch doğrulandı; CNG header + EAS profile eklendi; Android placeholder ID `com.toprak.helix` oldu. Native rebuild/iki-cold-start kabulü henüz `VERIFIED` değil |
-| `CDX-DEVOPS-02` · `CDX-PRODUCT-08` | P2 | P4 | RESOLVED | Prod crash/sync/dead-letter ve incident kanıtı görünmüyor | PII’siz local diagnostics ekranı/export; update/runtime/channel, queue age/count, dead-letter dağılımı, migration ve bounded redacted event ring görünür; redaction testi yeşil |
+| `CDX-DEVOPS-02` · `CDX-PRODUCT-08` | P2 | P4/P9 | RESOLVED | Prod crash/sync/dead-letter ve incident kanıtı görünmüyor | Son kullanıcıya teknik ekran açmadan PII’siz bounded breadcrumb içeride kalıyor; sync eylemi pending/error/dead-letter attention’ı sade dille gösteriyor; EAS update health release tarafında izleniyor. Harici crash SaaS ürüne eklenmedi |
 | `HLX-13A` | P3 | P2 | RESOLVED | GitHub Actions tag ref kullanıyor | Bütün third-party actions doğrulanmış 40-haneli commit SHA’larına pinli; npm + Actions haftalık Dependabot politikası eklendi ve config testi ref’leri koruyor |
 | `HLX-13F` | P2 | P2 | VERIFIED | Secret scanning/push protection/Dependabot security updates kapalı | GitHub API’den secret scanning, push protection ve Dependabot security updates `enabled` geri okundu; SDK 57 PR #3 `BACKLOG-SDK-01` gerekçesiyle kapatıldı |
-| `HLX-13E` | P3 | P4 | RESOLVED | Harem market feed’i resmî/SLA’lı değil | Kamusal/resmî SLA’sız kaynak açık; live/reconnecting/unavailable ayrımı ve TCMB fallback metni var; 60 sn sessizlik ve stale-quote testleri yeşil |
+| `HLX-13E` | P3 | P4/P9 | VERIFIED | Harem market feed’i resmî/SLA’lı değil | Resmî SLA’sız kaynak teknik ayrıntısı kullanıcı UI’sından kaldırıldı; bağlantı/reconnect/stale davranışı sınırlandı ve testli; gerçek Chromium’da canlı beş sembol + hard reload geçti |
 | `HLX-13B` | P3 | P7 | VERIFIED | Supabase client ve audit dışı SheetJS patch güncelliği | Final check’te çıkan Supabase 2.110.7 patch’i uygulandı; official SheetJS CDN/docs 0.20.3’ü current gösteriyor ve pinned tarball aynı; Expo 54 kaynaklı 17 moderate yalnız `BACKLOG-SDK-01` |
 | `HLX-13D` | P4 | P7 | VERIFIED | Boş catch’ler hata yutuyor olabilir | Uygulama catch’leri kasıtlı fallback/cleanup sınırları olarak doğrulandı; final source scan, typecheck ve sıfır uyarılı lint local ile remote required CI’da geçti |
 
@@ -92,14 +112,14 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-SEC-01` | P2 | P5 | RESOLVED | App switcher snapshot privacy cover yok; Pages frame header sınırlı | Native inactive/background ve framed web için izole, değersiz privacy modalı var; policy/source testi yeşil. OS snapshot zamanlaması fiziksel cihazda P7’de kesinleşecek |
 | `CDX-IA-02` | P3 | P6 | RESOLVED | Account freeze Settings’in ana seviyesinde dağınık | Dondurma Account Security altında toplandı; local-only modda da erişiliyor, deterministic back/deep-link sözleşmesi korunuyor |
 | `CDX-IA-03` | P3 | P6 | RESOLVED | Dashboard üç analitik kartla Analytics’i tekrar ediyor | Dashboard bakiye, yaklaşanlar, piyasalar ve tek aylık içgörüye odaklandı; dağılım/trend Analytics’e taşındı |
-| `CDX-IA-04` | P3 | P6 | RESOLVED | Var olan JSON/CSV export yeterince keşfedilebilir değil | Ayarlar’da senkron/diagnostics ile “Verilerini Taşı ve Koru” görev grubu ayrıldı; backup/export/restore açık görev diliyle sunuluyor |
+| `CDX-IA-04` | P3 | P6/P8 | RESOLVED | Var olan JSON/CSV export yeterince keşfedilebilir değil | Ayarlar’da “Verilerini Taşı ve Koru” görev grubu tanılama yüzeyinden bağımsız; backup/export/restore açık görev diliyle sunuluyor |
 
 ## Ürün kapsamı
 
 | ID | P | Paket | Durum | Problem / değer | Çözüm ve kabul ölçütü |
 |---|---:|---:|---|---|---|
 | `CDX-PRODUCT-01` | P2 | P6 | RESOLVED | Büyüyen işlem geçmişinde kayıt bulmak zor | Analytics’te metin+tarih kapsamı+tür+kategori+kaynak filtreleri, bounded newest-first sonuç, sıfır sonuç/temizle ve edit drill-down var; saf arama testleri yeşil |
-| `CDX-PRODUCT-02` · `CDX-IA-01` | P2 | P6 | RESOLVED | Sync sağlığı yalnız Settings’te ve teknik | Shell badge yalnız gerçek hata veya ≥5 dk bekleyen outbox’ta görünür; sağlıklı, kısa bekleme ve local-only durumlar sessiz; saf durum testleri yeşil |
+| `CDX-PRODUCT-02` · `CDX-IA-01` | P2 | P6/P8/P9 | RESOLVED | Sync sağlığı teknik ve dikkat dağıtıcıydı | Global badge/teknik health modeli kaldırıldı; yalnız Ayarlar’daki manuel eylem üzerinde kısa kullanıcı dili, loading, son başarı veya attention gösteriliyor |
 | `CDX-PRODUCT-05` | P2 | P6 | VERIFIED | Forecast var ama kullanıcı hedef/variance tanımlayamıyor | Synced aylık expense-category bütçesi CRUD/undo/progress/remaining ve Analytics görünümü eklendi; migration 7 remote, 24 pgTAP ve domain/backup testleri yeşil |
 | `CDX-PRODUCT-06` | P2 | P6 | VERIFIED | Haftalık/iki haftalık gelir kuralları modellenemiyor | `monthly/weekly/biweekly` union’ı, ISO anchor, 7/14 günlük üretim ve backward-compatible migration var; remote constraint ve recurrence/backup testleri yeşil |
 | `CDX-PRODUCT-07` | P2 | P6 | RESOLVED | Expected/card/subscription takvimi ayrı yüzeylerde | Abonelik, düzenli gelir, gelecek işlem ve kart ekstresini ay bazında birleştiren `/upcoming` eklendi; dashboard preview, empty/offline/stale ve kaynak drill-down testli |
@@ -108,7 +128,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 
 | ID / eşleşme | P | Paket | Durum | Eksik davranış | Kabul ölçütü |
 |---|---:|---:|---|---|---|
-| `HLX-09` · `CDX-TEST-01` | P2 | P7 | VERIFIED | Component/hook/SQLite/RLS/E2E koruması yetersiz | 49-file unit/boundary suite; actual browser component/SQLite flows; 24 remote pgTAP; 7 Playwright flow; axe ve 13 responsive baseline remote required `quality` run `29646280246` altında geçti |
+| `HLX-09` · `CDX-TEST-01` | P2 | P7/P10 | VERIFIED | Component/hook/SQLite/RLS/E2E koruması yetersiz | 48-file/289-test unit/boundary suite; actual browser component/SQLite flows; 24 remote pgTAP; 9 Playwright flow; axe ve 21 responsive/follow-up baseline localde geçti; P10 remote required run release kaydına eklenecek |
 | `CDX-TEST-03` | P1 | P2/P7 | RESOLVED | OTA channel/runtime/rollback gerçek kabul testi yok | Config regression testi, remote channel/group metadata ve çalıştırılabilir rollback/iki-cold-start checklist tamam; fiziksel cihaz sonucu olmadığı için `VERIFIED` değil |
 | `CDX-TEST-04` | P1 | P1 | RESOLVED | Poison outbox regression testi yok | Bozuk JSONB/unknown column/non-finite numeric karantinada; sağlıklı sonraki row push planında kalıyor |
 | `CDX-TEST-05` | P1 | P1 | RESOLVED | Duplicate submit testi yok | Aynı tick iki invocation tek operation callback; success/error sonrası guard deterministik serbest |
@@ -122,7 +142,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-TEST-13` | P1 | P4/P7 | BLOCKED | Hostile workbook/büyük backup stress testi yok | Hostile ZIP SheetJS öncesi; >100k backup iterasyon/yazım öncesi; relational invalid browser restore sıfır write. Düşük bellek cihaz heap kabulü için cihaz yok |
 | `CDX-TEST-14` | P2 | P7 | VERIFIED | Locale/timezone/DST matrisi eksik | TR grouped comma round-trip, Istanbul/UTC gün sınırı, leap/DST tarihleri ve 7/14 günlük ay geçişleri kalıcı unit testte; browser `tr-TR`/Istanbul matrisi remote required CI’da geçti |
 | `CDX-TEST-15` | P2 | P5/P7 | BLOCKED | Notification consent/privacy/64-cap cihaz testi eksik | Default neutral/opt-in, stale preference, sign-out clear ve 60-cap otomatik; gerçek OS permission/scheduler/lock-screen için cihaz yok |
-| `CDX-TEST-16` | P2 | P5/P7 | VERIFIED | 320/390/768/1440 light/dark visual regression yok | 13 versioned screenshot; dashboard 320/390/768/1440 light/dark + beş 390px tab; 320 exact label/no-ellipsis assertion; görsel kanıt incelendi ve remote Linux required CI bütçesi geçti |
+| `CDX-TEST-16` | P2 | P5/P7/P10 | VERIFIED | 320/390/768/1440 light/dark visual regression yok | 21 versioned screenshot: dashboard matrisi, beş tab ve transaction/analytics/payment-source/opening-balance iki tema; exact no-ellipsis/layout assertion ve görsel inceleme geçti; P10 remote run release kaydına eklenecek |
 | `CDX-TEST-17` | P2 | P4/P7 | VERIFIED | 1k/10k/100k performance bütçesi yok | Vitest benchmark 1k/10k/100k ledger ve 100k dashboard/matrix 4 sn eşiğinde; production bundle budget + full E2E remote required quality’de geçti |
 | `HLX-10` · `CDX-DOC-03` | P4 | P7 | VERIFIED | Dokümanda sabit test sayısı drift ediyor | README/TESTING sabit sayıyı kaldırdı; gerçek suite sonucu her CI commit’inde üretiliyor ve güncel GitHub `main` üzerinde yayınlandı |
 | `HLX-13C` · `CDX-DOC-04` | P2 | P7 | VERIFIED | Privacy, retention, release/rollback ve third-party feed açıklaması eksik | `PRIVACY.md` local/remote storage, tombstone retention, delete/export, notifications, dış servisler ve sınırları; `RELEASE.md` web/OTA/native/DB/rollback/incident sözleşmesini açıklıyor ve GitHub `main` üzerinde yayınlandı |
