@@ -25,6 +25,8 @@ import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { radius, spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
+import { newId } from "../db/ids";
+import { useOperationGuard } from "../ui/operation-guard";
 
 type EntryType = "expense" | "income" | "transfer";
 
@@ -50,6 +52,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const persons = usePersons();
   const router = useRouter();
   const { palette } = useTheme();
+  const operationGuard = useOperationGuard();
   const isEdit = existing != null;
   // Opened as a router modal normally, but a web deep-link to /transaction has
   // no back stack — fall back to a real screen so "save" always closes it.
@@ -153,82 +156,86 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
 
   const save = async (thenNew: boolean) => {
     if (!canSave || !personId) return;
-    setBusy(true);
-    try {
-      assertISODate(effectiveDate);
-      const fxRate = currency === "TRY" ? null : String(effectiveRateTry);
-      if (isEdit) {
-        await updateTransaction(userId, existing as unknown as Record<string, unknown>, {
-          type: entryType,
-          amountMinor: signedAmountMinor!,
-          currency,
-          fxRate,
-          amountTryMinor: tryMinor!,
-          effectiveDate,
-          isAggregate: dateless,
-          categoryId: categoryId!,
-          paymentSourceId: sourceId,
-          personId,
-          note: note.trim() || null,
-        });
+    await operationGuard.run(async () => {
+      setBusy(true);
+      const operationId = newId();
+      try {
+        assertISODate(effectiveDate);
+        const fxRate = currency === "TRY" ? null : String(effectiveRateTry);
+        if (isEdit) {
+          await updateTransaction(userId, existing as unknown as Record<string, unknown>, {
+            type: entryType,
+            amountMinor: signedAmountMinor!,
+            currency,
+            fxRate,
+            amountTryMinor: tryMinor!,
+            effectiveDate,
+            isAggregate: dateless,
+            categoryId: categoryId!,
+            paymentSourceId: sourceId,
+            personId,
+            note: note.trim() || null,
+          });
+          scheduleSync(userId);
+          close();
+          return;
+        }
+        if (installment) {
+          const person = persons.find((p) => p.id === personId)!;
+          await createInstallmentPlan(userId, {
+            title: note.trim() || tr.installments.defaultTitle(formatMinor(amountMinor!, currency)),
+            kind: "card_installment",
+            totalAmountMinor: amountMinor!,
+            monthlyAmountMinor: null,
+            installmentCount: count,
+            currency,
+            fxRate,
+            startMonth:
+              paid > 0
+                ? deriveStartMonth(paid, monthKeyOf(todayISO()), sources.find((s) => s.id === sourceId)?.dueDay ?? null, todayISO())
+                : cardStatementPreview ? monthKeyOf(cardStatementPreview.dueDate) : dateless ? monthKey : monthKeyOf(dateStr),
+            dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
+            paymentSourceId: sourceId,
+            personId,
+            personIsSelf: person.isSelf,
+            categoryId: categoryId!,
+            note: note.trim() || null,
+            tryFactor: currency === "TRY" ? 1 : effectiveRateTry!,
+          }, operationId);
+        } else {
+          await addTransaction(userId, {
+            operationId,
+            type: entryType,
+            amountMinor: signedAmountMinor!,
+            currency,
+            fxRate,
+            amountTryMinor: tryMinor!,
+            effectiveDate,
+            isAggregate: dateless,
+            categoryId: categoryId!,
+            paymentSourceId: sourceId,
+            personId,
+            note: note.trim() || null,
+          });
+        }
+        void kv.set(`helix.last.${entryType}`, JSON.stringify({ categoryId, sourceId }));
         scheduleSync(userId);
-        close();
-        return;
+        if (thenNew) {
+          setAmountRaw("");
+          setAmountMinor(null);
+          setIsReversal(false);
+          setNote("");
+        } else {
+          close();
+        }
+      } catch (e) {
+        // Never surface a raw engine error (English, technical) to the user.
+        devError("transaction.save", e);
+        fail(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed);
+      } finally {
+        setBusy(false);
       }
-      if (installment) {
-        const person = persons.find((p) => p.id === personId)!;
-        await createInstallmentPlan(userId, {
-          title: note.trim() || tr.installments.defaultTitle(formatMinor(amountMinor!, currency)),
-          kind: "card_installment",
-          totalAmountMinor: amountMinor!,
-          monthlyAmountMinor: null,
-          installmentCount: count,
-          currency,
-          fxRate,
-          startMonth:
-            paid > 0
-              ? deriveStartMonth(paid, monthKeyOf(todayISO()), sources.find((s) => s.id === sourceId)?.dueDay ?? null, todayISO())
-              : cardStatementPreview ? monthKeyOf(cardStatementPreview.dueDate) : dateless ? monthKey : monthKeyOf(dateStr),
-          dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
-          paymentSourceId: sourceId,
-          personId,
-          personIsSelf: person.isSelf,
-          categoryId: categoryId!,
-          note: note.trim() || null,
-          tryFactor: currency === "TRY" ? 1 : effectiveRateTry!,
-        });
-      } else {
-        await addTransaction(userId, {
-          type: entryType,
-          amountMinor: signedAmountMinor!,
-          currency,
-          fxRate,
-          amountTryMinor: tryMinor!,
-          effectiveDate,
-          isAggregate: dateless,
-          categoryId: categoryId!,
-          paymentSourceId: sourceId,
-          personId,
-          note: note.trim() || null,
-        });
-      }
-      void kv.set(`helix.last.${entryType}`, JSON.stringify({ categoryId, sourceId }));
-      scheduleSync(userId);
-      if (thenNew) {
-        setAmountRaw("");
-        setAmountMinor(null);
-        setIsReversal(false);
-        setNote("");
-      } else {
-        close();
-      }
-    } catch (e) {
-      // Never surface a raw engine error (English, technical) to the user.
-      devError("transaction.save", e);
-      fail(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   // Desktop: Enter saves (unless the note textarea or a popup has focus).

@@ -1,6 +1,6 @@
 /** Subscription add/edit modal. Price edits append to price_history (spec §3.1). */
 
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
@@ -20,6 +20,8 @@ import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { devError } from "../services/logger";
 import { spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
+import { useOperationGuard } from "../ui/operation-guard";
+import { newId } from "../db/ids";
 
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
@@ -68,7 +70,8 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const [note, setNote] = useState(existing?.note ?? "");
   const [busy, setBusy] = useState(false);
   const [showCategoryOffer, setShowCategoryOffer] = useState(false);
-  const operationActive = useRef(false);
+  const operationGuard = useOperationGuard();
+  const [draftId] = useState(() => existing?.id ?? newId());
 
   const billingDay = Number(billingDayStr);
   const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);
@@ -104,7 +107,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         ? dueDateInMonth(monthKeyOf(today), billingDay)
         : nextDueAfter(today, today, intervalMonths, billingDay);
     await upsertSubscription(userId, {
-      id: existing?.id,
+      id: draftId,
       name: name.trim(),
       amountMinor: amountMinor!,
       currency,
@@ -125,48 +128,41 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     close();
   };
 
-  const beginSave = () => {
-    if (operationActive.current) return false;
-    operationActive.current = true;
-    setBusy(true);
-    return true;
-  };
-
-  const finishSave = () => {
-    operationActive.current = false;
-    setBusy(false);
-  };
-
   const save = async () => {
     if (!baseValid || !personId) return;
     if (!selectedCategoryId) {
       setShowCategoryOffer(true);
       return;
     }
-    if (!beginSave()) return;
-    try {
-      await persist(selectedCategoryId);
-    } catch (e) {
-      devError("subscription.save", e);
-      void appAlert(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed, tr.errors.title);
-    } finally {
-      finishSave();
-    }
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        await persist(selectedCategoryId);
+      } catch (e) {
+        devError("subscription.save", e);
+        void appAlert(e instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed, tr.errors.title);
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const acceptCategoryOffer = async () => {
-    if (!baseValid || !beginSave()) return;
-    try {
-      const resolvedCategoryId = await ensureSubscriptionCategory(userId, tr.subs.suggestedCategoryName);
-      setCategoryId(resolvedCategoryId);
-      setShowCategoryOffer(false);
-      await persist(resolvedCategoryId);
-    } catch (e) {
-      devError("subscription.category", e);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    } finally {
-      finishSave();
-    }
+    if (!baseValid) return;
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        const resolvedCategoryId = await ensureSubscriptionCategory(userId, tr.subs.suggestedCategoryName);
+        setCategoryId(resolvedCategoryId);
+        setShowCategoryOffer(false);
+        await persist(resolvedCategoryId);
+      } catch (e) {
+        devError("subscription.category", e);
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   useSubmitOnEnter(() => void save(), baseValid && !busy);

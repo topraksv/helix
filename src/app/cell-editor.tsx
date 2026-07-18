@@ -26,6 +26,8 @@ import { Amount, Badge, Body, Button, Divider, EmptyState, Field, IconButton, Mo
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
+import { newId } from "../db/ids";
+import { useOperationGuard } from "../ui/operation-guard";
 
 export default function CellEditorModal() {
   const { month, categoryId } = useLocalSearchParams<{ month: string; categoryId: string }>();
@@ -40,6 +42,7 @@ export default function CellEditorModal() {
   const [entryRaw, setEntryRaw] = useState("");
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const operationGuard = useOperationGuard();
 
   const category = categories.find((c) => c.id === categoryId);
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
@@ -70,35 +73,38 @@ export default function CellEditorModal() {
   const addEntry = async () => {
     const selfId = persons.find((p) => p.isSelf)?.id;
     if (!selfId || !category || entryMinor == null || entryMinor === 0) return;
-    setBusy(true);
-    try {
-      const today = todayISO();
-      // A negative amount is a reversal of this category: an expense refund
-      // reduces spending, an income correction reduces income, and an
-      // investment withdrawal reduces the transfer total without changing the
-      // category/type invariant.
-      const baseType = category.name.toLocaleLowerCase("tr-TR").includes("yatırım") ? "transfer" : category.kind;
-      const hasExpr = entryRaw.includes("+") || entryRaw.trim().slice(1).includes("-");
-      await addTransaction(userId, {
-        type: baseType,
-        amountMinor: entryMinor,
-        currency: "TRY",
-        fxRate: null,
-        amountTryMinor: entryMinor,
-        effectiveDate: dateForMonthEntry(month!, today),
-        categoryId: category.id,
-        paymentSourceId: null,
-        personId: selfId,
-        note: hasExpr ? entryRaw.trim() : null,
-        // An arithmetic expression is still one dated transaction. Aggregate
-        // means an intentionally dateless monthly total, not "the user typed +".
-        isAggregate: false,
-      });
-      scheduleSync(userId);
-      setEntryRaw("");
-    } finally {
-      setBusy(false);
-    }
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        const today = todayISO();
+        // A negative amount is a reversal of this category: an expense refund
+        // reduces spending, an income correction reduces income, and an
+        // investment withdrawal reduces the transfer total without changing the
+        // category/type invariant.
+        const baseType = category.name.toLocaleLowerCase("tr-TR").includes("yatırım") ? "transfer" : category.kind;
+        const hasExpr = entryRaw.includes("+") || entryRaw.trim().slice(1).includes("-");
+        await addTransaction(userId, {
+          operationId: newId(),
+          type: baseType,
+          amountMinor: entryMinor,
+          currency: "TRY",
+          fxRate: null,
+          amountTryMinor: entryMinor,
+          effectiveDate: dateForMonthEntry(month!, today),
+          categoryId: category.id,
+          paymentSourceId: null,
+          personId: selfId,
+          note: hasExpr ? entryRaw.trim() : null,
+          // An arithmetic expression is still one dated transaction. Aggregate
+          // means an intentionally dateless monthly total, not "the user typed +".
+          isAggregate: false,
+        });
+        scheduleSync(userId);
+        setEntryRaw("");
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const saveNote = async (body: string) => {

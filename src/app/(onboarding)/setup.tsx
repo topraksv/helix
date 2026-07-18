@@ -17,6 +17,7 @@ import { appAlert } from "../../ui/dialog";
 import { BrandMark } from "../../ui/brand";
 import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
 import { spacing, type, useTheme } from "../../ui/theme";
+import { useOperationGuard } from "../../ui/operation-guard";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const ALL_TEMPLATES: TemplateCategory[] = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
@@ -66,6 +67,7 @@ export default function SetupScreen() {
   const [editingSource, setEditingSource] = useState<number | null>(null);
   const [seeded, setSeeded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const operationGuard = useOperationGuard();
 
   // Once an import lands, drop the pre-selected template so we don't seed empty
   // template columns beside the imported ones. Guarded so the user can still
@@ -177,57 +179,61 @@ export default function SetupScreen() {
   };
 
   const openImporter = async (choice: HistoryChoice) => {
-    if (!userId || busy) return;
-    try {
-      if (choice === "json") {
-        // Pick the file FIRST, and only enter the loading state around the real
-        // work (seed + import) — never around the picker itself. The document
-        // picker's promise can fail to settle when the OS file dialog is
-        // dismissed, and wrapping it in `busy` left the finish button's spinner
-        // stuck forever (P1-1). Picking first also means only a real, processed
-        // backup seeds the workspace and shows the "prepared" note (P1-2).
-        const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
-        if (picked.canceled || !picked.assets[0]) return;
-        if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
-        setBusy(true);
-        const content = await new File(picked.assets[0].uri).text();
-        // Validate and restore the complete workspace atomically. Seeding first
-        // would leave a partial starter workspace behind when a corrupt backup
-        // is rejected or the restore write fails.
-        await importBundle(userId, parseExportBundleText(content));
-        setSeeded(true);
-      } else {
-        setBusy(true);
-        // Manual history writes into the selected templates; a spreadsheet import
-        // brings its own columns, so don't pre-seed defaults beside them.
-        if (!(await ensureSeeded(choice === "manual"))) return;
-        if (choice === "manual") router.push("/bulk-entry");
-        else router.push("/import-wizard");
+    if (!userId) return;
+    await operationGuard.run(async () => {
+      try {
+        if (choice === "json") {
+          // Pick the file FIRST, and only enter the loading state around the real
+          // work (seed + import) — never around the picker itself. The document
+          // picker's promise can fail to settle when the OS file dialog is
+          // dismissed, and wrapping it in `busy` left the finish button's spinner
+          // stuck forever (P1-1). Picking first also means only a real, processed
+          // backup seeds the workspace and shows the "prepared" note (P1-2).
+          const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
+          if (picked.canceled || !picked.assets[0]) return;
+          if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
+          setBusy(true);
+          const content = await new File(picked.assets[0].uri).text();
+          // Validate and restore the complete workspace atomically. Seeding first
+          // would leave a partial starter workspace behind when a corrupt backup
+          // is rejected or the restore write fails.
+          await importBundle(userId, parseExportBundleText(content));
+          setSeeded(true);
+        } else {
+          setBusy(true);
+          // Manual history writes into the selected templates; a spreadsheet import
+          // brings its own columns, so don't pre-seed defaults beside them.
+          if (!(await ensureSeeded(choice === "manual"))) return;
+          if (choice === "manual") router.push("/bulk-entry");
+          else router.push("/import-wizard");
+        }
+      } catch (e) {
+        void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+      } finally {
+        setBusy(false);
       }
-    } catch (e) {
-      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const commit = async () => {
-    if (!userId || busy) return;
-    setBusy(true);
-    try {
-      await ensureSeeded();
-      await finalizeOnboarding(userId);
-      // Navigation is driven by the root route guard once the live `onboarded`
-      // flag flips true (mirrors the sign-in screen). Replacing to "/(tabs)"
-      // here fired while `onboarded` was still false in React state, so the
-      // guard immediately redirected back to /(onboarding)/setup AND blanked the
-      // Stack — the (tabs)→blank→setup→(tabs) bounce white-screened on iOS
-      // (React #185). Keep the button in its loading state until the guard
-      // unmounts this screen; only clear `busy` on failure.
-    } catch (e) {
-      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
-      setBusy(false);
-    }
+    if (!userId) return;
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        await ensureSeeded();
+        await finalizeOnboarding(userId);
+        // Navigation is driven by the root route guard once the live `onboarded`
+        // flag flips true (mirrors the sign-in screen). Replacing to "/(tabs)"
+        // here fired while `onboarded` was still false in React state, so the
+        // guard immediately redirected back to /(onboarding)/setup AND blanked the
+        // Stack — the (tabs)→blank→setup→(tabs) bounce white-screened on iOS
+        // (React #185). Keep the button in its loading state until the guard
+        // unmounts this screen; only clear `busy` on failure.
+      } catch (e) {
+        void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+        setBusy(false);
+      }
+    });
   };
 
   return (

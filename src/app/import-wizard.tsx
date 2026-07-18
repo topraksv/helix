@@ -23,6 +23,7 @@ import { scheduleSync } from "../sync/engine";
 import { Body, Button, Card, ChipPicker, Field, Row, Screen, SectionHeader } from "../ui/components";
 import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
+import { useOperationGuard } from "../ui/operation-guard";
 
 // --- visual format guide ---------------------------------------------------
 function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
@@ -142,18 +143,7 @@ export default function ImportWizardModal() {
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
   const scrollRef = useRef<ScrollView>(null);
-  const operationActive = useRef(false);
-
-  const beginOperation = () => {
-    if (operationActive.current) return false;
-    operationActive.current = true;
-    setBusy(true);
-    return true;
-  };
-  const finishOperation = () => {
-    operationActive.current = false;
-    setBusy(false);
-  };
+  const operationGuard = useOperationGuard();
 
   useEffect(() => {
     if (doneCount == null) return;
@@ -161,43 +151,45 @@ export default function ImportWizardModal() {
   }, [doneCount]);
 
   const pick = async () => {
-    if (!beginOperation()) return;
-    try {
-      setError(null);
-      setReimportYears(null);
-      const picked = await DocumentPicker.getDocumentAsync({
-        type: [
-          "text/csv",
-          "application/vnd.ms-excel",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "application/vnd.ms-excel.sheet.macroEnabled.12", // xlsm
-          "application/vnd.ms-excel.sheet.binary.macroEnabled.12", // xlsb
-          "application/vnd.oasis.opendocument.spreadsheet", // ods
-        ],
-        copyToCacheDirectory: true,
-      });
-      if (picked.canceled || !picked.assets[0]) return;
-      if ((picked.assets[0].size ?? 0) > MAX_WORKBOOK_BYTES) throw new Error(tr.importer.fileTooLarge);
-      const uri = picked.assets[0].uri;
-      const bytes =
-        Platform.OS === "web"
-          ? new Uint8Array(await (await fetch(uri)).arrayBuffer())
-          : await new File(uri).bytes();
-      const parsed = parseWorkbookBytes(bytes);
-      if (parsed.sheets.length === 0) {
-        setError(parsed.unparsed[0]?.reason ?? tr.importer.parseError);
-        setWorkbook(null);
-        return;
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        setError(null);
+        setReimportYears(null);
+        const picked = await DocumentPicker.getDocumentAsync({
+          type: [
+            "text/csv",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel.sheet.macroEnabled.12", // xlsm
+            "application/vnd.ms-excel.sheet.binary.macroEnabled.12", // xlsb
+            "application/vnd.oasis.opendocument.spreadsheet", // ods
+          ],
+          copyToCacheDirectory: true,
+        });
+        if (picked.canceled || !picked.assets[0]) return;
+        if ((picked.assets[0].size ?? 0) > MAX_WORKBOOK_BYTES) throw new Error(tr.importer.fileTooLarge);
+        const uri = picked.assets[0].uri;
+        const bytes =
+          Platform.OS === "web"
+            ? new Uint8Array(await (await fetch(uri)).arrayBuffer())
+            : await new File(uri).bytes();
+        const parsed = parseWorkbookBytes(bytes);
+        if (parsed.sheets.length === 0) {
+          setError(parsed.unparsed[0]?.reason ?? tr.importer.parseError);
+          setWorkbook(null);
+          return;
+        }
+        setWorkbook(parsed);
+        setSelectedYears(yearsOf(parsed));
+        setExcluded([]);
+        setCardCycleDrafts({});
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
       }
-      setWorkbook(parsed);
-      setSelectedYears(yearsOf(parsed));
-      setExcluded([]);
-      setCardCycleDrafts({});
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      finishOperation();
-    }
+    });
   };
 
   // Sheets that contribute at least one month in a selected year.
@@ -229,20 +221,23 @@ export default function ImportWizardModal() {
   });
 
   const startImport = async () => {
-    if (selectedYears.length === 0 || !beginOperation()) return;
-    setError(null);
-    try {
-      const already = await importedYears(userId, selectedYears);
-      if (already.length > 0) {
-        setReimportYears(already.sort());
-        return;
+    if (selectedYears.length === 0) return;
+    await operationGuard.run(async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const already = await importedYears(userId, selectedYears);
+        if (already.length > 0) {
+          setReimportYears(already.sort());
+          return;
+        }
+        await performImport("add");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
       }
-      await performImport("add");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      finishOperation();
-    }
+    });
   };
 
   const performImport = async (mode: "replace" | "add") => {
@@ -268,15 +263,17 @@ export default function ImportWizardModal() {
   };
 
   const doImport = async (mode: "replace" | "add") => {
-    if (!beginOperation()) return;
-    setError(null);
-    try {
-      await performImport(mode);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      finishOperation();
-    }
+    await operationGuard.run(async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        await performImport(mode);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   if (doneCount != null) {

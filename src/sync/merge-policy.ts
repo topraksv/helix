@@ -11,7 +11,7 @@ export interface ParsedOutboxEvent extends OutboxEvent {
 }
 
 export interface RejectedOutboxEvent extends OutboxEvent {
-  reason: "malformed_payload" | "wrong_user";
+  reason: "malformed_payload" | "wrong_user" | "invalid_row";
 }
 
 export function classifyOutboxBatch(

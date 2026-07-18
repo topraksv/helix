@@ -8,6 +8,7 @@ import { useSubmitOnEnter } from "../../ui/keyboard";
 import { BrandMark } from "../../ui/brand";
 import { radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
+import { useOperationGuard } from "../../ui/operation-guard";
 
 export default function SignInScreen() {
   const [mode, setMode] = useState<"signIn" | "signUp" | "forgot">("signIn");
@@ -18,25 +19,31 @@ export default function SignInScreen() {
   const [resetSent, setResetSent] = useState(false);
   const { signIn, signUp, requestPasswordReset } = useSession();
   const { palette } = useTheme();
+  const operationGuard = useOperationGuard();
 
   const emailValid = /.+@.+\..+/.test(email.trim());
   const canSubmit = emailValid && (mode === "forgot" || password.length >= 6) && !busy;
 
   const submit = async () => {
     if (!canSubmit) return;
-    setBusy(true);
-    setError(null);
-    const err = mode === "signIn"
-      ? await signIn(email.trim(), password)
-      : mode === "signUp"
-        ? await signUp(email.trim(), password)
-        : await requestPasswordReset(email.trim());
-    setBusy(false);
-    // On success, let the root route guard navigate (it keys off userId +
-    // onboarded). Replacing to "/" here landed on a length-0 route that made the
-    // guard's "(tabs)" redirect loop (React error #185 → white screen).
-    if (err) setError(err);
-    else if (mode === "forgot") setResetSent(true);
+    await operationGuard.run(async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const err = mode === "signIn"
+          ? await signIn(email.trim(), password)
+          : mode === "signUp"
+            ? await signUp(email.trim(), password)
+            : await requestPasswordReset(email.trim());
+        // On success, let the root route guard navigate (it keys off userId +
+        // onboarded). Replacing to "/" here landed on a length-0 route that made the
+        // guard's "(tabs)" redirect loop (React error #185 → white screen).
+        if (err) setError(err);
+        else if (mode === "forgot") setResetSent(true);
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const switchMode = () => {

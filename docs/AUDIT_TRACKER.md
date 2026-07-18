@@ -38,9 +38,9 @@ her paket bölümünün altındaki release kaydına eklenir.
 
 | ID / eşleşme | P | Paket | Durum | Sorun | Çözüm ve kabul ölçütü |
 |---|---:|---:|---|---|---|
-| `HLX-05` · `CDX-CODE-04` | P1 | P1 | NOT STARTED | `toRemote()` içindeki korumasız JSONB parse poison outbox satırını sonsuz retry’a sokabilir | Table-aware outbound validator; bozuk iç payload dead-letter’a taşınır ve sonraki olay push edilir |
-| `CDX-CODE-01` · `CDX-CODE-03` | P1 | P1 | NOT STARTED | Async form submitleri render’dan önce ikinci dokunmayı engellemiyor | Ortak senkron operation guard ve repository idempotency anahtarı; aynı tick iki çağrı tek finansal write üretir |
-| `CDX-CODE-02` | P2 | P1 | NOT STARTED | Recurring income canlı income category doğrulamıyor | Deleted/expense/foreign category repo sınırında reddedilir; doğru kategori kabul edilir |
+| `HLX-05` · `CDX-CODE-04` | P1 | P1 | RESOLVED | `toRemote()` içindeki korumasız JSONB parse poison outbox satırını sonsuz retry’a sokabilir | Table-aware validator bozuk iç JSON/numeric/unknown-column payload’ını `invalid_row` dead-letter’a ayırıyor; aynı batch’teki sağlıklı row devam ediyor (`sync-outbound.test.ts`) |
+| `CDX-CODE-01` · `CDX-CODE-03` | P1 | P1 | RESOLVED | Async form submitleri render’dan önce ikinci dokunmayı engellemiyor | Ortak senkron `useOperationGuard`; finansal create repository’lerinde operation ID/deterministik child ID; aynı tick iki çağrı tek callback (`operation-guard.test.ts`) |
+| `CDX-CODE-02` | P2 | P1 | RESOLVED | Recurring income canlı income category doğrulamıyor | Repo sınırı null, silinmiş/foreign ve expense category’yi reddediyor; yalnız owner’ın canlı income category’sini kabul ediyor (`recurring-income-guard.test.ts`) |
 | `CDX-ARCH-01` | P2 | P4 | NOT STARTED | Live query loading/error/stale durumunu boş array ile karıştırıyor | Son iyi veriyi koruyan typed status/error; loading, stale, retry ve recovery testleri |
 | `CDX-ARCH-02` | P3 | P4 | NOT STARTED | Dashboard query/aggregate/confirmation/render tek componentte | Saf `buildDashboardModel`; mevcut finansal sonuçlarla golden parity testi |
 | `CDX-ARCH-03` | P3 | P4 | NOT STARTED | Cash-flow matrix model, orientation ve navigation iç içe | Saf matrix model + ince orientation adapters; mevcut tablo parity ve 320/desktop testleri |
@@ -105,8 +105,8 @@ her paket bölümünün altındaki release kaydına eklenir.
 |---|---:|---:|---|---|---|
 | `HLX-09` · `CDX-TEST-01` | P2 | P7 | NOT STARTED | Component/hook/SQLite/RLS/E2E koruması yetersiz | Aşağıdaki release-blocking suite CI’da yeşil |
 | `CDX-TEST-03` | P1 | P2/P7 | NOT STARTED | OTA channel/runtime/rollback gerçek kabul testi yok | Config test + remote metadata + installed-device iki cold-start checklist |
-| `CDX-TEST-04` | P1 | P1 | NOT STARTED | Poison outbox regression testi yok | Bozuk JSONB karantina, sağlıklı sonraki row push |
-| `CDX-TEST-05` | P1 | P1 | NOT STARTED | Duplicate submit testi yok | Aynı tick iki invocation tek write |
+| `CDX-TEST-04` | P1 | P1 | RESOLVED | Poison outbox regression testi yok | Bozuk JSONB/unknown column/non-finite numeric karantinada; sağlıklı sonraki row push planında kalıyor |
+| `CDX-TEST-05` | P1 | P1 | RESOLVED | Duplicate submit testi yok | Aynı tick iki invocation tek operation callback; success/error sonrası guard deterministik serbest |
 | `CDX-TEST-06` | P1 | P3 | NOT STARTED | İki-user RLS izolasyon testi yok | A kendi CRUD; B read/update/delete/owner change reddedilir; anon sıfır row |
 | `CDX-TEST-07` | P1 | P7 | NOT STARTED | Core kalıcı E2E yok | Onboarding→transaction→table→edit/delete/undo→backup smoke |
 | `CDX-TEST-08` | P1 | P4/P7 | NOT STARTED | Account-switch late task integration testi eksik | A response’u B sessionında hiçbir write yapmaz |
@@ -138,8 +138,8 @@ her paket bölümünün altındaki release kaydına eklenir.
 
 | Paket | Commit | Web | OTA / remote | Sonuç |
 |---|---|---|---|---|
-| P0 | — | — | Gerekmez | IN PROGRESS |
-| P1 | — | — | — | NOT STARTED |
+| P0 | `f6009a5` | [Pages run 29636105664](https://github.com/topraksv/helix/actions/runs/29636105664) başarılı | Gerekmez | VERIFIED |
+| P1 | Hazırlanıyor | 49-route production export başarılı | Yayın bekliyor | IN PROGRESS |
 | P2 | — | — | — | NOT STARTED |
 | P3 | — | — | — | NOT STARTED |
 | P4 | — | — | — | NOT STARTED |

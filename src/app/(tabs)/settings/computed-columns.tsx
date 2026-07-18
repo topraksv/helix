@@ -21,6 +21,7 @@ import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, Row,
 import { DraggableList } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
+import { useOperationGuard } from "../../../ui/operation-guard";
 
 const HIDDEN_KEY = "computed_columns_hidden";
 
@@ -38,6 +39,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   const columns = useComputedColumns();
   const categories = useCategories();
   const undo = useUndo();
+  const operationGuard = useOperationGuard();
   const { palette } = useTheme();
   const today = todayISO();
   const bundle = useLedger(yearOf(today));
@@ -102,27 +104,29 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   };
 
   const save = async () => {
-    if (busy || !valid) return;
-    setBusy(true);
-    try {
-      const existing = editingId ? columns.find((c) => c.id === editingId) : null;
-      await writeRows(userId, [
-        {
-          table: "computed_columns",
-          row: {
-            id: editingId ?? newId(),
-            name: name.trim(),
-            definition: JSON.stringify(definition),
-            sortOrder: existing?.sortOrder ?? columns.length,
-            deletedAt: null,
+    if (!valid) return;
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        const existing = editingId ? columns.find((c) => c.id === editingId) : null;
+        await writeRows(userId, [
+          {
+            table: "computed_columns",
+            row: {
+              id: editingId ?? newId(),
+              name: name.trim(),
+              definition: JSON.stringify(definition),
+              sortOrder: existing?.sortOrder ?? columns.length,
+              deletedAt: null,
+            },
           },
-        },
-      ]);
-      scheduleSync(userId);
-      resetForm();
-    } finally {
-      setBusy(false);
-    }
+        ]);
+        scheduleSync(userId);
+        resetForm();
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   // Load an existing column back into the form for editing.

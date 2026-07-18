@@ -24,6 +24,7 @@ import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
 import { errorNotice } from "../ui/haptics";
 import { spacing } from "../ui/theme";
+import { useOperationGuard } from "../ui/operation-guard";
 
 export default function CatchUpScreen() {
   const userId = useUserId();
@@ -41,6 +42,7 @@ export default function CatchUpScreen() {
   // One confirmation at a time (spinner on the active button) — a double-tap
   // must not submit the same expected item twice.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const operationGuard = useOperationGuard();
 
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
@@ -53,31 +55,33 @@ export default function CatchUpScreen() {
     subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
 
   const confirm = async (e: (typeof expected)[number], actual?: number) => {
-    if (!selfPersonId || confirmingId) return;
-    setConfirmingId(e.id);
-    try {
-      const sub = subscriptionById.get(e.refId);
-      const income = incomeById.get(e.refId);
-      await confirmExpected(userId, e.id, {
-        personId: sub?.personId ?? income?.personId ?? selfPersonId,
-        categoryId: sub?.categoryId ?? income?.categoryId ?? null,
-        actualAmountMinor: actual,
-      });
-      scheduleSync(userId);
-      setEditing(null);
-      setAmountRaw("");
-      setAmountMinor(null);
-      undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
-    } catch (err) {
-      errorNotice();
-      if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
-      else {
-        devError("reconcile.confirm", err);
-        void appAlert(tr.errors.saveFailed);
+    if (!selfPersonId) return;
+    await operationGuard.run(async () => {
+      setConfirmingId(e.id);
+      try {
+        const sub = subscriptionById.get(e.refId);
+        const income = incomeById.get(e.refId);
+        await confirmExpected(userId, e.id, {
+          personId: sub?.personId ?? income?.personId ?? selfPersonId,
+          categoryId: sub?.categoryId ?? income?.categoryId ?? null,
+          actualAmountMinor: actual,
+        });
+        scheduleSync(userId);
+        setEditing(null);
+        setAmountRaw("");
+        setAmountMinor(null);
+        undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+      } catch (err) {
+        errorNotice();
+        if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
+        else {
+          devError("reconcile.confirm", err);
+          void appAlert(tr.errors.saveFailed);
+        }
+      } finally {
+        setConfirmingId(null);
       }
-    } finally {
-      setConfirmingId(null);
-    }
+    });
   };
 
   return (

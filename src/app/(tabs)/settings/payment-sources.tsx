@@ -23,6 +23,8 @@ import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholde
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { appAlert, appConfirm } from "../../../ui/dialog";
+import { useOperationGuard } from "../../../ui/operation-guard";
+import { newId } from "../../../db/ids";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const NO_SOURCE = "__none__";
@@ -34,6 +36,7 @@ export default function SourcesScreen() {
   const transactions = useAllTransactions();
   const persons = usePersons();
   const undo = useUndo();
+  const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState<PaymentSourceType>("credit_card");
@@ -83,27 +86,29 @@ export default function SourcesScreen() {
   };
 
   const save = async () => {
-    if (busy || !formValid || !personId) return;
-    setBusy(true);
-    try {
-      await upsertPaymentSource(userId, {
-        id: editingId ?? undefined,
-        name,
-        type: sourceType,
-        personId,
-        dueDay,
-        statementDay,
-      });
-      scheduleSync(userId);
-      resetForm();
-    } catch (error) {
-      void appAlert(
-        error instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed,
-        tr.errors.title,
-      );
-    } finally {
-      setBusy(false);
-    }
+    if (!formValid || !personId) return;
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        await upsertPaymentSource(userId, {
+          id: editingId ?? newId(),
+          name,
+          type: sourceType,
+          personId,
+          dueDay,
+          statementDay,
+        });
+        scheduleSync(userId);
+        resetForm();
+      } catch (error) {
+        void appAlert(
+          error instanceof CreditCardCycleRequiredError ? tr.sources.cycleRequired : tr.errors.saveFailed,
+          tr.errors.title,
+        );
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const remove = async (s: (typeof sources)[number]) => {

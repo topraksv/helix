@@ -18,6 +18,7 @@ import { DraggableList } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing, useTheme } from "../../../ui/theme";
+import { useOperationGuard } from "../../../ui/operation-guard";
 
 export default function CategoriesScreen({ header }: { header?: ReactNode } = {}) {
   const userId = useUserId();
@@ -25,6 +26,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   const categories = useCategories();
   const undo = useUndo();
   const { palette } = useTheme();
+  const operationGuard = useOperationGuard();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"expense" | "income">("expense");
   const [adding, setAdding] = useState(false);
@@ -35,29 +37,31 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   const [dragging, setDragging] = useState(false);
 
   const add = async () => {
-    if (adding || !name.trim()) return;
-    setAdding(true);
-    try {
-      await writeRows(userId, [
-        {
-          table: "categories",
-          row: {
-            id: newId(),
-            name: name.trim(),
-            kind,
-            icon: suggestCategoryIcon(name.trim(), kind),
-            color: null,
-            sortOrder: categories.length,
-            isColumn: true,
-            deletedAt: null,
+    if (!name.trim()) return;
+    await operationGuard.run(async () => {
+      setAdding(true);
+      try {
+        await writeRows(userId, [
+          {
+            table: "categories",
+            row: {
+              id: newId(),
+              name: name.trim(),
+              kind,
+              icon: suggestCategoryIcon(name.trim(), kind),
+              color: null,
+              sortOrder: categories.length,
+              isColumn: true,
+              deletedAt: null,
+            },
           },
-        },
-      ]);
-      scheduleSync(userId);
-      setName("");
-    } finally {
-      setAdding(false);
-    }
+        ]);
+        scheduleSync(userId);
+        setName("");
+      } finally {
+        setAdding(false);
+      }
+    });
   };
 
   const update = async (c: (typeof categories)[number], patch: Partial<(typeof categories)[number]>) => {

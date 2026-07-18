@@ -20,11 +20,13 @@ import { appAlert, appConfirm } from "../../../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
+import { useOperationGuard } from "../../../ui/operation-guard";
 
 export default function PersonsScreen() {
   const userId = useUserId();
   const persons = usePersons();
   const undo = useUndo();
+  const operationGuard = useOperationGuard();
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -40,17 +42,19 @@ export default function PersonsScreen() {
   };
 
   const add = async () => {
-    if (adding || !name.trim()) return;
-    setAdding(true);
-    try {
-      await writeRows(userId, [
-        { table: "persons", row: { id: newId(), name: name.trim(), isSelf: persons.length === 0, deletedAt: null } },
-      ]);
-      scheduleSync(userId);
-      setName("");
-    } finally {
-      setAdding(false);
-    }
+    if (!name.trim()) return;
+    await operationGuard.run(async () => {
+      setAdding(true);
+      try {
+        await writeRows(userId, [
+          { table: "persons", row: { id: newId(), name: name.trim(), isSelf: persons.length === 0, deletedAt: null } },
+        ]);
+        scheduleSync(userId);
+        setName("");
+      } finally {
+        setAdding(false);
+      }
+    });
   };
 
   const remove = async (p: (typeof persons)[number]) => {

@@ -15,6 +15,8 @@ import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
+import { newId } from "../db/ids";
+import { useOperationGuard } from "../ui/operation-guard";
 
 export default function BulkEntryModal() {
   const userId = useUserId();
@@ -25,6 +27,7 @@ export default function BulkEntryModal() {
   const [values, setValues] = useState<Record<string, { raw: string; minor: number | null }>>({});
   const [busy, setBusy] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const operationGuard = useOperationGuard();
 
   const selfId = persons.find((p) => p.isSelf)?.id;
   const rows = [...categories].sort((a, b) => (a.kind === b.kind ? a.sortOrder - b.sortOrder : a.kind === "expense" ? -1 : 1));
@@ -39,28 +42,31 @@ export default function BulkEntryModal() {
 
   const save = async () => {
     if (!selfId || entries.length === 0) return;
-    setBusy(true);
-    try {
-      await bulkMonthEntry(
-        userId,
-        month,
-        selfId,
-        entries.map((e) => ({
-          categoryId: e.category.id,
-          kind: e.category.kind,
-          amountMinor: e.minor!,
-          isInvestment: e.category.name.toLocaleLowerCase("tr-TR").includes("yatırım"),
-        })),
-      );
-      scheduleSync(userId);
-      setSavedMsg(tr.bulk.saved(monthLabel(month)));
-      setValues({});
-      setMonth(addMonthsToKey(month, -1)); // convenient: walk backwards month by month
-    } catch (e) {
-      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
-    } finally {
-      setBusy(false);
-    }
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        await bulkMonthEntry(
+          userId,
+          month,
+          selfId,
+          entries.map((e) => ({
+            categoryId: e.category.id,
+            kind: e.category.kind,
+            amountMinor: e.minor!,
+            isInvestment: e.category.name.toLocaleLowerCase("tr-TR").includes("yatırım"),
+          })),
+          newId(),
+        );
+        scheduleSync(userId);
+        setSavedMsg(tr.bulk.saved(monthLabel(month)));
+        setValues({});
+        setMonth(addMonthsToKey(month, -1)); // convenient: walk backwards month by month
+      } catch (e) {
+        void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   return (
