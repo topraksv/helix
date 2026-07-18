@@ -289,10 +289,13 @@ keeps seeing the old version (this is a recurring confusion; own it).
 - **Mobile (JS/asset-only changes — the usual case)** — publish an EAS Update:
   ```
   export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
-  npx eas-cli update --branch preview -m "<short summary>" --non-interactive
+  npx eas-cli update --channel preview -m "<short summary>" --non-interactive
   ```
-  The machine is logged in as `topraksv`; the installed build subscribes to the
+  The machine is logged in as `topraksv`; the `preview` channel points to the
   **`preview`** branch (runtime `1.0.0`, from `runtimeVersion.policy:appVersion`).
+  Local CNG builds embed the same channel through
+  `updates.requestHeaders.expo-channel-name` in `app.json`; EAS build profiles
+  declare their channel in `eas.json`.
   Do this after the commit/push whenever app code changed. The phone applies it
   on the **next cold start** (expo-updates downloads on launch, swaps in on the
   launch after) — tell the user to fully close and reopen the app once.
@@ -315,6 +318,11 @@ npm run typecheck && npm test && npx expo lint
 
 Verify web changes end-to-end with the Playwright flow (see the scratchpad
 `flow.js`) against a static export, not just unit tests.
+
+`main` is protected. Work on a package branch, open a PR, wait for the required
+`quality` check, then merge; never bypass the check or force-push. The same
+workflow publishes Pages only after quality succeeds. The exact release and
+rollback procedure lives in `docs/RELEASE.md`.
 
 ## Commit message standard
 
