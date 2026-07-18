@@ -4,7 +4,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, TrendingDown, TrendingUp } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
@@ -30,7 +30,7 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Body, Button, Card, DataStateNotice, Divider, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Segmented, Spread, STATUS_W } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Segmented, Spread, STATUS_W } from "../../ui/components";
 import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
@@ -46,74 +46,115 @@ const MARKET_BUY_W = 78;
 const MARKET_SELL_W = 92;
 const MARKET_TREND_W = 15;
 
+/** ms epoch → compact "HH:MM" today, full date-time otherwise. */
+function marketUpdatedLabel(ms: number): string {
+  const at = new Date(ms);
+  return at.toDateString() === new Date().toDateString()
+    ? new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(at)
+    : dateTimeLabel(at.toISOString());
+}
+
 function MarketsCard() {
   const { palette } = useTheme();
-  const { prices, status } = useMarkets();
+  const userId = useUserId();
+  const { prices, status, lastEventAt } = useMarkets();
+  useFxRates();
   if (status === "idle") return null;
 
   const priceText = (v: number) =>
     new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
+  // Display hierarchy: live/last-known quotes → dated FX reference rates →
+  // an explanatory fallback. The card never renders empty values or "—".
+  const quoted = MARKET_SYMBOLS.filter(({ code }) => prices[code] != null);
+  const referenceRows = quoted.length > 0
+    ? []
+    : ([["USD", tr.markets.usd], ["EUR", tr.markets.eur]] as const).flatMap(([currency, label]) => {
+        const rate = lookupRate(userId, currency);
+        return rate ? [{ label, rate }] : [];
+      });
+  const statusLabel = status === "live"
+    ? tr.markets.live
+    : quoted.length > 0 && lastEventAt
+      ? tr.markets.updatedAt(marketUpdatedLabel(lastEventAt))
+      : status === "connecting"
+        ? tr.markets.connecting
+        : tr.markets.offline;
+
   return (
     <Card>
       <Spread style={{ marginBottom: spacing.xs, alignItems: "flex-start" }}>
-        <Heading style={{ marginVertical: 0, flex: 1 }}>{tr.markets.title}</Heading>
-        <Row
-          gap={spacing.xs}
-          accessible
-          accessibilityLiveRegion="polite"
-          accessibilityLabel={status === "live"
-            ? tr.markets.live
-            : tr.markets.refreshingShort}
-        >
+        <Heading style={{ marginVertical: 0, flexShrink: 1 }}>{tr.markets.title}</Heading>
+        <Row gap={spacing.xs} accessible accessibilityLiveRegion="polite" accessibilityLabel={statusLabel}>
           {/* The dot claims liveness only once real quotes are flowing. */}
           <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textSecondary }} />
-          <Text style={[type.small, { color: palette.textSecondary }]}>
-            {status === "live"
-              ? tr.markets.live
-              : tr.markets.refreshingShort}
-          </Text>
+          <Text style={[type.small, { color: palette.textSecondary, textAlign: "right", flexShrink: 1 }]}>{statusLabel}</Text>
         </Row>
       </Spread>
-      {status === "error" ? <Body muted style={{ marginBottom: spacing.sm }}>{tr.markets.refreshing}</Body> : null}
-      {/* column headers over the price columns */}
-      <Spread style={{ marginBottom: spacing.xs }}>
-        <View />
-        <Row gap={spacing.sm}>
-          <Text style={[type.small, { color: palette.textSecondary, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{tr.markets.buy}</Text>
-          <Text style={[type.small, { color: palette.textSecondary, minWidth: MARKET_SELL_W, textAlign: "right" }]}>{tr.markets.sell}</Text>
-          <View style={{ width: MARKET_TREND_W }} />
-        </Row>
-      </Spread>
-      {MARKET_SYMBOLS.map(({ code, label }) => {
-        const p = prices[code];
-        const direction = p?.direction === "up"
-          ? tr.markets.rising
-          : p?.direction === "down"
-            ? tr.markets.falling
-            : tr.markets.unchanged;
-        const accessibilityLabel = p
-          ? tr.markets.quote(label, priceText(p.buyTry), `${priceText(p.sellTry)} ₺`, direction)
-          : tr.markets.quoteUnavailable(label);
-        return (
-          <Spread key={code} accessible accessibilityLabel={accessibilityLabel} style={{ paddingVertical: spacing.sm - 2 }}>
-            <Body>{label}</Body>
+      {quoted.length > 0 ? (
+        <>
+          {/* column headers over the price columns */}
+          <Spread style={{ marginBottom: spacing.xs }}>
+            <View />
             <Row gap={spacing.sm}>
-              <Text style={[type.amountSm, { color: palette.textSecondary, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{p ? priceText(p.buyTry) : "—"}</Text>
-              <Text style={[type.amount, { color: palette.text, minWidth: MARKET_SELL_W, textAlign: "right" }]}>
-                {p ? `${priceText(p.sellTry)} ₺` : "—"}
-              </Text>
-              {p?.direction === "up" ? (
-                <TrendingUp accessible={false} size={MARKET_TREND_W} color={palette.positive} />
-              ) : p?.direction === "down" ? (
-                <TrendingDown accessible={false} size={MARKET_TREND_W} color={palette.negative} />
-              ) : (
-                <View style={{ width: MARKET_TREND_W }} />
-              )}
+              <Text style={[type.small, { color: palette.textSecondary, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{tr.markets.buy}</Text>
+              <Text style={[type.small, { color: palette.textSecondary, minWidth: MARKET_SELL_W, textAlign: "right" }]}>{tr.markets.sell}</Text>
+              <View style={{ width: MARKET_TREND_W }} />
             </Row>
           </Spread>
-        );
-      })}
+          {quoted.map(({ code, label }) => {
+            const p = prices[code]!;
+            const direction = p.direction === "up"
+              ? tr.markets.rising
+              : p.direction === "down"
+                ? tr.markets.falling
+                : tr.markets.unchanged;
+            return (
+              <Spread
+                key={code}
+                accessible
+                accessibilityLabel={tr.markets.quote(label, priceText(p.buyTry), `${priceText(p.sellTry)} ₺`, direction)}
+                style={{ paddingVertical: spacing.sm - 2 }}
+              >
+                <Body>{label}</Body>
+                <Row gap={spacing.sm}>
+                  <Text style={[type.amountSm, { color: palette.textSecondary, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{priceText(p.buyTry)}</Text>
+                  <Text style={[type.amount, { color: palette.text, minWidth: MARKET_SELL_W, textAlign: "right" }]}>
+                    {`${priceText(p.sellTry)} ₺`}
+                  </Text>
+                  {p.direction === "up" ? (
+                    <TrendingUp accessible={false} size={MARKET_TREND_W} color={palette.positive} />
+                  ) : p.direction === "down" ? (
+                    <TrendingDown accessible={false} size={MARKET_TREND_W} color={palette.negative} />
+                  ) : (
+                    <View style={{ width: MARKET_TREND_W }} />
+                  )}
+                </Row>
+              </Spread>
+            );
+          })}
+        </>
+      ) : referenceRows.length > 0 ? (
+        <>
+          {referenceRows.map(({ label, rate }) => (
+            <Spread
+              key={label}
+              accessible
+              accessibilityLabel={`${label}. ${tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}. ${priceText(rate.rate.rateTry)} ₺`}
+              style={{ paddingVertical: spacing.sm - 2 }}
+            >
+              <View style={{ flexShrink: 1 }}>
+                <Body>{label}</Body>
+                <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}</Text>
+              </View>
+              <Text style={[type.amount, { color: palette.text }]}>{`${priceText(rate.rate.rateTry)} ₺`}</Text>
+            </Spread>
+          ))}
+          <Body muted style={{ marginTop: spacing.sm, fontSize: 12 }}>{tr.markets.offlineHint}</Body>
+        </>
+      ) : (
+        <Body muted>{tr.markets.noData}</Body>
+      )}
     </Card>
   );
 }
@@ -296,9 +337,9 @@ export default function DashboardScreen() {
       <FirstRunTour />
       <DataStateNotice status={dataStatus} retry={retryData} />
       {previousLoginAt ? (
-        <Body muted style={{ marginBottom: spacing.sm }}>
-          {tr.dashboard.lastLogin(dateTimeLabel(previousLoginAt))}
-        </Body>
+        <View style={{ marginBottom: spacing.sm, alignSelf: "flex-start" }}>
+          <Badge icon={ShieldCheck} text={tr.dashboard.lastLogin(dateTimeLabel(previousLoginAt))} />
+        </View>
       ) : null}
       {/* "When did you pay?" — records the actual paid day for an expected item,
           so an early/manual payment realizes on that date. Future days disabled. */}

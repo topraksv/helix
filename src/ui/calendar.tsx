@@ -8,7 +8,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { cardShadow, radius, spacing, type, useTheme } from "./theme";
+import { cardShadow, radius, scrim, spacing, type, useTheme } from "./theme";
 import { Button, FadeIn, IconButton, Label } from "./components";
 import { pushOverlay } from "./keyboard";
 import { useModalAccessibility } from "./accessibility";
@@ -49,7 +49,7 @@ export function CalendarSheet({
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <Pressable
         accessible={false}
-        style={{ flex: 1, backgroundColor: "rgba(8,10,18,0.55)", alignItems: "center", justifyContent: "center", padding: spacing.lg }}
+        style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
         <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 360 }}>

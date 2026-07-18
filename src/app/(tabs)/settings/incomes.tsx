@@ -7,13 +7,13 @@
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { Banknote, Pencil, Trash2 } from "lucide-react-native";
+import { Banknote } from "lucide-react-native";
 import { useCategories, usePersons, useRecurringIncomes, useUserId } from "../../../data/hooks";
 import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
-import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, ChipPicker, EmptyState, Field, IconButton, Label, MoneyField, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, EmptyState, Field, Label, MoneyField, Row, Screen, Segmented, Select } from "../../../ui/components";
+import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
@@ -234,18 +234,18 @@ export default function IncomeRulesScreen() {
           items={incomes}
           keyExtractor={(r) => r.id}
           renderItem={(r) => (
-            <Spread style={{ paddingVertical: spacing.sm }}>
-              <View style={{ flex: 1, paddingRight: spacing.sm }}>
-                <Body>{r.name}</Body>
-                <Body muted>
-                  {tr.incomeKinds[r.kind]} · {formatMinor(r.defaultAmountMinor, r.currency)} · {r.recurrence === "monthly" ? tr.incomes.everyMonth(r.payDay) : tr.incomes.everyInterval(r.recurrence)}
-                </Body>
-              </View>
-              <Row gap={spacing.sm}>
-                <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(r)} />
-                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(r)} />
-              </Row>
-            </Spread>
+            <RuleRow
+              title={r.name}
+              meta={tr.incomeKinds[r.kind]}
+              badges={[
+                { text: r.recurrence === "monthly" ? tr.incomes.everyMonth(r.payDay) : tr.incomes.everyInterval(r.recurrence) },
+              ]}
+              amountMinor={r.defaultAmountMinor}
+              currency={r.currency}
+              onPress={() => startEdit(r)}
+              onEdit={() => startEdit(r)}
+              onDelete={() => void remove(r)}
+            />
           )}
         />
       )}

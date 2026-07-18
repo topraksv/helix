@@ -157,15 +157,18 @@ function RootLayoutInner() {
   // On a fresh device an already-onboarded account's `onboarded` flag arrives
   // only with the first sync pull; until then the local query returns false and
   // the guard would flash the onboarding screen. Give an online (non-signup)
-  // session a bounded grace to let that first pull land before allowing the
-  // onboarding redirect. This is a plain timer (no external-store subscription),
-  // so it can't drive a re-render loop. A brand-new signup skips the grace
-  // (isNewSignup) and reaches onboarding immediately.
+  // session a bounded grace, lifted only once the live query has re-read the
+  // flag AFTER that pull completed (not merely when the pull finished — the
+  // query lag is exactly what flashed "Quick Start" on logout→login). A
+  // brand-new signup skips the grace (isNewSignup) and reaches onboarding
+  // immediately.
   const awaitingFirstPull = useFirstPullGrace({
     userId,
     online: isOnlineSession,
     newSignup: isNewSignup,
     onboarded,
+    onboardedUpdatedAt: onboardedState.updatedAt,
+    refreshOnboarded: onboardedState.retry,
   });
 
   const scheme: "light" | "dark" =

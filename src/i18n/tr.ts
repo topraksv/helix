@@ -128,6 +128,8 @@ export const tr = {
     errWeakPassword: "Şifre çok zayıf; en az 6 karakter kullan.",
     errEmailNotConfirmed: "E-posta adresin henüz doğrulanmamış; gelen kutunu kontrol et.",
     errInvalidEmail: "Geçerli bir e-posta adresi gir.",
+    errSessionExpired: "Oturumun doğrulanamadı. Lütfen çıkış yapıp yeniden giriş yap.",
+    errService: "Sunucu şu anda yanıt vermiyor. Birazdan tekrar dene.",
     errGeneric: "İşlem tamamlanamadı. Lütfen tekrar dene.",
     signOutPendingTitle: "Gönderilmemiş kayıtlar var",
     signOutPendingWarn: (n: number) =>
@@ -234,7 +236,7 @@ export const tr = {
     actualBalance: "Güncel Bakiye",
     projectedBalance: "Ay Sonu Öngörüsü",
     lastEntry: (d: string, ago: string) => `Son giriş: ${d} · ${ago}`,
-    lastLogin: (d: string) => `Önceki başarılı giriş: ${d}`,
+    lastLogin: (d: string) => `Önceki giriş: ${d}`,
     pendingConfirm: (n: number) => (n === 1 ? "1 ödeme onay bekliyor" : `${n} ödeme onay bekliyor`),
     catchUp: "Onay bekleyen ödemeleri gözden geçir",
     forecastToggle: "Ay sonu tahmini",
@@ -326,6 +328,12 @@ export const tr = {
     cellNote: "Hücre Notu",
     uncategorizedLegacy: "Kategorisiz eski kayıtlar",
     uncategorizedRepairHint: "Aylara göre açıp kayıtları düzenleyebilirsin.",
+    // Phone toolbar mini captions (full names stay in accessibility labels).
+    toolEdit: "Düzenle",
+    toolInstallments: "Taksitler",
+    toolAnalysis: "Analiz",
+    toolBulk: "Toplu Giriş",
+    toolOpening: "Açılış",
   },
   tx: {
     new: "Yeni İşlem",
@@ -689,6 +697,7 @@ export const tr = {
     swap: "Para birimlerini değiştir",
     enterAmount: "Çevirmek için bir tutar gir.",
     rateMissing: "Kur bilgisi henüz alınamadı. İnternete bağlanınca güncellenir.",
+    staleRateDated: (d: string) => `${d} tarihli kur kullanılıyor; bağlantı gelince güncellenecek.`,
     error: "Hata",
     resultUnavailable: "Sonuç desteklenen tutar sınırını aşıyor",
   },
@@ -714,7 +723,6 @@ export const tr = {
   markets: {
     title: "Canlı Piyasalar",
     live: "Canlı",
-    refreshingShort: "Güncelleniyor",
     gram: "Gram Altın",
     quarter: "Çeyrek Altın",
     republic: "Cumhuriyet (Ata)",
@@ -724,11 +732,15 @@ export const tr = {
     sell: "Satış",
     quote: (label: string, buy: string, sell: string, direction: string) =>
       `${label}. Alış ${buy}. Satış ${sell}. ${direction}`,
-    quoteUnavailable: (label: string) => `${label}. Fiyat henüz alınamadı.`,
     rising: "Yükseliyor",
     falling: "Düşüyor",
     unchanged: "Değişim yok",
-    refreshing: "Fiyatlar yenileniyor; bağlantı gelir gelmez burada görünecek.",
+    updatedAt: (t: string) => `Son güncelleme: ${t}`,
+    connecting: "Bağlanıyor…",
+    offline: "Çevrimdışı",
+    offlineHint: "Canlı bağlantı şu an kurulamıyor; internet gelince fiyatlar otomatik güncellenir.",
+    noData: "Henüz fiyat alınamadı. Bağlantı kurulduğunda canlı altın ve döviz fiyatları burada görünecek.",
+    referenceRate: (d: string) => `Referans kur · ${d}`,
   },
   dataState: {
     loading: "Cihazındaki veriler hazırlanıyor…",
@@ -818,6 +830,13 @@ export function dateLabel(iso: string): string {
   const [y, m, d] = iso.split("-");
   const name = tr.months[Number(m) - 1];
   return name && y && d ? `${Number(d)} ${name} ${y}` : iso;
+}
+
+/** Compact "1 Ağu 2026" form for badges and other tight layouts. */
+export function shortDateLabel(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  const name = tr.months[Number(m) - 1];
+  return name && y && d ? `${Number(d)} ${name.slice(0, 3)} ${y}` : iso;
 }
 
 export function dateTimeLabel(iso: string): string {
