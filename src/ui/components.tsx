@@ -27,6 +27,7 @@ import { useSegments } from "expo-router";
 import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
+import { initialsBadgeColor } from "./badge-color";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
@@ -1260,9 +1261,7 @@ export function Toggle({
 
 /** Initials avatar with a deterministic hue from the name (logo fallback). */
 export function InitialsBadge({ name, size = 36 }: { name: string; size?: number }) {
-  let hash = 0;
-  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
-  const bg = `hsl(${hash}, 42%, 46%)`;
+  const bg = initialsBadgeColor(name);
   const initials = name
     .split(/\s+/)
     .slice(0, 2)

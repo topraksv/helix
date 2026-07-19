@@ -7,6 +7,7 @@ import {
   currentMonthKey,
   isolateExternalData,
   onboard,
+  renderedContrastRatio,
 } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -30,7 +31,12 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
 
   await page.getByRole("button", { name: "Sil" }).click();
   await expect(page.getByText("İşlem silindi", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geri Al" }).click();
+  const undo = page.getByRole("button", { name: "Geri Al" });
+  // The snackbar inverts the page, so its label needs an inverted ink. Role
+  // queries match the accessible name and stayed green while the label was
+  // rendering at 1.27:1 — measure what the browser actually painted.
+  expect(await renderedContrastRatio(undo.getByText("Geri Al"))).toBeGreaterThanOrEqual(4.5);
+  await undo.click();
   await expect(page.getByText("E2E düzenlendi", { exact: true })).toBeVisible();
 
   await page.getByRole("tab", { name: "Ayarlar" }).click();

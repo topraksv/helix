@@ -1,4 +1,4 @@
-import { expect, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { expect, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 const APP_PATH = "/helix/";
 
@@ -78,6 +78,43 @@ export async function addMarketExpense(page: Page, note: string, amount = "1.234
   await expect(save).toBeEnabled();
   await save.click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+}
+
+/**
+ * Rendered contrast of an element's own text against the nearest ancestor that
+ * actually paints a background. `getByRole` matches the accessible name, so a
+ * control can pass every interaction assertion while being invisible to a
+ * human — this measures what the browser really painted.
+ */
+export async function renderedContrastRatio(locator: Locator): Promise<number> {
+  return locator.evaluate((element) => {
+    const parse = (value: string): [number, number, number] => {
+      const parts = value.match(/[\d.]+/g);
+      if (!parts || parts.length < 3) throw new Error(`Unsupported color: ${value}`);
+      return [Number(parts[0]), Number(parts[1]), Number(parts[2])];
+    };
+    const luminance = (rgb: [number, number, number]) =>
+      rgb
+        .map((channel) => channel / 255)
+        .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+        .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
+
+    const foreground = parse(getComputedStyle(element).color);
+    let node: HTMLElement | null = element as HTMLElement;
+    let background: [number, number, number] | null = null;
+    while (node) {
+      const painted = getComputedStyle(node).backgroundColor;
+      const alpha = painted.match(/[\d.]+/g)?.[3];
+      if (painted && painted !== "transparent" && alpha !== "0") {
+        background = parse(painted);
+        break;
+      }
+      node = node.parentElement;
+    }
+    if (!background) throw new Error("No painted background found above the element");
+    const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+    return (lighter! + 0.05) / (darker! + 0.05);
+  });
 }
 
 export async function assertNoRuntimeErrors(errors: string[], testInfo: TestInfo): Promise<void> {
