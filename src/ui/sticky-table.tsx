@@ -123,7 +123,12 @@ function useWebInteractions(
     };
 
     vNode.style.cursor = "grab";
+    // Both scrollers must be reachable by keyboard: a scrollable region that
+    // cannot receive focus is unusable without a pointer (axe
+    // `scrollable-region-focusable`). The body scroller sits inside the
+    // vertical one, so its arrow keys still bubble to the handler below.
     vNode.setAttribute("tabindex", "0");
+    bodyNode?.setAttribute("tabindex", "0");
     vNode.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove, { passive: false });
     window.addEventListener("mouseup", onUp);
@@ -134,6 +139,7 @@ function useWebInteractions(
       window.removeEventListener("mouseup", onUp);
       vNode.removeEventListener("keydown", onKey);
       vNode.removeAttribute("tabindex");
+      bodyNode?.removeAttribute("tabindex");
       vNode.style.cursor = "";
     };
   }, [vRef, bodyHRef, headerHRef, rowHeight, cellWidth]);
@@ -259,6 +265,9 @@ export function StickyTable({
           onPress={labelAction ? () => { lightTap(); labelAction(c.key); } : undefined}
           accessibilityRole={labelAction ? "button" : undefined}
           accessibilityLabel={labelAction ? c.label : undefined}
+          // Fill the header band: wrapping only the label left a full-width but
+          // 16px-tall tap target on the app's primary financial surface.
+          style={{ flex: 1, justifyContent: "center" }}
         >
           <Text
             style={[type.label, { color: isCurrent ? palette.primaryText : palette.textSecondary, textAlign: "center" }]}

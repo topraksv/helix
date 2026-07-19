@@ -597,7 +597,19 @@ export function Field({
             accessibilityHint={label}
             onPress={() => setHidden(!hidden)}
             hitSlop={8}
-            style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
+            // The icon is 18px and `hitSlop` does not enlarge the DOM box on
+            // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
+            // 24). The box now fills the input's reserved 44px right padding
+            // with the icon centred, so the mark does not visibly move.
+            style={{
+              position: "absolute",
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 42,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             {hidden ? <Eye accessible={false} size={18} color={palette.textSecondary} /> : <EyeOff accessible={false} size={18} color={palette.textSecondary} />}
           </Pressable>
@@ -681,7 +693,19 @@ export function MoneyField({
             accessibilityHint={accessibilityLabel ?? label}
             onPress={() => setCalcOpen(true)}
             hitSlop={8}
-            style={{ position: "absolute", right: spacing.md, top: 0, bottom: 0, justifyContent: "center" }}
+            // The icon is 18px and `hitSlop` does not enlarge the DOM box on
+            // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
+            // 24). The box now fills the input's reserved 44px right padding
+            // with the icon centred, so the mark does not visibly move.
+            style={{
+              position: "absolute",
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 42,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <CalculatorIcon accessible={false} size={18} color={palette.textSecondary} />
           </Pressable>

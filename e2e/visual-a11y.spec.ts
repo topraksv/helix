@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
+  addMarketExpense,
   assertNoRuntimeErrors,
   collectRuntimeErrors,
   isolateExternalData,
@@ -26,6 +27,60 @@ test("main routes have no WCAG A/AA violations", async ({ page }, testInfo) => {
     const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     expect(result.violations, `${route}\n${JSON.stringify(result.violations, null, 2)}`).toEqual([]);
   }
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * The 6-route check above runs on a freshly onboarded, near-empty workspace.
+ * Every violation this audit found lived outside that set or only appeared once
+ * the workspace had data: `aria-prohibited-attr` on populated matrix cells,
+ * `aria-required-attr` on the reorder grips, `color-contrast` under a faded
+ * section, and a scroll region no keyboard could reach. This sweep therefore
+ * walks EVERY reachable route with real data, and also asserts the WCAG 2.2
+ * target size that axe's 2.1 ruleset does not cover.
+ */
+const ALL_ROUTES = [
+  "/helix/", "/helix/cash-flow", "/helix/cash-flow/analytics", "/helix/cash-flow/installments",
+  "/helix/subscriptions", "/helix/calculator", "/helix/settings", "/helix/settings/categories",
+  "/helix/settings/computed-columns", "/helix/settings/payment-sources", "/helix/settings/persons",
+  "/helix/settings/incomes", "/helix/settings/budgets", "/helix/settings/opening-balance",
+  "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
+  "/helix/cell-editor", "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
+  "/helix/account-security", "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template",
+];
+
+test("every reachable route stays accessible with real data", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await addMarketExpense(page, "A11y taraması");
+  const problems: string[] = [];
+  for (const route of ALL_ROUTES) {
+    await page.goto(route);
+    await expect(page.locator("#root")).toBeVisible();
+    const undersized = await page.evaluate(() => {
+      const found: string[] = [];
+      for (const element of Array.from(document.querySelectorAll<HTMLElement>("[role]"))) {
+        const role = element.getAttribute("role");
+        if (!role || !["button", "link", "tab", "radio", "switch", "checkbox"].includes(role)) continue;
+        const style = getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+        const box = element.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        // WCAG 2.2 SC 2.5.8 (AA) — 24x24 CSS px minimum.
+        if (box.width < 24 || box.height < 24) {
+          found.push(`${role} "${(element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 30)}" ${Math.round(box.width)}x${Math.round(box.height)}`);
+        }
+      }
+      return [...new Set(found)];
+    });
+    if (undersized.length > 0) problems.push(`${route} target size: ${undersized.join(", ")}`);
+    const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    for (const violation of result.violations) {
+      problems.push(`${route} axe ${violation.id} (${violation.nodes.length}): ${violation.nodes[0]?.html.slice(0, 140)}`);
+    }
+  }
+  expect(problems, problems.join("\n")).toEqual([]);
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
