@@ -7,9 +7,8 @@ chronology — entries older than the last five are simply dropped.
 ## Current state
 
 - Updated: 2026-07-19 (Europe/Istanbul)
-- Work: Claude's nine-package user audit. P1–5 merged as PR #36 (`e69f386`),
-  P6–7 as PR #37 (`e66eeb3`); the P8/P9 branch `fix/audit-p8` starts from
-  `e66eeb3`.
+- Work: Claude's nine-package user audit, complete. P1–5 merged as PR #36
+  (`e69f386`), P6–7 as PR #37 (`e66eeb3`), P8–9 as PR #38 (`3e30b1c`).
 - Outcome highlights: logout→login no longer flashes onboarding (grace waits
   for the post-sync onboarded re-read); verifyPassword recovers the e-mail
   after offline bootstrap instead of "Supabase yapılandırılmadı"; semantic
@@ -30,7 +29,9 @@ chronology — entries older than the last five are simply dropped.
 - Release: PR #36 quality + main Pages run `29658175041` (live 200) and OTA
   group `f82de4f5-2e28-468d-9ec8-0ad3f06db24d`; PR #37 quality + OTA group
   `d3461e52-9dfd-436a-8bcd-051d7543e879` (commit `e66eeb3`), Pages run
-  `29666823091`. Runtime `1.0.0`, channel `preview`, iOS+Android; no native
+  `29666823091`; PR #38 quality + OTA group
+  `04d8e501-abdb-4632-9317-d2fa5df7a6b4` (commit `3e30b1c`), Pages run
+  `29674652426`. Runtime `1.0.0`, channel `preview`, iOS+Android; no native
   config changed. Installed delivery remains unverified.
 
 ## Stable system and open limits
@@ -55,11 +56,12 @@ without inspecting its diff and running proportional checks.
 
 ## Recent handoffs
 
-### 2026-07-19 — Claude · Nine-package user audit (P1–P8)
+### 2026-07-19 — Claude · Nine-package user audit (P1–P9)
 
 - Base `7f2e133`; PR #36 → main `e69f386` (Pages `29658175041`, OTA
   `f82de4f5`); PR #37 → main `e66eeb3` (Pages `29666823091`, OTA
-  `d3461e52`); P8/P9 continues on `fix/audit-p8`.
+  `d3461e52`); PR #38 → main `3e30b1c` (Pages `29674652426`, OTA
+  `04d8e501`).
 - Auth flash/error mapping, semantic palette contract, markets snapshot +
   converter focus refresh, captioned cash-flow tools, shared RuleRow,
   budget cascade on category delete, operationId removal, FlatList
