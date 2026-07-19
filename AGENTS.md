@@ -23,9 +23,9 @@ files changed, verification performed, deployment/OTA state, decisions, and
 unresolved risks. (A file cannot name the hash of the commit that contains
 itself; `git log` is always the authority for the resulting HEAD.)
 `Recent handoffs` keeps at most the **last 5** entries; when adding a sixth,
-move the oldest into `docs/handoffs/<year-month>.md`. The handoff file is read
-in full at the start of every session by every agent, so it must stay small —
-Git history owns the complete chronology.
+delete the oldest. The handoff file is read in full at the start of every
+session by every agent, so it must stay small — Git history owns the complete
+chronology (there is no separate archive file).
 Update this `AGENTS.md` whenever a durable architecture invariant, toolchain
 requirement, design rule, hard-won lesson, or shipping procedure changes. Keep
 `CLAUDE.md` aligned with the same protocol, but do not duplicate the full
@@ -129,13 +129,19 @@ agent-to-agent communication that did not occur.
   session abort signal, time out, validate response size/shape and persist the
   provider's declared business date (never a fabricated "today"). The in-memory
   FX cache is user-scoped. Missing rates stay missing; never interpret a foreign
-  amount as TRY. Live market quotes expire only after the whole feed goes silent
-  for 60 seconds (Harem re-sends a symbol only when its price CHANGES, so a
-  stable/unchanged quote must keep showing while any other symbol still ticks —
-  never drop a quote just because it did not move). The socket runs
-  only while an unlocked authenticated app is active. The converter reuses a
-  fresh live USD/EUR quote, then falls back to the dated user-scoped FX cache;
-  it must never open a second market request for the same conversion.
+  amount as TRY. Live market quotes separate DISPLAY from CONVERSION: the card
+  keeps showing the last-known quotes with their timestamp through silence and
+  restarts (a device-local snapshot hydrates on connect), while conversion
+  freshness follows each quote's own `receivedAt` and expires after 60 s of
+  that quote not being re-confirmed by a live feed. Live continuity may extend
+  a still-fresh quote's receipt time (Harem re-sends a symbol only when its
+  price CHANGES), but an already-expired or snapshot-hydrated quote must never
+  be re-stamped fresh by another symbol's tick. The socket runs only while an
+  unlocked authenticated app is active. The converter reuses a fresh live
+  USD/EUR quote, then falls back to the dated user-scoped FX cache (and
+  refreshes stale/missing rates on screen focus via the throttled
+  session-scoped `ensureFreshRates`); it must never open a second market
+  request for the same conversion.
 - **Notification consent is device-local and opt-in.** Do not request
   notification permission during boot. Disabled notifications clear legacy
   schedules; sign-out/account switch clears scheduled and presented account
@@ -154,8 +160,11 @@ agent-to-agent communication that did not occur.
   `router.back()` is not sufficient for direct links with no history. Nested
   Settings/Cash Flow stacks declare `index` as their initial route and reset to
   it on tab blur; the shared back control is the standard 44×44 icon-only target.
-  Do not set a root `(tabs)` initial route: it mounts protected hooks on anonymous
-  auth pages.
+  **Any push into a nested tab stack from OUTSIDE that tab must pass
+  `{ withAnchor: true }`** — otherwise the stack mounts with only the pushed
+  route, `popToTopOnBlur` becomes a no-op and the tab is stuck on that route
+  until an app restart (the Summary → Analysis bug). Do not set a root `(tabs)`
+  initial route: it mounts protected hooks on anonymous auth pages.
 - **Sync ordering is server-authoritative.** Supabase normalizes `updated_at`;
   every push selects and conditionally merges that acknowledgement before its
   exact outbox events are removed. Never advance a pull cursor past an invalid

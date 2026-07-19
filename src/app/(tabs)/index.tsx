@@ -536,7 +536,7 @@ export default function DashboardScreen() {
           title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
           subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
           chevron
-          onPress={() => router.push("/(tabs)/cash-flow/analytics" as Href)}
+          onPress={() => router.push("/(tabs)/cash-flow/analytics" as Href, { withAnchor: true })}
         />
         <Divider />
         {hasMonthFlow ? (

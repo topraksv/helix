@@ -1,8 +1,8 @@
 # Helix AI handoff
 
 Compact continuity record for Codex and Claude. Git/current files override this
-note; durable rules live in `AGENTS.md`, finding status in `AUDIT_TRACKER.md`,
-and old chronology in `docs/handoffs/`.
+note; durable rules live in `AGENTS.md`. Git history owns the complete
+chronology — entries older than the last five are simply dropped.
 
 ## Current state
 
