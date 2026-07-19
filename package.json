@@ -71,5 +71,8 @@
     "verify:release": "npm run verify && npx expo export -p web && npm run bundle:check && npm run test:e2e",
     "bundle:check": "node scripts/check-web-budget.mjs dist"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "postcss": "^8.5.10"
+  }
 }

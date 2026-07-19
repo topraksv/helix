@@ -317,10 +317,15 @@ reset role;
 select set_config('request.jwt.claim.sub', '', true);
 set local role anon;
 
-select results_eq(
+-- Anonymous callers are refused at the privilege layer, not merely filtered to
+-- zero rows by RLS. Every policy is `to authenticated`, so anon always matched
+-- nothing; migration 9 removes the table grant as well, so the attempt is now
+-- denied outright (42501) instead of returning a quiet empty result.
+select throws_ok(
   $$select count(*)::bigint from public.persons$$,
-  $$values (0::bigint)$$,
-  'anonymous callers cannot read synced rows'
+  '42501',
+  null,
+  'anonymous callers are denied synced tables outright'
 );
 
 reset role;
