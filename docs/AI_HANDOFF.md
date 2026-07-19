@@ -7,8 +7,10 @@ chronology — entries older than the last five are simply dropped.
 ## Current state
 
 - Updated: 2026-07-19 (Europe/Istanbul)
-- Work: Claude's nine-package user audit, complete. P1–5 merged as PR #36
-  (`e69f386`), P6–7 as PR #37 (`e66eeb3`), P8–9 as PR #38 (`3e30b1c`).
+- Work: Claude's nine-package user audit shipped (PR #36 `e69f386`, PR #37
+  `e66eeb3`, PR #38 `3e30b1c`); follow-up branch `feat/logos-converter-screens`
+  ships the converter last-known-rate contract, the expanded frameless logo
+  system + `*.gstatic.com` CSP fix, and the uniform dark README screenshots.
 - Outcome highlights: logout→login no longer flashes onboarding (grace waits
   for the post-sync onboarded re-read); verifyPassword recovers the e-mail
   after offline bootstrap instead of "Supabase yapılandırılmadı"; semantic
@@ -21,6 +23,12 @@ chronology — entries older than the last five are simply dropped.
   inert operationId layer removed; month detail/cell editor/analysis search
   are real FlatLists (1.200-row scenario: ~160 ms open, ~116 mounted rows);
   README rebuilt with real data screenshots; tsconfig excludes build output.
+  Follow-up: converter now mirrors the markets card (live silently, last-known
+  quote with a time badge, FX cache only when strictly newer); ~65 new brand
+  favicon domains and one shared frameless logo tile; web CSP allows the
+  gstatic favicon redirect (logos actually render on web now); README
+  screenshots regenerated as a uniform dark set from a 105-row multi-month
+  demo restore.
 - Local verification: strict typecheck; 47 files/293 Vitest; zero-warning
   Expo lint; production export within all bundle budgets; 10/10 Playwright
   incl. axe and visual baselines (one cash-flow baseline intentionally

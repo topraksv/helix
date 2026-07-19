@@ -27,5 +27,5 @@ export function normalizeLogoDomain(value: string | null | undefined): string | 
 
 export function remoteFaviconUrl(value: string | null | undefined): string | null {
   const domain = normalizeLogoDomain(value);
-  return domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64` : null;
+  return domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128` : null;
 }

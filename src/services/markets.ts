@@ -209,6 +209,26 @@ export function marketSellRateTry(currency: string, now = Date.now()): number | 
     : null;
 }
 
+/** The sell rate the markets card is currently showing (live or last-known),
+ *  with its receipt time, or null when the card has nothing either. The
+ *  read-only converter mirrors the card so the two never disagree; ledger
+ *  writes keep the strict `marketSellRateTry` freshness contract. */
+export function marketLastKnownRateTry(
+  currency: string,
+  now = Date.now(),
+): { rateTry: number; receivedAt: number; live: boolean } | null {
+  const code = currency === "USD" ? "USDTRY" : currency === "EUR" ? "EURTRY" : null;
+  if (!code) return null;
+  const price = useMarkets.getState().prices[code];
+  if (!price || !Number.isFinite(price.sellTry) || price.sellTry <= 0) return null;
+  if (!Number.isFinite(price.receivedAt) || price.receivedAt > now) return null;
+  return {
+    rateTry: price.sellTry,
+    receivedAt: price.receivedAt,
+    live: freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS),
+  };
+}
+
 /** Idempotent: first caller opens the socket; it lives for the app session. */
 export function connectMarkets(): void {
   if (disconnectTimer) {
