@@ -89,8 +89,11 @@ export default function WorkspaceTemplateModal() {
         </>
       )}
 
+      {/* No container opacity on the section below: fading a whole subtree also
+          fades its text below AA (its heading measured 2.86:1). The section is
+          already set apart by its heading and position. */}
       {have.length > 0 ? (
-        <View style={{ marginTop: spacing.lg, opacity: 0.6 }}>
+        <View style={{ marginTop: spacing.lg }}>
           <SectionHeader>{tr.template.haveTitle}</SectionHeader>
           <ChipPicker multi options={have.map((c) => ({ value: c.name, label: chip(c) }))} values={[]} onToggle={() => {}} />
         </View>

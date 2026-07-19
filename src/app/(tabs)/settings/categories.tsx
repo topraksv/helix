@@ -12,9 +12,9 @@ import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons"
 import { scheduleSync } from "../../../sync/engine";
 import { appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
-import { GripVertical, LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
+import { LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
 import { Body, Button, Card, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
-import { DraggableList } from "../../../ui/draggable-list";
+import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing, useTheme } from "../../../ui/theme";
@@ -183,29 +183,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                   >
                     <Spread>
                       <Row gap={spacing.sm} style={{ flex: 1, alignItems: "center", paddingRight: spacing.sm }}>
-                        <View
-                          {...handle.panHandlers}
-                          accessibilityRole="adjustable"
-                          accessibilityLabel={tr.settings.reorderHandle}
-                          accessibilityActions={[
-                            { name: "increment", label: tr.settings.moveUp },
-                            { name: "decrement", label: tr.settings.moveDown },
-                          ]}
-                          onAccessibilityAction={(e) => {
-                            if (e.nativeEvent.actionName === "increment") handle.moveUp();
-                            else if (e.nativeEvent.actionName === "decrement") handle.moveDown();
-                          }}
-                          collapsable={false}
-                          style={{
-                            width: 44,
-                            height: 44,
-                            marginLeft: -spacing.sm,
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <GripVertical size={18} color={palette.textSecondary} />
-                        </View>
+                        <ReorderGrip handle={handle} position={index + 1} count={group.length} />
                         <Body style={{ flex: 1 }}>
                           {categoryIcon(c)} {c.name}
                         </Body>

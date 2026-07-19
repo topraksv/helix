@@ -14,7 +14,7 @@ import { scheduleSync } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { useSession } from "../auth/session";
 import { useUserId } from "../data/hooks";
-import { kv } from "../lib/kv";
+import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { Body, Button, Screen, Title } from "./components";
 import { appAlert } from "./dialog";

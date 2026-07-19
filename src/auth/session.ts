@@ -20,7 +20,7 @@ import { useSyncStatus } from "../sync/status";
 import { connectMarkets, disconnectMarkets } from "../services/markets";
 import { clearRateCache, loadRateCache } from "../services/fx-fetch";
 import { clearAccountNotifications, rescheduleAll } from "../services/notifications";
-import { kv } from "../lib/kv";
+import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { friendlyAuthError } from "./auth-errors";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";

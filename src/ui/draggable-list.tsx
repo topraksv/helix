@@ -13,7 +13,10 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, View, type GestureResponderHandlers, type LayoutChangeEvent } from "react-native";
+import { GripVertical } from "lucide-react-native";
 import { errorNotice, mediumTap, selectionTap } from "./haptics";
+import { spacing, useTheme } from "./theme";
+import { tr } from "../i18n/tr";
 
 export interface DragHandle {
   /** Spread onto the grip element to make it the drag initiator. */
@@ -254,5 +257,57 @@ function DraggableRow({
         moveDown: onMoveDown,
       })}
     </Animated.View>
+  );
+}
+
+/**
+ * The shared reorder grip. `adjustable` is the honest role — the grip is
+ * genuinely operable without a drag gesture through its increment/decrement
+ * accessibility actions — but that role REQUIRES a current value, and omitting
+ * it left every settings list failing axe's `aria-required-attr`. Publishing
+ * the row's position also makes the announcement useful ("3 of 12") instead of
+ * a bare "slider". Both settings lists rendered this block byte-identically
+ * before it moved here.
+ */
+export function ReorderGrip({
+  handle,
+  position,
+  count,
+}: {
+  handle: DragHandle;
+  /** 1-based position of this row within the reorderable group. */
+  position: number;
+  count: number;
+}) {
+  const { palette } = useTheme();
+  return (
+    <View
+      {...handle.panHandlers}
+      accessibilityRole="adjustable"
+      accessibilityLabel={tr.settings.reorderHandle}
+      // RN Web ignores the `accessibilityValue` object; the `aria-*` aliases
+      // (React Native 0.71+) are what actually reach the DOM and the platform.
+      aria-valuemin={1}
+      aria-valuemax={Math.max(count, 1)}
+      aria-valuenow={position}
+      accessibilityActions={[
+        { name: "increment", label: tr.settings.moveUp },
+        { name: "decrement", label: tr.settings.moveDown },
+      ]}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === "increment") handle.moveUp();
+        else if (event.nativeEvent.actionName === "decrement") handle.moveDown();
+      }}
+      collapsable={false}
+      style={{
+        width: 44,
+        height: 44,
+        marginLeft: -spacing.sm,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <GripVertical size={18} color={palette.textSecondary} />
+    </View>
   );
 }

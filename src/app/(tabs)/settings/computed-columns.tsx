@@ -7,7 +7,7 @@
 
 import React, { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Calculator, CreditCard, GripVertical, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
+import { Calculator, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import { newId } from "../../../db/ids";
 import { restoreRow, softDelete, writeRows, writeSetting } from "../../../db/mutations";
 import { settingValue, toTxLike, useAllTransactions, useCategories, useComputedColumns, useLedger, usePersons, useSettingsMap, useSources, useUserId } from "../../../data/hooks";
@@ -18,7 +18,7 @@ import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, Row, Screen, Spread, Toggle } from "../../../ui/components";
-import { DraggableList } from "../../../ui/draggable-list";
+import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
@@ -307,29 +307,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                   <View style={{ paddingVertical: spacing.sm, backgroundColor: handle.active ? palette.surfaceAlt : palette.surface }}>
                     <Spread>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1, paddingRight: spacing.sm }}>
-                        <View
-                          {...handle.panHandlers}
-                          accessibilityRole="adjustable"
-                          accessibilityLabel={tr.settings.reorderHandle}
-                          accessibilityActions={[
-                            { name: "increment", label: tr.settings.moveUp },
-                            { name: "decrement", label: tr.settings.moveDown },
-                          ]}
-                          onAccessibilityAction={(e) => {
-                            if (e.nativeEvent.actionName === "increment") handle.moveUp();
-                            else if (e.nativeEvent.actionName === "decrement") handle.moveDown();
-                          }}
-                          collapsable={false}
-                          style={{
-                            width: 44,
-                            height: 44,
-                            marginLeft: -spacing.sm,
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <GripVertical size={18} color={palette.textSecondary} />
-                        </View>
+                        <ReorderGrip handle={handle} position={index + 1} count={columns.length} />
                         <Calculator size={16} color={palette.textSecondary} />
                         <Body style={{ flex: 1 }}>{column.name}</Body>
                       </View>

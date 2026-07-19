@@ -1,6 +1,6 @@
 /** PII-free, device-local incident breadcrumbs for development support. */
 
-import { kv } from "../lib/kv";
+import { kv } from "./kv";
 import { createDiagnosticEvent, type SafeDiagnosticEvent } from "../domain/diagnostics";
 
 const EVENTS_KEY = "helix.diagnostic_events.v1";

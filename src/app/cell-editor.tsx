@@ -5,7 +5,7 @@
  * transaction list is a real FlatList, so a 1.000+ row cell mounts lazily.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FlatList, ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
@@ -15,7 +15,7 @@ import { restoreRow } from "../db/mutations";
 import { addTransaction, deleteTransaction } from "../data/repo";
 import { saveCellNote } from "../data/cell-notes";
 import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../data/hooks";
-import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
+import { dateForMonthEntry, firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO } from "../domain/dates";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinor, parseAmountExpression } from "../domain/money";
 import { signedBalanceEffectOf } from "../domain/transactions";
@@ -27,6 +27,7 @@ import { TransactionRow } from "../ui/transaction-row";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
+import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 
@@ -37,7 +38,17 @@ export default function CellEditorModal() {
   const categories = useCategories();
   const persons = usePersons();
   const plans = usePlans();
-  const transactions = useTransactionsBetween(firstDayOf(month!), lastDayOf(month!));
+  // This screen is only ever opened from a real matrix cell, but the route is
+  // still directly addressable (a bookmark, a shared URL, or the Pages 404
+  // shell resolving a bare path). Trusting the params crashed the render, so
+  // an unusable link returns to the table instead. Substituting a default
+  // month is deliberately NOT an option — it would show another cell's money.
+  const validMonth = isMonthKey(month) ? month : null;
+  const rangeMonth = validMonth ?? monthKeyOf(todayISO());
+  useEffect(() => {
+    if (!validMonth || !categoryId) navigateBack(router, "/(tabs)/cash-flow");
+  }, [validMonth, categoryId, router]);
+  const transactions = useTransactionsBetween(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
   const undo = useUndo();
   const { palette } = useTheme();
   const [entryRaw, setEntryRaw] = useState("");
@@ -60,12 +71,12 @@ export default function CellEditorModal() {
       .where(
         and(
           eq(s.cellNotes.userId, userId),
-          eq(s.cellNotes.month, month!),
+          eq(s.cellNotes.month, rangeMonth),
           eq(s.cellNotes.categoryId, categoryId!),
           isNull(s.cellNotes.deletedAt),
         ),
       ),
-    [userId, month, categoryId],
+    [userId, rangeMonth, categoryId],
     ["cell_notes"],
   ).data[0];
 
@@ -94,7 +105,7 @@ export default function CellEditorModal() {
           currency: "TRY",
           fxRate: null,
           amountTryMinor: entryMinor,
-          effectiveDate: dateForMonthEntry(month!, today),
+          effectiveDate: dateForMonthEntry(rangeMonth, today),
           categoryId: category.id,
           paymentSourceId: null,
           personId: selfId,
@@ -113,7 +124,7 @@ export default function CellEditorModal() {
 
   const saveNote = async (body: string) => {
     if (!category) return;
-    await saveCellNote(userId, month!, category.id, body, note);
+    await saveCellNote(userId, rangeMonth, category.id, body, note);
     setNoteDraft(null);
   };
 
@@ -197,7 +208,7 @@ export default function CellEditorModal() {
 
   return (
     <Screen scroll={false}>
-      <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(month!)}` }} />
+      <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(rangeMonth)}` }} />
       <FlatList
         data={cellTx}
         keyExtractor={(t) => t.id}

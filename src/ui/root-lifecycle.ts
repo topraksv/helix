@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import * as LocalAuthentication from "expo-local-authentication";
-import { kv } from "../lib/kv";
+import { kv } from "../services/kv";
 import { runMaintenance } from "../data/repo";
 import { loadRateCache, refreshRates } from "../services/fx-fetch";
 import { connectMarkets, disconnectMarkets, suspendMarkets } from "../services/markets";

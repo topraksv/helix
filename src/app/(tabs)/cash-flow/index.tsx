@@ -33,7 +33,7 @@ import {
   type LedgerBundle,
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
-import { kv } from "../../../lib/kv";
+import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
@@ -581,7 +581,17 @@ function MatrixCell({
       } : undefined}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
-      accessibilityRole={onPress ? "button" : undefined}
+      // A cell that cannot be opened (a system column, or one with nothing to
+      // edit) still has to announce its month/column/value, but an aria-label
+      // on a roleless element is discarded by assistive tech and fails axe's
+      // `aria-prohibited-attr`. `text` is the role that carries a name without
+      // implying an action.
+      // A cell that cannot be opened still has to announce its month/column and
+      // value, but an aria-label on a ROLELESS element is discarded by assistive
+      // tech and fails axe `aria-prohibited-attr`. RN Web maps `text` to no role
+      // at all, so the passthrough `group` role is what actually carries a name
+      // here without implying an action.
+      role={onPress ? "button" : "group"}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={note}
       style={[

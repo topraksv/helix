@@ -103,8 +103,59 @@ export function appPrompt(
   });
 }
 
-export function PromptHost() {
+/**
+ * The overlay both hosts render. It exists because the two were byte-identical
+ * for 22 lines, so an accessibility fix applied to one silently skipped the
+ * other. It owns the contract that must not drift: the scrim dismiss target,
+ * container Pressables marked `accessible={false}` (otherwise they swallow
+ * their children), the modal boundary, and the header that receives focus.
+ * `messageGap` is the one genuine difference — a prompt's message sits above
+ * an input, a dialog's above its buttons.
+ */
+function DialogShell({
+  title,
+  message,
+  messageGap,
+  titleRef,
+  onDismiss,
+  children,
+}: {
+  title: string;
+  message: string;
+  messageGap: number;
+  titleRef: React.RefObject<View | null>;
+  onDismiss: () => void;
+  children: React.ReactNode;
+}) {
   const { palette, scheme } = useTheme();
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onDismiss}>
+      <Pressable
+        accessible={false}
+        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
+        onPress={onDismiss}
+      >
+        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
+          <FadeIn
+            style={[
+              { backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg },
+              scheme === "light" && cardShadow,
+            ]}
+          >
+            <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
+              <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>
+            </View>
+            <Text style={[type.body, { color: palette.textSecondary, marginBottom: messageGap }]}>{message}</Text>
+            {children}
+          </FadeIn>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+export function PromptHost() {
+  const { palette } = useTheme();
   const current = usePromptStore((s) => s.current);
   const [value, setValue] = useState("");
   const titleRef = useModalAccessibility(current != null, undefined, current?.title, false);
@@ -120,68 +171,54 @@ export function PromptHost() {
   };
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={() => close(null)}>
-      <Pressable
-        accessible={false}
-        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
-        onPress={() => close(null)}
-      >
-        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
-          <FadeIn
-            style={[
-              { backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg },
-              scheme === "light" && cardShadow,
-            ]}
-          >
-            <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
-              <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{current.title}</Text>
-            </View>
-            <Text style={[type.body, { color: palette.textSecondary, marginBottom: spacing.md }]}>{current.message}</Text>
-            <TextInput
-              value={value}
-              maxLength={current.secure ? INPUT_LIMITS.password : INPUT_LIMITS.text}
-              onChangeText={setValue}
-              secureTextEntry={current.secure}
-              accessibilityLabel={current.placeholder || current.title}
-              accessibilityHint={current.message}
-              placeholder={current.placeholder}
-              placeholderTextColor={palette.textSecondary}
-              autoFocus
-              autoCapitalize="none"
-              autoCorrect={false}
-              onSubmitEditing={() => value.trim() !== "" && close(value)}
-              style={{
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: palette.border,
-                borderRadius: radius.sm,
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.sm + 2,
-                color: palette.text,
-                backgroundColor: palette.surfaceAlt,
-                marginBottom: spacing.lg,
-                fontFamily: "Inter_400Regular",
-                fontSize: 16,
-              }}
-            />
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
-              <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />
-              <Button
-                label={current.confirmLabel}
-                variant={current.danger ? "danger" : "primary"}
-                size="sm"
-                disabled={value.trim() === ""}
-                onPress={() => close(value)}
-              />
-            </View>
-          </FadeIn>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <DialogShell
+      title={current.title}
+      message={current.message}
+      messageGap={spacing.md}
+      titleRef={titleRef}
+      onDismiss={() => close(null)}
+    >
+      <TextInput
+        value={value}
+        maxLength={current.secure ? INPUT_LIMITS.password : INPUT_LIMITS.text}
+        onChangeText={setValue}
+        secureTextEntry={current.secure}
+        accessibilityLabel={current.placeholder || current.title}
+        accessibilityHint={current.message}
+        placeholder={current.placeholder}
+        placeholderTextColor={palette.textSecondary}
+        autoFocus
+        autoCapitalize="none"
+        autoCorrect={false}
+        onSubmitEditing={() => value.trim() !== "" && close(value)}
+        style={{
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border,
+          borderRadius: radius.sm,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm + 2,
+          color: palette.text,
+          backgroundColor: palette.surfaceAlt,
+          marginBottom: spacing.lg,
+          fontFamily: "Inter_400Regular",
+          fontSize: 16,
+        }}
+      />
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
+        <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />
+        <Button
+          label={current.confirmLabel}
+          variant={current.danger ? "danger" : "primary"}
+          size="sm"
+          disabled={value.trim() === ""}
+          onPress={() => close(value)}
+        />
+      </View>
+    </DialogShell>
   );
 }
 
 export function DialogHost() {
-  const { palette, scheme } = useTheme();
   const current = useDialogStore((s) => s.current);
   const titleRef = useModalAccessibility(current != null, undefined, current?.title);
   if (!current) return null;
@@ -194,32 +231,19 @@ export function DialogHost() {
   };
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={() => close(current.cancelLabel == null)}>
-      <Pressable
-        accessible={false}
-        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
-        onPress={() => close(current.cancelLabel == null)}
-      >
-        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
-          <FadeIn
-            style={[
-              { backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg },
-              scheme === "light" && cardShadow,
-            ]}
-          >
-            <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
-              <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{current.title}</Text>
-            </View>
-            <Text style={[type.body, { color: palette.textSecondary, marginBottom: spacing.lg }]}>{current.message}</Text>
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
-              {current.cancelLabel != null ? (
-                <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />
-              ) : null}
-              <Button label={current.confirmLabel} variant={current.danger ? "danger" : "primary"} size="sm" onPress={() => close(true)} />
-            </View>
-          </FadeIn>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <DialogShell
+      title={current.title}
+      message={current.message}
+      messageGap={spacing.lg}
+      titleRef={titleRef}
+      onDismiss={() => close(current.cancelLabel == null)}
+    >
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
+        {current.cancelLabel != null ? (
+          <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />
+        ) : null}
+        <Button label={current.confirmLabel} variant={current.danger ? "danger" : "primary"} size="sm" onPress={() => close(true)} />
+      </View>
+    </DialogShell>
   );
 }
