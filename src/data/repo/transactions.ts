@@ -15,8 +15,6 @@ import { CreditCardCycleRequiredError } from "./errors";
 // ---------------------------------------------------------------------------
 
 export interface NewTransaction {
-  /** Stable for one UI operation; a retry with the same id converges. */
-  operationId?: string;
   type: TransactionType;
   amountMinor: Minor;
   currency: string;
@@ -136,8 +134,7 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
   assertInputWithinLimit(input.note, "note");
   await assertTransactionCategory(userId, input.type, input.categoryId, true);
   const today = todayISO();
-  const id = input.operationId ?? newId();
-  const { operationId: _operationId, ...transactionInput } = input;
+  const id = newId();
   const dates = await resolveSingleTransactionDates(userId, input);
   await writeRows(userId, [
     ...(dates.statementWrite ? [dates.statementWrite] : []),
@@ -145,7 +142,7 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
       table: "transactions",
       row: {
         id,
-        ...transactionInput,
+        ...input,
         purchaseDate: dates.purchaseDate,
         effectiveDate: dates.effectiveDate,
         cardStatementId: dates.cardStatementId,
@@ -278,7 +275,6 @@ export async function bulkMonthEntry(
   month: MonthKey,
   personId: string,
   entries: { categoryId: string; kind: "expense" | "income"; amountMinor: Minor; isInvestment?: boolean }[],
-  operationId = newId(),
 ): Promise<void> {
   if (isCurrentOrFutureMonth(month)) throw new Error("Bulk history accepts past months only");
   entries.forEach((entry) => assertSupportedMinorAmount(entry.amountMinor, false));
@@ -294,7 +290,7 @@ export async function bulkMonthEntry(
     entries.map(async (entry) => ({
       table: "transactions" as const,
       row: {
-        id: await deterministicId(naturalKeys.bulkTransaction(operationId, entry.categoryId)),
+        id: newId(),
         type: entry.isInvestment ? "transfer" : entry.kind,
         amountMinor: entry.amountMinor,
         currency: "TRY",

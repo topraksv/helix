@@ -1,10 +1,15 @@
-/** Month detail: per-column breakdown; expand a column to see and manage its transactions + cell note. */
+/**
+ * Month detail: per-column breakdown; expand a column to see and manage its
+ * transactions + cell note. The whole screen is one flattened FlatList so an
+ * expanded category with 1.000+ rows mounts lazily instead of all at once;
+ * collapsed groups cost one header row each.
+ */
 
 import React, { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
-import { ChevronDown, ChevronUp, Inbox, Pencil, StickyNote, Trash2 } from "lucide-react-native";
+import { ChevronDown, ChevronUp, Inbox, StickyNote } from "lucide-react-native";
 import { getDb } from "../../../db/client";
 import * as s from "../../../db/schema";
 import { restoreRow } from "../../../db/mutations";
@@ -18,11 +23,21 @@ import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, Row, Screen, Spread } from "../../../ui/components";
+import { Amount, Body, Button, Card, Divider, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
-import { spacing, type, useTheme } from "../../../ui/theme";
-import { INITIAL_TRANSACTION_ROWS, nextVisibleTransactionCount } from "../../../ui/progressive-list";
+import { radius, spacing, useTheme } from "../../../ui/theme";
+
+type Categories = ReturnType<typeof useCategories>;
+type MonthTransactions = ReturnType<typeof useTransactionsBetween>;
+
+type MonthListItem =
+  | { kind: "summary" }
+  | { kind: "empty" }
+  | { kind: "group-header"; categoryId: string; category: Categories[number] | undefined; txs: MonthTransactions; open: boolean }
+  | { kind: "tx"; categoryId: string; category: Categories[number] | undefined; tx: MonthTransactions[number]; last: boolean }
+  | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
 
 export default function MonthDetailScreen() {
   const { month } = useLocalSearchParams<{ month: string }>();
@@ -34,7 +49,6 @@ export default function MonthDetailScreen() {
   const transactions = useTransactionsBetween(firstDayOf(month!), lastDayOf(month!));
   const bundle = useLedger(yearOf(month!));
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [visibleTransactions, setVisibleTransactions] = useState(INITIAL_TRANSACTION_ROWS);
   const { palette } = useTheme();
   const undo = useUndo();
 
@@ -67,56 +81,74 @@ export default function MonthDetailScreen() {
     }
   };
 
-  return (
-    <Screen>
-      <Stack.Screen options={{ title: monthLabel(month!) }} />
-      {ledgerMonth ? (
-        <Card>
-          <Spread>
-            <Body muted>{tr.cashflow.opening}</Body>
-            <Amount minor={ledgerMonth.openingMinor} />
-          </Spread>
-          <Spread style={{ marginTop: spacing.xs }}>
-            <Body muted>{tr.cashflow.income}</Body>
-            <Amount minor={ledgerMonth.incomeMinor} colorized={false} color={palette.positiveText} />
-          </Spread>
-          <Spread style={{ marginTop: spacing.xs }}>
-            <Body muted>{tr.cashflow.expense}</Body>
-            <Amount minor={-ledgerMonth.expenseMinor} />
-          </Spread>
-          {ledgerMonth.transferMinor !== 0 ? (
-            <Spread style={{ marginTop: spacing.xs }}>
-              <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.transfer}</Body>
-              <Amount minor={-ledgerMonth.transferMinor} />
-            </Spread>
-          ) : null}
-          {ledgerMonth.adjustmentMinor !== 0 ? (
-            <Spread style={{ marginTop: spacing.xs }}>
-              <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.adjustment}</Body>
-              <Amount minor={ledgerMonth.adjustmentMinor} />
-            </Spread>
-          ) : null}
-          <Divider />
-          <Spread>
-            <Heading style={{ marginVertical: 0 }}>{tr.cashflow.closing}</Heading>
-            <Amount minor={ledgerMonth.closingMinor} large />
-          </Spread>
-        </Card>
-      ) : null}
+  const items: MonthListItem[] = [
+    { kind: "summary" },
+    ...(transactions.length === 0 ? [{ kind: "empty" } as const] : []),
+    ...[...byCategory.entries()].flatMap<MonthListItem>(([categoryId, txs]) => {
+      const category = categories.find((c) => c.id === categoryId);
+      const open = expanded === categoryId;
+      return [
+        { kind: "group-header", categoryId, category, txs, open },
+        ...(open ? txs.map((tx, index) => ({ kind: "tx" as const, categoryId, category, tx, last: index === txs.length - 1 })) : []),
+        ...(open ? [{ kind: "group-footer" as const, categoryId, category }] : []),
+      ];
+    }),
+  ];
 
-      {transactions.length === 0 ? <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} /> : null}
+  // Card look, split across virtualized rows: the header owns the top radii,
+  // the footer (or a closed header) owns the bottom radii + group margin.
+  const groupSurface = { backgroundColor: palette.surface, paddingHorizontal: spacing.lg };
+  const groupTop = { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg };
+  const groupBottom = { borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg, marginBottom: spacing.md };
 
-      {[...byCategory.entries()].map(([categoryId, txs]) => {
-        const category = categories.find((c) => c.id === categoryId);
+  const renderItem = ({ item }: { item: MonthListItem }) => {
+    switch (item.kind) {
+      case "summary":
+        return ledgerMonth ? (
+          <Card>
+            <Spread>
+              <Body muted>{tr.cashflow.opening}</Body>
+              <Amount minor={ledgerMonth.openingMinor} />
+            </Spread>
+            <Spread style={{ marginTop: spacing.xs }}>
+              <Body muted>{tr.cashflow.income}</Body>
+              <Amount minor={ledgerMonth.incomeMinor} colorized={false} color={palette.positiveText} />
+            </Spread>
+            <Spread style={{ marginTop: spacing.xs }}>
+              <Body muted>{tr.cashflow.expense}</Body>
+              <Amount minor={-ledgerMonth.expenseMinor} />
+            </Spread>
+            {ledgerMonth.transferMinor !== 0 ? (
+              <Spread style={{ marginTop: spacing.xs }}>
+                <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.transfer}</Body>
+                <Amount minor={-ledgerMonth.transferMinor} />
+              </Spread>
+            ) : null}
+            {ledgerMonth.adjustmentMinor !== 0 ? (
+              <Spread style={{ marginTop: spacing.xs }}>
+                <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.adjustment}</Body>
+                <Amount minor={ledgerMonth.adjustmentMinor} />
+              </Spread>
+            ) : null}
+            <Divider />
+            <Spread>
+              <Heading style={{ marginVertical: 0 }}>{tr.cashflow.closing}</Heading>
+              <Amount minor={ledgerMonth.closingMinor} large />
+            </Spread>
+          </Card>
+        ) : null;
+      case "empty":
+        return <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />;
+      case "group-header": {
+        const { categoryId, category, txs, open } = item;
         const title = category?.name ?? tr.common.none;
         const selfSum = txs.filter((t) => selfIds.has(t.personId)).reduce(
           (sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null),
           0,
         );
         const note = cellNotes.find((n) => n.categoryId === categoryId);
-        const open = expanded === categoryId;
         return (
-          <Card key={categoryId}>
+          <View style={[groupSurface, groupTop, { paddingTop: spacing.lg, paddingBottom: open ? spacing.sm : spacing.lg }, open ? null : groupBottom]}>
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ expanded: open }}
@@ -124,7 +156,6 @@ export default function MonthDetailScreen() {
               onPress={() => {
                 selectionTapIfChanged(expanded, open ? "" : categoryId);
                 setExpanded(open ? null : categoryId);
-                setVisibleTransactions(INITIAL_TRANSACTION_ROWS);
               }}
             >
               <Spread>
@@ -141,53 +172,71 @@ export default function MonthDetailScreen() {
                 </Row>
               </Spread>
             </Pressable>
-            {open ? (
-              <View style={{ marginTop: spacing.md }}>
-                {txs.slice(0, visibleTransactions).map((t, index) => {
-                  const installmentTitle = t.installmentPlanId
-                    ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)
-                    : null;
-                  return (
-                  <View key={t.id}>
-                    <Spread style={{ paddingVertical: spacing.sm }}>
-                      <View style={{ flex: 1 }}>
-                        {installmentTitle ? <Body style={{ fontFamily: "Inter_500Medium" }}>{installmentTitle}</Body> : null}
-                        <Body muted={installmentTitle != null}>
-                          {transactionDateText(t)}
-                          {t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : ""}
-                          {t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : ""}
-                          {!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : ""}
-                        </Body>
-                        {t.note && t.note !== installmentTitle ? <Text style={[type.small, { color: palette.textSecondary }]}>{t.note}</Text> : null}
-                        {t.amountTryMinor < 0 ? (
-                          <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
-                        ) : null}
-                        {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
-                      </View>
-                      <Row gap={spacing.sm}>
-                        <Amount minor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)} />
-                        <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })} />
-                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void removeTx(t.id)} />
-                      </Row>
-                    </Spread>
-                    {index < Math.min(txs.length, visibleTransactions) - 1 ? <Divider /> : null}
-                  </View>
-                  );
-                })}
-                {txs.length > visibleTransactions ? (
-                  <Button
-                    label={tr.common.showMore(txs.length - visibleTransactions)}
-                    variant="secondary"
-                    size="sm"
-                    onPress={() => setVisibleTransactions(nextVisibleTransactionCount(txs.length, visibleTransactions))}
-                  />
-                ) : null}
-                {category ? <CellNoteEditor userId={userId} month={month!} categoryId={category.id} existing={note} /> : null}
-              </View>
-            ) : null}
-          </Card>
+          </View>
         );
-      })}
+      }
+      case "tx": {
+        const { category, tx: t, last } = item;
+        const installmentTitle = t.installmentPlanId
+          ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)
+          : null;
+        return (
+          <View style={groupSurface}>
+            <TransactionRow
+              installmentTitle={installmentTitle}
+              dateText={
+                transactionDateText(t) +
+                (t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : "") +
+                (t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : "") +
+                (!selfIds.has(t.personId) ? `  ·  ${personName.get(t.personId) ?? ""}` : "")
+              }
+              note={t.note}
+              pending={t.status === "pending"}
+              reversalBadge={
+                t.amountTryMinor < 0
+                  ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }
+                  : null
+              }
+              amountMinor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)}
+              onEdit={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
+              onDelete={() => void removeTx(t.id)}
+              divider={!last}
+            />
+          </View>
+        );
+      }
+      case "group-footer":
+        return (
+          <View style={[groupSurface, groupBottom, { paddingBottom: spacing.lg }]}>
+            {item.category ? (
+              <CellNoteEditor
+                userId={userId}
+                month={month!}
+                categoryId={item.category.id}
+                existing={cellNotes.find((n) => n.categoryId === item.categoryId)}
+              />
+            ) : null}
+          </View>
+        );
+    }
+  };
+
+  return (
+    <Screen scroll={false}>
+      <Stack.Screen options={{ title: monthLabel(month!) }} />
+      <FlatList
+        data={items}
+        keyExtractor={(item) =>
+          item.kind === "summary" || item.kind === "empty"
+            ? item.kind
+            : item.kind === "tx"
+              ? `tx:${item.tx.id}`
+              : `${item.kind}:${item.categoryId}`
+        }
+        renderItem={renderItem}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      />
     </Screen>
   );
 }
