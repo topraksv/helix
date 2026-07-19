@@ -104,7 +104,7 @@ matris **BLOCKED** kaldı; kod başarısız değil, dış kabul kanıtı yok.
 
 ### Cihaz sonuç kaydı
 
-Release yapan kişi bu tabloyu doldurup tracker/handoff’a kanıt linkini ekler:
+Release yapan kişi bu tabloyu doldurup handoff’a kanıt linkini ekler:
 
 | Tarih | Cihaz/OS | Build + runtime + update group | Tester | Geçen senaryolar | Kalan hata/kanıt |
 |---|---|---|---|---|---|

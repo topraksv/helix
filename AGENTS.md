@@ -137,11 +137,14 @@ agent-to-agent communication that did not occur.
   a still-fresh quote's receipt time (Harem re-sends a symbol only when its
   price CHANGES), but an already-expired or snapshot-hydrated quote must never
   be re-stamped fresh by another symbol's tick. The socket runs only while an
-  unlocked authenticated app is active. The converter reuses a fresh live
-  USD/EUR quote, then falls back to the dated user-scoped FX cache (and
-  refreshes stale/missing rates on screen focus via the throttled
-  session-scoped `ensureFreshRates`); it must never open a second market
-  request for the same conversion.
+  unlocked authenticated app is active. The read-only converter mirrors the
+  card: a fresh live USD/EUR quote converts silently; the card's last-known
+  quote converts with its receipt time visibly badged; the dated user-scoped
+  FX cache is used only when it is strictly newer than that quote (and
+  stale/missing rates refresh on screen focus via the throttled session-scoped
+  `ensureFreshRates`). It must never open a second market request for the same
+  conversion. Ledger-writing conversions (expected-payment confirms) keep the
+  strict 60 s `marketSellRateTry` contract — never relax those to last-known.
 - **Notification consent is device-local and opt-in.** Do not request
   notification permission during boot. Disabled notifications clear legacy
   schedules; sign-out/account switch clears scheduled and presented account
@@ -151,6 +154,10 @@ agent-to-agent communication that did not occur.
   notifications are the bounded platform queue. Subscription logos resolve automatically: utilities and unknowns
   stay local; a known/stored domain may use Google's favicon service only after
   strict public-host validation/encoding, with disk cache and a local fallback.
+  The web CSP `img-src` must keep allowing `https://*.gstatic.com` — the
+  favicon service 301-redirects there, and without it every logo silently
+  falls back to the chip. All logo variants render in one shared frameless
+  tile (near-square, `size/3` corner radius, no border).
 - **Sensitive UI is covered outside the active app.** Keep the root
   `PrivacyCover`: native `inactive`/`background` states render an isolated modal
   before app-switcher capture, and framed web pages expose only the safe direct-

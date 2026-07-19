@@ -24,9 +24,7 @@ subscriptions and budgets — with a spreadsheet mind and a mobile heart.*
 </div>
 
 <p align="center">
-  <img src="assets/screenshots/dashboard-light.png" alt="Bütçe Özeti — güncel bakiye, ay sonu tahmini ve yaklaşan ödemeler" width="270">
-  &nbsp;&nbsp;
-  <img src="assets/screenshots/dashboard-dark.png" alt="Aynı ekranın koyu tema hali" width="270">
+  <img src="assets/screenshots/dashboard-dark.png" alt="Bütçe Özeti — güncel bakiye, ay sonu tahmini ve yaklaşan ödemeler" width="300">
 </p>
 
 ## Neden Helix?
@@ -48,8 +46,8 @@ hesaplamayı, tekrarları ve veri güvenliğini senin yerine üstlenir.
 
 | Mali Tablo | Abonelikler | Analiz |
 |:---:|:---:|:---:|
-| <img src="assets/screenshots/cash-flow-light.png" alt="Mali Tablo — yıl matrisi" width="240"> | <img src="assets/screenshots/subscriptions-light.png" alt="Abonelikler — aylık maliyet ve sonraki ödemeler" width="240"> | <img src="assets/screenshots/analytics-light.png" alt="Analiz — arama, bütçeler ve grafikler" width="240"> |
-| Yıl matrisinde her ay × kalem hücresi düzenlenebilir; mevcut ay otomatik odaklanır. | Aylık/yıllık toplam maliyet, sonraki ödeme tarihi, deneme süresi ve otomatik ödeme bir arada. | Dönem bazlı grafikler, kategori bütçe durumu ve tüm geçmişte işlem arama. |
+| <img src="assets/screenshots/cash-flow-dark.png" alt="Mali Tablo — yıl matrisi" width="240"> | <img src="assets/screenshots/subscriptions-dark.png" alt="Abonelikler — marka logoları, aylık maliyet ve sonraki ödemeler" width="240"> | <img src="assets/screenshots/analytics-dark.png" alt="Analiz — arama, kategori bütçeleri ve dönem filtreleri" width="240"> |
+| Yıl matrisinde her ay × kalem hücresi düzenlenebilir; mevcut ay otomatik odaklanır. | Marka logolu kartlarda aylık/yıllık toplam maliyet, sonraki ödeme tarihi ve otomatik ödeme bir arada. | Dönem bazlı grafikler, kategori bütçe durumu ve tüm geçmişte işlem arama. |
 
 ## Neler yapabilirsin?
 

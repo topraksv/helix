@@ -11,10 +11,11 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { ArrowDownUp } from "lucide-react-native";
 import { formatMinor, roundHalfAwayFromZero } from "../domain/money";
+import { todayISO } from "../domain/dates";
 import { ensureFreshRates, loadRateCache, lookupRate, SUPPORTED_CURRENCIES, useFxRates, type Currency } from "../services/fx-fetch";
-import { marketSellRateTry, useMarkets } from "../services/markets";
+import { marketLastKnownRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
-import { dateLabel, tr } from "../i18n/tr";
+import { clockOrDateTimeLabel, dateLabel, tr } from "../i18n/tr";
 import { Badge, Body, Label, MoneyField, Segmented } from "./components";
 import { radius, spacing, type, useTheme } from "./theme";
 
@@ -35,23 +36,36 @@ export function CurrencyConverter() {
     void loadRateCache(userId).catch(() => {});
   }, [userId]);
 
-  const converterRate = (currency: Currency) => {
-    const liveRateTry = marketSellRateTry(currency);
-    if (liveRateTry != null) return { rateTry: liveRateTry, isStale: false, rateDate: null };
+  // Rate resolution mirrors the Summary card exactly: a live quote converts
+  // silently; the card's last-known quote converts with its receipt time shown;
+  // the dated FX cache is only used when it is strictly newer than that quote.
+  // Ledger-writing conversions elsewhere keep the strict 60 s live contract.
+  type ConverterBadge =
+    | { kind: "market"; receivedAt: number }
+    | { kind: "fx"; rateDate: string }
+    | null;
+  const converterRate = (currency: Currency): { rateTry: number; badge: ConverterBadge } | null => {
+    const market = marketLastKnownRateTry(currency);
+    if (market?.live) return { rateTry: market.rateTry, badge: null };
     const cached = lookupRate(userId, currency);
-    return cached == null
-      ? null
-      : { rateTry: cached.rate.rateTry, isStale: cached.isStale, rateDate: cached.rate.rateDate };
+    if (market && (cached == null || todayISO(new Date(market.receivedAt)) >= cached.rate.rateDate)) {
+      return { rateTry: market.rateTry, badge: { kind: "market", receivedAt: market.receivedAt } };
+    }
+    if (cached == null) return null;
+    return {
+      rateTry: cached.rate.rateTry,
+      badge: cached.isStale ? { kind: "fx", rateDate: cached.rate.rateDate } : null,
+    };
   };
   const rateFrom = converterRate(from);
   const rateTo = converterRate(to);
   const ready = rateFrom != null && rateTo != null;
-  const stale = (rateFrom?.isStale ?? false) || (rateTo?.isStale ?? false);
-  const staleDate = rateFrom?.isStale ? rateFrom.rateDate : rateTo?.isStale ? rateTo?.rateDate : null;
+  const fxBadge = [rateFrom?.badge, rateTo?.badge].find((b) => b?.kind === "fx") ?? null;
+  const marketBadge = [rateFrom?.badge, rateTo?.badge].find((b) => b?.kind === "market") ?? null;
 
-  // A stale or missing rate refreshes while the screen is open — never require
+  // A dated or missing rate refreshes while the screen is open — never require
   // an app restart. Throttled + session-scoped inside `ensureFreshRates`.
-  const needsRefresh = !ready || stale;
+  const needsRefresh = !ready || fxBadge != null || marketBadge != null;
   useFocusEffect(
     useCallback(() => {
       if (needsRefresh) ensureFreshRates(userId);
@@ -127,12 +141,13 @@ export function CurrencyConverter() {
           <Body muted>{resultOutOfRange ? tr.calc.resultUnavailable : ready ? tr.calc.enterAmount : tr.calc.rateMissing}</Body>
         )}
       </View>
-      {stale && ready ? (
+      {ready && (fxBadge || marketBadge) ? (
         <View style={{ marginTop: spacing.sm, alignItems: "flex-start" }}>
-          <Badge
-            text={`⚠ ${staleDate ? tr.calc.staleRateDated(dateLabel(staleDate)) : tr.tx.staleRate}`}
-            tone="warning"
-          />
+          {fxBadge?.kind === "fx" ? (
+            <Badge text={`⚠ ${tr.calc.staleRateDated(dateLabel(fxBadge.rateDate))}`} tone="warning" />
+          ) : marketBadge?.kind === "market" ? (
+            <Badge text={tr.calc.lastLiveRate(clockOrDateTimeLabel(marketBadge.receivedAt))} tone="muted" />
+          ) : null}
         </View>
       ) : null}
     </View>

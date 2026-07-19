@@ -60,7 +60,7 @@ https://topraksv.github.io/helix/upcoming
 https://topraksv.github.io/helix/settings
 ```
 
-Workflow run URL’si ve sonuç commit’i tracker release kaydına yazılır.
+Workflow run URL’si ve sonuç commit’i `docs/AI_HANDOFF.md` release kaydına yazılır.
 
 ### Web rollback
 
@@ -76,7 +76,7 @@ JS/asset-only değişiklik, protected `main` release commit’inden yayımlanır
 ```bash
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 git status --short                  # boş olmalı
-git rev-parse HEAD                  # tracker'daki main commit olmalı
+git rev-parse HEAD                  # handoff'taki release commit'i olmalı
 npx eas-cli update --branch preview \
   -m "<kısa, davranış odaklı özet>" --non-interactive
 ```
@@ -212,7 +212,7 @@ ekran/console içeriği kontrol edilir.
 
 ## Paket kapanış kontrolü
 
-- Working tree temiz ve paket kapsamı ID’lerle tracker’da.
+- Working tree temiz ve paket kapsamı `docs/AI_HANDOFF.md`’de.
 - Typecheck, bütün Vitest suite’i, zero-warning lint, production export/budget ve
   Playwright suite’i temiz.
 - PR’ın required `quality` check’i ve `main` Pages deploy’u başarılı.

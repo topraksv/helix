@@ -18,6 +18,7 @@ import {
   disconnectMarkets,
   hydrateSnapshot,
   markMarketConnectionInterrupted,
+  marketLastKnownRateTry,
   marketSellRateTry,
   MARKET_SYMBOLS,
   suspendMarkets,
@@ -67,7 +68,7 @@ describe("external FX provider validation", () => {
 describe("remote logo boundary", () => {
   it("normalizes public hostnames and encodes the favicon query", () => {
     expect(normalizeLogoDomain("https://WWW.Netflix.com/account")).toBe("www.netflix.com");
-    expect(remoteFaviconUrl("netflix.com")).toBe("https://www.google.com/s2/favicons?domain=netflix.com&sz=64");
+    expect(remoteFaviconUrl("netflix.com")).toBe("https://www.google.com/s2/favicons?domain=netflix.com&sz=128");
   });
 
   it("rejects credentials, ports and local/IP targets", () => {
@@ -114,6 +115,26 @@ describe("live market freshness", () => {
     expect(marketSellRateTry("USD", now)).toBe(40.5);
     expect(marketSellRateTry("EUR", now)).toBeNull();
     expect(marketSellRateTry("GBP", now)).toBeNull();
+    useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
+  });
+
+  it("exposes the card's last-known rate with an honest live flag for the converter", () => {
+    const now = 10_000;
+    useMarkets.setState({
+      status: "stale",
+      prices: {
+        USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: now },
+        EURTRY: { code: "EURTRY", buyTry: 47, sellTry: 47.5, direction: "", at: "", receivedAt: now - 60_001 },
+      },
+      lastEventAt: now,
+    });
+    // Fresh quote → live; expired quote still converts but is flagged dated —
+    // the converter mirrors exactly what the Summary card displays.
+    expect(marketLastKnownRateTry("USD", now)).toEqual({ rateTry: 40.5, receivedAt: now, live: true });
+    expect(marketLastKnownRateTry("EUR", now)).toEqual({ rateTry: 47.5, receivedAt: now - 60_001, live: false });
+    // Unsupported currency or a future-stamped quote stays unusable.
+    expect(marketLastKnownRateTry("GBP", now)).toBeNull();
+    expect(marketLastKnownRateTry("USD", now - 1_000)).toBeNull();
     useMarkets.setState({ prices: {}, status: "idle", lastEventAt: null });
   });
 
