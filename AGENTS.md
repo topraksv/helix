@@ -416,11 +416,20 @@ keeps seeing the old version (this is a recurring confusion; own it).
 
 ## Before you commit
 
-Run all three; they must be clean:
+Run the fast gate; it must be clean:
 
 ```
-npm run typecheck && npm test && npx expo lint
+npm run verify            # typecheck + vitest + expo lint
 ```
+
+Before pushing a release, run the same set CI runs, in CI's order:
+
+```
+npm run verify:release    # verify + expo export -p web + bundle:check + e2e
+```
+
+Both are scripts so local and CI cannot drift apart, and so every agent
+types one command instead of remembering three.
 
 Verify web changes end-to-end with the Playwright flow (see the scratchpad
 `flow.js`) against a static export, not just unit tests.

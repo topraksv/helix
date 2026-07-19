@@ -59,14 +59,41 @@ chronology — entries older than the last five are simply dropped.
     `codeql.yml` now runs `security-extended` for javascript-typescript,
     deliberately OUTSIDE the required `quality` check so an advisory finding
     can never block the Pages deploy.
-  - Secret scanning: the repository setting is ENABLED, with push protection
-    also enabled (`security_and_analysis`); an older audit note claiming it
-    was off is stale. This token lacks the scope to read the alert LIST, so
-    the real list was NOT inspected. The local substitute — 204 commits of
-    history plus the tracked tree scanned for provider key prefixes, JWTs,
-    private-key headers and secret-bearing filenames — found only prose in
-    `docs/RELEASE.md` describing the policy, and no ignored-secret file was
-    ever committed. That is NOT equivalent to reading GitHub's list.
+  - Secret scanning: ENABLED with push protection. The alert list WAS read on
+    the finalization pass (`gh api .../secret-scanning/alerts`, HTTP 200 with
+    the existing `repo` scope): **0 open, 0 resolved**. An earlier note in this
+    file claimed the token lacked the scope — that was wrong, and the local
+    history scan it fell back on was never equivalent. Still off, and worth a
+    user decision (changing them is a settings mutation, not done here):
+    `secret_scanning_non_provider_patterns` and `..._validity_checks`, so only
+    known provider patterns are matched today.
+- Consolidation pass (same branch, after the audit packages above). Dead-code
+  scanning found the tree genuinely clean: every knip "unused file/dependency"
+  hit was a false positive, including `public/sw.js`, which knip cannot see is
+  registered by an inline script in `src/app/+html.tsx` and is live in
+  production. jscpd measured 0.35% duplication. What was real:
+  - `src/lib` (undocumented, 2 files, both side-effecting platform code) folded
+    into `src/services` with `git mv`; three services already reached into it.
+  - `dialog.tsx` had 22 byte-identical lines in `PromptHost`/`DialogHost`
+    carrying the modal a11y contract, so a fix to one skipped the other. Now
+    one private `DialogShell` (two call sites, not a new file).
+  - `/cash-flow/[month]` built its SQLite range from the raw URL segment.
+    Probed: `lastDayOf` THROWS on "garbage", "", "2026-13", "2026-99", during
+    render — `/helix/cash-flow/garbage` white-screened. Same class as the
+    `/cell-editor` fix, missed on the sibling route. The format knowledge moved
+    to `isMonthKey` in `src/domain/dates.ts`; both screens share it.
+  - Backup/CSV export/restore rows were bare `void export()`: no busy state, no
+    catch. A failed backup was indistinguishable from a slow one. Now on the
+    existing `useOperationGuard` with an `ActivityIndicator` and surfaced
+    errors.
+  - `npm run verify` / `verify:release` replace the three-command instruction so
+    local and CI cannot drift.
+- Layout non-negotiables are now tested, not assumed: 26 routes × {390, 1440}px
+  produce no real truncation, no line clamping, one toggle size per route and no
+  horizontal page scroll. The scan self-verifies — RN Web puts
+  `text-overflow: ellipsis` on every Text node, so it injects a truncated and a
+  clamped element and asserts it detects exactly those before trusting a clean
+  sweep.
 - Route-by-route UX audit: 26 reachable routes × {390, 1440} px × {light,
   dark}, on a populated workspace. Found and fixed `aria-prohibited-attr` on
   matrix cells (13 nodes), `aria-required-attr` on both reorder grips (18
@@ -76,10 +103,10 @@ chronology — entries older than the last five are simply dropped.
   rules do not cover). It also caught a real crash: `/cell-editor` opened
   without params threw on `lastDayOf(month!)`. The sweep is now a permanent
   test (~11 s). No committed visual baseline moved.
-- Measured performance (static export, localhost): boot-to-interactive 329 ms,
-  FCP 68 ms, domInteractive 31 ms; client-side tab switch median 40 ms / p95
-  55 ms over 60 switches; JS heap 45.2 MB before and 45.2 MB after those 60
-  switches (delta 0.0 MB — empirical confirmation of the listener/timer/epoch
+- Measured performance (static export, localhost), re-run at branch head after
+  the consolidation: FCP 68 ms, domInteractive 29 ms, loadEnd 131 ms; client-
+  side tab switch median 34 ms / p95 46 ms over 60 switches; JS heap 42.6 MB
+  before and 42.6 MB after those 60 switches (delta 0.0 MB — empirical confirmation of the listener/timer/epoch
   cleanup audit). No bottleneck was demonstrated, so FlashList, Zustand/signals
   migration, TanStack Query/SWR and blanket memoisation stay rejected.
 - Supabase live logs and pgTAP remain UNVERIFIED: no `supabase` CLI on PATH,
@@ -117,9 +144,9 @@ chronology — entries older than the last five are simply dropped.
   gstatic favicon redirect (logos actually render on web now); README
   screenshots regenerated as a uniform dark set from a 105-row multi-month
   demo restore.
-- Verification (this audit, run locally on the working tree): strict typecheck
-  clean; Vitest 48 test files / 310 tests (was 47 / 296); Playwright 3 spec
-  files / 11 cases (was 10) over 20 committed visual baselines, all UNCHANGED;
+- Verification (final, run locally at branch head): strict typecheck clean;
+  Vitest 48 test files / 313 tests (was 47 / 296); Playwright 3 spec files /
+  13 cases (was 10) over 20 committed visual baselines, all UNCHANGED;
   zero-warning Expo lint; production `expo export` inside every bundle budget.
   `tests/helpers.ts` and `e2e/helpers.ts` are helper-only and are not counted
   as test files. Both contrast fixes and the
