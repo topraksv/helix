@@ -15,7 +15,7 @@ export function currentMonthKey(): string {
 }
 
 /** Registrable host of the live market feed (`src/services/markets.ts`). */
-export const MARKET_FEED_HOST = "haremaltin.com";
+const MARKET_FEED_HOST = "haremaltin.com";
 
 /**
  * Whether a socket URL belongs to the market feed.
