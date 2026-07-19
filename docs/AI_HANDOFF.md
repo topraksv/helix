@@ -6,24 +6,32 @@ and old chronology in `docs/handoffs/`.
 
 ## Current state
 
-- Updated: 2026-07-18 (Europe/Istanbul)
-- Work: P11 shipped through PR #34/main `93e12ab`; this docs-only release-record
-  branch starts from that commit.
-- Outcome: exact requested light/dark palette; shared quiet controls; standard
-  44×44 back; nested tab reset; always-visible month-end forecast; current-month
-  donut/bar chart on Summary; unused exports/dependency/assets removed. Current
-  diff is net 1.000+ lines smaller.
-- Local verification: strict unused typecheck; 48 files/290 Vitest tests;
-  zero-warning Expo lint; Expo dependency check; 52-route web export; 10/10
-  Playwright flows, axe and 20 responsive light/dark baselines; production
-  export/bundle and diff checks. SDK 54 still has 17 moderate transitive
-  advisories; its only offered audit fix jumps to SDK 57 and remains
-  `BACKLOG-SDK-01`.
-- Release: PR quality `29655641593` and main quality→Pages `29655797800`
-  passed; live root/Analytics/Transaction return 200. EAS `preview` group
-  `5abb5e1b-f99a-47da-9e63-ceeab5a864de`, runtime `1.0.0`, iOS+Android and
-  commit `93e12ab`; initial health is 0 install/0 failure. No native config
-  changed, so no rebuild is needed. Installed delivery remains unverified.
+- Updated: 2026-07-19 (Europe/Istanbul)
+- Work: Claude's nine-package user audit. P1–5 merged as PR #36 (`e69f386`),
+  P6–7 as PR #37 (`e66eeb3`); the P8/P9 branch `fix/audit-p8` starts from
+  `e66eeb3`.
+- Outcome highlights: logout→login no longer flashes onboarding (grace waits
+  for the post-sync onboarded re-read); verifyPassword recovers the e-mail
+  after offline bootstrap instead of "Supabase yapılandırılmadı"; semantic
+  palette is green income / red expense / amber warning with a hue-contract
+  test (purple banned); markets keep a device-local snapshot + dated FX
+  fallback (no "—" placeholders) and the converter refreshes stale rates on
+  focus; cash-flow phone tools gained captions; subscriptions/incomes share
+  the new RuleRow; category deletion cascades to budgets atomically (hook
+  inner-joins live categories, maintenance cleans provable orphans only);
+  inert operationId layer removed; month detail/cell editor/analysis search
+  are real FlatLists (1.200-row scenario: ~160 ms open, ~116 mounted rows);
+  README rebuilt with real data screenshots; tsconfig excludes build output.
+- Local verification: strict typecheck; 47 files/293 Vitest; zero-warning
+  Expo lint; production export within all bundle budgets; 10/10 Playwright
+  incl. axe and visual baselines (one cash-flow baseline intentionally
+  regenerated for the captioned toolbar); 1.200-transaction virtualization
+  measured on the static export. SDK 54 advisories remain `BACKLOG-SDK-01`.
+- Release: PR #36 quality + main Pages run `29658175041` (live 200) and OTA
+  group `f82de4f5-2e28-468d-9ec8-0ad3f06db24d`; PR #37 quality + OTA group
+  `d3461e52-9dfd-436a-8bcd-051d7543e879` (commit `e66eeb3`), Pages run
+  `29666823091`. Runtime `1.0.0`, channel `preview`, iOS+Android; no native
+  config changed. Installed delivery remains unverified.
 
 ## Stable system and open limits
 
@@ -46,6 +54,18 @@ entries; archive the oldest as a compact row. Never call previous work verified
 without inspecting its diff and running proportional checks.
 
 ## Recent handoffs
+
+### 2026-07-19 — Claude · Nine-package user audit (P1–P8)
+
+- Base `7f2e133`; PR #36 → main `e69f386` (Pages `29658175041`, OTA
+  `f82de4f5`); PR #37 → main `e66eeb3` (Pages `29666823091`, OTA
+  `d3461e52`); P8/P9 continues on `fix/audit-p8`.
+- Auth flash/error mapping, semantic palette contract, markets snapshot +
+  converter focus refresh, captioned cash-flow tools, shared RuleRow,
+  budget cascade on category delete, operationId removal, FlatList
+  virtualization, README/tsconfig/docs cleanup.
+- Full local gates + protected PR quality passed; 1.200-row virtualization
+  measured on the static export. Physical native acceptance still open.
 
 ### 2026-07-18 — Codex · P11 simplicity and UI regression
 
@@ -82,10 +102,3 @@ without inspecting its diff and running proportional checks.
   gates; fixed web picked-file/backup/a11y/tab issues; task-first README plus
   testing/privacy/release contracts. Full local/remote gates passed.
 
-### 2026-07-18 — Codex · P6 product and IA
-
-- Base `3a59927`; PR #18; main `40c0fea`; Pages `29643476129`; EAS group
-  `ea6a17fd-610c-4370-8ce7-91cbb753bcb4`.
-- Added transaction search, upcoming timeline, synced budgets and weekly/
-  biweekly income; simplified onboarding/IA. Migration 7, 24 pgTAP and full
-  gates passed; installed delivery remained unverified.
