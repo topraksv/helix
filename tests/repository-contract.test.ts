@@ -131,6 +131,97 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
+  /**
+   * `canceled_at` models the CURRENT cancellation, not the first one in the
+   * subscription's lifetime: reactivating clears it and a later cancellation
+   * stamps a fresh date. `upsertSubscription` (via `subscription-form.tsx`) is
+   * the only writer of `is_active` for subscriptions, so these four transitions
+   * are the complete state space.
+   */
+  const NOW = "2026-07-16T00:00:00.000Z";
+  const FIRST_CANCELLATION = "2026-01-05T09:00:00.000Z";
+
+  async function saveSubscription(
+    stored: { amount_minor: number; currency: string; canceled_at: string | null } | null,
+    overrides: { isActive: boolean; amountMinor?: number; note?: string | null },
+  ) {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) =>
+        sql.includes("FROM categories") ? { id: "cat-1" }
+        : sql.includes("FROM persons") ? { is_self: 1 }
+        : sql.includes("FROM subscriptions") ? stored
+        : null,
+      getAllAsync: async () => [],
+    });
+    await repository.upsertSubscription("user-1", {
+      id: "sub-1",
+      name: "Netflix",
+      amountMinor: overrides.amountMinor ?? 4_990,
+      currency: "TRY",
+      cycle: "monthly",
+      intervalMonths: 1,
+      billingDay: 5,
+      nextDueDate: "2026-08-05",
+      paymentSourceId: null,
+      categoryId: "cat-1",
+      personId: "person-1",
+      isActive: overrides.isActive,
+      trialEndDate: null,
+      autoPay: false,
+      websiteDomain: null,
+      note: overrides.note ?? null,
+    });
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    return {
+      subscription: writes.find((write: { table: string }) => write.table === "subscriptions"),
+      wrotePriceHistory: writes.some((write: { table: string }) => write.table === "price_history"),
+    };
+  }
+
+  it("stamps a cancellation date when an active subscription is switched off", async () => {
+    const { subscription } = await saveSubscription(
+      { amount_minor: 4_990, currency: "TRY", canceled_at: null },
+      { isActive: false },
+    );
+    expect(subscription.row.canceledAt).toBe(NOW);
+  });
+
+  it("keeps the original cancellation date when an inactive subscription is edited", async () => {
+    const { subscription, wrotePriceHistory } = await saveSubscription(
+      { amount_minor: 4_990, currency: "TRY", canceled_at: FIRST_CANCELLATION },
+      { isActive: false, note: "kapatıldı" },
+    );
+    expect(subscription.row.canceledAt).toBe(FIRST_CANCELLATION);
+    // An unchanged price must not append a new price-history row either.
+    expect(wrotePriceHistory).toBe(false);
+  });
+
+  it("clears the cancellation date when a subscription is reactivated", async () => {
+    const { subscription } = await saveSubscription(
+      { amount_minor: 4_990, currency: "TRY", canceled_at: FIRST_CANCELLATION },
+      { isActive: true },
+    );
+    expect(subscription.row.canceledAt).toBeNull();
+  });
+
+  it("stamps a fresh date on a second cancellation, never the first one", async () => {
+    // State after the reactivation above: live row, cleared timestamp.
+    const { subscription } = await saveSubscription(
+      { amount_minor: 4_990, currency: "TRY", canceled_at: null },
+      { isActive: false },
+    );
+    expect(subscription.row.canceledAt).toBe(NOW);
+    expect(subscription.row.canceledAt).not.toBe(FIRST_CANCELLATION);
+  });
+
+  it("records price history when an inactive subscription's amount changes", async () => {
+    const { wrotePriceHistory } = await saveSubscription(
+      { amount_minor: 4_990, currency: "TRY", canceled_at: FIRST_CANCELLATION },
+      { isActive: false, amountMinor: 5_990 },
+    );
+    expect(wrotePriceHistory).toBe(true);
+  });
+
   it("rejects oversized onboarding text and money before any write", async () => {
     await expect(repository.seedWorkspace("user-1", {
       templateCategories: [],
