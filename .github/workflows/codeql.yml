@@ -1,0 +1,49 @@
+# Static security analysis for the app's own TypeScript/JavaScript.
+#
+# Deliberately separate from `deploy-web`: that workflow's `quality` job is the
+# required branch-protection check and gates Pages, so it must stay fast and
+# must not fail on an advisory-style finding. CodeQL reports into the Security
+# tab instead and is not added to branch protection.
+#
+# Scope note: this repository had NO code scanning at all, so every finding
+# here is new signal rather than a duplicate of an existing scanner.
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so a newly published query pack still reaches a quiet repository.
+    - cron: "0 5 * * 1"
+  workflow_dispatch: {}
+
+# Least privilege: read the tree, write only the SARIF result.
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze javascript-typescript
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: github/codeql-action/init@e58424170fb0262c8d7ed60a2e84b9bffe205c67 # codeql-bundle-v2.26.1
+        with:
+          languages: javascript-typescript
+          # `security-and-quality` also reports maintainability queries, which
+          # would bury real findings in a single-developer repository.
+          queries: security-extended
+      # No build step: CodeQL extracts JS/TS directly from source. Running the
+      # Expo web export here would only duplicate the `quality` job's work.
+      - uses: github/codeql-action/analyze@e58424170fb0262c8d7ed60a2e84b9bffe205c67 # codeql-bundle-v2.26.1
+        with:
+          category: "/language:javascript-typescript"

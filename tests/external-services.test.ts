@@ -5,7 +5,7 @@ import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
 
 const kvStore = new Map<string, string>();
-vi.mock("../src/lib/kv", () => ({
+vi.mock("../src/services/kv", () => ({
   kv: {
     get: async (key: string) => kvStore.get(key) ?? null,
     set: async (key: string, value: string) => void kvStore.set(key, value),

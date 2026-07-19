@@ -172,6 +172,12 @@ agent-to-agent communication that did not occur.
   route, `popToTopOnBlur` becomes a no-op and the tab is stuck on that route
   until an app restart (the Summary → Analysis bug). Do not set a root `(tabs)`
   initial route: it mounts protected hooks on anonymous auth pages.
+- **Route params are hostile input.** A dynamic segment or query string carries
+  whatever the URL says, and the range helpers throw (`lastDayOf("2026-13")`),
+  so a screen that derives a query from an unchecked param crashes DURING
+  RENDER — a white screen no handler can catch. Validate with the domain
+  predicate (`isMonthKey`), query a safe substitute, and `navigateBack` to the
+  parent. An id-shaped param may instead resolve to `undefined` and redirect.
 - **Sync ordering is server-authoritative.** Supabase normalizes `updated_at`;
   every push selects and conditionally merges that acknowledgement before its
   exact outbox events are removed. Never advance a pull cursor past an invalid
@@ -258,6 +264,13 @@ agent-to-agent communication that did not occur.
   boundaries; use the matching `*Text` token for text. Inputs use
   `controlBorder`, and primary/danger button copy uses `onPrimary`/`onNegative`.
   Every light/dark role pair stays under the automated contrast contract.
+  Two surfaces sit outside the plain token table and are covered separately by
+  `tests/theme-contrast.test.ts`: the undo snackbar INVERTS the page (it paints
+  `palette.text` as its background, so its foregrounds must be `background`, not
+  a normal-surface role such as `primaryText`), and the name-derived
+  `InitialsBadge` hue comes from `src/ui/badge-color.ts`, which caps the
+  generated colour's relative luminance so the white monogram always clears AA.
+  Never hand-roll an `hsl()` fill under text.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint
   error `preserve-manual-memoization`). Keep `useMemo` only where a hook rule
@@ -293,14 +306,23 @@ src/domain/     pure functions with unit tests (balance, installments,
                 analytics, dates, money, recurrence). No React, no I/O.
 src/db/         drizzle schema, async client, migrations.
 src/data/       hooks + stable repo facade; repo/ contains focused I/O services.
+src/auth/       Supabase session lifecycle, recovery, login history, auth errors.
 src/sync/       Supabase outbox engine + status + generated remote DB types.
 src/services/   side-effecting integrations (fx, markets, notifications,
-                import/export).
+                import/export, diagnostics) plus the device-local storage they
+                sit on (kv, device-preferences). There is no `src/lib`.
 src/i18n/tr.ts  every user-facing string (Turkish). Code stays English.
 assets/brand/   the brand kit (symbols, lockups). assets/images/ = only the
                 icons app.json references (icon/favicon/splash/adaptive).
-tests/          vitest suites for src/domain.
+                assets/screenshots/ = the README gallery.
+tests/          vitest suites (domain, repository contract, services, theme
+                and accessibility contracts). e2e/ = Playwright specs and the
+                committed visual baselines.
 ```
+
+**zustand is the incumbent store** (`create` in session, sync status, undo,
+dialog, markets, fx, device preferences). Reuse it; do not add a second state
+or data-fetching library — a measured defect has to justify one first.
 
 ## Design language
 
@@ -394,11 +416,20 @@ keeps seeing the old version (this is a recurring confusion; own it).
 
 ## Before you commit
 
-Run all three; they must be clean:
+Run the fast gate; it must be clean:
 
 ```
-npm run typecheck && npm test && npx expo lint
+npm run verify            # typecheck + vitest + expo lint
 ```
+
+Before pushing a release, run the same set CI runs, in CI's order:
+
+```
+npm run verify:release    # verify + expo export -p web + bundle:check + e2e
+```
+
+Both are scripts so local and CI cannot drift apart, and so every agent
+types one command instead of remembering three.
 
 Verify web changes end-to-end with the Playwright flow (see the scratchpad
 `flow.js`) against a static export, not just unit tests.

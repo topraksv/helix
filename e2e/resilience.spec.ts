@@ -61,6 +61,39 @@ test("protected and modal deep links keep deterministic navigation", async ({ pa
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+// A dynamic segment accepts anything the URL carries, and the month range
+// helpers THROW on a malformed key. Both screens that build a SQLite range from
+// a month param used to do it during render, so a hand-typed or stale link was
+// a white screen rather than a recoverable navigation.
+test("hostile route parameters recover instead of white-screening", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  const hostile = [
+    "/helix/cash-flow/garbage",
+    "/helix/cash-flow/2026-13",
+    "/helix/cash-flow/2026-99",
+    "/helix/cell-editor?month=garbage&categoryId=x",
+    "/helix/cell-editor",
+  ];
+  for (const route of hostile) {
+    await page.goto(route);
+    // The error boundary must never appear, and the user must land somewhere
+    // they can act from — the cash-flow table, not a dead screen.
+    await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  }
+
+  // A well-formed month still opens its own detail screen, so the guard did not
+  // simply blanket-redirect every deep link.
+  const month = new Date().toISOString().slice(0, 7);
+  await page.goto(`/helix/cash-flow/${month}`);
+  await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toHaveCount(0);
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 test("budget summary keeps its forecast, charts and cash-flow tab route", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });

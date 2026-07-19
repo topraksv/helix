@@ -11,7 +11,7 @@ import { readSetting } from "../db/mutations";
 import { addDaysISO, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
-import { loadDevicePreferences, notificationsEnabled, setNotificationDetailsEnabled, setNotificationsEnabled } from "../lib/device-preferences";
+import { loadDevicePreferences, notificationsEnabled, setNotificationDetailsEnabled, setNotificationsEnabled } from "./device-preferences";
 import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../domain/notifications";
 
 const HORIZON_DAYS = 30;

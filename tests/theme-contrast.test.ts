@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
 import { darkPalette, lightPalette, type Palette } from "../src/ui/theme";
 
 function luminance(hex: string): number {
@@ -35,6 +37,10 @@ function expectBodyTextContrast(palette: Palette): void {
     [palette.negativeText, palette.surfaceAlt],
     [palette.warningText, palette.surfaceAlt],
     [palette.accentText, palette.surface],
+    // The undo snackbar is the one INVERTED surface in the app: it paints
+    // `text` as its background, so both its message and its action label must
+    // be the page background ink, never a normal-surface foreground role.
+    [palette.background, palette.text],
   ] as const;
   for (const [foreground, background] of surfacePairs) {
     expect(contrastRatio(foreground, background), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
@@ -109,5 +115,38 @@ describe("semantic theme contrast", () => {
 
   it("keeps every dark-theme body foreground at WCAG AA", () => {
     expectBodyTextContrast(darkPalette);
+  });
+
+  // Generated colours escape the token table above, so the badge that renders a
+  // white monogram on a name-derived hue needs its own contract.
+  it("keeps the white initials monogram at WCAG AA on every reachable hue", () => {
+    for (let hue = 0; hue < 360; hue++) {
+      const name = String.fromCharCode(hue);
+      expect(badgeHue(name), `hue ${hue} must be reachable from a name`).toBe(hue);
+      const background = initialsBadgeColor(name);
+      expect(contrastRatio("#ffffff", background), `hue ${hue} → ${background}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  // The snackbar paints `palette.text` as its own background, which inverts the
+  // usual foreground rules: a role that is readable on `surface` (primaryText,
+  // accentText…) is invisible here. Read the roles the component actually uses
+  // instead of asserting one expected name, so the contract survives a redesign.
+  it("keeps every undo-snackbar foreground readable on its inverted surface", () => {
+    const source = readFileSync("src/ui/undo.tsx", "utf8");
+    const roles = [...source.matchAll(/color: palette\.([A-Za-z]+)/g)].map((match) => match[1]!);
+    expect(roles.length, "undo snackbar must declare its text colours").toBeGreaterThan(0);
+    for (const palette of [lightPalette, darkPalette]) {
+      for (const role of roles) {
+        const foreground = palette[role as keyof Palette];
+        expect(contrastRatio(foreground, palette.text), `${role} (${foreground}) on snackbar ${palette.text}`)
+          .toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it("keeps the badge colour deterministic per name", () => {
+    expect(initialsBadgeColor("Netflix")).toBe(initialsBadgeColor("Netflix"));
+    expect(initialsBadgeColor("Netflix")).not.toBe(initialsBadgeColor("Spotify"));
   });
 });

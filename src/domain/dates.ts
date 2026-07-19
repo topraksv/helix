@@ -7,7 +7,20 @@ export type ISODate = string; // YYYY-MM-DD
 export type MonthKey = string; // YYYY-MM
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 export const MONTH_END_DAY = 31;
+
+/**
+ * Whether a value is a well-formed `YYYY-MM` key with a real month number.
+ *
+ * Route params are the reason this is exported: a dynamic segment carries
+ * whatever the URL says, and `lastDayOf` THROWS on a bad month. A screen that
+ * derives its query range from an unchecked param therefore crashes during
+ * render on a deep link like `/cash-flow/garbage`, before any handler runs.
+ */
+export function isMonthKey(value: unknown): value is MonthKey {
+  return typeof value === "string" && MONTH_KEY_RE.test(value);
+}
 
 export function isMonthDay(value: string | number): boolean {
   const day = Number(value);

@@ -178,26 +178,14 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
     !isValidCardCycle({ statementDay: source.statement_day, dueDay: source.due_day })
   ) throw new CreditCardCycleRequiredError();
   const id = input.id ?? newId();
+  const previous = input.id
+    ? await sqlite.getFirstAsync<{ amount_minor: number; currency: string; canceled_at: string | null }>(
+        `SELECT amount_minor, currency, canceled_at FROM subscriptions WHERE id = ? AND user_id = ?`,
+        [id, userId],
+      )
+    : null;
   const writes: RowWrite[] = [];
-  if (input.id) {
-    const prev = await sqlite.getFirstAsync<{ amount_minor: number; currency: string }>(
-      `SELECT amount_minor, currency FROM subscriptions WHERE id = ? AND user_id = ?`,
-      [id, userId],
-    );
-    if (prev && (prev.amount_minor !== input.amountMinor || prev.currency !== input.currency)) {
-      writes.push({
-        table: "price_history",
-        row: {
-          id: newId(),
-          subscriptionId: id,
-          amountMinor: input.amountMinor,
-          currency: input.currency,
-          effectiveFrom: todayISO(),
-          deletedAt: null,
-        },
-      });
-    }
-  } else {
+  if (!input.id || (previous && (previous.amount_minor !== input.amountMinor || previous.currency !== input.currency))) {
     writes.push({
       table: "price_history",
       row: {
@@ -225,7 +213,10 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
       categoryId: input.categoryId,
       personId: input.personId,
       isActive: input.isActive,
-      canceledAt: input.isActive ? null : nowIso(),
+      // When the rule was cancelled — not when it was last saved. Re-saving an
+      // already-inactive subscription (renaming it, fixing its note) must keep
+      // the original cancellation date.
+      canceledAt: input.isActive ? null : (previous?.canceled_at ?? nowIso()),
       trialEndDate: input.trialEndDate,
       autoPay: input.autoPay,
       websiteDomain: input.websiteDomain,

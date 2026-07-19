@@ -5,7 +5,7 @@ import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { FadeIn } from "./components";
-import { overlayShadow, radius, spacing, tabBarHeight, type, useTheme } from "./theme";
+import { font, overlayShadow, radius, spacing, tabBarHeight, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { haptic, selectionTap, type HapticKind } from "./haptics";
 
@@ -71,7 +71,12 @@ export function UndoSnackbar() {
             }}
             hitSlop={8}
           >
-            <Text style={[type.label, { color: palette.primaryText, fontSize: 15 }]}>{tr.common.undo}</Text>
+            {/* Inverted surface: the action shares the message's ink (an accent
+                role would land near-invisible on `palette.text`) and is set
+                apart by weight instead of colour. */}
+            <Text style={[type.label, { color: palette.background, fontFamily: font.bold, fontSize: 15 }]}>
+              {tr.common.undo}
+            </Text>
           </Pressable>
         ) : null}
       </View>

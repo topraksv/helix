@@ -8,7 +8,7 @@ import { create } from "zustand";
 import { io, type Socket } from "socket.io-client";
 import { tr } from "../i18n/tr";
 import { freshMarketQuote, validMarketQuote } from "../domain/market";
-import { kv } from "../lib/kv";
+import { kv } from "./kv";
 
 const FEED_URL = "wss://hrmsocketonly.haremaltin.com";
 const THROTTLE_MS = 3000;

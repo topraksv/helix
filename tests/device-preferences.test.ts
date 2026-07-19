@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   storage: new Map<string, string>(),
   get: vi.fn<(key: string) => Promise<string | null>>(),
 }));
-vi.mock("../src/lib/kv", () => ({
+vi.mock("../src/services/kv", () => ({
   kv: {
     get: mocks.get,
     set: vi.fn(async (key: string, value: string) => void mocks.storage.set(key, value)),
@@ -17,7 +17,7 @@ import {
   notificationsEnabled,
   setNotificationDetailsEnabled,
   setNotificationsEnabled,
-} from "../src/lib/device-preferences";
+} from "../src/services/device-preferences";
 
 describe("device-local notification preferences", () => {
   it("keeps a newer consent when the first storage read resolves late", async () => {

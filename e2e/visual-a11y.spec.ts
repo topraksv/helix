@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import {
+  addMarketExpense,
   assertNoRuntimeErrors,
   collectRuntimeErrors,
   isolateExternalData,
@@ -26,6 +27,138 @@ test("main routes have no WCAG A/AA violations", async ({ page }, testInfo) => {
     const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     expect(result.violations, `${route}\n${JSON.stringify(result.violations, null, 2)}`).toEqual([]);
   }
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * The 6-route check above runs on a freshly onboarded, near-empty workspace.
+ * Every violation this audit found lived outside that set or only appeared once
+ * the workspace had data: `aria-prohibited-attr` on populated matrix cells,
+ * `aria-required-attr` on the reorder grips, `color-contrast` under a faded
+ * section, and a scroll region no keyboard could reach. This sweep therefore
+ * walks EVERY reachable route with real data, and also asserts the WCAG 2.2
+ * target size that axe's 2.1 ruleset does not cover.
+ */
+const ALL_ROUTES = [
+  "/helix/", "/helix/cash-flow", "/helix/cash-flow/analytics", "/helix/cash-flow/installments",
+  "/helix/subscriptions", "/helix/calculator", "/helix/settings", "/helix/settings/categories",
+  "/helix/settings/computed-columns", "/helix/settings/payment-sources", "/helix/settings/persons",
+  "/helix/settings/incomes", "/helix/settings/budgets", "/helix/settings/opening-balance",
+  "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
+  "/helix/cell-editor", "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
+  "/helix/account-security", "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template",
+];
+
+test("every reachable route stays accessible with real data", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await addMarketExpense(page, "A11y taraması");
+  const problems: string[] = [];
+  for (const route of ALL_ROUTES) {
+    await page.goto(route);
+    await expect(page.locator("#root")).toBeVisible();
+    const undersized = await page.evaluate(() => {
+      const found: string[] = [];
+      for (const element of Array.from(document.querySelectorAll<HTMLElement>("[role]"))) {
+        const role = element.getAttribute("role");
+        if (!role || !["button", "link", "tab", "radio", "switch", "checkbox"].includes(role)) continue;
+        const style = getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+        const box = element.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        // WCAG 2.2 SC 2.5.8 (AA) — 24x24 CSS px minimum.
+        if (box.width < 24 || box.height < 24) {
+          found.push(`${role} "${(element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 30)}" ${Math.round(box.width)}x${Math.round(box.height)}`);
+        }
+      }
+      return [...new Set(found)];
+    });
+    if (undersized.length > 0) problems.push(`${route} target size: ${undersized.join(", ")}`);
+    const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    for (const violation of result.violations) {
+      problems.push(`${route} axe ${violation.id} (${violation.nodes.length}): ${violation.nodes[0]?.html.slice(0, 140)}`);
+    }
+  }
+  expect(problems, problems.join("\n")).toEqual([]);
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * The layout rules AGENTS.md calls non-negotiable, checked from computed style
+ * rather than by eye: text is never truncated, toggles share one size, and the
+ * page never scrolls sideways. (Status chip width is fixed by `STATUS_W` in the
+ * component itself, so it needs no runtime check.)
+ *
+ * `text-overflow: ellipsis` alone proves nothing — React Native Web sets it on
+ * every Text node, so only an element whose content actually exceeds its box is
+ * a real truncation. Because that makes a passing run indistinguishable from a
+ * broken detector, the scan first injects two deliberately truncated elements
+ * and asserts it finds them.
+ */
+test("layout non-negotiables hold on every route in both widths", async ({ page, context }, testInfo) => {
+  test.setTimeout(180_000);
+  await isolateExternalData(context);
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await addMarketExpense(page, "Yerleşim taraması");
+
+  const scan = (withControl: boolean) =>
+    page.evaluate((injectControl: boolean) => {
+      if (injectControl) {
+        const clipped = document.createElement("div");
+        clipped.textContent = "Bu satır kesinlikle taşacak kadar uzun bir metin içerir";
+        clipped.style.cssText = "width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:fixed;top:0";
+        document.body.appendChild(clipped);
+        const clamped = document.createElement("div");
+        clamped.textContent = "satır bir satır iki satır üç satır dört satır beş";
+        clamped.style.cssText =
+          "width:60px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;position:fixed;top:20px";
+        document.body.appendChild(clamped);
+      }
+      const truncated: string[] = [];
+      const toggles = new Set<string>();
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>("*"))) {
+        if (el.id.startsWith("__control")) continue;
+        const style = getComputedStyle(el);
+        const text = (el.textContent ?? "").trim().slice(0, 45);
+        const visible = el.clientWidth > 0 && el.clientHeight > 0;
+        if (!text || !visible) continue;
+        const scrollable = style.overflowX === "visible" || style.overflowX === "auto" || style.overflowX === "scroll";
+        if (el.children.length === 0 && !scrollable && el.scrollWidth > el.clientWidth + 1) {
+          truncated.push(`${style.textOverflow === "ellipsis" ? "ellipsis" : "clip"} ${el.scrollWidth}>${el.clientWidth}: ${text}`);
+        }
+        if (style.webkitLineClamp !== "none" && el.scrollHeight > el.clientHeight + 1) {
+          truncated.push(`line-clamp(${style.webkitLineClamp}): ${text}`);
+        }
+        const box = el.getBoundingClientRect();
+        if (el.getAttribute("role") === "switch") toggles.add(`${Math.round(box.width)}x${Math.round(box.height)}`);
+      }
+      return { truncated: [...new Set(truncated)], toggles: [...toggles] };
+    }, withControl);
+
+  // Detector self-check, once, before the real sweep.
+  await page.goto("/helix/");
+  await expect(page.locator("#root")).toBeVisible();
+  const control = await scan(true);
+  expect(control.truncated.filter((t) => t.includes("Bu satır")), "ellipsis detector is live").toHaveLength(1);
+  expect(control.truncated.filter((t) => t.includes("line-clamp")), "line-clamp detector is live").toHaveLength(1);
+
+  const problems: string[] = [];
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const route of ALL_ROUTES) {
+      await page.goto(route);
+      await expect(page.locator("#root")).toBeVisible();
+      const found = await scan(false);
+      const tag = `${width}px ${route}`;
+      for (const t of found.truncated) problems.push(`${tag} truncated: ${t}`);
+      if (found.toggles.length > 1) problems.push(`${tag} toggle sizes differ: ${found.toggles.join(", ")}`);
+      const sideways = await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth + 1);
+      if (sideways) problems.push(`${tag} scrolls horizontally`);
+    }
+  }
+  expect(problems, problems.join("\n")).toEqual([]);
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
