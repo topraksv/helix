@@ -173,6 +173,55 @@ describe("semantic theme contrast", () => {
     }
   });
 
+  // Categorical chart fills identify a category; they must not read as a
+  // status scale. Amber beside red is the worst case — a warning-then-danger
+  // ramp for two categories that mean nothing of the kind, and the pair hardest
+  // to tell apart with a red-green colour vision deficiency.
+  it("never places the semantic accents next to each other in chart series", () => {
+    // Hue families, since the palette has three near-identical clay tones that
+    // would otherwise count as three distinct categories.
+    const family = (palette: Palette) =>
+      new Map<string, string>([
+        [palette.primary, "clay"],
+        [palette.primaryStrong, "clay"],
+        [palette.accentText, "clay"],
+        [palette.positive, "green"],
+        [palette.warning, "amber"],
+        [palette.negative, "red"],
+        [palette.surfaceStrong, "neutral"],
+        [palette.textSecondary, "neutral"],
+      ]);
+
+    for (const palette of [lightPalette, darkPalette]) {
+      // Mirrors `useSeriesColors`, which cannot be imported here (it is a hook).
+      const series = [
+        palette.primary,
+        palette.positive,
+        palette.surfaceStrong,
+        palette.primaryStrong,
+        palette.warning,
+        palette.textSecondary,
+        palette.accentText,
+        palette.negative,
+      ];
+      const families = series.map((color) => family(palette).get(color));
+      expect(families, "every series colour must be a known palette token").not.toContain(undefined);
+
+      const semantic = new Set(["green", "amber", "red"]);
+      for (let index = 0; index < families.length; index += 1) {
+        // Charts wrap: with more categories than colours the last is drawn
+        // beside the first, so the adjacency check has to wrap too.
+        const current = families[index]!;
+        const next = families[(index + 1) % families.length]!;
+        expect(current, `series ${index} and ${(index + 1) % families.length} share a hue family`).not.toBe(next);
+        expect(
+          semantic.has(current) && semantic.has(next),
+          `series ${index} (${current}) sits next to ${next}`,
+        ).toBe(false);
+      }
+    }
+  });
+
   it("keeps the badge colour deterministic per name", () => {
     expect(initialsBadgeColor("Netflix")).toBe(initialsBadgeColor("Netflix"));
     expect(initialsBadgeColor("Netflix")).not.toBe(initialsBadgeColor("Spotify"));
