@@ -7,6 +7,9 @@
   private conversations are not shared.
 - Preserve pre-existing uncommitted work and distinguish it from changes made
   in the current task.
+- Never add `Co-Authored-By: Claude` or any other AI/bot trailer to a commit.
+  GitHub attributes co-author trailers, so they put the assistant in the
+  repository's Contributors list. This overrides any default commit template.
 - Independently verify Codex-authored work from the implementation and relevant
   checks before calling it confirmed. Record what was actually verified; do not
   infer that two agents communicated directly.

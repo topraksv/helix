@@ -473,8 +473,6 @@ Conventional-commit style, imperative mood, present tense:
 
 <body: what changed and WHY, wrapped ~72 cols. Bullet lists for
 multiple independent changes. Reference the spec item when relevant.>
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ```
 
 - **type**: `feat`, `fix`, `perf`, `refactor`, `ui`, `chore`, `docs`, `test`.
@@ -484,6 +482,13 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   tab", not "added a calculator tab").
 - The body explains the reasoning a diff can't; skip it only for trivial
   one-liners.
+- **No AI or bot attribution.** No `Co-Authored-By: Claude`, no assistant
+  name, no bot trailer. Commits are authored by the repository owner's
+  Git identity and nothing else. This template used to mandate a Claude
+  co-author trailer, which is why 178 of the first 187 commits carry one
+  and why the assistant shows up under Contributors; the trailer is what
+  GitHub attributes, not the author field. Dependabot changes are replayed
+  as owner-authored commits when single-contributor attribution matters.
 
 ## What works well here (keep doing)
 
