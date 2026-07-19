@@ -8,9 +8,8 @@ chronology — entries older than the last five are simply dropped.
 
 - Updated: 2026-07-19 (Europe/Istanbul)
 - Work: Claude's evidence-driven architecture/security/UI audit from base
-  `eeed2c5`. Read-only recon first (baseline was fully green), then three
-  small verified packages. UNCOMMITTED in the working tree — not yet on a
-  branch, not pushed, no OTA published.
+  `eeed2c5`, on branch `audit/security-ux-finalization` (PR #42, OPEN — not
+  merged, no Pages deploy, no OTA, no Supabase change).
 - Packages: (1) shared-primitive text contrast — the undo snackbar's "Geri Al"
   label used `palette.primaryText` on the inverted `palette.text` surface
   (1.27:1 light / 1.10:1 dark, effectively invisible; regression from PR #16
@@ -56,8 +55,39 @@ chronology — entries older than the last five are simply dropped.
     there is no upstream fix to take; an `overrides` jump from 0.18 to 0.25
     inside a loader we do not control was judged disproportionate. Accepted
     risk, revisit when drizzle-kit drops `@esbuild-kit`.
-  - Code scanning: no analysis configured (HTTP 404). Secret scanning: this
-    token lacks the required scope, so the real alert list was NOT read.
+  - Code scanning: had NO analysis at all (HTTP 404). A minimal SHA-pinned
+    `codeql.yml` now runs `security-extended` for javascript-typescript,
+    deliberately OUTSIDE the required `quality` check so an advisory finding
+    can never block the Pages deploy.
+  - Secret scanning: the repository setting is ENABLED, with push protection
+    also enabled (`security_and_analysis`); an older audit note claiming it
+    was off is stale. This token lacks the scope to read the alert LIST, so
+    the real list was NOT inspected. The local substitute — 204 commits of
+    history plus the tracked tree scanned for provider key prefixes, JWTs,
+    private-key headers and secret-bearing filenames — found only prose in
+    `docs/RELEASE.md` describing the policy, and no ignored-secret file was
+    ever committed. That is NOT equivalent to reading GitHub's list.
+- Route-by-route UX audit: 26 reachable routes × {390, 1440} px × {light,
+  dark}, on a populated workspace. Found and fixed `aria-prohibited-attr` on
+  matrix cells (13 nodes), `aria-required-attr` on both reorder grips (18
+  nodes, now the shared `ReorderGrip`), a 2.86:1 heading under a faded
+  container, a keyboard-unreachable horizontal scroller, two 18px icon targets
+  and 16px-tall matrix column headers (WCAG 2.2 SC 2.5.8, which axe's 2.1
+  rules do not cover). It also caught a real crash: `/cell-editor` opened
+  without params threw on `lastDayOf(month!)`. The sweep is now a permanent
+  test (~11 s). No committed visual baseline moved.
+- Measured performance (static export, localhost): boot-to-interactive 329 ms,
+  FCP 68 ms, domInteractive 31 ms; client-side tab switch median 40 ms / p95
+  55 ms over 60 switches; JS heap 45.2 MB before and 45.2 MB after those 60
+  switches (delta 0.0 MB — empirical confirmation of the listener/timer/epoch
+  cleanup audit). No bottleneck was demonstrated, so FlashList, Zustand/signals
+  migration, TanStack Query/SWR and blanket memoisation stay rejected.
+- Supabase live logs and pgTAP remain UNVERIFIED: no `supabase` CLI on PATH,
+  Docker not running, no configured MCP. To enable read-only verification next
+  session: install the CLI, `supabase login`, `supabase link --project-ref
+  <ref>`, then `supabase migration list --linked`, `supabase db lint --linked`
+  and the pgTAP suite in `supabase/tests/`. Nothing here may be run without
+  explicit authorisation — it touches the live project.
 - Deliberately NOT changed, with evidence: brand/utility chip monograms in
   `src/ui/logo.tsx` (45/87 fail AA, but those are fixed brand colours under
   WCAG's logotype exemption and the subscription name always renders beside
@@ -88,11 +118,11 @@ chronology — entries older than the last five are simply dropped.
   screenshots regenerated as a uniform dark set from a 105-row multi-month
   demo restore.
 - Verification (this audit, run locally on the working tree): strict typecheck
-  clean; Vitest 48 files / 310 tests (296 before, +14 new); Playwright 3 spec
-  files / 10 cases over 20 committed visual baselines;
-  zero-warning Expo lint; production `expo export` inside every bundle budget;
-  10/10 Playwright including axe and all 20 visual baselines UNCHANGED (the
-  badge fix moved no committed screenshot). Both contrast fixes and the
+  clean; Vitest 48 test files / 310 tests (was 47 / 296); Playwright 3 spec
+  files / 11 cases (was 10) over 20 committed visual baselines, all UNCHANGED;
+  zero-warning Expo lint; production `expo export` inside every bundle budget.
+  `tests/helpers.ts` and `e2e/helpers.ts` are helper-only and are not counted
+  as test files. Both contrast fixes and the
   `canceled_at` fix were mutation-checked: reverting each makes its new test
   fail. Not verified here: physical iOS/Android device behaviour, VoiceOver /
   TalkBack, and remote Supabase state (no migration touched).
