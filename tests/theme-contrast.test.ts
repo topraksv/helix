@@ -145,6 +145,34 @@ describe("semantic theme contrast", () => {
     }
   });
 
+  // WCAG 1.4.11: an interactive control has to be distinguishable from its
+  // background, in every state. Both toggle track fills are low-contrast warm
+  // neutrals, so the track's own boundary is what satisfies this — and on the
+  // refund row, whose background IS the active track colour, the switch was
+  // rendering at exactly 1.00:1 and could not be seen at all.
+  it("outlines interactive controls against every surface they sit on", () => {
+    // `primarySoft` stays in this list on purpose: it is both the active track
+    // fill and a real row background, so it is the worst case the token has to
+    // survive if either is ever used behind a control again.
+    const controlSurfaces = ["background", "surface", "surfaceAlt", "surfaceHover", "primarySoft"] as const;
+    for (const palette of [lightPalette, darkPalette]) {
+      for (const surface of controlSurfaces) {
+        expect(
+          contrastRatio(palette.controlBorder, palette[surface]),
+          `controlBorder (${palette.controlBorder}) on ${surface} (${palette[surface]})`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+      // The boundary must also read against the fills it wraps, so neither the
+      // on nor the off state can collapse into an unoutlined blob.
+      for (const track of ["surfaceStrong", "primarySoft"] as const) {
+        expect(
+          contrastRatio(palette.controlBorder, palette[track]),
+          `controlBorder (${palette.controlBorder}) around ${track} track (${palette[track]})`,
+        ).toBeGreaterThanOrEqual(2.5);
+      }
+    }
+  });
+
   it("keeps the badge colour deterministic per name", () => {
     expect(initialsBadgeColor("Netflix")).toBe(initialsBadgeColor("Netflix"));
     expect(initialsBadgeColor("Netflix")).not.toBe(initialsBadgeColor("Spotify"));

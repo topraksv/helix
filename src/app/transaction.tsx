@@ -293,15 +293,18 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           label), on = a reversal that flips the amount's sign. The description
           explains the balance effect in the same card, so the meaning is clear
           without a second segmented control. */}
+      {/* The selected state is carried by the outline, icon and label — not by
+          repainting the row in `primarySoft`, which is the toggle track's own
+          active colour and swallowed the switch whole. */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
           gap: spacing.md,
-          backgroundColor: isReversal ? palette.primarySoft : palette.surfaceAlt,
+          backgroundColor: palette.surfaceAlt,
           borderRadius: radius.md,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: palette.border,
+          borderWidth: isReversal ? 1 : StyleSheet.hairlineWidth,
+          borderColor: isReversal ? palette.primary : palette.border,
           padding: spacing.md,
           marginBottom: spacing.md,
         }}

@@ -117,6 +117,47 @@ export async function renderedContrastRatio(locator: Locator): Promise<number> {
   });
 }
 
+/**
+ * Contrast between an element's own painted boundary and the surface behind it.
+ *
+ * A control whose fill is a low-contrast neutral is only visible because of its
+ * outline, and `renderedContrastRatio` cannot see that — it measures text. The
+ * refund switch rendered at exactly 1.00:1 against its row and simply was not
+ * there, while every role/name assertion stayed green.
+ */
+export async function renderedBoundaryContrast(locator: Locator): Promise<number> {
+  return locator.evaluate((element) => {
+    const parse = (value: string): [number, number, number] => {
+      const parts = value.match(/[\d.]+/g);
+      if (!parts || parts.length < 3) throw new Error(`Unsupported color: ${value}`);
+      return [Number(parts[0]), Number(parts[1]), Number(parts[2])];
+    };
+    const luminance = (rgb: [number, number, number]) =>
+      rgb
+        .map((channel) => channel / 255)
+        .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+        .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
+
+    const style = getComputedStyle(element);
+    if (Number.parseFloat(style.borderTopWidth) === 0) throw new Error("Control has no painted boundary");
+    const boundary = parse(style.borderTopColor);
+    let node: HTMLElement | null = element.parentElement;
+    let background: [number, number, number] | null = null;
+    while (node) {
+      const painted = getComputedStyle(node).backgroundColor;
+      const alpha = painted.match(/[\d.]+/g)?.[3];
+      if (painted && painted !== "transparent" && alpha !== "0") {
+        background = parse(painted);
+        break;
+      }
+      node = node.parentElement;
+    }
+    if (!background) throw new Error("No painted background found above the control");
+    const [lighter, darker] = [luminance(boundary), luminance(background)].sort((a, b) => b - a);
+    return (lighter! + 0.05) / (darker! + 0.05);
+  });
+}
+
 export async function assertNoRuntimeErrors(errors: string[], testInfo: TestInfo): Promise<void> {
   if (errors.length > 0) {
     await testInfo.attach("runtime-errors", { body: errors.join("\n"), contentType: "text/plain" });
