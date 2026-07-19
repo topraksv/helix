@@ -24,7 +24,10 @@ export default function Root({ children }: PropsWithChildren) {
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
             "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data: blob: https://www.google.com",
+            // Subscription favicons: google.com/s2 301-redirects to
+            // t*.gstatic.com, so the redirect target must be allowed too or
+            // every logo silently falls back to the local chip.
+            "img-src 'self' data: blob: https://www.google.com https://*.gstatic.com",
             "font-src 'self' data:",
             "connect-src 'self' https://*.supabase.co https://api.frankfurter.dev wss://hrmsocketonly.haremaltin.com",
             "worker-src 'self' blob:",

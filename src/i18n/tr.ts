@@ -698,6 +698,7 @@ export const tr = {
     enterAmount: "Çevirmek için bir tutar gir.",
     rateMissing: "Kur bilgisi henüz alınamadı. İnternete bağlanınca güncellenir.",
     staleRateDated: (d: string) => `${d} tarihli kur kullanılıyor; bağlantı gelince güncellenecek.`,
+    lastLiveRate: (t: string) => `Son canlı kur · ${t}`,
     error: "Hata",
     resultUnavailable: "Sonuç desteklenen tutar sınırını aşıyor",
   },
@@ -846,4 +847,12 @@ export function dateTimeLabel(iso: string): string {
     dateStyle: "long",
     timeStyle: "short",
   }).format(value);
+}
+
+/** ms epoch → compact "HH:MM" when today, full date-time otherwise. */
+export function clockOrDateTimeLabel(ms: number): string {
+  const at = new Date(ms);
+  return at.toDateString() === new Date().toDateString()
+    ? new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(at)
+    : dateTimeLabel(at.toISOString());
 }

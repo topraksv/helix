@@ -27,8 +27,22 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { InitialsBadge } from "./components";
-import { darkPalette, lightPalette, radius, useTheme } from "./theme";
+import { darkPalette, lightPalette, useTheme } from "./theme";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
+
+/** One shared frameless tile: near-square, rounded, no border — every variant
+ *  (favicon, utility icon, brand chip, initials) renders in this exact shape
+ *  so mixed lists stay visually uniform on web and iOS alike. */
+function tileStyle(size: number) {
+  return {
+    width: size,
+    height: size,
+    borderRadius: size / 3,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    overflow: "hidden" as const,
+  };
+}
 
 /** Utility/service keywords → icon + accent (checked before brand lookup). */
 const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
@@ -99,7 +113,66 @@ const BRAND: Record<string, { color: string; mark?: string }> = {
   tabii: { color: "#ff6600", mark: "t" },
   gain: { color: "#7c4dff", mark: "G" },
   todtv: { color: "#ed1c24", mark: "tod" },
+  tod: { color: "#ed1c24", mark: "tod" },
   storytel: { color: "#ff5a5f", mark: "S" },
+  claude: { color: "#d97757", mark: "C" },
+  anthropic: { color: "#d97757", mark: "A" },
+  gemini: { color: "#4285f4", mark: "G" },
+  perplexity: { color: "#20808d", mark: "P" },
+  midjourney: { color: "#1a1a2e", mark: "MJ" },
+  cursor: { color: "#111111", mark: "C" },
+  microsoft: { color: "#0078d4", mark: "M" },
+  office: { color: "#d83b01", mark: "O" },
+  onedrive: { color: "#0364b8", mark: "OD" },
+  google: { color: "#4285f4", mark: "G" },
+  apple: { color: "#000000", mark: "" },
+  discord: { color: "#5865f2", mark: "D" },
+  telegram: { color: "#26a5e4", mark: "T" },
+  zoom: { color: "#0b5cff", mark: "Z" },
+  slack: { color: "#611f69", mark: "S" },
+  figma: { color: "#f24e1e", mark: "F" },
+  evernote: { color: "#00a82d", mark: "E" },
+  todoist: { color: "#e44332", mark: "T" },
+  "1password": { color: "#0572ec", mark: "1P" },
+  bitwarden: { color: "#175ddc", mark: "B" },
+  nordvpn: { color: "#4687ff", mark: "N" },
+  expressvpn: { color: "#da3940", mark: "EV" },
+  surfshark: { color: "#178a9e", mark: "S" },
+  crunchyroll: { color: "#f47521", mark: "CR" },
+  mubi: { color: "#001489", mark: "M" },
+  paramount: { color: "#0064ff", mark: "P+" },
+  "paramount+": { color: "#0064ff", mark: "P+" },
+  bein: { color: "#63276f", mark: "b" },
+  "bein connect": { color: "#63276f", mark: "b" },
+  "s sport": { color: "#e4002b", mark: "S" },
+  "s sport plus": { color: "#e4002b", mark: "S" },
+  "tv+": { color: "#ffc900", mark: "TV" },
+  "tv plus": { color: "#ffc900", mark: "TV" },
+  fizy: { color: "#8624db", mark: "f" },
+  muud: { color: "#e6006d", mark: "M" },
+  soundcloud: { color: "#ff5500", mark: "SC" },
+  podimo: { color: "#5b2e90", mark: "P" },
+  turkcell: { color: "#ffc900", mark: "T" },
+  vodafone: { color: "#e60000", mark: "V" },
+  "türk telekom": { color: "#0056a3", mark: "TT" },
+  turktelekom: { color: "#0056a3", mark: "TT" },
+  strava: { color: "#fc4c02", mark: "S" },
+  macfit: { color: "#e30613", mark: "M" },
+  nike: { color: "#111111", mark: "N" },
+  medium: { color: "#191919", mark: "M" },
+  scribd: { color: "#1e7b85", mark: "S" },
+  blinkist: { color: "#2ce080", mark: "B" },
+  roblox: { color: "#393b3d", mark: "R" },
+  "epic games": { color: "#2f2d2e", mark: "E" },
+  epic: { color: "#2f2d2e", mark: "E" },
+  ubisoft: { color: "#0070ff", mark: "U" },
+  "ea play": { color: "#ff4747", mark: "EA" },
+  tinder: { color: "#fd5068", mark: "t" },
+  bumble: { color: "#ffc629", mark: "b" },
+  trendyol: { color: "#f27a1a", mark: "ty" },
+  hepsiburada: { color: "#ff6000", mark: "hb" },
+  getir: { color: "#5d3ebc", mark: "g" },
+  yemeksepeti: { color: "#fa0050", mark: "ys" },
 };
 
 /**
@@ -154,6 +227,69 @@ const BRAND_DOMAIN: Record<string, string> = {
   tabii: "tabii.com",
   gain: "gain.tv",
   storytel: "storytel.com",
+  todtv: "todtv.com.tr",
+  tod: "todtv.com.tr",
+  claude: "claude.ai",
+  anthropic: "anthropic.com",
+  gemini: "gemini.google.com",
+  perplexity: "perplexity.ai",
+  midjourney: "midjourney.com",
+  cursor: "cursor.com",
+  microsoft: "microsoft.com",
+  "microsoft 365": "microsoft365.com",
+  office: "office.com",
+  onedrive: "microsoft365.com",
+  google: "google.com",
+  "google drive": "drive.google.com",
+  apple: "apple.com",
+  discord: "discord.com",
+  "discord nitro": "discord.com",
+  telegram: "telegram.org",
+  zoom: "zoom.us",
+  slack: "slack.com",
+  figma: "figma.com",
+  evernote: "evernote.com",
+  todoist: "todoist.com",
+  "1password": "1password.com",
+  bitwarden: "bitwarden.com",
+  nordvpn: "nordvpn.com",
+  expressvpn: "expressvpn.com",
+  surfshark: "surfshark.com",
+  crunchyroll: "crunchyroll.com",
+  mubi: "mubi.com",
+  paramount: "paramountplus.com",
+  "paramount+": "paramountplus.com",
+  bein: "beinconnect.com.tr",
+  "bein connect": "beinconnect.com.tr",
+  "s sport": "ssportplus.com",
+  "s sport plus": "ssportplus.com",
+  "tv+": "tvplus.com.tr",
+  "tv plus": "tvplus.com.tr",
+  fizy: "fizy.com",
+  muud: "muud.com.tr",
+  soundcloud: "soundcloud.com",
+  podimo: "podimo.com",
+  turkcell: "turkcell.com.tr",
+  vodafone: "vodafone.com.tr",
+  "türk telekom": "turktelekom.com.tr",
+  turktelekom: "turktelekom.com.tr",
+  strava: "strava.com",
+  macfit: "macfit.com.tr",
+  nike: "nike.com",
+  medium: "medium.com",
+  scribd: "scribd.com",
+  blinkist: "blinkist.com",
+  roblox: "roblox.com",
+  "epic games": "epicgames.com",
+  epic: "epicgames.com",
+  ubisoft: "ubisoft.com",
+  "ea play": "ea.com",
+  tinder: "tinder.com",
+  bumble: "bumble.com",
+  trendyol: "trendyol.com",
+  hepsiburada: "hepsiburada.com",
+  getir: "getir.com",
+  yemeksepeti: "yemeksepeti.com",
 };
 
 /** Resolve the domain to fetch a favicon from (explicit override or a brand). */
@@ -198,7 +334,7 @@ export function Logo({
 
   if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {
     return (
-      <View style={{ width: size, height: size, borderRadius: radius.sm, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: palette.border }}>
+      <View style={[tileStyle(size), { backgroundColor: palette.surfaceAlt }]}>
         <Image
           accessible={false}
           accessibilityRole="none"
@@ -219,16 +355,7 @@ export function Logo({
   if (utility) {
     const IconCmp = utility.icon;
     return (
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: radius.sm,
-          backgroundColor: utility.color + "22",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
+      <View style={[tileStyle(size), { backgroundColor: utility.color + "22" }]}>
         <IconCmp accessible={false} size={size * 0.55} color={utility.color} strokeWidth={2} />
       </View>
     );
@@ -238,18 +365,7 @@ export function Logo({
     const ink = inkFor(brand.color);
     const mark = brand.mark || name.trim().slice(0, 1).toLocaleUpperCase("tr-TR");
     return (
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: radius.sm,
-          backgroundColor: brand.color,
-          borderWidth: ink === lightPalette.textStrong ? 1 : 0,
-          borderColor: palette.border,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
+      <View style={[tileStyle(size), { backgroundColor: brand.color }]}>
         <Text style={{ color: ink, fontSize: size * (mark.length > 2 ? 0.3 : 0.42), fontFamily: "Inter_700Bold" }}>
           {mark}
         </Text>

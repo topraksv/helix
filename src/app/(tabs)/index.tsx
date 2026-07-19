@@ -9,7 +9,7 @@ import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { buildUpcomingTimeline } from "../../domain/upcoming";
-import { dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
+import { clockOrDateTimeLabel, dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
 import {
   daysBetween,
@@ -46,14 +46,6 @@ const MARKET_BUY_W = 78;
 const MARKET_SELL_W = 92;
 const MARKET_TREND_W = 15;
 
-/** ms epoch → compact "HH:MM" today, full date-time otherwise. */
-function marketUpdatedLabel(ms: number): string {
-  const at = new Date(ms);
-  return at.toDateString() === new Date().toDateString()
-    ? new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(at)
-    : dateTimeLabel(at.toISOString());
-}
-
 function MarketsCard() {
   const { palette } = useTheme();
   const userId = useUserId();
@@ -76,7 +68,7 @@ function MarketsCard() {
   const statusLabel = status === "live"
     ? tr.markets.live
     : quoted.length > 0 && lastEventAt
-      ? tr.markets.updatedAt(marketUpdatedLabel(lastEventAt))
+      ? tr.markets.updatedAt(clockOrDateTimeLabel(lastEventAt))
       : status === "connecting"
         ? tr.markets.connecting
         : tr.markets.offline;
