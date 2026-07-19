@@ -8,9 +8,10 @@ chronology — entries older than the last five are simply dropped.
 
 - Updated: 2026-07-19 (Europe/Istanbul)
 - Work: Claude's nine-package user audit shipped (PR #36 `e69f386`, PR #37
-  `e66eeb3`, PR #38 `3e30b1c`); follow-up branch `feat/logos-converter-screens`
-  ships the converter last-known-rate contract, the expanded frameless logo
-  system + `*.gstatic.com` CSP fix, and the uniform dark README screenshots.
+  `e66eeb3`, PR #38 `3e30b1c`); follow-up PR #40 shipped as main `3a04ff3`
+  with the converter last-known-rate contract, expanded frameless logo system
+  + `*.gstatic.com` CSP fix and uniform dark README screenshots. This handoff
+  branch records the completed release from base `3a04ff3`.
 - Outcome highlights: logout→login no longer flashes onboarding (grace waits
   for the post-sync onboarded re-read); verifyPassword recovers the e-mail
   after offline bootstrap instead of "Supabase yapılandırılmadı"; semantic
@@ -29,18 +30,23 @@ chronology — entries older than the last five are simply dropped.
   gstatic favicon redirect (logos actually render on web now); README
   screenshots regenerated as a uniform dark set from a 105-row multi-month
   demo restore.
-- Local verification: strict typecheck; 47 files/293 Vitest; zero-warning
-  Expo lint; production export within all bundle budgets; 10/10 Playwright
-  incl. axe and visual baselines (one cash-flow baseline intentionally
-  regenerated for the captioned toolbar); 1.200-transaction virtualization
-  measured on the static export. SDK 54 advisories remain `BACKLOG-SDK-01`.
+- Verification: strict typecheck; 47 files/296 Vitest; zero-warning Expo lint;
+  production export within all bundle budgets; 10/10 Playwright incl. axe and
+  visual baselines (one cash-flow baseline intentionally regenerated for the
+  captioned toolbar); 1.200-transaction virtualization measured on the static
+  export. PR #40 quality run `29675449818` and post-merge main quality/Pages
+  run `29676044301` passed. SDK 54 advisories remain `BACKLOG-SDK-01`.
 - Release: PR #36 quality + main Pages run `29658175041` (live 200) and OTA
   group `f82de4f5-2e28-468d-9ec8-0ad3f06db24d`; PR #37 quality + OTA group
   `d3461e52-9dfd-436a-8bcd-051d7543e879` (commit `e66eeb3`), Pages run
   `29666823091`; PR #38 quality + OTA group
   `04d8e501-abdb-4632-9317-d2fa5df7a6b4` (commit `3e30b1c`), Pages run
-  `29674652426`. Runtime `1.0.0`, channel `preview`, iOS+Android; no native
-  config changed. Installed delivery remains unverified.
+  `29674652426`; PR #40 main `3a04ff3`, Pages run `29676044301` (root,
+  calculator and subscriptions deep links live 200), OTA group
+  `a20c30f9-3388-4a6f-8fb6-accb57e62ba5`. Runtime `1.0.0`, channel/branch
+  `preview`, iOS+Android; no native config changed. Fresh OTA insights are 0
+  installs/0 failures; installed delivery remains unverified until a device
+  checks for the update.
 
 ## Stable system and open limits
 
@@ -59,10 +65,24 @@ VoiceOver/TalkBack/Dynamic Type, OS notification/privacy and low-memory import.
 
 At task end update current branch/base, outcome, changed areas, checks,
 commit/push/web/OTA/native state and remaining risks. Keep only five recent
-entries; archive the oldest as a compact row. Never call previous work verified
-without inspecting its diff and running proportional checks.
+entries; delete the oldest when adding a sixth. Never call previous work
+verified without inspecting its diff and running proportional checks.
 
 ## Recent handoffs
+
+### 2026-07-19 — Codex · PR #40 release completion
+
+- Independently inspected PR #40 at head `165653d`, confirmed `tr.tx.staleRate`
+  remains used by the transaction form, and verified its required quality gate
+  before squash-merging to main `3a04ff3`.
+- Post-merge run `29676044301` passed typecheck, 296 Vitest, lint, export,
+  bundle budgets and 10 Playwright flows, then deployed Pages. Live root,
+  calculator and subscriptions deep links returned 200; live CSP contains the
+  required `*.gstatic.com` favicon redirect allowance.
+- Published EAS preview update `a20c30f9-3388-4a6f-8fb6-accb57e62ba5` for
+  iOS+Android, runtime `1.0.0`, from exact commit `3a04ff3`. No native rebuild
+  is required. Initial insights are 0 installs/0 failures; physical-device
+  uptake remains the only release acceptance item not observed here.
 
 ### 2026-07-19 — Claude · Nine-package user audit (P1–P9)
 
@@ -103,12 +123,3 @@ without inspecting its diff and running proportional checks.
 - Rejected incompatible Dependabot SDK-stack/invalid-lockfile changes; kept
   security updates open; applied compatible ESLint and Lucide updates. SDK 57
   stayed in `BACKLOG-SDK-01`; full gates passed.
-
-### 2026-07-18 — Codex · P7 automation and docs
-
-- Base `9e31eaa`; PR #20; main `14547c8`; Pages `29646280246`; EAS group
-  `105fffc1-1ea0-4db7-bed8-ec5bc03ca930`.
-- Added browser SQLite core/restore/offline/deep-link, axe and responsive visual
-  gates; fixed web picked-file/backup/a11y/tab issues; task-first README plus
-  testing/privacy/release contracts. Full local/remote gates passed.
-
