@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { isMarketFeedSocket } from "../e2e/helpers";
 import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
@@ -303,5 +306,36 @@ describe("notification planning guards", () => {
     expect(limited).toHaveLength(60);
     expect(limited[0]?.fireAt.getTime()).toBe(1);
     expect(limited.at(-1)?.fireAt.getTime()).toBe(60);
+  });
+});
+
+// The E2E suite cuts the live market socket so a rate-limited third party
+// cannot fail an unrelated test. The matcher used to be an unanchored regex,
+// which is a substring test on the whole URL rather than a host comparison.
+describe("market feed isolation matches on host, not substring", () => {
+  const matches = (url: string) => isMarketFeedSocket(new URL(url));
+
+  it("blocks the real feed and its subdomains", () => {
+    expect(matches("wss://hrmsocketonly.haremaltin.com")).toBe(true);
+    expect(matches("wss://haremaltin.com/socket.io/?EIO=4")).toBe(true);
+    expect(matches("https://api.haremaltin.com/live")).toBe(true);
+  });
+
+  it("does not match hosts that merely end in the same letters", () => {
+    expect(matches("wss://notharemaltin.com")).toBe(false);
+    expect(matches("wss://evil-haremaltin.com")).toBe(false);
+  });
+
+  it("does not match a foreign host that only mentions the feed", () => {
+    expect(matches("wss://evil.example/?next=haremaltin.com")).toBe(false);
+    expect(matches("wss://haremaltin.com.evil.example/socket")).toBe(false);
+    expect(matches("https://example.test/haremaltin.com")).toBe(false);
+  });
+
+  it("keeps the blocked host in step with the feed the app actually opens", () => {
+    const markets = readFileSync(join(process.cwd(), "src/services/markets.ts"), "utf8");
+    const feed = markets.match(/const FEED_URL = "([^"]+)"/)?.[1];
+    expect(feed, "FEED_URL literal in src/services/markets.ts").toBeDefined();
+    expect(isMarketFeedSocket(new URL(feed!))).toBe(true);
   });
 });

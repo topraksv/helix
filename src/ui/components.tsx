@@ -1267,7 +1267,22 @@ export function Toggle({
       onPress={() => onValueChange(!value)}
       style={{ opacity: disabled ? 0.5 : 1 }}
     >
-      <Animated.View style={{ width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2, backgroundColor: trackColor, justifyContent: "center" }}>
+      {/* The track carries its own boundary. Both fills are low-contrast warm
+          neutrals (1.1–1.9:1 against the app's surfaces), so without it the
+          control's shape depended entirely on what happened to be behind it —
+          and on the refund row, whose background is the same `primarySoft`,
+          the switch disappeared outright. */}
+      <Animated.View
+        style={{
+          width: TOGGLE_W,
+          height: TOGGLE_H,
+          borderRadius: TOGGLE_H / 2,
+          backgroundColor: trackColor,
+          borderWidth: 1,
+          borderColor: palette.controlBorder,
+          justifyContent: "center",
+        }}
+      >
         <Animated.View
           style={{
             width: TOGGLE_THUMB,

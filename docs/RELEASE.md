@@ -170,6 +170,46 @@ etmelidir. Linked pgTAP CLI Docker isteyen ortamda çalışmıyorsa aynı SQL Su
 resmî Management API database-query endpoint’inde `finish(true)` ile **tek
 transaction + rollback** olarak çalıştırılır. Kalıcı test verisi bırakılmaz.
 
+### Bekleyen migration: 00000000000008_function_search_path.sql
+
+Supabase database linter `set_updated_at` fonksiyonunu
+`0011_function_search_path_mutable` altında raporluyor. Migration yazıldı ama
+**linked projeye uygulanmadı**: bu ortamda Supabase CLI, Docker ve psql yok.
+Uygulanana kadar `migration list --linked` bu sürümü yalnız local gösterir.
+
+Uygulamak için yukarıdaki `db push --linked` akışı ya da Supabase SQL Editor
+yeterli; fonksiyon `create or replace` olduğu için mevcut trigger’lar aynı
+fonksiyonu göstermeye devam eder, trigger yeniden oluşturulmaz.
+
+Kapanış kriteri: `db lint --linked` çıktısında bu uyarı kalmamalı.
+
+### Kabul edilen Supabase lint bulguları
+
+Aşağıdakiler bilinçli kararlardır; tekrar “bulgu” olarak açılmamalıdır.
+
+| Bulgu | Karar |
+| --- | --- |
+| `delete_own_account` — signed-in kullanıcı SECURITY DEFINER çağırabiliyor | Tasarım gereği. Kullanıcının **kendi** hesabını silmesi için var; gövde `auth.uid()` ile sınırlı, argüman yok, `search_path = ''`, `execute` yalnız `authenticated`. SECURITY INVOKER olamaz: kullanıcının `auth.users` üzerinde yetkisi yoktur. |
+| 18 × `unindexed_foreign_keys` (INFO) | Eklenmiyor. Bu FK’ler `(user_id, …)` bileşenli ve tek kullanıcılık veri hacmi küçük; kapsayıcı index’in kazandıracağı tek yol hesap silme cascade’i (ömürde bir kez). 18 index her yazmayı yavaşlatır, karşılığı yok. |
+| 7 × `unused_index` (INFO) | Silinmiyor. `*_user_updated_id` index’leri sync pull cursor’ının tam olarak kullandığı sıralamadır (`order updated_at, id` + `gt`); `idx_tx_user_effective` ay aralığı sorgularını karşılar. Tablolar bugün seq scan tercih edilecek kadar küçük olduğu için “unused” görünüyorlar — veri büyüdüğünde gereken index’ler bunlar. |
+| `auth_leaked_password_protection` kapalı | Remote Auth ayarı; repo’dan değiştirilmez. Açılması önerilir (Dashboard → Authentication → Password). Bu denetimde uzaktan ayar değiştirilmedi. |
+
+## 5b · Kabul edilen Dependabot uyarıları (BACKLOG-SDK-01)
+
+Üçü de **geçişli (transitive)** bağımlılık; hiçbiri yayımlanan uygulama
+paketine girmiyor. Doğrudan yükseltme Expo SDK 54 / drizzle-kit matrisini
+kırar, bu yüzden kapanışları koordineli toolchain yükseltmesine bağlı.
+
+| Uyarı | Yol | Neden erişilebilir değil | Kapanış |
+| --- | --- | --- | --- |
+| `uuid` GHSA-w5hq-g745-h8pq (7.0.3) | `expo → @expo/config-plugins → xcode` | Advisory yalnız `buf` argümanı verilince geçerli; `xcode` Xcode proje UUID’si üretirken `buf` geçmiyor. Config plugin **prebuild** aracıdır, bundle’a girmez. Uygulama kendi id’leri için `uuidv7` kullanır. | SDK yükseltmesi |
+| `postcss` GHSA-qx2v-qp2m-jg93 (8.4.49) | `expo → @expo/metro-config` | XSS için saldırganın kontrolündeki CSS’in işlenip servis edilmesi gerekir; build yalnız projenin kendi CSS’ini işler. Kök `postcss` zaten yamalı 8.5.16. | SDK yükseltmesi |
+| `esbuild` GHSA-67mh-4wv8-2f99 (0.18.20) | `drizzle-kit → @esbuild-kit/*` | Dependabot’un kendisi `Development` olarak işaretliyor; esbuild dev server’ı yalnız yerel şema üretiminde çalışır, dışarı açılmaz. | drizzle-kit yükseltmesi |
+
+Sahip: repo sahibi. Tetikleyici: `BACKLOG-SDK-01` (bkz. `AGENTS.md`). Kapanış
+kriteri: yükseltme sonrası bu üç uyarının Dependabot’ta kapanmış görünmesi.
+Yeniden değerlendirme: bu paketlerden biri **runtime** yoluna girerse derhal.
+
 ### Eski client uyumu ve DB rollback
 
 - Önce nullable/additive kolon veya backward-compatible constraint; eski client

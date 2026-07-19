@@ -8,6 +8,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Snowflake } from "lucide-react-native";
 import { useSession } from "../auth/session";
+import { performAccountFreeze } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingOutboxCount, writeSetting } from "../db/mutations";
 import { tr } from "../i18n/tr";
@@ -101,55 +102,61 @@ export default function AccountSecurityScreen() {
     });
   };
 
-  const freezeAccount = async () => {
-    if (freezing) return;
-    const accepted = await appConfirm(tr.account.freezeConfirmTitle, tr.account.freezeConfirmBody, {
-      confirmLabel: tr.account.freezeConfirm,
-      danger: true,
-    });
-    if (!accepted) return;
-    if (isSupabaseConfigured) {
-      const password = await appPrompt(tr.account.confirmPasswordTitle, tr.account.freezePasswordBody, {
-        secure: true,
-        placeholder: tr.auth.password,
+  // The confirmation and re-authentication run inside the shared guard too, so
+  // a second press cannot arm a second freeze while the first is still asking
+  // for the password.
+  const freezeAccount = () =>
+    operationGuard.run(async () => {
+      const accepted = await appConfirm(tr.account.freezeConfirmTitle, tr.account.freezeConfirmBody, {
         confirmLabel: tr.account.freezeConfirm,
         danger: true,
       });
-      if (password == null) return;
-      const verifyError = await verifyPassword(password);
-      if (verifyError) {
-        void appAlert(verifyError, tr.errors.title);
-        return;
+      if (!accepted) return;
+      if (isSupabaseConfigured) {
+        const password = await appPrompt(tr.account.confirmPasswordTitle, tr.account.freezePasswordBody, {
+          secure: true,
+          placeholder: tr.auth.password,
+          confirmLabel: tr.account.freezeConfirm,
+          danger: true,
+        });
+        if (password == null) return;
+        const verifyError = await verifyPassword(password);
+        if (verifyError) {
+          void appAlert(verifyError, tr.errors.title);
+          return;
+        }
       }
-    }
-    setFreezing(true);
-    useSession.setState({ isFreezing: true });
-    try {
-      await writeSetting(userId, "account_frozen", true);
-      if (!isSupabaseConfigured) {
-        scheduleSync(userId);
+
+      setFreezing(true);
+      useSession.setState({ isFreezing: true });
+      try {
+        const outcome = await performAccountFreeze({
+          setFrozen: (frozen) => writeSetting(userId, "account_frozen", frozen),
+          syncNow: () => syncNow(userId),
+          pendingOutboxCount,
+          signOut,
+          scheduleSync: () => scheduleSync(userId),
+          requiresCloud: isSupabaseConfigured,
+        });
+        if (outcome.status === "failed") {
+          // A failure that could not even be rolled back leaves the account
+          // marked frozen locally, so it gets its own honest message instead of
+          // the reassuring "nothing was frozen" one.
+          const message = !outcome.rolledBack
+            ? tr.account.freezeRollbackFailed
+            : outcome.reason === "sync"
+              ? tr.account.freezeSyncFailed
+              : (outcome.message ?? tr.account.freezeSyncFailed);
+          void appAlert(message, tr.errors.title);
+        }
+      } finally {
+        // Both flags always release. `isFreezing` suppresses the reactivation
+        // gate, so leaving it set after a failure hides the one screen that
+        // could explain the state. A successful freeze has already signed out.
         useSession.setState({ isFreezing: false });
-        return;
+        setFreezing(false);
       }
-      const synced = await syncNow(userId);
-      if (!synced || (await pendingOutboxCount()) > 0) {
-        await writeSetting(userId, "account_frozen", false);
-        scheduleSync(userId);
-        useSession.setState({ isFreezing: false });
-        void appAlert(tr.account.freezeSyncFailed, tr.errors.title);
-        return;
-      }
-      const signOutError = await signOut();
-      if (signOutError) {
-        await writeSetting(userId, "account_frozen", false);
-        scheduleSync(userId);
-        useSession.setState({ isFreezing: false });
-        void appAlert(signOutError, tr.errors.title);
-      }
-    } finally {
-      setFreezing(false);
-    }
-  };
+    });
 
   return (
     <Screen>

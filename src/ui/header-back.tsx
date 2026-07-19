@@ -7,7 +7,7 @@ import { navigateBack } from "./navigation";
 import { radius, useTheme } from "./theme";
 
 /** Native-header back control with a deterministic parent for direct links. */
-export function HeaderBackButton({ fallback }: { fallback: Href }) {
+export function HeaderBackButton({ fallback, exact }: { fallback: Href; exact?: boolean }) {
   const router = useRouter();
   const { palette } = useTheme();
   return (
@@ -15,7 +15,7 @@ export function HeaderBackButton({ fallback }: { fallback: Href }) {
       accessibilityRole="button"
       accessibilityLabel={tr.common.back}
       hitSlop={4}
-      onPress={() => navigateBack(router, fallback)}
+      onPress={() => navigateBack(router, fallback, exact)}
       style={({ pressed }) => ({
         width: 44,
         height: 44,

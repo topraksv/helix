@@ -10,17 +10,33 @@ import { spacing, type, useTheme } from "./theme";
 
 export type SeriesColors = readonly [string, string, string, string, string, string, string, string];
 
+/**
+ * Ordered fills for CATEGORICAL series (distribution slices, stacked bars),
+ * where a colour identifies a category and carries no judgement about it.
+ *
+ * The order is the contract, not decoration. The palette bans purple and every
+ * blue but the focus ring, which leaves clay, green, amber, red and two
+ * neutrals — so the semantic accents have to appear here, and the risk is that
+ * neighbouring slices read as a status scale instead of as categories. Green,
+ * amber and red are therefore never adjacent to each other, and no two
+ * neighbours come from the same hue family, counting the wrap from the last
+ * entry back to the first. Red and amber side by side were the worst case: a
+ * warning-then-danger ramp for two categories that mean nothing of the kind,
+ * and the pair hardest to separate with a red-green colour vision deficiency.
+ *
+ * `tests/theme-contrast.test.ts` enforces both rules.
+ */
 export function useSeriesColors(): SeriesColors {
   const { palette } = useTheme();
   return [
     palette.primary,
     palette.positive,
     palette.surfaceStrong,
-    palette.textSecondary,
-    palette.warning,
-    palette.negative,
     palette.primaryStrong,
+    palette.warning,
+    palette.textSecondary,
     palette.accentText,
+    palette.negative,
   ];
 }
 
