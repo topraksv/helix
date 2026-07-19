@@ -49,6 +49,10 @@ export default function MonthDetailScreen() {
   const transactions = useTransactionsBetween(firstDayOf(month!), lastDayOf(month!));
   const bundle = useLedger(yearOf(month!));
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Note drafts live on the screen, keyed by category: the footer editor is a
+  // virtualized row, so its own state would be discarded the moment it scrolls
+  // out of the render window mid-typing.
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const { palette } = useTheme();
   const undo = useUndo();
 
@@ -205,7 +209,8 @@ export default function MonthDetailScreen() {
           </View>
         );
       }
-      case "group-footer":
+      case "group-footer": {
+        const existing = cellNotes.find((n) => n.categoryId === item.categoryId);
         return (
           <View style={[groupSurface, groupBottom, { paddingBottom: spacing.lg }]}>
             {item.category ? (
@@ -213,11 +218,19 @@ export default function MonthDetailScreen() {
                 userId={userId}
                 month={month!}
                 categoryId={item.category.id}
-                existing={cellNotes.find((n) => n.categoryId === item.categoryId)}
+                existing={existing}
+                draft={noteDrafts[item.categoryId]}
+                onDraftChange={(text) =>
+                  setNoteDrafts((drafts) => ({ ...drafts, [item.categoryId]: text }))
+                }
+                onSaved={() =>
+                  setNoteDrafts(({ [item.categoryId]: _saved, ...rest }) => rest)
+                }
               />
             ) : null}
           </View>
         );
+      }
     }
   };
 
@@ -241,24 +254,33 @@ export default function MonthDetailScreen() {
   );
 }
 
+/** Controlled by the screen: the draft must survive this row being
+ *  virtualized out of the window (and the group collapsing). */
 function CellNoteEditor({
   userId,
   month,
   categoryId,
   existing,
+  draft,
+  onDraftChange,
+  onSaved,
 }: {
   userId: string;
   month: string;
   categoryId: string;
   existing?: { id: string; body: string };
+  draft: string | undefined;
+  onDraftChange: (text: string) => void;
+  onSaved: () => void;
 }) {
-  const [text, setText] = useState(existing?.body ?? "");
+  const text = draft ?? existing?.body ?? "";
   const save = async () => {
     await saveCellNote(userId, month, categoryId, text, existing);
+    onSaved();
   };
   return (
     <View style={{ marginTop: spacing.sm }}>
-      <Field label={tr.cashflow.cellNote} value={text} onChangeText={setText} multiline placeholder={tr.cell.notePlaceholder} />
+      <Field label={tr.cashflow.cellNote} value={text} onChangeText={onDraftChange} multiline placeholder={tr.cell.notePlaceholder} />
       <Button label={tr.common.save} variant="secondary" size="sm" onPress={() => void save()} disabled={text === (existing?.body ?? "")} />
     </View>
   );

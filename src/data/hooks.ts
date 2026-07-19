@@ -444,7 +444,7 @@ export function useAdjustments() {
   return useAdjustmentsState().data;
 }
 
-export function useAdjustmentsState() {
+function useAdjustmentsState() {
   const userId = useUserId();
   return useSharedLive(
     `balance_adjustments:${userId}`,
