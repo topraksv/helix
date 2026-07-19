@@ -170,6 +170,30 @@ etmelidir. Linked pgTAP CLI Docker isteyen ortamda çalışmıyorsa aynı SQL Su
 resmî Management API database-query endpoint’inde `finish(true)` ile **tek
 transaction + rollback** olarak çalıştırılır. Kalıcı test verisi bırakılmaz.
 
+### Bekleyen migration: 00000000000008_function_search_path.sql
+
+Supabase database linter `set_updated_at` fonksiyonunu
+`0011_function_search_path_mutable` altında raporluyor. Migration yazıldı ama
+**linked projeye uygulanmadı**: bu ortamda Supabase CLI, Docker ve psql yok.
+Uygulanana kadar `migration list --linked` bu sürümü yalnız local gösterir.
+
+Uygulamak için yukarıdaki `db push --linked` akışı ya da Supabase SQL Editor
+yeterli; fonksiyon `create or replace` olduğu için mevcut trigger’lar aynı
+fonksiyonu göstermeye devam eder, trigger yeniden oluşturulmaz.
+
+Kapanış kriteri: `db lint --linked` çıktısında bu uyarı kalmamalı.
+
+### Kabul edilen Supabase lint bulguları
+
+Aşağıdakiler bilinçli kararlardır; tekrar “bulgu” olarak açılmamalıdır.
+
+| Bulgu | Karar |
+| --- | --- |
+| `delete_own_account` — signed-in kullanıcı SECURITY DEFINER çağırabiliyor | Tasarım gereği. Kullanıcının **kendi** hesabını silmesi için var; gövde `auth.uid()` ile sınırlı, argüman yok, `search_path = ''`, `execute` yalnız `authenticated`. SECURITY INVOKER olamaz: kullanıcının `auth.users` üzerinde yetkisi yoktur. |
+| 18 × `unindexed_foreign_keys` (INFO) | Eklenmiyor. Bu FK’ler `(user_id, …)` bileşenli ve tek kullanıcılık veri hacmi küçük; kapsayıcı index’in kazandıracağı tek yol hesap silme cascade’i (ömürde bir kez). 18 index her yazmayı yavaşlatır, karşılığı yok. |
+| 7 × `unused_index` (INFO) | Silinmiyor. `*_user_updated_id` index’leri sync pull cursor’ının tam olarak kullandığı sıralamadır (`order updated_at, id` + `gt`); `idx_tx_user_effective` ay aralığı sorgularını karşılar. Tablolar bugün seq scan tercih edilecek kadar küçük olduğu için “unused” görünüyorlar — veri büyüdüğünde gereken index’ler bunlar. |
+| `auth_leaked_password_protection` kapalı | Remote Auth ayarı; repo’dan değiştirilmez. Açılması önerilir (Dashboard → Authentication → Password). Bu denetimde uzaktan ayar değiştirilmedi. |
+
 ### Eski client uyumu ve DB rollback
 
 - Önce nullable/additive kolon veya backward-compatible constraint; eski client
