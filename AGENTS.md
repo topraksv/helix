@@ -258,6 +258,13 @@ agent-to-agent communication that did not occur.
   boundaries; use the matching `*Text` token for text. Inputs use
   `controlBorder`, and primary/danger button copy uses `onPrimary`/`onNegative`.
   Every light/dark role pair stays under the automated contrast contract.
+  Two surfaces sit outside the plain token table and are covered separately by
+  `tests/theme-contrast.test.ts`: the undo snackbar INVERTS the page (it paints
+  `palette.text` as its background, so its foregrounds must be `background`, not
+  a normal-surface role such as `primaryText`), and the name-derived
+  `InitialsBadge` hue comes from `src/ui/badge-color.ts`, which caps the
+  generated colour's relative luminance so the white monogram always clears AA.
+  Never hand-roll an `hsl()` fill under text.
 - **No manual `useMemo`/`useCallback` for derivations** — the React Compiler is
   enabled; hand-rolled memoization on unstable deps makes it bail out (lint
   error `preserve-manual-memoization`). Keep `useMemo` only where a hook rule

@@ -7,11 +7,68 @@ chronology — entries older than the last five are simply dropped.
 ## Current state
 
 - Updated: 2026-07-19 (Europe/Istanbul)
-- Work: Claude's nine-package user audit shipped (PR #36 `e69f386`, PR #37
-  `e66eeb3`, PR #38 `3e30b1c`); follow-up PR #40 shipped as main `3a04ff3`
-  with the converter last-known-rate contract, expanded frameless logo system
-  + `*.gstatic.com` CSP fix and uniform dark README screenshots. This handoff
-  branch records the completed release from base `3a04ff3`.
+- Work: Claude's evidence-driven architecture/security/UI audit from base
+  `eeed2c5`. Read-only recon first (baseline was fully green), then three
+  small verified packages. UNCOMMITTED in the working tree — not yet on a
+  branch, not pushed, no OTA published.
+- Packages: (1) shared-primitive text contrast — the undo snackbar's "Geri Al"
+  label used `palette.primaryText` on the inverted `palette.text` surface
+  (1.27:1 light / 1.10:1 dark, effectively invisible; regression from PR #16
+  which swapped `primary` → `primaryText`), and `InitialsBadge` drew white on a
+  raw `hsl(h,42%,46%)` fill that failed AA on 185/360 hues (worst 2.56:1). Both
+  are now locked by `tests/theme-contrast.test.ts`; the badge hue moved to the
+  pure `src/ui/badge-color.ts`, which caps relative luminance instead of
+  lightness so only the bright half of the wheel changes. (2) `upsertSubscription`
+  re-stamped `canceled_at` on every save of an already-inactive rule; it now
+  preserves the original date. (3) 40 provably unreferenced `tr.*` keys removed
+  (`tr.sources[…]`/`tr.incomeKinds[…]` dynamic access verified and kept).
+- Follow-up verification pass (same working tree): all four `canceled_at`
+  transitions are now pinned (active→cancel, edit-while-cancelled,
+  reactivate→clears, second cancel→fresh date), both semantics mutation-checked.
+  `badge-color.ts` moved `src/domain/` → `src/ui/` (a generated design colour is
+  presentation, not business logic). New P0 fix: the CSV export cell sanitizer
+  missed a leading carriage return, whitespace-hidden formulas and bare `\r`
+  row forgery, and its own normalisation destroyed legitimate data
+  (`Yemek; İçecek` collapsed to `Yemek  İçecek`). `csvCell` now uses RFC 4180
+  quoting and lives in the pure `backup-validation.ts` (the old
+  home imports React Native, so the security boundary could not be unit-tested
+  at all) and is covered by `tests/csv-export-safety.test.ts`. E2E now measures
+  the PAINTED contrast of the undo action (`renderedContrastRatio`) — the role
+  query passed at 1.27:1 before.
+- GitHub security, read-only via `gh` on 2026-07-19. No alert was dismissed
+  (no permission) and no dependency was bumped. Risk classification, not a
+  clean bill of health — "no reachable path demonstrated" is the honest ceiling
+  of a static review:
+  - `uuid` GHSA-w5hq-g745-h8pq (alert 3): **version mismatch**. The advisory
+    range is `>=12.0.0 <12.0.1`; the lockfile resolves exactly one `uuid` at
+    `7.0.3` (expo → @expo/config-plugins → xcode). Nothing to remediate here.
+  - `postcss` GHSA-qx2v-qp2m-jg93 (alert 2): **advisory applies** to the
+    resolved `8.4.49` (via `@expo/metro-config@54.0.17`). No reachable path was
+    demonstrated: the string does not appear in any shipped `dist/` bundle and
+    the only CSS it processes is first-party. Compensating condition: it runs
+    at build time on developer/CI machines, not on user devices. Upstream
+    resolution is owned by the Expo SDK pin → `BACKLOG-SDK-01`. Accepted risk.
+  - `esbuild` GHSA-67mh-4wv8-2f99 (alert 1): **advisory applies** to `0.18.20`,
+    reached only through drizzle-kit's deprecated `@esbuild-kit` chain (dev
+    scope). No reachable path was demonstrated: the advisory needs an `esbuild
+    serve` dev server, which nothing in this repo starts. `drizzle-kit@0.31.10`
+    is already the newest published release and still declares that chain, so
+    there is no upstream fix to take; an `overrides` jump from 0.18 to 0.25
+    inside a loader we do not control was judged disproportionate. Accepted
+    risk, revisit when drizzle-kit drops `@esbuild-kit`.
+  - Code scanning: no analysis configured (HTTP 404). Secret scanning: this
+    token lacks the required scope, so the real alert list was NOT read.
+- Deliberately NOT changed, with evidence: brand/utility chip monograms in
+  `src/ui/logo.tsx` (45/87 fail AA, but those are fixed brand colours under
+  WCAG's logotype exemption and the subscription name always renders beside
+  them); Error Boundaries (already present at the root Stack with a real reset
+  path); FlashList (the FlatList migration from PR #37 is measured and
+  adequate); SWR/TanStack Query (would add a second source of truth beside the
+  local-first SQLite live-query + outbox model).
+- Previous release context: nine-package user audit (PR #36 `e69f386`, PR #37
+  `e66eeb3`, PR #38 `3e30b1c`) and follow-up PR #40 as main `3a04ff3`
+  (converter last-known-rate contract, frameless logo system + `*.gstatic.com`
+  CSP fix, uniform dark README screenshots).
 - Outcome highlights: logout→login no longer flashes onboarding (grace waits
   for the post-sync onboarded re-read); verifyPassword recovers the e-mail
   after offline bootstrap instead of "Supabase yapılandırılmadı"; semantic
@@ -30,7 +87,16 @@ chronology — entries older than the last five are simply dropped.
   gstatic favicon redirect (logos actually render on web now); README
   screenshots regenerated as a uniform dark set from a 105-row multi-month
   demo restore.
-- Verification: strict typecheck; 47 files/296 Vitest; zero-warning Expo lint;
+- Verification (this audit, run locally on the working tree): strict typecheck
+  clean; Vitest 48 files / 310 tests (296 before, +14 new); Playwright 3 spec
+  files / 10 cases over 20 committed visual baselines;
+  zero-warning Expo lint; production `expo export` inside every bundle budget;
+  10/10 Playwright including axe and all 20 visual baselines UNCHANGED (the
+  badge fix moved no committed screenshot). Both contrast fixes and the
+  `canceled_at` fix were mutation-checked: reverting each makes its new test
+  fail. Not verified here: physical iOS/Android device behaviour, VoiceOver /
+  TalkBack, and remote Supabase state (no migration touched).
+- Prior release verification: strict typecheck; 47 files/296 Vitest; zero-warning Expo lint;
   production export within all bundle budgets; 10/10 Playwright incl. axe and
   visual baselines (one cash-flow baseline intentionally regenerated for the
   captioned toolbar); 1.200-transaction virtualization measured on the static
