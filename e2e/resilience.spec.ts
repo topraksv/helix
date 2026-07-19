@@ -94,6 +94,37 @@ test("hostile route parameters recover instead of white-screening", async ({ pag
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+// Analysis lives in the Cash Flow stack but Summary can open it too. A
+// cross-tab push must be anchored, which mounts the Financial Table underneath
+// it — so plain history sends a user who came from Summary to a screen they
+// never visited. Both entry paths are asserted because fixing one by
+// hard-coding a single global back target silently breaks the other.
+test("Analysis goes back to whichever screen opened it", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  await page.getByRole("tab", { name: "Bütçe Özeti" }).click();
+  await page.getByRole("button", { name: /Net değişim/ }).click();
+  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "Mali Tablo" }).click();
+  await page.getByRole("button", { name: "Analiz", exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+
+  // A direct link has no source at all and must still land somewhere real.
+  await page.goto("/helix/cash-flow/analytics");
+  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 test("budget summary keeps its forecast, charts and cash-flow tab route", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });

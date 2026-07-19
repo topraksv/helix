@@ -528,7 +528,14 @@ export default function DashboardScreen() {
           title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
           subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
           chevron
-          onPress={() => router.push("/(tabs)/cash-flow/analytics" as Href, { withAnchor: true })}
+          // Record the source: the anchored push mounts the Cash Flow stack at
+          // its own index, so Analysis must be told it was opened from Summary
+          // or its back control pops to the Financial Table instead.
+          onPress={() =>
+            router.push({ pathname: "/(tabs)/cash-flow/analytics", params: { from: "summary" } } as Href, {
+              withAnchor: true,
+            })
+          }
         />
         <Divider />
         {hasMonthFlow ? (
