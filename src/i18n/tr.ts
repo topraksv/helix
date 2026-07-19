@@ -147,6 +147,8 @@ export const tr = {
       "Çıkış yapılıp giriş ekranına döneceksin. Verilerin silinmez, bulutta korunur; tekrar giriş yapınca kaldığın yerden devam edersin (istersen başka bir hesapla da girebilirsin). Devam edilsin mi?",
     freezeConfirm: "Dondur ve Çık",
     freezeSyncFailed: "Gönderilmemiş kayıtlar güvenle buluta aktarılamadı. Hesap dondurulmadı; internet bağlantını kontrol edip tekrar dene.",
+    freezeRollbackFailed:
+      "Hesap dondurulamadı ve bu cihazdaki dondurma işareti geri alınamadı. Uygulamayı yeniden başlat; sorun sürerse çıkış yapıp tekrar giriş yap.",
     frozenTitle: "Hesabın donduruldu",
     frozenBody: "Devam etmek için kimliğini doğrula ya da çıkış yapıp yeniden giriş yap.",
     reactivate: "Kilidi Aç ve Devam Et",
