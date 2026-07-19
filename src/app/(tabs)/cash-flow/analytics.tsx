@@ -3,7 +3,7 @@
  *  transaction search. */
 
 import React, { useDeferredValue, useState } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { ChevronLeft, ChevronRight, Inbox, Target } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
@@ -19,7 +19,7 @@ import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
-import { spacing, type, useTheme } from "../../../ui/theme";
+import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
 type Period = "3m" | "6m" | "12m" | "year";
 
@@ -142,8 +142,9 @@ export default function AnalysisScreen() {
   const activeBudgetRows = budgetProgress(budgets, txLike, endMonth, today)
     .filter((budget) => categoryById.has(budget.categoryId));
 
-  return (
-    <Screen>
+  // Everything above the virtualized result list (period/filters/search box).
+  const searchHeader = (
+    <View>
       {/* Period slicer + (year mode) year switcher — one aligned axis */}
       <Spread style={{ marginBottom: spacing.md, gap: spacing.md }}>
         <View style={{ flex: 1, maxWidth: 380 }}>
@@ -226,63 +227,79 @@ export default function AnalysisScreen() {
           {tr.analysis.searchPeriodRequiresSource}
         </Body>
       ) : null}
-      {searchActive ? (
+      {searchActive && searchResults.length === 0 ? (
         <Card>
-          {searchResults.length === 0 ? (
-            <View style={{ gap: spacing.sm }}>
-              <Body muted>{tr.analysis.noResults}</Body>
-              <Button
-                label={tr.analysis.clearSearch}
-                variant="ghost"
-                size="sm"
-                onPress={() => {
-                  setQuery("");
-                  setTransactionType(null);
-                  setCategoryFilter(null);
-                  setSelected(null);
-                  setSourceFilter(null);
-                  setSearchScope("period");
-                }}
-              />
-            </View>
-          ) : (
-            searchResults.map((t, index) => (
-              <View key={t.id}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityHint={tr.analysis.openTransaction}
-                  onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
-                >
-                <Spread style={{ paddingVertical: spacing.xs }}>
-                  <View style={{ flex: 1, paddingRight: spacing.sm }}>
-                    <Body>{catName(t.categoryId) || tr.common.none}</Body>
-                    <Body muted style={{ fontSize: 12 }}>
-                      {transactionDateText(t)}
-                      {t.paymentSourceId && sourceNameById.get(t.paymentSourceId) ? ` · ${sourceNameById.get(t.paymentSourceId)}` : ""}
-                      {t.note ? ` · ${t.note}` : ""}
-                    </Body>
-                    {t.amountTryMinor < 0 ? (
-                      <View style={{ marginTop: spacing.xs }}>
-                        <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
-                      </View>
-                    ) : null}
-                  </View>
-                  <Amount
-                    minor={signedBalanceEffectOf(
-                      t.type,
-                      t.amountTryMinor,
-                      t.categoryId ? categoryById.get(t.categoryId)?.kind ?? null : null,
-                    )}
-                  />
-                </Spread>
-                </Pressable>
-                {index < searchResults.length - 1 ? <Divider /> : null}
-              </View>
-            ))
-          )}
+          <View style={{ gap: spacing.sm }}>
+            <Body muted>{tr.analysis.noResults}</Body>
+            <Button
+              label={tr.analysis.clearSearch}
+              variant="ghost"
+              size="sm"
+              onPress={() => {
+                setQuery("");
+                setTransactionType(null);
+                setCategoryFilter(null);
+                setSelected(null);
+                setSourceFilter(null);
+                setSearchScope("period");
+              }}
+            />
+          </View>
         </Card>
       ) : null}
+    </View>
+  );
 
+  // A broad filter can match every transaction, so results render inside the
+  // screen's FlatList (real virtualization) with the card look split across
+  // the first/last rows instead of a wrapping Card that mounts everything.
+  const renderResult = ({ item: t, index }: { item: (typeof searchResults)[number]; index: number }) => (
+    <View
+      style={[
+        { backgroundColor: palette.surface, paddingHorizontal: spacing.lg },
+        index === 0 && { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingTop: spacing.sm },
+        index === searchResults.length - 1 && {
+          borderBottomLeftRadius: radius.lg,
+          borderBottomRightRadius: radius.lg,
+          paddingBottom: spacing.sm,
+          marginBottom: spacing.md,
+        },
+      ]}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityHint={tr.analysis.openTransaction}
+        onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
+      >
+        <Spread style={{ paddingVertical: spacing.xs }}>
+          <View style={{ flex: 1, paddingRight: spacing.sm }}>
+            <Body>{catName(t.categoryId) || tr.common.none}</Body>
+            <Body muted style={{ fontSize: 12 }}>
+              {transactionDateText(t)}
+              {t.paymentSourceId && sourceNameById.get(t.paymentSourceId) ? ` · ${sourceNameById.get(t.paymentSourceId)}` : ""}
+              {t.note ? ` · ${t.note}` : ""}
+            </Body>
+            {t.amountTryMinor < 0 ? (
+              <View style={{ marginTop: spacing.xs }}>
+                <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
+              </View>
+            ) : null}
+          </View>
+          <Amount
+            minor={signedBalanceEffectOf(
+              t.type,
+              t.amountTryMinor,
+              t.categoryId ? categoryById.get(t.categoryId)?.kind ?? null : null,
+            )}
+          />
+        </Spread>
+      </Pressable>
+      {index < searchResults.length - 1 ? <Divider /> : null}
+    </View>
+  );
+
+  const analysisFooter = (
+    <View>
       <Card>
         {activeBudgetRows.length === 0 ? (
           <ListRow
@@ -415,6 +432,20 @@ export default function AnalysisScreen() {
           />
         </Card>
       ) : null}
+    </View>
+  );
+
+  return (
+    <Screen scroll={false}>
+      <FlatList
+        data={searchActive ? searchResults : []}
+        keyExtractor={(t: (typeof searchResults)[number]) => t.id}
+        renderItem={renderResult}
+        ListHeaderComponent={searchHeader}
+        ListFooterComponent={analysisFooter}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      />
     </Screen>
   );
 }

@@ -19,7 +19,6 @@ import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
-import { newId } from "../db/ids";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 
@@ -115,7 +114,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
           tryFactor: 1,
         };
         if (isEdit) await updateInstallmentPlan(userId, existing!.id, input);
-        else await createInstallmentPlan(userId, input, newId());
+        else await createInstallmentPlan(userId, input);
         scheduleSync(userId);
         allowExit(close);
       } catch (e) {

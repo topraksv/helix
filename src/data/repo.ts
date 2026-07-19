@@ -85,4 +85,10 @@ export type { ImportRequest } from "./repo/imports";
 
 export { runMaintenance } from "./repo/maintenance";
 
-export { deleteCategoryBudget, upsertCategoryBudget } from "./repo/budgets";
+export {
+  deleteCategoryBudget,
+  deleteCategoryWithBudgets,
+  restoreCategoryWithBudgets,
+  upsertCategoryBudget,
+  type CategoryDeleteSnapshot,
+} from "./repo/budgets";

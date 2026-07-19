@@ -173,13 +173,18 @@ export function Screen({
   ];
 
   if (!scroll) {
+    // Non-scroll screens host their own virtualized list; they still need the
+    // keyboard inset when that list's header contains inputs.
     return (
-      <View style={{ flex: 1, backgroundColor: palette.background }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: palette.background }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <FadeIn style={[{ flex: 1 }, inner]}>
           {header}
           {children}
         </FadeIn>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
   return (
