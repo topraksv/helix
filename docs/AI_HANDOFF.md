@@ -68,6 +68,38 @@ verified without inspecting its diff and running proportional checks.
 
 ## Recent handoffs
 
+### 2026-07-19 — Claude · Final authoritative closure (PR #43)
+
+- Base `c149353`; PR #43 squash-merged to main `89eac46`. Pages run
+  `29694317341` success, post-merge codeql run `29694317322` success.
+  EAS preview update group `0c40a985-39a8-4800-ae86-7957d93d2b02`
+  (iOS `019f7b30-2821-788b-abd4-0e0bedf6a8ac`, Android
+  `019f7b30-2821-747e-8892-d54bd37930f2`), runtime `1.0.0`, from `89eac46`.
+  No native rebuild: app.json, package.json and package-lock.json are
+  byte-identical to `c149353`.
+- Root causes, not symptoms: `useLive` carried a snapshot across a deps
+  change (logout→login onboarding flash) and account freeze cleaned up only
+  three of its failure paths (frozen account + stuck `isFreezing` + silent
+  rejection). Both extracted into testable units and mutation-checked.
+- Switch boundary measured at 1.00:1 on the refund row and 1.10–1.93:1
+  app-wide; `controlBorder` added and enforced. Analysis back navigation now
+  resolves from the recorded source. Chart series reordered so green/amber/red
+  are never adjacent.
+- Code scanning on main is 0 open: the regex alert auto-closed on the fix, the
+  kv alert was dismissed as a false positive after tracing every call site
+  (user id/e-mail, never session material) and pinned by `tests/privacy.test.ts`.
+- Gates: typecheck, 49 files / 337 Vitest, zero-warning lint, 15 Playwright,
+  20 visual baselines unchanged, all five export budgets within limit.
+- OPEN: `supabase/migrations/00000000000008_function_search_path.sql` is
+  authored but NOT applied — no CLI/Docker/psql here, so local and remote
+  migration history differ until the owner applies it (`docs/RELEASE.md`).
+- OPEN: 178 of the first 187 commits carry a `Co-Authored-By: Claude` trailer,
+  which is what lists the assistant under Contributors. The template that
+  mandated it is removed, but rewriting that history needs `main`'s protection
+  (`allow_force_pushes:false`, `enforce_admins:true`) temporarily relaxed by the
+  owner. Not attempted; protection was not modified.
+
+
 ### 2026-07-19 — Codex · PR #40 release completion
 
 - Independently inspected PR #40 at head `165653d`, confirmed `tr.tx.staleRate`
@@ -113,11 +145,3 @@ verified without inspecting its diff and running proportional checks.
   Harem lifecycle, sync polling, back/auth privacy; audit §12 and tracker added.
 - 48/289 tests, 9 Playwright, 21 baselines, linked migrations 1–7/lint/24 pgTAP
   passed. Native/two-client checks remained blocked.
-
-### 2026-07-18 — Codex · SDK 54 dependency policy
-
-- PRs #23/#24/#29; final main `8164caa`; Pages run `29648089748`; EAS group
-  `885cbc8e-47b3-4bfb-bc31-389379d1a76f`.
-- Rejected incompatible Dependabot SDK-stack/invalid-lockfile changes; kept
-  security updates open; applied compatible ESLint and Lucide updates. SDK 57
-  stayed in `BACKLOG-SDK-01`; full gates passed.
