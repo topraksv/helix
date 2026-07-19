@@ -20,7 +20,7 @@ import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
-import { kv } from "../lib/kv";
+import { kv } from "../services/kv";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { radius, spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";

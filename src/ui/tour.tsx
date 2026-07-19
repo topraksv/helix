@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { Banknote, CalendarCheck, ChartPie, CloudUpload, PlusCircle, Table2, type LucideIcon } from "lucide-react-native";
-import { kv } from "../lib/kv";
+import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
 import { radius, scrim, spacing, type, useTheme } from "./theme";

@@ -33,7 +33,7 @@ import {
   type LedgerBundle,
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
-import { kv } from "../../../lib/kv";
+import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
