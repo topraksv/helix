@@ -1,14 +1,14 @@
 /**
  * Matrix cell editor (spreadsheet habit, spec follow-up): tapping a month ×
  * category cell shows its transactions, the cell note, and a quick-entry box
- * that accepts sum expressions ("300+400+500") saved as one dated row.
+ * that accepts sum expressions ("300+400+500") saved as one dated row. The
+ * transaction list is a real FlatList, so a 1.000+ row cell mounts lazily.
  */
 
 import React, { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { FlatList, ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
-import { Pencil, Trash2 } from "lucide-react-native";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { restoreRow } from "../db/mutations";
@@ -22,12 +22,12 @@ import { signedBalanceEffectOf } from "../domain/transactions";
 import { transactionDateText } from "../ui/transaction-date";
 import { monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Amount, Badge, Body, Button, Divider, EmptyState, Field, IconButton, MoneyField, Row, Screen, SectionHeader, Spread } from "../ui/components";
+import { Amount, Body, Button, EmptyState, Field, MoneyField, Row, Screen, SectionHeader, Spread } from "../ui/components";
+import { TransactionRow } from "../ui/transaction-row";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
-import { INITIAL_TRANSACTION_ROWS, nextVisibleTransactionCount } from "../ui/progressive-list";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function CellEditorModal() {
@@ -43,7 +43,6 @@ export default function CellEditorModal() {
   const [entryRaw, setEntryRaw] = useState("");
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [visibleTransactions, setVisibleTransactions] = useState(INITIAL_TRANSACTION_ROWS);
   const operationGuard = useOperationGuard();
 
   const category = categories.find((c) => c.id === categoryId);
@@ -123,10 +122,8 @@ export default function CellEditorModal() {
     if (snapshot) undo.show(tr.tx.deletedUndo, () => void restoreRow(userId, "transactions", snapshot), "warning");
   };
 
-  return (
-    <Screen>
-      <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(month!)}` }} />
-
+  const header = (
+    <View>
       <Spread style={{ marginBottom: spacing.md }}>
         <Body muted style={{ flexShrink: 0 }}>{tr.cell.total}</Body>
         <ScrollView
@@ -194,56 +191,47 @@ export default function CellEditorModal() {
         </View>
       )}
 
-      {/* Transactions in this cell */}
       <SectionHeader>{tr.cashflow.cellTransactions}</SectionHeader>
-      {cellTx.length === 0 ? (
-        <EmptyState title={tr.cashflow.emptyMonth} />
-      ) : (
-        cellTx.slice(0, visibleTransactions).map((t, index) => {
+    </View>
+  );
+
+  return (
+    <Screen scroll={false}>
+      <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(month!)}` }} />
+      <FlatList
+        data={cellTx}
+        keyExtractor={(t) => t.id}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={header}
+        ListEmptyComponent={<EmptyState title={tr.cashflow.emptyMonth} />}
+        renderItem={({ item: t, index }) => {
           const installmentTitle = t.installmentPlanId
             ? installmentDisplayTitle(planTitle.get(t.installmentPlanId), t.note, tr.installments.plan)
             : null;
           return (
-          <View key={t.id}>
-            <Spread style={{ paddingVertical: spacing.sm }}>
-              <View style={{ flex: 1 }}>
-                {installmentTitle ? <Body style={{ fontFamily: "Inter_500Medium" }}>{installmentTitle}</Body> : null}
-                <Body muted={installmentTitle != null}>
-                  {transactionDateText(t)}
-                  {t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : ""}
-                </Body>
-                <Row gap={spacing.sm} style={{ marginTop: 2 }}>
-                  {t.isAggregate ? <Badge text={tr.bulk.aggregateBadge} /> : null}
-                  {t.amountTryMinor < 0 ? (
-                    <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
-                  ) : null}
-                  {t.status === "pending" ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
-                  {t.note && t.note !== installmentTitle ? (
-                    <Text style={[type.small, { color: palette.textSecondary, flexShrink: 1 }]}>
-                      {t.note}
-                    </Text>
-                  ) : null}
-                </Row>
-              </View>
-              <Row gap={spacing.sm}>
-                <Amount minor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)} />
-                <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })} />
-                <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void removeTx(t.id)} />
-              </Row>
-            </Spread>
-            {index < Math.min(cellTx.length, visibleTransactions) - 1 ? <Divider /> : null}
-          </View>
+            <TransactionRow
+              installmentTitle={installmentTitle}
+              dateText={
+                transactionDateText(t) +
+                (t.installmentNo ? `  ·  ${tr.installments.nthInstallment(t.installmentNo)}` : "") +
+                (t.isAggregate ? `  ·  ${tr.bulk.aggregateBadge}` : "")
+              }
+              note={t.note}
+              pending={t.status === "pending"}
+              reversalBadge={
+                t.amountTryMinor < 0
+                  ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }
+                  : null
+              }
+              amountMinor={signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null)}
+              onEdit={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
+              onDelete={() => void removeTx(t.id)}
+              divider={index < cellTx.length - 1}
+            />
           );
-        })
-      )}
-      {cellTx.length > visibleTransactions ? (
-        <Button
-          label={tr.common.showMore(cellTx.length - visibleTransactions)}
-          variant="secondary"
-          size="sm"
-          onPress={() => setVisibleTransactions(nextVisibleTransactionCount(cellTx.length, visibleTransactions))}
-        />
-      ) : null}
+        }}
+      />
     </Screen>
   );
 }
