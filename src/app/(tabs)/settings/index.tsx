@@ -1,7 +1,7 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
 import React, { useState } from "react";
-import { Platform, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
@@ -41,6 +41,7 @@ import { useDevicePreferences } from "../../../services/device-preferences";
 import { tr } from "../../../i18n/tr";
 import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
+import { useOperationGuard } from "../../../ui/operation-guard";
 import { spacing, useTheme } from "../../../ui/theme";
 import type { ThemePreference } from "../../../ui/theme";
 import { readPickedText } from "../../../services/picked-file";
@@ -110,32 +111,57 @@ export default function SettingsScreen() {
     }
   };
 
-  const exportJson = async () => {
-    const path = await saveTextFile(
-      `helix-yedek-${new Date().toISOString().slice(0, 10)}.json`,
-      await buildExportText(userId),
-      "application/json",
-    );
-    if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "application/json" });
+  // Backup/restore reads or rewrites the whole account, so it is slow enough to
+  // look like nothing happened. Before, these rows were bare `void export()`
+  // calls: a second tap started a concurrent full export, and a failure
+  // (storage quota, permission, unreadable file) rejected into nowhere — an
+  // error looked exactly like an operation still running. The shared guard
+  // serialises them, the busy row reports progress, and every failure surfaces.
+  const dataOps = useOperationGuard();
+  const [dataBusy, setDataBusy] = useState<"export" | "csv" | "import" | null>(null);
+
+  const runDataOperation = async (kind: "export" | "csv" | "import", operation: () => Promise<void>) => {
+    await dataOps.run(async () => {
+      setDataBusy(kind);
+      try {
+        await operation();
+      } catch (e) {
+        notify(`⚠ ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setDataBusy(null);
+      }
+    });
   };
 
-  const exportCsv = async () => {
-    const path = await saveTextFile(
-      `helix-islemler-${new Date().toISOString().slice(0, 10)}.csv`,
-      await buildTransactionsCsv(userId),
-      "text/csv",
-    );
-    if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "text/csv" });
-  };
+  const exportJson = () =>
+    runDataOperation("export", async () => {
+      const path = await saveTextFile(
+        `helix-yedek-${new Date().toISOString().slice(0, 10)}.json`,
+        await buildExportText(userId),
+        "application/json",
+      );
+      if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "application/json" });
+    });
+
+  const exportCsv = () =>
+    runDataOperation("csv", async () => {
+      const path = await saveTextFile(
+        `helix-islemler-${new Date().toISOString().slice(0, 10)}.csv`,
+        await buildTransactionsCsv(userId),
+        "text/csv",
+      );
+      if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "text/csv" });
+    });
 
   const importJson = async () => {
     const proceed = await appConfirm(tr.settings.import, tr.settings.importConfirm);
     if (!proceed) return;
     const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
-    try {
-      if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
-      const content = await readPickedText(picked.assets[0]);
+    const asset = picked.assets[0];
+    await runDataOperation("import", async () => {
+      if ((asset.size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
+      const content = await readPickedText(asset);
       const result = await importBundle(userId, parseExportBundleText(content));
       const message =
         result.skipped > 0
@@ -143,9 +169,7 @@ export default function SettingsScreen() {
           : tr.settings.importSuccess(result.imported);
       notify(message);
       void syncNow(userId);
-    } catch (e) {
-      notify(`⚠ ${e instanceof Error ? e.message : String(e)}`);
-    }
+    });
   };
 
   // Re-auth gate for sensitive actions. Only meaningful with a cloud account;
@@ -349,9 +373,30 @@ export default function SettingsScreen() {
 
       <SectionHeader>{tr.settings.transferSection}</SectionHeader>
       <Card>
-        <ListRow icon={FileDown} title={tr.settings.export} subtitle={tr.settings.exportDesc} chevron onPress={() => void exportJson()} />
-        <ListRow icon={FileSpreadsheet} title={tr.settings.exportCsv} subtitle={tr.settings.exportCsvDesc} chevron onPress={() => void exportCsv()} />
-        <ListRow icon={FileUp} title={tr.settings.import} subtitle={tr.settings.importDesc} chevron onPress={() => void importJson()} />
+        <ListRow
+          icon={FileDown}
+          title={tr.settings.export}
+          subtitle={tr.settings.exportDesc}
+          chevron={dataBusy !== "export"}
+          right={dataBusy === "export" ? <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} /> : undefined}
+          onPress={() => void exportJson()}
+        />
+        <ListRow
+          icon={FileSpreadsheet}
+          title={tr.settings.exportCsv}
+          subtitle={tr.settings.exportCsvDesc}
+          chevron={dataBusy !== "csv"}
+          right={dataBusy === "csv" ? <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} /> : undefined}
+          onPress={() => void exportCsv()}
+        />
+        <ListRow
+          icon={FileUp}
+          title={tr.settings.import}
+          subtitle={tr.settings.importDesc}
+          chevron={dataBusy !== "import"}
+          right={dataBusy === "import" ? <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} /> : undefined}
+          onPress={() => void importJson()}
+        />
         <ListRow icon={FileSpreadsheet} title={tr.importer.title} subtitle={tr.importer.settingsDesc} chevron onPress={() => router.push("/import-wizard")} />
       </Card>
 

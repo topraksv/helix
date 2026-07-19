@@ -53,6 +53,18 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
   expect(backup.tables.transactions).toEqual(
     expect.arrayContaining([expect.objectContaining({ note: "E2E düzenlendi", deleted_at: null })]),
   );
+
+  // A failing backup used to reject into a bare `void export()` and show the
+  // user nothing at all, which is indistinguishable from one still running.
+  await page.evaluate(() => {
+    URL.createObjectURL = () => {
+      throw new Error("E2E dışa aktarma hatası");
+    };
+  });
+  await page.getByRole("button", { name: /Yedek Oluştur/ }).click();
+  await expect(page.getByText(/E2E dışa aktarma hatası/)).toBeVisible();
+  await page.getByRole("button", { name: "Tamam", exact: true }).click();
+
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
