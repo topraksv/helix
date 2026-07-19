@@ -261,3 +261,32 @@ function utf8ByteLength(value: string): number {
   }
   return bytes;
 }
+
+/**
+ * Neutralise one user-entered value for the CSV export.
+ *
+ * Two separate hazards, both driven by note/category/person text that can also
+ * arrive from a synced device:
+ *   1. Structure forgery — a `;`, quote or line break inside a cell could
+ *      forge an extra column or row.
+ *   2. Formula injection — Excel and Sheets evaluate a cell whose first
+ *      NON-BLANK character is `=`, `+`, `-` or `@`, so the guard has to look
+ *      past leading whitespace (a plain `^` test was bypassed by " =1+1").
+ *
+ * Hazard 1 is solved by RFC 4180 quoting, NOT by deleting characters: the
+ * export is re-importable (the import wizard accepts `text/csv`), so a note
+ * reading `Yemek; İçecek` or spanning two lines has to survive the round trip
+ * intact. Only the formula guard adds a character, and it adds a leading
+ * apostrophe — the conventional spreadsheet "this is text" marker.
+ *
+ * Callers must NOT route app-generated numeric or enumerated columns through
+ * this: a negative amount legitimately starts with `-` and would be turned
+ * into text. Exported so the security boundary itself is unit-tested — its
+ * previous home (`export-import.ts`) imports React Native and cannot load
+ * under Vitest at all, which is how the earlier bypasses survived.
+ */
+export function csvCell(value: unknown): string {
+  const raw = String(value ?? "");
+  const neutralized = /^\s*[=+@-]/.test(raw) ? `'${raw}` : raw;
+  return /[";\r\n]/.test(neutralized) ? `"${neutralized.replace(/"/g, '""')}"` : neutralized;
+}

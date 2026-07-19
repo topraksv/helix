@@ -10,6 +10,7 @@ import { getSqliteAsync } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { fromDbShape, writeRowBatchesAtomically } from "../db/mutations";
 import {
+  csvCell,
   ExportTextBuilder,
   validateBundleRelationships,
   validateExportBundle,
@@ -51,12 +52,6 @@ export async function buildTransactionsCsv(userId: string): Promise<string> {
      ORDER BY t.effective_date`,
     [userId],
   );
-  // User-entered text cells are sanitized against CSV formula injection
-  // (a leading = + @ or tab would execute when opened in Excel).
-  const safeCell = (v: unknown) => {
-    const s = String(v ?? "").replace(/[\n;]/g, " ");
-    return /^[=+@\t-]/.test(s) ? `'${s}` : s;
-  };
   const header = "harcama_tarihi;odeme_tarihi;ekstre_donemi;ekstre_kesim_tarihi;giris_tarihi;tur;durum;tutar;para_birimi;tutar_try;kategori;kaynak;kisi;taksit_no;toplu;not";
   const lines = rows.map((r) =>
     [
@@ -70,12 +65,12 @@ export async function buildTransactionsCsv(userId: string): Promise<string> {
       ((r.amount_minor as number) / 100).toFixed(2).replace(".", ","),
       r.currency,
       ((r.amount_try_minor as number) / 100).toFixed(2).replace(".", ","),
-      safeCell(r.category),
-      safeCell(r.source),
-      safeCell(r.person),
+      csvCell(r.category),
+      csvCell(r.source),
+      csvCell(r.person),
       r.installment_no ?? "",
       r.is_aggregate ? "evet" : "",
-      safeCell(r.note),
+      csvCell(r.note),
     ].join(";"),
   );
   // UTF-8 BOM: without it, Excel on Windows opens the file as ANSI and mangles
