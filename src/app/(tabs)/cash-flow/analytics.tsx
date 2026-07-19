@@ -307,13 +307,13 @@ export default function AnalysisScreen() {
             title={tr.budgets.emptyAnalysisTitle}
             subtitle={tr.budgets.emptyAnalysisHint}
             chevron
-            onPress={() => router.push("/(tabs)/settings/budgets" as Href)}
+            onPress={() => router.push("/(tabs)/settings/budgets" as Href, { withAnchor: true })}
           />
         ) : (
           <>
             <Spread style={{ marginBottom: spacing.sm }}>
               <Heading style={{ marginTop: 0, marginBottom: 0 }}>{tr.budgets.analysisTitle(monthName(endMonth))}</Heading>
-              <Button label={tr.common.edit} size="sm" variant="ghost" onPress={() => router.push("/(tabs)/settings/budgets" as Href)} />
+              <Button label={tr.common.edit} size="sm" variant="ghost" onPress={() => router.push("/(tabs)/settings/budgets" as Href, { withAnchor: true })} />
             </Spread>
             {activeBudgetRows.map((budget) => (
               <ListRow

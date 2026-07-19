@@ -395,7 +395,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
               : dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
           </Body>
           {isCreditCardExpense && !cardCycleValid ? (
-            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/(tabs)/settings/payment-sources")} />
+            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/(tabs)/settings/payment-sources", { withAnchor: true })} />
           ) : null}
         </>
       )}

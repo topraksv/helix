@@ -153,6 +153,41 @@ describe("live market freshness", () => {
     expect(marketSellRateTry("USD", 1_000 + 60_001)).toBeNull();
   });
 
+  it("never re-stamps an expired quote as fresh when another symbol ticks", () => {
+    vi.useFakeTimers();
+    useMarkets.setState({
+      status: "stale",
+      prices: {
+        USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: 1_000 },
+      },
+      lastEventAt: 1_000,
+    });
+    const now = 1_000 + 120_000; // USDTRY expired long ago
+    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, now);
+    const state = useMarkets.getState();
+    expect(state.prices.ALTIN?.sellTry).toBe(4_010);
+    // The old quote keeps DISPLAYING with its original receipt time…
+    expect(state.prices.USDTRY?.receivedAt).toBe(1_000);
+    // …and conversion still refuses it: another symbol's tick must never
+    // resurrect an expired rate as live.
+    expect(marketSellRateTry("USD", now)).toBeNull();
+  });
+
+  it("extends a still-fresh unchanged quote while the feed stays alive", () => {
+    vi.useFakeTimers();
+    useMarkets.setState({
+      status: "live",
+      prices: {
+        USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "", receivedAt: 1_000 },
+      },
+      lastEventAt: 1_000,
+    });
+    const now = 31_000; // USDTRY is 30 s old — still within the 60 s contract
+    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, now);
+    expect(useMarkets.getState().prices.USDTRY?.receivedAt).toBe(now);
+    expect(marketSellRateTry("USD", now)).toBe(40.5);
+  });
+
   it("reports a hard error after silence only when there is nothing to show", () => {
     vi.useFakeTimers();
     useMarkets.setState({ status: "connecting", prices: {}, lastEventAt: null });

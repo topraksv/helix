@@ -76,9 +76,10 @@ function persistSnapshot(prices: Record<string, MarketPrice>, lastEventAt: numbe
 }
 
 /** Show the previous session's quotes (dated, trend cleared) while connecting.
- *  Their original `receivedAt` is kept, so conversion freshness still fails —
- *  a snapshot is display data, never a live rate. Exported for tests; the
- *  production caller is `connectMarkets`. */
+ *  Their original `receivedAt` is kept: conversion freshness keeps following
+ *  each quote's own receipt time, so anything older than the 60 s contract can
+ *  never convert, and `applyFeed` never re-stamps an expired quote as fresh.
+ *  Exported for tests; the production caller is `connectMarkets`. */
 export async function hydrateSnapshot(): Promise<void> {
   try {
     const raw = await kv.get(SNAPSHOT_KEY);
@@ -161,14 +162,18 @@ export function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
     return;
   }
   lastApplied = now;
-  // The provider only re-sends a symbol whose price CHANGED, so a stable quote (e.g.
-  // gold overnight while USD keeps ticking) stops arriving even though it is
-  // still the current price. Keep every known quote and refresh its receipt
-  // time on any live event — a symbol must not "disappear" merely because it
-  // didn't move. The global silence timer still clears everything if the whole
-  // feed goes quiet for MARKET_STALE_MS (a genuinely dead connection).
+  // The provider only re-sends a symbol whose price CHANGED, so a stable quote
+  // (e.g. gold overnight while USD keeps ticking) stops arriving even though it
+  // is still the current price. Keep every known quote, and extend the receipt
+  // time ONLY for quotes that are themselves still fresh — live continuity may
+  // keep a quote alive, but it must never resurrect one that already expired
+  // (a hydrated snapshot or a >60 s silence gap), or the converter would treat
+  // yesterday's rate as a fresh live rate on the next tick.
   const prices: Record<string, MarketPrice> = Object.fromEntries(
-    Object.entries(useMarkets.getState().prices).map(([code, price]) => [code, { ...price, receivedAt: now }]),
+    Object.entries(useMarkets.getState().prices).map(([code, price]) => [
+      code,
+      freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS) ? { ...price, receivedAt: now } : price,
+    ]),
   );
   for (const { code } of MARKET_SYMBOLS) {
     const entry = data[code];

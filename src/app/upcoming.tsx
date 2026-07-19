@@ -73,8 +73,8 @@ export default function UpcomingScreen() {
     if (item.status === "late") return router.push("/reconciliation");
     if (item.kind === "transaction") return router.push({ pathname: "/transaction", params: { id: item.refId } });
     if (item.sourceType === "subscription") return router.push({ pathname: "/subscription-form", params: { id: item.refId } });
-    if (item.sourceType === "recurring_income") return router.push("/(tabs)/settings/incomes");
-    return router.push("/(tabs)/settings/payment-sources");
+    if (item.sourceType === "recurring_income") return router.push("/(tabs)/settings/incomes", { withAnchor: true });
+    return router.push("/(tabs)/settings/payment-sources", { withAnchor: true });
   };
   const sourceLabel = (item: UpcomingTimelineItem) => ({
     subscription: tr.subs.title,

@@ -18,8 +18,7 @@ geçmez.
 ## 1 · Branch ve kalite kapısı
 
 1. `main`den branch aç; mevcut kirli dosyaları sahiplenmeden önce diff’i incele.
-2. Paket kapsamını ID’lerle `docs/AUDIT_TRACKER.md` içinde tut.
-3. Commit öncesi Node 22 ile en az:
+2. Commit öncesi Node 22 ile en az:
 
    ```bash
    export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
@@ -221,5 +220,5 @@ ekran/console içeriği kontrol edilir.
 - Migration varsa linked list/lint/pgTAP ve generated DB type güncel.
 - Native config değiştiyse OTA teslim diye sunulmamış; build ve cihaz kabul sonucu açık.
 - README/privacy/test/release metni gerçek özellik ve sınırlarla uyumlu.
-- `docs/AUDIT_TRACKER.md` ve `docs/AI_HANDOFF.md` gerçek commit/run/group ID’leriyle
-  kapanmış; dış kabul yoksa `BLOCKED`, yapılmış gibi değil.
+- `docs/AI_HANDOFF.md` gerçek commit/run/group ID’leriyle kapanmış; dış kabul
+  yoksa `BLOCKED`, yapılmış gibi değil.

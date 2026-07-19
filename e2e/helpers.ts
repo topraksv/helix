@@ -1,6 +1,6 @@
 import { expect, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 
-export const APP_PATH = "/helix/";
+const APP_PATH = "/helix/";
 
 export function currentMonthKey(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {

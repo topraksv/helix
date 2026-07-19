@@ -4,7 +4,7 @@ import { parseDefinition, type ComputedColumnDefinition } from "../domain/comput
 import { tr } from "../i18n/tr";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 
-export const EXPORT_VERSION = 1;
+const EXPORT_VERSION = 1;
 export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
 export const MAX_BACKUP_ROWS = 100_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -253,7 +253,7 @@ export function parseExportBundleText(content: string): ExportBundle {
 }
 
 /** Cross-platform UTF-8 byte count without allocating another encoded copy. */
-export function utf8ByteLength(value: string): number {
+function utf8ByteLength(value: string): number {
   let bytes = 0;
   for (const character of value) {
     const codePoint = character.codePointAt(0) ?? 0;

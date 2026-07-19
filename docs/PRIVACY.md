@@ -64,7 +64,7 @@ Supabase anon/publishable anahtarını taşır; asıl erişim sınırı RLS’ti
 | GitHub Pages | Web uygulamasını sunmak | Normal HTTP metadata | Finansal veri app tarafında browser storage/Supabase akışındadır |
 | TCMB | TRY kaynaklı resmî kur | Salt okunur GET | Timeout, boyut/şekil/tarih doğrulaması |
 | Frankfurter | TCMB alınamazsa kur fallback’i | İstenen para birimi sembolleri | Salt okunur; kaynak tarihi zorunlu |
-| Harem Altın websocket | Canlı altın/döviz piyasa kartı | Salt okunur socket bağlantısı | Resmî SLA yok; 60 sn feed sessizliğinde veri canlı sayılmaz |
+| Harem Altın websocket | Canlı altın/döviz piyasa kartı | Salt okunur socket bağlantısı | Resmî SLA yok; 60 sn feed sessizliğinde veri canlı sayılmaz. Son geçerli fiyatlar zaman damgasıyla cihazda saklanır (kişisel veri içermez) ve yalnız görüntüleme için kullanılır |
 | Google favicon | Bilinen abonelik logosu | Sıkı doğrulanmış/encode edilmiş public domain | Utility, unknown, IP/local/invalid host gönderilmez; local fallback var |
 
 Uygulama production'da kendi doğrudan console log'unu üretmez. Development logger
