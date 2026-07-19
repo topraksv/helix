@@ -39,7 +39,7 @@ artefact’ına karışamaz.
 | P2 | Responsive görsel kalite | Screenshot + assertion | 320/390/768/1440, light/dark; beş ana tab | Baseline diff bütçesinde; tab metni üç noktayla kesilmez | `e2e/__screenshots__`, `visual-a11y`, `responsive-layout` |
 | P2 | TR locale/tarih | Unit + browser locale | virgül/kuruş, Istanbul–UTC gün sınırı, leap/DST, 7/14 gün ay geçişi | Parse/format round-trip; takvim günü kaymaz | `locale-timezone`, `dates-year-columns`, `income-recurrence` |
 | P2 | Bildirim privacy/cap | Unit/boundary | default neutral, opt-in detail, stale preference, sign-out, >60 item | Ayrıntı fail-closed; en yakın 60; hesap verisi temizlenir | `device-preferences`, `privacy`, `upcoming` |
-| P2 | Ölçek | Deterministic benchmark | 1k/10k/100k ledger; 100k dashboard/matrix; progressive list | CI 4 sn bütçesi; lineer/bounded output | `performance`, `progressive-list` |
+| P2 | Ölçek | Deterministic benchmark + browser E2E | 1k/10k/100k ledger; 100k dashboard/matrix; 1k+ satırlık FlatList sanallaştırması | CI 4 sn bütçesi; lineer/bounded output; liste satırları lazily mount edilir | `performance`, ay detayı/hücre editörü/Analiz FlatList'leri |
 | P3 | External feed dayanıklılığı | Unit | timeout/abort/shape/date/cache, stable market quote, invalid favicon host | Eski/bozuk veri canlı veya TRY gibi sunulmaz | `external-services` |
 | P3 | Release config | Source/config | Node 22, runtime/channel, pinned Actions, branch-safe deploy, bundle budget | Native/web sözleşmesi drift etmez | `release-config`, workflow `quality` |
 

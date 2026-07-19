@@ -16,7 +16,6 @@ import {
   type ExistingImportIds,
 } from "./backup-validation";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
-export type { ExportBundle } from "./backup-validation";
 
 /**
  * Build a restorable JSON file one table at a time. This never retains all

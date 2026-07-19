@@ -107,7 +107,7 @@ her paket bölümünün altındaki release kaydına eklenir.
 | `CDX-PERF-04` | P1 | P4 | RESOLVED | XLSX mantıksal hücre limitleri `XLSX.read` sonrasında; zip-bomb riski | SheetJS öncesi ZIP entry/64 MB açılmış boyut/32 MB entry/200× oran preflight; XLSX lazy chunk; hostile ZIP testi yazmadan reddediyor |
 | `CDX-PERF-01` | P2 | P4 | RESOLVED | Ledger her değişimde tüm transaction geçmişini tarıyor | 1k/10k/100k benchmark lineer O(T+M) modeli bütçe içinde doğruladı; gereksiz model migration’ı yapılmadı, ikinci `currentBalance` taraması normal yoldan kaldırıldı |
 | `CDX-PERF-02` | P3 | P4 | RESOLVED | Dashboard/analytics aynı diziyi çok kez tarıyor | Forecast+distribution+fixed-variable tek saf geçişte; cash-flow kredi-kartı split’i 12 taramadan bire indi; golden parity ve 100k eşikleri yeşil |
-| `CDX-PERF-05` | P3 | P4 | RESOLVED | Uzun transaction listelerinde virtualization yok | Parent ScrollView ile çakışan nested virtual list yerine ilk 80 + 80’lik progressive rendering; 500/2k bounded testleri yeşil |
+| `CDX-PERF-05` | P3 | P4 | RESOLVED | Uzun transaction listelerinde virtualization yok | 2026-07-19: ay detayı/hücre editörü/Analiz araması gerçek `FlatList` sanallaştırmasına taşındı (progressive 80+80 katmanı kaldırıldı); 1.200 işlemlik gerçek import senaryosunda ay detayı ~160 ms açılıyor, ~116 satır mount ediliyor |
 | `CDX-PERF-06` | P3 | P4 | RESOLVED | Bundle/brand asset bütçesi yok | Ölçüm: entry 5.07→4.60 MB, XLSX ayrı 493 KB lazy chunk, font 36→8, export ~15→9.48 MB; CI entry/JS/font/export bütçesi eklendi |
 
 ## UI, UX, erişilebilirlik ve gizlilik

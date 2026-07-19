@@ -95,7 +95,7 @@ const COMPACT_NUMBER = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1
  * out while guaranteeing the full string still fits a narrow matrix cell (the
  * widest full value, "₺999.999,99", is ~11 chars) — so cells never need
  * truncation (`numberOfLines`) or wrapping, which the design rules forbid. */
-export const COMPACT_THRESHOLD_MINOR = 100_000_000;
+const COMPACT_THRESHOLD_MINOR = 100_000_000;
 
 /**
  * Table-cell money: full `₺1.234.567,89` for everyday amounts, but a compact
