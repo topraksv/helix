@@ -84,6 +84,84 @@ test("every reachable route stays accessible with real data", async ({ page }, t
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+/**
+ * The layout rules AGENTS.md calls non-negotiable, checked from computed style
+ * rather than by eye: text is never truncated, toggles share one size, and the
+ * page never scrolls sideways. (Status chip width is fixed by `STATUS_W` in the
+ * component itself, so it needs no runtime check.)
+ *
+ * `text-overflow: ellipsis` alone proves nothing — React Native Web sets it on
+ * every Text node, so only an element whose content actually exceeds its box is
+ * a real truncation. Because that makes a passing run indistinguishable from a
+ * broken detector, the scan first injects two deliberately truncated elements
+ * and asserts it finds them.
+ */
+test("layout non-negotiables hold on every route in both widths", async ({ page, context }, testInfo) => {
+  test.setTimeout(180_000);
+  await isolateExternalData(context);
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await addMarketExpense(page, "Yerleşim taraması");
+
+  const scan = (withControl: boolean) =>
+    page.evaluate((injectControl: boolean) => {
+      if (injectControl) {
+        const clipped = document.createElement("div");
+        clipped.textContent = "Bu satır kesinlikle taşacak kadar uzun bir metin içerir";
+        clipped.style.cssText = "width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:fixed;top:0";
+        document.body.appendChild(clipped);
+        const clamped = document.createElement("div");
+        clamped.textContent = "satır bir satır iki satır üç satır dört satır beş";
+        clamped.style.cssText =
+          "width:60px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;position:fixed;top:20px";
+        document.body.appendChild(clamped);
+      }
+      const truncated: string[] = [];
+      const toggles = new Set<string>();
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>("*"))) {
+        if (el.id.startsWith("__control")) continue;
+        const style = getComputedStyle(el);
+        const text = (el.textContent ?? "").trim().slice(0, 45);
+        const visible = el.clientWidth > 0 && el.clientHeight > 0;
+        if (!text || !visible) continue;
+        const scrollable = style.overflowX === "visible" || style.overflowX === "auto" || style.overflowX === "scroll";
+        if (el.children.length === 0 && !scrollable && el.scrollWidth > el.clientWidth + 1) {
+          truncated.push(`${style.textOverflow === "ellipsis" ? "ellipsis" : "clip"} ${el.scrollWidth}>${el.clientWidth}: ${text}`);
+        }
+        if (style.webkitLineClamp !== "none" && el.scrollHeight > el.clientHeight + 1) {
+          truncated.push(`line-clamp(${style.webkitLineClamp}): ${text}`);
+        }
+        const box = el.getBoundingClientRect();
+        if (el.getAttribute("role") === "switch") toggles.add(`${Math.round(box.width)}x${Math.round(box.height)}`);
+      }
+      return { truncated: [...new Set(truncated)], toggles: [...toggles] };
+    }, withControl);
+
+  // Detector self-check, once, before the real sweep.
+  await page.goto("/helix/");
+  await expect(page.locator("#root")).toBeVisible();
+  const control = await scan(true);
+  expect(control.truncated.filter((t) => t.includes("Bu satır")), "ellipsis detector is live").toHaveLength(1);
+  expect(control.truncated.filter((t) => t.includes("line-clamp")), "line-clamp detector is live").toHaveLength(1);
+
+  const problems: string[] = [];
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const route of ALL_ROUTES) {
+      await page.goto(route);
+      await expect(page.locator("#root")).toBeVisible();
+      const found = await scan(false);
+      const tag = `${width}px ${route}`;
+      for (const t of found.truncated) problems.push(`${tag} truncated: ${t}`);
+      if (found.toggles.length > 1) problems.push(`${tag} toggle sizes differ: ${found.toggles.join(", ")}`);
+      const sideways = await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth + 1);
+      if (sideways) problems.push(`${tag} scrolls horizontally`);
+    }
+  }
+  expect(problems, problems.join("\n")).toEqual([]);
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 test("dashboard remains visually stable across viewport and theme matrix", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
