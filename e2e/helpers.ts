@@ -14,8 +14,23 @@ export function currentMonthKey(): string {
   return `${year}-${month}`;
 }
 
+/** Registrable host of the live market feed (`src/services/markets.ts`). */
+export const MARKET_FEED_HOST = "haremaltin.com";
+
+/**
+ * Whether a socket URL belongs to the market feed.
+ *
+ * A substring match on the host is the wrong contract: `/haremaltin\.com/`
+ * is unanchored, so it also matches `notharemaltin.com` and any URL that
+ * merely mentions the host in a query string. Compare the parsed hostname,
+ * accepting the registrable domain and its subdomains and nothing else.
+ */
+export function isMarketFeedSocket(url: URL): boolean {
+  return url.hostname === MARKET_FEED_HOST || url.hostname.endsWith(`.${MARKET_FEED_HOST}`);
+}
+
 export async function isolateExternalData(context: BrowserContext): Promise<void> {
-  await context.routeWebSocket(/haremaltin\.com/, (socket) => socket.close());
+  await context.routeWebSocket((url) => isMarketFeedSocket(url), (socket) => socket.close());
   await context.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.hostname === "127.0.0.1" || url.protocol === "blob:" || url.protocol === "data:") {
