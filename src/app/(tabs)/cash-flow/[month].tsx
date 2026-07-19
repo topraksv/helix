@@ -5,7 +5,7 @@
  * collapsed groups cost one header row each.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
@@ -15,7 +15,7 @@ import * as s from "../../../db/schema";
 import { restoreRow } from "../../../db/mutations";
 import { deleteTransaction } from "../../../data/repo";
 import { saveCellNote } from "../../../data/cell-notes";
-import { firstDayOf, lastDayOf, yearOf } from "../../../domain/dates";
+import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { useCategories, useLedger, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../../../data/hooks";
 import { installmentDisplayTitle } from "../../../domain/installments";
 import { formatMinor } from "../../../domain/money";
@@ -28,6 +28,7 @@ import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { radius, spacing, useTheme } from "../../../ui/theme";
+import { navigateBack } from "../../../ui/navigation";
 
 type Categories = ReturnType<typeof useCategories>;
 type MonthTransactions = ReturnType<typeof useTransactionsBetween>;
@@ -46,8 +47,14 @@ export default function MonthDetailScreen() {
   const categories = useCategories();
   const persons = usePersons();
   const plans = usePlans();
-  const transactions = useTransactionsBetween(firstDayOf(month!), lastDayOf(month!));
-  const bundle = useLedger(yearOf(month!));
+  // A dynamic segment carries whatever the URL says, so `/cash-flow/garbage`
+  // reaches this screen and `lastDayOf` throws while the queries below are
+  // being built — a white screen with no chance to handle it. Query a real
+  // month, then leave for the parent list.
+  const validMonth = isMonthKey(month) ? month : null;
+  const rangeMonth = validMonth ?? monthKeyOf(todayISO());
+  const transactions = useTransactionsBetween(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
+  const bundle = useLedger(yearOf(rangeMonth));
   const [expanded, setExpanded] = useState<string | null>(null);
   // Note drafts live on the screen, keyed by category: the footer editor is a
   // virtualized row, so its own state would be discarded the moment it scrolls
@@ -55,8 +62,11 @@ export default function MonthDetailScreen() {
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const { palette } = useTheme();
   const undo = useUndo();
+  useEffect(() => {
+    if (!validMonth) navigateBack(router, "/(tabs)/cash-flow");
+  }, [validMonth, router]);
 
-  const ledgerMonth = bundle?.ledger.find((m) => m.month === month);
+  const ledgerMonth = bundle?.ledger.find((m) => m.month === rangeMonth);
   const personName = new Map(persons.map((p) => [p.id, p.name]));
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const planTitle = new Map(plans.map((plan) => [plan.id, plan.title]));
@@ -73,8 +83,8 @@ export default function MonthDetailScreen() {
     getDb()
       .select()
       .from(s.cellNotes)
-      .where(and(eq(s.cellNotes.userId, userId), eq(s.cellNotes.month, month!), isNull(s.cellNotes.deletedAt))),
-    [userId, month],
+      .where(and(eq(s.cellNotes.userId, userId), eq(s.cellNotes.month, rangeMonth), isNull(s.cellNotes.deletedAt))),
+    [userId, rangeMonth],
     ["cell_notes"],
   ).data;
 
@@ -216,7 +226,7 @@ export default function MonthDetailScreen() {
             {item.category ? (
               <CellNoteEditor
                 userId={userId}
-                month={month!}
+                month={rangeMonth}
                 categoryId={item.category.id}
                 existing={existing}
                 draft={noteDrafts[item.categoryId]}
@@ -236,7 +246,7 @@ export default function MonthDetailScreen() {
 
   return (
     <Screen scroll={false}>
-      <Stack.Screen options={{ title: monthLabel(month!) }} />
+      <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
       <FlatList
         data={items}
         keyExtractor={(item) =>

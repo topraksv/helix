@@ -172,6 +172,12 @@ agent-to-agent communication that did not occur.
   route, `popToTopOnBlur` becomes a no-op and the tab is stuck on that route
   until an app restart (the Summary → Analysis bug). Do not set a root `(tabs)`
   initial route: it mounts protected hooks on anonymous auth pages.
+- **Route params are hostile input.** A dynamic segment or query string carries
+  whatever the URL says, and the range helpers throw (`lastDayOf("2026-13")`),
+  so a screen that derives a query from an unchecked param crashes DURING
+  RENDER — a white screen no handler can catch. Validate with the domain
+  predicate (`isMonthKey`), query a safe substitute, and `navigateBack` to the
+  parent. An id-shaped param may instead resolve to `undefined` and redirect.
 - **Sync ordering is server-authoritative.** Supabase normalizes `updated_at`;
   every push selects and conditionally merges that acknowledgement before its
   exact outbox events are removed. Never advance a pull cursor past an invalid
@@ -300,14 +306,23 @@ src/domain/     pure functions with unit tests (balance, installments,
                 analytics, dates, money, recurrence). No React, no I/O.
 src/db/         drizzle schema, async client, migrations.
 src/data/       hooks + stable repo facade; repo/ contains focused I/O services.
+src/auth/       Supabase session lifecycle, recovery, login history, auth errors.
 src/sync/       Supabase outbox engine + status + generated remote DB types.
 src/services/   side-effecting integrations (fx, markets, notifications,
-                import/export).
+                import/export, diagnostics) plus the device-local storage they
+                sit on (kv, device-preferences). There is no `src/lib`.
 src/i18n/tr.ts  every user-facing string (Turkish). Code stays English.
 assets/brand/   the brand kit (symbols, lockups). assets/images/ = only the
                 icons app.json references (icon/favicon/splash/adaptive).
-tests/          vitest suites for src/domain.
+                assets/screenshots/ = the README gallery.
+tests/          vitest suites (domain, repository contract, services, theme
+                and accessibility contracts). e2e/ = Playwright specs and the
+                committed visual baselines.
 ```
+
+**zustand is the incumbent store** (`create` in session, sync status, undo,
+dialog, markets, fx, device preferences). Reuse it; do not add a second state
+or data-fetching library — a measured defect has to justify one first.
 
 ## Design language
 

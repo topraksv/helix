@@ -15,7 +15,7 @@ import { restoreRow } from "../db/mutations";
 import { addTransaction, deleteTransaction } from "../data/repo";
 import { saveCellNote } from "../data/cell-notes";
 import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../data/hooks";
-import { dateForMonthEntry, firstDayOf, lastDayOf, monthKeyOf, todayISO } from "../domain/dates";
+import { dateForMonthEntry, firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO } from "../domain/dates";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinor, parseAmountExpression } from "../domain/money";
 import { signedBalanceEffectOf } from "../domain/transactions";
@@ -43,7 +43,7 @@ export default function CellEditorModal() {
   // shell resolving a bare path). Trusting the params crashed the render, so
   // an unusable link returns to the table instead. Substituting a default
   // month is deliberately NOT an option — it would show another cell's money.
-  const validMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month ?? "") ? month : null;
+  const validMonth = isMonthKey(month) ? month : null;
   const rangeMonth = validMonth ?? monthKeyOf(todayISO());
   useEffect(() => {
     if (!validMonth || !categoryId) navigateBack(router, "/(tabs)/cash-flow");
