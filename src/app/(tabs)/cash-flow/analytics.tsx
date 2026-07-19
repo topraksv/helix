@@ -4,7 +4,7 @@
 
 import React, { useDeferredValue, useState } from "react";
 import { FlatList, Pressable, Text, useWindowDimensions, View } from "react-native";
-import { useRouter, type Href } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { ChevronLeft, ChevronRight, Inbox, Target } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
@@ -19,6 +19,8 @@ import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
+import { HeaderBackButton } from "../../../ui/header-back";
+import { resolveBackTarget } from "../../../ui/navigation";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
 type Period = "3m" | "6m" | "12m" | "year";
@@ -43,6 +45,10 @@ export default function AnalysisScreen() {
   const allTx = useAllTransactions();
   const router = useRouter();
   const { palette } = useTheme();
+  // Analysis is reachable from the Financial Table (same stack) and from
+  // Summary (another tab). Only the pusher knows which, so it says so.
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const back = resolveBackTarget<Href>(from, { summary: "/(tabs)" }, "/(tabs)/cash-flow");
   const colors = useSeriesColors();
   const { width } = useWindowDimensions();
   const compact = width < 900;
@@ -437,6 +443,7 @@ export default function AnalysisScreen() {
 
   return (
     <Screen scroll={false}>
+      <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
       <FlatList
         data={searchActive ? searchResults : []}
         keyExtractor={(t: (typeof searchResults)[number]) => t.id}

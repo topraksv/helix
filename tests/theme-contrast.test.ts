@@ -145,6 +145,83 @@ describe("semantic theme contrast", () => {
     }
   });
 
+  // WCAG 1.4.11: an interactive control has to be distinguishable from its
+  // background, in every state. Both toggle track fills are low-contrast warm
+  // neutrals, so the track's own boundary is what satisfies this — and on the
+  // refund row, whose background IS the active track colour, the switch was
+  // rendering at exactly 1.00:1 and could not be seen at all.
+  it("outlines interactive controls against every surface they sit on", () => {
+    // `primarySoft` stays in this list on purpose: it is both the active track
+    // fill and a real row background, so it is the worst case the token has to
+    // survive if either is ever used behind a control again.
+    const controlSurfaces = ["background", "surface", "surfaceAlt", "surfaceHover", "primarySoft"] as const;
+    for (const palette of [lightPalette, darkPalette]) {
+      for (const surface of controlSurfaces) {
+        expect(
+          contrastRatio(palette.controlBorder, palette[surface]),
+          `controlBorder (${palette.controlBorder}) on ${surface} (${palette[surface]})`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+      // The boundary must also read against the fills it wraps, so neither the
+      // on nor the off state can collapse into an unoutlined blob.
+      for (const track of ["surfaceStrong", "primarySoft"] as const) {
+        expect(
+          contrastRatio(palette.controlBorder, palette[track]),
+          `controlBorder (${palette.controlBorder}) around ${track} track (${palette[track]})`,
+        ).toBeGreaterThanOrEqual(2.5);
+      }
+    }
+  });
+
+  // Categorical chart fills identify a category; they must not read as a
+  // status scale. Amber beside red is the worst case — a warning-then-danger
+  // ramp for two categories that mean nothing of the kind, and the pair hardest
+  // to tell apart with a red-green colour vision deficiency.
+  it("never places the semantic accents next to each other in chart series", () => {
+    // Hue families, since the palette has three near-identical clay tones that
+    // would otherwise count as three distinct categories.
+    const family = (palette: Palette) =>
+      new Map<string, string>([
+        [palette.primary, "clay"],
+        [palette.primaryStrong, "clay"],
+        [palette.accentText, "clay"],
+        [palette.positive, "green"],
+        [palette.warning, "amber"],
+        [palette.negative, "red"],
+        [palette.surfaceStrong, "neutral"],
+        [palette.textSecondary, "neutral"],
+      ]);
+
+    for (const palette of [lightPalette, darkPalette]) {
+      // Mirrors `useSeriesColors`, which cannot be imported here (it is a hook).
+      const series = [
+        palette.primary,
+        palette.positive,
+        palette.surfaceStrong,
+        palette.primaryStrong,
+        palette.warning,
+        palette.textSecondary,
+        palette.accentText,
+        palette.negative,
+      ];
+      const families = series.map((color) => family(palette).get(color));
+      expect(families, "every series colour must be a known palette token").not.toContain(undefined);
+
+      const semantic = new Set(["green", "amber", "red"]);
+      for (let index = 0; index < families.length; index += 1) {
+        // Charts wrap: with more categories than colours the last is drawn
+        // beside the first, so the adjacency check has to wrap too.
+        const current = families[index]!;
+        const next = families[(index + 1) % families.length]!;
+        expect(current, `series ${index} and ${(index + 1) % families.length} share a hue family`).not.toBe(next);
+        expect(
+          semantic.has(current) && semantic.has(next),
+          `series ${index} (${current}) sits next to ${next}`,
+        ).toBe(false);
+      }
+    }
+  });
+
   it("keeps the badge colour deterministic per name", () => {
     expect(initialsBadgeColor("Netflix")).toBe(initialsBadgeColor("Netflix"));
     expect(initialsBadgeColor("Netflix")).not.toBe(initialsBadgeColor("Spotify"));

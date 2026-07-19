@@ -9,6 +9,14 @@ export interface Palette {
   surfaceHover: string;
   surfaceStrong: string;
   border: string;
+  /**
+   * Boundary for interactive controls (toggles, inputs). Separate from `border`
+   * because a decorative divider only has to be visible, while a control has to
+   * satisfy WCAG 1.4.11 (3:1) against every surface it can sit on — including
+   * `primarySoft`, where the toggle track and its row background were the same
+   * colour and the control vanished completely.
+   */
+  controlBorder: string;
   textStrong: string;
   text: string;
   textSecondary: string;
@@ -41,6 +49,7 @@ export const lightPalette: Palette = {
   surfaceHover: "#E8E5D8",
   surfaceStrong: "#DED8C4",
   border: "#706B57",
+  controlBorder: "#706B57",
   textStrong: "#0F0F0D",
   text: "#29261B",
   textSecondary: "#535146",
@@ -68,6 +77,7 @@ export const darkPalette: Palette = {
   surfaceHover: "#393937",
   surfaceStrong: "#494946",
   border: "#514F48",
+  controlBorder: "#908C80",
   textStrong: "#FAF9F5",
   text: "#EFEEEC",
   textSecondary: "#B6B5AF",

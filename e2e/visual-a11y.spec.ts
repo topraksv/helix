@@ -6,6 +6,7 @@ import {
   collectRuntimeErrors,
   isolateExternalData,
   onboard,
+  renderedBoundaryContrast,
 } from "./helpers";
 
 // The committed baselines are rendered on macOS. Chromium on Ubuntu lays out
@@ -211,6 +212,35 @@ test("every primary tab has a permanent mobile visual baseline", async ({ page }
       caret: "hide",
       maxDiffPixelRatio: maxVisualDiffPixelRatio,
     });
+  }
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+// The refund switch turned invisible when it was on: the row painted itself in
+// `primarySoft`, which is the switch's own active track colour, so the control
+// and its background became the same pixel value (1.00:1). Both toggle fills are
+// low-contrast warm neutrals, so the boundary is what makes a switch visible at
+// all — assert it in both states, both themes, for the shared control itself.
+test("switches stay visible in both states and both themes", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await page.goto("/helix/transaction");
+    const refund = page.getByRole("switch", { name: "İade" });
+    await expect(refund).toBeVisible();
+    const track = refund.locator("div").first();
+
+    for (const state of ["off", "on"] as const) {
+      if (state === "on") await refund.click();
+      await expect(refund).toHaveAttribute("aria-checked", state === "on" ? "true" : "false");
+      // WCAG 1.4.11 for a non-text UI component boundary.
+      expect(
+        await renderedBoundaryContrast(track),
+        `refund switch ${state} in ${scheme}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
   }
   await assertNoRuntimeErrors(errors, testInfo);
 });

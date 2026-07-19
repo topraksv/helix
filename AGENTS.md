@@ -125,6 +125,14 @@ agent-to-agent communication that did not occur.
   `refreshing`, `stale`, `error`), keep the last good snapshot, and offer the
   shared retry notice. The legacy array/value hooks are compatibility facades;
   never use an initial `[]`/`null` as proof that the account is empty.
+  **A snapshot belongs to the parameters that produced it.** `useLive` keeps the
+  last good data across re-runs over the SAME parameters (local writes, retries)
+  but drops it when `deps` change, because the query is then asking a different
+  question — another user, month or account. `updatedAt` is the only proof the
+  query ran for the CURRENT parameters, so carrying it made "still resolving"
+  indistinguishable from "resolved false" and flashed onboarding at an existing
+  account after logout → login. Guard flags read through `readSyncedFlag`, whose
+  `null` means unresolved and must never be collapsed into `false`.
 - **External financial data is bounded and dated.** FX fetches follow the
   session abort signal, time out, validate response size/shape and persist the
   provider's declared business date (never a fabricated "today"). The in-memory
@@ -172,6 +180,13 @@ agent-to-agent communication that did not occur.
   route, `popToTopOnBlur` becomes a no-op and the tab is stuck on that route
   until an app restart (the Summary → Analysis bug). Do not set a root `(tabs)`
   initial route: it mounts protected hooks on anonymous auth pages.
+  That anchor has a consequence: it mounts the stack's index UNDER the pushed
+  route, so history sends the user back to a screen they never visited. A screen
+  reachable from more than one place records its source at the push site and
+  resolves the target with `resolveBackTarget`; an unrecorded source (deep link,
+  hand-typed URL) keeps popping history and only then falls back to the parent.
+  Never fix one entry path with a single global back target — it breaks the
+  other, so both must stay covered.
 - **Route params are hostile input.** A dynamic segment or query string carries
   whatever the URL says, and the range helpers throw (`lastDayOf("2026-13")`),
   so a screen that derives a query from an unchecked param crashes DURING
@@ -261,9 +276,19 @@ agent-to-agent communication that did not occur.
   children. Physical VoiceOver/TalkBack remains a release acceptance check.
 - **Color tokens separate accents from readable foregrounds.** Use
   `primary/positive/negative/warning` for fills, chart marks and essential
-  boundaries; use the matching `*Text` token for text. Inputs use
+  boundaries; use the matching `*Text` token for text. Interactive controls use
   `controlBorder`, and primary/danger button copy uses `onPrimary`/`onNegative`.
+  `controlBorder` is deliberately separate from `border`: a divider only has to
+  be visible, while a control must clear WCAG 1.4.11 (3:1) against every surface
+  it can sit on. Both toggle track fills are low-contrast warm neutrals, so the
+  track's own outline is what makes a switch visible at all — never let a row
+  background repaint itself in a control's own state colour (the refund row used
+  `primarySoft`, the active track colour, and the switch vanished at 1.00:1).
   Every light/dark role pair stays under the automated contrast contract.
+  Categorical chart series are ordered so green, amber and red are never
+  adjacent and no two neighbours share a hue family, counting the wrap from the
+  last entry back to the first; the semantic accents appear there only because
+  purple and non-focus blue are banned, and they must not read as a status ramp.
   Two surfaces sit outside the plain token table and are covered separately by
   `tests/theme-contrast.test.ts`: the undo snackbar INVERTS the page (it paints
   `palette.text` as its background, so its foregrounds must be `background`, not
@@ -448,8 +473,6 @@ Conventional-commit style, imperative mood, present tense:
 
 <body: what changed and WHY, wrapped ~72 cols. Bullet lists for
 multiple independent changes. Reference the spec item when relevant.>
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ```
 
 - **type**: `feat`, `fix`, `perf`, `refactor`, `ui`, `chore`, `docs`, `test`.
@@ -459,6 +482,13 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
   tab", not "added a calculator tab").
 - The body explains the reasoning a diff can't; skip it only for trivial
   one-liners.
+- **No AI or bot attribution.** No `Co-Authored-By: Claude`, no assistant
+  name, no bot trailer. Commits are authored by the repository owner's
+  Git identity and nothing else. This template used to mandate a Claude
+  co-author trailer, which is why 178 of the first 187 commits carry one
+  and why the assistant shows up under Contributors; the trailer is what
+  GitHub attributes, not the author field. Dependabot changes are replayed
+  as owner-authored commits when single-contributor attribution matters.
 
 ## What works well here (keep doing)
 

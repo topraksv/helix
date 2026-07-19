@@ -18,6 +18,7 @@ import {
   completeLiveQuery,
   failLiveQuery,
   initialLiveSnapshot,
+  readSyncedFlag,
   startLiveQuery,
   type LiveSnapshot,
 } from "./live-state";
@@ -54,6 +55,17 @@ export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: re
     let cancelled = false;
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
+
+    // This effect re-runs only when `deps` change, which means the query now
+    // asks a DIFFERENT question (another user, month or account). The previous
+    // answer is not a "last good snapshot" of it, so drop it: keeping it left
+    // `updatedAt` reporting a completion that never happened for the new
+    // parameters, and every consumer treating `updatedAt == null` as "still
+    // resolving" then trusted a value belonging to the old parameters. The
+    // route guard did exactly that and flashed onboarding at an existing
+    // account after logout → login. Re-runs over the SAME parameters (local
+    // writes, retries) still keep their data via `startLiveQuery`.
+    setState({ ...initialLiveSnapshot<T[]>([]), retry });
 
     const run = () => {
       setState((previous) => ({ ...startLiveQuery(previous), retry }));
@@ -472,12 +484,7 @@ export function useOnboardedState(userId: string | null): LiveValueResult<boolea
     ["settings"],
   );
   if (!userId) return { data: null, status: "ready", error: null, updatedAt: res.updatedAt, retry: res.retry };
-  if (res.updatedAt == null) return { ...res, data: null }; // first query still in flight
-  try {
-    return { ...res, data: JSON.parse(res.data[0]?.value ?? "false") === true };
-  } catch {
-    return { ...res, data: false };
-  }
+  return { ...res, data: readSyncedFlag(res, true) };
 }
 
 /**
@@ -495,12 +502,7 @@ export function useAccountFrozenState(userId: string | null): LiveValueResult<bo
     ["settings"],
   );
   if (!userId) return { data: null, status: "ready", error: null, updatedAt: res.updatedAt, retry: res.retry };
-  if (res.updatedAt == null) return { ...res, data: null };
-  try {
-    return { ...res, data: JSON.parse(res.data[0]?.value ?? "false") === true };
-  } catch {
-    return { ...res, data: false };
-  }
+  return { ...res, data: readSyncedFlag(res, true) };
 }
 
 export function useSettingsMap(): Map<string, string> {
