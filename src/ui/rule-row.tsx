@@ -43,24 +43,52 @@ export function RuleRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const content = (
+  /**
+   * The row's own tap target wraps ONLY the label column.
+   *
+   * It used to wrap the whole row, which put two `IconButton`s (themselves
+   * `accessibilityRole="button"`) inside another `role="button"` — axe's
+   * `nested-interactive` rule, WCAG SC 4.1.2. `ListRow` in
+   * `settings/index.tsx` shows the discipline this file had lapsed from: a row
+   * with an interactive `right` does not also make itself pressable.
+   *
+   * Scoping the Pressable to the label leaves three SIBLING controls — open,
+   * edit, delete — each separately focusable, each with its own name, and the
+   * label still opens the editor on tap.
+   */
+  const label = (
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <Body style={{ fontFamily: font.medium }}>{title}</Body>
+      {meta ? (
+        <Body muted style={{ fontSize: 12, marginTop: 1 }}>
+          {meta}
+        </Body>
+      ) : null}
+      {badges.length > 0 ? (
+        <Row gap={spacing.xs} style={{ flexWrap: "wrap", rowGap: spacing.xs, marginTop: spacing.xs + 2 }}>
+          {badges.map((badge) => (
+            <Badge key={badge.text} text={badge.text} tone={badge.tone ?? "muted"} icon={badge.icon} />
+          ))}
+        </Row>
+      ) : null}
+    </View>
+  );
+
+  return (
     <View style={{ flexDirection: "row", gap: spacing.md, paddingVertical: spacing.sm, alignItems: "flex-start" }}>
       {leading}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Body style={{ fontFamily: font.medium }}>{title}</Body>
-        {meta ? (
-          <Body muted style={{ fontSize: 12, marginTop: 1 }}>
-            {meta}
-          </Body>
-        ) : null}
-        {badges.length > 0 ? (
-          <Row gap={spacing.xs} style={{ flexWrap: "wrap", rowGap: spacing.xs, marginTop: spacing.xs + 2 }}>
-            {badges.map((badge) => (
-              <Badge key={badge.text} text={badge.text} tone={badge.tone ?? "muted"} icon={badge.icon} />
-            ))}
-          </Row>
-        ) : null}
-      </View>
+      {onPress ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={title}
+          onPress={onPress}
+          style={{ flex: 1, minWidth: 0, justifyContent: "center", minHeight: 44 }}
+        >
+          {label}
+        </Pressable>
+      ) : (
+        label
+      )}
       <View style={{ alignItems: "flex-end", gap: spacing.xs }}>
         <Amount minor={amountMinor} currency={currency} colorized={false} />
         {amountNote ? (
@@ -74,11 +102,5 @@ export function RuleRow({
         </Row>
       </View>
     </View>
-  );
-  if (!onPress) return content;
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress}>
-      {content}
-    </Pressable>
   );
 }

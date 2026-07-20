@@ -27,7 +27,8 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { InitialsBadge } from "./components";
-import { darkPalette, lightPalette, useTheme } from "./theme";
+import { useTheme } from "./theme";
+import { BRAND, brandPlate } from "../domain/brand-colors";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** One shared frameless tile: near-square, rounded, no border — every variant
@@ -60,120 +61,6 @@ const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
 ];
 
 /**
- * Accent colour + optional short monogram for well-known subscriptions, keyed
- * by a normalised name. Matched on the whole trimmed name first, then on the
- * first word, so "Netflix Premium" still resolves to Netflix.
- */
-const BRAND: Record<string, { color: string; mark?: string }> = {
-  netflix: { color: "#e50914", mark: "N" },
-  spotify: { color: "#1db954", mark: "S" },
-  youtube: { color: "#ff0000", mark: "YT" },
-  "youtube premium": { color: "#ff0000", mark: "YT" },
-  "youtube music": { color: "#ff0000", mark: "YT" },
-  disney: { color: "#113ccf", mark: "D+" },
-  "disney+": { color: "#113ccf", mark: "D+" },
-  amazon: { color: "#ff9900", mark: "a" },
-  prime: { color: "#1a98ff", mark: "P" },
-  "prime video": { color: "#1a98ff", mark: "P" },
-  "amazon prime": { color: "#1a98ff", mark: "P" },
-  hbo: { color: "#002be7", mark: "M" },
-  "hbo max": { color: "#002be7", mark: "M" },
-  max: { color: "#002be7", mark: "M" },
-  "apple music": { color: "#fa243c", mark: "" },
-  "apple tv": { color: "#000000", mark: "TV" },
-  "apple tv+": { color: "#000000", mark: "TV" },
-  icloud: { color: "#3693f3", mark: "i" },
-  chatgpt: { color: "#10a37f", mark: "AI" },
-  openai: { color: "#10a37f", mark: "AI" },
-  x: { color: "#000000", mark: "X" },
-  twitter: { color: "#000000", mark: "X" },
-  "google one": { color: "#4285f4", mark: "G" },
-  twitch: { color: "#9146ff", mark: "T" },
-  steam: { color: "#1b2838", mark: "S" },
-  playstation: { color: "#003791", mark: "PS" },
-  "playstation plus": { color: "#003791", mark: "PS" },
-  xbox: { color: "#107c10", mark: "X" },
-  "xbox game pass": { color: "#107c10", mark: "X" },
-  nintendo: { color: "#e60012", mark: "N" },
-  github: { color: "#181717", mark: "GH" },
-  "github copilot": { color: "#181717", mark: "GH" },
-  notion: { color: "#111111", mark: "N" },
-  dropbox: { color: "#0061ff", mark: "D" },
-  adobe: { color: "#da1f26", mark: "A" },
-  canva: { color: "#00c4cc", mark: "C" },
-  linkedin: { color: "#0a66c2", mark: "in" },
-  "linkedin premium": { color: "#0a66c2", mark: "in" },
-  patreon: { color: "#f96854", mark: "P" },
-  audible: { color: "#f8991c", mark: "A" },
-  duolingo: { color: "#58cc02", mark: "D" },
-  deezer: { color: "#a238ff", mark: "D" },
-  tidal: { color: "#000000", mark: "T" },
-  blutv: { color: "#f8009e", mark: "blu" },
-  exxen: { color: "#00e0b8", mark: "e" },
-  tabii: { color: "#ff6600", mark: "t" },
-  gain: { color: "#7c4dff", mark: "G" },
-  todtv: { color: "#ed1c24", mark: "tod" },
-  tod: { color: "#ed1c24", mark: "tod" },
-  storytel: { color: "#ff5a5f", mark: "S" },
-  claude: { color: "#d97757", mark: "C" },
-  anthropic: { color: "#d97757", mark: "A" },
-  gemini: { color: "#4285f4", mark: "G" },
-  perplexity: { color: "#20808d", mark: "P" },
-  midjourney: { color: "#1a1a2e", mark: "MJ" },
-  cursor: { color: "#111111", mark: "C" },
-  microsoft: { color: "#0078d4", mark: "M" },
-  office: { color: "#d83b01", mark: "O" },
-  onedrive: { color: "#0364b8", mark: "OD" },
-  google: { color: "#4285f4", mark: "G" },
-  apple: { color: "#000000", mark: "" },
-  discord: { color: "#5865f2", mark: "D" },
-  telegram: { color: "#26a5e4", mark: "T" },
-  zoom: { color: "#0b5cff", mark: "Z" },
-  slack: { color: "#611f69", mark: "S" },
-  figma: { color: "#f24e1e", mark: "F" },
-  evernote: { color: "#00a82d", mark: "E" },
-  todoist: { color: "#e44332", mark: "T" },
-  "1password": { color: "#0572ec", mark: "1P" },
-  bitwarden: { color: "#175ddc", mark: "B" },
-  nordvpn: { color: "#4687ff", mark: "N" },
-  expressvpn: { color: "#da3940", mark: "EV" },
-  surfshark: { color: "#178a9e", mark: "S" },
-  crunchyroll: { color: "#f47521", mark: "CR" },
-  mubi: { color: "#001489", mark: "M" },
-  paramount: { color: "#0064ff", mark: "P+" },
-  "paramount+": { color: "#0064ff", mark: "P+" },
-  bein: { color: "#63276f", mark: "b" },
-  "bein connect": { color: "#63276f", mark: "b" },
-  "s sport": { color: "#e4002b", mark: "S" },
-  "s sport plus": { color: "#e4002b", mark: "S" },
-  "tv+": { color: "#ffc900", mark: "TV" },
-  "tv plus": { color: "#ffc900", mark: "TV" },
-  fizy: { color: "#8624db", mark: "f" },
-  muud: { color: "#e6006d", mark: "M" },
-  soundcloud: { color: "#ff5500", mark: "SC" },
-  podimo: { color: "#5b2e90", mark: "P" },
-  turkcell: { color: "#ffc900", mark: "T" },
-  vodafone: { color: "#e60000", mark: "V" },
-  "türk telekom": { color: "#0056a3", mark: "TT" },
-  turktelekom: { color: "#0056a3", mark: "TT" },
-  strava: { color: "#fc4c02", mark: "S" },
-  macfit: { color: "#e30613", mark: "M" },
-  nike: { color: "#111111", mark: "N" },
-  medium: { color: "#191919", mark: "M" },
-  scribd: { color: "#1e7b85", mark: "S" },
-  blinkist: { color: "#2ce080", mark: "B" },
-  roblox: { color: "#393b3d", mark: "R" },
-  "epic games": { color: "#2f2d2e", mark: "E" },
-  epic: { color: "#2f2d2e", mark: "E" },
-  ubisoft: { color: "#0070ff", mark: "U" },
-  "ea play": { color: "#ff4747", mark: "EA" },
-  tinder: { color: "#fd5068", mark: "t" },
-  bumble: { color: "#ffc629", mark: "b" },
-  trendyol: { color: "#f27a1a", mark: "ty" },
-  hepsiburada: { color: "#ff6000", mark: "hb" },
-  getir: { color: "#5d3ebc", mark: "g" },
-  yemeksepeti: { color: "#fa0050", mark: "ys" },
-};
 
 /**
  * Known brand → website domain, so we can fetch the real favicon. Only generic
@@ -301,16 +188,6 @@ function domainFor(name: string, override?: string | null): string | null {
   return BRAND_DOMAIN[key] ?? (firstWord ? BRAND_DOMAIN[firstWord] : undefined) ?? null;
 }
 
-/** Perceived luminance → pick the palette's dark or light ink. */
-function inkFor(hex: string): string {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.62 ? lightPalette.textStrong : darkPalette.textStrong;
-}
-
 export function Logo({
   name,
   domain,
@@ -362,13 +239,25 @@ export function Logo({
   }
 
   if (brand) {
-    const ink = inkFor(brand.color);
+    const { plate, ink } = brandPlate(brand.color);
     const mark = brand.mark || name.trim().slice(0, 1).toLocaleUpperCase("tr-TR");
+    const plateSize = Math.round(size * 0.62);
     return (
       <View style={[tileStyle(size), { backgroundColor: brand.color }]}>
-        <Text style={{ color: ink, fontSize: size * (mark.length > 2 ? 0.3 : 0.42), fontFamily: "Inter_700Bold" }}>
-          {mark}
-        </Text>
+        <View
+          style={{
+            width: plateSize,
+            height: plateSize,
+            borderRadius: plateSize / 2,
+            backgroundColor: plate,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ color: ink, fontSize: size * (mark.length > 2 ? 0.26 : 0.34), fontFamily: "Inter_700Bold" }}>
+            {mark}
+          </Text>
+        </View>
       </View>
     );
   }
