@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { CheckCircle2, Plus } from "lucide-react-native";
-import { confirmExpected, FxRateUnavailableError, revertExpected, skipExpected } from "../data/repo";
+import { confirmExpected, FxRateUnavailableError, revertExpected, skipExpected, unskipExpected } from "../data/repo";
 import {
   useLastEntryInfo,
   usePendingExpected,
@@ -56,6 +56,17 @@ export default function CatchUpScreen() {
   const nameOf = (e: (typeof expected)[number]) =>
     subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
 
+  /** Undo for a confirmation, with the same "never look successful" rule. */
+  const revertConfirmed = async (expectedId: string) => {
+    try {
+      await revertExpected(userId, expectedId);
+      scheduleSync(userId);
+    } catch (err) {
+      devError("reconcile.revert", err);
+      void appAlert(tr.errors.saveFailed);
+    }
+  };
+
   const confirm = async (e: (typeof expected)[number], actual?: number) => {
     if (!selfPersonId) return;
     await operationGuard.run(async () => {
@@ -72,7 +83,7 @@ export default function CatchUpScreen() {
         setEditing(null);
         setAmountRaw("");
         setAmountMinor(null);
-        undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+        undo.show(`${nameOf(e)} ✓`, () => void revertConfirmed(e.id));
       } catch (err) {
         errorNotice();
         if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
@@ -84,6 +95,42 @@ export default function CatchUpScreen() {
         setConfirmingId(null);
       }
     });
+  };
+
+  /**
+   * Skipping is a real write, so it gets the same ownership as confirming:
+   * serialized by the shared operation guard, a busy state on the row, an
+   * error surfaced instead of an unhandled rejection, sync scheduled only
+   * AFTER the write resolves, and an undo — a skip is otherwise silent and
+   * irreversible from the UI. It used to be
+   * an unowned fire-and-forget call with sync scheduled alongside it.
+   */
+  const skip = async (e: (typeof expected)[number]) => {
+    await operationGuard.run(async () => {
+      setConfirmingId(e.id);
+      try {
+        await skipExpected(userId, e.id);
+        scheduleSync(userId);
+        undo.show(tr.catchup.skipped(nameOf(e)), () => void restoreSkipped(e.id), "warning");
+      } catch (err) {
+        errorNotice();
+        devError("reconcile.skip", err);
+        void appAlert(tr.errors.saveFailed);
+      } finally {
+        setConfirmingId(null);
+      }
+    });
+  };
+
+  /** Undo for a skip must itself report failure rather than look successful. */
+  const restoreSkipped = async (expectedId: string) => {
+    try {
+      await unskipExpected(userId, expectedId);
+      scheduleSync(userId);
+    } catch (err) {
+      devError("reconcile.unskip", err);
+      void appAlert(tr.errors.saveFailed);
+    }
   };
 
   return (
@@ -150,7 +197,13 @@ export default function CatchUpScreen() {
                   <View style={{ flex: 1 }}>
                     <Button label={tr.catchup.fixAmount} variant="secondary" onPress={() => { setEditing(e.id); setAmountRaw(""); setAmountMinor(null); }} />
                   </View>
-                  <Button label={tr.common.skip} variant="ghost" onPress={() => { void skipExpected(userId, e.id); scheduleSync(userId); }} />
+                  <Button
+                    label={tr.common.skip}
+                    variant="ghost"
+                    loading={confirmingId === e.id}
+                    disabled={confirmingId != null}
+                    onPress={() => void skip(e)}
+                  />
                 </Row>
               </View>
             )}

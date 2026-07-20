@@ -29,6 +29,9 @@ import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { radius, spacing, useTheme } from "../../../ui/theme";
 import { navigateBack } from "../../../ui/navigation";
+import { runUndo } from "../../../domain/undo-outcome";
+import { devError } from "../../../services/logger";
+import { appAlert } from "../../../ui/dialog";
 
 type Categories = ReturnType<typeof useCategories>;
 type MonthTransactions = ReturnType<typeof useTransactionsBetween>;
@@ -41,6 +44,17 @@ type MonthListItem =
   | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
 
 export default function MonthDetailScreen() {
+  /**
+   * An undo that fails must say so — the snackbar dismisses on tap either way,
+   * so a swallowed rejection left the row deleted with no message.
+   */
+  const reportUndo = async (action: () => Promise<unknown>) => {
+    const outcome = await runUndo(action);
+    if (!outcome.ok) {
+      devError("undo", outcome.error);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
+  };
   const { month } = useLocalSearchParams<{ month: string }>();
   const router = useRouter();
   const userId = useUserId();
@@ -91,7 +105,7 @@ export default function MonthDetailScreen() {
   const removeTx = async (id: string) => {
     const snapshot = await deleteTransaction(userId, id);
     if (snapshot) {
-      undo.show(tr.tx.deletedUndo, () => void restoreRow(userId, "transactions", snapshot), "warning");
+      undo.show(tr.tx.deletedUndo, () => void reportUndo(() => restoreRow(userId, "transactions", snapshot)), "warning");
     }
   };
 

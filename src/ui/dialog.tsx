@@ -80,7 +80,21 @@ interface PromptRequest {
   resolve: (value: string | null) => void;
 }
 
-const usePromptStore = create<{ current: PromptRequest | null }>(() => ({ current: null }));
+// Same hazard the dialog queue above fixes, and the same answer: a single-slot
+// store overwrote `current` when a second prompt opened, so the first request's
+// `resolve` was dropped and its `await` never settled — a re-auth flow could
+// hang forever. Both call sites are password re-auth (account-security.tsx,
+// settings/index.tsx), which sit on different screens, so overlap is reachable.
+const usePromptStore = create<{ current: PromptRequest | null; queue: PromptRequest[] }>(() => ({
+  current: null,
+  queue: [],
+}));
+
+function enqueuePrompt(request: PromptRequest) {
+  const { current, queue } = usePromptStore.getState();
+  if (current) usePromptStore.setState({ queue: [...queue, request] });
+  else usePromptStore.setState({ current: request });
+}
 
 /** Themed input dialog. Resolves the entered value, or null on cancel/backdrop. */
 export function appPrompt(
@@ -89,16 +103,14 @@ export function appPrompt(
   opts?: { placeholder?: string; confirmLabel?: string; secure?: boolean; danger?: boolean },
 ): Promise<string | null> {
   return new Promise((resolve) => {
-    usePromptStore.setState({
-      current: {
-        title,
-        message,
-        placeholder: opts?.placeholder ?? "",
-        confirmLabel: opts?.confirmLabel ?? tr.common.confirm,
-        secure: opts?.secure ?? false,
-        danger: opts?.danger ?? false,
-        resolve,
-      },
+    enqueuePrompt({
+      title,
+      message,
+      placeholder: opts?.placeholder ?? "",
+      confirmLabel: opts?.confirmLabel ?? tr.common.confirm,
+      secure: opts?.secure ?? false,
+      danger: opts?.danger ?? false,
+      resolve,
     });
   });
 }
@@ -166,7 +178,10 @@ export function PromptHost() {
   if (!current) return null;
 
   const close = (val: string | null) => {
-    usePromptStore.setState({ current: null });
+    // Advance to the next queued prompt, exactly as DialogHost.close does, so
+    // no request is dropped and every promise settles.
+    const { queue } = usePromptStore.getState();
+    usePromptStore.setState({ current: queue[0] ?? null, queue: queue.slice(1) });
     current.resolve(val);
   };
 

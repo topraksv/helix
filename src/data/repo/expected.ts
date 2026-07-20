@@ -175,6 +175,21 @@ export async function skipExpected(userId: string, expectedId: string): Promise<
   ]);
 }
 
+/**
+ * Undo a skip: back to pending so the item reappears in the catch-up list.
+ * Only a skipped row moves, so a double-undo or a stale snackbar is a no-op.
+ */
+export async function unskipExpected(userId: string, expectedId: string): Promise<void> {
+  const row = await getExpectedRow(userId, expectedId);
+  if (!row || row.status !== "skipped") return;
+  await writeRows(userId, [
+    {
+      table: "expected_payments",
+      row: { ...fromDbShape("expected_payments", row as unknown as Record<string, unknown>), status: "pending" },
+    },
+  ]);
+}
+
 /** Undo a confirmation: tombstone the created transaction, back to pending. */
 export async function revertExpected(userId: string, expectedId: string): Promise<void> {
   const row = await getExpectedRow(userId, expectedId);
