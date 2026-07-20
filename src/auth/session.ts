@@ -15,7 +15,7 @@ import {
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
 import { resetLocalWorkspace, writeSetting } from "../db/mutations";
-import { startSyncSession, stopSyncSession } from "../sync/engine";
+import { runSyncSessionTask, startSyncSession, stopSyncSession } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { connectMarkets, disconnectMarkets } from "../services/markets";
 import { clearRateCache, loadRateCache } from "../services/fx-fetch";
@@ -26,14 +26,16 @@ import { friendlyAuthError } from "./auth-errors";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "./recovery";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
+import {
+  IDLE_BRAKE,
+  isVerificationBlocked,
+  recordVerificationFailure,
+  recordVerificationSuccess,
+  type VerificationBrake,
+} from "./verification-brake";
 
-/** Local brake on password verification: each attempt is a real sign-in, so
- *  hammering it would trip Supabase's shared login rate limit for the whole
- *  account. After 5 consecutive failures, verification pauses for 30 s. */
-const VERIFY_MAX_FAILURES = 5;
-const VERIFY_COOLDOWN_MS = 30_000;
-let verifyFailures = 0;
-let verifyBlockedUntil = 0;
+/** Owner-keyed brake on password verification — see verification-brake.ts. */
+let verificationBrake: VerificationBrake = IDLE_BRAKE;
 
 const LAST_USER_KEY = "helix.last_user_id";
 /** Signed-in e-mail, persisted so an offline bootstrap can still re-auth. */
@@ -287,9 +289,17 @@ export const useSession = create<SessionStore>((set, get) => ({
       await resetLocalWorkspace();
     } catch {
       if (userId) {
+        // The wipe failed, so the session stays alive and its background work
+        // is restored. That work MUST be session-scoped: a bare
+        // an unowned floating `Promise.allSettled(...)` had no owner, so `stopSyncSession`
+        // could not await it, and if the user retried the sign-out and signed
+        // into another account, `rescheduleAll` for the old account could still
+        // land and schedule its notifications under the new one.
         startSyncSession(userId);
         connectMarkets();
-        void Promise.allSettled([loadRateCache(userId), rescheduleAll(userId)]);
+        void runSyncSessionTask(userId, async () => {
+          await Promise.allSettled([loadRateCache(userId), rescheduleAll(userId)]);
+        });
       }
       return tr.errors.workspaceResetFailed;
     }
@@ -370,7 +380,10 @@ export const useSession = create<SessionStore>((set, get) => ({
   verifyPassword: async (password) => {
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
-    if (Date.now() < verifyBlockedUntil) return tr.auth.errRateLimit;
+    // The brake belongs to the account being verified. Anonymous/local-only
+    // sessions have no account to rate limit, so they use a stable placeholder.
+    const brakeOwner = get().userId ?? LOCAL_ONLY_USER_ID;
+    if (isVerificationBlocked(verificationBrake, brakeOwner, Date.now())) return tr.auth.errRateLimit;
     // The store's e-mail is empty after an offline bootstrap (no live Supabase
     // session at launch). Recover it from the auth session or the device record
     // before failing — returning "Supabase not configured" here mislabeled
@@ -393,14 +406,10 @@ export const useSession = create<SessionStore>((set, get) => ({
     // sensitive credential update.
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (!error) {
-      verifyFailures = 0;
+      verificationBrake = recordVerificationSuccess(verificationBrake, brakeOwner);
       return null;
     }
-    verifyFailures += 1;
-    if (verifyFailures >= VERIFY_MAX_FAILURES) {
-      verifyFailures = 0;
-      verifyBlockedUntil = Date.now() + VERIFY_COOLDOWN_MS;
-    }
+    verificationBrake = recordVerificationFailure(verificationBrake, brakeOwner, Date.now());
     // Only the password was typed here (the e-mail is the fixed current
     // account), so bad credentials get the precise message; other failures
     // (network, provider rate limit) keep their own friendly mapping.
