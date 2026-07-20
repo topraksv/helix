@@ -1,4 +1,5 @@
 import { getSqliteAsync } from "../../db/client";
+import { createSerialQueue } from "../../domain/serial-queue";
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { fromDbShape, nowIso, softDelete, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
 import { todayISO, type ISODate } from "../../domain/dates";
@@ -13,7 +14,17 @@ import { cardStatementWrite, type LivePaymentSource } from "./transactions";
 // Daily maintenance: §2.7 date flips, expected generation, late marking, auto-pay
 // ---------------------------------------------------------------------------
 
-let maintenanceRunning = false;
+/**
+ * Maintenance is serialized per user. A module-level BOOLEAN used to sit here
+ * and made a skipped pass indistinguishable from a completed one: the early
+ * return resolved `Promise<void>` exactly like success. That broke callers that
+ * depend on the work having happened — `reassignAndDeletePerson`
+ * (`accounts.ts:167`) awaits a pass specifically to reconcile derived expected
+ * rows under the replacement person's classification, and silently got nothing
+ * whenever the throttled lifecycle kick was mid-flight. The flag was also not
+ * user-scoped, so one account's pass could swallow another's.
+ */
+const maintenanceQueue = createSerialQueue<void>();
 
 export async function repairCardStatementLinks(userId: string, today: ISODate): Promise<void> {
   const sqlite = await getSqliteAsync();
@@ -102,16 +113,7 @@ export async function repairCardStatementLinks(userId: string, today: ISODate): 
 }
 
 export async function runMaintenance(userId: string): Promise<void> {
-  // Single-instance guard: rapid foreground/background cycles must not run
-  // two maintenance passes concurrently (both could auto-confirm the same
-  // expected item before either write commits).
-  if (maintenanceRunning) return;
-  maintenanceRunning = true;
-  try {
-    await runMaintenanceInner(userId);
-  } finally {
-    maintenanceRunning = false;
-  }
+  await maintenanceQueue(userId, runMaintenanceInner);
 }
 
 async function runMaintenanceInner(userId: string): Promise<void> {
