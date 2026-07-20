@@ -7,6 +7,7 @@ const dependencies = vi.hoisted(() => ({
   writeRows: vi.fn(),
   writeSetting: vi.fn(),
   deterministicId: vi.fn(async (key: string) => `id:${key}`),
+  settingRow: vi.fn(async (userId: string, key: string, value: unknown) => ({ table: "settings", row: { id: `id:setting|${userId}|${key}`, key, value: JSON.stringify(value), deletedAt: null } })),
 }));
 
 vi.mock("../src/db/client", () => ({ getSqliteAsync: dependencies.getSqliteAsync }));
@@ -21,6 +22,7 @@ vi.mock("../src/db/mutations", () => ({
   fromDbShape: vi.fn(),
   nowIso: () => "2026-07-16T00:00:00.000Z",
   readSetting: dependencies.readSetting,
+  settingRow: dependencies.settingRow,
   softDelete: vi.fn(),
   writeRows: dependencies.writeRows,
   writeSetting: dependencies.writeSetting,
@@ -87,7 +89,7 @@ describe("repository compatibility contract", () => {
     for (const name of publicRuntimeExports) expect(repository[name]).toBeDefined();
   });
 
-  it("seeds related onboarding rows in one write before applying the anchor", async () => {
+  it("seeds every onboarding row AND the ledger anchor in ONE write", async () => {
     await repository.seedWorkspace("user-1", {
       templateCategories: [{ name: "Market", kind: "expense", isColumn: true, icon: "🛒" }],
       startMonth: "2026-07",
@@ -107,17 +109,24 @@ describe("repository compatibility contract", () => {
 
     expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
     const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    // start_month and opening_balance_minor are ONE semantic unit that
+    // useLedgerState consumes together. They used to be two further
+    // writeSetting transactions AFTER this one, so a failure between them
+    // anchored the ledger at the new month with the PREVIOUS opening balance.
     expect(writes.map((write: { table: string }) => write.table)).toEqual([
       "persons",
       "persons",
       "payment_sources",
       "categories",
+      "settings",
+      "settings",
     ]);
     expect(writes[2].row.personId).toBe("id:onboardingPerson|user-1|1");
-    expect(dependencies.writeSetting.mock.calls).toEqual([
+    expect(dependencies.settingRow.mock.calls).toEqual([
       ["user-1", "start_month", "2026-07"],
       ["user-1", "opening_balance_minor", 12_345],
     ]);
+    expect(dependencies.writeSetting).not.toHaveBeenCalled();
   });
 
   it("rejects an onboarding graph without exactly one self person", async () => {
@@ -238,5 +247,63 @@ describe("repository compatibility contract", () => {
       sources: [],
     })).rejects.toThrow("maximum length");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Replace mode must never silently become add mode.
+ *
+ * `importBatchMap` used to DROP a year whose batch record failed to parse, so
+ * `priorBatches.get(year)` was `undefined`, the cleanup list for that year came
+ * out empty, and the previous import's rows stayed live while the new ones were
+ * written on top — a doubled year with no error at all.
+ */
+describe("replace-mode import with an unreadable batch", () => {
+  beforeEach(() => {
+    dependencies.writeRows.mockReset();
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getAllAsync: async (sql: string) =>
+        sql.includes("import_batch:")
+          ? [{ key: "import_batch:2026", value: "{not json" }]
+          : [],
+      getFirstAsync: async () => undefined,
+      runAsync: async () => undefined,
+    });
+    dependencies.readSetting.mockResolvedValue(null);
+  });
+
+  const request = {
+    sheets: [{
+      name: "2026",
+      orientation: "vertical" as const,
+      months: ["2026-01"],
+      columns: [{ label: "Market", kind: "expense" as const }],
+      cells: [],
+      notes: [],
+      installmentPlans: [],
+    }],
+    excludedLabels: [],
+    selfId: "person-self",
+  };
+
+  it("refuses the import and writes NOTHING", async () => {
+    await expect(
+      repository.importSheets("user-1", { ...request, mode: "replace" } as never),
+    ).rejects.toBeInstanceOf(repository.ImportBatchUnreadableError);
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("names the blocked year so the user knows what to clean", async () => {
+    await repository
+      .importSheets("user-1", { ...request, mode: "replace" } as never)
+      .then(
+        () => { throw new Error("expected a refusal"); },
+        (error: { years: number[] }) => expect(error.years).toEqual([2026]),
+      );
+  });
+
+  it("still allows add mode, which does not depend on knowing what to remove", async () => {
+    await repository.importSheets("user-1", { ...request, mode: "add" } as never);
+    expect(dependencies.writeRows).toHaveBeenCalled();
   });
 });

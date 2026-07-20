@@ -58,3 +58,4 @@ describe("spreadsheet import planner", () => {
     expect(plan.columnYears.size).toBe(0);
   });
 });
+

@@ -6,7 +6,7 @@ import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
 import { collectInstallmentPlans, type ParsedSheet } from "../../services/spreadsheet-import";
 import { suggestCategoryIcon } from "../category-icons";
-import { CreditCardCycleRequiredError } from "./errors";
+import { CreditCardCycleRequiredError, ImportBatchUnreadableError } from "./errors";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
 import { buildSpreadsheetImportPlan, importCategoryKey } from "./import-plan";
 
@@ -59,17 +59,29 @@ function parseImportBatch(value: string): ImportBatch | null {
   }
 }
 
-async function importBatchMap(userId: string): Promise<Map<number, ImportBatch>> {
+interface ImportBatchIndex {
+  batches: Map<number, ImportBatch>;
+  /** Years whose batch record exists but could not be parsed. */
+  unreadableYears: Set<number>;
+}
+
+async function importBatchMap(userId: string): Promise<ImportBatchIndex> {
   const sqlite = await getSqliteAsync();
   const rows = await sqlite.getAllAsync<{ key: string; value: string }>(
     `SELECT key, value FROM settings WHERE user_id = ? AND key LIKE 'import_batch:%' AND deleted_at IS NULL`,
     [userId],
   );
   const result = new Map<number, ImportBatch>();
+  const unreadableYears = new Set<number>();
   for (const row of rows) {
     const year = Number(row.key.slice("import_batch:".length));
+    if (!Number.isInteger(year)) continue;
     const batch = parseImportBatch(row.value);
-    if (Number.isInteger(year) && batch) result.set(year, batch);
+    // "Absent" and "present but unreadable" are different facts: the first
+    // means nothing was imported for that year, the second means we cannot
+    // tell what to replace.
+    if (batch) result.set(year, batch);
+    else unreadableYears.add(year);
   }
   // Batch v1 did not record reconstructed plans or their generated rows. A
   // deterministic-id check identifies those legacy imported plans without
@@ -127,7 +139,7 @@ async function importBatchMap(userId: string): Promise<Map<number, ImportBatch>>
       }
     }
   }
-  return result;
+  return { batches: result, unreadableYears };
 }
 
 async function settingWrite(userId: string, key: string, value: unknown): Promise<RowWrite> {
@@ -248,12 +260,17 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   const yearAllowed = (y: number) => !selectedYears || selectedYears.has(y);
 
   const affectedYears = [...new Set(req.sheets.flatMap((s) => s.months.map(yearOf)))].filter(yearAllowed);
-  const priorBatches = await importBatchMap(userId);
+  const { batches: priorBatches, unreadableYears } = await importBatchMap(userId);
   const cleanupWrites: RowWrite[] = [];
   // Build the replacement cleanup first, but don't mutate anything yet. Rows
   // still owned by an unaffected year's batch are protected. Cleanup + new
   // import + batch/settings metadata are committed by one writeRows below.
   if (req.mode === "replace") {
+    // Fail closed: without a readable batch for an affected year we cannot know
+    // which rows to tombstone, and continuing would turn "replace" into "add".
+    const blocked = affectedYears.filter((year) => unreadableYears.has(year));
+    if (blocked.length > 0) throw new ImportBatchUnreadableError(blocked.sort((a, b) => a - b));
+
     const affected = new Set(affectedYears);
     const protectedTransactions = new Set<string>();
     const protectedNotes = new Set<string>();

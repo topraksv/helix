@@ -32,3 +32,18 @@ export class FxRateUnavailableError extends Error {
     this.name = "FxRateUnavailableError";
   }
 }
+
+/**
+ * A replace-mode import found an import-batch record it cannot read, so it
+ * cannot know which previously imported rows to tombstone.
+ *
+ * Silently continuing would downgrade "replace" into "add": the old rows stay
+ * live and the new ones land on top, doubling a year's data without any error.
+ * Destructive semantics must never change silently, so the import refuses.
+ */
+export class ImportBatchUnreadableError extends Error {
+  constructor(public readonly years: number[]) {
+    super(`Import batch unreadable for year(s): ${years.join(", ")}`);
+    this.name = "ImportBatchUnreadableError";
+  }
+}
