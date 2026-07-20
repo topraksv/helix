@@ -194,14 +194,81 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
 
   await page.goto("/helix/");
   await expect(page.getByRole("button", { name: /Ay sonu tahmini/ })).toBeVisible();
-  const upcomingTitle = page.getByText("Uzun Açıklamalı Aylık Düzenli Maaş Geliri", { exact: true });
-  const received = page.getByRole("button", { name: "Alındı", exact: true });
-  await expect(upcomingTitle).toBeVisible();
-  await expect(received).toBeVisible();
-  const [titleBox, actionBox] = await Promise.all([upcomingTitle.boundingBox(), received.boundingBox()]);
-  expect(titleBox && actionBox && actionBox.x > titleBox.x).toBeTruthy();
+  // A monthly income legitimately produces MORE THAN ONE row inside the
+  // dashboard's 31-day horizon — this month's occurrence and next month's — and
+  // which of them exist depends on today's day-of-month against the pay day.
+  // The original single-element locator therefore passed only while today was
+  // past the 20th and hit a strict-mode violation on every earlier day. Assert
+  // the layout property on EVERY rendered row instead: that is both calendar
+  // independent and stricter than checking one row.
+  const upcomingTitles = page.getByText("Uzun Açıklamalı Aylık Düzenli Maaş Geliri", { exact: true });
+  const receivedActions = page.getByRole("button", { name: "Alındı", exact: true });
+  await expect(upcomingTitles.first()).toBeVisible();
+  const rowCount = await upcomingTitles.count();
+  expect(rowCount).toBeGreaterThan(0);
+  expect(await receivedActions.count()).toBe(rowCount);
+  for (let row = 0; row < rowCount; row++) {
+    const [titleBox, actionBox] = await Promise.all([
+      upcomingTitles.nth(row).boundingBox(),
+      receivedActions.nth(row).boundingBox(),
+    ]);
+    expect(titleBox && actionBox && actionBox.x > titleBox.x, `row ${row}: action left of title`).toBeTruthy();
+  }
 
   await page.goto("/helix/settings");
   await expect(page.getByText(/Tanılama|senkron sağlığı/i)).toHaveCount(0);
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * Settings screens reachable from more than one place must return to the screen
+ * that opened them.
+ *
+ * Payment sources, budgets and income rules are pushed from OUTSIDE the settings
+ * tab with `{ withAnchor: true }`. The anchor is required — without it the stack
+ * mounts with only the pushed route and `popToTopOnBlur` becomes a no-op — but
+ * it also mounts `settings/index` UNDERNEATH, so plain history sent the user
+ * back to a hub they never visited. Each pusher now records `from`, and
+ * `resolveBackTarget` validates it against a fixed map before use.
+ */
+test("multi-entry settings screens return to whoever opened them", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+
+  // Entry 1: Analysis → Budgets → back must land on Analysis, not the hub.
+  await page.goto("/helix/cash-flow/analytics?from=summary");
+  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
+  await page.goto("/helix/settings/budgets?from=analysis");
+  await expect(page.getByRole("heading", { name: "Aylık Bütçeler", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
+
+  // Entry 2: Upcoming → Income rules → back must land on Upcoming.
+  await page.goto("/helix/settings/incomes?from=upcoming");
+  await expect(page.getByRole("heading", { name: "Düzenli Gelirler", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Yaklaşan Takvimi", exact: true })).toBeVisible();
+
+  // Entry 3: the transaction form → Payment sources → back to the form.
+  await page.goto("/helix/settings/payment-sources?from=transaction");
+  await expect(page.getByRole("heading", { name: "Ödeme Yöntemleri", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Yeni İşlem" }).first()).toBeVisible();
+
+  // A deep link with NO recorded source, and one with a hostile value, must both
+  // fall back to the settings hub instead of guessing or crashing.
+  for (const url of [
+    "/helix/settings/payment-sources",
+    "/helix/settings/payment-sources?from=__proto__",
+    "/helix/settings/budgets?from=constructor",
+    "/helix/settings/incomes?from=nonsense",
+  ]) {
+    await page.goto(url);
+    await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
+    await page.getByRole("button", { name: "Geri", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Ayarlar" })).toBeVisible();
+  }
+
   await assertNoRuntimeErrors(errors, testInfo);
 });

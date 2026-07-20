@@ -1,5 +1,8 @@
 /** Payment source management: cards / cash / bank, per-person, card cycle. */
 
+import { Stack, useLocalSearchParams, type Href } from "expo-router";
+import { resolveBackTarget } from "../../../ui/navigation";
+import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { restoreRow } from "../../../db/mutations";
@@ -28,11 +31,32 @@ import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { newId } from "../../../db/ids";
 import { isMonthDay } from "../../../domain/dates";
 import { MonthDayField, monthDayLabel } from "../../../ui/month-day-field";
+import { runUndo } from "../../../domain/undo-outcome";
+import { devError } from "../../../services/logger";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const NO_SOURCE = "__none__";
 
 export default function SourcesScreen() {
+  /**
+   * An undo that fails must say so — the snackbar dismisses on tap either way,
+   * so a swallowed rejection left the row deleted with no message.
+   */
+  const reportUndo = async (action: () => Promise<unknown>) => {
+    const outcome = await runUndo(action);
+    if (!outcome.ok) {
+      devError("undo", outcome.error);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
+  };
+  // Reachable from more than one place, and every external push is anchored —
+  // which mounts settings/index UNDERNEATH this screen, so plain history would
+  // send the user back to a screen they never visited. The pusher records where
+  // it came from; `resolveBackTarget` validates it (typeof string +
+  // Object.hasOwn, so a hand-typed or prototype-polluting value cannot match)
+  // and falls back to the settings hub for deep links with no recorded source.
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const back = resolveBackTarget<Href>(from, { transaction: "/transaction", installment: "/installment-new", subscription: "/subscription-form", upcoming: "/upcoming" as Href }, "/(tabs)/settings");
   const userId = useUserId();
   const sources = useSources();
   const statements = useCreditCardStatements();
@@ -144,7 +168,7 @@ export default function SourcesScreen() {
       scheduleSync(userId);
       if (snapshot) {
         undo.show(`${s.name} · ${tr.common.deleted}`, () => {
-          void restoreRow(userId, "payment_sources", snapshot).then(() => scheduleSync(userId));
+          void reportUndo(() => restoreRow(userId, "payment_sources", snapshot).then(() => scheduleSync(userId)));
         }, "warning");
       }
     } catch (error) {
@@ -202,6 +226,7 @@ export default function SourcesScreen() {
 
   return (
     <Screen>
+      <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
       <Card>
         {editingId ? <Label>{tr.common.edit}</Label> : null}
         <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
