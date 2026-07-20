@@ -1,5 +1,5 @@
 import { deterministicId, naturalKeys } from "../../db/ids";
-import { readSetting, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
+import { readSetting, settingRow, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
 import type { MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
@@ -125,8 +125,13 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
       row: { id: categoryIds[i], name: c.name, kind: c.kind, icon: c.icon ?? null, color: null, sortOrder: i, isColumn: c.isColumn, deletedAt: null },
     });
   });
+  // The ledger anchor (start_month + opening_balance_minor) is ONE semantic
+  // unit — `useLedgerState` consumes both together — so it joins the same
+  // transaction as the seeded rows. Chaining separate writes let a failure
+  // between them anchor the ledger at the new month with the PREVIOUS opening
+  // balance, i.e. a wrong balance on every screen, with no error surfaced.
+  writes.push(...(await onboardingBalanceRows(userId, input.startMonth, input.openingBalanceMinor)));
   await writeRows(userId, writes);
-  await applyOnboardingBalance(userId, input.startMonth, input.openingBalanceMinor);
   // NB: does NOT mark onboarded — the setup screen seeds first (so history can
   // be imported into a real workspace) and calls finalizeOnboarding() only when
   // the user taps "save & start". See setup.tsx.
@@ -138,12 +143,23 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
  * from an earlier year). The ledger back-anchors to the earliest data, so the
  * earliest start wins; for the same-or-later month the form value is authoritative.
  */
-export async function applyOnboardingBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
+export async function onboardingBalanceRows(
+  userId: string,
+  startMonth: MonthKey,
+  openingBalanceMinor: Minor,
+): Promise<RowWrite[]> {
   assertSupportedMinorAmount(openingBalanceMinor);
   const currentStart = await readSetting<string>(userId, "start_month");
-  if (currentStart && startMonth > currentStart) return; // keep the earlier imported anchor
-  await writeSetting(userId, "start_month", startMonth);
-  await writeSetting(userId, "opening_balance_minor", openingBalanceMinor);
+  if (currentStart && startMonth > currentStart) return []; // keep the earlier imported anchor
+  return [
+    await settingRow(userId, "start_month", startMonth),
+    await settingRow(userId, "opening_balance_minor", openingBalanceMinor),
+  ];
+}
+
+export async function applyOnboardingBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
+  const rows = await onboardingBalanceRows(userId, startMonth, openingBalanceMinor);
+  if (rows.length > 0) await writeRows(userId, rows);
 }
 
 /** Mark onboarding complete → the route guard lets the user into the app. */

@@ -269,3 +269,94 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
   }
   await assertNoRuntimeErrors(errors, testInfo);
 });
+
+/**
+ * RuleRow, isolated with real props.
+ *
+ * The component is only reachable once a rule exists, which is why a
+ * nested-interactive defect lived in it unseen: every axe sweep hit the empty
+ * state instead. An income rule is the cheapest real instance, so this test
+ * creates one and then asserts the component's interaction semantics directly.
+ *
+ * The row used to wrap its ENTIRE content — including two IconButtons that are
+ * themselves `role="button"` — in one outer `role="button"`. That is axe's
+ * `nested-interactive` rule (wcag2a, SC 4.1.2). The press target is now scoped
+ * to the label column, leaving three sibling controls.
+ */
+test("RuleRow exposes three sibling controls, not nested interactives", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  await page.goto("/helix/settings/incomes");
+  await page.getByRole("textbox", { name: "Başlık" }).fill("Maaş");
+  await page.getByRole("textbox", { name: "Varsayılan Tutar" }).fill("42.500,00");
+  await page.getByRole("button", { name: "Gelir Kuralı Ekle", exact: true }).click();
+  const label = page.getByRole("button", { name: "Maaş", exact: true });
+  await expect(label).toBeVisible();
+
+  // 1. No nested interactive element anywhere on the route.
+  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  const nested = result.violations.filter((v) => v.id === "nested-interactive");
+  expect(nested, JSON.stringify(nested.map((v) => v.nodes.map((n) => n.html)))).toEqual([]);
+  expect(result.violations.map((v) => v.id)).toEqual([]);
+
+  // 2. Label, edit and delete are three separate controls with their own names.
+  const edit = page.getByRole("button", { name: "Düzenle", exact: true });
+  const remove = page.getByRole("button", { name: "Sil", exact: true });
+  for (const control of [label, edit, remove]) await expect(control).toBeVisible();
+
+  // 3. None of them contains another: a control's box must not enclose a sibling.
+  const [labelBox, editBox, deleteBox] = await Promise.all([
+    label.boundingBox(),
+    edit.boundingBox(),
+    remove.boundingBox(),
+  ]);
+  expect(labelBox && editBox && deleteBox).toBeTruthy();
+  const encloses = (outer: NonNullable<typeof labelBox>, inner: NonNullable<typeof labelBox>) =>
+    inner.x >= outer.x && inner.x + inner.width <= outer.x + outer.width;
+  expect(encloses(labelBox!, editBox!)).toBe(false);
+  expect(encloses(labelBox!, deleteBox!)).toBe(false);
+
+  // 4. Minimum touch target is preserved on the label and both icon buttons.
+  expect(labelBox!.height).toBeGreaterThanOrEqual(44);
+  for (const box of [editBox!, deleteBox!]) {
+    expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(32);
+  }
+
+  // 5. Every control is keyboard reachable and separately focusable.
+  const focusables = await page.evaluate(() => {
+    const names = ["Maaş", "Düzenle", "Sil"];
+    return names.map((name) => {
+      const el = Array.from(document.querySelectorAll('[role="button"]')).find(
+        (node) => (node.getAttribute("aria-label") ?? node.textContent ?? "").trim() === name,
+      ) as HTMLElement | undefined;
+      if (!el) return { name, found: false, focusable: false, focused: false };
+      el.focus();
+      return {
+        name,
+        found: true,
+        focusable: el.tabIndex >= 0,
+        focused: document.activeElement === el,
+      };
+    });
+  });
+  for (const control of focusables) {
+    expect(control.found, control.name).toBe(true);
+    expect(control.focusable, control.name).toBe(true);
+    expect(control.focused, control.name).toBe(true);
+  }
+
+  // 6. Pressing the label opens the editor…
+  await label.click();
+  const titleField = page.getByRole("textbox", { name: "Başlık" });
+  await expect(titleField).toHaveValue("Maaş");
+
+  // 7. …and the edit button opens the same editor, without deleting anything.
+  await page.goto("/helix/settings/incomes");
+  await edit.click();
+  await expect(page.getByRole("textbox", { name: "Başlık" })).toHaveValue("Maaş");
+  await page.goto("/helix/settings/incomes");
+  await expect(page.getByRole("button", { name: "Maaş", exact: true })).toBeVisible();
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});

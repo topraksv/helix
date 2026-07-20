@@ -21,7 +21,7 @@ const LIGHTNESS = 0.46;
  */
 const MAX_LUMINANCE = 0.175;
 
-function toLinear(channel: number): number {
+export function toLinear(channel: number): number {
   return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
 }
 
@@ -29,7 +29,28 @@ function toSrgb(channel: number): number {
   return channel <= 0.0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - 0.055;
 }
 
-function relativeLuminance([red, green, blue]: [number, number, number]): number {
+/** WCAG contrast ratio between two sRGB colours given as 0–1 channel triples. */
+export function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
+  const first = relativeLuminance(a);
+  const second = relativeLuminance(b);
+  const lighter = Math.max(first, second);
+  const darker = Math.min(first, second);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** `#rrggbb` → 0–1 channel triple. Throws on anything else, so a malformed
+ *  brand colour fails loudly instead of silently contrasting against black. */
+export function hexToRgb(hex: string): [number, number, number] {
+  const value = hex.replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) throw new Error(`Invalid hex colour: ${hex}`);
+  return [
+    parseInt(value.slice(0, 2), 16) / 255,
+    parseInt(value.slice(2, 4), 16) / 255,
+    parseInt(value.slice(4, 6), 16) / 255,
+  ];
+}
+
+export function relativeLuminance([red, green, blue]: [number, number, number]): number {
   return 0.2126 * toLinear(red) + 0.7152 * toLinear(green) + 0.0722 * toLinear(blue);
 }
 

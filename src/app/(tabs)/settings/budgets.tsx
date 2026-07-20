@@ -1,3 +1,9 @@
+import { Stack, useLocalSearchParams, type Href } from "expo-router";
+import { runUndo } from "../../../domain/undo-outcome";
+import { devError } from "../../../services/logger";
+import { appAlert } from "../../../ui/dialog";
+import { resolveBackTarget } from "../../../ui/navigation";
+import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { PiggyBank, Pencil, Trash2 } from "lucide-react-native";
@@ -16,6 +22,25 @@ import { spacing, useTheme } from "../../../ui/theme";
 import { useUndo } from "../../../ui/undo";
 
 export default function BudgetsScreen() {
+  /**
+   * An undo that fails must say so — the snackbar dismisses on tap either way,
+   * so a swallowed rejection left the row deleted with no message.
+   */
+  const reportUndo = async (action: () => Promise<unknown>) => {
+    const outcome = await runUndo(action);
+    if (!outcome.ok) {
+      devError("undo", outcome.error);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
+  };
+  // Reachable from more than one place, and every external push is anchored —
+  // which mounts settings/index UNDERNEATH this screen, so plain history would
+  // send the user back to a screen they never visited. The pusher records where
+  // it came from; `resolveBackTarget` validates it (typeof string +
+  // Object.hasOwn, so a hand-typed or prototype-polluting value cannot match)
+  // and falls back to the settings hub for deep links with no recorded source.
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const back = resolveBackTarget<Href>(from, { analysis: "/(tabs)/cash-flow/analytics" }, "/(tabs)/settings");
   const userId = useUserId();
   const categories = useCategories();
   const budgets = useCategoryBudgets();
@@ -69,12 +94,13 @@ export default function BudgetsScreen() {
     const snapshot = await deleteCategoryBudget(userId, budget.id);
     scheduleSync(userId);
     const categoryName = categoryById.get(budget.categoryId)?.name ?? tr.budgets.title;
-    if (snapshot) undo.show(`${categoryName} · ${tr.common.deleted}`, () => void restoreRow(userId, "category_budgets", snapshot).then(() => scheduleSync(userId)), "warning");
+    if (snapshot) undo.show(`${categoryName} · ${tr.common.deleted}`, () => void reportUndo(() => restoreRow(userId, "category_budgets", snapshot).then(() => scheduleSync(userId))), "warning");
     if (categoryChoice === budget.categoryId) reset();
   };
 
   return (
     <Screen>
+      <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.budgets.intro}</Body>
       <MonthStepper value={month} onChange={changeMonth} />
       <Card>

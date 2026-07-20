@@ -1,9 +1,12 @@
 begin;
 
-create extension if not exists pgtap with schema extensions;
-set local search_path = public, extensions;
+-- pgTAP is installed on the linked project already; installing it is not this
+-- suite's job. Its functions live in `extensions`, so the plan/finish calls
+-- are schema-qualified and the transaction-local search_path puts that schema
+-- first for the assertion helpers.
+set local search_path = extensions, public, pg_catalog;
 
-select plan(24);
+select extensions.plan(24);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -343,5 +346,5 @@ select results_eq(
 );
 
 reset role;
-select * from finish(true);
+select * from extensions.finish();
 rollback;

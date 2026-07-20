@@ -9,7 +9,7 @@ import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
-import { completedSyncState, useSyncStatus } from "./status";
+import { completedSyncState, DEAD_LETTER_COUNT_SQL, useSyncStatus } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, runSessionEpochTask, type SessionEpochToken } from "./session-epoch";
 import { isUuidShaped, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
@@ -338,10 +338,7 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     await pullAndMerge(userId, token);
     assertActive(token);
     const sqlite = await getSqliteAsync();
-    const deadLetters = await sqlite.getFirstAsync<{ count: number }>(
-      "SELECT COUNT(*) AS count FROM sync_dead_letters WHERE user_id = ?",
-      userId,
-    );
+    const deadLetters = await sqlite.getFirstAsync<{ count: number }>(DEAD_LETTER_COUNT_SQL, []);
     const completionState = completedSyncState(deadLetters?.count ?? 0);
     retryAttempt = 0;
     status.set({

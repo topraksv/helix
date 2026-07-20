@@ -726,7 +726,25 @@ export function MoneyField({
   );
 }
 
-/** Indirection avoids a static components ⇄ calculator import cycle. */
+/**
+ * Deferred require for the calculator modal.
+ *
+ * This does NOT remove the `components ⇄ calculator` cycle — `madge --circular`
+ * still reports it, because `calculator.tsx` statically imports `Button` and
+ * `FadeIn` from here. What it removes is the STATIC back-edge at module scope:
+ * `components.tsx` has no top-level reference to `calculator.tsx`, so whichever
+ * module loads first finishes initializing before the other body runs and
+ * neither order can observe a TDZ hole.
+ *
+ * The cycle is retained deliberately. Breaking it means moving
+ * `AnimatedPressable`, `useSpringPress`, `FadeIn` and `Button` (~120 lines,
+ * with `AnimatedPressable`/`useSpringPress` also used by `Card` and
+ * `PressableRow` here) into a leaf module — a wide edit to a 1300-line shared
+ * file whose only gains are a clean `madge` run and one fewer eslint
+ * suppression. Note also that `require()` is synchronous: Metro cannot split on
+ * it, so `calculator.tsx` ships in the same bundle either way. This defers
+ * module EVALUATION, not bundling.
+ */
 function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: number) => void; returnFocusRef?: React.RefObject<View | null> }) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { CalculatorModal } = require("./calculator") as typeof import("./calculator");

@@ -28,11 +28,20 @@ export function resolveYearColumns<T extends YearColumnCategory>(
   dataCategoryIds: ReadonlySet<string>,
 ): T[] {
   const active = categories.filter((c) => c.isColumn);
+  // `column_years` is a synced `settings` value read through an unchecked
+  // `JSON.parse(...) as T`, so its shape is a claim rather than a guarantee.
+  // A non-array entry (`{"2026": 5}` from a hand-edited backup or a tampered
+  // sync) made `for (const id of ids)` throw "is not iterable" during render of
+  // the Mali Tablo screen — the uncatchable white screen this codebase already
+  // guards route params against. Ignore malformed entries instead.
   const yearColIds = columnYears[String(year)];
-  if (!yearColIds) return active;
+  if (!Array.isArray(yearColIds)) return active;
 
   const claimed = new Set<string>();
-  for (const ids of Object.values(columnYears)) for (const id of ids) claimed.add(id);
+  for (const ids of Object.values(columnYears)) {
+    if (!Array.isArray(ids)) continue;
+    for (const id of ids) claimed.add(id);
+  }
 
   // Membership: active columns recorded for this year, plus any active column
   // that gained data in the year

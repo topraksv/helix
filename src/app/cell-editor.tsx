@@ -5,9 +5,9 @@
  * transaction list is a real FlatList, so a 1.000+ row cell mounts lazily.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { FlatList, ScrollView, Text, View } from "react-native";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
@@ -15,7 +15,8 @@ import { restoreRow } from "../db/mutations";
 import { addTransaction, deleteTransaction } from "../data/repo";
 import { saveCellNote } from "../data/cell-notes";
 import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../data/hooks";
-import { dateForMonthEntry, firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO } from "../domain/dates";
+import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
+import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinor, parseAmountExpression } from "../domain/money";
 import { signedBalanceEffectOf } from "../domain/transactions";
@@ -27,27 +28,53 @@ import { TransactionRow } from "../ui/transaction-row";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
-import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { runUndo } from "../domain/undo-outcome";
+import { devError } from "../services/logger";
+import { appAlert } from "../ui/dialog";
 
+/**
+ * Both params are hostile input: the route is directly addressable (bookmark,
+ * shared link, or the Pages 404 shell resolving a bare path).
+ *
+ * The gate is here, in the OUTER component, so an invalid link never reaches a
+ * database query — the editor below only mounts with validated params and takes
+ * them as REQUIRED props. Two earlier shapes were wrong: `categoryId!` with the
+ * redirect in an effect (the effect runs after the query is built, so
+ * `undefined` was already bound into drizzle's `eq`), and a sentinel id, which
+ * hid invalid input inside a well-formed query instead of refusing it.
+ *
+ * Recovery is a declarative `Redirect`, not a dead-end error screen: the
+ * established contract — asserted by `e2e/resilience.spec.ts` "hostile route
+ * parameters recover instead of white-screening" — is that the user lands
+ * somewhere they can act from, the cash-flow table.
+ */
 export default function CellEditorModal() {
   const { month, categoryId } = useLocalSearchParams<{ month: string; categoryId: string }>();
+  const params = isValidCellParams(month, categoryId);
+  if (!params) return <Redirect href="/(tabs)/cash-flow" />;
+  return <CellEditor month={params.month} categoryId={params.categoryId} />;
+}
+
+function CellEditor({ month, categoryId }: { month: string; categoryId: string }) {
+  /**
+   * An undo that fails must say so — the snackbar dismisses on tap either way,
+   * so a swallowed rejection left the row deleted with no message.
+   */
+  const reportUndo = async (action: () => Promise<unknown>) => {
+    const outcome = await runUndo(action);
+    if (!outcome.ok) {
+      devError("undo", outcome.error);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
+  };
   const userId = useUserId();
   const router = useRouter();
   const categories = useCategories();
   const persons = usePersons();
   const plans = usePlans();
-  // This screen is only ever opened from a real matrix cell, but the route is
-  // still directly addressable (a bookmark, a shared URL, or the Pages 404
-  // shell resolving a bare path). Trusting the params crashed the render, so
-  // an unusable link returns to the table instead. Substituting a default
-  // month is deliberately NOT an option — it would show another cell's money.
-  const validMonth = isMonthKey(month) ? month : null;
-  const rangeMonth = validMonth ?? monthKeyOf(todayISO());
-  useEffect(() => {
-    if (!validMonth || !categoryId) navigateBack(router, "/(tabs)/cash-flow");
-  }, [validMonth, categoryId, router]);
+  const rangeMonth = month;
   const transactions = useTransactionsBetween(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
   const undo = useUndo();
   const { palette } = useTheme();
@@ -72,7 +99,7 @@ export default function CellEditorModal() {
         and(
           eq(s.cellNotes.userId, userId),
           eq(s.cellNotes.month, rangeMonth),
-          eq(s.cellNotes.categoryId, categoryId!),
+          eq(s.cellNotes.categoryId, categoryId),
           isNull(s.cellNotes.deletedAt),
         ),
       ),
@@ -130,7 +157,7 @@ export default function CellEditorModal() {
 
   const removeTx = async (id: string) => {
     const snapshot = await deleteTransaction(userId, id);
-    if (snapshot) undo.show(tr.tx.deletedUndo, () => void restoreRow(userId, "transactions", snapshot), "warning");
+    if (snapshot) undo.show(tr.tx.deletedUndo, () => void reportUndo(() => restoreRow(userId, "transactions", snapshot)), "warning");
   };
 
   const header = (

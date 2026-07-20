@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLedger } from "../src/domain/balance";
+import { creditCardSplit, creditCardSplitsByMonth } from "../src/domain/analytics";
 import { buildCashFlowMatrixModel } from "../src/domain/cash-flow-matrix";
 import { buildDashboardModel } from "../src/domain/dashboard";
 import type { ISODate } from "../src/domain/dates";
@@ -115,5 +116,54 @@ describe("large-ledger performance contracts", () => {
 
     expect(model.months).toHaveLength(12);
     expect(elapsed).toBeLessThan(MATRIX_BUDGET_MS);
+  });
+});
+
+/**
+ * The item-breakdown screen builds twelve month rows. `creditCardSplit`
+ * internally computes EVERY month via `creditCardSplitsByMonth` and then
+ * discards all but one, so calling it once per row re-scanned the whole ledger
+ * twelve times per render. Measured before the fix: 65.26 ms at 100k rows,
+ * 6.71 ms at 10k. Hoisted: 5.35 ms and 0.56 ms — 12.2x and 12.0x.
+ *
+ * `buildCashFlowMatrixModel` already had this contract (the test above);
+ * this one pins the same property for the item screen's call pattern, and
+ * asserts the two forms agree so the optimisation cannot change a number.
+ */
+describe("item breakdown credit-card splits", () => {
+  const transactions = largeTransactions(LARGE_LEDGER_ROWS);
+  const cards = new Set(["card"]);
+  const today = "2026-12-31" as ISODate;
+  const months = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
+
+  it("produces identical values to the per-month form", () => {
+    const batch = creditCardSplitsByMonth(transactions, cards, today);
+    for (const month of months) {
+      const single = creditCardSplit(transactions, cards, month, today);
+      expect(batch.get(month) ?? { singleMinor: 0, installmentMinor: 0 }).toEqual(single);
+    }
+  });
+
+  it("builds all twelve months in one scan, well inside the row-loop cost", () => {
+    const startedAt = performance.now();
+    const batch = creditCardSplitsByMonth(transactions, cards, today);
+    for (const month of months) batch.get(month);
+    const batched = performance.now() - startedAt;
+
+    const perMonthStart = performance.now();
+    for (const month of months) creditCardSplit(transactions, cards, month, today);
+    const perMonth = performance.now() - perMonthStart;
+
+    // A regression to the per-month pattern is ~12x slower; 4x is a wide margin
+    // that still fails loudly if the batch form is replaced by a loop.
+    expect(batched * 4).toBeLessThan(perMonth);
+  });
+
+  it("keeps the screen's own call pattern off the per-month path", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const source = readFileSync(join(process.cwd(), "src/app/(tabs)/cash-flow/item.tsx"), "utf8");
+    expect(source).toContain("creditCardSplitsByMonth");
+    expect(source).not.toMatch(/creditCardSplit\(/);
   });
 });

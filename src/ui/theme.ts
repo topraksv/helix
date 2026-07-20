@@ -105,14 +105,15 @@ export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as cons
 // Ultra-soft organic corners in the 12–16px editorial range.
 export const radius = { sm: 12, md: 14, lg: 16, xl: 22, full: 999 } as const;
 
+// Every face listed here must be loaded in `_layout.tsx` and used by a `type.*`
+// scale or an explicit fontFamily — an unused weight is ~340 KB of TTF and one
+// more blocking fetch behind the font-load grace.
 export const font = {
   regular: "Inter_400Regular",
   medium: "Inter_500Medium",
   semibold: "Inter_600SemiBold",
   bold: "Inter_700Bold",
-  extrabold: "Inter_800ExtraBold",
   // Editorial serif for headings + hero figures (Warm Organic aesthetic).
-  serifMedium: "Fraunces_500Medium",
   serif: "Fraunces_600SemiBold",
   serifBold: "Fraunces_700Bold",
 } as const;

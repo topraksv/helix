@@ -22,8 +22,21 @@ import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
+import { runUndo } from "../../../domain/undo-outcome";
+import { devError } from "../../../services/logger";
 
 export default function PersonsScreen() {
+  /**
+   * An undo that fails must say so — the snackbar dismisses on tap either way,
+   * so a swallowed rejection left the row deleted with no message.
+   */
+  const reportUndo = async (action: () => Promise<unknown>) => {
+    const outcome = await runUndo(action);
+    if (!outcome.ok) {
+      devError("undo", outcome.error);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
+  };
   const userId = useUserId();
   const persons = usePersons();
   const undo = useUndo();
@@ -77,7 +90,7 @@ export default function PersonsScreen() {
       scheduleSync(userId);
       if (snapshot) {
         undo.show(`${p.name} · ${tr.common.deleted}`, () => {
-          void restoreRow(userId, "persons", snapshot).then(() => scheduleSync(userId));
+          void reportUndo(() => restoreRow(userId, "persons", snapshot).then(() => scheduleSync(userId)));
         }, "warning");
       }
     } catch (error) {

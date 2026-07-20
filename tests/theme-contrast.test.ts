@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { hexToRgb } from "../src/ui/badge-color";
+import { BRAND, brandPlate } from "../src/domain/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
 import { darkPalette, lightPalette, type Palette } from "../src/ui/theme";
 
@@ -225,5 +227,78 @@ describe("semantic theme contrast", () => {
   it("keeps the badge colour deterministic per name", () => {
     expect(initialsBadgeColor("Netflix")).toBe(initialsBadgeColor("Netflix"));
     expect(initialsBadgeColor("Netflix")).not.toBe(initialsBadgeColor("Spotify"));
+  });
+});
+
+/**
+ * Brand chips are the offline / failed-favicon fallback, so they must stay
+ * readable exactly when the network does not.
+ *
+ * `logo.tsx`'s `inkFor` used to weight GAMMA-ENCODED sRGB with the NTSC
+ * "perceived brightness" coefficients and threshold at 0.62. WCAG contrast is
+ * computed from LINEARIZED relative luminance, and the two diverge most in
+ * saturated greens and cyans — where this table is dense. Measured across it,
+ * 49 chips failed AA and 16 fell below even the 3:1 large-text floor, while the
+ * opposite ink would have passed comfortably in every one of those cases.
+ *
+ * `tests/theme-contrast.test.ts` already guards the other generated colour
+ * (`InitialsBadge`, all 360 hues); this closes the gap for the brand table.
+ */
+describe("brand chip monogram", () => {
+  const brandEntries = Object.entries(BRAND) as [string, { color: string }][];
+
+  it("covers a real table, so a passing run means something", () => {
+    expect(brandEntries.length).toBeGreaterThan(50);
+  });
+
+  /**
+   * The mark is normal-size text (`size * 0.34`), so AA 4.5:1 applies — not the
+   * large-text 3:1. Drawn straight on the brand colour it could not get there
+   * for twelve brands whatever ink was chosen, so it now sits on a neutral
+   * plate and the ratio stops depending on the brand at all.
+   */
+  it("clears AA for the monogram on EVERY brand, with no exceptions", () => {
+    const failures: string[] = [];
+    for (const [name, { color }] of brandEntries) {
+      const { plate, ink } = brandPlate(color);
+      const ratio = contrastRatio(plate, ink);
+      if (ratio < 4.5) failures.push(`${name} ${color} → ${ratio.toFixed(2)}:1`);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("keeps the plate edge visible against the brand colour (WCAG 1.4.11)", () => {
+    const failures: string[] = [];
+    for (const [name, { color }] of brandEntries) {
+      const ratio = contrastRatio(color, brandPlate(color).plate);
+      if (ratio < 3) failures.push(`${name} ${color} → ${ratio.toFixed(2)}:1`);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("always picks the plate that measures better against the brand colour", () => {
+    for (const [name, { color }] of brandEntries) {
+      const chosen = contrastRatio(color, brandPlate(color).plate);
+      const best = Math.max(
+        contrastRatio(color, lightPalette.surface),
+        contrastRatio(color, darkPalette.surface),
+      );
+      expect(chosen, name).toBeCloseTo(best, 6);
+    }
+  });
+
+  it("pairs each plate with its own theme ink", () => {
+    for (const [name, { color }] of brandEntries) {
+      const { plate, ink } = brandPlate(color);
+      const pair = plate === lightPalette.surface
+        ? lightPalette.textStrong
+        : darkPalette.textStrong;
+      expect(ink, name).toBe(pair);
+    }
+  });
+
+  it("rejects a malformed brand colour instead of contrasting against black", () => {
+    expect(() => brandPlate("nope")).toThrow(/invalid hex/i);
+    expect(() => brandPlate("#12345")).toThrow(/invalid hex/i);
   });
 });

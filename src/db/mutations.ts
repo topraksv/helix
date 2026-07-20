@@ -52,11 +52,29 @@ function toDbShape(table: SyncedTableName, row: Record<string, unknown>): Record
   return out;
 }
 
-function upsertSql(table: SyncedTableName, dbRow: Record<string, unknown>): { sql: string; args: SQLiteBindValue[] } {
+/**
+ * Columns an upsert may never rewrite on the UPDATE branch.
+ *
+ * `created_at` is insert-only by definition, but it used to be in the
+ * `DO UPDATE SET` list. Combined with the `createdAt: row.createdAt ?? timestamp`
+ * stamp below, that meant every builder which constructs a row LITERAL rather
+ * than spreading `fromDbShape(previous)` silently reset the row's creation time
+ * on each edit — budgets, subscription/income rules, expected-payment confirms
+ * and the maintenance re-upserts all did. `transactions.ts` worked around it by
+ * reading and re-supplying `created_at`, which is a per-caller fix for a
+ * property of the write layer.
+ *
+ * Excluding it here fixes every caller at once, and makes the value truthful
+ * for `maintenance.ts`'s `ORDER BY created_at ASC` duplicate-self repair. `id`
+ * is excluded for the obvious reason: it is the conflict target.
+ */
+const UPSERT_IMMUTABLE_COLUMNS = new Set(["id", "created_at"]);
+
+export function upsertSql(table: SyncedTableName, dbRow: Record<string, unknown>): { sql: string; args: SQLiteBindValue[] } {
   const keys = Object.keys(dbRow);
   const placeholders = keys.map(() => "?").join(", ");
   const updates = keys
-    .filter((k) => k !== "id")
+    .filter((k) => !UPSERT_IMMUTABLE_COLUMNS.has(k))
     .map((k) => `${k} = excluded.${k}`)
     .join(", ");
   return {
@@ -192,16 +210,17 @@ export async function readSetting<T>(userId: string, key: string): Promise<T | n
   }
 }
 
-export async function writeSetting(userId: string, key: string, value: unknown, isUserEntry = false): Promise<void> {
+/**
+ * One settings row, ready for `writeRows`. Exposed so callers that write
+ * SEVERAL settings which are a single semantic unit can put them in one
+ * transaction instead of chaining `writeSetting` calls — a failure between two
+ * such calls leaves the pair half-applied.
+ */
+export async function settingRow(userId: string, key: string, value: unknown): Promise<RowWrite> {
   const id = await deterministicId(naturalKeys.setting(userId, key));
-  await writeRows(
-    userId,
-    [
-      {
-        table: "settings",
-        row: { id, key, value: JSON.stringify(value), deletedAt: null },
-      },
-    ],
-    isUserEntry,
-  );
+  return { table: "settings", row: { id, key, value: JSON.stringify(value), deletedAt: null } };
+}
+
+export async function writeSetting(userId: string, key: string, value: unknown, isUserEntry = false): Promise<void> {
+  await writeRows(userId, [await settingRow(userId, key, value)], isUserEntry);
 }

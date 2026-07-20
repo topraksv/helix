@@ -2,9 +2,10 @@
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
-import { useCategories, usePersons, usePlans, useSources, useUserId } from "../data/hooks";
+import { useCategories, usePersons, usePlans, usePlansState, useSources, useUserId } from "../data/hooks";
+import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
@@ -24,10 +25,16 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function PlanModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const plans = usePlans();
-  const existing = plans.find((p) => p.id === id);
-  // Hold the form until the edited row resolves from the live query.
-  if (id && !existing) return <Screen scroll={false}>{null}</Screen>;
+  const record = classifyRecordId(id);
+  const plansState = usePlansState();
+  const existing = record?.mode === "edit" ? plansState.data.find((p) => p.id === record.id) : undefined;
+  // Loading is `updatedAt == null`; anything after that is a row that does not
+  // exist, which must recover instead of rendering a permanent blank screen.
+  if (!record) return <Redirect href="/(tabs)/cash-flow/installments" />;
+  if (record.mode === "edit" && !existing) {
+    if (plansState.updatedAt == null) return <Screen scroll={false}>{null}</Screen>;
+    return <Redirect href="/(tabs)/cash-flow/installments" />;
+  }
   return <PlanForm key={existing?.id ?? "new"} existing={existing} />;
 }
 
@@ -205,7 +212,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
           {kind === "card_installment" && !cardSourceValid ? (
             <>
               <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/(tabs)/settings/payment-sources", { withAnchor: true })} />
+              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: { from: "installment" } }, { withAnchor: true })} />
             </>
           ) : null}
         </>

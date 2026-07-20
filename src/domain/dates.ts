@@ -67,8 +67,20 @@ export function makeISODate(year: number, month: number, day: number): ISODate {
   return `${makeMonthKey(year, month)}-${String(day).padStart(2, "0")}`;
 }
 
-/** Clamp a nominal day-of-month (e.g. billing day 31) into the given month. */
+/**
+ * Clamp a nominal day-of-month (e.g. billing day 31) into the given month.
+ *
+ * Only the UPPER bound used to be clamped, so a corrupt nominal day produced a
+ * syntactically invalid ISO string instead of failing: day `0` returned
+ * `"2026-03-00"`, `NaN` returned `"2026-03-NaN"` and `-5` returned
+ * `"2026-03--5"`. Those strings were written straight into
+ * `expected_payments.due_date` and `transactions.effective_date`, where every
+ * comparison is lexicographic — so the row sorted and filtered as if it were a
+ * real date. Fail closed like `daysInMonth` does for a bad month; generation
+ * sites guard with `isMonthDay` and skip rather than invent a date.
+ */
 export function clampDayToMonth(year: number, month: number, day: number): ISODate {
+  if (!isMonthDay(day)) throw new Error(`Invalid day of month: ${day}`);
   return makeISODate(year, month, Math.min(day, daysInMonth(year, month)));
 }
 

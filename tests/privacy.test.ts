@@ -68,3 +68,28 @@ describe("sensitive UI cover policy", () => {
     expect(notifications).toContain("await clearAccountNotifications(true)");
   });
 });
+
+/**
+ * Structural guard, not a behaviour test: `session.ts` imports react-native and
+ * cannot be loaded by vitest, which is why this file inspects it as text.
+ *
+ * Every authenticated background task must be session-scoped so
+ * `stopSyncSession` can await it. The sign-out FAILURE path restarted the
+ * session's background work with a bare `void Promise.allSettled([...])` — no
+ * owner, invisible to `stopSyncSession`, so a retried sign-out followed by a
+ * sign-in as another account could still let the old account's `rescheduleAll`
+ * land and schedule its notifications under the new one.
+ */
+describe("session background work ownership", () => {
+  const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
+
+  it("restarts background work through runSyncSessionTask", () => {
+    expect(session).toContain("runSyncSessionTask");
+    expect(session).toMatch(/void runSyncSessionTask\(userId, async \(\) => \{/);
+  });
+
+  it("leaves no unowned floating promise on that path", () => {
+    // A bare `void Promise.` is exactly the shape stopSyncSession cannot await.
+    expect(session).not.toMatch(/void Promise\./);
+  });
+});

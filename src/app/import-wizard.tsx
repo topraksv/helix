@@ -12,7 +12,7 @@ import { ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { CheckCircle2, FileSpreadsheet, Upload } from "lucide-react-native";
-import { importSheets, importedYears } from "../data/repo";
+import { ImportBatchUnreadableError, importSheets, importedYears } from "../data/repo";
 import { usePersons, useSources, useUserId } from "../data/hooks";
 import { isMonthDay, yearOf } from "../domain/dates";
 import { formatMinor } from "../domain/money";
@@ -264,7 +264,13 @@ export default function ImportWizardModal() {
       try {
         await performImport(mode);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        // A refused replace is a precise, actionable condition — never a raw
+        // engine message, and never a silent downgrade to "add".
+        setError(
+          e instanceof ImportBatchUnreadableError
+            ? tr.importer.batchUnreadable(e.years.join(", "))
+            : e instanceof Error ? e.message : String(e),
+        );
       } finally {
         setBusy(false);
       }

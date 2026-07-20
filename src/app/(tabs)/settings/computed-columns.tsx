@@ -23,6 +23,9 @@ import { useUndo } from "../../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
+import { runUndo } from "../../../domain/undo-outcome";
+import { devError } from "../../../services/logger";
+import { appAlert } from "../../../ui/dialog";
 
 const HIDDEN_KEY = "computed_columns_hidden";
 
@@ -36,6 +39,17 @@ const OP_META: { op: Op; icon: LucideIcon }[] = [
 ];
 
 export default function ComputedColumnsScreen({ header }: { header?: ReactNode } = {}) {
+  /**
+   * An undo that fails must say so — the snackbar dismisses on tap either way,
+   * so a swallowed rejection left the row deleted with no message.
+   */
+  const reportUndo = async (action: () => Promise<unknown>) => {
+    const outcome = await runUndo(action);
+    if (!outcome.ok) {
+      devError("undo", outcome.error);
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
+  };
   const userId = useUserId();
   const columns = useComputedColumns();
   const categories = useCategories();
@@ -162,7 +176,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     if (editingId === c.id) resetForm();
     const snapshot = await softDelete(userId, "computed_columns", c.id);
     scheduleSync(userId);
-    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void restoreRow(userId, "computed_columns", snapshot), "warning");
+    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void reportUndo(() => restoreRow(userId, "computed_columns", snapshot)), "warning");
   };
 
   const toggleVisible = async (id: string, show: boolean) => {

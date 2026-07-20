@@ -11,6 +11,7 @@ export {
   FxRateUnavailableError,
   InstallmentHistoryConflictError,
   ReferencedRecordError,
+  ImportBatchUnreadableError,
   SubscriptionCategoryRequiredError,
 } from "./repo/errors";
 
@@ -74,6 +75,7 @@ export {
   confirmExpected,
   revertExpected,
   skipExpected,
+  unskipExpected,
 } from "./repo/expected";
 
 export {

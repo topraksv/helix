@@ -6,7 +6,7 @@
  * truth; automation only assists.
  */
 
-import { addMonthsToKey, lastDayOf, monthKeyOf, type ISODate } from "./dates";
+import { addMonthsToKey, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
 import { dayIntervalDatesInRange, dueDateInMonth, dueDatesInRange } from "./recurrence";
 import type {
   ExpectedPaymentLike,
@@ -68,6 +68,10 @@ export function generateExpected(
 
   for (const sub of subscriptions) {
     if (!sub.isActive || !sub.personIsSelf) continue;
+    // Fail closed on a corrupt nominal day (hand-edited backup, tampered sync):
+    // there is no due date to anchor on, so the rule generates nothing rather
+    // than an invented one. Same contract as an invalid interval.
+    if (!isMonthDay(sub.billingDay)) continue;
     // A free trial cannot create a charge before it ends. If the trial ends
     // after the stored next due date, use the first scheduled billing date on
     // or after that boundary as the generation anchor.
@@ -109,6 +113,9 @@ export function generateExpected(
       }
       continue;
     }
+    // Monthly incomes anchor on a nominal pay day; a corrupt one fails closed
+    // exactly like a missing weekly anchor above.
+    if (!isMonthDay(income.payDay)) continue;
     let month = monthKeyOf(today);
     for (let i = 0; i <= horizonMonths; i++) {
       const dueDate = dueDateInMonth(month, income.payDay);

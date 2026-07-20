@@ -2,12 +2,17 @@ import { readdir, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 
 const root = process.argv[2] ?? "dist";
+// Measured from a production `expo export -p web`, with headroom for ordinary
+// growth. The font budgets were tightened after two faces that no `type.*`
+// scale or fontFamily ever referenced (Inter_800ExtraBold, Fraunces_500Medium)
+// were removed: 8 files / 1_935_428 bytes -> 6 files / 1_518_000 bytes. Keep
+// fontFiles exact so adding a weight has to be a deliberate decision.
 const limits = {
   entryJavaScript: 4_900_000,
   totalJavaScript: 5_500_000,
-  totalExport: 10_500_000,
-  fontFiles: 8,
-  fontBytes: 2_050_000,
+  totalExport: 10_000_000,
+  fontFiles: 6,
+  fontBytes: 1_600_000,
 };
 
 async function walk(directory) {

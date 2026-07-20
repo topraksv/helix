@@ -3,7 +3,8 @@
 Bu belge Helix’in mevcut kodunun teknik veri davranışını açıklar; hukukî danışmanlık
 veya üçüncü taraf hizmetlerin kendi gizlilik politikalarının yerine geçmez. Kod ile
 bu metin ayrışırsa sorun olarak raporlanmalı, metin sessizce daha güçlü bir garanti
-vermemelidir.
+vermemelidir. Güven sınırlarının mühendislik tarafı ve doğrulama matrisi
+[SECURITY.md](SECURITY.md) belgesindedir.
 
 ## Kısa cevap
 
@@ -44,16 +45,12 @@ Bağlantıda push edilir, server’ın normalize ettiği `updated_at` cevabı al
 sonra ilgili outbox event’i kaldırılır. Pull satırları runtime’da doğrulanır; bozuk
 veya foreign veri cursor’ın arkasına saklanmaz.
 
-Remote tablolarda:
-
-- policy’ler `authenticated` rolüne ve `(select auth.uid()) = user_id` sahipliğine
-  dayanır;
-- insert/update `WITH CHECK` ile owner değişimi engellenir;
-- owner-aware FK ve category/reference trigger’ları cross-account ilişkiyi reddeder;
-- client’taki gizli buton veya route guard yetkilendirme kontrolü sayılmaz.
-
-Service-role anahtarı uygulamaya veya `EXPO_PUBLIC_*` env’e konmaz. Client yalnız
-Supabase anon/publishable anahtarını taşır; asıl erişim sınırı RLS’tir.
+Remote tarafta erişim sınırı tek yerde, Postgres satır güvenliğindedir: her satır
+kendi sahibine bağlıdır, başka bir hesap onu okuyamaz veya sahipliğini
+değiştiremez, oturumsuz istek hiçbir satıra ulaşamaz. Client’taki gizli buton veya
+route guard yetkilendirme sayılmaz. Uygulama yalnız publishable anon anahtarını
+taşır; service-role anahtarı uygulamaya veya `EXPO_PUBLIC_*` env’e konmaz.
+Policy, trigger ve grant ayrıntısı: [SECURITY.md](SECURITY.md).
 
 ## Üçüncü taraf ağ istekleri
 
@@ -62,8 +59,8 @@ Supabase anon/publishable anahtarını taşır; asıl erişim sınırı RLS’ti
 | Supabase | Auth ve isteğe bağlı sync | E-posta/auth protokolü; kullanıcıya ait finance satırları | Hesaplı modda; RLS owner-only |
 | Expo EAS Update | Kurulu uygulamaya JS/asset update | Runtime/channel ve update istemi; ağ sağlayıcısı normal bağlantı metadata’sını görebilir | Finansal payload update isteğine eklenmez |
 | GitHub Pages | Web uygulamasını sunmak | Normal HTTP metadata | Finansal veri app tarafında browser storage/Supabase akışındadır |
-| TCMB | TRY kaynaklı resmî kur | Salt okunur GET | Timeout, boyut/şekil/tarih doğrulaması |
-| Frankfurter | TCMB alınamazsa kur fallback’i | İstenen para birimi sembolleri | Salt okunur; kaynak tarihi zorunlu |
+| TCMB | Resmî TRY kuru — **yalnız native**; `today.xml` CORS başlığı göndermediği için web bu kaynağı hiç çağırmaz | Salt okunur GET | Timeout, boyut/şekil/tarih doğrulaması |
+| Frankfurter | Web’de tek kur kaynağı; native’de TCMB alınamazsa fallback | İstenen para birimi sembolleri | Salt okunur; kaynak tarihi zorunlu |
 | Harem Altın websocket | Canlı altın/döviz piyasa kartı | Salt okunur socket bağlantısı | Resmî SLA yok; 60 sn feed sessizliğinde veri canlı sayılmaz. Son geçerli fiyatlar zaman damgasıyla cihazda saklanır (kişisel veri içermez); hesap makinesi çevirisi bu son kuru ancak zaman damgasını açıkça göstererek kullanır, deftere yazan dönüşümler yalnız 60 sn içinde teyitli canlı kuru kabul eder |
 | Google favicon | Bilinen abonelik logosu | Sıkı doğrulanmış/encode edilmiş public domain | İstek `google.com/s2`'ye gider ve Google `*.gstatic.com`'a yönlendirir; utility, unknown, IP/local/invalid host gönderilmez; disk cache + local fallback var |
 
@@ -137,5 +134,6 @@ kullanıcının sorumluluğundadır. Helix export’u parola ile şifrelediğini
   hazırlanmalıdır.
 
 Gizlilik veya veri silme problemi için repository maintainer’ına
-[GitHub üzerinden](https://github.com/topraksv) ulaşılabilir. Güvenlik açığında ham
-finansal veri, backup, token veya şifre public issue’ya eklenmemelidir.
+[GitHub üzerinden](https://github.com/topraksv) ulaşılabilir. Güvenlik açığı
+bildirimi ayrı bir yoldur ve public issue’ya yazılmaz — kuralları
+[SECURITY.md](SECURITY.md) belgesindedir.
