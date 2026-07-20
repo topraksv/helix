@@ -6,7 +6,8 @@ import { StyleSheet, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Undo2 } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
-import { useAllTransactions, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
+import { useAllTransactionsState, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
+import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, lastDayOf, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
@@ -30,15 +31,23 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 type EntryType = "expense" | "income" | "transfer";
 
-type ExistingTx = ReturnType<typeof useAllTransactions>[number];
+type ExistingTx = ReturnType<typeof useAllTransactionsState>["data"][number];
 
 export default function TransactionModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const allTx = useAllTransactions();
-  const existing = id ? allTx.find((t) => t.id === id) : undefined;
-  // Editing: wait for the row to load, then key by id so state initializers
-  // see the real values.
-  if (id && !existing) return <Screen scroll={false}>{null}</Screen>;
+  const record = classifyRecordId(id);
+  const txState = useAllTransactionsState();
+  const existing = record?.mode === "edit" ? txState.data.find((t) => t.id === record.id) : undefined;
+  // `id && !existing` could not tell "still loading" from "no such row", so a
+  // deleted, foreign or hand-typed id rendered an empty screen with a header
+  // FOREVER. `updatedAt` is the only proof the query ran for these parameters:
+  // until it lands we are loading, after it lands the row genuinely does not
+  // exist and the user is returned to the list that owns it.
+  if (!record) return <Redirect href="/(tabs)/cash-flow" />;
+  if (record.mode === "edit" && !existing) {
+    if (txState.updatedAt == null) return <Screen scroll={false}>{null}</Screen>;
+    return <Redirect href="/(tabs)/cash-flow" />;
+  }
   if (existing?.installmentPlanId) {
     return <Redirect href={{ pathname: "/installment-new", params: { id: existing.installmentPlanId } }} />;
   }
@@ -398,7 +407,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
               : dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
           </Body>
           {isCreditCardExpense && !cardCycleValid ? (
-            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/(tabs)/settings/payment-sources", { withAnchor: true })} />
+            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: { from: "transaction" } }, { withAnchor: true })} />
           ) : null}
         </>
       )}

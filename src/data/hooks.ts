@@ -297,7 +297,7 @@ export function usePlans() {
   return usePlansState().data;
 }
 
-function usePlansState() {
+export function usePlansState() {
   const userId = useUserId();
   return useSharedLive(
     `installment_plans:${userId}`,

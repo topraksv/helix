@@ -2,9 +2,10 @@
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
-import { useCategories, usePersons, useSources, useSubscriptions, useUserId } from "../data/hooks";
+import { useCategories, usePersons, useSources, useSubscriptions, useSubscriptionsState, useUserId } from "../data/hooks";
+import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon } from "../data/category-icons";
 import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { isMonthDay, monthKeyOf, todayISO } from "../domain/dates";
@@ -31,11 +32,16 @@ const QUICK_DAYS = [1, 5, 10, 15, 25, 28] as const;
 
 export default function SubscriptionFormModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const subscriptions = useSubscriptions();
-  const existing = subscriptions.find((s) => s.id === id);
-  // Live queries resolve async: when editing, hold the form back until the
-  // row is loaded, and key it so state initializers see the real values.
-  if (id && !existing) return <Screen scroll={false}>{null}</Screen>;
+  const record = classifyRecordId(id);
+  const subscriptionsState = useSubscriptionsState();
+  const existing = record?.mode === "edit" ? subscriptionsState.data.find((s) => s.id === record.id) : undefined;
+  // Loading is `updatedAt == null`; anything after that is a row that does not
+  // exist, which must recover instead of rendering a permanent blank screen.
+  if (!record) return <Redirect href="/(tabs)/subscriptions" />;
+  if (record.mode === "edit" && !existing) {
+    if (subscriptionsState.updatedAt == null) return <Screen scroll={false}>{null}</Screen>;
+    return <Redirect href="/(tabs)/subscriptions" />;
+  }
   return <SubscriptionForm key={existing?.id ?? "new"} existing={existing} />;
 }
 
@@ -273,7 +279,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           {!sourceValid ? (
             <>
               <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/(tabs)/settings/payment-sources", { withAnchor: true })} />
+              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: { from: "subscription" } }, { withAnchor: true })} />
             </>
           ) : null}
         </>
