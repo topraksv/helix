@@ -27,7 +27,8 @@ import {
   Wallet,
 } from "lucide-react-native";
 import { useSession } from "../../../auth/session";
-import { useSettingsMap, settingValue, useUserId } from "../../../data/hooks";
+import { useSettingsMapState, settingValue, useUserId } from "../../../data/hooks";
+import { asyncFieldState } from "../../../domain/form-state";
 import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
 import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
@@ -49,7 +50,8 @@ import { readPickedText } from "../../../services/picked-file";
 export default function SettingsScreen() {
   const userId = useUserId();
   const { signOut, deleteAccount, verifyPassword } = useSession();
-  const settings = useSettingsMap();
+  const settingsState = useSettingsMapState();
+  const settings = settingsState.data;
   const sync = useSyncStatus();
   const router = useRouter();
   const { palette } = useTheme();
@@ -61,7 +63,16 @@ export default function SettingsScreen() {
   const [notificationBusy, setNotificationBusy] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
-  const [reminderStr, setReminderStr] = useState(String(reminderDays));
+  // Explicit dirty state, decided in `asyncFieldState` (domain/form-state.ts).
+  // `updatedAt` is the ONLY proof the settings query ran for this account, so it
+  // is what separates "not loaded yet / read failed" from "loaded". While it is
+  // null nothing may be saved — writing over a value that was never loaded is
+  // exactly the overwrite this guards against.
+  const [reminderDraft, setReminderDraft] = useState<string | null>(null);
+  const reminderResolved = settingsState.updatedAt != null ? String(reminderDays) : null;
+  const reminderField = asyncFieldState(reminderDraft, reminderResolved, (value) =>
+    value.trim() !== "" && Number.isInteger(Number(value)) && Number(value) >= 0);
+  const reminderStr = reminderField.value;
 
   React.useEffect(() => {
     void kv.get("helix.theme").then((v) => {
@@ -248,17 +259,23 @@ export default function SettingsScreen() {
         <Field
           label={tr.settings.reminderDays}
           value={reminderStr}
-          onChangeText={setReminderStr}
+          onChangeText={setReminderDraft}
           keyboardType="number-pad"
         />
         <Button
           label={tr.common.save}
           variant="secondary"
           size="sm"
-          disabled={!Number.isInteger(Number(reminderStr)) || Number(reminderStr) < 0 || Number(reminderStr) === reminderDays}
+          disabled={!reminderField.canSave}
           onPress={() => {
-            void writeSetting(userId, "reminder_days", Number(reminderStr))
-              .then(() => rescheduleAll(userId))
+            const next = Number(reminderStr);
+            void writeSetting(userId, "reminder_days", next)
+              // Release the draft so the field follows the persisted value again
+              // instead of pinning the just-saved string over later changes.
+              .then(() => {
+                setReminderDraft(null);
+                return rescheduleAll(userId);
+              })
               .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
           }}
         />
