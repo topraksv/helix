@@ -8,6 +8,7 @@ import {
   addMonthsToKey,
   addDaysISO,
   clampDayToMonth,
+  isMonthDay,
   monthKeyOf,
   monthOf,
   yearOf,
@@ -74,6 +75,9 @@ export function dueDatesInRange(
   // a hand-edited backup or a tampered sync could set interval_months = 0).
   // Treat it as "no schedule" rather than looping.
   if (safeIntervalMonths(intervalMonths) == null) return [];
+  // Same source of corruption, same fail-closed answer: a billing day outside
+  // 1–31 has no due date to clamp into a month, so there is no schedule.
+  if (!isMonthDay(billingDay)) return [];
   const dates: ISODate[] = [];
   let due = anchorDue;
   // Rewind is not needed: callers always pass anchorDue <= range start or inside it.

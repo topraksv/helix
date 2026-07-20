@@ -9,6 +9,7 @@
 import {
   addMonthsToKey,
   clampDayToMonth,
+  isMonthDay,
   monthOf,
   yearOf,
   type ISODate,
@@ -75,7 +76,9 @@ export function planAmounts(plan: Pick<InstallmentPlanLike, "totalAmountMinor" |
  */
 export function generateSchedule(plan: InstallmentPlanLike, today: ISODate): GeneratedInstallment[] {
   const amounts = planAmounts(plan);
-  const dueDay = plan.dueDay ?? 1;
+  // `?? 1` only covers a missing day. A corrupt one (0, NaN, 45) would make
+  // `clampDayToMonth` throw mid-render, so fall back to the same default.
+  const dueDay = isMonthDay(plan.dueDay ?? 1) ? (plan.dueDay ?? 1) : 1;
   return amounts.map((amountMinor, index) => {
     const month = addMonthsToKey(plan.startMonth, index);
     const effectiveDate = clampDayToMonth(yearOf(month), monthOf(month), dueDay);

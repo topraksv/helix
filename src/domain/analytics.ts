@@ -180,8 +180,16 @@ export function creditCardSplitsByMonth(
   return result;
 }
 
-/** Yearly subscription cost normalized to a true monthly load (spec §3.1). */
+/**
+ * Yearly subscription cost normalized to a true monthly load (spec §3.1).
+ *
+ * A corrupt `interval_months` of 0 produced `Infinity` here, which reached
+ * `formatMinor` and threw `assertMinor` DURING RENDER on the subscriptions
+ * screen. `recurrence.ts` already fails closed on the same field; treat an
+ * unusable interval as "charged once per month" rather than crashing.
+ */
 export function normalizedMonthlyLoadMinor(amountMinor: Minor, intervalMonths: number): Minor {
+  if (!Number.isInteger(intervalMonths) || intervalMonths < 1) return amountMinor;
   return Math.round(amountMinor / intervalMonths);
 }
 
