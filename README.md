@@ -7,24 +7,23 @@
 
 ### Paran bugün nerede, yarın ne olacak — tek bakışta.
 
-**Helix; nakit akışını, taksitlerini, aboneliklerini ve bütçelerini cihazında tutan,**
-**internetsiz de çalışan kişisel finans uygulamasıdır.**
+**Nakit akışını, taksitlerini, aboneliklerini ve bütçelerini cihazında tutan,**
+**internetsiz de çalışan kişisel finans uygulaması.**
 
 *An offline-first personal finance workspace for cash flow, installments,
 subscriptions and budgets — with a spreadsheet mind and a mobile heart.*
 
 [![Helix'i aç](https://img.shields.io/badge/Helix'i_aç-BA5B38?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
 
-[![quality](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml)
+[![deploy-web](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml)
 [![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-0F0F0D?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
-[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-0F0F0D?logo=typescript&logoColor=3178C6)](tsconfig.json)
-[![Playwright + Vitest](https://img.shields.io/badge/tests-Playwright%20%2B%20Vitest-0F0F0D?logo=playwright&logoColor=45BA4B)](docs/TESTING.md)
-[![Proprietary](https://img.shields.io/badge/license-proprietary-BA5B38)](#lisans--license)
+[![Node 22](https://img.shields.io/badge/Node-22-0F0F0D?logo=nodedotjs&logoColor=5FA04E)](#kurulum)
+[![Proprietary](https://img.shields.io/badge/license-proprietary-BA5B38)](LICENSE)
 
 </div>
 
 <p align="center">
-  <img src="assets/screenshots/dashboard-dark.png" alt="Bütçe Özeti — güncel bakiye, ay sonu tahmini ve yaklaşan ödemeler" width="300">
+  <img src="assets/screenshots/dashboard-dark.png" alt="Özet ekranı: güncel bakiye ₺287.719,01, ay sonu tahmini ve yaklaşan abonelik ödemeleri listesi" width="300">
 </p>
 
 ## Neden Helix?
@@ -46,14 +45,14 @@ hesaplamayı, tekrarları ve veri güvenliğini senin yerine üstlenir.
 
 | Mali Tablo | Abonelikler | Analiz |
 |:---:|:---:|:---:|
-| <img src="assets/screenshots/cash-flow-dark.png" alt="Mali Tablo — yıl matrisi" width="240"> | <img src="assets/screenshots/subscriptions-dark.png" alt="Abonelikler — marka logoları, aylık maliyet ve sonraki ödemeler" width="240"> | <img src="assets/screenshots/analytics-dark.png" alt="Analiz — arama, kategori bütçeleri ve dönem filtreleri" width="240"> |
-| Yıl matrisinde her ay × kalem hücresi düzenlenebilir; mevcut ay otomatik odaklanır. | Marka logolu kartlarda aylık/yıllık toplam maliyet, sonraki ödeme tarihi ve otomatik ödeme bir arada. | Dönem bazlı grafikler, kategori bütçe durumu ve tüm geçmişte işlem arama. |
+| <img src="assets/screenshots/cash-flow-dark.png" alt="Mali Tablo: 2026 yılının ay × kategori matrisi, sabitlenmiş Ay sütunu ve içinde bulunulan ay vurgulanmış" width="240"> | <img src="assets/screenshots/subscriptions-dark.png" alt="Abonelikler: aylık ₺1.538,86 ve yıllık ₺18.466,32 toplam maliyet, marka logolu Netflix, Spotify, YouTube Premium ve iCloud kartları" width="240"> | <img src="assets/screenshots/analytics-dark.png" alt="Analiz: dönem ve tür filtreleri, işlem arama alanı ve kalan tutarı gösteren Temmuz kategori bütçeleri" width="240"> |
+| Her ay × kalem hücresi düzenlenebilir; mevcut ay otomatik odaklanır. | Aylık/yıllık toplam maliyet, sonraki ödeme tarihi ve otomatik ödeme bir arada. | Dönem bazlı grafikler, kategori bütçe durumu ve tüm geçmişte işlem arama. |
 
 ## Neler yapabilirsin?
 
 | İhtiyacın | Gideceğin yer | Yapabileceklerin |
 |---|---|---|
-| **Şu anki durumum ne?** | **Özet** | Güncel bakiye, ay sonu tahmini, yaklaşan ödemeler, aylık pasta/sütun grafikler ve canlı altın–döviz fiyatları |
+| **Şu anki durumum ne?** | **Özet** | Güncel bakiye, ay sonu tahmini, yaklaşan ödemeler, aylık grafikler ve canlı altın–döviz fiyatları |
 | **Ay ay ayrıntı** | **Mali Tablo** | Satır/sütun/ay odaklı matris, hücre detayı ve notları, toplu geçmiş girişi |
 | **Tekrarlayan ödemeler** | **Abonelikler** | Aylık/yıllık maliyet, ödeme günü, deneme dönemi, otomatik ödeme |
 | **Maaş ve düzenli gelirler** | **Ayarlar → Düzenli Gelirler** | Aylık, haftalık veya iki haftalık gelir kuralları; günü gelince onayla, gerçek tutarıyla işlensin |
@@ -63,29 +62,69 @@ hesaplamayı, tekrarları ve veri güvenliğini senin yerine üstlenir.
 | **Bir işlemi bulmak** | **Mali Tablo → Analiz** | Metin, tutar, tür, kategori ve ödeme yöntemiyle arama |
 | **Verini taşımak** | **Ayarlar** | JSON yedek/geri yükleme, CSV dışa aktarma, sihirbazlı Excel içe aktarma |
 
-## Verin nerede, kim görebilir?
+## Local-first çalışma modeli
 
-- **Hesapsız (local-only) mod:** Supabase yapılandırması yoksa hesap açmadan
-  çalışır; bütün finansal veri cihazındaki SQLite veritabanında kalır.
-- **Hesaplı mod:** Değişiklikler yalnızca senin hesabına eşitlenir. Her tablo
-  owner-only RLS ile korunur; başka bir hesap satırlarını okuyamaz.
-- **Bildirimler:** İzin yalnızca Ayarlar'dan istenir; kilit ekranında finansal
-  ayrıntı varsayılan olarak gizlidir.
-- **Dış istekler:** Piyasa/kur ve logo istekleri salt okunur, sınırlı ve
-  doğrulanmış girdilerle yapılır.
+Her yazma önce cihazdaki SQLite veritabanına, veri ve outbox kaydı tek
+transaction olacak şekilde iner. Uygulama çevrimdışıyken tam işlevlidir; bağlantı
+geldiğinde outbox Supabase'e gönderilir ve sunucunun normalize ettiği `updated_at`
+cevabı beklenir. Silme işlemleri tombstone'dur, bu yüzden geri alınabilir ve
+cihazlar arasında tutarlı kalır. Bozuk veya yabancı satırlar cursor'ı ilerletmez;
+`sync_dead_letters` içine karantinaya alınır.
 
-Ayrıntılar için: [Gizlilik ve Veri Kullanımı](docs/PRIVACY.md).
+Supabase yapılandırılmazsa uygulama **hesapsız (local-only)** açılır ve hiçbir
+finansal veri dışarı çıkmaz.
+
+## Platformlar
+
+| Platform | Durum |
+|---|---|
+| Web | Her `main` push'unda GitHub Pages'e otomatik yayımlanır — [canlı sürüm](https://topraksv.github.io/helix/) |
+| iOS | Yerel cihaz build'i (`npx expo run:ios --device`, ücretsiz Apple ID); JS/asset değişiklikleri EAS Update ile gider |
+| Android | Paket yapılandırması ve OTA bundle'ı var; imzalı production store build'i ve fiziksel kabul **henüz yapılmadı** |
+
+Native modül, ikon, SDK veya runtime değişiklikleri OTA ile teslim edilemez;
+yeniden cihaz build'i gerektirir.
+
+## Mimari özet
+
+| Katman | Karar |
+|---|---|
+| Uygulama | Expo SDK 54, React Native 0.81, React 19, Expo Router |
+| Yerel veri | `expo-sqlite` (async) + Drizzle; UI doğrudan SQL çağırmaz |
+| Veri erişimi | [`src/data/repo.ts`](src/data/repo.ts) kararlı facade; implementasyonlar `src/data/repo/` altında |
+| Saf mantık | `src/domain/` — para, tarih, bakiye, taksit, recurrence; React ve I/O içermez |
+| Sync | Atomik yazım + outbox, server-authoritative `updated_at`, dead-letter karantinası |
+| Remote | Supabase Auth/Postgres; owner-only RLS |
+| Para/tarih | Integer kuruş; `YYYY-MM-DD` tarih, `YYYY-MM` ay anahtarları |
+| Arayüz | Ortak primitive'ler + tek tema kaynağı ([`src/ui/theme.ts`](src/ui/theme.ts)) |
+
+Ayrıntı: [Mimari](docs/ARCHITECTURE.md).
 
 ## Tasarım
 
 Sıcak kâğıt tonları üzerinde kil vurgusu: **Warm Organic Editorial**. Fraunces
 başlıklar, Inter gövde, botanik çift sarmal logosu. Gelirler yeşil, giderler
-kırmızı; light/dark tüm rol çiftleri otomatik kontrast sözleşmesinden geçer
-([theme.ts](src/ui/theme.ts)). Metinler asla üç noktayla kırpılmaz, hareket
-sistemi Reduced Motion tercihine uyar, grafikler ekran okuyucu için tam değerli
-özet taşır.
+kırmızı; light/dark tüm rol çiftleri otomatik kontrast sözleşmesinden geçer.
+Metinler asla üç noktayla kırpılmaz, hareket sistemi Reduced Motion tercihine
+uyar, grafikler ekran okuyucu için tam değerli özet taşır.
 
-## Çalıştırma
+## Gizlilik ve güvenlik
+
+- **Hesapsız mod:** Bütün finansal veri cihazındaki SQLite veritabanında kalır.
+- **Hesaplı mod:** Değişiklikler yalnızca senin hesabına eşitlenir. Her tablo
+  owner-only RLS ile korunur; başka bir hesap satırlarını okuyamaz.
+- **Anahtarlar:** Client yalnız publishable anon anahtarı taşır; service-role
+  anahtarı yalnızca GitHub Actions secret'ındadır.
+- **Bildirimler:** İzin yalnızca Ayarlar'dan istenir; kilit ekranında finansal
+  ayrıntı varsayılan olarak gizlidir.
+- **Dış istekler:** Kur, piyasa ve logo istekleri salt okunur; boyut, şekil,
+  tarih ve host doğrulamasından geçer.
+- **Loglama:** Production'da token, tutar, not veya e-posta persist edilmez.
+
+Kullanıcı tarafı: [Gizlilik ve Veri Kullanımı](docs/PRIVACY.md).
+Mühendislik tarafı: [Güvenlik Modeli](docs/SECURITY.md).
+
+## Kurulum
 
 > **Node 22 zorunlu.** Expo SDK 54 araç zinciri Node 24+ ile uyumlu değildir.
 
@@ -93,65 +132,40 @@ sistemi Reduced Motion tercihine uyar, grafikler ekran okuyucu için tam değerl
 git clone https://github.com/topraksv/helix.git
 cd helix
 npm ci
-cp .env.example .env
+cp .env.example .env     # boş bırakılırsa uygulama local-only açılır
 
-npm run web                 # web development
-npm run ios                 # iOS development build
+npm run web              # web development
+npm run ios              # iOS development build
 ```
 
-`.env` içindeki Supabase URL ve anon key boş bırakılırsa Helix local-only
-açılır. Sync için Supabase bağlamak isteyenler migration ve doğrulama
-adımlarını [Release Sözleşmesi](docs/RELEASE.md)nden izleyebilir.
-
-### Kalite kapıları
+Kalite kapısı tek komuttur:
 
 ```bash
-npm run typecheck           # strict TS + checked index access
-npm test                    # domain, sync ve DB sınırı testleri (Vitest)
-npx expo lint               # Expo/React lint
-npm run test:e2e            # statik export + gerçek tarayıcı SQLite (Playwright)
+npm run verify           # typecheck + Vitest + lint
+npm run verify:release   # + production export, bundle bütçesi, Playwright
 ```
 
-Aynı komutlar her PR'da GitHub Actions'ta koşar; `main`'e ancak hepsi
-geçtiğinde web yayımlanır. Senaryo matrisi ve cihaz kabul listesi
-[Test Sözleşmesi](docs/TESTING.md)nde.
+Aynı adımlar her PR'da GitHub Actions'ın `quality` job'unda koşar; `main`'e
+ancak hepsi geçtiğinde web yayımlanır. Katman katman senaryo matrisi ve cihaz
+kabul listesi [Test Sözleşmesi](docs/TESTING.md)ndedir.
 
-## Teknik özet
+## Teslim modeli
 
-| Katman | Karar |
+`main`'e push **yalnızca web'i** yayımlar. Kurulu mobil uygulama ayrı bir EAS
+Update ile güncellenir; native değişiklikler ise yeniden cihaz build'i ister.
+Kanıt gereksinimleri, Supabase migration sırası ve rollback prosedürü
+[Release Sözleşmesi](docs/RELEASE.md)ndedir.
+
+## Belgeler
+
+| Belge | İçerik |
 |---|---|
-| Uygulama | Expo SDK 54, React Native 0.81, React 19, Expo Router |
-| Yerel veri | `expo-sqlite` (async) + Drizzle; UI doğrudan SQL çağırmaz |
-| Veri erişimi | [repo.ts](src/data/repo.ts) kararlı facade; implementasyonlar `src/data/repo/` altında |
-| Sync | Atomik yazım + outbox, server-authoritative `updated_at`, LWW merge, dead-letter karantinası |
-| Remote | Supabase Auth/Postgres; owner-only RLS |
-| Para/tarih | Integer kuruş; `YYYY-MM-DD` tarih, `YYYY-MM` ay anahtarları |
-| Test | Vitest + pgTAP + Playwright (axe ve görsel baseline'lar dahil) |
-
-```text
-src/
-├── app/        Expo Router ekranları ve route grupları
-├── domain/     saf para, tarih, bakiye, recurrence ve analiz kuralları
-├── db/         Drizzle şeması, async SQLite client, local migration'lar
-├── data/       live query'ler + kararlı repository facade
-├── sync/       outbox, push/pull, session epoch, dead-letter
-├── services/   import/export, FX, piyasa, bildirim sınırları
-├── auth/       Supabase oturumu, recovery, cihaz kilidi
-├── i18n/       kullanıcıya görünen bütün Türkçe metinler
-└── ui/         ortak component'ler, tablo, grafik, motion, tema
-```
-
-Kalıcı mimari kurallar [AGENTS.md](AGENTS.md)'de, yayın prosedürü
-[docs/RELEASE.md](docs/RELEASE.md)'de.
-
-## Platform notları
-
-- Web her `main` push'unda GitHub Pages'e otomatik yayımlanır; iOS/Android
-  güncellemeleri ayrı bir EAS Update (OTA) adımıdır.
-- iOS yerel cihaz build'i doğrulanmış kurulu uygulama yoludur; Android paketi
-  üretilir ancak store kabulü tamamlanmış sayılmaz.
-- Native modül/ikon/SDK değişiklikleri OTA ile teslim edilemez; yeniden cihaz
-  build'i gerektirir.
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Yapı, veri akışı, sınırlar, tasarım dili, reddedilen yaklaşımlar |
+| [docs/TESTING.md](docs/TESTING.md) | Kalite komutları, test katmanları, cihaz kabul matrisi |
+| [docs/RELEASE.md](docs/RELEASE.md) | Branch, PR kapısı, Pages, OTA, native build, Supabase, rollback |
+| [docs/SECURITY.md](docs/SECURITY.md) | Güven sınırları, RLS, secret yönetimi, doğrulama matrisi |
+| [docs/PRIVACY.md](docs/PRIVACY.md) | Hangi veri nerede, üçüncü taraf istekleri, saklama ve silme |
+| [AGENTS.md](AGENTS.md) | Kodlama ajanları için kalıcı kurallar |
 
 ## Lisans / License
 

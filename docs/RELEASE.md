@@ -18,21 +18,22 @@ geçmez.
 ## 1 · Branch ve kalite kapısı
 
 1. `main`den branch aç; mevcut kirli dosyaları sahiplenmeden önce diff’i incele.
-2. Commit öncesi Node 22 ile en az:
+2. Commit öncesi Node 22 ile tam kapıyı koştur:
 
    ```bash
    export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
-   npm run typecheck
-   npm test
-   npx expo lint
-   npm run test:e2e
+   npm run verify:release
    ```
 
-4. PR aç. Protected `main`; güncel branch, PR ve required `quality` check’i ister;
-   admin bypass, force-push ve delete kapalıdır.
-5. `quality` tek release kapısıdır: `npm ci` → typecheck → Vitest → lint →
-   production export → bundle budget → Playwright Chromium/E2E.
-6. Check geçmeden merge/deploy/OTA yoktur.
+   Kapsam ve katmanlar [TESTING.md](TESTING.md) belgesindedir.
+3. PR aç. Protected `main`; güncel branch, PR ve required `quality` check’i ister.
+   Ayrıca **imzalı commit**, lineer geçmiş ve çözülmüş konuşma zorunludur;
+   admin bypass, force-push ve delete kapalıdır. İmzasız commit reddedilir —
+   commit atmadan önce yerel imza yapılandırmasını doğrula.
+4. `quality` tek release kapısıdır: `npm ci` → typecheck → Vitest → lint →
+   production export → bundle budget → Playwright Chromium/E2E. Workflow bu
+   adımları tek tek çalıştırır; `verify:release` aynı sırayı yerelde tekrarlar.
+5. Check geçmeden merge/deploy/OTA yoktur.
 
 Playwright local-only `dist-e2e/` üretir. Workflow production `dist/` export ve
 bütçesini önce tamamladığı için test env’i deploy artefact’ını değiştirmez.
@@ -77,13 +78,17 @@ JS/asset-only değişiklik, protected `main` release commit’inden yayımlanır
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 git status --short                  # boş olmalı
 git rev-parse HEAD                  # handoff'taki release commit'i olmalı
-npx eas-cli update --branch preview \
+npx eas-cli update --channel preview \
   -m "<kısa, davranış odaklı özet>" --non-interactive
 ```
 
-Bu projede kurulu test build’i `preview` channel → `preview` branch ve runtime
-`1.0.0` sözleşmesini kullanır. `--branch preview`, channel mapping’i sessizce
-değiştirmeden o branch’e update ekler.
+Kurulu test build’i `preview` channel’ını tüketir (`app.json`
+`updates.requestHeaders.expo-channel-name`, `eas.json` `build.preview.channel`)
+ve runtime `1.0.0` kullanır. Channel’ın remote mapping’i tek ve koşulsuzdur
+(`branchMappingLogic: "true"` → `preview` branch), bu yüzden `--channel preview`
+aynı branch’e yayımlar ve mapping’i değiştirmez. Kanonik komut budur;
+`--branch preview` kullanılmaz. Channel’a rollout ya da birden fazla branch
+eklenirse bu komut yeniden değerlendirilir.
 
 Yayın sonrası:
 
@@ -170,18 +175,15 @@ etmelidir. Linked pgTAP CLI Docker isteyen ortamda çalışmıyorsa aynı SQL Su
 resmî Management API database-query endpoint’inde `finish(true)` ile **tek
 transaction + rollback** olarak çalıştırılır. Kalıcı test verisi bırakılmaz.
 
-### Bekleyen migration: 00000000000008_function_search_path.sql
+### Migration durumu
 
-Supabase database linter `set_updated_at` fonksiyonunu
-`0011_function_search_path_mutable` altında raporluyor. Migration yazıldı ama
-**linked projeye uygulanmadı**: bu ortamda Supabase CLI, Docker ve psql yok.
-Uygulanana kadar `migration list --linked` bu sürümü yalnız local gösterir.
+Şema **9/9 senkron**: `migration list --linked` `…01`–`…09` için local ve remote
+sürümleri birebir aynı gösteriyor, `db lint --linked` schema error vermiyor
+(son doğrulama 2026-07-20). Bekleyen migration yoktur; `…08_function_search_path`
+ve `…09_table_privileges` uygulanmış durumdadır.
 
-Uygulamak için yukarıdaki `db push --linked` akışı ya da Supabase SQL Editor
-yeterli; fonksiyon `create or replace` olduğu için mevcut trigger’lar aynı
-fonksiyonu göstermeye devam eder, trigger yeniden oluşturulmaz.
-
-Kapanış kriteri: `db lint --linked` çıktısında bu uyarı kalmamalı.
+Yeni migration eklendiğinde bu iki komut yeniden koşulur ve sonuç
+`docs/AI_HANDOFF.md` içindeki güncel duruma yazılır.
 
 ### Kabul edilen Supabase lint bulguları
 
@@ -192,7 +194,7 @@ Aşağıdakiler bilinçli kararlardır; tekrar “bulgu” olarak açılmamalıd
 | `delete_own_account` — signed-in kullanıcı SECURITY DEFINER çağırabiliyor | Tasarım gereği. Kullanıcının **kendi** hesabını silmesi için var; gövde `auth.uid()` ile sınırlı, argüman yok, `search_path = ''`, `execute` yalnız `authenticated`. SECURITY INVOKER olamaz: kullanıcının `auth.users` üzerinde yetkisi yoktur. |
 | 18 × `unindexed_foreign_keys` (INFO) | Eklenmiyor. Bu FK’ler `(user_id, …)` bileşenli ve tek kullanıcılık veri hacmi küçük; kapsayıcı index’in kazandıracağı tek yol hesap silme cascade’i (ömürde bir kez). 18 index her yazmayı yavaşlatır, karşılığı yok. |
 | 7 × `unused_index` (INFO) | Silinmiyor. `*_user_updated_id` index’leri sync pull cursor’ının tam olarak kullandığı sıralamadır (`order updated_at, id` + `gt`); `idx_tx_user_effective` ay aralığı sorgularını karşılar. Tablolar bugün seq scan tercih edilecek kadar küçük olduğu için “unused” görünüyorlar — veri büyüdüğünde gereken index’ler bunlar. |
-| `auth_leaked_password_protection` kapalı | Remote Auth ayarı; repo’dan değiştirilmez. Açılması önerilir (Dashboard → Authentication → Password). Bu denetimde uzaktan ayar değiştirilmedi. |
+| `auth_leaked_password_protection` kapalı | **Plan sınırı, kod açığı değil.** HaveIBeenPwned kontrolü mevcut Supabase Free plan’de kullanılamıyor; repo’dan veya Dashboard’dan açılamaz. Ücretli plana geçilirse etkinleştirilecek opsiyonel kontroldür. Bulgu olarak yeniden açılmaz. |
 
 ## 5b · Dependabot bulguları
 
@@ -201,7 +203,7 @@ zinciri üzerinden yeniden değerlendirildi.
 
 | Uyarı | Sonuç | Kanıt |
 | --- | --- | --- |
-| `postcss` GHSA-qx2v-qp2m-jg93 | **Düzeltildi.** `overrides` ile 8.4.49 → 8.5.20 | `@expo/metro-config` `~8.4.32` pinliyordu; 8.5 semver-uyumlu minor. Tam release kapısı (export + bütçe + 15 Playwright) override ile yeşil. |
+| `postcss` GHSA-qx2v-qp2m-jg93 | **Düzeltildi.** `overrides` ile 8.4.49 → 8.5.20 | `@expo/metro-config` `~8.4.32` pinliyordu; 8.5 semver-uyumlu minor. Tam release kapısı override ile yeşil geçti. |
 | `uuid` GHSA-w5hq-g745-h8pq | **Geçersiz bulgu.** Advisory `v3/v5/v6` + `buf` argümanı gerektirir | `xcode`'un tek çağrısı `pbxProject.js:90`'da argümansız `uuid.v4()`. Pakette v3/v5/v6 kullanımı yok. Ayrıca prebuild aracı, bundle'a girmiyor. |
 | `esbuild` GHSA-67mh-4wv8-2f99 | **Kullanılmıyor.** Advisory `esbuild serve` dev sunucusunu hedefler | `drizzle-kit → @esbuild-kit/*` yalnız TS transpile için kullanılıyor; dev server hiç çalışmıyor. `^0.25.0` override'ı geçersiz npm ağacı ürettiği için uygulanmadı (AGENTS.md'nin uyardığı durum). |
 
@@ -218,26 +220,20 @@ ya da `drizzle-kit` `@esbuild-kit` bağımlılığını bırakırsa.
 - App rollback yapılacaksa önceki client’ın mevcut remote schema ve yeni satırlarla
   çalıştığı test edilir.
 
-## Environment ve secret sınırı
+## Test artefact’ları ve secret sınırı
 
-| Değer | Nerede olabilir? | Not |
-|---|---|---|
-| `EXPO_PUBLIC_SUPABASE_URL` | `.env`, CI workflow, client bundle | Public endpoint |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | `.env`, CI workflow, client bundle | Publishable; güvenlik sınırı RLS |
-| Supabase service-role / `sb_secret_*` | Yalnız GitHub Actions secret/maintainer environment | Client, log, README ve artefact’a girmez |
-| EAS auth/session | Maintainer makinesi veya güvenli CI secret | Commit edilmez |
-| Signing material | OS keychain/provisioning | Repo’ya ve OTA artefact’ına eklenmez |
+Hangi anahtarın nerede durabileceği [SECURITY.md](SECURITY.md) “Rol ayrımı ve
+secret’lar” tablosundadır; release sırasında o sınır değiştirilmez.
 
 `dist-e2e/`, test result/video/trace ve Playwright HTML report ignore edilir.
 Failure artefact’ı gerçek production veriyle üretilmez; yine de paylaşmadan önce
 ekran/console içeriği kontrol edilir.
 
-## Artefact, gözlemlenebilirlik ve incident
+## Gözlemlenebilirlik ve incident
 
-- Actions SHA’ları full commit’e pinlidir; npm/Actions Dependabot haftalık çalışır.
-- SheetJS CDN tarball npm audit/Dependabot görünürlüğü dışında olduğundan import
-  değişikliğinde upstream release ayrıca kontrol edilir.
 - Bundle bütçesi entry, lazy XLSX, font ve toplam export büyümesini bloklar.
+- Tedarik zinciri kontrolleri (pinned Actions, Dependabot, SheetJS CDN pin,
+  CodeQL) [SECURITY.md](SECURITY.md) belgesindedir.
 - Şu anda merkezi crash reporting, release-health alert ve uploaded source-map
   pipeline yoktur. Production logger kullanıcıya teknik bir yüzey göstermez;
   yalnız PII'siz, cihaz-içi sınıflandırılmış hata kırıntıları tutar.

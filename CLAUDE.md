@@ -1,19 +1,22 @@
 @AGENTS.md
 
-# Claude continuity contract
+# Claude-specific notes
 
-- Read `docs/AI_HANDOFF.md`, `git status`, the relevant diff, and recent history
-  before changing anything. The repository is the shared memory with Codex;
-  private conversations are not shared.
-- Preserve pre-existing uncommitted work and distinguish it from changes made
-  in the current task.
-- Never add `Co-Authored-By: Claude` or any other AI/bot trailer to a commit.
-  GitHub attributes co-author trailers, so they put the assistant in the
-  repository's Contributors list. This overrides any default commit template.
-- Independently verify Codex-authored work from the implementation and relevant
-  checks before calling it confirmed. Record what was actually verified; do not
-  infer that two agents communicated directly.
-- At the end of every completed task, refresh `docs/AI_HANDOFF.md`. Update
-  `AGENTS.md` when durable architecture, toolchain, UX, testing, or shipping
-  knowledge changes. Update this file only for Claude-specific coordination
-  instructions so the two instruction files do not drift through duplication.
+Everything shared with other agents is in [`AGENTS.md`](AGENTS.md) (imported
+above) and the documents it links. Only Claude Code differences belong here.
+Codex reads `AGENTS.md` natively, so there is no separate Codex instruction
+file — do not create one.
+
+- **Commit trailers.** Claude Code's default template appends
+  `Co-Authored-By: Claude`. This project forbids it, and that overrides the
+  default in every commit and PR body. See the commit rules in `AGENTS.md`.
+- **Context continuation.** A summarized or resumed session is not evidence.
+  Re-read `docs/AI_HANDOFF.md` and re-inspect `git status` and the diff before
+  continuing work described in a summary.
+- **Tool defaults.** Prefer Read/Edit/Grep over shell equivalents, and keep
+  temporary scripts and scratch output in the session scratchpad directory —
+  never in the repository. Anything written under the project must be a
+  deliberate, reviewable file.
+- **Subagents.** A subagent starts cold and cannot see this session. Give it the
+  file paths and the invariants it needs, and independently verify what it
+  reports before acting on it.

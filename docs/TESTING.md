@@ -2,7 +2,20 @@
 
 Bu belge test sayısını değil, hangi kritik davranışın hangi katmanda korunduğunu
 tanımlar. Sabit test sayısı tutulmaz; gerçek sonuç her commit’in GitHub Actions
-`quality` job’unda ve yerel komut çıktısında görülür.
+`quality` job’unda ve yerel komut çıktısında görülür. Komutların kanonik yeri
+burasıdır; başka belge tekrar etmez, link verir.
+
+## Komutlar
+
+```bash
+export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+npm run verify           # typecheck + Vitest + expo lint — her commit öncesi
+npm run verify:release   # + production export + bundle bütçesi + Playwright
+```
+
+Tek tek koşturmak gerektiğinde: `npm run typecheck`, `npm test`,
+`npm run test:watch`, `npx expo lint`, `npx expo export -p web`,
+`npm run bundle:check`, `npm run test:e2e`, `npm run test:e2e:update`.
 
 ## Release kapısı
 
@@ -15,6 +28,9 @@ tanımlar. Sabit test sayısı tutulmaz; gerçek sonuç her commit’in GitHub A
 | Browser SQLite/E2E/a11y/görsel | `npm run test:e2e` | local + CI | Bloklayan |
 | Supabase migration/RLS | `migration list`, `db lint`, pgTAP | migration paketinde linked remote | Bloklayan |
 | iOS/Android gerçek cihaz | aşağıdaki cihaz kabul matrisi | release adayı cihazda | Native/OTA teslimi için manuel; cihaz yoksa `BLOCKED` |
+
+CI bu adımları workflow’da tek tek çalıştırır; `verify:release` aynı sırayı
+yerelde tekrarlar.
 
 CI sırası özellikle önemlidir: önce gerçek production export `dist/` içine
 üretilir ve bütçesi ölçülür; sonra E2E scripti Supabase env’ini bilinçli olarak
@@ -85,13 +101,16 @@ Migration içeren paket, [RELEASE.md](RELEASE.md) sırasını uygular. Minimum k
 - test fixture’ları aynı transaction’da rollback oluyor;
 - linked generated `Database` tipi typecheck’ten geçiyor.
 
-Local migration dosyası tek başına production gerçeği değildir.
+Local migration dosyası tek başına production gerçeği değildir. Bu kanıtların
+güvenlik tarafındaki karşılığı [SECURITY.md](SECURITY.md) “Supabase
+yetkilendirme” bölümündedir.
 
 ## Gerçek cihaz kabulü
 
-Otomatik kontroller aşağıdaki OS davranışlarını kanıtlayamaz. Ulaşılabilir
-installed build/simulator olmadığı için son 2026-07-18 otomasyon koşusunda bu
-matris **BLOCKED** kaldı; kod başarısız değil, dış kabul kanıtı yok.
+Otomatik kontroller aşağıdaki OS davranışlarını kanıtlayamaz. Aşağıdaki “Cihaz
+sonuç kaydı” tablosunda doldurulmuş bir satır olmadığı sürece bu matris
+**BLOCKED** sayılır: kod başarısız değil, dış kabul kanıtı yok. Tablo bugüne
+kadar hiç doldurulmadı.
 
 | Platform | Senaryo | Kabul ölçütü | Son durum |
 |---|---|---|---|
@@ -121,7 +140,7 @@ verified” diye raporlanamaz.
 - Test production verisine yazmıyor ve gerçek sırrı artefact’a gömmüyor.
 - Retry/undo senaryosu idempotent; invalid import sıfır write ile bitiyor.
 - Runtime görülmeyen OS davranışı `BLOCKED`, test edildi gibi değil.
-- `npm run typecheck && npm test && npx expo lint` temiz.
+- `npm run verify` temiz.
 - `npm run test:e2e` temiz; değişen baseline’lar görsel olarak incelenmiş.
 - Migration varsa linked list/lint/pgTAP/type generation kanıtı var.
 - PR’ın required `quality` kontrolü geçmeden release yok.
