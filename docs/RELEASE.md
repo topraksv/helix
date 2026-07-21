@@ -51,8 +51,9 @@ Protected PR merge’i `main`e geldiğinde aynı workflow:
 `+not-found.html` 404 fallback’i olarak kullanılmaz: dynamic route açılışında
 yanlış server route hydrate olur ve React #418 üretebilir.
 
-Release sonrası en az aşağıdaki URL’ler status 200 ve uygulama shell’iyle kontrol
-edilir:
+Release sonrası statik URL’ler status 200 ve uygulama shell’iyle; dinamik URL ise
+GitHub Pages’in custom-404 davranışına uygun olarak status 404, root `index.html`
+ile birebir aynı shell ve yüklenebilir entry asset’iyle kontrol edilir:
 
 ```text
 https://topraksv.github.io/helix/
@@ -60,6 +61,11 @@ https://topraksv.github.io/helix/cash-flow/<YYYY-MM>
 https://topraksv.github.io/helix/upcoming
 https://topraksv.github.io/helix/settings
 ```
+
+GitHub Pages rewrite desteklemediği için önceden üretilemeyen gerçek bir ay URL’si
+ilk HTTP yanıtında 404 kalır; `404.html` kopyası client router’ın doğru ekranı
+hydrate etmesini sağlar. Dinamik rotayı 200 diye raporlamak veya Expo Router’ın
+`+not-found` çıktısıyla değiştirmek doğru kabul değildir.
 
 Workflow run URL’si ve sonuç commit’i `docs/AI_HANDOFF.md` release kaydına yazılır.
 
