@@ -103,4 +103,20 @@ describe("CSV export cell safety", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveLength(3);
   });
+
+  it("forges nothing from a delimiter alone, with no newline to fall back on", () => {
+    // The payload above carries a newline, so dropping `;` from the quoting set
+    // still produced a quoted cell and this contract stayed green. A note that
+    // contains only a semicolon is the pure column-forging vector.
+    const rows = parseCsv(["a", csvCell("kolon1;kolon2"), "b"].join(";"));
+    expect(rows[0]).toHaveLength(3);
+    expect(rows[0]?.[1]).toBe("kolon1;kolon2");
+
+    // Likewise a lone CR or LF must not forge a row without a delimiter present.
+    for (const payload of ["satır1\nsatır2", "satır1\rsatır2"]) {
+      const forgedRows = parseCsv(["a", csvCell(payload), "b"].join(";"));
+      expect(forgedRows, payload).toHaveLength(1);
+      expect(forgedRows[0], payload).toHaveLength(3);
+    }
+  });
 });
