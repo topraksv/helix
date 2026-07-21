@@ -9,21 +9,19 @@ history log.
 
 - Active branch: `audit/package-1-exhaustive`, based on
   `37a296ae538aac3167f4741776b68184ff44447c`; `main` and `origin/main` matched
-  that SHA when the package began. Git log is the authority for the branch tip;
-  the initial protected PR is the next release step.
-- Last rollbackable web release: `37a296a`; Pages run
-  [29819173507](https://github.com/topraksv/helix/actions/runs/29819173507)
-  and CodeQL run
-  [29819173437](https://github.com/topraksv/helix/actions/runs/29819173437)
-  succeeded.
+  that SHA when the package began. Initial PR #49 passed required `quality` and
+  CodeQL, then merged as GitHub-verified `408c098`; a protected generated-type
+  follow-up remains before release.
+- Last rollbackable web release remains `37a296a`; the `408c098` main push has
+  started its Pages workflow and is not called live until that run and smoke
+  checks pass.
 - Last recorded mobile release remains preview group
   `57630810-415a-4c21-9462-91e1c7fe12d9`, runtime `1.0.0`, at `2b6791c`.
   There is no production OTA. Installed-device acceptance remains `BLOCKED`.
-- Linked Supabase has migrations `…01`–`…09`. Package migrations
-  `…10_tombstone_only_client_deletes` and
-  `…11_category_transfer_semantics` are intentionally pending protected merge;
-  the linked dry-run lists only those two and sequential public-schema lint is
-  clean.
+- Linked Supabase has migrations `…01`–`…11` with exact local/remote parity and
+  clean public-schema lint. The privileged Management API rollback suite passes
+  33/33 assertions; `finish(true)` completed and a negative probe proved it
+  rejects a failure. Linked database types are regenerated verbatim.
 
 ## Package 1 work in progress
 
@@ -68,21 +66,18 @@ all relative targets/anchors, and all documented package scripts valid.
 
 ## Required next steps
 
-1. Push this single branch, open the protected PR, wait for `quality`, and merge
-   without bypass.
-2. After merge, apply linked migrations 10–11, run list/lint/33-assertion pgTAP,
-   regenerate `src/sync/database.types.ts`, and commit the generated result via
-   the protected workflow.
-3. Verify Pages and live routes; publish preview OTA from the final protected
+1. Commit the pgTAP collation fix, regenerated linked types and updated release
+   evidence; publish them through a second protected PR on the same branch.
+2. Verify Pages and live routes; publish preview OTA from the final protected
    `main` SHA because runtime JS changed but native config/runtime did not.
    Record EAS metadata; installed delivery stays `BLOCKED` without device access.
-4. Delete the temporary ledger and finish with a clean working tree.
+3. Delete the temporary ledger and finish with a clean working tree.
 
 ## Known external limits
 
-- Passwordless Supabase CLI pgTAP cannot read the `extensions` schema; use the
-  documented Management API rollback transaction after merge if that remains
-  true. Never claim 33/33 until it actually runs.
+- Passwordless Supabase CLI pgTAP cannot read the `extensions` schema; the
+  documented Management API rollback transaction is the verified path for this
+  release and passes 33/33.
 - Physical VoiceOver/TalkBack, Dynamic Type, notification scheduling,
   app-switcher timing and two-device sync require installed devices and remain
   `BLOCKED`, not silently treated as passed.
