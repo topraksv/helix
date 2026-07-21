@@ -19,6 +19,7 @@ import { cardShadow, radius, scrim, spacing, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { INPUT_LIMITS } from "../domain/input";
 import { useModalAccessibility } from "./accessibility";
+import { advanceRequestQueue, emptyRequestQueue, enqueueRequest, type RequestQueue } from "./request-queue";
 
 interface DialogRequest {
   title: string;
@@ -33,12 +34,10 @@ interface DialogRequest {
 // A single-slot store dropped the second of two overlapping dialogs (its
 // promise never resolved, hanging the awaiting flow). Queue instead: show one
 // at a time, advancing to the next when the current one closes.
-const useDialogStore = create<{ current: DialogRequest | null; queue: DialogRequest[] }>(() => ({ current: null, queue: [] }));
+const useDialogStore = create<RequestQueue<DialogRequest>>(() => emptyRequestQueue<DialogRequest>());
 
 function enqueueDialog(request: DialogRequest) {
-  const { current, queue } = useDialogStore.getState();
-  if (current) useDialogStore.setState({ queue: [...queue, request] });
-  else useDialogStore.setState({ current: request });
+  useDialogStore.setState(enqueueRequest(useDialogStore.getState(), request));
 }
 
 /** One-button themed alert. Resolves when dismissed. */
@@ -85,15 +84,10 @@ interface PromptRequest {
 // `resolve` was dropped and its `await` never settled — a re-auth flow could
 // hang forever. Both call sites are password re-auth (account-security.tsx,
 // settings/index.tsx), which sit on different screens, so overlap is reachable.
-const usePromptStore = create<{ current: PromptRequest | null; queue: PromptRequest[] }>(() => ({
-  current: null,
-  queue: [],
-}));
+const usePromptStore = create<RequestQueue<PromptRequest>>(() => emptyRequestQueue<PromptRequest>());
 
 function enqueuePrompt(request: PromptRequest) {
-  const { current, queue } = usePromptStore.getState();
-  if (current) usePromptStore.setState({ queue: [...queue, request] });
-  else usePromptStore.setState({ current: request });
+  usePromptStore.setState(enqueueRequest(usePromptStore.getState(), request));
 }
 
 /** Themed input dialog. Resolves the entered value, or null on cancel/backdrop. */
@@ -180,8 +174,7 @@ export function PromptHost() {
   const close = (val: string | null) => {
     // Advance to the next queued prompt, exactly as DialogHost.close does, so
     // no request is dropped and every promise settles.
-    const { queue } = usePromptStore.getState();
-    usePromptStore.setState({ current: queue[0] ?? null, queue: queue.slice(1) });
+    usePromptStore.setState(advanceRequestQueue(usePromptStore.getState()));
     current.resolve(val);
   };
 
@@ -239,9 +232,7 @@ export function DialogHost() {
   if (!current) return null;
 
   const close = (ok: boolean) => {
-    const { queue } = useDialogStore.getState();
-    const [next, ...rest] = queue;
-    useDialogStore.setState({ current: next ?? null, queue: rest });
+    useDialogStore.setState(advanceRequestQueue(useDialogStore.getState()));
     current.resolve(ok);
   };
 
