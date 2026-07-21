@@ -76,7 +76,7 @@ test("every reachable route stays accessible with real data", async ({ page }, t
       return [...new Set(found)];
     });
     if (undersized.length > 0) problems.push(`${route} target size: ${undersized.join(", ")}`);
-    const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     for (const violation of result.violations) {
       problems.push(`${route} axe ${violation.id} (${violation.nodes.length}): ${violation.nodes[0]?.html.slice(0, 140)}`);
     }
@@ -295,7 +295,7 @@ test("RuleRow exposes three sibling controls, not nested interactives", async ({
   await expect(label).toBeVisible();
 
   // 1. No nested interactive element anywhere on the route.
-  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   const nested = result.violations.filter((v) => v.id === "nested-interactive");
   expect(nested, JSON.stringify(nested.map((v) => v.nodes.map((n) => n.html)))).toEqual([]);
   expect(result.violations.map((v) => v.id)).toEqual([]);
