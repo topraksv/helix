@@ -24,9 +24,13 @@ test("form fields expose a programmatic label and announce their errors", async 
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
 
   // `accessibilityLabelledBy` → aria-labelledby, and the id it names must exist
-  // and carry the visible label text. A dangling id is worse than no label.
-  const labelled = await page.evaluate(() =>
-    Array.from(document.querySelectorAll<HTMLElement>("input[aria-labelledby], textarea[aria-labelledby]")).map((el) => {
+  // and carry the visible label text. Hydration can expose the labelled input's
+  // aria-label a few milliseconds before aria-labelledby, so wait on the exact
+  // contract this probe measures instead of sampling that transition.
+  const labelledFields = page.locator("input[aria-labelledby], textarea[aria-labelledby]");
+  await expect(labelledFields.first()).toBeVisible();
+  const labelled = await labelledFields.evaluateAll((fields) =>
+    fields.map((el) => {
       const id = el.getAttribute("aria-labelledby")!;
       const target = document.getElementById(id);
       return { id, resolved: target != null, text: (target?.textContent ?? "").trim() };
