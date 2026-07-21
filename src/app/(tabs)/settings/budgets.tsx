@@ -1,38 +1,29 @@
 import { Stack, useLocalSearchParams, type Href } from "expo-router";
-import { runUndo } from "../../../domain/undo-outcome";
-import { devError } from "../../../services/logger";
-import { appAlert } from "../../../ui/dialog";
 import { resolveBackTarget } from "../../../ui/navigation";
 import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { PiggyBank, Pencil, Trash2 } from "lucide-react-native";
-import { useAllTransactions, useCategoryBudgets, useCategories, usePersons, useUserId, toTxLike } from "../../../data/hooks";
-import { deleteCategoryBudget, upsertCategoryBudget } from "../../../data/repo";
-import { restoreRow } from "../../../db/mutations";
+import { useAllTransactionsState, useCategoryBudgetsState, useCategoriesState, usePersonsState, useUserId, toTxLike } from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
+import { deleteCategoryBudget, restoreCategoryBudget, upsertCategoryBudget } from "../../../data/repo";
 import { budgetProgress } from "../../../domain/budgets";
 import { monthKeyOf, todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
-import { Body, Button, Card, CardList, EmptyState, IconButton, MoneyField, MonthStepper, Row, Screen, Select, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, Row, Screen, Select, Spread } from "../../../ui/components";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { spacing, useTheme } from "../../../ui/theme";
 import { useUndo } from "../../../ui/undo";
+import { appAlert } from "../../../ui/dialog";
 
 export default function BudgetsScreen() {
   /**
    * An undo that fails must say so — the snackbar dismisses on tap either way,
    * so a swallowed rejection left the row deleted with no message.
    */
-  const reportUndo = async (action: () => Promise<unknown>) => {
-    const outcome = await runUndo(action);
-    if (!outcome.ok) {
-      devError("undo", outcome.error);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
-  };
   // Reachable from more than one place, and every external push is anchored —
   // which mounts settings/index UNDERNEATH this screen, so plain history would
   // send the user back to a screen they never visited. The pusher records where
@@ -42,10 +33,14 @@ export default function BudgetsScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const back = resolveBackTarget<Href>(from, { analysis: "/(tabs)/cash-flow/analytics" }, "/(tabs)/settings");
   const userId = useUserId();
-  const categories = useCategories();
-  const budgets = useCategoryBudgets();
-  const transactions = useAllTransactions();
-  const persons = usePersons();
+  const categoriesState = useCategoriesState();
+  const budgetsState = useCategoryBudgetsState();
+  const transactionsState = useAllTransactionsState();
+  const personsState = usePersonsState();
+  const categories = categoriesState.data;
+  const budgets = budgetsState.data;
+  const transactions = transactionsState.data;
+  const persons = personsState.data;
   const { palette } = useTheme();
   const undo = useUndo();
   const guard = useOperationGuard();
@@ -62,6 +57,15 @@ export default function BudgetsScreen() {
   const progressById = new Map(progress.map((row) => [row.id, row]));
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   useDirtyExitGuard(Boolean(amountRaw.trim()) && !busy);
+  const liveStates = [categoriesState, budgetsState, transactionsState, personsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    categoriesState.retry();
+    budgetsState.retry();
+    transactionsState.retry();
+    personsState.retry();
+  };
 
   const reset = () => {
     setCategoryChoice(null);
@@ -85,22 +89,38 @@ export default function BudgetsScreen() {
         await upsertCategoryBudget(userId, { month, categoryId, amountMinor });
         scheduleSync(userId);
         reset();
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
         setBusy(false);
       }
     });
   };
   const remove = async (budget: (typeof budgets)[number]) => {
-    const snapshot = await deleteCategoryBudget(userId, budget.id);
-    scheduleSync(userId);
-    const categoryName = categoryById.get(budget.categoryId)?.name ?? tr.budgets.title;
-    if (snapshot) undo.show(`${categoryName} · ${tr.common.deleted}`, () => void reportUndo(() => restoreRow(userId, "category_budgets", snapshot).then(() => scheduleSync(userId))), "warning");
-    if (categoryChoice === budget.categoryId) reset();
+    try {
+      const snapshot = await deleteCategoryBudget(userId, budget.id);
+      scheduleSync(userId);
+      const categoryName = categoryById.get(budget.categoryId)?.name ?? tr.budgets.title;
+      if (snapshot) undo.show(`${categoryName} · ${tr.common.deleted}`, () => restoreCategoryBudget(userId, snapshot).then(() => scheduleSync(userId)), "warning");
+      if (categoryChoice === budget.categoryId) reset();
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
+
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
       <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.budgets.intro}</Body>
       <MonthStepper value={month} onChange={changeMonth} />
       <Card>

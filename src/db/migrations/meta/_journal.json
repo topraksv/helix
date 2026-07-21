@@ -36,6 +36,20 @@
       "when": 1784374997577,
       "tag": "0004_category_budgets_and_income_recurrence",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784665423643,
+      "tag": "0005_category_transfer_semantics",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784669102923,
+      "tag": "0006_odd_darwin",
+      "breakpoints": true
     }
   ]
 }

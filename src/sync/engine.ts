@@ -354,11 +354,15 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     const raw = e instanceof Error ? e.message : String(e);
     devError("sync", raw);
     // Expired token → refresh once and retry immediately, no user action.
-    if (allowRefresh && isAuthError(raw) && (await tryRefreshSession())) {
-      status.set({ state: "syncing" });
-      if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = setTimeout(() => void syncNow(userId, false), 0);
-      return false;
+    if (allowRefresh && isAuthError(raw)) {
+      const refreshed = await runSessionEpochTask(sessionEpoch, userId, () => tryRefreshSession());
+      if (refreshed == null) return false;
+      if (refreshed) {
+        status.set({ state: "syncing" });
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => void syncNow(userId, false), 0);
+        return false;
+      }
     }
     status.set({ state: "error", error: friendlySyncError(raw) });
     // Exponential backoff retry: 5s, 10s, 20s… capped at 5 min.

@@ -2,43 +2,33 @@
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { newId } from "../../../db/ids";
-import { restoreRow, writeRows } from "../../../db/mutations";
-import { usePersons, useUserId } from "../../../data/hooks";
+import { usePersonsState, useUserId } from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
 import {
   deleteUnreferencedPerson,
+  createPerson,
   personReferenceUsage,
   reassignAndDeletePerson,
   ReferencedRecordError,
+  renamePerson,
+  restorePerson,
   type PersonReferenceUsage,
 } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Pencil, Trash2 } from "lucide-react-native";
-import { Badge, Body, Button, Card, CardList, ChipPicker, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
-import { runUndo } from "../../../domain/undo-outcome";
-import { devError } from "../../../services/logger";
 
 export default function PersonsScreen() {
-  /**
-   * An undo that fails must say so — the snackbar dismisses on tap either way,
-   * so a swallowed rejection left the row deleted with no message.
-   */
-  const reportUndo = async (action: () => Promise<unknown>) => {
-    const outcome = await runUndo(action);
-    if (!outcome.ok) {
-      devError("undo", outcome.error);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
-  };
   const userId = useUserId();
-  const persons = usePersons();
+  const personsState = usePersonsState();
+  const persons = personsState.data;
   const undo = useUndo();
   const operationGuard = useOperationGuard();
   const [name, setName] = useState("");
@@ -49,14 +39,21 @@ export default function PersonsScreen() {
   const [replacementId, setReplacementId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const editingPerson = editingId ? persons.find((person) => person.id === editingId) : null;
-  useDirtyExitGuard(editingPerson
-    ? editName.trim() !== editingPerson.name
-    : name.trim() !== "");
+  useDirtyExitGuard(
+    name.trim() !== "" || Boolean(editingPerson && editName.trim() !== editingPerson.name),
+  );
+  const personPlaceholder = useRotatingPlaceholder(placeholderPools.person);
+  const dataStatus = combineLiveQueryStatus([personsState]);
+  const dataReady = personsState.updatedAt != null;
 
   const rename = async (p: (typeof persons)[number], newName: string) => {
-    await writeRows(userId, [{ table: "persons", row: { ...p, name: newName.trim() } }]);
-    scheduleSync(userId);
-    setEditingId(null);
+    try {
+      await renamePerson(userId, p, newName);
+      scheduleSync(userId);
+      setEditingId(null);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   const add = async () => {
@@ -64,11 +61,11 @@ export default function PersonsScreen() {
     await operationGuard.run(async () => {
       setAdding(true);
       try {
-        await writeRows(userId, [
-          { table: "persons", row: { id: newId(), name: name.trim(), isSelf: persons.length === 0, deletedAt: null } },
-        ]);
+        await createPerson(userId, name);
         scheduleSync(userId);
         setName("");
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
         setAdding(false);
       }
@@ -90,7 +87,7 @@ export default function PersonsScreen() {
       scheduleSync(userId);
       if (snapshot) {
         undo.show(`${p.name} · ${tr.common.deleted}`, () => {
-          void reportUndo(() => restoreRow(userId, "persons", snapshot).then(() => scheduleSync(userId)));
+          return restorePerson(userId, snapshot).then(() => scheduleSync(userId));
         }, "warning");
       }
     } catch (error) {
@@ -138,13 +135,22 @@ export default function PersonsScreen() {
       ].filter(([, count]) => Number(count) > 0)
     : [];
 
+  if (!dataReady) {
+    return (
+      <Screen>
+        <DataStateNotice status={dataStatus} retry={personsState.retry} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
+      <DataStateNotice status={dataStatus} retry={personsState.retry} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.personsHint}</Body>
       <Card>
         <Row>
           <View style={{ flex: 1 }}>
-            <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.person)} />
+            <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={name} onChangeText={setName} placeholder={personPlaceholder} />
           </View>
           <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
         </Row>

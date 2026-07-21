@@ -11,20 +11,21 @@ import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Banknote } from "lucide-react-native";
-import { useCategories, usePersons, useRecurringIncomes, useUserId } from "../../../data/hooks";
+import { useCategoriesState, usePersonsState, useRecurringIncomesState, useUserId } from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, ChipPicker, EmptyState, Field, Label, MoneyField, Row, Screen, Segmented, Select } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, Label, MoneyField, Row, Screen, Segmented, Select } from "../../../ui/components";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
-import { newId } from "../../../db/ids";
 import { isMonthDay, todayISO } from "../../../domain/dates";
 import { DateField } from "../../../ui/calendar";
 import { MonthDayField } from "../../../ui/month-day-field";
+import { appAlert } from "../../../ui/dialog";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
 type IncomeRecurrence = "monthly" | "weekly" | "biweekly";
@@ -41,9 +42,12 @@ export default function IncomeRulesScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const back = resolveBackTarget<Href>(from, { upcoming: "/upcoming" as Href }, "/(tabs)/settings");
   const userId = useUserId();
-  const incomes = useRecurringIncomes();
-  const persons = usePersons();
-  const categories = useCategories();
+  const incomesState = useRecurringIncomesState();
+  const personsState = usePersonsState();
+  const categoriesState = useCategoriesState();
+  const incomes = incomesState.data;
+  const persons = personsState.data;
+  const categories = categoriesState.data;
   const undo = useUndo();
   const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -63,7 +67,11 @@ export default function IncomeRulesScreen() {
   const incomeCategories = categories.filter((c) => c.kind === "income");
   const categoryId =
     categoryChoice ??
-    incomeCategories.find((c) => c.name.toLocaleLowerCase("tr-TR").includes("maaş"))?.id ??
+    incomeCategories.find((c) =>
+      c.name
+        .toLocaleLowerCase("tr-TR")
+        .includes(tr.template.categoryNames.salary.toLocaleLowerCase("tr-TR")),
+    )?.id ??
     incomeCategories[0]?.id ??
     null;
 
@@ -93,6 +101,14 @@ export default function IncomeRulesScreen() {
       categoryChoice
     );
   useDirtyExitGuard(incomeDraftDirty && !busy);
+  const liveStates = [incomesState, personsState, categoriesState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    incomesState.retry();
+    personsState.retry();
+    categoriesState.retry();
+  };
 
   const payDay = Number(payDayStr);
   const dayValid = isMonthDay(payDayStr);
@@ -134,7 +150,7 @@ export default function IncomeRulesScreen() {
       try {
         const existing = editingId ? incomes.find((r) => r.id === editingId) : null;
         await upsertRecurringIncome(userId, {
-          id: editingId ?? newId(),
+          id: editingId ?? undefined,
           name: effectiveName.trim(),
           kind,
           defaultAmountMinor: amountMinor!,
@@ -149,6 +165,8 @@ export default function IncomeRulesScreen() {
         });
         scheduleSync(userId);
         resetForm();
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
         setBusy(false);
       }
@@ -156,18 +174,32 @@ export default function IncomeRulesScreen() {
   };
 
   const remove = async (r: (typeof incomes)[number]) => {
-    const snapshot = await deleteRecurringIncomeWithExpected(userId, r.id);
-    scheduleSync(userId);
-    if (snapshot) {
-      undo.show(`${r.name} · ${tr.common.deleted}`, () => {
-        void restoreDeletedRule(userId, snapshot).then(() => scheduleSync(userId));
-      }, "warning");
+    try {
+      const snapshot = await deleteRecurringIncomeWithExpected(userId, r.id);
+      scheduleSync(userId);
+      if (snapshot) {
+        undo.show(`${r.name} · ${tr.common.deleted}`, () => {
+          return restoreDeletedRule(userId, snapshot).then(() => scheduleSync(userId));
+        }, "warning");
+      }
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
   };
+
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
       <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.incomes.intro}</Body>
       <Card>
         <Label>{tr.incomes.kindLabel}</Label>

@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
-import { fromDbShape, nowIso, softDelete, writeRows } from "../../db/mutations";
+import { fromDbShape, nowIso, restoreRow, softDelete, writeRows } from "../../db/mutations";
 import type { MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 
@@ -35,6 +35,10 @@ export async function upsertCategoryBudget(
 
 export function deleteCategoryBudget(userId: string, id: string) {
   return softDelete(userId, "category_budgets", id);
+}
+
+export function restoreCategoryBudget(userId: string, snapshot: Record<string, unknown>): Promise<void> {
+  return restoreRow(userId, "category_budgets", snapshot);
 }
 
 export interface CategoryDeleteSnapshot {

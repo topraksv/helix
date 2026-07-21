@@ -8,23 +8,32 @@
 import React, { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Calculator, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
-import { newId } from "../../../db/ids";
-import { restoreRow, softDelete, writeRows, writeSetting } from "../../../db/mutations";
-import { settingValue, toTxLike, useAllTransactions, useCategories, useComputedColumns, useLedger, usePersons, useSettingsMap, useSources, useUserId } from "../../../data/hooks";
+import {
+  settingValue,
+  toTxLike,
+  useAllTransactionsState,
+  useCategoriesState,
+  useComputedColumnsState,
+  useLedgerState,
+  usePersonsState,
+  useSettingsMapState,
+  useSourcesState,
+  useUserId,
+} from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
+import { deleteComputedColumn, reorderComputedColumns, restoreComputedColumn, saveComputedColumn, setComputedColumnsHidden } from "../../../data/repo";
 import { creditCardSplit } from "../../../domain/analytics";
 import { evaluateComputedColumn, parseDefinition, type ComputedColumnDefinition } from "../../../domain/computed-columns";
 import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, ChipPicker, Divider, Field, IconButton, Label, Row, Screen, Spread, Toggle } from "../../../ui/components";
+import { Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, IconButton, Label, Row, Screen, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
-import { runUndo } from "../../../domain/undo-outcome";
-import { devError } from "../../../services/logger";
 import { appAlert } from "../../../ui/dialog";
 
 const HIDDEN_KEY = "computed_columns_hidden";
@@ -43,25 +52,25 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
    * An undo that fails must say so — the snackbar dismisses on tap either way,
    * so a swallowed rejection left the row deleted with no message.
    */
-  const reportUndo = async (action: () => Promise<unknown>) => {
-    const outcome = await runUndo(action);
-    if (!outcome.ok) {
-      devError("undo", outcome.error);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
-  };
   const userId = useUserId();
-  const columns = useComputedColumns();
-  const categories = useCategories();
+  const columnsState = useComputedColumnsState();
+  const categoriesState = useCategoriesState();
+  const columns = columnsState.data;
+  const categories = categoriesState.data;
   const undo = useUndo();
   const operationGuard = useOperationGuard();
   const { palette } = useTheme();
   const today = todayISO();
-  const bundle = useLedger(yearOf(today));
-  const sources = useSources();
-  const allTx = useAllTransactions();
-  const persons = usePersons();
-  const settings = useSettingsMap();
+  const ledgerState = useLedgerState(yearOf(today));
+  const sourcesState = useSourcesState();
+  const transactionsState = useAllTransactionsState();
+  const personsState = usePersonsState();
+  const settingsState = useSettingsMapState();
+  const bundle = ledgerState.data;
+  const sources = sourcesState.data;
+  const allTx = transactionsState.data;
+  const persons = personsState.data;
+  const settings = settingsState.data;
   const hidden = settingValue<string[]>(settings, HIDDEN_KEY, []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -97,6 +106,18 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     ? name.trim() !== editingColumn.name || JSON.stringify(definition) !== JSON.stringify(storedDefinition)
     : Boolean(name.trim() || plus.length || minus.length || op !== "sum" || ccPart !== "single");
   useDirtyExitGuard(computedDraftDirty && !busy);
+  const liveStates = [columnsState, categoriesState, ledgerState, sourcesState, transactionsState, personsState, settingsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    columnsState.retry();
+    categoriesState.retry();
+    ledgerState.retry();
+    sourcesState.retry();
+    transactionsState.retry();
+    personsState.retry();
+    settingsState.retry();
+  };
 
   // Live preview against the current month, so setup is never a guess.
   let preview: number | null = null;
@@ -137,20 +158,16 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
       setBusy(true);
       try {
         const existing = editingId ? columns.find((c) => c.id === editingId) : null;
-        await writeRows(userId, [
-          {
-            table: "computed_columns",
-            row: {
-              id: editingId ?? newId(),
-              name: name.trim(),
-              definition: JSON.stringify(definition),
-              sortOrder: existing?.sortOrder ?? columns.length,
-              deletedAt: null,
-            },
-          },
-        ]);
+        await saveComputedColumn(userId, {
+          id: editingId ?? undefined,
+          name,
+          definition: definition!,
+          sortOrder: existing?.sortOrder ?? columns.length,
+        });
         scheduleSync(userId);
         resetForm();
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
         setBusy(false);
       }
@@ -173,35 +190,50 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   };
 
   const remove = async (c: (typeof columns)[number]) => {
-    if (editingId === c.id) resetForm();
-    const snapshot = await softDelete(userId, "computed_columns", c.id);
-    scheduleSync(userId);
-    if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => void reportUndo(() => restoreRow(userId, "computed_columns", snapshot)), "warning");
+    try {
+      const snapshot = await deleteComputedColumn(userId, c.id);
+      scheduleSync(userId);
+      if (editingId === c.id) resetForm();
+      if (snapshot) undo.show(`${c.name} · ${tr.common.deleted}`, () => restoreComputedColumn(userId, snapshot), "warning");
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   const toggleVisible = async (id: string, show: boolean) => {
     const next = show ? hidden.filter((x) => x !== id) : [...new Set([...hidden, id])];
-    await writeSetting(userId, HIDDEN_KEY, next);
-    scheduleSync(userId);
+    try {
+      await setComputedColumnsHidden(userId, next);
+      scheduleSync(userId);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   const applyOrder = async (orderedIds: string[]) => {
-    const byId = new Map(columns.map((column) => [column.id, column]));
-    const slots = columns.map((column) => column.sortOrder);
-    const writes = orderedIds.flatMap((id, index) => {
-      const column = byId.get(id);
-      return column ? [{ table: "computed_columns" as const, row: { ...column, sortOrder: slots[index] } }] : [];
-    });
-    if (writes.length === 0) return;
-    await writeRows(userId, writes);
-    scheduleSync(userId);
+    try {
+      await reorderComputedColumns(userId, columns, orderedIds);
+      scheduleSync(userId);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   const categoryChips = categories.map((c) => ({ value: c.id, label: c.name }));
 
+  if (!dataReady) {
+    return (
+      <Screen>
+        {header}
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen scrollEnabled={!dragging}>
       {header}
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.computed.intro}</Body>
       {editingId ? (
         <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.md }}>

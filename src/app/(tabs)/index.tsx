@@ -194,6 +194,8 @@ export default function DashboardScreen() {
   const dataStatus = combineLiveQueryStatus(liveStates);
   const retryData = () => {
     ledgerState.retry();
+    categoriesState.retry();
+    personsState.retry();
     expectedState.retry();
     subscriptionsState.retry();
     incomesState.retry();
@@ -307,7 +309,7 @@ export default function DashboardScreen() {
           paidOn,
         });
         scheduleSync(userId);
-        undo.show(`${nameOf(e)} ✓`, () => void revertExpected(userId, e.id));
+        undo.show(`${nameOf(e)} ✓`, () => revertExpected(userId, e.id));
       } catch (err) {
         errorNotice();
         if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);

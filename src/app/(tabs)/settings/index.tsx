@@ -28,8 +28,9 @@ import {
 } from "lucide-react-native";
 import { useSession } from "../../../auth/session";
 import { useSettingsMapState, settingValue, useUserId } from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
-import { pendingOutboxCount, writeSetting } from "../../../db/mutations";
+import { pendingSyncChangeCount, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
 import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
 import { syncNow } from "../../../sync/engine";
@@ -40,7 +41,7 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, Field, ListRow, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, Field, ListRow, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { spacing, useTheme } from "../../../ui/theme";
@@ -57,9 +58,11 @@ export default function SettingsScreen() {
   const { palette } = useTheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
+  const [localPreferencesLoaded, setLocalPreferencesLoaded] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const notifications = useDevicePreferences((state) => state.notifications);
   const notificationDetails = useDevicePreferences((state) => state.notificationDetails);
+  const devicePreferencesLoaded = useDevicePreferences((state) => state.loaded);
   const [notificationBusy, setNotificationBusy] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
@@ -75,10 +78,10 @@ export default function SettingsScreen() {
   const reminderStr = reminderField.value;
 
   React.useEffect(() => {
-    void kv.get("helix.theme").then((v) => {
-      if (v === "light" || v === "dark" || v === "system") setThemePref(v);
-    });
-    void kv.get("helix.biometric").then((v) => setBiometric(v === "true"));
+    void Promise.all([kv.get("helix.theme"), kv.get("helix.biometric")]).then(([theme, biometricValue]) => {
+      if (theme === "light" || theme === "dark" || theme === "system") setThemePref(theme);
+      setBiometric(biometricValue === "true");
+    }).finally(() => setLocalPreferencesLoaded(true));
   }, []);
 
   const notify = (msg: string) => void appAlert(msg);
@@ -104,10 +107,10 @@ export default function SettingsScreen() {
         if (error) void appAlert(error, tr.errors.title);
         return;
       }
-      if ((await pendingOutboxCount()) > 0) {
+      if ((await pendingSyncChangeCount()) > 0) {
         await syncNow(userId);
       }
-      const pending = await pendingOutboxCount();
+      const pending = await pendingSyncChangeCount();
       if (pending > 0) {
         const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending), {
           confirmLabel: tr.auth.signOutAnyway,
@@ -117,6 +120,8 @@ export default function SettingsScreen() {
       }
       const error = await signOut();
       if (error) void appAlert(error, tr.errors.title);
+    } catch {
+      void appAlert(tr.errors.requestFailed, tr.errors.title);
     } finally {
       setSigningOut(false);
     }
@@ -226,6 +231,7 @@ export default function SettingsScreen() {
 
   return (
     <Screen title={tr.settings.title}>
+      <DataStateNotice status={combineLiveQueryStatus([settingsState])} retry={settingsState.retry} />
       <SectionHeader>{tr.settings.balanceSection}</SectionHeader>
       <Card>
         <ListRow icon={PiggyBank} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />
@@ -251,6 +257,7 @@ export default function SettingsScreen() {
             { value: "dark", label: tr.settings.themeDark },
           ]}
           value={themePref}
+          disabled={!localPreferencesLoaded}
           onChange={(v) => {
             setThemePref(v);
             setGlobalThemePreference(v);
@@ -261,6 +268,7 @@ export default function SettingsScreen() {
           value={reminderStr}
           onChangeText={setReminderDraft}
           keyboardType="number-pad"
+          editable={settingsState.updatedAt != null}
         />
         <Button
           label={tr.common.save}
@@ -269,7 +277,7 @@ export default function SettingsScreen() {
           disabled={!reminderField.canSave}
           onPress={() => {
             const next = Number(reminderStr);
-            void writeSetting(userId, "reminder_days", next)
+            void setReminderDays(userId, next)
               // Release the draft so the field follows the persisted value again
               // instead of pinning the just-saved string over later changes.
               .then(() => {
@@ -288,6 +296,7 @@ export default function SettingsScreen() {
                 <Toggle
                   label={tr.settings.biometric}
                   value={biometric}
+                  disabled={!localPreferencesLoaded}
                   onValueChange={(v) => {
                     setBiometric(v);
                     void kv.set("helix.biometric", String(v));
@@ -303,7 +312,7 @@ export default function SettingsScreen() {
                 <Toggle
                   label={tr.settings.notifications}
                   value={notifications}
-                  disabled={notificationBusy}
+                  disabled={notificationBusy || !devicePreferencesLoaded}
                   onValueChange={(enabled) => {
                     if (notificationBusy) return;
                     setNotificationBusy(true);
@@ -326,7 +335,7 @@ export default function SettingsScreen() {
                   <Toggle
                     label={tr.settings.notificationDetails}
                     value={notificationDetails}
-                    disabled={notificationBusy}
+                    disabled={notificationBusy || !devicePreferencesLoaded}
                     onValueChange={(enabled) => {
                       if (notificationBusy) return;
                       setNotificationBusy(true);
@@ -354,7 +363,17 @@ export default function SettingsScreen() {
           icon={CalendarClock}
           title={tr.settings.showPending}
           subtitle={tr.settings.showPendingHint}
-          right={<Toggle label={tr.settings.showPending} value={showPending} onValueChange={(v) => void writeSetting(userId, "show_pending_in_table", v)} />}
+          right={(
+            <Toggle
+              label={tr.settings.showPending}
+              value={showPending}
+              disabled={settingsState.updatedAt == null}
+              onValueChange={(value) => {
+                void setPendingTableVisibility(userId, value)
+                  .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
+              }}
+            />
+          )}
         />
       </Card>
 

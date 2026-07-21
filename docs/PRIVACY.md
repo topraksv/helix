@@ -103,10 +103,12 @@ kullanıcının sorumluluğundadır. Helix export’u parola ile şifrelediğini
 - Canlı satırlar ve sync için gereken tombstone’lar hesap var olduğu sürece otomatik
   süre dolumuyla silinmez. Şu anda genel amaçlı scheduled retention/purge job’ı yoktur.
 - Bir satırı uygulamada silmek onu geri alınabilir tombstone yapar; bu, hesabı
-  kalıcı silmekle aynı değildir.
+  kalıcı silmekle aynı değildir. Normal authenticated client fiziksel satır
+  DELETE yetkisi taşımaz.
 - Çıkış; background işi durdurur, bildirim/kur state’ini temizler ve local finance
   workspace’i siler. Hesaplı modda sonraki giriş remote veriyi yeniden çeker.
-- **Hesabı Sil** önce security-definer olmayan, sabit `search_path`’li
+- **Hesabı Sil** yalnız çağıranın kendi kimliğini hedefleyen, sabit `search_path`’li
+  `SECURITY DEFINER`
   `delete_own_account` RPC ile `auth.users` identity’sini siler; `ON DELETE CASCADE`
   bütün app satırlarını aynı server transaction’ında kaldırır. Remote silme başarısızsa
   local veri silinmez ve işlem başarı gibi gösterilmez.

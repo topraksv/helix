@@ -6,6 +6,7 @@ const base = {
   locked: false,
   userId: "user-a",
   onboarded: true,
+  frozen: false,
   awaitingFirstPull: false,
 } as const;
 
@@ -31,6 +32,13 @@ describe("root guard state machine", () => {
     expect(resolveRootGuard({ ...base, onboarded: false, route: "protected" })).toEqual({
       view: "wait",
       redirect: "/(onboarding)/setup",
+    });
+  });
+
+  it("does not expose protected UI until the freeze flag resolves", () => {
+    expect(resolveRootGuard({ ...base, frozen: null, route: "protected" })).toEqual({
+      view: "wait",
+      redirect: null,
     });
   });
 

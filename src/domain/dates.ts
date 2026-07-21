@@ -22,13 +22,22 @@ export function isMonthKey(value: unknown): value is MonthKey {
   return typeof value === "string" && MONTH_KEY_RE.test(value);
 }
 
+/** Whether a value is a real Gregorian calendar date in `YYYY-MM-DD` form. */
+export function isISODate(value: unknown): value is ISODate {
+  if (typeof value !== "string" || !ISO_DATE_RE.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
+}
+
 export function isMonthDay(value: string | number): boolean {
   const day = Number(value);
   return Number.isInteger(day) && day >= 1 && day <= MONTH_END_DAY;
 }
 
 export function assertISODate(value: string): ISODate {
-  if (!ISO_DATE_RE.test(value)) throw new Error(`Invalid ISO date: ${value}`);
+  if (!isISODate(value)) throw new Error(`Invalid ISO date: ${value}`);
   return value;
 }
 

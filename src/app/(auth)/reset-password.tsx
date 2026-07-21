@@ -27,9 +27,13 @@ export default function ResetPasswordScreen() {
   useEffect(() => {
     let active = true;
     void (async () => {
-      const initialUrl = incomingUrl ?? await Linking.getInitialURL();
-      const result = await preparePasswordRecovery(initialUrl);
-      if (active) setState(result);
+      try {
+        const initialUrl = incomingUrl ?? await Linking.getInitialURL();
+        const result = await preparePasswordRecovery(initialUrl);
+        if (active) setState(result);
+      } catch {
+        if (active) setState("invalid");
+      }
     })();
     return () => {
       active = false;
@@ -46,6 +50,8 @@ export default function ResetPasswordScreen() {
         const result = await completePasswordRecovery(password);
         if (result) setError(result);
         else setState("success");
+      } catch {
+        setError(tr.errors.requestFailed);
       } finally {
         setBusy(false);
       }

@@ -13,13 +13,14 @@ import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { CheckCircle2, FileSpreadsheet, Upload } from "lucide-react-native";
 import { ImportBatchUnreadableError, importSheets, importedYears } from "../data/repo";
-import { usePersons, useSources, useUserId } from "../data/hooks";
+import { usePersonsState, useSourcesState, useUserId } from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { isMonthDay, yearOf } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, Card, ChipPicker, Row, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, Card, ChipPicker, DataStateNotice, Row, Screen, SectionHeader } from "../ui/components";
 import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -58,14 +59,14 @@ function SheetLayoutDiagram({ orientation, caption, big }: { orientation: "verti
   const grid =
     orientation === "vertical"
       ? [
-          [{ tone: "data" as const }, H("Kira"), H("Maaş")],
-          [M("Oca"), D, D],
-          [M("Şub"), D, D],
+          [{ tone: "data" as const }, H(tr.importer.diagram.rent), H(tr.importer.diagram.salary)],
+          [M(tr.importer.diagram.january), D, D],
+          [M(tr.importer.diagram.february), D, D],
         ]
       : [
-          [{ tone: "data" as const }, M("Oca"), M("Şub")],
-          [H("Kira"), D, D],
-          [H("Maaş"), D, D],
+          [{ tone: "data" as const }, M(tr.importer.diagram.january), M(tr.importer.diagram.february)],
+          [H(tr.importer.diagram.rent), D, D],
+          [H(tr.importer.diagram.salary), D, D],
         ];
   return (
     <View style={{ alignItems: "center", gap: spacing.sm }}>
@@ -130,8 +131,10 @@ const hasBreakdown = (c: CellData) => Boolean(c.formulaParts || c.comment);
 // --- screen ----------------------------------------------------------------
 export default function ImportWizardModal() {
   const userId = useUserId();
-  const persons = usePersons();
-  const sources = useSources();
+  const personsState = usePersonsState();
+  const sourcesState = useSourcesState();
+  const persons = personsState.data;
+  const sources = sourcesState.data;
   const router = useRouter();
   const { palette } = useTheme();
   const { width } = useWindowDimensions();
@@ -147,6 +150,13 @@ export default function ImportWizardModal() {
   const scrollRef = useRef<ScrollView>(null);
   const operationGuard = useOperationGuard();
   useDirtyExitGuard(workbook != null && doneCount == null && !busy);
+  const liveStates = [personsState, sourcesState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    personsState.retry();
+    sourcesState.retry();
+  };
 
   useEffect(() => {
     if (doneCount == null) return;
@@ -237,7 +247,11 @@ export default function ImportWizardModal() {
 
   const performImport = async (mode: "replace" | "add") => {
     const selfId = persons.find((p) => p.isSelf)?.id;
-    if (!selfId || selectedYears.length === 0) return;
+    if (!selfId) {
+      setError(tr.importer.missingSelf);
+      return;
+    }
+    if (selectedYears.length === 0) return;
     setReimportYears(null);
     const { imported } = await importSheets(userId, {
       sheets: activeSheets,
@@ -277,6 +291,14 @@ export default function ImportWizardModal() {
     });
   };
 
+  if (!dataReady) {
+    return (
+      <Screen scrollRef={scrollRef}>
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
+
   if (doneCount != null) {
     return (
       <Screen scrollRef={scrollRef}>
@@ -310,6 +332,7 @@ export default function ImportWizardModal() {
 
   return (
     <Screen scrollRef={scrollRef}>
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.importer.intro}</Body>
       <Button
         icon={Upload}

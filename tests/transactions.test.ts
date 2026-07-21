@@ -3,6 +3,7 @@ import { categoryRangeMatrix, distributionForRange, fixedVsVariable } from "../s
 import { buildLedger } from "../src/domain/balance";
 import {
   categoryAcceptsTransaction,
+  categoryTableEntryType,
   financialFlow,
   projectedTransactionFlow,
 } from "../src/domain/transactions";
@@ -17,6 +18,12 @@ describe("canonical transaction classification", () => {
     expect(categoryAcceptsTransaction("income", "expense")).toBe(false);
     expect(categoryAcceptsTransaction("transfer", "expense")).toBe(true);
     expect(categoryAcceptsTransaction("transfer", "income")).toBe(false);
+  });
+
+  it("keeps month-table transfer semantics stable across category renames", () => {
+    expect(categoryTableEntryType({ kind: "expense", isTransfer: true })).toBe("transfer");
+    expect(categoryTableEntryType({ kind: "expense", isTransfer: false })).toBe("expense");
+    expect(categoryTableEntryType({ kind: "income", isTransfer: false })).toBe("income");
   });
 
   it("normalizes a legacy mismatched refund without changing its cash effect", () => {

@@ -101,8 +101,8 @@ membership and opening settings into one transaction.
 
 Data-critical screens read through the `*State` hooks, which expose
 `loading | ready | refreshing | stale | error`, keep the last good snapshot and
-offer the shared retry notice. The legacy array/value hooks are compatibility
-facades only.
+offer the shared retry notice. There is no array/null convenience facade: an
+initial empty value is never allowed to masquerade as resolved account state.
 
 A snapshot belongs to the parameters that produced it. `useLive` keeps the last
 good data across re-runs over the *same* parameters (local writes, retries) and
@@ -125,7 +125,9 @@ whose `null` means unresolved.
   positive.
 - **Types drive analytics, not category appearance.** Expenses alone feed
   expense totals and distribution; transfers stay separate and use an
-  expense-kind category. Fixed expenses are installment/subscription-linked;
+  expense-kind category whose persisted `is_transfer` flag carries that
+  semantic independently of its editable name. Fixed expenses are
+  installment/subscription-linked;
   ordinary expenses default to variable.
 - **Credit cards** require both statement and due days. A purchase keeps its
   real `purchase_date`, belongs to a persisted `credit_card_statements` period,

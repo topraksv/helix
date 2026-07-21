@@ -113,6 +113,7 @@ describe("backup validation", () => {
       person_id: personId, category_id: null, is_active: 1, note: null,
     };
     expect(isValidImportRow("recurring_incomes", legacyIncome)).toBe(true);
+    expect(isValidImportRow("recurring_incomes", { ...legacyIncome, recurrence: "monthly", anchor_date: "2026-02-31" })).toBe(false);
     expect(isValidImportRow("recurring_incomes", { ...legacyIncome, recurrence: "weekly", anchor_date: null })).toBe(false);
     expect(isValidImportRow("recurring_incomes", { ...legacyIncome, recurrence: "biweekly", anchor_date: "2026-07-18" })).toBe(true);
 

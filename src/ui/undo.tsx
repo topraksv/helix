@@ -8,13 +8,16 @@ import { FadeIn } from "./components";
 import { font, overlayShadow, radius, spacing, tabBarHeight, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { haptic, selectionTap, type HapticKind } from "./haptics";
+import { runUndo } from "../domain/undo-outcome";
+import { devError } from "../services/logger";
+import { appAlert } from "./dialog";
 
 type UndoTone = Extract<HapticKind, "success" | "warning">;
 
 interface UndoState {
   message: string | null;
-  onUndo: (() => void) | null;
-  show: (message: string, onUndo: () => void, tone?: UndoTone) => void;
+  onUndo: (() => Promise<unknown> | unknown) | null;
+  show: (message: string, onUndo: () => Promise<unknown> | unknown, tone?: UndoTone) => void;
   clear: () => void;
 }
 
@@ -39,6 +42,7 @@ export function UndoSnackbar() {
   const { palette } = useTheme();
   const { message, onUndo, clear } = useUndo();
   const insets = useSafeAreaInsets();
+  const [undoing, setUndoing] = React.useState(false);
   if (!message) return null;
   // Clear the real tab bar (shared TAB_BAR metrics), not a hardcoded offset
   // that silently drifts when the bar changes.
@@ -64,10 +68,23 @@ export function UndoSnackbar() {
         {onUndo ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => {
+            accessibilityState={{ busy: undoing, disabled: undoing }}
+            disabled={undoing}
+            onPress={async () => {
+              if (undoing) return;
               selectionTap();
-              onUndo();
-              clear();
+              setUndoing(true);
+              const outcome = await runUndo(async () => onUndo());
+              setUndoing(false);
+              if (outcome.ok) {
+                clear();
+                return;
+              }
+              devError("undo", outcome.error);
+              // Keep the action available for a deterministic retry and reset
+              // its timeout; a failed restore must never look successful.
+              useUndo.getState().show(message, onUndo, "warning");
+              void appAlert(tr.errors.undoFailed, tr.errors.title);
             }}
             hitSlop={8}
           >

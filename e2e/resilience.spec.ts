@@ -3,6 +3,7 @@ import {
   addMarketExpense,
   assertNoRuntimeErrors,
   collectRuntimeErrors,
+  currentMonthKey,
   isolateExternalData,
   onboard,
   openCashFlow,
@@ -86,7 +87,7 @@ test("hostile route parameters recover instead of white-screening", async ({ pag
 
   // A well-formed month still opens its own detail screen, so the guard did not
   // simply blanket-redirect every deep link.
-  const month = new Date().toISOString().slice(0, 7);
+  const month = currentMonthKey();
   await page.goto(`/helix/cash-flow/${month}`);
   await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toHaveCount(0);

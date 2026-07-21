@@ -9,7 +9,7 @@ import React, { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import * as LocalAuthentication from "expo-local-authentication";
 import { ShieldCheck } from "lucide-react-native";
-import { writeSetting } from "../db/mutations";
+import { setAccountFrozen } from "../data/repo";
 import { scheduleSync } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { useSession } from "../auth/session";
@@ -35,19 +35,27 @@ export function FrozenGate() {
   }, []);
 
   const unlock = async () => {
-    await writeSetting(userId, "account_frozen", false);
+    await setAccountFrozen(userId, false);
     scheduleSync(userId);
   };
 
   const unlockBiometric = async () => {
-    await operationGuard.run(async () => {
-      const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.account.reactivate });
-      if (result.success) await unlock();
-    });
+    try {
+      await operationGuard.run(async () => {
+        const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.account.reactivate });
+        if (result.success) await unlock();
+      });
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   const unlockDirectly = async () => {
-    await operationGuard.run(unlock);
+    try {
+      await operationGuard.run(unlock);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   // Auto-prompt Face ID when the gate opens with biometrics enabled.

@@ -13,6 +13,7 @@ import { buildLedger, currentBalance, resolveLedgerAnchor, type MonthLedger } fr
 import { makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { devError } from "../services/logger";
+import { decodeSettingValue } from "../domain/settings";
 import {
   combineLiveQueryStatus,
   completeLiveQuery,
@@ -43,7 +44,7 @@ export interface LiveValueResult<T> extends LiveSnapshot<T> {
  * dashboard mounts ~10). Omit it to re-run on any change (safe fallback, also
  * used when the platform doesn't report the changed table).
  */
-export function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly string[]): LiveResult<T> {
+function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly string[]): LiveResult<T> {
   const retryRef = useRef<() => void>(() => {});
   const retry = useCallback(() => retryRef.current(), []);
   const [state, setState] = useState<LiveResult<T>>({ ...initialLiveSnapshot<T[]>([]), retry });
@@ -228,10 +229,6 @@ function useSharedLive<T>(key: string, query: () => PromiseLike<T[]>, tables: re
   );
 }
 
-export function usePersons() {
-  return usePersonsState().data;
-}
-
 export function usePersonsState() {
   const userId = useUserId();
   return useSharedLive(
@@ -239,10 +236,6 @@ export function usePersonsState() {
     () => getDb().select().from(s.persons).where(and(eq(s.persons.userId, userId), isNull(s.persons.deletedAt))),
     ["persons"],
   );
-}
-
-export function useCategories() {
-  return useCategoriesState().data;
 }
 
 export function useCategoriesState() {
@@ -259,10 +252,6 @@ export function useCategoriesState() {
   );
 }
 
-export function useSources() {
-  return useSourcesState().data;
-}
-
 export function useSourcesState() {
   const userId = useUserId();
   return useSharedLive(
@@ -274,10 +263,6 @@ export function useSourcesState() {
         .where(and(eq(s.paymentSources.userId, userId), isNull(s.paymentSources.deletedAt))),
     ["payment_sources"],
   );
-}
-
-export function useSubscriptions() {
-  return useSubscriptionsState().data;
 }
 
 export function useSubscriptionsState() {
@@ -293,10 +278,6 @@ export function useSubscriptionsState() {
   );
 }
 
-export function usePlans() {
-  return usePlansState().data;
-}
-
 export function usePlansState() {
   const userId = useUserId();
   return useSharedLive(
@@ -308,10 +289,6 @@ export function usePlansState() {
         .where(and(eq(s.installmentPlans.userId, userId), isNull(s.installmentPlans.deletedAt))),
     ["installment_plans"],
   );
-}
-
-export function useCreditCardStatements() {
-  return useCreditCardStatementsState().data;
 }
 
 export function useCreditCardStatementsState() {
@@ -328,10 +305,6 @@ export function useCreditCardStatementsState() {
   );
 }
 
-export function useRecurringIncomes() {
-  return useRecurringIncomesState().data;
-}
-
 export function useRecurringIncomesState() {
   const userId = useUserId();
   return useSharedLive(
@@ -345,15 +318,7 @@ export function useRecurringIncomesState() {
   );
 }
 
-export function useComputedColumns() {
-  return useComputedColumnsState().data;
-}
-
-export function useCategoryBudgets() {
-  return useCategoryBudgetsState().data;
-}
-
-function useCategoryBudgetsState() {
+export function useCategoryBudgetsState() {
   const userId = useUserId();
   return useSharedLive(
     `category_budgets:${userId}`,
@@ -392,10 +357,6 @@ export function useComputedColumnsState() {
   );
 }
 
-export function usePendingExpected() {
-  return usePendingExpectedState().data;
-}
-
 export function usePendingExpectedState() {
   const userId = useUserId();
   return useSharedLive(
@@ -410,11 +371,7 @@ export function usePendingExpectedState() {
   );
 }
 
-export function useTransactionsBetween(from: string, to: string) {
-  return useTransactionsBetweenState(from, to).data;
-}
-
-function useTransactionsBetweenState(from: string, to: string) {
+export function useTransactionsBetweenState(from: string, to: string) {
   const userId = useUserId();
   return useLive(
     getDb()
@@ -434,10 +391,6 @@ function useTransactionsBetweenState(from: string, to: string) {
   );
 }
 
-export function useAllTransactions() {
-  return useAllTransactionsState().data;
-}
-
 export function useAllTransactionsState() {
   const userId = useUserId();
   return useSharedLive(
@@ -452,11 +405,7 @@ export function useAllTransactionsState() {
   );
 }
 
-export function useAdjustments() {
-  return useAdjustmentsState().data;
-}
-
-function useAdjustmentsState() {
+export function useAdjustmentsState() {
   const userId = useUserId();
   return useSharedLive(
     `balance_adjustments:${userId}`,
@@ -505,10 +454,6 @@ export function useAccountFrozenState(userId: string | null): LiveValueResult<bo
   return { ...res, data: readSyncedFlag(res, true) };
 }
 
-export function useSettingsMap(): Map<string, string> {
-  return useSettingsMapState().data;
-}
-
 export function useSettingsMapState(): LiveValueResult<Map<string, string>> {
   const userId = useUserId();
   const result = useSharedLive(
@@ -519,14 +464,18 @@ export function useSettingsMapState(): LiveValueResult<Map<string, string>> {
   return { ...result, data: new Map(result.data.map((row) => [row.key, row.value])) };
 }
 
+export function useCellNotesState(): LiveResult<typeof s.cellNotes.$inferSelect> {
+  const userId = useUserId();
+  return useSharedLive(
+    `cell-notes:${userId}`,
+    () => getDb().select().from(s.cellNotes)
+      .where(and(eq(s.cellNotes.userId, userId), isNull(s.cellNotes.deletedAt))),
+    ["cell_notes"],
+  );
+}
+
 export function settingValue<T>(map: Map<string, string>, key: string, fallback: T): T {
-  const raw = map.get(key);
-  if (raw == null) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+  return decodeSettingValue(key, map.get(key), fallback);
 }
 
 /** Map DB transaction rows to the domain TxLike shape. */
@@ -564,10 +513,6 @@ export interface LedgerBundle {
 }
 
 /** Full chained ledger from start month through the requested year. */
-export function useLedger(year: number): LedgerBundle | null {
-  return useLedgerState(year).data;
-}
-
 export function useLedgerState(year: number): LiveValueResult<LedgerBundle | null> {
   const settingsState = useSettingsMapState();
   const personsState = usePersonsState();
@@ -661,10 +606,10 @@ export function daysBetween(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T00:00:00`) - Date.parse(`${a}T00:00:00`)) / 86_400_000);
 }
 
-export function useLastEntryInfo(): { at: string | null; daysAgo: number | null } {
-  const settings = useSettingsMap();
-  const iso = settingValue<string | null>(settings, "last_entry_at", null);
-  if (!iso) return { at: null, daysAgo: null };
+export function useLastEntryInfoState(): LiveValueResult<{ at: string | null; daysAgo: number | null }> {
+  const settingsState = useSettingsMapState();
+  const iso = settingValue<string | null>(settingsState.data, "last_entry_at", null);
+  if (!iso) return { ...settingsState, data: { at: null, daysAgo: null } };
   const date = iso.slice(0, 10);
-  return { at: date, daysAgo: daysBetween(date, todayISO()) };
+  return { ...settingsState, data: { at: date, daysAgo: daysBetween(date, todayISO()) } };
 }

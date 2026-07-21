@@ -8,6 +8,7 @@ interface RootGuardInput {
   locked: boolean | null;
   userId: string | null;
   onboarded: boolean | null;
+  frozen: boolean | null;
   awaitingFirstPull: boolean;
   route: RootRouteArea;
 }
@@ -36,16 +37,24 @@ export function resolveRootGuard(input: RootGuardInput): RootGuardDecision {
     return { view: "wait", redirect: "/(auth)/sign-in" };
   }
 
+  // Password recovery must remain reachable regardless of onboarding/freeze
+  // flags; it is the credential-repair surface, not protected account UI.
+  if (input.route === "recovery") return { view: "stack", redirect: null };
+
   if (input.onboarded == null) return { view: "wait", redirect: null };
   if (!input.onboarded) {
-    if (input.route === "recovery" || input.route === "onboarding" || input.route === "setup-helper") {
+    if (input.route === "onboarding" || input.route === "setup-helper") {
       return { view: "stack", redirect: null };
     }
     if (input.awaitingFirstPull) return { view: "wait", redirect: null };
     return { view: "wait", redirect: "/(onboarding)/setup" };
   }
 
-  if (input.route === "recovery" || input.route === "protected" || input.route === "setup-helper") {
+  // A resolved false is safe. Null is not: rendering protected UI while the
+  // synced freeze flag is still loading can briefly expose a frozen account.
+  if (input.frozen == null) return { view: "wait", redirect: null };
+
+  if (input.route === "protected" || input.route === "setup-helper") {
     return { view: "stack", redirect: null };
   }
   return { view: "wait", redirect: "/(tabs)" };

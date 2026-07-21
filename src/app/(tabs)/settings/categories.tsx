@@ -4,16 +4,15 @@
 import React, { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { newId } from "../../../db/ids";
-import { writeRows } from "../../../db/mutations";
-import { useCategories, useUserId } from "../../../data/hooks";
-import { countTransactionsForCategory, deleteCategoryWithBudgets, restoreCategoryWithBudgets } from "../../../data/repo";
-import { categoryIcon, suggestCategoryIcon } from "../../../data/category-icons";
+import { useCategoriesState, useUserId } from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
+import { countTransactionsForCategory, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, updateCategory } from "../../../data/repo";
+import { categoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
-import { appConfirm } from "../../../ui/dialog";
+import { appAlert, appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
 import { LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
-import { Body, Button, Card, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -24,12 +23,14 @@ import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 export default function CategoriesScreen({ header }: { header?: ReactNode } = {}) {
   const userId = useUserId();
   const router = useRouter();
-  const categories = useCategories();
+  const categoriesState = useCategoriesState();
+  const categories = categoriesState.data;
   const undo = useUndo();
   const { palette } = useTheme();
   const operationGuard = useOperationGuard();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"expense" | "income">("expense");
+  const [isTransfer, setIsTransfer] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -37,41 +38,39 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   // drag reorders instead of scrolling the page.
   const [dragging, setDragging] = useState(false);
   const editingCategory = editingId ? categories.find((category) => category.id === editingId) : null;
-  useDirtyExitGuard(editingCategory
-    ? editName.trim() !== editingCategory.name
-    : name.trim() !== "");
+  useDirtyExitGuard(
+    name.trim() !== "" || Boolean(editingCategory && editName.trim() !== editingCategory.name),
+  );
+  const categoryPlaceholder = useRotatingPlaceholder(placeholderPools.category);
+  const dataStatus = combineLiveQueryStatus([categoriesState]);
+  const dataReady = categoriesState.updatedAt != null;
 
   const add = async () => {
     if (!name.trim()) return;
     await operationGuard.run(async () => {
       setAdding(true);
       try {
-        await writeRows(userId, [
-          {
-            table: "categories",
-            row: {
-              id: newId(),
-              name: name.trim(),
-              kind,
-              icon: suggestCategoryIcon(name.trim(), kind),
-              color: null,
-              sortOrder: categories.length,
-              isColumn: true,
-              deletedAt: null,
-            },
-          },
-        ]);
+        await createCategory(userId, { name, kind, isTransfer, sortOrder: categories.length });
         scheduleSync(userId);
         setName("");
+        setIsTransfer(false);
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
         setAdding(false);
       }
     });
   };
 
-  const update = async (c: (typeof categories)[number], patch: Partial<(typeof categories)[number]>) => {
-    await writeRows(userId, [{ table: "categories", row: { ...c, ...patch } }]);
-    scheduleSync(userId);
+  const update = async (c: (typeof categories)[number], patch: Parameters<typeof updateCategory>[2]) => {
+    try {
+      await updateCategory(userId, c, patch);
+      scheduleSync(userId);
+      return true;
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+      return false;
+    }
   };
 
   // Commit a drag reorder within a kind group (which is what the Mali Tablo
@@ -81,54 +80,76 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   // reassign the group's own existing sortOrder slots onto the new order, so
   // the other kind's rows keep their positions untouched.
   const applyOrder = async (kind: "expense" | "income", orderedIds: string[]) => {
-    const group = categories.filter((x) => x.kind === kind); // sortOrder-sorted
-    const slots = group.map((x) => x.sortOrder);
-    const byId = new Map(group.map((c) => [c.id, c]));
-    const writes = orderedIds.flatMap((id, k) => {
-      const c = byId.get(id);
-      return c ? [{ table: "categories" as const, row: { ...c, sortOrder: slots[k] } }] : [];
-    });
-    if (writes.length === 0) return;
-    await writeRows(userId, writes);
-    scheduleSync(userId);
+    try {
+      await reorderCategoryGroup(userId, categories, kind, orderedIds);
+      scheduleSync(userId);
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   const remove = async (c: (typeof categories)[number]) => {
-    // A category with records is never a one-tap delete: warn with the count so
-    // the user knows the rows survive (as "uncategorized") rather than vanishing.
-    const usage = await countTransactionsForCategory(userId, c.id);
-    if (usage > 0) {
-      const ok = await appConfirm(tr.settings.deleteCategoryTitle, tr.settings.deleteCategoryBody(usage), {
-        confirmLabel: tr.common.delete,
-        danger: true,
-      });
-      if (!ok) return;
-    }
-    // The category's monthly budgets go with it in the same atomic write, so
-    // no orphan budget row can linger in lists or totals; undo restores both.
-    const snapshot = await deleteCategoryWithBudgets(userId, c.id);
-    scheduleSync(userId);
-    if (snapshot) {
-      undo.show(`${c.name} · ${tr.common.deleted}`, () => {
-        void restoreCategoryWithBudgets(userId, snapshot).then(() => scheduleSync(userId));
-      }, "warning");
+    try {
+      // A category with records is never a one-tap delete: warn with the count so
+      // the user knows the rows survive (as "uncategorized") rather than vanishing.
+      const usage = await countTransactionsForCategory(userId, c.id);
+      if (usage > 0) {
+        const ok = await appConfirm(tr.settings.deleteCategoryTitle, tr.settings.deleteCategoryBody(usage), {
+          confirmLabel: tr.common.delete,
+          danger: true,
+        });
+        if (!ok) return;
+      }
+      // The category's monthly budgets go with it in the same atomic write, so
+      // no orphan budget row can linger in lists or totals; undo restores both.
+      const snapshot = await deleteCategoryWithBudgets(userId, c.id);
+      scheduleSync(userId);
+      if (snapshot) {
+        undo.show(`${c.name} · ${tr.common.deleted}`, () => {
+          return restoreCategoryWithBudgets(userId, snapshot).then(() => scheduleSync(userId));
+        }, "warning");
+      }
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
   };
+
+  if (!dataReady) {
+    return (
+      <Screen>
+        {header}
+        <DataStateNotice status={dataStatus} retry={categoriesState.retry} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen scrollEnabled={!dragging}>
       {header}
+      <DataStateNotice status={dataStatus} retry={categoriesState.retry} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.categoriesDesc}</Body>
       <Card>
-        <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.category)} />
+        <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={categoryPlaceholder} />
         <Segmented
           options={[
             { value: "expense", label: tr.settings.kindExpense },
             { value: "income", label: tr.settings.kindIncome },
           ]}
           value={kind}
-          onChange={setKind}
+          onChange={(value) => {
+            setKind(value);
+            if (value === "income") setIsTransfer(false);
+          }}
         />
+        {kind === "expense" ? (
+          <Spread style={{ marginBottom: spacing.md }}>
+            <View style={{ flex: 1, paddingRight: spacing.md }}>
+              <Body>{tr.settings.transferCategory}</Body>
+              <Body muted style={{ fontSize: 12 }}>{tr.settings.transferCategoryDesc}</Body>
+            </View>
+            <Toggle label={tr.settings.transferCategory} value={isTransfer} onValueChange={setIsTransfer} />
+          </Spread>
+        ) : null}
         <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
         <Button
           icon={LayoutTemplate}
@@ -164,8 +185,9 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                         variant="secondary"
                         disabled={!editName.trim()}
                         onPress={() => {
-                          void update(c, { name: editName.trim() });
-                          setEditingId(null);
+                          void update(c, { name: editName.trim() }).then((saved) => {
+                            if (saved) setEditingId(null);
+                          });
                         }}
                       />
                       <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
@@ -205,6 +227,16 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                       <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.settings.columnVisible}</Body>
                       <Toggle label={`${c.name} · ${tr.settings.columnVisible}`} value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
                     </Spread>
+                    {c.kind === "expense" ? (
+                      <Spread style={{ marginTop: spacing.xs }}>
+                        <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.settings.transferCategory}</Body>
+                        <Toggle
+                          label={`${c.name} · ${tr.settings.transferCategory}`}
+                          value={c.isTransfer}
+                          onValueChange={(value) => void update(c, { isTransfer: value })}
+                        />
+                      </Spread>
+                    ) : null}
                   </View>
                 )
               }

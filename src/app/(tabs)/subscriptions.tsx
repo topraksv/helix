@@ -10,25 +10,44 @@ import { todayISO } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { shortDateLabel, tr } from "../../i18n/tr";
-import { usePersons, useSubscriptions, useUserId } from "../../data/hooks";
+import { usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
+import { combineLiveQueryStatus } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Body, Button, Card, CardList, EmptyState, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Body, Button, Card, CardList, DataStateNotice, EmptyState, Screen, SectionHeader, Spread } from "../../ui/components";
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
 import { spacing } from "../../ui/theme";
+import { appAlert } from "../../ui/dialog";
 
 export default function SubscriptionsScreen() {
   const userId = useUserId();
-  const subscriptions = useSubscriptions();
-  const persons = usePersons();
+  const subscriptionsState = useSubscriptionsState();
+  const personsState = usePersonsState();
+  const subscriptions = subscriptionsState.data;
+  const persons = personsState.data;
   const router = useRouter();
   const undo = useUndo();
   const today = todayISO();
   // Re-render when FX rates land after a cold start so foreign-currency totals
   // settle on the real TRY value instead of the raw amount.
   useFxRates();
+  const liveStates = [subscriptionsState, personsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    subscriptionsState.retry();
+    personsState.retry();
+  };
+
+  if (!dataReady) {
+    return (
+      <Screen title={tr.subs.title}>
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
 
   const activeSubs = subscriptions.filter((s) => s.isActive);
   const selfIds = new Set(persons.filter((person) => person.isSelf).map((person) => person.id));
@@ -43,12 +62,16 @@ export default function SubscriptionsScreen() {
   const watchedLoad = load(watched);
 
   const remove = async (id: string, name: string) => {
-    const snapshot = await deleteSubscriptionWithExpected(userId, id);
-    scheduleSync(userId);
-    if (snapshot) {
-      undo.show(`${name} · ${tr.common.deleted}`, () => {
-        void restoreDeletedRule(userId, snapshot).then(() => scheduleSync(userId));
-      }, "warning");
+    try {
+      const snapshot = await deleteSubscriptionWithExpected(userId, id);
+      scheduleSync(userId);
+      if (snapshot) {
+        undo.show(`${name} · ${tr.common.deleted}`, () => {
+          return restoreDeletedRule(userId, snapshot).then(() => scheduleSync(userId));
+        }, "warning");
+      }
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
   };
 
@@ -84,6 +107,7 @@ export default function SubscriptionsScreen() {
 
   return (
     <Screen title={tr.subs.title}>
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Card>
         <Spread>
           <View>

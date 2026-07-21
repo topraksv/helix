@@ -13,7 +13,7 @@ export function importCategoryKey(name: string, kind: "expense" | "income"): str
   return `${name.trim().toLocaleLowerCase("tr-TR")}|${kind}`;
 }
 
-export interface PlannedSpreadsheetCell {
+interface PlannedSpreadsheetCell {
   year: number;
   month: MonthKey;
   categoryId: string;

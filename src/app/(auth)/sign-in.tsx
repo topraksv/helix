@@ -40,6 +40,8 @@ export default function SignInScreen() {
         // guard's "(tabs)" redirect loop (React error #185 → white screen).
         if (err) setError(err);
         else if (mode === "forgot") setResetSent(true);
+      } catch {
+        setError(tr.errors.requestFailed);
       } finally {
         setBusy(false);
       }
@@ -94,7 +96,7 @@ export default function SignInScreen() {
           autoComplete="email"
           textContentType="emailAddress"
           returnKeyType="next"
-          placeholder="ornek@eposta.com"
+          placeholder={tr.placeholders.email}
         />
         {mode !== "forgot" ? (
           <Field

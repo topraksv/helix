@@ -46,6 +46,7 @@ const DATE_COLUMNS = new Set([
   "due_date",
   "date",
   "rate_date",
+  "anchor_date",
 ]);
 
 const TIMESTAMP_COLUMNS = new Set(["created_at", "updated_at", "deleted_at", "canceled_at", "paid_at"]);
@@ -104,6 +105,9 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
       // Version-1 backups produced before cadence support have no recurrence
       // key. SQLite/Postgres both default those legacy rows to monthly.
       if (table === "recurring_incomes" && column.name === "recurrence" && !(column.name in raw)) continue;
+      // Backups created before persisted transfer semantics default ordinary
+      // categories to false; legacy "Yatırım" rows are backfilled by migration.
+      if (table === "categories" && column.name === "is_transfer" && !(column.name in raw)) continue;
       if (column.notNull) return false;
       continue;
     }
@@ -146,6 +150,10 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     }
   }
   if (table === "category_budgets" && (typeof raw.amount_minor !== "number" || raw.amount_minor <= 0)) return false;
+  if (table === "categories" && raw.is_transfer != null) {
+    const transfer = raw.is_transfer === true || raw.is_transfer === 1;
+    if (transfer && raw.kind !== "expense") return false;
+  }
   if (table === "recurring_incomes") {
     const recurrence = raw.recurrence ?? "monthly";
     if ((recurrence === "weekly" || recurrence === "biweekly") && !isIsoDate(raw.anchor_date)) return false;

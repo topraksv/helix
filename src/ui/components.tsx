@@ -871,11 +871,13 @@ export function Segmented<T extends string>({
   value,
   onChange,
   noMargin = false,
+  disabled = false,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
   noMargin?: boolean;
+  disabled?: boolean;
 }) {
   const { palette } = useTheme();
   return (
@@ -893,13 +895,14 @@ export function Segmented<T extends string>({
         return (
           <Pressable
             key={option.value}
+            disabled={disabled}
             onPress={() => {
               selectionTapIfChanged(value, option.value);
-              onChange(option.value);
+              if (!disabled) onChange(option.value);
             }}
             accessibilityRole="radio"
             aria-checked={selected}
-            accessibilityState={{ checked: selected, selected }}
+            accessibilityState={{ checked: selected, selected, disabled }}
             style={[
               {
                 flex: 1,
@@ -910,6 +913,7 @@ export function Segmented<T extends string>({
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: selected ? palette.surfaceStrong : "transparent",
+                opacity: disabled ? 0.5 : 1,
               },
             ]}
           >

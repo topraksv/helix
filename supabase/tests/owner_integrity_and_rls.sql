@@ -6,7 +6,7 @@ begin;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(24);
+select extensions.plan(33);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -51,8 +51,8 @@ select is(
         'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
       ])
   ),
-  64::bigint,
-  'all 16 synced tables have four owner policies'
+  48::bigint,
+  'all 16 synced tables have select, insert and update owner policies'
 );
 
 select is(
@@ -68,8 +68,47 @@ select is(
       ])
       and roles = array['authenticated']::name[]
   ),
-  64::bigint,
+  48::bigint,
   'every owner policy is restricted to authenticated'
+);
+
+select is(
+  (
+    select count(*)
+    from pg_policies
+    where schemaname = 'public'
+      and cmd = 'DELETE'
+      and tablename = any (array[
+        'persons','payment_sources','categories','computed_columns',
+        'installment_plans','credit_card_statements','transactions',
+        'subscriptions','price_history','recurring_incomes','expected_payments',
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+      ])
+  ),
+  0::bigint,
+  'synced tables expose no client hard-delete policies'
+);
+
+select ok(
+  (select prosecdef from pg_proc where oid = 'public.delete_own_account()'::regprocedure),
+  'account deletion remains SECURITY DEFINER'
+);
+
+select results_eq(
+  $$select unnest(proconfig) from pg_proc
+    where oid = 'public.delete_own_account()'::regprocedure$$,
+  $$values ('search_path=""'::text)$$,
+  'account deletion pins an empty search_path'
+);
+
+select ok(
+  has_function_privilege('authenticated', 'public.delete_own_account()', 'EXECUTE'),
+  'authenticated can execute account deletion'
+);
+
+select ok(
+  not has_function_privilege('anon', 'public.delete_own_account()', 'EXECUTE'),
+  'anon cannot execute account deletion'
 );
 
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
@@ -133,14 +172,13 @@ select results_eq(
   'user B cannot update user A rows'
 );
 
-select results_eq(
-  $$with removed as (
+select is(
+  pg_temp.exec_sqlstate($command$
       delete from public.persons
       where id = '10000000-0000-4000-8000-000000000011'
-      returning 1
-    ) select count(*)::bigint from removed$$,
-  $$values (0::bigint)$$,
-  'user B cannot delete user A rows'
+  $command$),
+  '42501',
+  'authenticated clients have no hard-delete privilege'
 );
 
 select is(
@@ -169,6 +207,12 @@ select lives_ok(
 );
 
 select lives_ok(
+  $$update public.categories set is_transfer = true
+    where id = '20000000-0000-4000-8000-000000000023'$$,
+  'an expense category can persist transfer semantics'
+);
+
+select lives_ok(
   $$insert into public.category_budgets (id, user_id, category_id, month, amount_minor)
     values (
       '20000000-0000-4000-8000-000000000029',
@@ -186,6 +230,15 @@ select lives_ok(
       'Income', 'income'
     )$$,
   'user B can insert an owned income category'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.categories set is_transfer = true
+    where id = '20000000-0000-4000-8000-000000000030'
+  $command$),
+  '23514',
+  'an income category cannot become a transfer category'
 );
 
 select is(
@@ -335,16 +388,27 @@ reset role;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 set local role authenticated;
 
-select results_eq(
-  $$with removed as (
+select is(
+  pg_temp.exec_sqlstate($command$
       delete from public.persons
       where id = '10000000-0000-4000-8000-000000000011'
-      returning 1
-    ) select count(*)::bigint from removed$$,
-  $$values (1::bigint)$$,
-  'user A can delete the owned person'
+  $command$),
+  '42501',
+  'user A cannot hard-delete even an owned row'
+);
+
+select lives_ok(
+  $$select public.delete_own_account()$$,
+  'user A can delete the complete owned account through the scoped RPC'
 );
 
 reset role;
+
+select is(
+  (select count(*) from auth.users where id = '10000000-0000-4000-8000-000000000001'),
+  0::bigint,
+  'account deletion removes the caller identity and cascades owned rows'
+);
+
 select * from extensions.finish();
 rollback;

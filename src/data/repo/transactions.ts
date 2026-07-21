@@ -1,7 +1,7 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { nowIso, softDelete, writeRows, type RowWrite } from "../../db/mutations";
-import { isCurrentOrFutureMonth, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
+import { nowIso, restoreRow, softDelete, writeRows, type RowWrite } from "../../db/mutations";
+import { isCurrentOrFutureMonth, isISODate, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, isSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
 import type { PaymentSourceType, TransactionType } from "../../domain/types";
@@ -130,6 +130,7 @@ export async function assertTransactionCategory(
 }
 
 export async function addTransaction(userId: string, input: NewTransaction): Promise<string> {
+  if (!isISODate(input.effectiveDate)) throw new Error("Invalid transaction date");
   assertSignedTransactionAmounts(input.amountMinor, input.amountTryMinor);
   assertInputWithinLimit(input.note, "note");
   await assertTransactionCategory(userId, input.type, input.categoryId, true);
@@ -180,6 +181,7 @@ export async function updateTransaction(
   existing: Record<string, unknown>,
   patch: TransactionPatch,
 ): Promise<void> {
+  if (!isISODate(patch.effectiveDate)) throw new Error("Invalid transaction date");
   assertSignedTransactionAmounts(patch.amountMinor, patch.amountTryMinor);
   assertInputWithinLimit(patch.note, "note");
   await assertTransactionCategory(userId, patch.type, patch.categoryId, true);
@@ -202,6 +204,18 @@ export async function updateTransaction(
 
 export async function deleteTransaction(userId: string, id: string) {
   return softDelete(userId, "transactions", id);
+}
+
+export function restoreTransaction(userId: string, snapshot: Record<string, unknown>): Promise<void> {
+  return restoreRow(userId, "transactions", snapshot);
+}
+
+export function deleteBalanceAdjustment(userId: string, id: string) {
+  return softDelete(userId, "balance_adjustments", id);
+}
+
+export function restoreBalanceAdjustment(userId: string, snapshot: Record<string, unknown>): Promise<void> {
+  return restoreRow(userId, "balance_adjustments", snapshot);
 }
 
 /**
@@ -274,13 +288,13 @@ export async function bulkMonthEntry(
   userId: string,
   month: MonthKey,
   personId: string,
-  entries: { categoryId: string; kind: "expense" | "income"; amountMinor: Minor; isInvestment?: boolean }[],
+  entries: { categoryId: string; type: TransactionType; amountMinor: Minor }[],
 ): Promise<void> {
   if (isCurrentOrFutureMonth(month)) throw new Error("Bulk history accepts past months only");
   entries.forEach((entry) => assertSupportedMinorAmount(entry.amountMinor, false));
   await Promise.all(
     entries.map((entry) =>
-      assertTransactionCategory(userId, entry.isInvestment ? "transfer" : entry.kind, entry.categoryId, true),
+      assertTransactionCategory(userId, entry.type, entry.categoryId, true),
     ),
   );
   const today = todayISO();
@@ -291,7 +305,7 @@ export async function bulkMonthEntry(
       table: "transactions" as const,
       row: {
         id: newId(),
-        type: entry.isInvestment ? "transfer" : entry.kind,
+        type: entry.type,
         amountMinor: entry.amountMinor,
         currency: "TRY",
         fxRate: null,

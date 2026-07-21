@@ -101,7 +101,7 @@ export default function RootLayout() {
     <>
       {Platform.OS === "web" && (
         <Head>
-          <title>Helix</title>
+          <title>{tr.app.name}</title>
         </Head>
       )}
       {dbReady && fontsReady ? (
@@ -200,6 +200,7 @@ function RootLayoutInner() {
     locked,
     userId,
     onboarded,
+    frozen,
     awaitingFirstPull,
     route: routeArea,
   });

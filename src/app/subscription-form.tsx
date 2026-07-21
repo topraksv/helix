@@ -3,8 +3,9 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
-import { useCategories, usePersons, useSources, useSubscriptions, useSubscriptionsState, useUserId } from "../data/hooks";
+import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
+import { useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon } from "../data/category-icons";
 import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
@@ -13,7 +14,7 @@ import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
-import { Body, Button, Card, ChipPicker, Field, Label, MoneyField, Row, Screen, Segmented, Spread, Toggle } from "../ui/components";
+import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Label, MoneyField, Row, Screen, Segmented, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -22,7 +23,6 @@ import { devError } from "../services/logger";
 import { spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
-import { newId } from "../db/ids";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { MonthDayField } from "../ui/month-day-field";
 
@@ -39,17 +39,26 @@ export default function SubscriptionFormModal() {
   // exist, which must recover instead of rendering a permanent blank screen.
   if (!record) return <Redirect href="/(tabs)/subscriptions" />;
   if (record.mode === "edit" && !existing) {
-    if (subscriptionsState.updatedAt == null) return <Screen scroll={false}>{null}</Screen>;
+    if (subscriptionsState.updatedAt == null) {
+      return (
+        <Screen scroll={false}>
+          <DataStateNotice status={subscriptionsState.status} retry={subscriptionsState.retry} />
+        </Screen>
+      );
+    }
     return <Redirect href="/(tabs)/subscriptions" />;
   }
   return <SubscriptionForm key={existing?.id ?? "new"} existing={existing} />;
 }
 
-function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscriptions>[number] }) {
+function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscriptionsState>["data"][number] }) {
   const userId = useUserId();
-  const categories = useCategories();
-  const sources = useSources();
-  const persons = usePersons();
+  const categoriesState = useCategoriesState();
+  const sourcesState = useSourcesState();
+  const personsState = usePersonsState();
+  const categories = categoriesState.data;
+  const sources = sourcesState.data;
+  const persons = personsState.data;
   const router = useRouter();
   const { palette } = useTheme();
   const close = () => navigateBack(router, "/(tabs)/subscriptions");
@@ -79,7 +88,15 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const [busy, setBusy] = useState(false);
   const [showCategoryOffer, setShowCategoryOffer] = useState(false);
   const operationGuard = useOperationGuard();
-  const [draftId] = useState(() => existing?.id ?? newId());
+  const liveStates = [categoriesState, sourcesState, personsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    categoriesState.retry();
+    sourcesState.retry();
+    personsState.retry();
+  };
+  const [draftId] = useState(() => existing?.id ?? createRecordId());
   const draftSnapshot = JSON.stringify({
     name,
     amountRaw,
@@ -109,6 +126,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     selectedSource.dueDay != null && selectedSource.dueDay >= 1 && selectedSource.dueDay <= 31
   );
   const baseValid =
+    dataReady &&
     name.trim() !== "" &&
     amountMinor != null &&
     amountMinor > 0 &&
@@ -193,8 +211,17 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   useSubmitOnEnter(() => void save(), baseValid && !busy);
 
   const namePlaceholder = useRotatingPlaceholder(placeholderPools.subscription);
+  if (!dataReady) {
+    return (
+      <Screen>
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
       <MoneyField
         label={`${tr.tx.amount} · ${currency}`}

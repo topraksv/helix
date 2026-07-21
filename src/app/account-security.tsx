@@ -10,7 +10,7 @@ import { Snowflake } from "lucide-react-native";
 import { useSession } from "../auth/session";
 import { performAccountFreeze } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
-import { pendingOutboxCount, writeSetting } from "../db/mutations";
+import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
 import { Body, Button, Card, Field, Heading, Screen } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
@@ -42,64 +42,76 @@ export default function AccountSecurityScreen() {
 
   const submitEmail = async () => {
     if (!emailValid || emailPassword.length < 6) return;
-    await operationGuard.run(async () => {
-      setEmailBusy(true);
-      try {
-        const verifyError = await verifyPassword(emailPassword);
-        if (verifyError) {
-          void appAlert(verifyError, tr.errors.title);
-          return;
+    try {
+      await operationGuard.run(async () => {
+        setEmailBusy(true);
+        try {
+          const verifyError = await verifyPassword(emailPassword);
+          if (verifyError) {
+            void appAlert(verifyError, tr.errors.title);
+            return;
+          }
+          const err = await changeEmail(newEmail.trim());
+          if (err) {
+            void appAlert(err, tr.errors.title);
+            return;
+          }
+          setNewEmail("");
+          setEmailPassword("");
+          void appAlert(tr.account.emailChangeSent);
+        } finally {
+          setEmailBusy(false);
         }
-        const err = await changeEmail(newEmail.trim());
-        if (err) {
-          void appAlert(err, tr.errors.title);
-          return;
-        }
-        setNewEmail("");
-        setEmailPassword("");
-        void appAlert(tr.account.emailChangeSent);
-      } finally {
-        setEmailBusy(false);
-      }
-    });
+      });
+    } catch {
+      void appAlert(tr.errors.requestFailed, tr.errors.title);
+    }
   };
 
   const submitPassword = async () => {
     if (currentPassword.length < 6 || newPassword.length < 6) return;
-    await operationGuard.run(async () => {
-      setPwBusy(true);
-      try {
-        const verifyError = await verifyPassword(currentPassword);
-        if (verifyError) {
-          void appAlert(verifyError, tr.errors.title);
-          return;
+    try {
+      await operationGuard.run(async () => {
+        setPwBusy(true);
+        try {
+          const verifyError = await verifyPassword(currentPassword);
+          if (verifyError) {
+            void appAlert(verifyError, tr.errors.title);
+            return;
+          }
+          const err = await changePassword(newPassword);
+          if (err) {
+            void appAlert(err, tr.errors.title);
+            return;
+          }
+          setCurrentPassword("");
+          setNewPassword("");
+          void appAlert(tr.account.passwordChanged);
+          allowExit(() => navigateBack(router, "/(tabs)/settings"));
+        } finally {
+          setPwBusy(false);
         }
-        const err = await changePassword(newPassword);
-        if (err) {
-          void appAlert(err, tr.errors.title);
-          return;
-        }
-        setCurrentPassword("");
-        setNewPassword("");
-        void appAlert(tr.account.passwordChanged);
-        allowExit(() => navigateBack(router, "/(tabs)/settings"));
-      } finally {
-        setPwBusy(false);
-      }
-    });
+      });
+    } catch {
+      void appAlert(tr.errors.requestFailed, tr.errors.title);
+    }
   };
 
   const sendResetLink = async () => {
     if (!email) return;
-    await operationGuard.run(async () => {
-      setResetBusy(true);
-      try {
-        const error = await requestPasswordReset(email);
-        void appAlert(error ?? tr.auth.resetSent, error ? tr.errors.title : tr.account.resetLinkTitle);
-      } finally {
-        setResetBusy(false);
-      }
-    });
+    try {
+      await operationGuard.run(async () => {
+        setResetBusy(true);
+        try {
+          const error = await requestPasswordReset(email);
+          void appAlert(error ?? tr.auth.resetSent, error ? tr.errors.title : tr.account.resetLinkTitle);
+        } finally {
+          setResetBusy(false);
+        }
+      });
+    } catch {
+      void appAlert(tr.errors.requestFailed, tr.errors.title);
+    }
   };
 
   // The confirmation and re-authentication run inside the shared guard too, so
@@ -131,9 +143,9 @@ export default function AccountSecurityScreen() {
       useSession.setState({ isFreezing: true });
       try {
         const outcome = await performAccountFreeze({
-          setFrozen: (frozen) => writeSetting(userId, "account_frozen", frozen),
+          setFrozen: (frozen) => setAccountFrozen(userId, frozen),
           syncNow: () => syncNow(userId),
-          pendingOutboxCount,
+          pendingOutboxCount: pendingSyncChangeCount,
           signOut,
           scheduleSync: () => scheduleSync(userId),
           requiresCloud: isSupabaseConfigured,
@@ -156,6 +168,8 @@ export default function AccountSecurityScreen() {
         useSession.setState({ isFreezing: false });
         setFreezing(false);
       }
+    }).catch(() => {
+      void appAlert(tr.errors.requestFailed, tr.errors.title);
     });
 
   return (
@@ -173,7 +187,7 @@ export default function AccountSecurityScreen() {
           keyboardType="email-address"
           autoComplete="email"
           textContentType="emailAddress"
-          placeholder="ornek@eposta.com"
+          placeholder={tr.placeholders.email}
         />
         <Field
           label={tr.auth.password}

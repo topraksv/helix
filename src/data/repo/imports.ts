@@ -211,8 +211,15 @@ export async function hasImportedData(userId: string): Promise<boolean> {
  */
 export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number }> {
   const sqlite = await getSqliteAsync();
-  const existing = await sqlite.getAllAsync<{ id: string; name: string; kind: "expense" | "income"; sort_order: number }>(
-    `SELECT id, name, kind, sort_order FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
+  const existing = await sqlite.getAllAsync<{
+    id: string;
+    name: string;
+    kind: "expense" | "income";
+    sort_order: number;
+    is_transfer: number;
+    [key: string]: unknown;
+  }>(
+    `SELECT * FROM categories WHERE user_id = ? AND deleted_at IS NULL`,
     [userId],
   );
   const normalizedName = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
@@ -241,7 +248,8 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   );
 
   const catWrites: RowWrite[] = [];
-  const ensureCategory = (label: string, kind: "expense" | "income"): string => {
+  const categoryById = new Map(existing.map((category) => [category.id, category]));
+  const ensureCategory = (label: string, kind: "expense" | "income", isTransfer = false): string => {
     const cleanLabel = label.trim();
     const key = importCategoryKey(cleanLabel, kind);
     let id = idByNameAndKind.get(key);
@@ -250,8 +258,27 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
       idByNameAndKind.set(key, id);
       catWrites.push({
         table: "categories",
-        row: { id, name: cleanLabel, kind, icon: suggestCategoryIcon(cleanLabel, kind), color: null, sortOrder: sortSeed++, isColumn: true, deletedAt: null },
+        row: {
+          id,
+          name: cleanLabel,
+          kind,
+          icon: suggestCategoryIcon(cleanLabel, kind),
+          color: null,
+          sortOrder: sortSeed++,
+          isColumn: true,
+          isTransfer: kind === "expense" && isTransfer,
+          deletedAt: null,
+        },
       });
+    } else {
+      const existingCategory = categoryById.get(id);
+      if (existingCategory && kind === "expense" && isTransfer && existingCategory.is_transfer !== 1) {
+        existingCategory.is_transfer = 1;
+        catWrites.push({
+          table: "categories",
+          row: { ...fromDbShape("categories", existingCategory), isTransfer: true },
+        });
+      }
     }
     return id;
   };
@@ -261,16 +288,16 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
 
   const affectedYears = [...new Set(req.sheets.flatMap((s) => s.months.map(yearOf)))].filter(yearAllowed);
   const { batches: priorBatches, unreadableYears } = await importBatchMap(userId);
+  // Both modes replace the batch ownership record for an affected year. If its
+  // previous value is unreadable, add mode would preserve neither the old row
+  // ids nor a way to clean them later, so it must fail closed too.
+  const blocked = affectedYears.filter((year) => unreadableYears.has(year));
+  if (blocked.length > 0) throw new ImportBatchUnreadableError(blocked.sort((a, b) => a - b));
   const cleanupWrites: RowWrite[] = [];
   // Build the replacement cleanup first, but don't mutate anything yet. Rows
   // still owned by an unaffected year's batch are protected. Cleanup + new
   // import + batch/settings metadata are committed by one writeRows below.
   if (req.mode === "replace") {
-    // Fail closed: without a readable batch for an affected year we cannot know
-    // which rows to tombstone, and continuing would turn "replace" into "add".
-    const blocked = affectedYears.filter((year) => unreadableYears.has(year));
-    if (blocked.length > 0) throw new ImportBatchUnreadableError(blocked.sort((a, b) => a - b));
-
     const affected = new Set(affectedYears);
     const protectedTransactions = new Set<string>();
     const protectedNotes = new Set<string>();
@@ -308,7 +335,9 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   for (const sheet of req.sheets) {
     if (!sheet.months.some((month) => yearAllowed(yearOf(month)))) continue;
     for (const column of sheet.columns) {
-      if (!req.excludedLabels.includes(column.label)) ensureCategory(column.label, column.kindGuess);
+      if (!req.excludedLabels.includes(column.label)) {
+        ensureCategory(column.label, column.kindGuess, column.isInvestment);
+      }
     }
   }
   const sheetPlan = buildSpreadsheetImportPlan({

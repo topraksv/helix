@@ -6,18 +6,19 @@ import { StyleSheet, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Undo2 } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
-import { useAllTransactionsState, useCategories, usePersons, useSources, useUserId } from "../data/hooks";
+import { useAllTransactionsState, useCategoriesState, usePersonsState, useSourcesState, useUserId } from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
-import { assertISODate, lastDayOf, monthKeyOf, todayISO, type ISODate, type MonthKey } from "../domain/dates";
+import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
 import { formatMinor, isSupportedMinorAmount } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, ChipPicker, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Toggle } from "../ui/components";
+import { Badge, Body, Button, ChipPicker, DataStateNotice, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -45,7 +46,13 @@ export default function TransactionModal() {
   // exist and the user is returned to the list that owns it.
   if (!record) return <Redirect href="/(tabs)/cash-flow" />;
   if (record.mode === "edit" && !existing) {
-    if (txState.updatedAt == null) return <Screen scroll={false}>{null}</Screen>;
+    if (txState.updatedAt == null) {
+      return (
+        <Screen scroll={false}>
+          <DataStateNotice status={txState.status} retry={txState.retry} />
+        </Screen>
+      );
+    }
     return <Redirect href="/(tabs)/cash-flow" />;
   }
   if (existing?.installmentPlanId) {
@@ -56,12 +63,23 @@ export default function TransactionModal() {
 
 function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const userId = useUserId();
-  const categories = useCategories();
-  const sources = useSources();
-  const persons = usePersons();
+  const categoriesState = useCategoriesState();
+  const sourcesState = useSourcesState();
+  const personsState = usePersonsState();
+  const categories = categoriesState.data;
+  const sources = sourcesState.data;
+  const persons = personsState.data;
   const router = useRouter();
   const { palette } = useTheme();
   const operationGuard = useOperationGuard();
+  const liveStates = [categoriesState, sourcesState, personsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    categoriesState.retry();
+    sourcesState.retry();
+    personsState.retry();
+  };
   const isEdit = existing != null;
   // Opened as a router modal normally, but a web deep-link to /transaction has
   // no back stack — fall back to a real screen so "save" always closes it.
@@ -112,7 +130,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
 
   // Smart defaults (new entries only): remember last used category/source.
   React.useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || !dataReady) return;
     void kv.get(`helix.last.${entryType}`).then((v) => {
       if (!v) return;
       try {
@@ -125,13 +143,13 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       } catch {}
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryType]);
+  }, [entryType, dataReady]);
 
   useFxRates();
   const today = todayISO();
   const selectedRateDate = dateMode === "month"
     ? (monthKey === monthKeyOf(today) ? today : lastDayOf(monthKey))
-    : (/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr as ISODate : today);
+    : (isISODate(dateStr) ? dateStr : today);
   const rate = lookupRate(userId, currency, selectedRateDate);
   // Editing a foreign-currency row must NOT silently re-price it at today's
   // rate — the transaction's TRY value was snapshotted when it occurred. So
@@ -164,14 +182,14 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   // month, kept out of "upcoming"); day mode uses the exact day.
   const dateless = dateMode === "month" && !isCreditCardExpense;
   const effectiveDate = dateless ? (`${monthKey}-01` as string) : dateStr;
-  const dateValid = dateless || /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+  const dateValid = dateless || isISODate(dateStr);
   const count = Number(countStr);
   const paid = Number(paidStr);
   const installmentValid =
     !installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
   // A category is mandatory for every entry (no "uncategorized" rows).
   const canSave =
-    amountMinor != null && amountMinor > 0 && tryMinor != null && isSupportedMinorAmount(tryMinor, false) && personId != null && dateValid && installmentValid && categoryId != null &&
+    dataReady && amountMinor != null && amountMinor > 0 && tryMinor != null && isSupportedMinorAmount(tryMinor, false) && personId != null && dateValid && installmentValid && categoryId != null &&
     cardCycleValid && !(installment && isReversal);
 
   const cardStatementPreview = isCreditCardExpense && isValidCardCycle(cardCycle) && dateValid
@@ -264,10 +282,22 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
 
   // Desktop: Enter saves (unless the note textarea or a popup has focus).
   useSubmitOnEnter(() => void save(false), canSave && !busy);
+  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount);
+  const notePlaceholder = useRotatingPlaceholder(placeholderPools.note);
+
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
       <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Segmented
         options={[
           { value: "expense", label: tr.tx.expense },
@@ -291,7 +321,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         label={`${tr.tx.amount} · ${currency}`}
         value={amountRaw}
         expression
-        placeholder={useRotatingPlaceholder(placeholderPools.amount)}
+        placeholder={amountPlaceholder}
         onChangeMinor={(raw, minor) => {
           setAmountRaw(raw);
           if (minor != null && minor < 0) setIsReversal(true);
@@ -438,7 +468,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         </View>
       ) : null}
 
-      <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={useRotatingPlaceholder(placeholderPools.note)} />
+      <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
 
       <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
         <Button label={tr.common.save} onPress={() => void save(false)} disabled={!canSave} loading={busy} />

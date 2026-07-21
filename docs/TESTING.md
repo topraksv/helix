@@ -47,7 +47,7 @@ artefact’ına karışamaz.
 | P1 | Onboarding → işlem yaşam döngüsü | Browser E2E | quick start → gider ekle → ay detayı → edit → delete/undo → JSON export | Gerçek browser SQLite’ta tek ve geri alınabilir kayıt | `e2e/core-flow.spec.ts` |
 | P1 | Temiz DB restore/atomiklik | Browser E2E | export → yeni context restore; dangling ref’li bundle | Geçerli bundle 1:1 gelir; invalid bundle sıfır satır yazar | `e2e/core-flow.spec.ts`, `backup-validation` |
 | P1 | Offline cold relaunch | Browser E2E | service worker cache → offline reload → online | SQLite veri korunur; yeniden mount duplicate üretmez | `e2e/resilience.spec.ts` |
-| P1 | İki-user yetkilendirme | Remote pgTAP | A CRUD, B izolasyonu, owner değiştirme, anon erişim, cross-owner FK | 24 assertion; fixture rollback | `supabase/tests/owner_integrity_and_rls.sql` |
+| P1 | İki-user yetkilendirme | Remote pgTAP | A/B izolasyonu, owner değiştirme, anon erişim, cross-owner FK, client hard-delete reddi, hesap-silme RPC’si, transfer constraint’i | 33 assertion; fixture rollback | `supabase/tests/owner_integrity_and_rls.sql` |
 | P1 | Hostile import/backup | Unit/stress | yüksek oranlı ZIP, büyük entry, >100k row, duplicate/mixed owner | SheetJS/write öncesi bounded red | `spreadsheet-import`, `backup-validation`, `import-plan` |
 | P2 | Route/guard/deep link | Browser E2E + unit | protected ve modal direkt URL; auth/onboarding/recovery guard | Hata ekranı/hydration exception yok; deterministic parent | `e2e/resilience.spec.ts`, `app-guard`, `navigation` |
 | P2 | Form durumları | Unit + browser component | invalid limit, dirty exit, loading/busy, password-manager metadata | Hata görünür/duyurulur; veri sessiz kaybolmaz; double submit yok | `input-policy`, `dirty-exit`, `accessibility-contract`, core E2E |

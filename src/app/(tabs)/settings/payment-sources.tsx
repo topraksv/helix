@@ -5,14 +5,15 @@ import { resolveBackTarget } from "../../../ui/navigation";
 import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
-import { restoreRow } from "../../../db/mutations";
-import { useAllTransactions, useCreditCardStatements, usePersons, useSources, useUserId } from "../../../data/hooks";
+import { useAllTransactionsState, useCreditCardStatementsState, usePersonsState, useSourcesState, useUserId } from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
 import {
   CreditCardCycleRequiredError,
   deleteUnreferencedPaymentSource,
   paymentSourceReferenceUsage,
   reassignAndDeletePaymentSource,
   ReferencedRecordError,
+  restorePaymentSource,
   upsertPaymentSource,
   type PaymentSourceReferenceUsage,
 } from "../../../data/repo";
@@ -21,34 +22,20 @@ import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { Pencil, Trash2 } from "lucide-react-native";
-import { Badge, Body, Button, Card, CardList, ChipPicker, Field, IconButton, InitialsBadge, Label, Row, Screen, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, Field, IconButton, InitialsBadge, Label, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
-import { newId } from "../../../db/ids";
 import { isMonthDay } from "../../../domain/dates";
 import { MonthDayField, monthDayLabel } from "../../../ui/month-day-field";
-import { runUndo } from "../../../domain/undo-outcome";
-import { devError } from "../../../services/logger";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const NO_SOURCE = "__none__";
 
 export default function SourcesScreen() {
-  /**
-   * An undo that fails must say so — the snackbar dismisses on tap either way,
-   * so a swallowed rejection left the row deleted with no message.
-   */
-  const reportUndo = async (action: () => Promise<unknown>) => {
-    const outcome = await runUndo(action);
-    if (!outcome.ok) {
-      devError("undo", outcome.error);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
-  };
   // Reachable from more than one place, and every external push is anchored —
   // which mounts settings/index UNDERNEATH this screen, so plain history would
   // send the user back to a screen they never visited. The pusher records where
@@ -58,10 +45,14 @@ export default function SourcesScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const back = resolveBackTarget<Href>(from, { transaction: "/transaction", installment: "/installment-new", subscription: "/subscription-form", upcoming: "/upcoming" as Href }, "/(tabs)/settings");
   const userId = useUserId();
-  const sources = useSources();
-  const statements = useCreditCardStatements();
-  const transactions = useAllTransactions();
-  const persons = usePersons();
+  const sourcesState = useSourcesState();
+  const statementsState = useCreditCardStatementsState();
+  const transactionsState = useAllTransactionsState();
+  const personsState = usePersonsState();
+  const sources = sourcesState.data;
+  const statements = statementsState.data;
+  const transactions = transactionsState.data;
+  const persons = personsState.data;
   const undo = useUndo();
   const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -93,6 +84,16 @@ export default function SourcesScreen() {
       statementDayStr.trim()
     );
   useDirtyExitGuard(sourceDraftDirty && !busy);
+  const sourcePlaceholder = useRotatingPlaceholder(placeholderPools.source);
+  const liveStates = [sourcesState, statementsState, transactionsState, personsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    sourcesState.retry();
+    statementsState.retry();
+    transactionsState.retry();
+    personsState.retry();
+  };
   const validDay = (day: number | null) => day != null && isMonthDay(day);
   const cycleValid = sourceType !== "credit_card" || (validDay(statementDay) && validDay(dueDay));
   const formValid = Boolean(name.trim() && personId && cycleValid);
@@ -133,7 +134,7 @@ export default function SourcesScreen() {
       setBusy(true);
       try {
         await upsertPaymentSource(userId, {
-          id: editingId ?? newId(),
+          id: editingId ?? undefined,
           name,
           type: sourceType,
           personId,
@@ -168,7 +169,7 @@ export default function SourcesScreen() {
       scheduleSync(userId);
       if (snapshot) {
         undo.show(`${s.name} · ${tr.common.deleted}`, () => {
-          void reportUndo(() => restoreRow(userId, "payment_sources", snapshot).then(() => scheduleSync(userId)));
+          return restorePaymentSource(userId, snapshot).then(() => scheduleSync(userId));
         }, "warning");
       }
     } catch (error) {
@@ -224,12 +225,22 @@ export default function SourcesScreen() {
   const replacementOptions = resolving ? eligibleReplacements(resolving.source.id, resolving.usage) : [];
   const cardReplacementRequired = Boolean(resolving && resolving.usage.cardInstallmentPlans > 0);
 
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Card>
         {editingId ? <Label>{tr.common.edit}</Label> : null}
-        <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={useRotatingPlaceholder(placeholderPools.source)} />
+        <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={sourcePlaceholder} />
         <ChipPicker options={TYPES.map((t) => ({ value: t.value, label: t.label }))} value={sourceType} onChange={setSourceType} />
         {persons.length > 1 ? (
           <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
