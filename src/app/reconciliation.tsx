@@ -7,19 +7,20 @@ import { Stack, useRouter } from "expo-router";
 import { CheckCircle2, Plus } from "lucide-react-native";
 import { confirmExpected, FxRateUnavailableError, revertExpected, skipExpected, unskipExpected } from "../data/repo";
 import {
-  useLastEntryInfo,
-  usePendingExpected,
-  usePersons,
-  useRecurringIncomes,
-  useSubscriptions,
+  useLastEntryInfoState,
+  usePendingExpectedState,
+  usePersonsState,
+  useRecurringIncomesState,
+  useSubscriptionsState,
   useUserId,
 } from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
-import { Badge, Body, Button, Card, EmptyState, MoneyField, Row, Screen, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, DataStateNotice, EmptyState, MoneyField, Row, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
 import { errorNotice } from "../ui/haptics";
@@ -29,11 +30,16 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function CatchUpScreen() {
   const userId = useUserId();
-  const expected = usePendingExpected();
-  const subscriptions = useSubscriptions();
-  const incomes = useRecurringIncomes();
-  const persons = usePersons();
-  const lastEntry = useLastEntryInfo();
+  const expectedState = usePendingExpectedState();
+  const subscriptionsState = useSubscriptionsState();
+  const incomesState = useRecurringIncomesState();
+  const personsState = usePersonsState();
+  const lastEntryState = useLastEntryInfoState();
+  const expected = expectedState.data;
+  const subscriptions = subscriptionsState.data;
+  const incomes = incomesState.data;
+  const persons = personsState.data;
+  const lastEntry = lastEntryState.data;
   const router = useRouter();
   const undo = useUndo();
   const today = todayISO();
@@ -45,6 +51,16 @@ export default function CatchUpScreen() {
   // must not submit the same expected item twice.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const operationGuard = useOperationGuard();
+  const liveStates = [expectedState, subscriptionsState, incomesState, personsState, lastEntryState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    expectedState.retry();
+    subscriptionsState.retry();
+    incomesState.retry();
+    personsState.retry();
+    lastEntryState.retry();
+  };
 
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
@@ -83,7 +99,7 @@ export default function CatchUpScreen() {
         setEditing(null);
         setAmountRaw("");
         setAmountMinor(null);
-        undo.show(`${nameOf(e)} ✓`, () => void revertConfirmed(e.id));
+        undo.show(`${nameOf(e)} ✓`, () => revertConfirmed(e.id));
       } catch (err) {
         errorNotice();
         if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
@@ -111,7 +127,7 @@ export default function CatchUpScreen() {
       try {
         await skipExpected(userId, e.id);
         scheduleSync(userId);
-        undo.show(tr.catchup.skipped(nameOf(e)), () => void restoreSkipped(e.id), "warning");
+        undo.show(tr.catchup.skipped(nameOf(e)), () => restoreSkipped(e.id), "warning");
       } catch (err) {
         errorNotice();
         devError("reconcile.skip", err);
@@ -133,9 +149,19 @@ export default function CatchUpScreen() {
     }
   };
 
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ title: tr.catchup.title }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <Stack.Screen options={{ title: tr.catchup.title }} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.intro}</Body>
       {lastEntry.at ? <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.subtitle(dateLabel(lastEntry.at))}</Body> : null}
 

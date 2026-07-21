@@ -74,8 +74,17 @@ describe("remote logo boundary", () => {
     expect(remoteFaviconUrl("netflix.com")).toBe("https://www.google.com/s2/favicons?domain=netflix.com&sz=128");
   });
 
-  it("rejects credentials, ports and local/IP targets", () => {
-    for (const value of ["user:pass@example.com", "localhost", "127.0.0.1", "service.local", "example.com:8080"]) {
+  it("rejects credentials, ports and local, IP or reserved targets", () => {
+    for (const value of [
+      "user:pass@example.com",
+      "localhost",
+      "127.0.0.1",
+      "service.local",
+      "corp.internal",
+      "example.test",
+      "example.invalid",
+      "example.com:8080",
+    ]) {
       expect(normalizeLogoDomain(value)).toBeNull();
     }
   });

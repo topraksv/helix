@@ -21,16 +21,21 @@ export {
   applyOnboardingBalance,
   finalizeOnboarding,
   seedWorkspace,
+  setOpeningBalance,
 } from "./repo/onboarding";
 export type { SeedInput, TemplateCategory } from "./repo/onboarding";
 
 export {
   deleteUnreferencedPaymentSource,
   deleteUnreferencedPerson,
+  createPerson,
   paymentSourceReferenceUsage,
   personReferenceUsage,
   reassignAndDeletePaymentSource,
   reassignAndDeletePerson,
+  renamePerson,
+  restorePaymentSource,
+  restorePerson,
   upsertPaymentSource,
 } from "./repo/accounts";
 export type {
@@ -44,6 +49,9 @@ export {
   bulkMonthEntry,
   countTransactionsForCategory,
   deleteTransaction,
+  deleteBalanceAdjustment,
+  restoreBalanceAdjustment,
+  restoreTransaction,
   setCurrentBalance,
   updateTransaction,
 } from "./repo/transactions";
@@ -87,10 +95,36 @@ export type { ImportRequest } from "./repo/imports";
 
 export { runMaintenance } from "./repo/maintenance";
 
+export { saveCellNote } from "./cell-notes";
+
 export {
+  restoreCategoryBudget,
   deleteCategoryBudget,
   deleteCategoryWithBudgets,
   restoreCategoryWithBudgets,
   upsertCategoryBudget,
   type CategoryDeleteSnapshot,
 } from "./repo/budgets";
+
+export {
+  addTemplateCategories,
+  createCategory,
+  reorderCategoryGroup,
+  updateCategory,
+} from "./repo/categories";
+
+export {
+  deleteComputedColumn,
+  reorderComputedColumns,
+  restoreComputedColumn,
+  saveComputedColumn,
+  setComputedColumnsHidden,
+} from "./repo/computed";
+
+export {
+  createRecordId,
+  pendingSyncChangeCount,
+  setAccountFrozen,
+  setPendingTableVisibility,
+  setReminderDays,
+} from "./repo/settings";

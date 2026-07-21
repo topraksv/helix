@@ -1,5 +1,19 @@
 /** Strict URL construction for optional remote subscription favicons. */
 
+const NON_PUBLIC_SUFFIXES = [
+  ".home",
+  ".internal",
+  ".invalid",
+  ".lan",
+  ".local",
+  ".localhost",
+  ".test",
+] as const;
+
+function hasNonPublicSuffix(hostname: string): boolean {
+  return NON_PUBLIC_SUFFIXES.some((suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix));
+}
+
 export function normalizeLogoDomain(value: string | null | undefined): string | null {
   const raw = value?.trim();
   if (!raw || raw.length > 512) return null;
@@ -13,7 +27,7 @@ export function normalizeLogoDomain(value: string | null | undefined): string | 
       hostname.length > 253 ||
       !hostname.includes(".") ||
       hostname === "localhost" ||
-      hostname.endsWith(".local") ||
+      hasNonPublicSuffix(hostname) ||
       /^\d+(?:\.\d+){3}$/.test(hostname) ||
       hostname.includes(":")
     ) return null;

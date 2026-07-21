@@ -28,8 +28,9 @@ Postgres RLS'te uygulanır.
   route'ları normal signed-in/onboarding guard'larından bilinçli olarak muaftır.
 - Bir e-postanın hesaba ait olup olmadığı sıfırlama akışında açığa çıkarılmaz
   (user enumeration).
-- Oturum saklama: native'de `expo-secure-store`, web'de Supabase'in browser
-  storage'ı (`src/sync/supabase.ts`, `src/services/kv.ts`). Web'de browser
+- Oturum saklama: native'de bounded, bozuk chunk marker’larında fail-closed
+  `expo-secure-store` adapter’ı; web'de Supabase'in browser storage'ı
+  (`src/sync/secure-chunked-storage.ts`, `src/sync/supabase.ts`). Web'de browser
   profiline erişen kişi oturuma erişebilir — bu kabul edilmiş bir sınırdır.
 - Her authenticated arka plan işi session-scoped'dır: auth bir epoch açar
   (`startSyncSession`), çıkış/hesap silme `stopSyncSession`'ı bekler ve render'ı
@@ -56,10 +57,12 @@ Postgres RLS'te uygulanır.
 - Owner-aware FK ve category/reference trigger'ları cross-account ilişkiyi
   reddeder.
 - Tablo ayrıcalıkları migration `00000000000009_table_privileges.sql` ile açıkça
-  belirtilir: `authenticated` satır-seviyesi DML, `anon` hiçbir şey,
-  `service_role` tam yetki. RLS satırları filtreler ama ayrıcalık **vermez**;
-  anon'un grant'ı kaldırıldığı için anonim çağrı sessiz boş sonuç yerine `42501`
-  reddi alır. Bu migration linked projeye uygulanmıştır (şema 9/9 senkron).
+  belirtilir; `00000000000010_tombstone_only_client_deletes.sql`
+  `authenticated` için fiziksel DELETE’i ve DELETE policy’lerini kaldırır.
+  Client yalnız select/insert/update + tombstone kullanır; `anon` hiçbir tablo
+  yetkisi almaz, `service_role` tam yetkilidir. RLS satırları filtreler ama
+  ayrıcalık **vermez**; anonim ve hard-delete çağrıları `42501` reddi alır.
+  Linked rollout durumu [RELEASE.md](RELEASE.md#5--supabase-migration) içindedir.
 - `keep_alive` tablosu kullanıcı verisi tutmaz ve yalnız service-role
   heartbeat'ine açıktır.
 - RPC: `delete_own_account` SECURITY DEFINER'dır ve öyle olmak zorundadır —
@@ -67,8 +70,9 @@ Postgres RLS'te uygulanır.
   sınırlı, argümansız, `search_path = ''`, `execute` yalnız `authenticated`.
 - Trigger/RPC fonksiyonları sabit `search_path` ile yazılır (migration 3, 6, 7,
   8).
-- Kanıt: `supabase/tests/owner_integrity_and_rls.sql`, `plan(24)` — A/B
-  izolasyonu, owner değiştirme denemesi, anon erişimi, cross-owner FK.
+- Kanıt: `supabase/tests/owner_integrity_and_rls.sql`, `plan(33)` — A/B
+  izolasyonu, owner değiştirme, anon/hard-delete reddi, cross-owner FK,
+  transfer constraint’i ve hesap-silme RPC davranışı.
 
 ## Rol ayrımı ve secret'lar
 
@@ -131,6 +135,10 @@ içinde meta olarak taşınır ve `tests/release-config.test.ts` ile korunur:
 - Dependabot npm + Actions için haftalık çalışır; güvenlik güncellemeleri açıktır,
   yalnız Expo-yönetimli matris için rutin sürüm yükseltmeleri guard'lıdır
   (gerekçe: [ARCHITECTURE.md](ARCHITECTURE.md#stack)).
+- Rutin Dependabot version update’leri ve doğrudan npm çözümlemeleri yeni
+  yayımlanan paketleri yedi gün bekletir; Dependabot security update’leri bu
+  cooldown’dan etkilenmez. Acil npm security fix’i açık bir
+  `min-release-age-exclude`/komut override’ı gerektirir.
 - `xlsx` SheetJS CDN tarball'ından gelir; `npm audit` ve Dependabot bunu
   **görmez** — import kodu her değiştiğinde upstream release elle kontrol edilir.
 - CodeQL `javascript-typescript` üzerinde PR'da ve haftalık cron ile koşar.
@@ -141,9 +149,8 @@ içinde meta olarak taşınır ve `tests/release-config.test.ts` ile korunur:
 
 Şema değişikliği [RELEASE.md](RELEASE.md) "Supabase migration" sırasını izler:
 protected PR → linked push → policy/constraint/RPC davranışının remote'ta testi →
-generated type commit'i. `migration list --linked` local ve remote sürümleri
-birebir göstermelidir; `db lint --linked` schema error vermemelidir. Mevcut
-durum: **9/9 senkron, lint temiz** (doğrulama 2026-07-20).
+generated type commit'i. Güncel linked version/lint/pgTAP sonucu tek yerde,
+[RELEASE.md](RELEASE.md#5--supabase-migration) ve paket handoff’unda tutulur.
 
 ## Preview / production ayrımı
 
@@ -193,25 +200,22 @@ veya scanner çıktısına dayanır. Biçim:
 
 `KONTROL → APPLICABLE / N/A / DEVICE-BINARY ONLY → DOSYA/AKIŞ → TEST/SCANNER KANITI → ARTIK RİSK`
 
-Son değerlendirme 2026-07-21, `main = 2b6791c` üzerinde. Kanıt olarak atıf
-yapılan koşular: Semgrep 10 ruleset / 168 dosya / **0 bulgu**, CodeQL **0**,
-OSV-Scanner (1082 paket), `npm audit` (2 advisory, 20 blame node),
-Gitleaks v8.30.1 working-tree + 391 commit (**0 gerçek secret**), linked pgTAP
-**24/24**, `db lint --linked` (Helix şemasında **0**), Playwright 17/17,
-Vitest 58 dosya / 448 test.
+Bu matris kalıcı kontrol kapsamını gösterir; SHA, scanner sürümü ve değişken test
+sayıları burada dondurulmaz. Güncel koşu kanıtı `docs/AI_HANDOFF.md` ve GitHub
+Actions `quality` job’undadır.
 
 ### OWASP Top 10 (2021)
 
 | # | Durum | Dosya / akış | Test / scanner kanıtı | Artık risk |
 |---|---|---|---|---|
-| A01 Broken Access Control | APPLICABLE | 16 tabloda owner-only RLS; `WITH CHECK`; owner-aware FK; `delete_own_account`; migration 9 tablo grant'ları; `src/domain/route-params.ts` | linked pgTAP **24/24**: A/B izolasyon, owner değiştirme reddi (`42501`), cross-owner FK (`23503`), anon `42501`. `tests/route-params.test.ts`, `tests/navigation.test.ts` (`__proto__`/`constructor` kaynak), `e2e/resilience.spec.ts` düşmanca param | Yetki tek yerde (RLS). Client guard'ları yetkilendirme sayılmıyor |
+| A01 Broken Access Control | APPLICABLE | 16 tabloda owner-only RLS; `WITH CHECK`; owner-aware FK; tombstone-only client grant’ları; `delete_own_account`; `src/domain/route-params.ts` | linked pgTAP: A/B izolasyonu, owner değiştirme, client DELETE/anon reddi (`42501`), cross-owner FK (`23503`), scoped RPC. `tests/route-params.test.ts`, `tests/navigation.test.ts`, hostile-route E2E | Yetki tek yerde (RLS). Client guard'ları yetkilendirme sayılmıyor |
 | A02 Cryptographic Failures | APPLICABLE | `expo-secure-store`; iOS `NSFileProtectionComplete`; TLS-only endpoint'ler; uygulama kendi kriptosunu yazmaz | `tests/privacy.test.ts` `kv.set` anahtar sınırı; Semgrep `p/insecure-transport` **0**; Gitleaks **0 gerçek secret** | **Bilinen:** uygulama seviyesinde SQLCipher yok; web'de oturum browser storage'ında. İkisi de aşağıda açıkça kabul edilmiş |
 | A03 Injection | APPLICABLE | Drizzle parametre bağlama; ham SQL yok; `csvCell`; `isUuidShaped` PostgREST filtre grameri | Semgrep `p/sql-injection`+`p/command-injection`+`p/xss` **0 bulgu**; `tests/csv-export-safety.test.ts` (7 test, mutasyon kanıtlı); `tests/sync-merge.test.ts` filtre-grameri enjeksiyonu | React Native metin render'ı `dangerouslySetInnerHTML` kullanmıyor |
 | A04 Insecure Design | APPLICABLE | outbox + `sync_dead_letters` karantina; all-or-nothing import; session epoch; `writeRows` tek transaction | `tests/sync-dead-letters.test.ts` (gerçek migration DDL'ine karşı), `tests/backup-validation.test.ts`, `tests/session-epoch.test.ts`, `tests/repository-contract.test.ts` (tek `writeRows`) | — |
-| A05 Security Misconfiguration | APPLICABLE | `src/app/+html.tsx` CSP; `dist/404.html` = root shell; migration 3/6/7/8 sabit `search_path`; migration 9 grant'ları | `tests/release-config.test.ts`; `db lint --linked` → Helix şemasında **0** (171 bulgunun tamamı pgTAP `extensions.*` gövdelerinde); `migration list --linked` **9/9** | **Bilinen:** `script-src 'unsafe-inline'` — statik export inline bootstrap üretiyor, `connect-src` daraltmasıyla telafi |
-| A06 Vulnerable Components | APPLICABLE | `package-lock.json`; SheetJS CDN pin; Dependabot guard'ları | `npm audit` → **2 advisory** (20 blame node), ikisi de NOT REACHABLE; OSV 4 bulgu; CodeQL **0**; Dependabot **0**; `npm ci` exit 0; `npm ls --all` geçerli | Advisory dispozisyonları aşağıdaki tabloda; ikisi de bundle'a girmiyor |
+| A05 Security Misconfiguration | APPLICABLE | `src/app/+html.tsx` CSP; `dist/404.html` = root shell; sabit function `search_path`; açık table grant’ları | `tests/release-config.test.ts`; linked migration list + public-schema lint | **Bilinen:** `script-src 'unsafe-inline'` — statik export inline bootstrap üretiyor, `connect-src` daraltmasıyla telafi |
+| A06 Vulnerable Components | APPLICABLE | `package-lock.json`; SheetJS CDN pin; Dependabot guard'ları | clean `npm ci`; `npm ls --all`; `npm audit`ta kalan tek advisory zinciri dev-only Drizzle transpiler’ındaki dört moderate node | Advisory dispozisyonları [RELEASE.md](RELEASE.md#5b--dependabot-bulguları) içinde; runtime bundle’a girmez |
 | A07 Identification & Auth Failures | APPLICABLE | Supabase Auth; PKCE recovery; `src/auth/verification-brake.ts`; `src/auth/session.ts` epoch'ları | `tests/auth.test.ts` (expired/reused/malformed link), `tests/verification-brake.test.ts` (18 vaka), `tests/session-task.test.ts` | E-posta enumeration sıfırlama akışında açığa çıkmıyor |
-| A08 Software & Data Integrity | APPLICABLE | 8/8 Action full-SHA pin; OTA runtime `appVersion` + channel ayrımı; lockfile integrity; imzalı commit + korumalı `main` | `tests/release-config.test.ts` (SHA pin regex); 15 commit `verified=true`; `npm ci` lockfile'dan reprodüksiyon | **Bilinen:** ek OTA code-signing anahtarı yapılandırılmadı; güven sınırı EAS hesabı |
+| A08 Software & Data Integrity | APPLICABLE | Bütün Action referansları full-SHA pinli; OTA runtime `appVersion` + channel ayrımı; lockfile integrity; imzalı commit + korumalı `main` | `tests/release-config.test.ts`; clean `npm ci`; GitHub verified signature/check | **Bilinen:** ek OTA code-signing anahtarı yapılandırılmadı; güven sınırı EAS hesabı |
 | A09 Logging & Monitoring Failures | APPLICABLE | `src/services/logger.ts`, `src/services/diagnostics.ts` (12 kayıtlık bounded ring) | `tests/diagnostics.test.ts` (tam anahtar kümesi + negatif PII regex), `tests/privacy.test.ts` | **Bilinen:** merkezi crash/telemetry alerting yok — sessiz hata maintainer'a otomatik ulaşmıyor |
 | A10 SSRF | APPLICABLE | `src/domain/logo-domain.ts` public-host doğrulaması; sabit FX/market endpoint listesi; CSP `connect-src` | `tests/external-services.test.ts` (credential/port/localhost/IP reddi), `e2e/helpers.ts` host-eşleşmesi (substring değil) | Kullanıcı serbest URL giremiyor; yalnız domain adı |
 
@@ -243,7 +247,7 @@ uygulanabilirliğe göre değerlendirildi.
 | V1 Architecture | APPLICABLE | `docs/ARCHITECTURE.md` bağımlılık yönü + güven sınırları tablosu (bu belgenin başı) |
 | V2 Authentication | APPLICABLE | Supabase Auth; `tests/auth.test.ts`; şifre gücü form doğrulamasında (plan sınırı: leaked-password kontrolü Free plan'de yok) |
 | V3 Session Management | APPLICABLE | SecureStore + session epoch; `tests/session-epoch.test.ts`, `tests/session-task.test.ts` |
-| V4 Access Control | APPLICABLE | RLS; pgTAP 24/24 |
+| V4 Access Control | APPLICABLE | RLS; 33 assertion’lı linked pgTAP |
 | V5 Validation / Encoding | APPLICABLE | `route-params`, `backup-validation`, `spreadsheet-import`, `csvCell`; Semgrep 0 |
 | V6 Stored Cryptography | **DEVICE/BINARY ONLY** | `NSFileProtectionComplete` yalnız yerel `npx expo run:ios --device` build'inde etkinleşir; doğrulaması cihazda yapılır |
 | V7 Error Handling & Logging | APPLICABLE | `tests/diagnostics.test.ts`, `tests/privacy.test.ts`, `tests/undo-outcome.test.ts` (yanıltıcı başarı yok) |
@@ -264,7 +268,7 @@ uygulanabilirliğe göre değerlendirildi.
 | MASVS-AUTH | APPLICABLE + DEVICE/BINARY ONLY | `expo-local-authentication` biyometrik app lock; oturum yaşam döngüsü test edilmiş. Biyometrik akışın kendisi cihazda kabul edilecek |
 | MASVS-NETWORK | APPLICABLE | Yalnız TLS/WSS; sabit endpoint listesi; clear-text yapılandırma yok. `MASTG-TEST-0021`: `app.json` içinde `usesCleartextTraffic`/ATS istisnası **yok** |
 | MASVS-PLATFORM | APPLICABLE + DEVICE/BINARY ONLY | `PrivacyCover` (`tests/privacy.test.ts`), bildirim izni boot'ta istenmiyor, deep link şeması `helix://`. `MASTG-TEST-0027` (app-switcher snapshot) OS zamanlaması gerektirdiği için cihazda |
-| MASVS-CODE | APPLICABLE | Bağımlılık envanteri + SBOM (867 component, CycloneDX 1.6); advisory dispozisyonları; SHA-pinli Action'lar; `npm ci` reproduktibl |
+| MASVS-CODE | APPLICABLE | Bağımlılık envanteri/SBOM; advisory dispozisyonları; SHA-pinli Action'lar; `npm ci` reproduktibl |
 | MASVS-RESILIENCE | **N/A — gerekçeli** | Anti-tamper, obfuscation, root/jailbreak tespiti ve emülatör tespiti bilinçli olarak yok. Helix tek kullanıcılık kendi finansal verisini tutar; koruduğu sır cihaz sahibinin kendi verisidir, o yüzden cihaz sahibine karşı bir savunma modeli anlamsızdır. DRM/lisans zorlaması da yoktur |
 
 ### Kapsam dışı bırakılan araçlar
@@ -280,7 +284,6 @@ uygulanabilirliğe göre değerlendirildi.
 | Advisory | Paket | Yol | Sınıf | Bundle'da? | Karar |
 |---|---|---|---|---|---|
 | GHSA-67mh-4wv8-2f99 | `esbuild@0.18.20` | `drizzle-kit` → `@esbuild-kit/esm-loader` → `core-utils` → `esbuild` | devDependency | **hayır (0 dosya)** | **NOT REACHABLE — RETAINED.** `esbuild serve` gerektiriyor; drizzle-kit yalnız config transpile ediyor. Önerilen düzeltme `drizzle-kit@0.18.1` major downgrade'i |
-| GHSA-w5hq-g745-h8pq | `uuid@7.0.3` | `expo` → `@expo/config-plugins` → `xcode` → `uuid` | prebuild/native-config aracı | **hayır** — `stringify.js`, `parse.js`, `md5.js`, `sha1.js`, `bytesToUuid`, `v3`, `v5`, `rng.js` hepsi 0 dosya | **NOT REACHABLE — RETAINED.** `v3/v5/v6` + açık `buf` argümanı gerekiyor; `xcode` `v4` çağırıyor. Önerilen düzeltme `expo@46` — sekiz major SDK geri |
 | GHSA-4r6h-8v6p-xvw6 (CVE-2023-30533) | `xlsx@0.20.3` | doğrudan (SheetJS CDN) | production | evet | **NOT AFFECTED.** Satıcı bildirimi: "0.19.2'ye kadar tüm sürümler", düzeltme **0.19.3**. Kurulu 0.20.3 |
 | GHSA-5pgg-2g8v-p4x9 (CVE-2024-22363) | `xlsx@0.20.3` | doğrudan (SheetJS CDN) | production | evet | **NOT AFFECTED.** Satıcı bildirimi: "0.20.1'e kadar tüm sürümler", düzeltme **0.20.2**. Kurulu 0.20.3 |
 

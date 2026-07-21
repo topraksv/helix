@@ -8,6 +8,8 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 import { runUndo } from "../src/domain/undo-outcome";
 
@@ -54,29 +56,22 @@ describe("runUndo", () => {
  * source — the same approach `tests/privacy.test.ts` uses for `session.ts`.
  */
 describe("undo callbacks are owned everywhere", () => {
-  const screens = [
-    "src/app/cell-editor.tsx",
-    "src/app/(tabs)/settings/computed-columns.tsx",
-    "src/app/(tabs)/settings/budgets.tsx",
-    "src/app/(tabs)/settings/persons.tsx",
-    "src/app/(tabs)/settings/payment-sources.tsx",
-    "src/app/(tabs)/cash-flow/[month].tsx",
-  ];
-
-  it("covers every screen that offers an undo", () => {
-    expect(screens.length).toBeGreaterThanOrEqual(6);
+  const files = (directory: string): string[] => readdirSync(directory).flatMap((name) => {
+    const path = join(directory, name);
+    return statSync(path).isDirectory() ? files(path) : path.endsWith(".tsx") ? [path] : [];
   });
 
-  for (const screen of screens) {
-    it(`routes ${screen} through reportUndo`, async () => {
-      const { readFileSync } = await import("node:fs");
-      const { join } = await import("node:path");
-      const text = readFileSync(join(process.cwd(), screen), "utf8");
-      // The bare form silences the lint without owning the rejection.
-      expect(text, screen).not.toMatch(/void restoreRow\(/);
-      expect(text, screen).toContain("reportUndo");
-    });
-  }
+  it("makes the shared snackbar await and report every discovered undo", () => {
+    const callers = files(join(process.cwd(), "src"))
+      .filter((file) => readFileSync(file, "utf8").includes("undo.show("));
+    expect(callers.length).toBeGreaterThanOrEqual(10);
+    const primitive = readFileSync(join(process.cwd(), "src/ui/undo.tsx"), "utf8");
+    expect(primitive).toContain("await runUndo");
+    expect(primitive).toContain("tr.errors.undoFailed");
+    for (const caller of callers) {
+      expect(readFileSync(caller, "utf8"), caller).not.toMatch(/undo\.show\([^;]+\(\) => void /s);
+    }
+  });
 
   it("keeps the skip flow owned as well", async () => {
     const { readFileSync } = await import("node:fs");

@@ -10,16 +10,16 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { CheckCircle2 } from "lucide-react-native";
-import { deterministicId, naturalKeys } from "../db/ids";
-import { writeRows, type RowWrite } from "../db/mutations";
-import { TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES } from "../data/repo";
-import { useCategories, useUserId } from "../data/hooks";
+import { addTemplateCategories, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES } from "../data/repo";
+import { useCategoriesState, useUserId } from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, ChipPicker, EmptyState, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, ChipPicker, DataStateNotice, EmptyState, Screen, SectionHeader } from "../ui/components";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
+import { appAlert } from "../ui/dialog";
 
 const ALL_TEMPLATES = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
 
@@ -29,11 +29,13 @@ const chip = (c: (typeof TEMPLATE_CATEGORIES)[number]) =>
 
 export default function WorkspaceTemplateModal() {
   const userId = useUserId();
-  const categories = useCategories();
+  const categoriesState = useCategoriesState();
+  const categories = categoriesState.data;
   const router = useRouter();
   const [excluded, setExcluded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const operationGuard = useOperationGuard();
+  const dataReady = categoriesState.updatedAt != null;
 
   const existing = new Set(categories.map((c) => norm(c.name)));
   const missing = ALL_TEMPLATES.filter((c) => !existing.has(norm(c.name)));
@@ -45,33 +47,28 @@ export default function WorkspaceTemplateModal() {
     await operationGuard.run(async () => {
       setBusy(true);
       try {
-        const base = categories.length;
-        const writes: RowWrite[] = await Promise.all(
-          selected.map(async (category, index) => ({
-            table: "categories" as const,
-            row: {
-              id: await deterministicId(naturalKeys.seedCategory(userId, category.name)),
-              name: category.name,
-              kind: category.kind,
-              icon: category.icon ?? null,
-              color: null,
-              sortOrder: base + index,
-              isColumn: true,
-              deletedAt: null,
-            },
-          })),
-        );
-        await writeRows(userId, writes);
+        await addTemplateCategories(userId, selected, categories.length);
         scheduleSync(userId);
         navigateBack(router, "/(tabs)/settings");
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
         setBusy(false);
       }
     });
   };
 
+  if (!dataReady) {
+    return (
+      <Screen>
+        <DataStateNotice status={combineLiveQueryStatus([categoriesState])} retry={categoriesState.retry} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
+      <DataStateNotice status={combineLiveQueryStatus([categoriesState])} retry={categoriesState.retry} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.template.intro}</Body>
 
       {missing.length === 0 ? (

@@ -29,6 +29,7 @@ vi.mock("../src/db/mutations", () => ({
 }));
 vi.mock("../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
 vi.mock("../src/services/markets", () => ({ marketSellRateTry: vi.fn() }));
+vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
 import * as repository from "../src/data/repo";
 
@@ -42,6 +43,7 @@ const publicRuntimeExports = [
   "FxRateUnavailableError",
   "seedWorkspace",
   "applyOnboardingBalance",
+  "setOpeningBalance",
   "finalizeOnboarding",
   "upsertPaymentSource",
   "personReferenceUsage",
@@ -87,6 +89,36 @@ describe("repository compatibility contract", () => {
 
   it("keeps the existing runtime API available from data/repo", () => {
     for (const name of publicRuntimeExports) expect(repository[name]).toBeDefined();
+  });
+
+  it("rejects impossible transaction dates before touching persistence", async () => {
+    const input = {
+      type: "expense" as const,
+      amountMinor: 1_000,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: 1_000,
+      effectiveDate: "2026-02-31",
+      categoryId: "category-1",
+      paymentSourceId: null,
+      personId: "person-1",
+      note: null,
+    };
+    await expect(repository.addTransaction("user-1", input)).rejects.toThrow("Invalid transaction date");
+    await expect(repository.updateTransaction("user-1", {}, input)).rejects.toThrow("Invalid transaction date");
+    expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("writes a replacement opening anchor atomically", async () => {
+    await repository.setOpeningBalance("user-1", "2026-07", 12_345);
+    expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes.map((write: { row: { key: string } }) => write.row.key)).toEqual([
+      "start_month",
+      "opening_balance_minor",
+    ]);
+    expect(dependencies.writeSetting).not.toHaveBeenCalled();
   });
 
   it("seeds every onboarding row AND the ledger anchor in ONE write", async () => {
@@ -302,8 +334,10 @@ describe("replace-mode import with an unreadable batch", () => {
       );
   });
 
-  it("still allows add mode, which does not depend on knowing what to remove", async () => {
-    await repository.importSheets("user-1", { ...request, mode: "add" } as never);
-    expect(dependencies.writeRows).toHaveBeenCalled();
+  it("also refuses add mode because it would overwrite the only ownership index", async () => {
+    await expect(
+      repository.importSheets("user-1", { ...request, mode: "add" } as never),
+    ).rejects.toBeInstanceOf(repository.ImportBatchUnreadableError);
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 });

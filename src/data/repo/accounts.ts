@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { newId } from "../../db/ids";
-import { fromDbShape, nowIso, writeRows, type RowWrite } from "../../db/mutations";
+import { fromDbShape, nowIso, restoreRow, writeRows, type RowWrite } from "../../db/mutations";
 import { todayISO, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, statementPeriod } from "../../domain/card-statements";
@@ -33,6 +33,40 @@ export interface PaymentSourceInput {
   personId: string;
   dueDay: number | null;
   statementDay: number | null;
+}
+
+export async function createPerson(userId: string, name: string): Promise<string> {
+  if (!name.trim()) throw new Error("Person name is required");
+  assertInputWithinLimit(name, "text");
+  const sqlite = await getSqliteAsync();
+  const self = await sqlite.getFirstAsync<{ id: string }>(
+    `SELECT id FROM persons WHERE user_id = ? AND is_self = 1 AND deleted_at IS NULL LIMIT 1`,
+    [userId],
+  );
+  const id = newId();
+  await writeRows(userId, [{
+    table: "persons",
+    row: { id, name: name.trim(), isSelf: !self, deletedAt: null },
+  }]);
+  return id;
+}
+
+export async function renamePerson(
+  userId: string,
+  person: Record<string, unknown>,
+  name: string,
+): Promise<void> {
+  if (!name.trim()) throw new Error("Person name is required");
+  assertInputWithinLimit(name, "text");
+  await writeRows(userId, [{ table: "persons", row: { ...person, name: name.trim() } }]);
+}
+
+export function restorePerson(userId: string, snapshot: Record<string, unknown>): Promise<void> {
+  return restoreRow(userId, "persons", snapshot);
+}
+
+export function restorePaymentSource(userId: string, snapshot: Record<string, unknown>): Promise<void> {
+  return restoreRow(userId, "payment_sources", snapshot);
 }
 
 /** Repo-level validation protects imports/non-UI callers as well as the form. */

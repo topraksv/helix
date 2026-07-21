@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDaysISO, clampDayToMonth, dateForMonthEntry, isMonthDay } from "../src/domain/dates";
+import { addDaysISO, assertISODate, clampDayToMonth, dateForMonthEntry, isISODate, isMonthDay } from "../src/domain/dates";
 import { resolveYearColumns } from "../src/domain/year-columns";
 
 describe("addDaysISO", () => {
@@ -30,6 +30,20 @@ describe("dateForMonthEntry", () => {
   it("uses a deterministic day when another month was explicitly selected", () => {
     expect(dateForMonthEntry("2026-06", "2026-07-16")).toBe("2026-06-15");
     expect(dateForMonthEntry("2026-08", "2026-07-16")).toBe("2026-08-15");
+  });
+});
+
+describe("ISO calendar dates", () => {
+  it("accepts real dates, including leap day", () => {
+    expect(isISODate("2024-02-29")).toBe(true);
+    expect(assertISODate("2026-12-31")).toBe("2026-12-31");
+  });
+
+  it("rejects impossible and malformed dates", () => {
+    for (const value of ["2026-02-29", "2026-02-31", "2026-04-31", "2026-00-01", "2026-13-01", "2026-01-00", "2026-1-01", null]) {
+      expect(isISODate(value)).toBe(false);
+    }
+    expect(() => assertISODate("2026-02-31")).toThrow(/Invalid ISO date/);
   });
 });
 

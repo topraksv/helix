@@ -5,16 +5,17 @@
  */
 
 import { useEffect, useState } from "react";
+import { tr } from "../i18n/tr";
 
 export const placeholderPools = {
-  subscription: ["Netflix", "Spotify", "YouTube Premium", "iCloud", "Elektrik", "Doğalgaz", "Su", "İnternet", "Telefon", "Amazon Prime", "ChatGPT", "BluTV"],
-  installment: ["Telefon", "Dizüstü bilgisayar", "Beyaz eşya", "Konut kredisi", "Mobilya", "Tatil", "Araç kasko taksidi"],
-  category: ["Market", "Ulaşım", "Faturalar", "Eğlence", "Sağlık", "Eğitim", "Giyim", "Kira"],
-  person: ["Eşim", "Annem", "Kardeşim", "Ev arkadaşım"],
-  income: ["Maaş", "Kira geliri", "Freelance", "Prim", "Burs"],
-  source: ["Banka kartım", "Kredi kartım", "Nakit", "Dijital cüzdan", "Ortak hesap"],
-  note: ["Market alışverişi", "Doğum günü hediyesi", "Yıllık ödeme", "Arkadaşlarla yemek", "İade bekleniyor"],
-  amount: ["400+500", "15.000", "1.250,50", "89,90", "300+150", "2.500", "12.400", "49,99", "1.000+250+90"],
+  subscription: tr.placeholders.subscription,
+  installment: tr.placeholders.installment,
+  category: tr.placeholders.category,
+  person: tr.placeholders.person,
+  income: tr.placeholders.income,
+  source: tr.placeholders.source,
+  note: tr.placeholders.note,
+  amount: tr.placeholders.amount,
 } as const;
 
 const ROTATE_MS = 4000;
@@ -32,5 +33,5 @@ export function useRotatingPlaceholder(pool: readonly string[], opts?: { prefix?
     return () => clearInterval(timer);
   }, []);
   const sample = pool[(start + offset) % pool.length] ?? "";
-  return opts?.prefix === false ? sample : `Ör. ${sample}`;
+  return opts?.prefix === false ? sample : tr.placeholders.example(sample);
 }

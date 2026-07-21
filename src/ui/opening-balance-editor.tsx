@@ -14,13 +14,13 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, History, Trash2 } from "lucide-react-native";
-import { restoreRow, softDelete, writeSetting } from "../db/mutations";
-import { setCurrentBalance } from "../data/repo";
-import { settingValue, useAdjustments, useLedger, useSettingsMap, useUserId } from "../data/hooks";
+import { deleteBalanceAdjustment, restoreBalanceAdjustment, setCurrentBalance, setOpeningBalance } from "../data/repo";
+import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useUserId } from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Body, Button, Card, CardList, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "./components";
+import { Amount, Body, Button, Card, CardList, DataStateNotice, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "./components";
 import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { spacing } from "./theme";
@@ -30,12 +30,23 @@ import { useDirtyExitGuard } from "./dirty-exit";
 
 export function OpeningBalanceEditor() {
   const userId = useUserId();
-  const settings = useSettingsMap();
+  const settingsState = useSettingsMapState();
+  const settings = settingsState.data;
   const router = useRouter();
-  const bundle = useLedger(yearOf(todayISO()));
-  const adjustments = useAdjustments();
+  const ledgerState = useLedgerState(yearOf(todayISO()));
+  const adjustmentsState = useAdjustmentsState();
+  const bundle = ledgerState.data;
+  const adjustments = adjustmentsState.data;
   const undo = useUndo();
   const computed = bundle?.actualBalanceMinor ?? null;
+  const liveStates = [settingsState, ledgerState, adjustmentsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    settingsState.retry();
+    ledgerState.retry();
+    adjustmentsState.retry();
+  };
 
   // --- primary: set current balance -----------------------------------------
   // Pristine until the user types (null): mirror the computed balance so the
@@ -84,8 +95,7 @@ export function OpeningBalanceEditor() {
     if (openingMinor == null) return;
     setSavingOpening(true);
     try {
-      await writeSetting(userId, "start_month", startMonth);
-      await writeSetting(userId, "opening_balance_minor", openingMinor);
+      await setOpeningBalance(userId, startMonth, openingMinor);
       scheduleSync(userId);
       allowExit(close);
     } catch (e) {
@@ -96,25 +106,36 @@ export function OpeningBalanceEditor() {
   };
 
   const removeAdjustment = async (id: string) => {
-    const snapshot = await softDelete(userId, "balance_adjustments", id);
-    if (!snapshot) return;
-    scheduleSync(userId);
-    undo.show(
-      tr.settings.balanceAdjustmentDeleted,
-      () => {
-        void restoreRow(userId, "balance_adjustments", snapshot).then(() => scheduleSync(userId));
-      },
-      "warning",
-    );
+    try {
+      const snapshot = await deleteBalanceAdjustment(userId, id);
+      if (!snapshot) return;
+      scheduleSync(userId);
+      undo.show(
+        tr.settings.balanceAdjustmentDeleted,
+        () => {
+          return restoreBalanceAdjustment(userId, snapshot).then(() => scheduleSync(userId));
+        },
+        "warning",
+      );
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   // Never let the async ledger's pre-load fallback masquerade as a real zero
   // balance; the editor becomes actionable only after its accounting inputs load.
-  if (computed == null) return <Screen>{null}</Screen>;
+  if (!dataReady || computed == null) {
+    return (
+      <Screen>
+        <DataStateNotice status={computed == null && dataReady ? "error" : dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
   const visibleAdjustments = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <Screen>
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.openingScreenHint}</Body>
 
       <Card>

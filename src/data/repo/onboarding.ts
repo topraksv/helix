@@ -1,11 +1,12 @@
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { readSetting, settingRow, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
-import type { MonthKey } from "../../domain/dates";
+import { isMonthKey, monthKeyOf, todayISO, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
 import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError } from "./errors";
+import { tr } from "../../i18n/tr";
 
 // ---------------------------------------------------------------------------
 // Onboarding seed
@@ -15,6 +16,7 @@ export interface TemplateCategory {
   name: string;
   kind: "expense" | "income";
   isColumn: boolean;
+  isTransfer?: boolean;
   icon?: string;
 }
 
@@ -25,28 +27,28 @@ export interface TemplateCategory {
  * `TEMPLATE_EXTRA_CATEGORIES` and are offered separately.
  */
 export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
-  { name: "Kredi Kartı", kind: "expense", isColumn: true, icon: "💳" },
-  { name: "Faturalar", kind: "expense", isColumn: true, icon: "🧾" },
-  { name: "Market", kind: "expense", isColumn: true, icon: "🛒" },
-  { name: "Araç & Yakıt", kind: "expense", isColumn: true, icon: "⛽" },
-  { name: "Kira", kind: "expense", isColumn: true, icon: "🏠" },
-  { name: "Ulaşım", kind: "expense", isColumn: true, icon: "🚌" },
-  { name: "Sağlık", kind: "expense", isColumn: true, icon: "🩺" },
-  { name: "Eğlence", kind: "expense", isColumn: true, icon: "🎬" },
-  { name: "Ek Giderler", kind: "expense", isColumn: true, icon: "🧺" },
-  { name: "Maaş", kind: "income", isColumn: true, icon: "💰" },
-  { name: "Ek Gelirler", kind: "income", isColumn: true, icon: "➕" },
+  { name: tr.template.categoryNames.creditCard, kind: "expense", isColumn: true, icon: "💳" },
+  { name: tr.template.categoryNames.bills, kind: "expense", isColumn: true, icon: "🧾" },
+  { name: tr.template.categoryNames.groceries, kind: "expense", isColumn: true, icon: "🛒" },
+  { name: tr.template.categoryNames.carFuel, kind: "expense", isColumn: true, icon: "⛽" },
+  { name: tr.template.categoryNames.rent, kind: "expense", isColumn: true, icon: "🏠" },
+  { name: tr.template.categoryNames.transport, kind: "expense", isColumn: true, icon: "🚌" },
+  { name: tr.template.categoryNames.health, kind: "expense", isColumn: true, icon: "🩺" },
+  { name: tr.template.categoryNames.entertainment, kind: "expense", isColumn: true, icon: "🎬" },
+  { name: tr.template.categoryNames.extraExpenses, kind: "expense", isColumn: true, icon: "🧺" },
+  { name: tr.template.categoryNames.salary, kind: "income", isColumn: true, icon: "💰" },
+  { name: tr.template.categoryNames.extraIncome, kind: "income", isColumn: true, icon: "➕" },
 ];
 
 /** Less-universal example columns, offered as optional extras (not default). */
 export const TEMPLATE_EXTRA_CATEGORIES: TemplateCategory[] = [
-  { name: "Ev Kredisi", kind: "expense", isColumn: true, icon: "🏦" },
-  { name: "Araç Kredisi", kind: "expense", isColumn: true, icon: "🚗" },
-  { name: "Yatırım", kind: "expense", isColumn: true, icon: "📈" },
-  { name: "Abonelikler", kind: "expense", isColumn: true, icon: "🔁" },
-  { name: "Giyim", kind: "expense", isColumn: true, icon: "👕" },
-  { name: "Eğitim", kind: "expense", isColumn: true, icon: "🎓" },
-  { name: "Kira Geliri", kind: "income", isColumn: true, icon: "🏘️" },
+  { name: tr.template.categoryNames.mortgage, kind: "expense", isColumn: true, icon: "🏦" },
+  { name: tr.template.categoryNames.carLoan, kind: "expense", isColumn: true, icon: "🚗" },
+  { name: tr.template.categoryNames.investment, kind: "expense", isColumn: true, isTransfer: true, icon: "📈" },
+  { name: tr.template.categoryNames.subscriptions, kind: "expense", isColumn: true, icon: "🔁" },
+  { name: tr.template.categoryNames.clothing, kind: "expense", isColumn: true, icon: "👕" },
+  { name: tr.template.categoryNames.education, kind: "expense", isColumn: true, icon: "🎓" },
+  { name: tr.template.categoryNames.rentalIncome, kind: "income", isColumn: true, icon: "🏘️" },
 ];
 
 export interface SeedInput {
@@ -122,7 +124,17 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
   input.templateCategories.forEach((c, i) => {
     writes.push({
       table: "categories",
-      row: { id: categoryIds[i], name: c.name, kind: c.kind, icon: c.icon ?? null, color: null, sortOrder: i, isColumn: c.isColumn, deletedAt: null },
+      row: {
+        id: categoryIds[i],
+        name: c.name,
+        kind: c.kind,
+        icon: c.icon ?? null,
+        color: null,
+        sortOrder: i,
+        isColumn: c.isColumn,
+        isTransfer: c.kind === "expense" && c.isTransfer === true,
+        deletedAt: null,
+      },
     });
   });
   // The ledger anchor (start_month + opening_balance_minor) is ONE semantic
@@ -148,6 +160,9 @@ async function onboardingBalanceRows(
   startMonth: MonthKey,
   openingBalanceMinor: Minor,
 ): Promise<RowWrite[]> {
+  if (!isMonthKey(startMonth) || startMonth > monthKeyOf(todayISO())) {
+    throw new Error("Invalid opening balance month");
+  }
   assertSupportedMinorAmount(openingBalanceMinor);
   const currentStart = await readSetting<string>(userId, "start_month");
   if (currentStart && startMonth > currentStart) return []; // keep the earlier imported anchor
@@ -160,6 +175,18 @@ async function onboardingBalanceRows(
 export async function applyOnboardingBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
   const rows = await onboardingBalanceRows(userId, startMonth, openingBalanceMinor);
   if (rows.length > 0) await writeRows(userId, rows);
+}
+
+/** Replace the historical ledger anchor as one validated atomic write. */
+export async function setOpeningBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
+  if (!isMonthKey(startMonth) || startMonth > monthKeyOf(todayISO())) {
+    throw new Error("Invalid opening balance month");
+  }
+  assertSupportedMinorAmount(openingBalanceMinor);
+  await writeRows(userId, [
+    await settingRow(userId, "start_month", startMonth),
+    await settingRow(userId, "opening_balance_minor", openingBalanceMinor),
+  ]);
 }
 
 /** Mark onboarding complete → the route guard lets the user into the app. */

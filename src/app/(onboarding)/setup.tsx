@@ -6,12 +6,13 @@ import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Penci
 import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/export-import";
 import { useSession } from "../../auth/session";
-import { useSettingsMap } from "../../data/hooks";
+import { useSettingsMapState } from "../../data/hooks";
+import { combineLiveQueryStatus } from "../../data/live-state";
 import { addMonthsToKey, isCurrentOrFutureMonth, isMonthDay, monthKeyOf, todayISO } from "../../domain/dates";
 import { remapDraftOwnerIndex } from "../../domain/onboarding";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
-import { Body, Button, Card, ChipPicker, Field, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "../../ui/components";
+import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "../../ui/components";
 import { appAlert } from "../../ui/dialog";
 import { BrandMark } from "../../ui/brand";
 import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
@@ -19,6 +20,7 @@ import { spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { readPickedText } from "../../services/picked-file";
 import { MonthDayField, monthDayLabel } from "../../ui/month-day-field";
+import { useDirtyExitGuard } from "../../ui/dirty-exit";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const ALL_TEMPLATES: TemplateCategory[] = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
@@ -43,7 +45,8 @@ export default function SetupScreen() {
   // categories AND the opening balance, so the template + opening-balance
   // inputs become redundant — we clear the pre-ticked template once and tell
   // the user, instead of silently seeding duplicate/empty columns on top.
-  const settings = useSettingsMap();
+  const settingsState = useSettingsMapState();
+  const settings = settingsState.data;
   const importedYears = [...settings.keys()]
     .filter((k) => k.startsWith("import_batch:"))
     .map((k) => k.slice("import_batch:".length))
@@ -69,9 +72,33 @@ export default function SetupScreen() {
   const [seeded, setSeeded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [advancedSetup, setAdvancedSetup] = useState(false);
+  const [committed, setCommitted] = useState(false);
   const operationGuard = useOperationGuard();
   const personPlaceholder = useRotatingPlaceholder(placeholderPools.person);
   const sourcePlaceholder = useRotatingPlaceholder(placeholderPools.source);
+  const initialStartMonth = useRef(startMonth).current;
+  const resolvedDefaultTemplate = hasImport ? [] : ALL_TEMPLATES.map((category) => category.name);
+  const editingPersonDirty = editingPerson != null && editPersonName.trim() !== (persons[editingPerson] ?? "");
+  const sourceFormDirty = Boolean(
+    newSource.trim() ||
+    editingSource != null ||
+    newSourceType !== "credit_card" ||
+    newSourcePerson !== 0 ||
+    newSourceStatementDay.trim() ||
+    newSourceDueDay.trim()
+  );
+  const draftDirty =
+    JSON.stringify(selectedTemplate) !== JSON.stringify(resolvedDefaultTemplate) ||
+    startMonth !== initialStartMonth ||
+    openingRaw.trim() !== "" ||
+    JSON.stringify(persons) !== JSON.stringify([tr.onboarding.me]) ||
+    newPerson.trim() !== "" ||
+    editingPersonDirty ||
+    sources.length > 0 ||
+    sourceFormDirty;
+  const allowExit = useDirtyExitGuard(draftDirty && !busy && !committed);
+  const dataStatus = combineLiveQueryStatus([settingsState]);
+  const dataReady = settingsState.updatedAt != null;
 
   // Once an import lands, drop the pre-selected template so we don't seed empty
   // template columns beside the imported ones. Guarded so the user can still
@@ -209,8 +236,8 @@ export default function SetupScreen() {
           // Manual history writes into the selected templates; a spreadsheet import
           // brings its own columns, so don't pre-seed defaults beside them.
           if (!(await ensureSeeded(choice === "manual"))) return;
-          if (choice === "manual") router.push("/bulk-entry");
-          else router.push("/import-wizard");
+          if (choice === "manual") allowExit(() => router.push("/bulk-entry"));
+          else allowExit(() => router.push("/import-wizard"));
         }
       } catch (e) {
         void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
@@ -227,6 +254,7 @@ export default function SetupScreen() {
       try {
         await ensureSeeded();
         await finalizeOnboarding(userId);
+        setCommitted(true);
         // Navigation is driven by the root route guard once the live `onboarded`
         // flag flips true (mirrors the sign-in screen). Replacing to "/(tabs)"
         // here fired while `onboarded` was still false in React state, so the
@@ -241,9 +269,18 @@ export default function SetupScreen() {
     });
   };
 
+  if (!dataReady) {
+    return (
+      <Screen maxWidth={560}>
+        <DataStateNotice status={dataStatus} retry={settingsState.retry} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen maxWidth={560}>
       <View>
+        <DataStateNotice status={dataStatus} retry={settingsState.retry} />
         <Row gap={spacing.md} style={{ marginBottom: spacing.lg }}>
           <BrandMark size={44} />
           <View>

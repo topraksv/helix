@@ -6,6 +6,8 @@ import m0001 from './0001_empty_jane_foster.sql';
 import m0002 from './0002_sync_dead_letters.sql';
 import m0003 from './0003_uneven_ultragirl.sql';
 import m0004 from './0004_category_budgets_and_income_recurrence.sql';
+import m0005 from './0005_category_transfer_semantics.sql';
+import m0006 from './0006_odd_darwin.sql';
 
   export default {
     journal,
@@ -14,7 +16,9 @@ import m0004 from './0004_category_budgets_and_income_recurrence.sql';
 m0001,
 m0002,
 m0003,
-m0004
+m0004,
+m0005,
+m0006
     }
   }
   

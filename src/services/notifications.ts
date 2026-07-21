@@ -192,7 +192,10 @@ export async function rescheduleAll(userId: string): Promise<void> {
   }
   await ensureAndroidChannel();
   const permission = await Notifications.getPermissionsAsync();
-  if (!permissionGranted(permission)) return;
+  if (!permissionGranted(permission)) {
+    await clearAccountNotifications();
+    return;
+  }
   const now = Date.now();
   const detailsEnabled = (await loadDevicePreferences()).notificationDetails;
   const neutral = { title: tr.notif.privateTitle, body: tr.notif.privateBody };

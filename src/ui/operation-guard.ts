@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-export type OperationResult<T> =
+type OperationResult<T> =
   | { started: false }
   | { started: true; value: T };
 

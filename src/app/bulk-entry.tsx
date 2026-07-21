@@ -5,12 +5,14 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";
-import { useCategories, usePersons, useUserId } from "../data/hooks";
+import { useCategoriesState, usePersonsState, useUserId } from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { categoryIcon } from "../data/category-icons";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../domain/dates";
+import { categoryTableEntryType } from "../domain/transactions";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { Body, Button, Heading, IconButton, MoneyField, Screen, Spread } from "../ui/components";
+import { Body, Button, DataStateNotice, Heading, IconButton, MoneyField, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { spacing } from "../ui/theme";
@@ -20,8 +22,10 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function BulkEntryModal() {
   const userId = useUserId();
-  const categories = useCategories();
-  const persons = usePersons();
+  const categoriesState = useCategoriesState();
+  const personsState = usePersonsState();
+  const categories = categoriesState.data;
+  const persons = personsState.data;
   const router = useRouter();
   const [month, setMonth] = useState(addMonthsToKey(monthKeyOf(todayISO()), -1));
   const [values, setValues] = useState<Record<string, { raw: string; minor: number | null }>>({});
@@ -29,6 +33,13 @@ export default function BulkEntryModal() {
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const operationGuard = useOperationGuard();
   const allowExit = useDirtyExitGuard(Object.values(values).some((value) => value.raw.trim() !== "") && !busy);
+  const liveStates = [categoriesState, personsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    categoriesState.retry();
+    personsState.retry();
+  };
 
   const selfId = persons.find((p) => p.isSelf)?.id;
   const rows = [...categories].sort((a, b) => (a.kind === b.kind ? a.sortOrder - b.sortOrder : a.kind === "expense" ? -1 : 1));
@@ -52,9 +63,8 @@ export default function BulkEntryModal() {
           selfId,
           entries.map((e) => ({
             categoryId: e.category.id,
-            kind: e.category.kind,
+            type: categoryTableEntryType(e.category),
             amountMinor: e.minor!,
-            isInvestment: e.category.name.toLocaleLowerCase("tr-TR").includes("yatırım"),
           })),
         );
         scheduleSync(userId);
@@ -69,8 +79,17 @@ export default function BulkEntryModal() {
     });
   };
 
+  if (!dataReady) {
+    return (
+      <Screen>
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.bulk.subtitle}</Body>
       <Spread style={{ marginBottom: spacing.lg }}>
         <IconButton icon={ChevronLeft} label={tr.bulk.month} onPress={() => setMonth(addMonthsToKey(month, -1))} />

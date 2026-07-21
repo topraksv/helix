@@ -10,7 +10,7 @@
   "dependencies": {
     "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
-    "@supabase/supabase-js": "^2.110.7",
+    "@supabase/supabase-js": "^2.110.8",
     "babel-preset-expo": "~54.0.12",
     "drizzle-orm": "^0.45.2",
     "expo": "~54.0.36",
@@ -30,6 +30,7 @@
     "expo-splash-screen": "~31.0.13",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
+    "expo-system-ui": "~6.0.9",
     "expo-updates": "~29.0.19",
     "lucide-react-native": "^1.25.0",
     "react": "19.1.0",
@@ -75,6 +76,9 @@
   "private": true,
   "overrides": {
     "postcss": "^8.5.10",
-    "brace-expansion@1": "^1.1.16"
+    "brace-expansion@1": "^1.1.16",
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
   }
 }

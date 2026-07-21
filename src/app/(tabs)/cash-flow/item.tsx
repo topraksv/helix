@@ -15,15 +15,16 @@ import { isValidItemParams, singleParam, type ItemKind } from "../../../domain/r
 import { formatMinor } from "../../../domain/money";
 import {
   toTxLike,
-  useAllTransactions,
-  useCategories,
-  useComputedColumns,
-  useLedger,
-  usePersons,
-  useSources,
+  useAllTransactionsState,
+  useCategoriesState,
+  useComputedColumnsState,
+  useLedgerState,
+  usePersonsState,
+  useSourcesState,
 } from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Card, EmptyState, Screen } from "../../../ui/components";
+import { Amount, Card, DataStateNotice, EmptyState, Screen } from "../../../ui/components";
 import { spacing, type, useTheme } from "../../../ui/theme";
 
 /**
@@ -52,14 +53,31 @@ function ItemBreakdown({
 }) {
   const router = useRouter();
   const { palette } = useTheme();
-  const bundle = useLedger(year);
-  const computed = useComputedColumns();
-  const sources = useSources();
-  const persons = usePersons();
-  const categories = useCategories();
-  const allTx = useAllTransactions();
+  const ledgerState = useLedgerState(year);
+  const computedState = useComputedColumnsState();
+  const sourcesState = useSourcesState();
+  const personsState = usePersonsState();
+  const categoriesState = useCategoriesState();
+  const transactionsState = useAllTransactionsState();
+  const bundle = ledgerState.data;
+  const computed = computedState.data;
+  const sources = sourcesState.data;
+  const persons = personsState.data;
+  const categories = categoriesState.data;
+  const allTx = transactionsState.data;
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
+  const liveStates = [ledgerState, computedState, sourcesState, personsState, categoriesState, transactionsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    ledgerState.retry();
+    computedState.retry();
+    sourcesState.retry();
+    personsState.retry();
+    categoriesState.retry();
+    transactionsState.retry();
+  };
 
   const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
   const txLike = toTxLike(allTx, persons, categories);
@@ -112,9 +130,19 @@ function ItemBreakdown({
 
   const total = rows.reduce((sum, r) => sum + (r.value ?? 0), 0);
 
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ title: label ?? tr.cashflow.monthDetail }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <Stack.Screen options={{ title: label ?? tr.cashflow.monthDetail }} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       {!bundle ? (
         <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />
       ) : (

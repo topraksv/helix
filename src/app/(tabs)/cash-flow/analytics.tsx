@@ -14,9 +14,17 @@ import { filterTransactions } from "../../../domain/transaction-search";
 import { budgetProgress } from "../../../domain/budgets";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
-import { toTxLike, useAllTransactions, useCategoryBudgets, useCategories, usePersons, useSources } from "../../../data/hooks";
+import {
+  toTxLike,
+  useAllTransactionsState,
+  useCategoryBudgetsState,
+  useCategoriesState,
+  usePersonsState,
+  useSourcesState,
+} from "../../../data/hooks";
+import { combineLiveQueryStatus } from "../../../data/live-state";
 import { categoryIcon } from "../../../data/category-icons";
-import { Amount, Badge, Body, Button, Card, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { HeaderBackButton } from "../../../ui/header-back";
@@ -38,11 +46,16 @@ export default function AnalysisScreen() {
   const [transactionType, setTransactionType] = useState<"expense" | "income" | "transfer" | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [searchScope, setSearchScope] = useState<"period" | "all">("period");
-  const categories = useCategories();
-  const persons = usePersons();
-  const sources = useSources();
-  const budgets = useCategoryBudgets();
-  const allTx = useAllTransactions();
+  const categoriesState = useCategoriesState();
+  const personsState = usePersonsState();
+  const sourcesState = useSourcesState();
+  const budgetsState = useCategoryBudgetsState();
+  const transactionsState = useAllTransactionsState();
+  const categories = categoriesState.data;
+  const persons = personsState.data;
+  const sources = sourcesState.data;
+  const budgets = budgetsState.data;
+  const allTx = transactionsState.data;
   const router = useRouter();
   const { palette } = useTheme();
   // Analysis is reachable from the Financial Table (same stack) and from
@@ -53,6 +66,16 @@ export default function AnalysisScreen() {
   const { width } = useWindowDimensions();
   const compact = width < 900;
   const narrow = width < 520;
+  const liveStates = [categoriesState, personsState, sourcesState, budgetsState, transactionsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    categoriesState.retry();
+    personsState.retry();
+    sourcesState.retry();
+    budgetsState.retry();
+    transactionsState.retry();
+  };
 
   // Window: rolling N months ending now, or a calendar year (navigable).
   const [startMonth, endMonth] =
@@ -151,6 +174,7 @@ export default function AnalysisScreen() {
   // Everything above the virtualized result list (period/filters/search box).
   const searchHeader = (
     <View>
+      <DataStateNotice status={dataStatus} retry={retryData} />
       {/* Period slicer + (year mode) year switcher — one aligned axis */}
       <Spread style={{ marginBottom: spacing.md, gap: spacing.md }}>
         <View style={{ flex: 1, maxWidth: 380 }}>
@@ -440,6 +464,15 @@ export default function AnalysisScreen() {
       ) : null}
     </View>
   );
+
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll={false}>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { shouldCoverSensitiveUi } from "../src/domain/privacy";
 
@@ -26,22 +26,15 @@ describe("sensitive UI cover policy", () => {
   // is the user's id and e-mail, never session material — so the boundary is
   // asserted here instead of being re-argued by hand each time.
   it("keeps only non-secret device-local values in the key-value store", () => {
-    const sources = [
-      "src/auth/session.ts",
-      "src/services/device-preferences.ts",
-      "src/services/diagnostics.ts",
-      "src/services/markets.ts",
-      "src/ui/root-lifecycle.ts",
-      "src/ui/tour.tsx",
-      "src/ui/frozen-gate.tsx",
-      "src/app/_layout.tsx",
-      "src/app/transaction.tsx",
-      "src/app/(tabs)/cash-flow/index.tsx",
-      "src/app/(tabs)/settings/index.tsx",
-    ];
+    const discover = (directory: string): string[] => readdirSync(directory).flatMap((name) => {
+      const path = join(directory, name);
+      if (statSync(path).isDirectory()) return discover(path);
+      return /\.tsx?$/.test(path) ? [path] : [];
+    });
+    const sources = discover(join(process.cwd(), "src"));
     const writes: string[] = [];
     for (const file of sources) {
-      const text = readFileSync(join(process.cwd(), file), "utf8");
+      const text = readFileSync(file, "utf8");
       for (const match of text.matchAll(/kv\.set\(\s*([^,]+),/g)) writes.push(match[1]!.trim());
     }
     // Guards the sweep itself: an empty result would pass every assertion below.

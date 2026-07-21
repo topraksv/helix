@@ -8,30 +8,31 @@
 import React, { useState } from "react";
 import { FlatList, ScrollView, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { and, eq, isNull } from "drizzle-orm";
-import { getDb } from "../db/client";
-import * as s from "../db/schema";
-import { restoreRow } from "../db/mutations";
-import { addTransaction, deleteTransaction } from "../data/repo";
-import { saveCellNote } from "../data/cell-notes";
-import { useCategories, useLive, usePersons, usePlans, useTransactionsBetween, useUserId } from "../data/hooks";
+import { addTransaction, deleteTransaction, restoreTransaction, saveCellNote } from "../data/repo";
+import {
+  useCategoriesState,
+  useCellNotesState,
+  usePersonsState,
+  usePlansState,
+  useTransactionsBetweenState,
+  useUserId,
+} from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
 import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
 import { formatMinor, parseAmountExpression } from "../domain/money";
-import { signedBalanceEffectOf } from "../domain/transactions";
+import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transactions";
 import { transactionDateText } from "../ui/transaction-date";
 import { monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Amount, Body, Button, EmptyState, Field, MoneyField, Row, Screen, SectionHeader, Spread } from "../ui/components";
+import { Amount, Body, Button, DataStateNotice, EmptyState, Field, MoneyField, Row, Screen, SectionHeader, Spread } from "../ui/components";
 import { TransactionRow } from "../ui/transaction-row";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
 import { spacing, type, useTheme } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
-import { runUndo } from "../domain/undo-outcome";
-import { devError } from "../services/logger";
 import { appAlert } from "../ui/dialog";
 
 /**
@@ -58,24 +59,17 @@ export default function CellEditorModal() {
 }
 
 function CellEditor({ month, categoryId }: { month: string; categoryId: string }) {
-  /**
-   * An undo that fails must say so — the snackbar dismisses on tap either way,
-   * so a swallowed rejection left the row deleted with no message.
-   */
-  const reportUndo = async (action: () => Promise<unknown>) => {
-    const outcome = await runUndo(action);
-    if (!outcome.ok) {
-      devError("undo", outcome.error);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
-  };
   const userId = useUserId();
   const router = useRouter();
-  const categories = useCategories();
-  const persons = usePersons();
-  const plans = usePlans();
+  const categoriesState = useCategoriesState();
+  const personsState = usePersonsState();
+  const plansState = usePlansState();
+  const categories = categoriesState.data;
+  const persons = personsState.data;
+  const plans = plansState.data;
   const rangeMonth = month;
-  const transactions = useTransactionsBetween(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
+  const transactionsState = useTransactionsBetweenState(firstDayOf(rangeMonth), lastDayOf(rangeMonth));
+  const transactions = transactionsState.data;
   const undo = useUndo();
   const { palette } = useTheme();
   const [entryRaw, setEntryRaw] = useState("");
@@ -91,21 +85,20 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
     .filter((t) => selfIds.has(t.personId))
     .reduce((sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null), 0);
 
-  const note = useLive(
-    getDb()
-      .select()
-      .from(s.cellNotes)
-      .where(
-        and(
-          eq(s.cellNotes.userId, userId),
-          eq(s.cellNotes.month, rangeMonth),
-          eq(s.cellNotes.categoryId, categoryId),
-          isNull(s.cellNotes.deletedAt),
-        ),
-      ),
-    [userId, rangeMonth, categoryId],
-    ["cell_notes"],
-  ).data[0];
+  const cellNotesState = useCellNotesState();
+  const note = cellNotesState.data.find(
+    (row) => row.month === rangeMonth && row.categoryId === categoryId,
+  );
+  const liveStates = [categoriesState, personsState, plansState, transactionsState, cellNotesState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    categoriesState.retry();
+    personsState.retry();
+    plansState.retry();
+    transactionsState.retry();
+    cellNotesState.retry();
+  };
 
   useDirtyExitGuard(
     (entryRaw.trim() !== "" || (noteDraft != null && noteDraft !== (note?.body ?? ""))) && !busy,
@@ -124,7 +117,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
         // reduces spending, an income correction reduces income, and an
         // investment withdrawal reduces the transfer total without changing the
         // category/type invariant.
-        const baseType = category.name.toLocaleLowerCase("tr-TR").includes("yatırım") ? "transfer" : category.kind;
+        const baseType = categoryTableEntryType(category);
         const hasExpr = entryRaw.includes("+") || entryRaw.trim().slice(1).includes("-");
         await addTransaction(userId, {
           type: baseType,
@@ -143,6 +136,8 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
         });
         scheduleSync(userId);
         setEntryRaw("");
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
         setBusy(false);
       }
@@ -151,17 +146,31 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
 
   const saveNote = async (body: string) => {
     if (!category) return;
-    await saveCellNote(userId, rangeMonth, category.id, body, note);
-    setNoteDraft(null);
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        await saveCellNote(userId, rangeMonth, category.id, body, note);
+        setNoteDraft(null);
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
+      } finally {
+        setBusy(false);
+      }
+    });
   };
 
   const removeTx = async (id: string) => {
-    const snapshot = await deleteTransaction(userId, id);
-    if (snapshot) undo.show(tr.tx.deletedUndo, () => void reportUndo(() => restoreRow(userId, "transactions", snapshot)), "warning");
+    try {
+      const snapshot = await deleteTransaction(userId, id);
+      if (snapshot) undo.show(tr.tx.deletedUndo, () => restoreTransaction(userId, snapshot), "warning");
+    } catch {
+      void appAlert(tr.errors.saveFailed, tr.errors.title);
+    }
   };
 
   const header = (
     <View>
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <Spread style={{ marginBottom: spacing.md }}>
         <Body muted style={{ flexShrink: 0 }}>{tr.cell.total}</Body>
         <ScrollView
@@ -222,7 +231,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
           <Field accessibilityLabel={tr.common.note} value={noteDraft} onChangeText={setNoteDraft} multiline placeholder={tr.cell.notePlaceholder} />
           <Row gap={spacing.sm}>
             <View style={{ flex: 1 }}>
-              <Button label={tr.common.save} size="sm" onPress={() => void saveNote(noteDraft)} />
+              <Button label={tr.common.save} size="sm" onPress={() => void saveNote(noteDraft)} loading={busy} disabled={busy} />
             </View>
             <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setNoteDraft(null)} />
           </Row>
@@ -232,6 +241,15 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
       <SectionHeader>{tr.cashflow.cellTransactions}</SectionHeader>
     </View>
   );
+
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll={false}>

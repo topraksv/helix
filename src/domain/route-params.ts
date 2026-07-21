@@ -41,7 +41,7 @@ export function isValidCellParams(month: unknown, categoryId: unknown): CellPara
 const MIN_YEAR = 1970;
 const MAX_YEAR = 2999;
 
-export const ITEM_KINDS = ["category", "computed", "uncategorized"] as const;
+const ITEM_KINDS = ["category", "computed", "uncategorized"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
 export interface ItemParams {

@@ -88,7 +88,7 @@ export function CurrencyConverter() {
       <MoneyField
         label={tr.calc.convertFrom}
         value={raw}
-        placeholder="0,00"
+        placeholder={tr.placeholders.zeroAmount}
         onChangeMinor={(r, m) => {
           setRaw(r);
           setMinor(m);

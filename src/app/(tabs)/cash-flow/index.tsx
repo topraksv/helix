@@ -10,9 +10,6 @@ import React, { useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
-import { and, eq, isNull } from "drizzle-orm";
-import { getDb } from "../../../db/client";
-import * as s from "../../../db/schema";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
@@ -22,14 +19,13 @@ import {
   settingValue,
   toTxLike,
   useAllTransactionsState,
+  useCellNotesState,
   useCategoriesState,
   useComputedColumnsState,
   useLedgerState,
-  useLive,
   usePersonsState,
   useSettingsMapState,
   useSourcesState,
-  useUserId,
   type LedgerBundle,
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
@@ -131,6 +127,7 @@ export default function CashflowScreen() {
   const sourcesState = useSourcesState();
   const personsState = usePersonsState();
   const allTxState = useAllTransactionsState();
+  const cellNotesState = useCellNotesState();
   const bundle = ledgerState.data;
   const categories = categoriesState.data;
   const computed = computedState.data;
@@ -140,13 +137,17 @@ export default function CashflowScreen() {
   const sources = sourcesState.data;
   const persons = personsState.data;
   const allTx = allTxState.data;
-  const liveStates = [ledgerState, categoriesState, computedState, settingsState, sourcesState, personsState, allTxState];
+  const liveStates = [ledgerState, categoriesState, computedState, settingsState, sourcesState, personsState, allTxState, cellNotesState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const retryData = () => {
-    // Ledger owns the settings/person/category/transaction query retries.
     ledgerState.retry();
+    categoriesState.retry();
     computedState.retry();
+    settingsState.retry();
     sourcesState.retry();
+    personsState.retry();
+    allTxState.retry();
+    cellNotesState.retry();
   };
   const { width } = useWindowDimensions();
   const wide = width >= 900;
@@ -278,6 +279,7 @@ export default function CashflowScreen() {
                   creditCardIds={creditCardIds}
                   liveCategoryIds={liveCategoryIds}
                   txLike={txLike}
+                  cellNotes={cellNotesState.data}
                   orientation={orientation}
                   compact={!wide}
                   measuredHeight={tableAreaH}
@@ -336,6 +338,7 @@ function MatrixTable({
   creditCardIds,
   liveCategoryIds,
   txLike,
+  cellNotes,
   orientation,
   compact,
   measuredHeight,
@@ -344,11 +347,12 @@ function MatrixTable({
 }: {
   year: number;
   bundle: LedgerBundle;
-  columnCategories: (typeof s.categories.$inferSelect)[];
-  computedColumns: (typeof s.computedColumns.$inferSelect)[];
+  columnCategories: ReturnType<typeof useCategoriesState>["data"];
+  computedColumns: ReturnType<typeof useComputedColumnsState>["data"];
   creditCardIds: Set<string>;
   liveCategoryIds: Set<string>;
   txLike: ReturnType<typeof toTxLike>;
+  cellNotes: ReturnType<typeof useCellNotesState>["data"];
   orientation: "monthsAsRows" | "monthsAsColumns";
   compact: boolean;
   measuredHeight: number;
@@ -357,15 +361,9 @@ function MatrixTable({
 }) {
   const { palette } = useTheme();
   const router = useRouter();
-  const userId = useUserId();
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
 
-  const cellNotes = useLive(
-    getDb().select().from(s.cellNotes).where(and(eq(s.cellNotes.userId, userId), isNull(s.cellNotes.deletedAt))),
-    [userId],
-    ["cell_notes"],
-  ).data;
   const noteByCell = new Map(cellNotes.map((note) => [`${note.month}:${note.categoryId}`, note.body]));
 
   const matrix = buildCashFlowMatrixModel({

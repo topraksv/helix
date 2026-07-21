@@ -106,6 +106,7 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
   const bundle = validateExportBundle(input);
   const sqlite = await getSqliteAsync();
   let imported = 0;
+  let skipped = 0;
   const localState = {} as Record<SyncedTableName, { updatedAt: Map<string, number>; ids: Set<string> }>;
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     const localRows = await sqlite.getAllAsync<{ id: string; updated_at: string }>(
@@ -121,6 +122,11 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
     bundle,
     Object.fromEntries(Object.entries(localState).map(([table, state]) => [table, state.ids])) as ExistingImportIds,
   );
+  const legacyTransferCategoryIds = new Set(
+    (bundle.tables.transactions ?? [])
+      .filter((row) => row.type === "transfer" && typeof row.category_id === "string")
+      .map((row) => String(row.category_id)),
+  );
   function* restoreBatches(): Generator<{ table: SyncedTableName; row: Record<string, unknown> }[]> {
     let batch: { table: SyncedTableName; row: Record<string, unknown> }[] = [];
     for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
@@ -129,8 +135,16 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
       for (const raw of rows) {
         const incoming = Date.parse(String(raw.updated_at));
         const local = localState[table].updatedAt.get(String(raw.id));
-        if (local != null && local >= incoming) continue;
-        batch.push({ table, row: { ...fromDbShape(table, raw as Record<string, unknown>), userId } });
+        if (local != null && local >= incoming) {
+          skipped += 1;
+          continue;
+        }
+        const row: Record<string, unknown> = { ...fromDbShape(table, raw as Record<string, unknown>), userId };
+        if (table === "categories" && !("is_transfer" in raw)) {
+          const legacyInvestmentName = typeof raw.name === "string" && raw.name.toLocaleLowerCase("tr-TR").includes("yatırım");
+          row.isTransfer = raw.kind === "expense" && (legacyTransferCategoryIds.has(String(raw.id)) || legacyInvestmentName);
+        }
+        batch.push({ table, row });
         imported += 1;
         if (batch.length === 400) {
           yield batch;
@@ -143,5 +157,5 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
   // One transaction for every table: a malformed/out-of-space restore can no
   // longer leave half the backup applied.
   await writeRowBatchesAtomically(userId, restoreBatches(), false);
-  return { imported, skipped: 0 };
+  return { imported, skipped };
 }

@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
-import { useCategories, usePersons, usePlans, usePlansState, useSources, useUserId } from "../data/hooks";
+import { useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
+import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
@@ -12,7 +13,7 @@ import { deriveStartMonth, isValidInstallmentCount } from "../domain/installment
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react-native";
-import { Body, Button, ChipPicker, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { Body, Button, ChipPicker, DataStateNotice, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -32,21 +33,38 @@ export default function PlanModal() {
   // exist, which must recover instead of rendering a permanent blank screen.
   if (!record) return <Redirect href="/(tabs)/cash-flow/installments" />;
   if (record.mode === "edit" && !existing) {
-    if (plansState.updatedAt == null) return <Screen scroll={false}>{null}</Screen>;
+    if (plansState.updatedAt == null) {
+      return (
+        <Screen scroll={false}>
+          <DataStateNotice status={plansState.status} retry={plansState.retry} />
+        </Screen>
+      );
+    }
     return <Redirect href="/(tabs)/cash-flow/installments" />;
   }
   return <PlanForm key={existing?.id ?? "new"} existing={existing} />;
 }
 
-function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number] }) {
+function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["data"][number] }) {
   const userId = useUserId();
-  const sources = useSources();
-  const persons = usePersons();
+  const sourcesState = useSourcesState();
+  const personsState = usePersonsState();
   const operationGuard = useOperationGuard();
-  const categories = useCategories();
+  const categoriesState = useCategoriesState();
+  const sources = sourcesState.data;
+  const persons = personsState.data;
+  const categories = categoriesState.data;
   const router = useRouter();
   const isEdit = existing != null;
   const close = () => navigateBack(router, "/(tabs)/cash-flow/installments");
+  const liveStates = [sourcesState, personsState, categoriesState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    sourcesState.retry();
+    personsState.retry();
+    categoriesState.retry();
+  };
 
   const [kind, setKind] = useState<"card_installment" | "loan">(existing?.kind ?? "card_installment");
   const existingAmountMinor = existing ? (existing.kind === "loan" ? existing.monthlyAmountMinor : existing.totalAmountMinor) : null;
@@ -80,6 +98,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
   const count = Number(countStr);
   const paid = Number(paidStr);
   const valid =
+    dataReady &&
     title.trim() !== "" &&
     amountMinor != null &&
     amountMinor > 0 &&
@@ -142,25 +161,40 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
 
   const confirmDelete = () => {
     void (async () => {
-      // Deleting a plan tombstones every generated installment and can't be
-      // undone, so the confirmation spells out how many records go with it.
-      const count = await countInstallmentsForPlan(userId, existing!.id);
-      const ok = await appConfirm(existing!.title, tr.installments.deleteBody(count), {
-        confirmLabel: tr.common.delete,
-        danger: true,
-      });
-      if (!ok) return;
-      await deletePlan(userId, existing!.id);
-      scheduleSync(userId);
-      allowExit(close);
+      try {
+        // Deleting a plan tombstones every generated installment and can't be
+        // undone, so the confirmation spells out how many records go with it.
+        const count = await countInstallmentsForPlan(userId, existing!.id);
+        const ok = await appConfirm(existing!.title, tr.installments.deleteBody(count), {
+          confirmLabel: tr.common.delete,
+          danger: true,
+        });
+        if (!ok) return;
+        await deletePlan(userId, existing!.id);
+        scheduleSync(userId);
+        allowExit(close);
+      } catch {
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
+      }
     })();
   };
 
   useSubmitOnEnter(() => void save(), valid && !busy);
+  const titlePlaceholder = useRotatingPlaceholder(placeholderPools.installment);
+
+  if (!dataReady) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ title: isEdit ? tr.installments.editTitle : tr.installments.newTitle }} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
       <Stack.Screen options={{ title: isEdit ? tr.installments.editTitle : tr.installments.newTitle }} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       {isEdit ? <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.installments.editHint}</Body> : null}
       <Segmented
         options={[
@@ -170,7 +204,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlans>[number]
         value={kind}
         onChange={setKind}
       />
-      <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={useRotatingPlaceholder(placeholderPools.installment)} />
+      <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={titlePlaceholder} />
       <MoneyField
         label={kind === "card_installment" ? tr.installments.totalAmount : tr.installments.monthlyAmount}
         value={amountRaw}

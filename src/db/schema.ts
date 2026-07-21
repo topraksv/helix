@@ -55,6 +55,8 @@ export const categories = sqliteTable("categories", {
   color: text("color"),
   sortOrder: integer("sort_order").notNull().default(0),
   isColumn: integer("is_column", { mode: "boolean" }).notNull().default(false),
+  /** Month-table entries in this expense category are balance transfers, not spending. */
+  isTransfer: integer("is_transfer", { mode: "boolean" }).notNull().default(false),
 });
 
 export const computedColumns = sqliteTable("computed_columns", {
@@ -241,15 +243,22 @@ export const fxRates = sqliteTable("fx_rates", {
 });
 
 /** Local-only: outbox of pending mutations to push (never synced itself). */
-export const outbox = sqliteTable("outbox", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  tableName: text("table_name").notNull(),
-  rowId: text("row_id").notNull(),
-  op: text("op", { enum: ["upsert"] }).notNull().default("upsert"),
-  payload: text("payload").notNull(), // JSON row snapshot
-  idempotencyKey: text("idempotency_key").notNull().unique(),
-  createdAt: text("created_at").notNull(),
-});
+export const outbox = sqliteTable(
+  "outbox",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    tableName: text("table_name").notNull(),
+    rowId: text("row_id").notNull(),
+    op: text("op", { enum: ["upsert"] }).notNull().default("upsert"),
+    payload: text("payload").notNull(), // JSON row snapshot
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_outbox_table_id").on(t.tableName, t.id),
+    index("idx_outbox_table_row_id_id").on(t.tableName, t.rowId, t.id),
+  ],
+);
 
 /** Local-only quarantine. Invalid/cross-account outbox payloads are preserved
  *  for diagnostics instead of being silently discarded or blocking sync. */

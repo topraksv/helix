@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import {
   combineLiveQueryStatus,
   completeLiveQuery,
@@ -32,6 +34,30 @@ describe("live query state", () => {
   });
 });
 
+describe("live screen contract", () => {
+  const root = process.cwd();
+  const discover = (directory: string): string[] => readdirSync(join(root, directory), { withFileTypes: true })
+    .flatMap((entry) => entry.isDirectory()
+      ? discover(join(directory, entry.name))
+      : entry.name.endsWith(".tsx") ? [join(directory, entry.name)] : []);
+  const screens = [...discover("src/app"), ...discover("src/ui")];
+  const convenienceHook = /\buse(?:Categories|Persons|Sources|Subscriptions|Plans|CreditCardStatements|RecurringIncomes|ComputedColumns|CategoryBudgets|TransactionsBetween|AllTransactions|Adjustments|SettingsMap|Ledger|PendingExpected|LastEntryInfo)\(/;
+  const stateHook = /\buse(?:Categories|Persons|Sources|Subscriptions|Plans|CreditCardStatements|RecurringIncomes|ComputedColumns|CategoryBudgets|TransactionsBetween|AllTransactions|Adjustments|SettingsMap|Ledger|PendingExpected|LastEntryInfo)State\(/;
+
+  it("never lets a first-load empty collection masquerade as screen data", () => {
+    for (const file of screens) {
+      expect(readFileSync(join(root, file), "utf8"), file).not.toMatch(convenienceHook);
+    }
+  });
+
+  it("gives every stateful financial-data screen a shared loading/retry notice", () => {
+    for (const file of screens) {
+      const source = readFileSync(join(root, file), "utf8");
+      if (stateHook.test(source)) expect(source, file).toContain("DataStateNotice");
+    }
+  });
+});
+
 // A signed-in account that has not yet resolved its `onboarded` flag is not an
 // un-onboarded account. Reading it as `false` is what routed a fully set-up
 // user to Quick Start for ~2 seconds after logout → login.
@@ -62,6 +88,7 @@ describe("synced guard flags", () => {
         locked: false,
         userId: "user-a",
         onboarded: readSyncedFlag(resolved, true),
+        frozen: false,
         awaitingFirstPull: false,
         route: "protected",
       }),
@@ -86,6 +113,7 @@ describe("synced guard flags", () => {
         locked: false,
         userId: "user-a",
         onboarded: readSyncedFlag(restarted, true),
+        frozen: false,
         awaitingFirstPull: false,
         route: "protected",
       }),
@@ -101,6 +129,7 @@ describe("synced guard flags", () => {
         locked: false,
         userId: "user-a",
         onboarded: readSyncedFlag(carried, true),
+        frozen: false,
         awaitingFirstPull: false,
         route: "protected",
       }).redirect,
@@ -114,6 +143,7 @@ describe("synced guard flags", () => {
         locked: false,
         userId: "user-a",
         onboarded: readSyncedFlag(afterPull, true),
+        frozen: false,
         awaitingFirstPull: false,
         route: "protected",
       }),

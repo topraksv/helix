@@ -7,6 +7,8 @@ updates:
       day: monday
       time: "06:00"
       timezone: Europe/Istanbul
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       safe-npm-updates:
@@ -52,6 +54,8 @@ updates:
       day: monday
       time: "06:30"
       timezone: Europe/Istanbul
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       github-actions:

@@ -11,23 +11,37 @@ import { installmentDisplayTitle, planProgress, type GeneratedInstallment } from
 import { monthKeyOf, todayISO } from "../../../domain/dates";
 import { monthLabel, tr } from "../../../i18n/tr";
 import {
-  usePersons,
-  usePlans,
-  useSources,
-  useAllTransactions,
+  usePersonsState,
+  usePlansState,
+  useSourcesState,
+  useAllTransactionsState,
 } from "../../../data/hooks";
-import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, EmptyState, MonthStepper, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { combineLiveQueryStatus } from "../../../data/live-state";
+import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, MonthStepper, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { spacing, useTheme } from "../../../ui/theme";
 
 export default function InstallmentsScreen() {
-  const plans = usePlans();
-  const sources = useSources();
-  const persons = usePersons();
-  const allTx = useAllTransactions();
+  const plansState = usePlansState();
+  const sourcesState = useSourcesState();
+  const personsState = usePersonsState();
+  const transactionsState = useAllTransactionsState();
+  const plans = plansState.data;
+  const sources = sourcesState.data;
+  const persons = personsState.data;
+  const allTx = transactionsState.data;
   const router = useRouter();
   const { palette } = useTheme();
   const [viewMonth, setViewMonth] = useState(monthKeyOf(todayISO()));
   const [cardFilter, setCardFilter] = useState<string | null>(null);
+  const liveStates = [plansState, sourcesState, personsState, transactionsState];
+  const dataStatus = combineLiveQueryStatus(liveStates);
+  const dataReady = liveStates.every((state) => state.updatedAt != null);
+  const retryData = () => {
+    plansState.retry();
+    sourcesState.retry();
+    personsState.retry();
+    transactionsState.retry();
+  };
 
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const sourceName = new Map(sources.map((s) => [s.id, s.name]));
@@ -122,8 +136,17 @@ export default function InstallmentsScreen() {
 
   const nothingThisMonth = selfPlans.length === 0 && otherPlans.length === 0;
 
+  if (!dataReady) {
+    return (
+      <Screen>
+        <DataStateNotice status={dataStatus} retry={retryData} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <MonthStepper value={viewMonth} onChange={setViewMonth} />
 
       <Card>

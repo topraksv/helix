@@ -32,6 +32,14 @@ export function categoryAcceptsTransaction(type: TransactionType, categoryKind: 
   return type === "transfer" ? categoryKind === "expense" : type === categoryKind;
 }
 
+/** Financial type used by quick/month-table entry for a persisted category. */
+export function categoryTableEntryType(category: {
+  kind: CategoryKind;
+  isTransfer: boolean;
+}): TransactionType {
+  return category.kind === "expense" && category.isTransfer ? "transfer" : category.kind;
+}
+
 export function signedBalanceEffect(tx: TxLike): Minor {
   const flow = financialFlow(tx);
   return flow.type === "income" ? flow.amountTryMinor : -flow.amountTryMinor;
