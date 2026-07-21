@@ -12,9 +12,10 @@ history log.
   database verification and generated types and merged GitHub-verified as
   `ccabdb7`.
 - The last code-bearing Pages run is `29871029794`, which completed
-  successfully for `408c098`. The later `ccabdb7` delta contains only pgTAP,
-  generated TypeScript types and documentation, so it does not alter the web
-  runtime bundle.
+  successfully for `408c098`. Protected PR #51 merged the test synchronization
+  and handoff as GitHub-verified `71f5c17`; its final Pages run `29873521094`
+  passed quality and deployed successfully. The deltas after `408c098` do not
+  alter the web runtime bundle.
 - Preview OTA group `40d1d11d-1d30-4d93-91c4-670df321b198` was published from
   clean protected `ccabdb7`. Runtime is `1.0.0`, branch/channel are `preview`,
   and the channel has one unconditional mapping to that branch. Android update
@@ -27,10 +28,11 @@ history log.
   assertions; `finish(true)` completed and a negative probe proved that a
   failing assertion is rejected. Linked database types were regenerated
   verbatim.
-- Commit `df072a1` is a test-only synchronization fix after the release: the
-  accessibility probe now waits for hydrated `aria-labelledby` state. It does
-  not change application output. Git history and protected checks are the
-  authority for its merge state.
+- Live Pages probes found status 200 plus the Helix shell for root, upcoming and
+  settings. The concrete dynamic month URL correctly returned GitHub Pages
+  status 404 with a body byte-identical to the root shell; its referenced entry
+  asset returned status 200. This is the documented custom-404 client-router
+  contract, not an application not-found screen.
 
 ## Package 1 evidence
 
