@@ -272,3 +272,45 @@ test("multi-entry settings screens return to whoever opened them", async ({ page
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
+
+/**
+ * One rate fetch per app session, whichever entry point starts it.
+ *
+ * `root-lifecycle.ts` calls `refreshRates` DIRECTLY on boot (it awaits it inside
+ * the session task), while the currency converter goes through the throttled
+ * `ensureFreshRates`. The throttle timestamp used to be armed only by the
+ * wrapper, so the boot fetch left it at 0 and the converter — mounting on the
+ * calculator screen within the next minute — issued a second request for the
+ * same rates. Measured before the fix: every route made one Frankfurter request,
+ * the calculator made two.
+ */
+test("the FX provider is called once per session, not once per entry point", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  const fxCalls: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("frankfurter")) fxCalls.push(request.url());
+  });
+
+  await onboard(page);
+
+  // Every `goto` in this suite is a full page load, so one load == one app
+  // session. Count exactly one load: the calculator, where BOTH callers run —
+  // the boot refresh and the converter's focus refresh.
+  fxCalls.length = 0;
+  await page.goto("/helix/calculator");
+  await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
+  await page.waitForTimeout(1500);
+
+  expect(fxCalls.length, `FX provider called ${fxCalls.length}× in one session: ${fxCalls.join(", ")}`)
+    .toBeLessThanOrEqual(1);
+
+  // Client-side navigation away and back must not add another inside the window.
+  await page.getByRole("tab", { name: "Bütçe Özeti" }).click();
+  await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Hesap" }).click();
+  await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
+  await page.waitForTimeout(1200);
+  expect(fxCalls.length, "a repeat visit refetched inside the 60 s throttle").toBeLessThanOrEqual(1);
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});

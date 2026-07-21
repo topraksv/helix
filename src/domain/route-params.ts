@@ -38,8 +38,8 @@ export function isValidCellParams(month: unknown, categoryId: unknown): CellPara
  * this number, and `makeMonthKey` pads to four digits, so anything outside a
  * plausible range produces keys no data can match.
  */
-export const MIN_YEAR = 1970;
-export const MAX_YEAR = 2999;
+const MIN_YEAR = 1970;
+const MAX_YEAR = 2999;
 
 export const ITEM_KINDS = ["category", "computed", "uncategorized"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];

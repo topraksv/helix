@@ -143,7 +143,7 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
  * from an earlier year). The ledger back-anchors to the earliest data, so the
  * earliest start wins; for the same-or-later month the form value is authoritative.
  */
-export async function onboardingBalanceRows(
+async function onboardingBalanceRows(
   userId: string,
   startMonth: MonthKey,
   openingBalanceMinor: Minor,

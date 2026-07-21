@@ -21,7 +21,7 @@ const LIGHTNESS = 0.46;
  */
 const MAX_LUMINANCE = 0.175;
 
-export function toLinear(channel: number): number {
+function toLinear(channel: number): number {
   return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
 }
 
@@ -50,7 +50,7 @@ export function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
-export function relativeLuminance([red, green, blue]: [number, number, number]): number {
+function relativeLuminance([red, green, blue]: [number, number, number]): number {
   return 0.2126 * toLinear(red) + 0.7152 * toLinear(green) + 0.0722 * toLinear(blue);
 }
 

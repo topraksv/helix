@@ -58,8 +58,17 @@ async function fetchFromFrankfurter(signal?: AbortSignal): Promise<ProviderRateB
   return parseFrankfurterRates(JSON.parse(text) as unknown);
 }
 
+/** Shared throttle for every rate fetch, whichever entry point starts it. */
+let lastEnsureAt = 0;
+
 /** Fetch and cache the provider's latest dated rates; cache covers failures. */
 export async function refreshRates(userId: string, signal?: AbortSignal): Promise<boolean> {
+  // The throttle belongs to the FETCH, not to one wrapper. `root-lifecycle.ts`
+  // calls this directly on boot (it needs to await it inside the session task),
+  // which used to leave `lastEnsureAt` at 0 — so a converter mounting within the
+  // next minute fired a SECOND request for the same rates. Measured: every route
+  // issued one Frankfurter request, the calculator issued two.
+  lastEnsureAt = Date.now();
   let batch: ProviderRateBatch;
   // TCMB's today.xml sends no CORS headers, so on web it always fails with a
   // noisy console error — use only the CORS-enabled Frankfurter (ECB) feed
@@ -162,7 +171,6 @@ export function clearRateCache(): void {
  * (a late response can't write across accounts) and throttled, so callers can
  * invoke it freely.
  */
-let lastEnsureAt = 0;
 export function ensureFreshRates(userId: string): void {
   if (Date.now() - lastEnsureAt < 60_000) return;
   lastEnsureAt = Date.now();

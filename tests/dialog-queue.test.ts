@@ -8,32 +8,41 @@
  * lost. Both call sites are password re-auth on different screens
  * (`account-security.tsx`, `settings/index.tsx`), so overlap is reachable.
  *
- * The queue logic is pure store manipulation, so it is asserted directly.
+ * These tests drive the REAL reducer from `src/ui/request-queue.ts`. They used
+ * to drive a copy of it declared in this file, which meant the assertions could
+ * stay green while `dialog.tsx` did something else entirely — the copy is why
+ * the reducer now lives in its own module.
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import {
+  advanceRequestQueue,
+  emptyRequestQueue,
+  enqueueRequest,
+  type RequestQueue,
+} from "../src/ui/request-queue";
+
 interface Request<T> {
   id: string;
   resolve: (value: T) => void;
 }
 
-/** The enqueue/close pair both hosts implement. */
+/** The enqueue/close pair both hosts implement, over the shared reducer. */
 function createQueue<T>() {
-  let state: { current: Request<T> | null; queue: Request<T>[] } = { current: null, queue: [] };
+  let state: RequestQueue<Request<T>> = emptyRequestQueue<Request<T>>();
   return {
     get state() {
       return state;
     },
     enqueue(request: Request<T>) {
-      if (state.current) state = { ...state, queue: [...state.queue, request] };
-      else state = { ...state, current: request };
+      state = enqueueRequest(state, request);
     },
     close(value: T) {
       const settled = state.current;
-      state = { current: state.queue[0] ?? null, queue: state.queue.slice(1) };
+      state = advanceRequestQueue(state);
       settled?.resolve(value);
     },
   };
@@ -97,19 +106,68 @@ describe("prompt queue", () => {
     q.close(null);
     expect(settled).toEqual(["a", "b"]);
   });
+
+  it("lets a resolve handler open the next request without losing it", () => {
+    // `close` advances BEFORE resolving, so a follow-up prompt opened from the
+    // resolve handler enqueues against the advanced state. Advancing after the
+    // resolve would overwrite the follow-up with the promoted request.
+    const settled: string[] = [];
+    const q = createQueue<string | null>();
+    q.enqueue({
+      id: "a",
+      resolve: () => {
+        settled.push("a");
+        q.enqueue({ id: "follow-up", resolve: () => settled.push("follow-up") });
+      },
+    });
+    q.close(null);
+    expect(q.state.current?.id).toBe("follow-up");
+    q.close(null);
+    expect(settled).toEqual(["a", "follow-up"]);
+  });
+});
+
+describe("request-queue reducer", () => {
+  it("starts empty", () => {
+    expect(emptyRequestQueue<string>()).toEqual({ current: null, queue: [] });
+  });
+
+  it("does not mutate the state it is given", () => {
+    const before: RequestQueue<string> = { current: "a", queue: ["b"] };
+    const after = enqueueRequest(before, "c");
+    expect(before).toEqual({ current: "a", queue: ["b"] });
+    expect(after).toEqual({ current: "a", queue: ["b", "c"] });
+    expect(advanceRequestQueue(before)).toEqual({ current: "b", queue: [] });
+    expect(before).toEqual({ current: "a", queue: ["b"] });
+  });
+
+  it("keeps a queued request behind the open one, never replacing it", () => {
+    const state = enqueueRequest(enqueueRequest(emptyRequestQueue<string>(), "a"), "b");
+    expect(state.current).toBe("a");
+    expect(state.queue).toEqual(["b"]);
+  });
+
+  it("empties rather than throwing when advanced past the last request", () => {
+    expect(advanceRequestQueue<string>({ current: "a", queue: [] })).toEqual({ current: null, queue: [] });
+    expect(advanceRequestQueue<string>({ current: null, queue: [] })).toEqual({ current: null, queue: [] });
+  });
 });
 
 describe("dialog.tsx wiring", () => {
   const text = readFileSync(join(process.cwd(), "src/ui/dialog.tsx"), "utf8");
 
-  it("routes appPrompt through a queue, like appConfirm", () => {
-    expect(text).toContain("function enqueuePrompt(");
-    expect(text).toMatch(/usePromptStore = create<\{ current: PromptRequest \| null; queue: PromptRequest\[\] \}>/);
-    // The single-slot overwrite must be gone.
-    expect(text).not.toMatch(/usePromptStore\.setState\(\{\s*current: \{/);
+  it("routes BOTH stores through the shared reducer", () => {
+    expect(text).toContain('from "./request-queue"');
+    // Two hosts, one enqueue helper each, both delegating.
+    expect(text.match(/enqueueRequest\(/g)).toHaveLength(2);
+    expect(text.match(/advanceRequestQueue\(/g)).toHaveLength(2);
+    expect(text.match(/create<RequestQueue<\w+>>/g)).toHaveLength(2);
   });
 
-  it("advances the prompt queue on close", () => {
-    expect(text).toMatch(/usePromptStore\.setState\(\{ current: queue\[0\] \?\? null, queue: queue\.slice\(1\) \}\)/);
+  it("keeps no hand-rolled queue arithmetic behind", () => {
+    // The single-slot overwrite and the two open-coded advances must be gone.
+    expect(text).not.toMatch(/usePromptStore\.setState\(\{\s*current: \{/);
+    expect(text).not.toMatch(/queue\[0\] \?\? null/);
+    expect(text).not.toMatch(/queue\.slice\(1\)/);
   });
 });
