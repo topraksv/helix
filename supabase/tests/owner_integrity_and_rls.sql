@@ -94,10 +94,10 @@ select ok(
   'account deletion remains SECURITY DEFINER'
 );
 
-select results_eq(
-  $$select unnest(proconfig) from pg_proc
-    where oid = 'public.delete_own_account()'::regprocedure$$,
-  $$values ('search_path=""'::text)$$,
+select is(
+  (select proconfig from pg_proc
+    where oid = 'public.delete_own_account()'::regprocedure),
+  array['search_path=""']::text[],
   'account deletion pins an empty search_path'
 );
 
