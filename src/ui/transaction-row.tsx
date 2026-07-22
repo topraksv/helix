@@ -9,7 +9,7 @@ import { Text, View } from "react-native";
 import { Pencil, Trash2 } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, Divider, IconButton, Row, Spread } from "./components";
-import { spacing, type, useTheme } from "./theme";
+import { font, spacing, type, useTheme } from "./theme";
 
 export function TransactionRow({
   installmentTitle,
@@ -37,7 +37,7 @@ export function TransactionRow({
     <View>
       <Spread style={{ paddingVertical: spacing.sm }}>
         <View style={{ flex: 1 }}>
-          {installmentTitle ? <Body style={{ fontFamily: "Inter_500Medium" }}>{installmentTitle}</Body> : null}
+          {installmentTitle ? <Body style={{ fontFamily: font.medium }}>{installmentTitle}</Body> : null}
           <Body muted={installmentTitle != null}>{dateText}</Body>
           {note && note !== installmentTitle ? (
             <Text style={[type.small, { color: palette.textSecondary }]}>{note}</Text>

@@ -15,7 +15,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, View, type GestureResponderHandlers, type LayoutChangeEvent } from "react-native";
 import { GripVertical } from "lucide-react-native";
 import { errorNotice, mediumTap, selectionTap } from "./haptics";
-import { spacing, useTheme } from "./theme";
+import { controlSize, elevation, layer, spacing, stateOpacity, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 
 export interface DragHandle {
@@ -248,7 +248,12 @@ function DraggableRow({
   return (
     <Animated.View
       onLayout={first ? (e: LayoutChangeEvent) => onMeasureFirst(e.nativeEvent.layout.height) : undefined}
-      style={active ? { transform: [{ translateY: dragY }], zIndex: 10, elevation: 6, opacity: 0.96 } : undefined}
+      style={active ? {
+        transform: [{ translateY: dragY }],
+        zIndex: layer.dragActive,
+        elevation: elevation.dragActive,
+        opacity: stateOpacity.dragActive,
+      } : undefined}
     >
       {children({
         panHandlers: pan.panHandlers,
@@ -300,8 +305,8 @@ export function ReorderGrip({
       }}
       collapsable={false}
       style={{
-        width: 44,
-        height: 44,
+        width: controlSize.minimumTarget,
+        height: controlSize.minimumTarget,
         marginLeft: -spacing.sm,
         alignItems: "center",
         justifyContent: "center",

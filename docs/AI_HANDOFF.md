@@ -7,53 +7,59 @@ history log.
 
 ## Current state — 2026-07-22, Europe/Istanbul
 
-- Package 3A is reconciled and checkpointed on `package-3-ui-ux-fixes`, based on
-  current `main`. The owner approved all five Package 3A audit items with
-  “Hepsini çöz”. No PR, merge, deploy, OTA or native build has occurred.
-- `UI-BUG-001` is implemented: exact monetary values use a shared measured
-  font-step contract without disabling OS font scaling or truncating text. The
-  dashboard hero and forecast now use `Amount`; the audited 9,876,543.21 case
-  stays on one line at 320 light/dark and 390 month detail, and the aggregate
-  produced by the maximum supported entry also stays on one line.
-- `UX-FLOW-001` is implemented: local-only Settings no longer exposes the
-  cloud account-security entry, a direct `/account-security` link returns to
-  Settings, and the misleading local flag-only account-freeze outcome is gone.
-  Cloud freeze still requires re-authentication, a confirmed push with an empty
-  outbox, and successful sign-out; every failure path rolls the flag back.
-- Three new visual baselines cover the exact-money fix. Unit coverage pins the
-  monotonic/stable font steps; E2E covers rendered line count, local-only route
-  gating and the absent misleading actions.
-- The focused owner-requirement reconciliation maps all 14 requested coverage
-  areas to the two resolved findings, the three device-only gates, or concrete
-  `NO ACTIONABLE ISSUE` evidence. It found no new owner-approval item and did
-  not repeat the route/viewport audit.
-- Final `npm run verify:release` passed with the complete implementation: 65
-  Vitest files / 481 tests, lint, 52-route production export,
-  entry/total/export/font/source-map budgets and 22/22 Playwright tests. Expo
-  Doctor also passed 18/18.
+- Package 3B is complete on `package-3-ui-ux-fixes`. It establishes the
+  design-system token and primitive foundation without changing product flow,
+  navigation, information architecture, copy or rendered hierarchy. No PR,
+  merge, deploy, OTA or native build has occurred.
+- Semantic palette roles now distinguish success, error and destructive
+  actions from positive/negative financial direction. Their current light and
+  dark hex values remain identical to the previous output, so this is an
+  internal semantic boundary rather than a palette redesign.
+- Existing control geometry, icon sizes, border widths, typography, disabled
+  and transient opacities, toggle shadow/geometry and drag layer/elevation use
+  named tokens with their prior exact values. Raw Inter style references now
+  resolve through the shared font table.
+- `Field` and `MoneyField` share the canonical visible label, input-accessory
+  layout and assertive inline-error implementation. Validation timing,
+  keyboard behavior, limits, focus and calculator/password actions are
+  unchanged.
+- A focused design-system contract test pins the semantic typography and exact
+  metrics. Rendered accessibility coverage now proves visible keyboard focus
+  for the shared button, money input, segmented radio and toggle families.
+- All committed visual baselines pass without updates or meaningful pixel
+  differences. No implementation defect or new owner-approval item was found.
+- The two Package 3A P1 fixes remain green: exact large negative amounts stay
+  on one line, and local-only workspaces do not expose misleading cloud
+  account-security actions.
+
+## Validation
+
+- Clean `npm ci` completed with the locked dependency graph unchanged.
+- `npm run verify:release` passed: typecheck, 66 Vitest files / 487 tests,
+  zero-warning lint, 52-route production export, all bundle/font/source-map
+  budgets and 23/23 Playwright tests.
+- Expo Doctor passed 18/18.
+- Browser coverage includes light/dark visual baselines, 320px/long-content
+  layout, all-route axe checks, modal/field semantics, keyboard focus,
+  navigation/resilience, offline persistence and backup/restore.
+- Temporary probes, build exports and test-result directories were removed.
+  `.codex/package-3-ledger.md`, `.codex/package-3a-review.md` and
+  `.codex/package-3a-assets/` remain untracked and outside the checkpoint.
 
 ## Package 3E device acceptance
 
-- `DEVICE-001..003` are carried forward as `DEVICE_ONLY`, not failed code and
-  not passed acceptance. Automated axe/semantics/focus, Dynamic Type opt-out prevention,
-  responsive/reduced-motion, navigation/dirty-exit, notification/privacy,
-  haptic and session contracts are green, but they cannot substitute for the
-  physical matrix in [`TESTING.md`](TESTING.md).
-- A physical iPhone 16e running iOS 27.0 is paired, unlocked and in Developer
-  Mode. It has neither Expo Go nor Helix installed. Xcode 26.6 reports it as an
-  ineligible destination because matching iOS platform support is unavailable,
-  so no build can be installed from this environment yet.
-- No Android device, adb target, AVD or installed client is available. Physical
-  VoiceOver/TalkBack/Switch Control, Dynamic Type/Reduced Motion, native back
-  and swipe, keyboard/drag interaction, notification/lock-screen privacy,
-  app-switcher cover, haptics, biometrics and two-account lifecycle therefore
-  remain unclaimed.
+- `DEVICE-001..003` remain `DEVICE_ONLY`, not failed code and not completed
+  acceptance. Automated web evidence cannot replace physical VoiceOver,
+  TalkBack, Switch Control, Dynamic Type, Reduced Motion, native back/swipe,
+  keyboard/drag, notification/privacy, haptic and account-lifecycle checks.
+- A physical iPhone 16e running iOS 27.0 is paired and Developer Mode is on,
+  but Xcode 26.6 lacks matching platform support. No Android device, adb target
+  or AVD is available. These constraints carry unchanged into Package 3E.
 
 ## Delivery and rollback evidence
 
-- This package changes no dependency, migration, native config, Expo SDK/plugin,
-  runtime version or data model. No database or remote release action is needed
-  to validate the current working tree.
+- Package 3B changes no dependency, migration, native config, Expo plugin,
+  runtime version or data model.
 - Last code-bearing web release commit: `408c098`; successful Pages run
   `29871029794`. Later handoff/test sync run `29873521094` also passed.
 - Last preview OTA group: `40d1d11d-1d30-4d93-91c4-670df321b198`; Android
@@ -62,4 +68,4 @@ history log.
 
 ## Next exact step
 
-`NEXT EXACT STEP = Package 3B from the latest signed checkpoint`
+`NEXT EXACT STEP = Package 3C from the latest signed checkpoint after resolving any new pending owner approvals.`

@@ -102,12 +102,12 @@ export default function UpcomingScreen() {
               <ListRow
                 key={item.key}
                 icon={item.direction === "in" ? ArrowDownLeft : item.kind === "card_statement" ? CreditCard : CalendarClock}
-                iconColor={item.direction === "in" ? palette.positive : item.status === "late" ? palette.negative : undefined}
+                iconColor={item.direction === "in" ? palette.positive : item.status === "late" ? palette.error : undefined}
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}
                 subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)} · ${formatMinor(item.amountMinor, item.currency)}`}
                 chevron
                 onPress={() => openItem(item)}
-                right={item.status === "late" ? <StatusPill label={tr.dashboard.late} color={palette.negative} foreground={palette.negativeText} /> : undefined}
+                right={item.status === "late" ? <StatusPill label={tr.dashboard.late} color={palette.error} foreground={palette.errorText} /> : undefined}
                 stackRightOnNarrow
               />
             ))}

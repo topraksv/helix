@@ -31,7 +31,7 @@ import { monthLabel, tr } from "../../../i18n/tr";
 import { Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, IconButton, Label, Row, Screen, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
-import { radius, spacing, type, useTheme } from "../../../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { appAlert } from "../../../ui/dialog";
@@ -266,7 +266,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
           >
             <IconCmp size={20} color={selected ? palette.primary : palette.textSecondary} />
             <View style={{ flex: 1 }}>
-              <Text style={[type.body, { color: palette.text, fontFamily: "Inter_600SemiBold" }]}>
+              <Text style={[type.body, { color: palette.text, fontFamily: font.semibold }]}>
                 {tr.computed.ops[value].title}
               </Text>
               <Text style={[type.small, { color: palette.textSecondary, marginTop: 1 }]}>{tr.computed.ops[value].description}</Text>

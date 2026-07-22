@@ -10,11 +10,11 @@ import { Pressable, View } from "react-native";
 import { Pencil, Trash2, type LucideIcon } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, IconButton, Row } from "./components";
-import { font, spacing } from "./theme";
+import { controlSize, font, spacing } from "./theme";
 
 export interface RuleBadge {
   text: string;
-  tone?: "muted" | "positive" | "negative" | "warning" | "primary";
+  tone?: "muted" | "positive" | "negative" | "success" | "error" | "warning" | "primary";
   icon?: LucideIcon;
 }
 
@@ -82,7 +82,7 @@ export function RuleRow({
           accessibilityRole="button"
           accessibilityLabel={title}
           onPress={onPress}
-          style={{ flex: 1, minWidth: 0, justifyContent: "center", minHeight: 44 }}
+          style={{ flex: 1, minWidth: 0, justifyContent: "center", minHeight: controlSize.minimumTarget }}
         >
           {label}
         </Pressable>

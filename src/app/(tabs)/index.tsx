@@ -79,7 +79,7 @@ function MarketsCard() {
         <Heading style={{ marginVertical: 0, flexShrink: 1 }}>{tr.markets.title}</Heading>
         <Row gap={spacing.xs} accessible accessibilityLiveRegion="polite" accessibilityLabel={statusLabel}>
           {/* The dot claims liveness only once real quotes are flowing. */}
-          <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.positive : palette.textSecondary }} />
+          <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.success : palette.textSecondary }} />
           <Text style={[type.small, { color: palette.textSecondary, textAlign: "right", flexShrink: 1 }]}>{statusLabel}</Text>
         </Row>
       </Spread>
@@ -457,7 +457,7 @@ export default function DashboardScreen() {
             <ListRow
               key={e.id}
               icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
-              iconColor={palette.negative}
+              iconColor={palette.error}
               title={nameOf(e)}
               subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
               right={

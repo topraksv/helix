@@ -16,7 +16,7 @@ import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, ty
 import { Pin, type LucideIcon } from "lucide-react-native";
 import { lightTap } from "./haptics";
 import { tr } from "../i18n/tr";
-import { spacing, type, useTheme } from "./theme";
+import { font, spacing, type, useTheme } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
 export const STICKY_ROW_HEIGHT = 52;
@@ -355,7 +355,7 @@ export function StickyTable({
                   style={[{ width: headWidth }, cellCenter]}
                 >
                   <Text
-                    style={[type.label, { color: r.onLabelPress ? palette.primaryText : palette.text, textAlign: "center", fontFamily: r.labelHighlight ? "Inter_700Bold" : "Inter_600SemiBold" }]}
+                    style={[type.label, { color: r.onLabelPress ? palette.primaryText : palette.text, textAlign: "center", fontFamily: r.labelHighlight ? font.bold : font.semibold }]}
                     onTextLayout={(event) => measureLabel(`row:${r.key}`, event)}
                   >
                     {r.label}

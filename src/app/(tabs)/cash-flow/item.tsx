@@ -25,7 +25,7 @@ import {
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Card, DataStateNotice, EmptyState, Screen } from "../../../ui/components";
-import { spacing, type, useTheme } from "../../../ui/theme";
+import { font, spacing, type, useTheme } from "../../../ui/theme";
 
 /**
  * `col`, `year` and `kind` are hostile input — the route is directly
@@ -169,7 +169,7 @@ function ItemBreakdown({
                   backgroundColor: isCurrent ? palette.primarySoft + "55" : pressed ? palette.surfaceAlt : "transparent",
                 })}
               >
-                <Text style={[type.body, { color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? "Inter_700Bold" : "Inter_500Medium" }]}>
+                <Text style={[type.body, { color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? font.bold : font.medium }]}>
                   {monthLabel(r.month)}
                 </Text>
                 {r.value == null ? (

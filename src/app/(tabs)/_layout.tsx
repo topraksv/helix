@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Calculator, ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
 import { selectionTapIfChanged } from "../../ui/haptics";
-import { TAB_BAR, tabBarHeight, useTheme } from "../../ui/theme";
+import { font, TAB_BAR, tabBarHeight, useTheme } from "../../ui/theme";
 
 export default function TabsLayout() {
   const { palette } = useTheme();
@@ -35,7 +35,7 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: palette.accentText,
         tabBarInactiveTintColor: palette.textSecondary,
-        tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 11, lineHeight: 15, paddingTop: 1 },
+        tabBarLabelStyle: { fontFamily: font.medium, fontSize: 11, lineHeight: 15, paddingTop: 1 },
         tabBarIconStyle: { marginBottom: 0 },
         sceneStyle: { backgroundColor: palette.background },
       }}

@@ -21,7 +21,7 @@ import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
 import { Body, Button, Card, ChipPicker, DataStateNotice, Row, Screen, SectionHeader } from "../ui/components";
-import { radius, spacing, type, useTheme, type Palette } from "../ui/theme";
+import { font, radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
@@ -44,7 +44,7 @@ function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" |
         backgroundColor: bg,
       }}
     >
-      <Text style={{ fontSize: big ? 13 : 10, color, fontFamily: "Inter_600SemiBold" }}>
+      <Text style={{ fontSize: big ? 13 : 10, color, fontFamily: font.semibold }}>
         {text ?? "·"}
       </Text>
     </View>
@@ -79,7 +79,7 @@ function SheetLayoutDiagram({ orientation, caption, big }: { orientation: "verti
           </View>
         ))}
       </View>
-      <Text style={[big ? type.body : type.small, { color: palette.text, textAlign: "center", fontFamily: "Inter_500Medium" }]}>{caption}</Text>
+      <Text style={[big ? type.body : type.small, { color: palette.text, textAlign: "center", fontFamily: font.medium }]}>{caption}</Text>
     </View>
   );
 }
@@ -88,7 +88,7 @@ function ExampleRow({ label, value }: { label: string; value: string }) {
   const { palette } = useTheme();
   return (
     <View style={{ flexDirection: "row", marginBottom: spacing.xs, flexWrap: "wrap" }}>
-      <Text style={[type.small, { color: palette.primaryText, fontFamily: "Inter_600SemiBold", width: 78 }]}>{label}</Text>
+      <Text style={[type.small, { color: palette.primaryText, fontFamily: font.semibold, width: 78 }]}>{label}</Text>
       <Text style={[type.small, { color: palette.textSecondary, flex: 1, minWidth: 180 }]}>{value}</Text>
     </View>
   );
@@ -302,9 +302,9 @@ export default function ImportWizardModal() {
   if (doneCount != null) {
     return (
       <Screen scrollRef={scrollRef}>
-        <Card style={{ borderColor: palette.positive }}>
+        <Card style={{ borderColor: palette.success }}>
           <Row gap={spacing.md} style={{ alignItems: "center" }}>
-            <CheckCircle2 accessible={false} size={26} color={palette.positive} />
+            <CheckCircle2 accessible={false} size={26} color={palette.success} />
             <View style={{ flex: 1 }}>
               <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>{tr.importer.doneTitle(doneCount)}</Text>
               <Body muted style={{ marginTop: spacing.xs }}>{tr.importer.doneHint}</Body>
@@ -344,9 +344,9 @@ export default function ImportWizardModal() {
       />
 
       {error ? (
-        <Card style={{ marginTop: spacing.md, borderColor: palette.negative }}>
+        <Card style={{ marginTop: spacing.md, borderColor: palette.error }}>
           <SectionHeader>{tr.importer.errorTitle}</SectionHeader>
-          <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: palette.negativeText, marginBottom: spacing.sm }}>{error}</Body>
+          <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: palette.errorText, marginBottom: spacing.sm }}>{error}</Body>
         </Card>
       ) : null}
 

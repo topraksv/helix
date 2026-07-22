@@ -17,7 +17,7 @@ import { marketLastKnownRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
 import { clockOrDateTimeLabel, dateLabel, tr } from "../i18n/tr";
 import { Badge, Body, Label, MoneyField, Segmented } from "./components";
-import { radius, spacing, type, useTheme } from "./theme";
+import { controlSize, iconSize, radius, spacing, type, useTheme } from "./theme";
 
 export function CurrencyConverter() {
   const { palette } = useTheme();
@@ -103,15 +103,15 @@ export function CurrencyConverter() {
           onPress={swap}
           hitSlop={8}
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
+            width: controlSize.minimumTarget,
+            height: controlSize.minimumTarget,
+            borderRadius: radius.xl,
             backgroundColor: palette.surfaceAlt,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <ArrowDownUp accessible={false} size={18} color={palette.primary} />
+          <ArrowDownUp accessible={false} size={iconSize.accessory} color={palette.primary} />
         </Pressable>
       </View>
 

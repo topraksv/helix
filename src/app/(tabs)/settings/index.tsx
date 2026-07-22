@@ -227,7 +227,7 @@ export default function SettingsScreen() {
   };
 
   const syncStateColor =
-    sync.state === "idle" ? palette.positive : sync.state === "error" ? palette.negative : palette.warning;
+    sync.state === "idle" ? palette.success : sync.state === "error" ? palette.error : palette.warning;
 
   return (
     <Screen title={tr.settings.title}>
@@ -400,7 +400,7 @@ export default function SettingsScreen() {
           }
         />
         {sync.error ? (
-          <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ fontSize: 12, marginTop: spacing.xs, color: palette.negativeText }}>{sync.error}</Body>
+          <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ fontSize: 12, marginTop: spacing.xs, color: palette.errorText }}>{sync.error}</Body>
         ) : null}
         <Body muted style={{ fontSize: 12, marginTop: spacing.xs, marginBottom: spacing.sm }}>
           {tr.settings.syncExplain}
@@ -448,7 +448,7 @@ export default function SettingsScreen() {
         <ListRow icon={LogOut} title={tr.auth.signOut} onPress={() => void handleSignOut()} />
         <ListRow
           icon={Trash2}
-          iconColor={palette.negative}
+          iconColor={palette.destructive}
           title={tr.account.delete}
           subtitle={tr.account.deleteDesc}
           onPress={() => void handleDeleteAccount()}
