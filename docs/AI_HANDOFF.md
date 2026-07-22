@@ -7,34 +7,36 @@ history log.
 
 ## Current state — 2026-07-22, Europe/Istanbul
 
-- Package 2A is complete on the single `package-2-security-hardening` branch,
-  started from Package 1 main `06406662e7b27163bcc6dfe85bb0bd4a9aa7c77b`.
-- Exact recovery-target validation, failed-global-sign-out local revoke,
-  remote `SIGNED_OUT` workspace cleanup, local owner-safe conflict upserts,
-  import self-owner validation and owner-safe export/notification joins are
-  implemented and adversarially tested.
-- Timestamp-only delete convergence was replaced with monotonic
-  `tombstone_version` across all 16 synced SQLite/Supabase tables. Stale lower
-  generations ACK the current server tombstone; explicit same-generation undo
-  remains supported. Legacy backups default the field to generation zero.
-- Linked Supabase migrations `…01`–`…12` have exact local/remote parity. Public
-  schema lint is clean; linked rollback pgTAP passes 45/45 assertions covering
-  RLS/policy/grant inventory, A/B isolation, tombstone generations and scoped
-  account deletion. Linked database types were regenerated verbatim.
-- All eight required security mutations were run, each target test failed, each
-  mutation was reverted, and every target passed again: owner filter,
-  `WITH CHECK`, session epoch, tombstone resurrection, import fail-closed,
-  recovery host/scheme, notification redaction and outbox owner isolation.
-- Commit gate passed with Node 22: `npm run verify` = 63 Vitest files / 472
-  tests, typecheck clean and zero-warning Expo lint. Browser E2E passed 21/21,
-  including real SQLite CRUD/restore, hostile routes, offline reload and a11y/
-  visual baselines. No screenshot baseline changed.
-- Physical OS validation remains device-only: lock-screen notification content,
-  app-switcher snapshot timing, biometric/Keychain behavior and two-installed-
-  client sync. No code-level critical/high security defect remains open.
-- Package 2A did not open a PR, merge, deploy Pages, publish OTA or create a
-  native build. The untracked `.codex/package-2-ledger.md` is intentionally not
-  part of the checkpoint.
+- Package 2B is complete on `package-2-security-hardening`, continuing from the
+  signed Package 2A checkpoint `83df44868c7d8f9a5e52f70437e0ae2ca8536141`.
+- Two reachable moderate availability defects in user-controlled workbook
+  comments were fixed: malformed section banners and installment tails could
+  trigger super-linear regexp backtracking. Both paths now use linear scans and
+  have adversarial mutation tests.
+- Clean-install reproducibility was restored by nesting optional WASM fallback
+  closures below their optional binding parents in `package-lock.json`. Node 22
+  `npm ci` preserves package/lock hashes and `npm ls --all` reports no problems.
+- Supply-chain CI now denies `GITHUB_TOKEN` to keepalive, uses a verified
+  full-SHA CodeQL v4.37.3 pin and reviews every PR dependency scope at moderate+
+  severity with a read-only, full-SHA-pinned Dependency Review job.
+- Local SonarQube Quality Gate passed with 88.2% new-code coverage, 0 new
+  violations, 0 new duplication, and 0 open bugs/vulnerabilities/hotspots after
+  evidence-backed false-positive disposition. Semgrep found 0 issues. OSV,
+  npm audit and Trivy collapse to one not-reachable dev-only esbuild advisory;
+  the two SheetJS matches are vendor-proven false positives for CDN 0.20.3.
+- Redacted Gitleaks worktree/all-history scans found 0 real secrets. Trivy found
+  0 secrets and 0 applicable misconfigurations. No credential rotation is
+  required and no Package 2B item is externally blocked.
+- The owner-authored SSH-signed code checkpoint is `cf9e810b672898b1764b0119d55998fb94c4ab83`.
+  CodeQL workflow run `29910737530` passed on that exact SHA with 0 open branch
+  alerts.
+- Final gates passed with Node 22: clean install/dependency tree, `npm run
+  verify` (63 Vitest files / 477 tests, typecheck, zero-warning lint), Expo
+  Doctor 18/18, 52-route production export within every bundle budget,
+  Playwright 21/21, actionlint and `git diff --check`.
+- Package 2B did not open a PR, merge, deploy Pages, publish OTA or create a
+  native build. The detailed `.codex/package-2-ledger.md` remains intentionally
+  untracked.
 
 ## Rollback evidence
 
@@ -45,10 +47,10 @@ history log.
   `40d1d11d-1d30-4d93-91c4-670df321b198`; Android update
   `019f86bd-0c1f-76c5-b5c4-121b5d03f396`, iOS update
   `019f86bd-0c1f-70d3-8142-6f2284e10bb2`, runtime `1.0.0`.
-- Supabase migration 12 is already linked and additive. Do not remove the
-  column/function behavior while any Package 2A client can sync; use a forward
-  corrective migration if a defect is found.
+- Supabase migration 12 is linked and additive. Do not remove its column/function
+  behavior while a Package 2A client can sync; use a forward corrective
+  migration if a defect is found.
 
 ## Next package
 
-Run Package 2B from the latest signed checkpoint without repeating Package 2A.
+Run Package 2C from the latest signed checkpoint without repeating Package 2A or 2B.
