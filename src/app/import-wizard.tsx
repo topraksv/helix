@@ -25,6 +25,7 @@ import { font, radius, spacing, type, useTheme, type Palette } from "../ui/theme
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { shouldUseWideImportGuide } from "../ui/responsive";
 import { readPickedBytes } from "../services/picked-file";
 import { MonthDayField } from "../ui/month-day-field";
 
@@ -138,7 +139,7 @@ export default function ImportWizardModal() {
   const router = useRouter();
   const { palette } = useTheme();
   const { width } = useWindowDimensions();
-  const wide = width >= 820;
+  const wide = shouldUseWideImportGuide(width);
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [excluded, setExcluded] = useState<string[]>([]);

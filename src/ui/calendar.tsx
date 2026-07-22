@@ -3,14 +3,13 @@
  * One implementation for web and iOS — no free-text date typing, no typos.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { borderWidth, cardShadow, controlSize, radius, scrim, spacing, stateOpacity, type, useTheme } from "./theme";
 import { Button, FadeIn, IconButton, Label } from "./components";
-import { pushOverlay } from "./keyboard";
 import { useModalAccessibility } from "./accessibility";
 
 function daysInMonth(month: MonthKey): number {
@@ -39,7 +38,6 @@ export function CalendarSheet({
   const { palette } = useTheme();
   const titleRef = useModalAccessibility(true, returnFocusRef);
   const today = todayISO();
-  useEffect(() => pushOverlay(), []); // suppress form Enter-submit while the sheet is open
   const [month, setMonth] = useState<MonthKey>(value ? monthKeyOf(value) : monthKeyOf(today));
   const total = daysInMonth(month);
   const lead = firstWeekday(month);

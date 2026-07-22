@@ -159,8 +159,52 @@ test("an open dialog is a real modal that owns focus", async ({ page }, testInfo
   expect(modal!.headingText.length, "modal has no heading to focus").toBeGreaterThan(0);
   expect(modal!.focusInside, "focus is outside the open modal").toBe(true);
 
+  // The heading is intentionally programmatically focusable but not a Tab
+  // stop. Tab enters the action row, then cycles inside the modal instead of
+  // exposing the Settings controls behind the scrim.
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Tamam", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => {
+    const el = document.querySelector('[aria-modal="true"]');
+    return el != null && el.contains(document.activeElement);
+  })).toBe(true);
+
   await page.getByRole("button", { name: "Tamam", exact: true }).click();
   await expect(page.locator('[aria-modal="true"]')).toHaveCount(0);
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.goto("/helix/transaction");
+  await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("125,00");
+  await page.getByRole("radio", { name: /Market/ }).click();
+
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  const dialogTitle = page.getByRole("heading", { name: "Kaydedilmemiş değişiklikler var" });
+  await expect(dialogTitle).toBeVisible();
+  await expect.poll(() => page.evaluate(() =>
+    (document.activeElement?.textContent ?? "").trim(),
+  )).toBe("Kaydedilmemiş değişiklikler var");
+
+  // Enter belongs to the visible overlay. It must not reach the valid form's
+  // window-level submit shortcut, save a transaction, change route, and leave
+  // the discard dialog orphaned over the next screen.
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/helix\/transaction$/);
+  await expect(dialogTitle).toBeVisible();
+
+  // Shift+Tab from the heading wraps to the final dialog action, never to the
+  // header/back button or a field behind the scrim.
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("button", { name: "Değişiklikleri sil", exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
+  await expect(dialogTitle).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Tutar · TRY" })).toHaveValue("125,00");
 
   await assertNoRuntimeErrors(errors, testInfo);
 });

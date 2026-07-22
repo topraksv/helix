@@ -332,6 +332,38 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+test("modal actions stay reachable in a short landscape viewport", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.setViewportSize({ width: 844, height: 390 });
+
+  await page.goto("/helix/settings");
+  await page.getByRole("button", { name: /Tanıtım Turu/ }).click();
+  const tourModal = page.locator('[aria-modal="true"]');
+  await expect(tourModal).toBeVisible();
+  const skip = page.getByRole("button", { name: "Geç", exact: true });
+  await skip.scrollIntoViewIfNeeded();
+  const skipBox = await skip.boundingBox();
+  expect(skipBox && skipBox.y >= 0 && skipBox.y + skipBox.height <= 390).toBe(true);
+  await skip.click();
+  await expect(tourModal).toHaveCount(0);
+
+  await page.goto("/helix/transaction");
+  const calculatorTrigger = page.getByRole("button", { name: "Hesap makinesini aç", exact: true });
+  await calculatorTrigger.click();
+  const calculatorModal = page.locator('[aria-modal="true"]');
+  await expect(calculatorModal).toBeVisible();
+  const result = page.getByRole("button", { name: /Sonucu Kullan/ });
+  await result.scrollIntoViewIfNeeded();
+  const resultBox = await result.boundingBox();
+  expect(resultBox && resultBox.y >= 0 && resultBox.y + resultBox.height <= 390).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(calculatorModal).toHaveCount(0);
+  await expect(calculatorTrigger).toBeFocused();
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 /**
  * RuleRow, isolated with real props.
  *
