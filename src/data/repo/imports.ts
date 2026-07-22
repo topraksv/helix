@@ -159,12 +159,12 @@ async function tombstoneImportRows(
   table: "transactions" | "cell_notes" | "installment_plans",
   ids: Iterable<string>,
 ): Promise<RowWrite[]> {
-  const unique = [...new Set(ids)];
-  if (unique.length === 0) return [];
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) return [];
   const sqlite = await getSqliteAsync();
   const writes: RowWrite[] = [];
-  for (let offset = 0; offset < unique.length; offset += 400) {
-    const chunk = unique.slice(offset, offset + 400);
+  for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+    const chunk = uniqueIds.slice(offset, offset + 400);
     const placeholders = chunk.map(() => "?").join(", ");
     const rows = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM ${table} WHERE user_id = ? AND id IN (${placeholders})`,
@@ -211,6 +211,18 @@ export async function hasImportedData(userId: string): Promise<boolean> {
  */
 export async function importSheets(userId: string, req: ImportRequest): Promise<{ imported: number }> {
   const sqlite = await getSqliteAsync();
+  // `selfId` crosses the UI/file boundary and becomes the owner of every
+  // imported transaction/source/plan. Never trust the preview's cached person
+  // object: an account switch or crafted caller could otherwise persist a
+  // foreign/stale reference locally and leave the whole import queued for an
+  // RLS failure. Validate it at the repository boundary before planning any
+  // writes.
+  const self = await sqlite.getFirstAsync<{ id: string }>(
+    `SELECT id FROM persons
+     WHERE id = ? AND user_id = ? AND is_self = 1 AND deleted_at IS NULL`,
+    [req.selfId, userId],
+  );
+  if (!self) throw new Error("Import owner must be the live self person");
   const existing = await sqlite.getAllAsync<{
     id: string;
     name: string;

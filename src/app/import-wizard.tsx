@@ -233,7 +233,7 @@ export default function ImportWizardModal() {
       try {
         const already = await importedYears(userId, selectedYears);
         if (already.length > 0) {
-          setReimportYears(already.sort());
+          setReimportYears(already.sort((a, b) => a - b));
           return;
         }
         await performImport("add");

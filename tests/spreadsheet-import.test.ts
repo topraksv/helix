@@ -360,6 +360,18 @@ describe("parseInstallmentComment", () => {
     const comment = ["══════ Aile Kartı ℹ️ ══════", "Spor Mont          2.000,00   (5/9)"].join("\n");
     expect(required(parseInstallmentComment(comment)[0]).card).toBe("Aile Kartı");
   });
+
+  it("rejects a long malformed banner without regex backtracking", () => {
+    const startedAt = performance.now();
+    expect(parseInstallmentComment(`${"=".repeat(2_000)}x`)).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(100);
+  });
+
+  it("rejects a long malformed installment tail in linear time", () => {
+    const startedAt = performance.now();
+    expect(parseInstallmentComment(`x${" ".repeat(19_998)}y`)).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(100);
+  });
 });
 
 // --- due-day extraction from column headers (item 7) -----------------------

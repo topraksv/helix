@@ -1,12 +1,17 @@
 begin;
 
+-- Linked CLI sessions use a short-lived login role. Assume the project-local
+-- `postgres` role explicitly so the harness can reach pgTAP in `extensions`;
+-- each authorization assertion still switches to anon/authenticated below.
+set local role postgres;
+
 -- pgTAP is installed on the linked project already; installing it is not this
 -- suite's job. Its functions live in `extensions`, so the plan/finish calls
 -- are schema-qualified and the transaction-local search_path puts that schema
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(33);
+select extensions.plan(48);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -70,6 +75,141 @@ select is(
   ),
   48::bigint,
   'every owner policy is restricted to authenticated'
+);
+
+select is(
+  (
+    select count(*)
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = any (array[
+        'persons','payment_sources','categories','computed_columns',
+        'installment_plans','credit_card_statements','transactions',
+        'subscriptions','price_history','recurring_incomes','expected_payments',
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+      ])
+      and c.relrowsecurity
+  ),
+  16::bigint,
+  'RLS is enabled on every synced table'
+);
+
+select is(
+  (
+    select count(*)
+    from pg_policies
+    where schemaname = 'public'
+      and cmd = 'INSERT'
+      and tablename = any (array[
+        'persons','payment_sources','categories','computed_columns',
+        'installment_plans','credit_card_statements','transactions',
+        'subscriptions','price_history','recurring_incomes','expected_payments',
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+      ])
+      and with_check like '%auth.uid()%'
+      and with_check like '%user_id%'
+  ),
+  16::bigint,
+  'every insert policy checks the authenticated owner'
+);
+
+select is(
+  (
+    select count(*)
+    from pg_policies
+    where schemaname = 'public'
+      and cmd = 'UPDATE'
+      and tablename = any (array[
+        'persons','payment_sources','categories','computed_columns',
+        'installment_plans','credit_card_statements','transactions',
+        'subscriptions','price_history','recurring_incomes','expected_payments',
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+      ])
+      and qual like '%auth.uid()%'
+      and qual like '%user_id%'
+      and with_check like '%auth.uid()%'
+      and with_check like '%user_id%'
+  ),
+  16::bigint,
+  'every update policy filters and re-checks the authenticated owner'
+);
+
+select is(
+  (
+    select count(*)
+    from unnest(array[
+      'persons','payment_sources','categories','computed_columns',
+      'installment_plans','credit_card_statements','transactions',
+      'subscriptions','price_history','recurring_incomes','expected_payments',
+      'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+    ]) as tables(name)
+    where has_table_privilege('authenticated', format('public.%I', name), 'SELECT')
+      and has_table_privilege('authenticated', format('public.%I', name), 'INSERT')
+      and has_table_privilege('authenticated', format('public.%I', name), 'UPDATE')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'DELETE')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'TRUNCATE')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'REFERENCES')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'TRIGGER')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'MAINTAIN')
+  ),
+  16::bigint,
+  'authenticated grants are limited to select, insert and update'
+);
+
+select is(
+  (
+    select count(*)
+    from unnest(array[
+      'persons','payment_sources','categories','computed_columns',
+      'installment_plans','credit_card_statements','transactions',
+      'subscriptions','price_history','recurring_incomes','expected_payments',
+      'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+    ]) as tables(name)
+    where has_table_privilege('anon', format('public.%I', name), 'SELECT')
+       or has_table_privilege('anon', format('public.%I', name), 'INSERT')
+       or has_table_privilege('anon', format('public.%I', name), 'UPDATE')
+       or has_table_privilege('anon', format('public.%I', name), 'DELETE')
+  ),
+  0::bigint,
+  'anon has no synced-table privilege'
+);
+
+select is(
+  (
+    select count(*)
+    from unnest(array[
+      'public.enforce_category_kind()'::regprocedure,
+      'public.enforce_expected_payment_ref()'::regprocedure,
+      'public.enforce_expense_budget_category()'::regprocedure,
+      'public.set_updated_at()'::regprocedure
+    ]) as functions(oid)
+    where not has_function_privilege('anon', oid, 'EXECUTE')
+      and not has_function_privilege('authenticated', oid, 'EXECUTE')
+  ),
+  4::bigint,
+  'trigger functions are not directly executable by client roles'
+);
+
+select ok(
+  not has_table_privilege('anon', 'public.keep_alive', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'INSERT')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'UPDATE')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'DELETE')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'TRUNCATE')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'REFERENCES')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'TRIGGER')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'MAINTAIN'),
+  'keepalive remains service-role only at the privilege layer'
+);
+
+select ok(
+  pg_catalog.to_regclass('public.idx_card_statement_user_source_period') is null
+    and pg_catalog.to_regclass(
+      'public.credit_card_statements_user_id_payment_source_id_period_mon_key'
+    ) is not null,
+  'the statement natural key has one covering index, not a duplicate copy'
 );
 
 select is(
@@ -170,6 +310,66 @@ select results_eq(
     ) select count(*)::bigint from changed$$,
   $$values (0::bigint)$$,
   'user B cannot update user A rows'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (id, user_id, name, is_self)
+    values (
+      '20000000-0000-4000-8000-000000000034',
+      '10000000-0000-4000-8000-000000000001',
+      'Forged A owner', false
+    )
+  $command$),
+  '42501',
+  'WITH CHECK prevents user B from inserting as user A'
+);
+
+select results_eq(
+  $$with changed as (
+      update public.persons set deleted_at = now()
+      where id = '10000000-0000-4000-8000-000000000011'
+      returning 1
+    ) select count(*)::bigint from changed$$,
+  $$values (0::bigint)$$,
+  'user B cannot tombstone user A rows'
+);
+
+select results_eq(
+  $$update public.persons
+      set deleted_at = now(), tombstone_version = 1
+      where id = '20000000-0000-4000-8000-000000000021'
+      returning tombstone_version$$,
+  $$values (1::bigint)$$,
+  'an owned tombstone advances one generation'
+);
+
+select results_eq(
+  $$update public.persons
+      set name = 'stale resurrection', deleted_at = null, tombstone_version = 0
+      where id = '20000000-0000-4000-8000-000000000021'
+      returning (deleted_at is not null), tombstone_version, name$$,
+  $$values (true, 1::bigint, 'RLS B'::text)$$,
+  'a stale generation cannot resurrect a tombstone despite a later write'
+);
+
+select results_eq(
+  $$update public.persons
+      set deleted_at = null, tombstone_version = 1
+      where id = '20000000-0000-4000-8000-000000000021'
+      returning (deleted_at is null), tombstone_version$$,
+  $$values (true, 1::bigint)$$,
+  'an explicit undo at the observed generation remains available'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.persons
+      set tombstone_version = 99
+      where id = '20000000-0000-4000-8000-000000000021'
+  $command$),
+  '23514',
+  'a client cannot forge a future tombstone generation'
 );
 
 select is(
@@ -402,12 +602,18 @@ select lives_ok(
   'user A can delete the complete owned account through the scoped RPC'
 );
 
-reset role;
+set local role postgres;
 
 select is(
   (select count(*) from auth.users where id = '10000000-0000-4000-8000-000000000001'),
   0::bigint,
   'account deletion removes the caller identity and cascades owned rows'
+);
+
+select is(
+  (select count(*) from auth.users where id = '20000000-0000-4000-8000-000000000002'),
+  1::bigint,
+  'account deletion RPC cannot delete or return another identity'
 );
 
 select * from extensions.finish();

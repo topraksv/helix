@@ -117,7 +117,9 @@ function validatedRemoteRow(
     !isUuidShaped(remote.id) ||
     remote.user_id !== userId ||
     typeof remote.updated_at !== "string" ||
-    !Number.isFinite(Date.parse(remote.updated_at))
+    !Number.isFinite(Date.parse(remote.updated_at)) ||
+    !Number.isSafeInteger(remote.tombstone_version) ||
+    Number(remote.tombstone_version) < 0
   ) {
     throw new Error(`pull ${table}: invalid server row`);
   }
@@ -132,13 +134,15 @@ async function upsertLocalRemote(
   const sqlite = await getSqliteAsync();
   const keys = Object.keys(remote).filter((key) => allowed.has(key));
   if (!keys.includes("id") || keys.length < 2) throw new Error(`pull ${table}: incomplete server row`);
-  await sqlite.runAsync(
+  const result = await sqlite.runAsync(
     `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})
-     ON CONFLICT(id) DO UPDATE SET ${keys.filter((key) => key !== "id").map((key) => `${key} = excluded.${key}`).join(", ")}`,
+     ON CONFLICT(id) DO UPDATE SET ${keys.filter((key) => key !== "id").map((key) => `${key} = excluded.${key}`).join(", ")}
+     WHERE ${table}.user_id = excluded.user_id`,
     // toLocal already coerced every column to string/number/null; this is the
     // dynamic-row boundary where that guarantee meets the driver's types.
     keys.map((key): SQLiteBindValue => (remote[key] === undefined ? null : (remote[key] as SQLiteBindValue))),
   );
+  if (result.changes !== 1) throw new Error(`pull ${table}: local ownership conflict`);
 }
 
 async function pushOutbox(userId: string, token: SessionEpochToken): Promise<void> {
@@ -250,11 +254,16 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
       await withTransaction(async () => {
         for (const remote of remoteRows) {
           assertActive(token);
-          const local = await sqlite.getFirstAsync<{ updated_at: string }>(
-            `SELECT updated_at FROM ${table} WHERE id = ?`,
+          const local = await sqlite.getFirstAsync<{ updated_at: string; tombstone_version: number }>(
+            `SELECT updated_at, tombstone_version FROM ${table} WHERE id = ?`,
             [String(remote.id)],
           );
-          const remoteWins = remoteWinsLww(local?.updated_at ?? null, remote.updated_at as string);
+          const remoteWins = remoteWinsLww(
+            local?.updated_at ?? null,
+            remote.updated_at as string,
+            local?.tombstone_version ?? 0,
+            Number(remote.tombstone_version),
+          );
           if (!remoteWins) continue;
           // Only accept columns this client's schema knows (ignore any extra
           // server columns) so the generated SQL is always well-formed.

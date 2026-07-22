@@ -21,8 +21,8 @@ export type HapticKind = "none" | "light" | "selection" | "medium" | "success" |
  * turn a valid user action into an unhandled rejection. */
 export function haptic(kind: HapticKind): void {
   if (Platform.OS !== "ios" || kind === "none") return;
-  try {
-    const request =
+  void Promise.resolve()
+    .then(() =>
       kind === "light"
         ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
         : kind === "medium"
@@ -35,11 +35,9 @@ export function haptic(kind: HapticKind): void {
                   : kind === "warning"
                     ? Haptics.NotificationFeedbackType.Warning
                     : Haptics.NotificationFeedbackType.Error,
-              );
-    void request.catch(() => {});
-  } catch {
-    // Haptics never block the underlying interaction.
-  }
+              ),
+    )
+    .catch(() => {});
 }
 
 export function lightTap(): void {

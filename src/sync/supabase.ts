@@ -4,7 +4,7 @@
  * offline — token refresh failures never block local data access.
  */
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type AuthChangeEvent, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import type { Database } from "./database.types";
@@ -19,6 +19,7 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 
 let client: SupabaseClient<Database> | null = null;
 let passwordRecoveryDetected = false;
+const authEventListeners = new Set<(event: AuthChangeEvent, session: Session | null) => void>();
 
 /** True only when Supabase itself completed a recovery URL before the route mounted. */
 export function wasPasswordRecoveryDetected(): boolean {
@@ -27,6 +28,16 @@ export function wasPasswordRecoveryDetected(): boolean {
 
 export function clearPasswordRecoveryDetected(): void {
   passwordRecoveryDetected = false;
+}
+
+/** Subscribe without creating a second Supabase auth listener. Callbacks must
+ * schedule async work outside Supabase's synchronous auth callback. */
+export function subscribeSupabaseAuthEvents(
+  listener: (event: AuthChangeEvent, session: Session | null) => void,
+): () => void {
+  getSupabase();
+  authEventListeners.add(listener);
+  return () => authEventListeners.delete(listener);
 }
 
 export function getSupabase(): SupabaseClient<Database> | null {
@@ -41,8 +52,9 @@ export function getSupabase(): SupabaseClient<Database> | null {
         flowType: "pkce",
       },
     });
-    client.auth.onAuthStateChange((event) => {
+    client.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") passwordRecoveryDetected = true;
+      for (const listener of authEventListeners) listener(event, session);
     });
   }
   return client;

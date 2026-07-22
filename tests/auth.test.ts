@@ -8,6 +8,7 @@ import {
   type LoginHistoryStorage,
 } from "../src/auth/login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "../src/auth/recovery";
+import { signOutWithLocalFallback } from "../src/auth/sign-out";
 import { tr } from "../src/i18n/tr";
 
 function memoryStorage(): LoginHistoryStorage {
@@ -65,6 +66,9 @@ describe("friendly auth errors", () => {
 });
 
 describe("password recovery links", () => {
+  const webTarget = { platform: "web" as const, origin: "https://topraksv.github.io", baseUrl: "/helix" };
+  const nativeTarget = { platform: "native" as const, scheme: "helix" };
+
   it("keeps the Expo Router base path in the web redirect", () => {
     expect(webPasswordRecoveryRedirectUrl("https://topraksv.github.io", "/helix")).toBe(
       "https://topraksv.github.io/helix/reset-password",
@@ -72,11 +76,11 @@ describe("password recovery links", () => {
   });
 
   it("parses web PKCE codes and native token deep links", () => {
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?code=one-time-code")).toEqual({
+    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?code=one-time-code", webTarget)).toEqual({
       kind: "code",
       code: "one-time-code",
     });
-    expect(parsePasswordRecoveryUrl("helix://reset-password#access_token=access&refresh_token=refresh&type=recovery")).toEqual({
+    expect(parsePasswordRecoveryUrl("helix://reset-password#access_token=access&refresh_token=refresh&type=recovery", nativeTarget)).toEqual({
       kind: "tokens",
       accessToken: "access",
       refreshToken: "refresh",
@@ -84,8 +88,62 @@ describe("password recovery links", () => {
   });
 
   it("distinguishes expired links and rejects invalid or reused links", () => {
-    expect(parsePasswordRecoveryUrl("helix://reset-password?error=access_denied&error_code=otp_expired")).toEqual({ kind: "expired" });
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?error=access_denied&error_description=Link+already+used")).toEqual({ kind: "invalid" });
-    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password")).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl("helix://reset-password?error=access_denied&error_code=otp_expired", nativeTarget)).toEqual({ kind: "expired" });
+    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?error=access_denied&error_description=Link+already+used", webTarget)).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password", webTarget)).toEqual({ kind: "invalid" });
+  });
+
+  it("rejects recovery credentials on a modified host, scheme or route", () => {
+    for (const url of [
+      "https://evil.example/helix/reset-password?code=stolen",
+      "https://topraksv.github.io/reset-password?code=wrong-base",
+      "https://topraksv.github.io/helix/other?code=wrong-route",
+      "javascript://reset-password?code=script",
+    ]) {
+      expect(parsePasswordRecoveryUrl(url, webTarget), url).toEqual({ kind: "invalid" });
+    }
+    expect(parsePasswordRecoveryUrl("other://reset-password?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl("helix://other?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
+  });
+
+  it("accepts native triple-slash callbacks but rejects non-recovery token links", () => {
+    expect(parsePasswordRecoveryUrl("helix:///reset-password?code=one-time-code", nativeTarget)).toEqual({
+      kind: "code",
+      code: "one-time-code",
+    });
+    expect(parsePasswordRecoveryUrl(
+      "helix://reset-password#access_token=access&refresh_token=refresh&type=signup",
+      nativeTarget,
+    )).toEqual({ kind: "invalid" });
+  });
+});
+
+describe("session sign-out", () => {
+  it("falls back to a local revoke when global sign-out returns an error", async () => {
+    const calls: Array<string | undefined> = [];
+    await signOutWithLocalFallback(async (options) => {
+      calls.push(options?.scope);
+      return { error: options?.scope === "local" ? null : new Error("offline") };
+    });
+    expect(calls).toEqual([undefined, "local"]);
+  });
+
+  it("does not repeat a successful global sign-out", async () => {
+    const calls: Array<string | undefined> = [];
+    await signOutWithLocalFallback(async (options) => {
+      calls.push(options?.scope);
+      return { error: null };
+    });
+    expect(calls).toEqual([undefined]);
+  });
+
+  it("also falls back when global sign-out throws", async () => {
+    const calls: Array<string | undefined> = [];
+    await signOutWithLocalFallback(async (options) => {
+      calls.push(options?.scope);
+      if (!options) throw new Error("transport");
+      return { error: null };
+    });
+    expect(calls).toEqual([undefined, "local"]);
   });
 });

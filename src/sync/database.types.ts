@@ -47,6 +47,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           note: string | null
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -57,6 +58,7 @@ export type Database = {
           deleted_at?: string | null
           id: string
           note?: string | null
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -67,6 +69,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           note?: string | null
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -84,6 +87,7 @@ export type Database = {
           kind: string
           name: string
           sort_order: number
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -98,6 +102,7 @@ export type Database = {
           kind: string
           name: string
           sort_order?: number
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -112,6 +117,7 @@ export type Database = {
           kind?: string
           name?: string
           sort_order?: number
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -125,6 +131,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           month: string
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -135,6 +142,7 @@ export type Database = {
           deleted_at?: string | null
           id: string
           month: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -145,6 +153,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           month?: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -166,6 +175,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           month: string
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -176,6 +186,7 @@ export type Database = {
           deleted_at?: string | null
           id: string
           month: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -186,6 +197,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           month?: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -207,6 +219,7 @@ export type Database = {
           id: string
           name: string
           sort_order: number
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -217,6 +230,7 @@ export type Database = {
           id: string
           name: string
           sort_order?: number
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -227,6 +241,7 @@ export type Database = {
           id?: string
           name?: string
           sort_order?: number
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -241,6 +256,7 @@ export type Database = {
           payment_source_id: string
           period_month: string
           statement_date: string
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -252,6 +268,7 @@ export type Database = {
           payment_source_id: string
           period_month: string
           statement_date: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -263,6 +280,7 @@ export type Database = {
           payment_source_id?: string
           period_month?: string
           statement_date?: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -290,6 +308,7 @@ export type Database = {
           paid_at: string | null
           ref_id: string
           status: string
+          tombstone_version: number
           transaction_id: string | null
           updated_at: string
           user_id: string
@@ -307,6 +326,7 @@ export type Database = {
           paid_at?: string | null
           ref_id: string
           status?: string
+          tombstone_version?: number
           transaction_id?: string | null
           updated_at?: string
           user_id?: string
@@ -324,6 +344,7 @@ export type Database = {
           paid_at?: string | null
           ref_id?: string
           status?: string
+          tombstone_version?: number
           transaction_id?: string | null
           updated_at?: string
           user_id?: string
@@ -346,6 +367,7 @@ export type Database = {
           id: string
           rate_date: string
           rate_try: number
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -356,6 +378,7 @@ export type Database = {
           id: string
           rate_date: string
           rate_try: number
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -366,6 +389,7 @@ export type Database = {
           id?: string
           rate_date?: string
           rate_try?: number
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -387,6 +411,7 @@ export type Database = {
           person_id: string
           start_month: string
           title: string
+          tombstone_version: number
           total_amount_minor: number | null
           updated_at: string
           user_id: string
@@ -406,6 +431,7 @@ export type Database = {
           person_id: string
           start_month: string
           title: string
+          tombstone_version?: number
           total_amount_minor?: number | null
           updated_at?: string
           user_id?: string
@@ -425,6 +451,7 @@ export type Database = {
           person_id?: string
           start_month?: string
           title?: string
+          tombstone_version?: number
           total_amount_minor?: number | null
           updated_at?: string
           user_id?: string
@@ -481,6 +508,7 @@ export type Database = {
           name: string
           person_id: string
           statement_day: number | null
+          tombstone_version: number
           type: string
           updated_at: string
           user_id: string
@@ -497,6 +525,7 @@ export type Database = {
           name: string
           person_id: string
           statement_day?: number | null
+          tombstone_version?: number
           type: string
           updated_at?: string
           user_id?: string
@@ -513,6 +542,7 @@ export type Database = {
           name?: string
           person_id?: string
           statement_day?: number | null
+          tombstone_version?: number
           type?: string
           updated_at?: string
           user_id?: string
@@ -534,6 +564,7 @@ export type Database = {
           id: string
           is_self: boolean
           name: string
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -543,6 +574,7 @@ export type Database = {
           id: string
           is_self?: boolean
           name: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -552,6 +584,7 @@ export type Database = {
           id?: string
           is_self?: boolean
           name?: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -566,6 +599,7 @@ export type Database = {
           effective_from: string
           id: string
           subscription_id: string
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -577,6 +611,7 @@ export type Database = {
           effective_from: string
           id: string
           subscription_id: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -588,6 +623,7 @@ export type Database = {
           effective_from?: string
           id?: string
           subscription_id?: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -617,6 +653,7 @@ export type Database = {
           pay_day: number
           person_id: string
           recurrence: string
+          tombstone_version: number
           updated_at: string
           user_id: string
         }
@@ -635,6 +672,7 @@ export type Database = {
           pay_day: number
           person_id: string
           recurrence?: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -653,6 +691,7 @@ export type Database = {
           pay_day?: number
           person_id?: string
           recurrence?: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
         }
@@ -679,6 +718,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           key: string
+          tombstone_version: number
           updated_at: string
           user_id: string
           value: string
@@ -688,6 +728,7 @@ export type Database = {
           deleted_at?: string | null
           id: string
           key: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
           value: string
@@ -697,6 +738,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           key?: string
+          tombstone_version?: number
           updated_at?: string
           user_id?: string
           value?: string
@@ -724,6 +766,7 @@ export type Database = {
           note: string | null
           payment_source_id: string | null
           person_id: string
+          tombstone_version: number
           trial_end_date: string | null
           updated_at: string
           user_id: string
@@ -749,6 +792,7 @@ export type Database = {
           note?: string | null
           payment_source_id?: string | null
           person_id: string
+          tombstone_version?: number
           trial_end_date?: string | null
           updated_at?: string
           user_id?: string
@@ -774,6 +818,7 @@ export type Database = {
           note?: string | null
           payment_source_id?: string | null
           person_id?: string
+          tombstone_version?: number
           trial_end_date?: string | null
           updated_at?: string
           user_id?: string
@@ -825,6 +870,7 @@ export type Database = {
           purchase_date: string | null
           status: string
           subscription_id: string | null
+          tombstone_version: number
           type: string
           updated_at: string
           user_id: string
@@ -850,6 +896,7 @@ export type Database = {
           purchase_date?: string | null
           status: string
           subscription_id?: string | null
+          tombstone_version?: number
           type: string
           updated_at?: string
           user_id?: string
@@ -875,6 +922,7 @@ export type Database = {
           purchase_date?: string | null
           status?: string
           subscription_id?: string | null
+          tombstone_version?: number
           type?: string
           updated_at?: string
           user_id?: string

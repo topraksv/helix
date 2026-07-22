@@ -38,6 +38,21 @@ describe("sync merge policy", () => {
     expect(remoteWinsLww(null, "2026-07-15T10:00:00.000Z")).toBe(true);
   });
 
+  it("never lets a newer stale-client clock resurrect an older delete generation", () => {
+    expect(remoteWinsLww(
+      "2026-07-15T10:00:00.000Z",
+      "2099-01-01T00:00:00.000Z",
+      2,
+      1,
+    )).toBe(false);
+    expect(remoteWinsLww(
+      "2099-01-01T00:00:00.000Z",
+      "2026-07-15T10:00:00.000Z",
+      1,
+      2,
+    )).toBe(true);
+  });
+
   it("accepts only UUID-shaped row ids for the pull cursor", () => {
     expect(isUuidShaped("019f6bba-2c65-7ea8-a6c9-96d891155e83")).toBe(true); // UUIDv7
     expect(isUuidShaped("a1b2c3d4-e5f6-8a7b-8c9d-0e1f2a3b4c5d")).toBe(true); // deterministic v8 nibble

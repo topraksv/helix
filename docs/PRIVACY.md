@@ -43,7 +43,9 @@ güvenliğine bağlıdır.
 Kullanıcı yazıları önce tek local transaction’da veri + outbox olarak kaydolur.
 Bağlantıda push edilir, server’ın normalize ettiği `updated_at` cevabı alınır ve
 sonra ilgili outbox event’i kaldırılır. Pull satırları runtime’da doğrulanır; bozuk
-veya foreign veri cursor’ın arkasına saklanmaz.
+veya foreign veri cursor’ın arkasına saklanmaz. Tombstone nesli duvar saatinden
+önceliklidir; silmeyi görmemiş eski bir cihaz daha ileri saatle yazsa bile kaydı
+diriltemez.
 
 Remote tarafta erişim sınırı tek yerde, Postgres satır güvenliğindedir: her satır
 kendi sahibine bağlıdır, başka bir hesap onu okuyamaz veya sahipliğini
@@ -75,6 +77,9 @@ yoktur; yalnız kapsam, hata sınıfı ve zamanı içeren küçük bir cihaz-iç
 - Varsayılan preview genel bir yaklaşan ödeme mesajıdır. Ad/tutar yalnız ayrı
   device-local ayrıntı tercihi açılırsa kullanılır.
 - Kapatma, çıkış ve hesap değişimi scheduled/presented hesap ayrıntılarını temizler.
+- Supabase oturumu server tarafından geçersizleştirildiğinde aynı temizlik local
+  workspace, cache ve offline oturum anahtarlarını da kapsar; ağ kesintisi tek
+  başına local veriyi silmez.
 - Scheduler en yakın 60 kaydı sınırlar; OS limitini sonsuz retry ile zorlamaz.
 - Native app inactive/background olduğunda app switcher için finansal içeriği örten
   privacy surface çizilir. OS snapshot zamanlaması gerçek cihazda ayrıca kabul
@@ -102,6 +107,10 @@ kullanıcının sorumluluğundadır. Helix export’u parola ile şifrelediğini
 
 - Canlı satırlar ve sync için gereken tombstone’lar hesap var olduğu sürece otomatik
   süre dolumuyla silinmez. Şu anda genel amaçlı scheduled retention/purge job’ı yoktur.
+- Satır bazında kör süreli purge eklenmez: uzun süre offline kalan cihazların
+  silinmiş finansal veriyi yeniden üretmesini önlemek için cihaz-ack watermark'ı
+  gerekir ve mevcut protokol bunu taşımaz. Gerçek fiziksel purge yolu aşağıdaki
+  hesap silme işlemidir.
 - Bir satırı uygulamada silmek onu geri alınabilir tombstone yapar; bu, hesabı
   kalıcı silmekle aynı değildir. Normal authenticated client fiziksel satır
   DELETE yetkisi taşımaz.

@@ -376,9 +376,67 @@ export interface InstallmentNote {
   total: number;
 }
 
-const SECTION_BANNER = /^[═=\-–—_*·•]{2,}\s*(.+?)\s*[═=\-–—_*·•]{2,}$/;
-// Trailing "(paid)/(total)" — anchored at the end, parens optional.
-const INSTALLMENT_TAIL = /\(?\s*(\d{1,3})\s*\/\s*(\d{1,3})\s*\)?\.?\s*$/;
+const SECTION_BORDER_CHARS = new Set("═=-–—_*·•");
+
+/** Linear-time banner parsing. A single overlapping regexp made a malformed
+ * 20k-character workbook comment consume seconds of CPU before rejection. */
+function sectionBannerLabel(line: string): string | null {
+  let start = 0;
+  while (start < line.length && SECTION_BORDER_CHARS.has(line[start] ?? "")) start += 1;
+  if (start < 2) return null;
+
+  let end = line.length;
+  while (end > start && SECTION_BORDER_CHARS.has(line[end - 1] ?? "")) end -= 1;
+  if (line.length - end < 2) return null;
+
+  const label = line.slice(start, end).trim();
+  return label === "" ? null : label;
+}
+interface InstallmentTail {
+  paidNo: number;
+  total: number;
+  index: number;
+}
+
+function skipWhitespaceBack(line: string, from: number): number {
+  let index = from;
+  while (index > 0 && (line[index - 1] ?? "").trim() === "") index -= 1;
+  return index;
+}
+
+function readOneToThreeDigitsBack(line: string, from: number): { start: number; value: number } | null {
+  let start = from;
+  while (start > 0 && start > from - 3 && /\d/.test(line[start - 1] ?? "")) start -= 1;
+  if (start === from || (start > 0 && /\d/.test(line[start - 1] ?? ""))) return null;
+  return { start, value: Number(line.slice(start, from)) };
+}
+
+/** Parse a trailing `paid/total` marker in one backwards pass. */
+function installmentTail(line: string): InstallmentTail | null {
+  let end = skipWhitespaceBack(line, line.length);
+  if (line[end - 1] === ".") end = skipWhitespaceBack(line, end - 1);
+
+  const parenthesized = line[end - 1] === ")";
+  if (parenthesized) end = skipWhitespaceBack(line, end - 1);
+
+  const total = readOneToThreeDigitsBack(line, end);
+  if (!total) return null;
+  let cursor = skipWhitespaceBack(line, total.start);
+  if (line[cursor - 1] !== "/") return null;
+  cursor = skipWhitespaceBack(line, cursor - 1);
+
+  const paid = readOneToThreeDigitsBack(line, cursor);
+  if (!paid) return null;
+  cursor = skipWhitespaceBack(line, paid.start);
+  if (parenthesized) {
+    if (line[cursor - 1] !== "(") return null;
+    cursor -= 1;
+  } else if (line[cursor - 1] === "(") {
+    return null;
+  }
+
+  return { paidNo: paid.value, total: total.value, index: cursor };
+}
 
 /**
  * Split a card-grouped installment comment into its individual installment
@@ -393,16 +451,14 @@ export function parseInstallmentComment(comment: string): InstallmentNote[] {
   for (const raw of comment.split(/\r?\n/)) {
     const line = raw.trim();
     if (line === "") continue;
-    const sec = SECTION_BANNER.exec(line);
-    if (sec?.[1]) {
-      card = sec[1].replace(/ℹ️|ℹ/g, "").trim();
+    const section = sectionBannerLabel(line);
+    if (section) {
+      card = section.replace(/ℹ️|ℹ/g, "").trim();
       continue;
     }
-    const tail = INSTALLMENT_TAIL.exec(line);
+    const tail = installmentTail(line);
     if (!tail) continue;
-    const paidNo = Number(tail[1]);
-    const total = Number(tail[2]);
-    if (!tail[1] || !tail[2]) continue;
+    const { paidNo, total } = tail;
     if (total < 1 || total > 600 || paidNo < 1 || paidNo > total) continue;
     // Everything before the "n/m": "<name>  <amount>" — amount is the last token.
     const parts = line.slice(0, tail.index).trim().split(/\s+/);

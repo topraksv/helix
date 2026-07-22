@@ -12,6 +12,7 @@ import {
   clearPasswordRecoveryDetected,
   getSupabase,
   isSupabaseConfigured,
+  subscribeSupabaseAuthEvents,
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
 import { resetLocalWorkspace, writeSetting } from "../db/mutations";
@@ -23,6 +24,7 @@ import { clearAccountNotifications, rescheduleAll } from "../services/notificati
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { friendlyAuthError } from "./auth-errors";
+import { signOutWithLocalFallback } from "./sign-out";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "./recovery";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
@@ -36,6 +38,9 @@ import {
 
 /** Owner-keyed brake on password verification — see verification-brake.ts. */
 let verificationBrake: VerificationBrake = IDLE_BRAKE;
+let authLifecycleSubscribed = false;
+let explicitSignOutInProgress = false;
+let invalidationCleanup: Promise<void> | null = null;
 
 const LAST_USER_KEY = "helix.last_user_id";
 /** Signed-in e-mail, persisted so an offline bootstrap can still re-auth. */
@@ -66,6 +71,54 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
   }
   if (owner !== userId) await kv.set(LOCAL_OWNER_KEY, userId);
   return null;
+}
+
+/** A revoked/deleted remote session must stop exposing its cached workspace
+ * once Supabase reports SIGNED_OUT. Network failure does not emit this event,
+ * so ordinary offline access remains intact. The captured owner checks keep a
+ * late A event from clearing a newly active B session. */
+async function clearInvalidatedSession(): Promise<void> {
+  const userId = useSession.getState().userId;
+  if (!userId || explicitSignOutInProgress) return;
+  await stopSyncSession(userId);
+  if (useSession.getState().userId !== userId) return;
+  disconnectMarkets();
+  clearRateCache();
+  await clearAccountNotifications(true).catch(() => {});
+  useSyncStatus.getState().set({ lastSyncAt: null });
+  try {
+    await resetLocalWorkspace();
+  } catch {
+    // Keep LOCAL_OWNER_KEY so a different account must retry the wipe. Remove
+    // bootstrap credentials below so this invalid session cannot reopen.
+  }
+  if (useSession.getState().userId !== userId) return;
+  await kv.remove(LAST_USER_KEY);
+  await kv.remove(LAST_EMAIL_KEY);
+  useSession.setState({
+    userId: null,
+    email: null,
+    isOnlineSession: false,
+    isNewSignup: false,
+    isFreezing: false,
+    previousLoginAt: null,
+  });
+}
+
+function ensureAuthLifecycleSubscription(): void {
+  if (authLifecycleSubscribed || !isSupabaseConfigured) return;
+  authLifecycleSubscribed = true;
+  subscribeSupabaseAuthEvents((event) => {
+    if (event !== "SIGNED_OUT" || explicitSignOutInProgress || invalidationCleanup) return;
+    // Supabase warns against awaiting other auth operations inside its callback.
+    // Defer the workspace cleanup and serialize repeated SIGNED_OUT events.
+    queueMicrotask(() => {
+      if (invalidationCleanup || explicitSignOutInProgress) return;
+      invalidationCleanup = clearInvalidatedSession().finally(() => {
+        invalidationCleanup = null;
+      });
+    });
+  });
 }
 
 interface SessionStore {
@@ -122,6 +175,7 @@ export const useSession = create<SessionStore>((set, get) => ({
   previousLoginAt: null,
 
   bootstrap: async () => {
+    ensureAuthLifecycleSubscription();
     if (!isSupabaseConfigured) {
       const wsError = await ensureWorkspaceFor(LOCAL_ONLY_USER_ID);
       if (wsError) {
@@ -236,7 +290,10 @@ export const useSession = create<SessionStore>((set, get) => ({
   preparePasswordRecovery: async (url) => {
     const supabase = getSupabase();
     if (!supabase) return "invalid";
-    const link = parsePasswordRecoveryUrl(url);
+    const target = Platform.OS === "web" && globalThis.location
+      ? { platform: "web" as const, origin: globalThis.location.origin, baseUrl: process.env.EXPO_BASE_URL ?? "/" }
+      : { platform: "native" as const, scheme: "helix" };
+    const link = parsePasswordRecoveryUrl(url, target);
     if (link.kind === "expired") return "expired";
     if (link.kind === "code") {
       const { error } = await supabase.auth.exchangeCodeForSession(link.code);
@@ -305,12 +362,11 @@ export const useSession = create<SessionStore>((set, get) => ({
     }
     const supabase = getSupabase();
     if (supabase) {
+      explicitSignOutInProgress = true;
       try {
-        await supabase.auth.signOut();
-      } catch {
-        // Ensure local credentials are removed even when global revocation is
-        // unavailable. The already-wiped device must still complete sign-out.
-        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+        await signOutWithLocalFallback((options) => supabase.auth.signOut(options));
+      } finally {
+        explicitSignOutInProgress = false;
       }
     }
     await kv.remove(LOCAL_OWNER_KEY);
@@ -356,10 +412,11 @@ export const useSession = create<SessionStore>((set, get) => ({
     useSyncStatus.getState().set({ lastSyncAt: null });
     const supabase = getSupabase();
     if (supabase) {
+      explicitSignOutInProgress = true;
       try {
-        await supabase.auth.signOut();
-      } catch {
-        // offline sign-out still clears local session state
+        await signOutWithLocalFallback((options) => supabase.auth.signOut(options));
+      } finally {
+        explicitSignOutInProgress = false;
       }
     }
     try {

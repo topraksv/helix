@@ -22,9 +22,9 @@ import { haptic, selectionTapIfChanged } from "../src/ui/haptics";
 describe("haptic feedback", () => {
   beforeEach(() => {
     mocks.platform.OS = "ios";
-    mocks.impactAsync.mockClear();
-    mocks.selectionAsync.mockClear();
-    mocks.notificationAsync.mockClear();
+    mocks.impactAsync.mockReset().mockResolvedValue(undefined);
+    mocks.selectionAsync.mockReset().mockResolvedValue(undefined);
+    mocks.notificationAsync.mockReset().mockResolvedValue(undefined);
   });
 
   it("is a safe no-op outside iOS", () => {
@@ -37,23 +37,35 @@ describe("haptic feedback", () => {
     expect(mocks.notificationAsync).not.toHaveBeenCalled();
   });
 
-  it("does not repeat selection feedback for the active choice", () => {
+  it("does not repeat selection feedback for the active choice", async () => {
     selectionTapIfChanged("cash-flow", "cash-flow");
     selectionTapIfChanged("dashboard", "cash-flow");
+    await Promise.resolve();
     expect(mocks.selectionAsync).toHaveBeenCalledTimes(1);
   });
 
-  it("maps one requested outcome to one native notification", () => {
+  it("maps one requested outcome to one native notification", async () => {
     haptic("warning");
+    await Promise.resolve();
     expect(mocks.notificationAsync).toHaveBeenCalledTimes(1);
     expect(mocks.notificationAsync).toHaveBeenCalledWith("warning");
   });
 
-  it("does not let unavailable native feedback break the interaction", () => {
+  it("does not let unavailable native feedback break the interaction", async () => {
     mocks.impactAsync.mockImplementationOnce(() => {
       throw new Error("unavailable");
     });
     expect(() => haptic("light")).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocks.impactAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("consumes an asynchronous native rejection", async () => {
+    mocks.impactAsync.mockRejectedValueOnce(new Error("disabled"));
+    haptic("light");
+    await Promise.resolve();
+    expect(mocks.impactAsync).toHaveBeenCalledTimes(1);
   });
 });
 

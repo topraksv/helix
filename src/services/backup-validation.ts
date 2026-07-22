@@ -102,6 +102,9 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
   for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
     const value = raw[column.name];
     if (value == null) {
+      // Backups written before delete generations existed are generation zero;
+      // the write layer upgrades an imported tombstone to generation one.
+      if (column.name === "tombstone_version" && !(column.name in raw)) continue;
       // Version-1 backups produced before cadence support have no recurrence
       // key. SQLite/Postgres both default those legacy rows to monthly.
       if (table === "recurring_incomes" && column.name === "recurrence" && !(column.name in raw)) continue;
@@ -130,6 +133,10 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
   if ("start_month" in raw && !isMonthKey(raw.start_month)) return false;
   if ("month" in raw && !isMonthKey(raw.month)) return false;
   if ("period_month" in raw && !isMonthKey(raw.period_month)) return false;
+  if (
+    "tombstone_version" in raw &&
+    (!Number.isSafeInteger(raw.tombstone_version) || Number(raw.tombstone_version) < 0)
+  ) return false;
   for (const key of ["due_day", "statement_day", "billing_day", "pay_day"]) {
     const value = raw[key];
     if (value != null && (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 31)) return false;

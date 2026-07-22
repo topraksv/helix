@@ -54,7 +54,9 @@ describe("sensitive UI cover policy", () => {
   it("keeps account cleanup and notification redaction wired to real boundaries", () => {
     const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
     const notifications = readFileSync(join(process.cwd(), "src/services/notifications.ts"), "utf8");
-    expect(session.match(/clearAccountNotifications\(true\)/g)).toHaveLength(3);
+    // Account switch, explicit sign-out, account deletion and remote session
+    // invalidation must each clear stale scheduled previews.
+    expect(session.match(/clearAccountNotifications\(true\)/g)).toHaveLength(4);
     expect(notifications).toContain("privateNotificationContent(detailsEnabled");
     expect(notifications).toContain("tr.notif.privateBody");
     expect(notifications).toContain("else {\n    await clearAccountNotifications();\n    await setNotificationDetailsEnabled(false);");
@@ -84,5 +86,13 @@ describe("session background work ownership", () => {
   it("leaves no unowned floating promise on that path", () => {
     // A bare `void Promise.` is exactly the shape stopSyncSession cannot await.
     expect(session).not.toMatch(/void Promise\./);
+  });
+
+  it("turns a remote SIGNED_OUT event into owner-checked local cleanup", () => {
+    expect(session).toContain('event !== "SIGNED_OUT"');
+    expect(session).toContain("useSession.getState().userId !== userId");
+    expect(session).toContain("await stopSyncSession(userId)");
+    expect(session).toContain("await resetLocalWorkspace()");
+    expect(session).toContain("await kv.remove(LAST_USER_KEY)");
   });
 });
