@@ -47,7 +47,7 @@ artefact’ına karışamaz.
 | P1 | Onboarding → işlem yaşam döngüsü | Browser E2E | quick start → gider ekle → ay detayı → edit → delete/undo → JSON export | Gerçek browser SQLite’ta tek ve geri alınabilir kayıt | `e2e/core-flow.spec.ts` |
 | P1 | Temiz DB restore/atomiklik | Browser E2E | export → yeni context restore; dangling ref’li bundle | Geçerli bundle 1:1 gelir; invalid bundle sıfır satır yazar | `e2e/core-flow.spec.ts`, `backup-validation` |
 | P1 | Offline cold relaunch | Browser E2E | service worker cache → offline reload → online | SQLite veri korunur; yeniden mount duplicate üretmez | `e2e/resilience.spec.ts` |
-| P1 | İki-user yetkilendirme | Remote pgTAP | 16 tablo RLS/policy/grant envanteri; A/B izolasyonu, owner değiştirme, anon erişim, cross-owner FK, client hard-delete reddi, tombstone nesli, hesap-silme RPC’si, transfer constraint’i | 45 assertion; fixture rollback | `supabase/tests/owner_integrity_and_rls.sql` |
+| P1 | İki-user yetkilendirme | Remote pgTAP | 16 tablo RLS/policy/grant envanteri; A/B izolasyonu, owner değiştirme, anon erişim, cross-owner FK, client hard-delete reddi, tombstone nesli, hesap-silme RPC’si, transfer constraint’i | 48 assertion; fixture rollback | `supabase/tests/owner_integrity_and_rls.sql` |
 | P1 | Hostile import/backup | Unit/stress | yüksek oranlı ZIP, büyük entry, >100k row, duplicate/mixed owner | SheetJS/write öncesi bounded red | `spreadsheet-import`, `backup-validation`, `import-plan` |
 | P2 | Route/guard/deep link | Browser E2E + unit | protected ve modal direkt URL; auth/onboarding/recovery guard | Hata ekranı/hydration exception yok; deterministic parent | `e2e/resilience.spec.ts`, `app-guard`, `navigation` |
 | P2 | Form durumları | Unit + browser component | invalid limit, dirty exit, loading/busy, password-manager metadata | Hata görünür/duyurulur; veri sessiz kaybolmaz; double submit yok | `input-policy`, `dirty-exit`, `accessibility-contract`, core E2E |
@@ -59,7 +59,7 @@ artefact’ına karışamaz.
 | P2 | Bildirim privacy/cap | Unit/boundary | default neutral, opt-in detail, stale preference, sign-out, >60 item | Ayrıntı fail-closed; en yakın 60; hesap verisi temizlenir | `device-preferences`, `privacy`, `upcoming` |
 | P2 | Ölçek | Deterministic benchmark + browser E2E | 1k/10k/100k ledger; 100k dashboard/matrix; 1k+ satırlık FlatList sanallaştırması | CI 4 sn bütçesi; lineer/bounded output; liste satırları lazily mount edilir | `performance`, ay detayı/hücre editörü/Analiz FlatList'leri |
 | P3 | External feed dayanıklılığı | Unit | timeout/abort/shape/date/cache, stable market quote, invalid favicon host | Eski/bozuk veri canlı veya TRY gibi sunulmaz | `external-services` |
-| P3 | Release config | Source/config | Node 22, runtime/channel, pinned Actions, branch-safe deploy, bundle budget | Native/web sözleşmesi drift etmez | `release-config`, workflow `quality` |
+| P3 | Release config | Source/config | Node 22, runtime/channel, pinned Actions, branch-safe deploy, bundle + public source-map budget | Native/web sözleşmesi drift etmez; `.map`/`sourceMappingURL` Pages'e çıkmaz | `release-config`, `web-budget`, workflow `quality` |
 
 ## Playwright neyi gerçekten yapar?
 
@@ -113,16 +113,17 @@ sonuç kaydı” tablosunda doldurulmuş bir satır olmadığı sürece bu matri
 **BLOCKED** sayılır: kod başarısız değil, dış kabul kanıtı yok. Tablo bugüne
 kadar hiç doldurulmadı.
 
-| Platform | Senaryo | Kabul ölçütü | Son durum |
-|---|---|---|---|
-| iOS | VoiceOver + Dynamic Type XL/AX | Onboarding, işlem formu, tablo detayı, Settings okuma sırası; focus modalı açan elemana döner; metin/CTA kesilmez | BLOCKED — cihaz yok |
-| Android | TalkBack + font/display scale | Aynı ana akış; role/state/hint doğru; hardware/system back deterministic parent’a gider | BLOCKED — verified build/device yok |
-| iOS/Android | Reduced Motion | Press/list/modal hareketleri azalır; işlev kaybı yok | BLOCKED — cihaz yok |
-| iOS/Android | App switcher/screenshot privacy | Background anında finansal içerik yerine privacy cover snapshot’lanır | BLOCKED — OS timing cihaz ister |
-| iOS/Android | Bildirim | Boot’ta izin sorulmaz; nötr preview varsayılan; opt-in detail; sign-out tüm account detail’i temizler; en yakın 60 planlanır | BLOCKED — OS scheduler cihaz ister |
-| Installed OTA | `preview` teslimi | Doğru runtime/channel; ilk cold start indirir, ikinci cold start hedef sürümün görünür kabul akışını açar | BLOCKED — installed binary erişilemedi |
-| İki installed client | Account switch/sync | A’nın geç işi B’ye yazmaz; offline event online olunca tek kez gider; delete/undo iki tarafta eşit | BLOCKED — iki client yok |
-| Düşük bellek cihaz | Büyük geçerli import | Limit içindeki dosya tamamlanır veya kontrollü hata verir; crash/yarım write yok | BLOCKED — cihaz profili yok |
+| Platform | Senaryo | Sınıf | Mevcut release etkisi | Kabul ölçütü | Son durum |
+|---|---|---|---|---|---|
+| iOS | VoiceOver + Dynamic Type XL/AX | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native accessibility kabul iddiasını bloklar | Onboarding, işlem formu, tablo detayı, Settings okuma sırası; focus modalı açan elemana döner; metin/CTA kesilmez | BLOCKED — cihaz yok |
+| Android | TalkBack + font/display scale | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; Android shipped iddiasını bloklar | Aynı ana akış; role/state/hint doğru; hardware/system back deterministic parent’a gider | BLOCKED — verified build/device yok |
+| iOS/Android | Reduced Motion | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native kabul iddiasını bloklar | Press/list/modal hareketleri azalır; işlev kaybı yok | BLOCKED — cihaz yok |
+| iOS/Android | App switcher/screenshot privacy | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; snapshot privacy iddiasını bloklar | Background anında finansal içerik yerine privacy cover snapshot’lanır | BLOCKED — OS timing cihaz ister |
+| iOS/Android | Bildirim/lock-screen | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native notification kabul iddiasını bloklar | Boot’ta izin sorulmaz; nötr preview varsayılan; opt-in detail; sign-out tüm account detail’i temizler; en yakın 60 planlanır | BLOCKED — OS scheduler cihaz ister |
+| iOS/Android | Keychain/SecureStore + biyometrik | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; cihaz secret/biometric iddiasını bloklar | Oturum OS-protected storage'da; biyometrik başarısızlık bypass etmez, hesap değişimi eski state'i açmaz | BLOCKED — gerçek keychain/biometric cihaz akışı yok |
+| Installed OTA | `preview` teslimi | `DEVICE_ONLY` | Preview publish'i bloklamaz; production OTA'yı ve installed-delivery doğrulamasını bloklar | Doğru runtime/channel; ilk cold start indirir, ikinci cold start hedef sürümün görünür kabul akışını açar | BLOCKED — installed binary erişilemedi |
+| İki installed client | Account switch/sync | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; iki-cihaz convergence iddiasını bloklar | A’nın geç işi B’ye yazmaz; offline event online olunca tek kez gider; delete/undo iki tarafta eşit | BLOCKED — iki client yok |
+| Düşük bellek cihaz | Büyük geçerli import | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; düşük-memory native kabul iddiasını bloklar | Limit içindeki dosya tamamlanır veya kontrollü hata verir; crash/yarım write yok | BLOCKED — cihaz profili yok |
 
 ### Cihaz sonuç kaydı
 

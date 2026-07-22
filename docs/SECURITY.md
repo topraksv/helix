@@ -17,6 +17,15 @@ kullanılmalıdır; hassas ayrıntılar public issue'ya yazılmamalıdır. Bildi
 maintainer tarafından incelenir, ancak sabit yanıt veya düzeltme süresi taahhüt
 edilmez.
 
+Triage ve yayın kararı tek maintainer'a aittir. Doğrulanmış critical/high veya
+çalışan akıştan erişilebilen ve dispozisyonu olmayan moderate bulgu release'i
+bloklar; false positive, erişilemez yol ve kabul edilen risk kararı kanıtıyla
+kaydedilir. Private report, Dependabot, CodeQL ve Sonar aynı kurala girer.
+Bağımlılık bulgusunda etkilenen sürüm/yol/bundle erişilebilirliği; kod bulgusunda
+girdi, yetki ve production yürütme yolu doğrulanır. Hassas düzeltme önce private
+branch/advisory'de hazırlanır; public açıklama secret veya kullanıcı verisi
+içermez ve düzeltme hazır olmadan sömürü ayrıntısı yayımlanmaz.
+
 ## Güven sınırları
 
 | Sınır | Güvenilen | Güvenilmeyen |
@@ -129,6 +138,12 @@ içinde meta olarak taşınır ve `tests/release-config.test.ts` ile korunur:
 - `img-src` `https://*.gstatic.com`'a izin vermek zorundadır; favicon servisi
   oraya 301 yönlendirir.
 
+Production web export source-map bayrağı kullanmaz. `bundle:check`, public
+`dist/` içinde hem `.map` dosyasını hem JS/CSS `sourceMappingURL` referansını
+release-bloklayan hata sayar. İleride crash servisi onaylanırsa haritalar yalnız
+provider'ın private symbolication alanına, dar kapsamlı upload token'ıyla gider;
+Pages veya test artefact'ına eklenmez.
+
 ## Girdi ve dış veri
 
 - Route param'ları düşmanca kabul edilir; domain predicate'iyle doğrulanmadan
@@ -154,6 +169,9 @@ içinde meta olarak taşınır ve `tests/release-config.test.ts` ile korunur:
   not, e-posta, id veya tutar persist edilmez. Kullanıcıya dönük diagnostics
   route'u/export'u yoktur.
 - Kanıt: `tests/privacy.test.ts`, `tests/diagnostics.test.ts`.
+- PII içermeyen release korelasyonu yalnız Git SHA, Pages run kimliği, EAS
+  update group/update kimliği, runtime ve platformdan oluşur; user id/e-posta,
+  route girdisi, tutar ve payload tag/breadcrumb yapılmaz.
 - Uygulama dışı yüzey: native `inactive`/`background` durumunda `PrivacyCover`
   app-switcher snapshot'ından önce finansal içeriği kapatır.
 
@@ -203,36 +221,50 @@ güven sınırı EAS hesabının kendisidir. Runtime `appVersion` policy'sine ba
 bu yüzden eski runtime'a yanlış bundle ulaşamaz. Native config, icon/splash, SDK
 ve runtime değişiklikleri OTA-able değildir.
 
-## Bilinen zayıflıklar (açıkça kabul edilenler)
+Update metadata'sındaki Git commit hash'i protected release commit'iyle eşleşir;
+group, iki platform update kimliği, runtime, branch ve channel mapping birlikte
+kanıtlanır. Repo'da otomatik OTA workflow'u veya EAS secret'ı yoktur: publish
+yalnız owner'ın yerel EAS oturumundan, temiz `main` üzerinden yapılır.
+`expo-updates` başlangıç hatasında önceki çalışan/embedded update'e dönebilir,
+ama bu release-health kanıtı sayılmaz; bilinen kötü grup ayrıca
+[RELEASE.md](RELEASE.md#ota-rollback) prosedürüyle geri alınır. Embedded'e dönüş
+de yeni update grubu ve aynı iki-cold-start kabulünü gerektirir.
 
-| Konu | Durum |
-|---|---|
-| `script-src 'unsafe-inline'` | statik export inline bootstrap ürettiği için gerekli; `connect-src` daraltmasıyla telafi ediliyor |
-| Web oturum saklama | browser storage; profil erişimi = oturum erişimi |
-| Uygulama seviyesi DB şifrelemesi | yok; iOS'ta OS dosya koruması, web'de browser profili |
-| Merkezi crash reporting / alerting | yok; sessiz hata maintainer'a otomatik ulaşmaz |
-| OTA ek code-signing | yapılandırılmadı |
-| Android store build | imzalı production build ve fiziksel kabul yapılmadı |
-| Supabase kayıt e-posta doğrulaması | kapalı; mevcut app kayıt sonrası anlık session beklediği için önce confirmation-aware UI ve web/native rollout gerekir |
-| Supabase şifre tabanı | en az 6 karakter; app ve remote sınırı birlikte yükseltilmeden production formu server'da reddedileceği için koordineli rollout gerekir |
-| MFA zorunluluğu | TOTP backend'de kullanılabilir ama app enrollment/recovery akışı yok; zorunlu kılmak mevcut hesapları kilitler |
-| Direct database SSL enforcement | platform TLS sunuyor ama enforcement kapalı; etkinleştirme kısa DB restart'ı ve bütün direct client'ların TLS kanıtını gerektirir |
-| Database network restrictions | direct/pooler girişleri açık; maintainer, CI ve operasyon kaynakları sabitlenmeden daraltılmaz |
-| Fiziksel cihaz erişilebilirlik kabulü | VoiceOver/TalkBack, Dynamic Type ve app-switcher snapshot zamanlaması gerçek cihazda **hiç doğrulanmadı**; matris [TESTING.md](TESTING.md) içinde `BLOCKED` |
-| MASVS-RESILIENCE | anti-tamper/obfuscation/root tespiti bilinçli olarak yok — gerekçe doğrulama matrisinde |
-| `xlsx` otomatik uyarı kapsamı dışında | npm audit ve Dependabot SheetJS CDN tarball'ını hiç göremez; kapsam OSV-Scanner ve elle upstream kontrolüyle telafi ediliyor |
+## Bilinen zayıflık ve dış kontrol dispozisyonları
+
+`Release etkisi`, mevcut web ve runtime-uyumlu JS-only preview teslimini ifade
+eder. Cihazda veya production store/OTA'da doğrulanmış teslim iddiası için ayrı
+blokajlar [TESTING.md](TESTING.md#gerçek-cihaz-kabulü) matrisindedir.
+
+| Konu | Sınıf | Release etkisi | Mevcut kontrol / sonraki adım |
+|---|---|---|---|
+| `script-src 'unsafe-inline'` | `ACCEPTED RESIDUAL RISK` | Bloklamaz | Static bootstrap için gerekli; dar `connect-src`, `object-src` ve `form-action` telafi eder |
+| Web oturum saklama | `ACCEPTED RESIDUAL RISK` | Bloklamaz | Browser profile erişimi oturum erişimidir; kullanıcıya açıkça beyan edilir |
+| Uygulama seviyesi DB şifrelemesi | `ACCEPTED RESIDUAL RISK` | Bloklamaz | iOS OS file protection; web browser sandbox. SQLCipher garantisi verilmez |
+| Merkezi crash/release-health servisi | `BLOCKED_EXTERNAL` | Bloklamaz; otomatik sağlık iddiası yapılamaz | Owner onayı, provider hesabı ve privacy kararı gerekir; minimum plan [RELEASE.md](RELEASE.md#gözlemlenebilirlik-ve-incident) içinde |
+| OTA ek code-signing | `ACCEPTED RESIDUAL RISK` | Preview'i bloklamaz | EAS hesabı güven sınırıdır; anahtar eklemek runtime/native değişikliği ve yeni build gerektirir |
+| Android production store build | `DEVICE_ONLY` | Web/preview'i bloklamaz; Android shipped iddiasını bloklar | İmza, store build ve fiziksel kabul yok |
+| Supabase kayıt e-posta doğrulaması | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Confirmation-aware UI ve mevcut hesapları kırmayan web/native rollout önce gelmeli |
+| Supabase şifre tabanı | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | App + remote sınır aynı release planında 8+ yapılmalı; tek taraflı değişiklik kayıt/form akışını kırar |
+| SMTP | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Provider/domain/credential owner seçimi yok; secret eklenmeden önce teslimat ve rotation sahipliği gerekir |
+| CAPTCHA | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Provider/site-key/secret ve web/native UX rollout'u owner kararıdır |
+| MFA zorunluluğu | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Enrollment/recovery UI yok; zorunluluk mevcut hesapları kilitler |
+| Direct database SSL enforcement | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Kısa DB restart'ı ve bütün direct client'ların TLS kanıtı için bakım penceresi gerekir |
+| Database network restrictions | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Maintainer/CI kaynak aralıkları sabitlenip owner onayı alınmadan daraltılmaz |
+| MASVS-RESILIENCE | `N/A` | Bloklamaz | Anti-tamper/obfuscation/root tespiti threat model'de gerekçeli kapsam dışıdır |
+| `xlsx` otomatik npm uyarı kapsamı | `ACCEPTED RESIDUAL RISK` | Bloklamaz | CDN tarball'ı OSV + manuel upstream advisory kontrolüyle izlenir |
 
 ## Plan sınırlı opsiyonel kontroller
 
 Bunlar uygulama kusuru veya çözülmemiş kod açığı değildir; barındırma planının
 sunmadığı ek kontrollerdir. Bulgu olarak açılmaz, plan değişirse etkinleştirilir.
 
-| Kontrol | Durum |
-|---|---|
-| `auth_leaked_password_protection` (HaveIBeenPwned kontrolü) | Mevcut Supabase Free plan’de kullanılamıyor; repo’dan veya Dashboard’dan açılamaz. Şifre gücü sınırı uygulamanın kendi form doğrulamasında kalır. |
-| Auth session timebox / inactivity / single-session | Supabase Free plan'de kullanılamıyor; mevcut refresh-token rotation + 10 saniyelik reuse detection korunuyor. |
-| Automatic database backup / PITR | Free plan'de yok; risk ve onaylı off-site logical restore prosedürü [RELEASE.md](RELEASE.md#database-backup-ve-geri-yükleme) içindedir. |
-| Log drain ve uzun log retention | Log drain ücretli add-on'dur; Free plan yalnız kısa platform log retention sağlar. Merkezi app telemetry olmadığı ayrıca yukarıda kayıtlıdır. |
+| Kontrol | Sınıf | Release etkisi | Durum |
+|---|---|---|---|
+| `auth_leaked_password_protection` (HIBP) | `PLAN_LIMITED` | Bloklamaz | Supabase Free plan'de yok; app şifre sınırı korunur |
+| Auth session timebox / inactivity / single-session | `PLAN_LIMITED` | Bloklamaz | Free plan'de yok; refresh rotation + 10 saniye reuse detection korunur |
+| Automatic database backup / PITR | `PLAN_LIMITED` | Bloklamaz; restore edilebilirlik iddiasını bloklar | Free plan'de yok; onaylı off-site logical restore prosedürü [RELEASE.md](RELEASE.md#database-backup-ve-geri-yükleme) içinde |
+| Log drain ve uzun log retention | `PLAN_LIMITED` | Bloklamaz | Ücretli add-on; merkezi app telemetry olmadığı ayrıca kayıtlıdır |
 
 ## Doğrulama matrisi
 
@@ -279,47 +311,56 @@ feed'dir. Satırlar bu yüzeye göre değerlendirildi.
 | API9 Improper Inventory Management | APPLICABLE | tek Supabase projesi; `preview`/`production` channel ayrımı `eas.json`'da | `tests/release-config.test.ts`; `preview` → branch `preview` koşulsuz mapping doğrulandı | Yayımlanmış production store build'i yok |
 | API10 Unsafe Consumption of APIs | APPLICABLE | TCMB/Frankfurter/Harem yanıt doğrulaması; abort signal + timeout + boyut sınırı | `tests/external-services.test.ts`: tarihsiz TCMB reddi, geçersiz Frankfurter reddi, quote şekil/tazelik kontratı (7 invariant mutasyon kanıtlı) | Harem feed'i resmî SLA'sız — 60 sn sonrası canlı sayılmıyor |
 
-### OWASP ASVS (L1 hedefi)
+### OWASP ASVS v5.0.0 — kategori düzeyi uzlaştırma
 
-Tek kullanıcılı, kendi sunucusu olmayan bir istemci olduğu için V-bölümleri
-uygulanabilirliğe göre değerlendirildi.
+[Güncel kararlı ASVS v5.0.0](https://owasp.org/www-project-application-security-verification-standard/)
+esas alınır. Bu tablo tek kullanıcılı, kendi uygulama sunucusu olmayan Helix için
+uygulanabilir alanları kanıta bağlar; bütün requirement kimliklerinin tek tek
+doğrulandığı veya L1 uyumluluğu sağlandığı iddiası değildir.
 
-| Bölüm | Durum | Kanıt / gerekçe |
+| Alan | Durum | Kanıt / gerekçe |
 |---|---|---|
-| V1 Architecture | APPLICABLE | `docs/ARCHITECTURE.md` bağımlılık yönü + güven sınırları tablosu (bu belgenin başı) |
-| V2 Authentication | APPLICABLE | Supabase Auth; `tests/auth.test.ts`; şifre gücü form doğrulamasında (plan sınırı: leaked-password kontrolü Free plan'de yok) |
-| V3 Session Management | APPLICABLE | SecureStore + session epoch; `tests/session-epoch.test.ts`, `tests/session-task.test.ts` |
-| V4 Access Control | APPLICABLE | RLS; 45 assertion’lı linked pgTAP |
-| V5 Validation / Encoding | APPLICABLE | `route-params`, `backup-validation`, `spreadsheet-import`, `csvCell`; Semgrep 0 |
-| V6 Stored Cryptography | **DEVICE/BINARY ONLY** | `NSFileProtectionComplete` yalnız yerel `npx expo run:ios --device` build'inde etkinleşir; doğrulaması cihazda yapılır |
-| V7 Error Handling & Logging | APPLICABLE | `tests/diagnostics.test.ts`, `tests/privacy.test.ts`, `tests/undo-outcome.test.ts` (yanıltıcı başarı yok) |
-| V8 Data Protection | APPLICABLE | `PrivacyCover`, `tests/privacy.test.ts`; export açık metin olarak beyan ediliyor |
-| V9 Communications | APPLICABLE | yalnız HTTPS/WSS; CSP `connect-src` beyaz listesi |
-| V10 Malicious Code | APPLICABLE | Gitleaks 0 gerçek secret; Semgrep 0; CodeQL 0 açık alert; install-script envanteri (2 paket ailesi / 5 çalışan instance, ağ fallback'i tetiklenmedi) |
-| V11 Business Logic | APPLICABLE | `tests/account-freeze.test.ts`, `tests/repository-contract.test.ts`, `tests/balance.test.ts` (Excel golden) |
-| V12 Files & Resources | APPLICABLE | ZIP preflight, satır/hücre/metin tavanları; `tests/spreadsheet-import.test.ts` |
-| V13 API | APPLICABLE | API Security tablosu |
-| V14 Configuration | APPLICABLE | `tests/release-config.test.ts`; `.env.example` yalnız `EXPO_PUBLIC_*` |
+| Architecture | APPLICABLE | `docs/ARCHITECTURE.md` bağımlılık yönü + güven sınırları tablosu (bu belgenin başı) |
+| Authentication | APPLICABLE | Supabase Auth; `tests/auth.test.ts`; şifre gücü form doğrulamasında (plan sınırı: leaked-password kontrolü Free plan'de yok) |
+| Session Management | APPLICABLE | SecureStore + session epoch; `tests/session-epoch.test.ts`, `tests/session-task.test.ts` |
+| Access Control | APPLICABLE | RLS; 48 assertion'lı linked pgTAP |
+| Validation / Encoding | APPLICABLE | `route-params`, `backup-validation`, `spreadsheet-import`, `csvCell`; Semgrep 0 |
+| Stored Cryptography | **DEVICE/BINARY ONLY** | `NSFileProtectionComplete` yalnız yerel `npx expo run:ios --device` build'inde etkinleşir; doğrulaması cihazda yapılır |
+| Error Handling & Logging | APPLICABLE | `tests/diagnostics.test.ts`, `tests/privacy.test.ts`, `tests/undo-outcome.test.ts` (yanıltıcı başarı yok) |
+| Data Protection | APPLICABLE | `PrivacyCover`, `tests/privacy.test.ts`; export açık metin olarak beyan ediliyor |
+| Communications | APPLICABLE | yalnız HTTPS/WSS; CSP `connect-src` beyaz listesi |
+| Malicious-Code Controls | APPLICABLE | Gitleaks 0 gerçek secret; Semgrep 0; CodeQL 0 açık alert; install-script envanteri (2 paket ailesi / 5 çalışan instance, ağ fallback'i tetiklenmedi) |
+| Business Logic | APPLICABLE | `tests/account-freeze.test.ts`, `tests/repository-contract.test.ts`, `tests/balance.test.ts` (Excel golden) |
+| Files & Resources | APPLICABLE | ZIP preflight, satır/hücre/metin tavanları; `tests/spreadsheet-import.test.ts` |
+| API / Web Services | APPLICABLE | API Security tablosu |
+| Configuration | APPLICABLE | `tests/release-config.test.ts`; `.env.example` yalnız `EXPO_PUBLIC_*` |
 
 ### OWASP MASVS ve seçilmiş MASTG kontrolleri
 
 | Kategori | Durum | Kanıt / gerekçe |
 |---|---|---|
-| MASVS-STORAGE | APPLICABLE + kısmen DEVICE/BINARY ONLY | Finansal veri SQLite'ta; secret yok. `MASTG-TEST-0052` (hassas veri yerel depoda): `tests/privacy.test.ts` `kv.set` anahtarlarını `helix.*` literal/sabitiyle sınırlıyor ve `token|password|secret|credential|jwt` desenini reddediyor. `NSFileProtectionComplete` doğrulaması cihaz ister |
-| MASVS-CRYPTO | APPLICABLE | Uygulama kendi kripto ilkelini yazmıyor; `expo-crypto` + `uuidv7`. Semgrep `p/secrets` 0. `MASTG-TEST-0061` (zayıf rastgelelik): id üretimi `uuidv7`, `Math.random` finansal/kimlik yolunda kullanılmıyor |
+| MASVS-STORAGE | APPLICABLE + kısmen DEVICE/BINARY ONLY | Finansal veri SQLite'ta; secret yok. `tests/privacy.test.ts` `kv.set` anahtarlarını `helix.*` literal/sabitiyle sınırlıyor ve `token|password|secret|credential|jwt` desenini reddediyor. Güncel `MASTG-TEST-0207` (Android) ve `MASTG-TEST-0302` (iOS) sandbox incelemesi ile `NSFileProtectionComplete` kanıtı cihaz/binary ister; çalıştırılmış sayılmaz |
+| MASVS-CRYPTO | APPLICABLE | Uygulama kendi kripto ilkelini yazmıyor; `expo-crypto` + `uuidv7`. Semgrep `p/secrets` 0. Güncel `MASTG-TEST-0204` tehdidine göre id üretimi `uuidv7`; `Math.random` finansal/kimlik yolunda kullanılmıyor |
 | MASVS-AUTH | APPLICABLE + DEVICE/BINARY ONLY | `expo-local-authentication` biyometrik app lock; oturum yaşam döngüsü test edilmiş. Biyometrik akışın kendisi cihazda kabul edilecek |
-| MASVS-NETWORK | APPLICABLE | Yalnız TLS/WSS; sabit endpoint listesi; clear-text yapılandırma yok. `MASTG-TEST-0021`: `app.json` içinde `usesCleartextTraffic`/ATS istisnası **yok** |
-| MASVS-PLATFORM | APPLICABLE + DEVICE/BINARY ONLY | `PrivacyCover` (`tests/privacy.test.ts`), bildirim izni boot'ta istenmiyor, deep link şeması `helix://`. `MASTG-TEST-0027` (app-switcher snapshot) OS zamanlaması gerektirdiği için cihazda |
+| MASVS-NETWORK | APPLICABLE + kısmen DEVICE/BINARY ONLY | Yalnız TLS/WSS; sabit endpoint listesi; `app.json` içinde `usesCleartextTraffic`/ATS istisnası yok. `MASTG-TEST-0236` canlı trafik gözlemi cihaz ister; çalıştırılmış sayılmaz |
+| MASVS-PLATFORM | APPLICABLE + DEVICE/BINARY ONLY | `PrivacyCover` (`tests/privacy.test.ts`), bildirim izni boot'ta istenmiyor, deep link şeması `helix://`. Güncel app-switcher snapshot kontrolleri `MASTG-TEST-0289` (Android) ve `MASTG-TEST-0290` (iOS) OS zamanlaması gerektirdiği için cihazda |
 | MASVS-CODE | APPLICABLE | Bağımlılık envanteri/SBOM; advisory dispozisyonları; SHA-pinli Action'lar; `npm ci` reproduktibl |
+| MASVS-PRIVACY | APPLICABLE | Veri akışları ve üçüncü taraflar `docs/PRIVACY.md` içinde; notification/detail opt-in, diagnostics redaction ve account cleanup `tests/privacy.test.ts` ile korunuyor |
 | MASVS-RESILIENCE | **N/A — gerekçeli** | Anti-tamper, obfuscation, root/jailbreak tespiti ve emülatör tespiti bilinçli olarak yok. Helix tek kullanıcılık kendi finansal verisini tutar; koruduğu sır cihaz sahibinin kendi verisidir, o yüzden cihaz sahibine karşı bir savunma modeli anlamsızdır. DRM/lisans zorlaması da yoktur |
 
 ### Araç kapsamı
 
 | Araç | Durum |
 |---|---|
-| SonarQube / SonarCloud | **APPLICABLE.** Gerçek kaynak/test kapsamıyla yerel SonarQube analizi ve V8 LCOV koşar. Son Quality Gate geçti; iki gerçek regex-DoS yolu düzeltildi, güvenlik hotspot'u/açık vulnerability kalmadı. Değişken koşu sayıları `docs/AI_HANDOFF.md` içindedir |
+| SonarQube / SonarCloud | **APPLICABLE.** Gerçek kaynak/test kapsamıyla yerel SonarQube analizi ve V8 LCOV koşar. Son Quality Gate geçti; iki gerçek regex-DoS yolu ve kalan maddi async/sort bulguları düzeltildi, güvenlik hotspot'u/açık bug veya vulnerability kalmadı. Değişken koşu sayıları `docs/AI_HANDOFF.md` içindedir |
 | OWASP ZAP | **N/A — kullanıcı tarafından açıkça kapsam dışı bırakıldı.** CSP, source map yokluğu, service worker ve route davranışı statik export üzerinde elle doğrulandı |
 | MobSF | **N/A — kullanıcı tarafından açıkça kapsam dışı bırakıldı.** Kaynak seviyesi MASVS kontrolleri yukarıda tamamlandı; binary-only kontroller cihaz matrisinde |
+
+Son Sonar incelemesinde iki güvenlik kaydı kanıtla false positive kapatıldı:
+`typescript:S2068` içindeki `1Password` sabit bir ürün adı ve public logo hostudur,
+credential değildir; `typescript:S2245` içindeki `Math.random` yalnız dönen form
+placeholder'ının ilk görsel örneğini seçer, token/id/yetki kararı veya persisted
+değer üretmez. Kural/severity veya kaynak kapsamı değiştirilmedi.
 
 ### Değerlendirilmiş bağımlılık advisory'leri
 
@@ -336,11 +377,3 @@ advisory veritabanı npm paketini izlediği için kayıtların SEMVER aralığı
 yüzden **her** sürüm eşleşiyor. Otoriter alan `last_known_affected_version_range`
 (`< 0.19.3` ve `< 0.20.2`) ve satıcının kendi advisory sayfalarıdır. Bu satırlar
 scanner'ı susturmak için sürüm düşürülerek "çözülmemelidir".
-
-## Açık bildirme (vulnerability reporting)
-
-Güvenlik açığı public issue'ya yazılmaz. Maintainer'a
-[GitHub üzerinden](https://github.com/topraksv) özel olarak ulaşın. Bildirime
-ham finansal veri, yedek dosyası, token, şifre veya ekran görüntüsündeki gerçek
-hesap verisi eklenmemelidir; yeniden üretim adımı ve etkilenen sürüm yeterlidir.
-Bu tek geliştiricili bir projedir; taahhüt edilmiş bir SLA yoktur.

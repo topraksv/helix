@@ -254,6 +254,14 @@ değişikliği gerekir ve açık owner onayı olmadan etkinleştirilmez. Üç g�
 keepalive yalnız Free project pause riskini azaltır; backup veya uptime garantisi
 değildir.
 
+Remote projede Storage bucket/object yoktur ve app Storage API'si kullanmaz;
+bugünkü restore kapsamı Postgres logical dump + kullanıcının açık metin JSON
+export'udur. Storage eklenirse database dump onu kapsamayacağı için object
+inventory/export/restore testi aynı release'te bu prosedüre eklenmeden kontrol
+tamamlanmış sayılmaz. Tombstone saklama, fiziksel purge ve hesap silme davranışının
+tek kanonik açıklaması [PRIVACY.md](PRIVACY.md#saklama-silme-ve-taşınabilirlik)
+içindedir.
+
 ## Test artefact’ları ve secret sınırı
 
 Hangi anahtarın nerede durabileceği [SECURITY.md](SECURITY.md) “Rol ayrımı ve
@@ -265,19 +273,68 @@ ekran/console içeriği kontrol edilir.
 
 ## Gözlemlenebilirlik ve incident
 
-- Bundle bütçesi entry, lazy XLSX, font ve toplam export büyümesini bloklar.
-- Tedarik zinciri kontrolleri (pinned Actions, Dependabot, PR Dependency Review,
-  SheetJS CDN pin, CodeQL ve scanner dispozisyonları)
-  [SECURITY.md](SECURITY.md) belgesindedir.
-- Şu anda merkezi crash reporting, release-health alert ve uploaded source-map
-  pipeline yoktur. Production logger kullanıcıya teknik bir yüzey göstermez;
-  yalnız PII'siz, cihaz-içi sınıflandırılmış hata kırıntıları tutar.
-- Minimum incident kanıtı: Git commit, Pages run, EAS group/platform IDs,
-  runtime/channel, migration list/lint/pgTAP sonucu ve kullanıcı
-  adımları. Token, ham payload, backup veya finansal tutar incident issue’suna eklenmez.
-- Web availability GitHub Pages run + live route probe; OTA health EAS insights ile
-  kontrol edilir. Sessiz single-user app hatalarının otomatik alarmı olmadığı açıkça
-  kabul edilir.
+- Bundle bütçesi entry, lazy XLSX, font, toplam export ve public source-map
+  yokluğunu bloklar. Tedarik zinciri kontrolleri [SECURITY.md](SECURITY.md)
+  belgesindedir.
+- Şu anda merkezi crash reporting, release-health alert veya source-map upload
+  pipeline yoktur. Production logger yalnız PII'siz, cihaz-içi sınıflandırılmış
+  hata kırıntısı tutar. Web health Pages run + canlı route; OTA adoption EAS
+  insights ile elle izlenir. Sessiz hata otomatik ulaşmaz.
+- Expo'nun en küçük resmî crash-only entegrasyonu olan Sentry değerlendirilmiştir,
+  ancak provider hesabı, veri işleme/retention kararı, DSN ve private upload token'ı
+  yoktur. Owner onayı olmadan SDK eklenmez veya cihazdan veri gönderilmez; kontrol
+  `BLOCKED_EXTERNAL` ve mevcut release için non-blocking'dir.
+
+Onay verilirse minimum rollout şudur:
+
+1. Owner kontrollü ayrı web/iOS/Android project ve production/preview environment
+   açılır; analytics, session replay, screen recording ve attachment kapalı kalır.
+2. `sendDefaultPii=false` ve fail-closed scrub hook'u user/request/breadcrumb/
+   extra alanlarını kaldırır; yalnız hata sınıfı/stack ile Git SHA, app version,
+   EAS update/group ID, runtime, platform ve environment tag'leri kalır.
+3. Provider'ın offline queue sınırı/retention'ı doğrulanır; finansal payload,
+   e-posta, route paramı, id ve tutar queue'ya giremiyorsa entegrasyon açılmaz;
+   sign-out/account switch queue temizliği cihazda test edilir.
+4. Source map yalnız exact build/update sonrasında private symbolication alanına,
+   sensitive ve upload-only token ile gider. Map Pages/OTA asset manifesti veya
+   Actions artefact'ına girmez; token loglanmaz.
+5. Sentetik verisiz render crash'i web + iki native platformda sembolike edilir.
+   Yeni fatal olay release'i hemen triage'a alır; aynı unhandled hata 15 dakikada
+   3 kez görülürse veya yeterli hacimde 24 saatlik crash-free session oranı
+   `99,5%` altına düşerse OTA ilerlemesi durur/rollback değerlendirilir.
+
+### Secret rotation ve incident response
+
+Rotation bu audit'te yapılmaz. Gerçek sızıntıda önce credential iptal/rotation,
+sonra kod/history temizliği yapılır; public key görünmesi secret sızıntısı gibi
+ele alınmaz.
+
+| Yüzey | Containment ve rotation | Doğrulama |
+|---|---|---|
+| Supabase `sb_publishable_*` | Client'ta görünmesi tasarım gereğidir; yetki RLS'tir. Abuse veya zorunlu rotation varsa yeni publishable key web + uyumlu OTA/native'e dağıtılır, eski client kullanımı bitmeden eski key kapatılmaz | Owner-only/anon pgTAP + web/native auth/sync smoke |
+| Supabase `sb_secret_*` / service-role | Etkilenen keepalive workflow'u önce disable edilir; Dashboard'da yeni secret oluşturulur, GitHub `SUPABASE_SERVICE_ROLE_KEY` atomik güncellenir, manuel keepalive geçince eski key revoke edilir | Workflow run; eski key reddi; secret log/artefact yokluğu |
+| Database password | Eski parola kullanan direct/pooler client'lar durdurulur; Dashboard'da reset edilir; yalnız onaylı secret store/connection güncellenip client'lar yeniden açılır | Linked CLI connection, migration equality/lint; tekrarlayan eski parola denemesi yok |
+| GitHub / EAS access token | Token provider'da revoke edilir, account session/2FA ve audit log incelenir; gerekiyorsa least-privilege yenisi ilgili secret store'a yazılır. Repo workflow'ları built-in `GITHUB_TOKEN` kullanır; OTA için şu anda yalnız owner local EAS session'ı vardır | Repo Actions, Pages ve EAS update history'de bilinmeyen run/group yok |
+| SMTP / dış API credential | Bugün yapılandırılmamıştır (`N/A`). Eklenirse önce provider'da rotate/revoke, sonra GitHub/EAS secret güncellemesi yapılır; uygulama bundle'ına `EXPO_PUBLIC_*` olarak konmaz | Provider test + bundle/Gitleaks taraması |
+| Git/Apple/Android/update signing | Compromised Git SSH signing key GitHub'dan kaldırılıp yenisi eklenir. Apple provisioning/certificate veya Android key etkilenirse provider prosedürü ve yeni native build gerekir. Ek EAS Update code-signing key bugün yoktur; ekleme/rotation yeni runtime + binary ister, OTA tek başına yetmez | GitHub verified signature; yeni binary/runtime ve cihaz kabul kaydı |
+| User session / JWT signing | Tek kullanıcı incident'ında global sign-out/admin session revoke; proje-geneli signing compromise'ında Supabase signing-key rotation ve eski key revoke ancak owner onayıyla yapılır. Account switch cleanup yine local workspace'i temizler | Eski refresh/access yolunun reddi ve yeniden login/sync smoke |
+
+Incident sırası:
+
+1. Etkilenen workflow/update/deploy yüzeyi durdurulur; credential rotate/revoke
+   edilir. Secret chat, issue, terminal çıktısı veya kanıt dosyasına kopyalanmaz.
+2. Private advisory içinde UTC zaman çizgisi, etkilenen commit, Pages run, EAS
+   group/platform ID, runtime/channel, migration state ve redacted provider event
+   kimlikleri korunur. Finansal veri, token, backup ve ham payload eklenmez.
+3. Web kötü deploy'u protected revert PR'ıyla; OTA kötü grup republish/rollback
+   ile; database olayı backward-compatible forward-fix ile düzeltilir. Kalıcı
+   veri değişikliği gerekiyorsa önce doğrulanmış restore noktası şarttır.
+4. Git history'den string silmek containment değildir: clone/fork/cache ve eski
+   artefact geri çağrılamaz. Force rewrite ayrıca yasaktır ve ancak explicit
+   owner onayıyla, rotation tamamlandıktan sonra ayrı incident kararı olabilir.
+5. Post-incident bütün required checks/scanner'lar, remote Supabase kanıtı ve
+   canlı smoke yeniden alınır; disclosure zamanlaması private report sahibiyle
+   koordine edilir, sabit SLA vaat edilmez.
 
 ## Paket kapanış kontrolü
 
