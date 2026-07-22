@@ -1,11 +1,14 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const app = JSON.parse(readFileSync(resolve(process.cwd(), "app.json"), "utf8"));
 const eas = JSON.parse(readFileSync(resolve(process.cwd(), "eas.json"), "utf8"));
 const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy-web.yml"), "utf8");
+const codeqlWorkflow = readFileSync(resolve(process.cwd(), ".github/workflows/codeql.yml"), "utf8");
+const keepaliveWorkflow = readFileSync(resolve(process.cwd(), ".github/workflows/keepalive.yml"), "utf8");
 const dependabot = readFileSync(resolve(process.cwd(), ".github/dependabot.yml"), "utf8");
+const dependencyReviewPath = resolve(process.cwd(), ".github/workflows/dependency-review.yml");
 
 function dependabotRule(dependency: string) {
   const marker = `      - dependency-name: "${dependency}"`;
@@ -36,6 +39,28 @@ describe("release contract", () => {
     const actionRefs = [...workflow.matchAll(/uses:\s*([^\s#]+)/g)].map((match) => match[1]);
     expect(actionRefs.length).toBeGreaterThan(0);
     for (const ref of actionRefs) expect(ref).toMatch(/@[0-9a-f]{40}$/);
+  });
+
+  it("denies the repository token to the standalone keepalive job", () => {
+    expect(keepaliveWorkflow).toMatch(/\npermissions: \{\}\n\njobs:/);
+  });
+
+  it("runs CodeQL v4 from one immutable action revision", () => {
+    const codeqlPins = [
+      ...codeqlWorkflow.matchAll(/uses:\s*github\/codeql-action\/(?:init|analyze)@([0-9a-f]{40})\s+#\s+v4\./g),
+    ].map((match) => match[1]);
+    expect(codeqlPins).toHaveLength(2);
+    expect(new Set(codeqlPins).size).toBe(1);
+  });
+
+  it("reviews every pull-request dependency scope at moderate severity", () => {
+    expect(existsSync(dependencyReviewPath)).toBe(true);
+    const dependencyReview = readFileSync(dependencyReviewPath, "utf8");
+    expect(dependencyReview).toContain("pull_request:");
+    expect(dependencyReview).toMatch(/permissions:\n\s+contents: read/);
+    expect(dependencyReview).toMatch(/actions\/dependency-review-action@[0-9a-f]{40}\s+# v5\./);
+    expect(dependencyReview).toContain("fail-on-severity: moderate");
+    expect(dependencyReview).toContain("fail-on-scopes: runtime, development, unknown");
   });
 
   it("keeps SDK-managed version updates in the coordinated Expo backlog", () => {

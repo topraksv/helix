@@ -23,6 +23,13 @@ lags; `npm audit` and Dependabot cannot see it, so check upstream manually
 whenever import code changes. `expo-sharing` must stay out of `app.json`
 plugins — SDK 54 ships no config plugin for it and `expo export` fails.
 
+Optional WASM fallback closures in `package-lock.json` stay nested below their
+optional binding package. Hoisting those children to the lockfile root makes npm
+install them even when the platform-incompatible parent is skipped, leaving a
+clean macOS `npm ci` with extraneous packages. The nested form still installs
+the complete closure on the matching WASM target and keeps `npm ls --all`
+reproducible elsewhere.
+
 Dependabot ignores routine version updates at every SemVer level for the
 Expo-managed React/React Native/native-library matrix: React Native is pre-1.0,
 so an incompatible SDK jump can arrive labelled "minor" and even a patch can

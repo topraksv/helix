@@ -157,7 +157,12 @@ içinde meta olarak taşınır ve `tests/release-config.test.ts` ile korunur:
   `min-release-age-exclude`/komut override’ı gerektirir.
 - `xlsx` SheetJS CDN tarball'ından gelir; `npm audit` ve Dependabot bunu
   **görmez** — import kodu her değiştiğinde upstream release elle kontrol edilir.
-- CodeQL `javascript-typescript` üzerinde PR'da ve haftalık cron ile koşar.
+- CodeQL v4 `javascript-typescript` + `security-extended` üzerinde PR'da,
+  haftalık cron'da ve gerektiğinde elle koşar; Action aynı doğrulanmış full SHA'ya
+  pinlidir.
+- Dependency Review her `main` PR'ında runtime, development ve unknown scope'ları
+  moderate ve üstü severity'de bloklar. Secret kullanan bağımsız keepalive işi
+  `GITHUB_TOKEN` için açıkça sıfır yetki alır.
 - Değerlendirilmiş advisory kararları [RELEASE.md](RELEASE.md) "Dependabot
   bulguları" tablosundadır.
 
@@ -228,10 +233,10 @@ Actions `quality` job’undadır.
 | A02 Cryptographic Failures | APPLICABLE | `expo-secure-store`; iOS `NSFileProtectionComplete`; TLS-only endpoint'ler; uygulama kendi kriptosunu yazmaz | `tests/privacy.test.ts` `kv.set` anahtar sınırı; Semgrep `p/insecure-transport` **0**; Gitleaks **0 gerçek secret** | **Bilinen:** uygulama seviyesinde SQLCipher yok; web'de oturum browser storage'ında. İkisi de aşağıda açıkça kabul edilmiş |
 | A03 Injection | APPLICABLE | Drizzle parametre bağlama; ham SQL yok; `csvCell`; `isUuidShaped` PostgREST filtre grameri | Semgrep `p/sql-injection`+`p/command-injection`+`p/xss` **0 bulgu**; `tests/csv-export-safety.test.ts` (7 test, mutasyon kanıtlı); `tests/sync-merge.test.ts` filtre-grameri enjeksiyonu | React Native metin render'ı `dangerouslySetInnerHTML` kullanmıyor |
 | A04 Insecure Design | APPLICABLE | outbox + `sync_dead_letters` karantina; all-or-nothing import; session epoch; `writeRows` tek transaction | `tests/sync-dead-letters.test.ts` (gerçek migration DDL'ine karşı), `tests/backup-validation.test.ts`, `tests/session-epoch.test.ts`, `tests/repository-contract.test.ts` (tek `writeRows`) | — |
-| A05 Security Misconfiguration | APPLICABLE | `src/app/+html.tsx` CSP; `dist/404.html` = root shell; sabit function `search_path`; açık table grant’ları | `tests/release-config.test.ts`; linked migration list + public-schema lint | **Bilinen:** `script-src 'unsafe-inline'` — statik export inline bootstrap üretiyor, `connect-src` daraltmasıyla telafi |
-| A06 Vulnerable Components | APPLICABLE | `package-lock.json`; SheetJS CDN pin; Dependabot guard'ları | clean `npm ci`; `npm ls --all`; `npm audit`ta kalan tek advisory zinciri dev-only Drizzle transpiler’ındaki dört moderate node | Advisory dispozisyonları [RELEASE.md](RELEASE.md#5b--dependabot-bulguları) içinde; runtime bundle’a girmez |
+| A05 Security Misconfiguration | APPLICABLE | `src/app/+html.tsx` CSP; `dist/404.html` = root shell; sabit function `search_path`; açık table grant’ları; workflow token yetkileri | `tests/release-config.test.ts`; `actionlint`; Trivy config/secret taraması; linked migration list + public-schema lint | **Bilinen:** `script-src 'unsafe-inline'` — statik export inline bootstrap üretiyor, `connect-src` daraltmasıyla telafi |
+| A06 Vulnerable Components | APPLICABLE | `package-lock.json`; SheetJS CDN pin; Dependabot guard'ları; PR Dependency Review | clean `npm ci`; geçerli `npm ls --all`; OSV + npm audit + Trivy'nin ortak advisory dispozisyonu | Kalan tek advisory zinciri dev-only Drizzle transpiler'ında ve vulnerable `esbuild serve` API'si kullanılmıyor; ayrıntı [RELEASE.md](RELEASE.md#5b--dependabot-bulguları) içinde |
 | A07 Identification & Auth Failures | APPLICABLE | Supabase Auth; exact-target PKCE recovery; remote `SIGNED_OUT` cleanup; `src/auth/verification-brake.ts`; `src/auth/session.ts` epoch'ları | `tests/auth.test.ts` (expired/reused/malformed/hostile-target link), `tests/privacy.test.ts`, `tests/verification-brake.test.ts` (18 vaka), `tests/session-task.test.ts` | E-posta enumeration sıfırlama akışında açığa çıkmıyor |
-| A08 Software & Data Integrity | APPLICABLE | Bütün Action referansları full-SHA pinli; OTA runtime `appVersion` + channel ayrımı; lockfile integrity; imzalı commit + korumalı `main` | `tests/release-config.test.ts`; clean `npm ci`; GitHub verified signature/check | **Bilinen:** ek OTA code-signing anahtarı yapılandırılmadı; güven sınırı EAS hesabı |
+| A08 Software & Data Integrity | APPLICABLE | Bütün Action referansları full-SHA pinli; PR Dependency Review; OTA runtime `appVersion` + channel ayrımı; lockfile integrity; imzalı commit + korumalı `main` | `tests/release-config.test.ts`; clean `npm ci`; lockfile bütünlük taraması; GitHub verified signature/check | **Bilinen:** ek OTA code-signing anahtarı yapılandırılmadı; güven sınırı EAS hesabı |
 | A09 Logging & Monitoring Failures | APPLICABLE | `src/services/logger.ts`, `src/services/diagnostics.ts` (12 kayıtlık bounded ring) | `tests/diagnostics.test.ts` (tam anahtar kümesi + negatif PII regex), `tests/privacy.test.ts` | **Bilinen:** merkezi crash/telemetry alerting yok — sessiz hata maintainer'a otomatik ulaşmıyor |
 | A10 SSRF | APPLICABLE | `src/domain/logo-domain.ts` public-host doğrulaması; sabit FX/market endpoint listesi; CSP `connect-src` | `tests/external-services.test.ts` (credential/port/localhost/IP reddi), `e2e/helpers.ts` host-eşleşmesi (substring değil) | Kullanıcı serbest URL giremiyor; yalnız domain adı |
 
@@ -245,7 +250,7 @@ feed'dir. Satırlar bu yüzeye göre değerlendirildi.
 | API1 Broken Object Level Auth | APPLICABLE | owner-only RLS, owner-aware FK | pgTAP: B, A'nın satırını okuyamaz/güncelleyemez/silemez (3 assertion) | — |
 | API2 Broken Authentication | APPLICABLE | Supabase Auth, token yenileme, session epoch | `tests/auth.test.ts`, `tests/session-epoch.test.ts` | — |
 | API3 Broken Object Property Level Auth | APPLICABLE | insert/update `WITH CHECK` | pgTAP: owner değiştirme denemesi `42501` | — |
-| API4 Unrestricted Resource Consumption | APPLICABLE | `MAX_BACKUP_ROWS`, `MAX_BACKUP_BYTES`, ZIP oran/boyut preflight, `INPUT_LIMITS`, `MAX_INSTALLMENT_COUNT`, 60 bildirim tavanı, pull batch sınırı | `tests/backup-validation.test.ts`, `tests/spreadsheet-import.test.ts` (ZIP bomb), `tests/input-policy.test.ts`, `tests/installments.test.ts` | — |
+| API4 Unrestricted Resource Consumption | APPLICABLE | `MAX_BACKUP_ROWS`, `MAX_BACKUP_BYTES`, ZIP oran/boyut preflight, lineer Excel yorum parser'ı, `INPUT_LIMITS`, `MAX_INSTALLMENT_COUNT`, 60 bildirim tavanı, pull batch sınırı | `tests/backup-validation.test.ts`, `tests/spreadsheet-import.test.ts` (ZIP bomb + iki regex-DoS mutasyonu), `tests/input-policy.test.ts`, `tests/installments.test.ts` | — |
 | API5 Broken Function Level Auth | APPLICABLE | `delete_own_account` `execute` yalnız `authenticated`, argümansız, `search_path = ''` | migration 3 + pgTAP grant assertion'ları | SECURITY DEFINER zorunlu — kullanıcının `auth.users` yetkisi yok |
 | API6 Sensitive Business Flow | APPLICABLE | hesap dondurma ve kalıcı silme | `tests/account-freeze.test.ts` (9 test: rollback, rollback hatası, fail-closed ilk yazma) | — |
 | API7 SSRF | APPLICABLE | favicon host doğrulaması, sabit endpoint listesi | A10 ile aynı kanıt | — |
@@ -269,7 +274,7 @@ uygulanabilirliğe göre değerlendirildi.
 | V7 Error Handling & Logging | APPLICABLE | `tests/diagnostics.test.ts`, `tests/privacy.test.ts`, `tests/undo-outcome.test.ts` (yanıltıcı başarı yok) |
 | V8 Data Protection | APPLICABLE | `PrivacyCover`, `tests/privacy.test.ts`; export açık metin olarak beyan ediliyor |
 | V9 Communications | APPLICABLE | yalnız HTTPS/WSS; CSP `connect-src` beyaz listesi |
-| V10 Malicious Code | APPLICABLE | Gitleaks 0; Semgrep 0; CodeQL 0; install-script envanteri (2 paket, ağ erişimi yok) |
+| V10 Malicious Code | APPLICABLE | Gitleaks 0 gerçek secret; Semgrep 0; CodeQL 0 açık alert; install-script envanteri (2 paket ailesi / 5 çalışan instance, ağ fallback'i tetiklenmedi) |
 | V11 Business Logic | APPLICABLE | `tests/account-freeze.test.ts`, `tests/repository-contract.test.ts`, `tests/balance.test.ts` (Excel golden) |
 | V12 Files & Resources | APPLICABLE | ZIP preflight, satır/hücre/metin tavanları; `tests/spreadsheet-import.test.ts` |
 | V13 API | APPLICABLE | API Security tablosu |
@@ -287,11 +292,11 @@ uygulanabilirliğe göre değerlendirildi.
 | MASVS-CODE | APPLICABLE | Bağımlılık envanteri/SBOM; advisory dispozisyonları; SHA-pinli Action'lar; `npm ci` reproduktibl |
 | MASVS-RESILIENCE | **N/A — gerekçeli** | Anti-tamper, obfuscation, root/jailbreak tespiti ve emülatör tespiti bilinçli olarak yok. Helix tek kullanıcılık kendi finansal verisini tutar; koruduğu sır cihaz sahibinin kendi verisidir, o yüzden cihaz sahibine karşı bir savunma modeli anlamsızdır. DRM/lisans zorlaması da yoktur |
 
-### Kapsam dışı bırakılan araçlar
+### Araç kapsamı
 
 | Araç | Durum |
 |---|---|
-| SonarQube / SonarCloud | **N/A — kullanıcı tarafından açıkça kapsam dışı bırakıldı.** Yerine `tsc`, sıfır-uyarı ESLint, Knip, Madge, Jscpd ve Semgrep koşuyor |
+| SonarQube / SonarCloud | **APPLICABLE.** Gerçek kaynak/test kapsamıyla yerel SonarQube analizi ve V8 LCOV koşar. Son Quality Gate geçti; iki gerçek regex-DoS yolu düzeltildi, güvenlik hotspot'u/açık vulnerability kalmadı. Değişken koşu sayıları `docs/AI_HANDOFF.md` içindedir |
 | OWASP ZAP | **N/A — kullanıcı tarafından açıkça kapsam dışı bırakıldı.** CSP, source map yokluğu, service worker ve route davranışı statik export üzerinde elle doğrulandı |
 | MobSF | **N/A — kullanıcı tarafından açıkça kapsam dışı bırakıldı.** Kaynak seviyesi MASVS kontrolleri yukarıda tamamlandı; binary-only kontroller cihaz matrisinde |
 

@@ -240,8 +240,9 @@ ekran/console içeriği kontrol edilir.
 ## Gözlemlenebilirlik ve incident
 
 - Bundle bütçesi entry, lazy XLSX, font ve toplam export büyümesini bloklar.
-- Tedarik zinciri kontrolleri (pinned Actions, Dependabot, SheetJS CDN pin,
-  CodeQL) [SECURITY.md](SECURITY.md) belgesindedir.
+- Tedarik zinciri kontrolleri (pinned Actions, Dependabot, PR Dependency Review,
+  SheetJS CDN pin, CodeQL ve scanner dispozisyonları)
+  [SECURITY.md](SECURITY.md) belgesindedir.
 - Şu anda merkezi crash reporting, release-health alert ve uploaded source-map
   pipeline yoktur. Production logger kullanıcıya teknik bir yüzey göstermez;
   yalnız PII'siz, cihaz-içi sınıflandırılmış hata kırıntıları tutar.
