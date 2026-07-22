@@ -45,7 +45,6 @@ test("protected and modal deep links keep deterministic navigation", async ({ pa
     ["/helix/upcoming", "Yaklaşan Takvimi"],
     ["/helix/cash-flow/analytics", "Analiz"],
     ["/helix/settings/budgets", "Aylık Bütçeler"],
-    ["/helix/account-security", "Hesap Güvenliği"],
     ["/helix/transaction", "Yeni İşlem"],
   ];
   for (const [route, heading] of routes) {
@@ -53,6 +52,13 @@ test("protected and modal deep links keep deterministic navigation", async ({ pa
     await expect(page.getByRole("heading", { name: heading }).first()).toBeVisible();
     await expect(page.getByText("Beklenmeyen bir sorun oluştu.")).toHaveCount(0);
   }
+  // Local-only builds cannot keep the account in the cloud or end a cloud
+  // session, so the cloud-security route and its misleading action stay hidden.
+  await page.goto("/helix/account-security");
+  await expect(page).toHaveURL(/\/helix\/settings$/);
+  await expect(page.getByRole("heading", { name: "Ayarlar", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Hesap Güvenliği/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Hesabı Dondur/ })).toHaveCount(0);
   await page.goto("/helix/transaction");
   const back = page.getByRole("button", { name: "Geri", exact: true });
   await expect(back).toBeVisible();

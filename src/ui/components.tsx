@@ -36,6 +36,7 @@ import { cardShadow, radius, scrim, spacing, type, useTheme, type Palette } from
 import { useReducedMotion } from "./motion";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
+import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -327,6 +328,7 @@ export function Amount({
   minor,
   currency = "TRY",
   large,
+  hero,
   colorized = true,
   color,
   style,
@@ -334,27 +336,44 @@ export function Amount({
   minor: number;
   currency?: string;
   large?: boolean;
+  hero?: boolean;
   colorized?: boolean;
   color?: string;
   style?: StyleProp<TextStyle>;
 }) {
   const { palette } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
   const formatted = formatMinor(minor, currency);
-  // Detail amounts remain exact; only their font size adapts to available width.
-  const fittedSize = formatted.length > 22
-    ? (large ? 15 : 11)
-    : formatted.length > 18
-      ? (large ? 19 : 12)
-      : formatted.length > 15
-        ? (large ? 24 : 13)
-        : undefined;
+  const scale: AmountScale = hero ? "hero" : large ? "large" : "regular";
+  // Width/font-scale changes start a fresh fit pass so rotation and Dynamic
+  // Type can shrink or grow without opting out of system font scaling.
+  const fitKey = `${formatted}|${scale}|${width}|${fontScale}`;
+  const initialSize = initialAmountFontSize(scale);
+  const [fit, setFit] = useState({ key: fitKey, size: initialSize });
+  const fittedSize = fit.key === fitKey ? fit.size : initialSize;
+  const shrinkToNextStep = () => {
+    const next = nextAmountFontSize(scale, fittedSize);
+    if (next !== fittedSize) setFit({ key: fitKey, size: next });
+  };
   return (
     <Text
+      accessibilityLabel={formatted}
+      onTextLayout={(event) => {
+        if (event.nativeEvent.lines.length <= 1) return;
+        shrinkToNextStep();
+      }}
+      onLayout={(event) => {
+        // RN Web does not consistently dispatch onTextLayout. A wrapped value
+        // is taller than one derived line box, so the platform-neutral layout
+        // event provides the same fit signal without clipping or font caps.
+        const singleLineBudget = fittedSize * fontScale * 1.7;
+        if (event.nativeEvent.layout.height > singleLineBudget) shrinkToNextStep();
+      }}
       style={[
-        large ? type.amountLg : type.amount,
+        large || hero ? type.amountLg : type.amount,
         { color: resolved, flexShrink: 1, textAlign: "right" },
-        fittedSize == null ? null : { fontSize: fittedSize },
+        { fontSize: fittedSize },
         style,
       ]}
     >

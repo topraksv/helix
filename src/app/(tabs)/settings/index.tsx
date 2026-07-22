@@ -442,9 +442,9 @@ export default function SettingsScreen() {
 
       <SectionHeader>{tr.account.section}</SectionHeader>
       <Card>
-        {/* `as Href`: expo-router typegen only refreshes the route-literal union
-            on `expo start`, so a freshly added route isn't in it yet. */}
-        <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
+        {isSupabaseConfigured ? (
+          <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
+        ) : null}
         <ListRow icon={LogOut} title={tr.auth.signOut} onPress={() => void handleSignOut()} />
         <ListRow
           icon={Trash2}

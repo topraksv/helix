@@ -324,8 +324,6 @@ export default function DashboardScreen() {
   };
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
-  const actualBalanceText = bundle ? formatMinor(bundle.actualBalanceMinor) : "";
-
   return (
     <Screen title={greeting()} subtitle={dateLabel(today)} leading={<BrandMark size={40} />}>
       <FirstRunTour />
@@ -369,23 +367,13 @@ export default function DashboardScreen() {
           <Text style={[type.label, { color: palette.primaryText, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
             {tr.dashboard.actualBalance}
           </Text>
-          <Text
-            style={[
-              type.amountLg,
-              {
-                color: palette.textSecondary,
-                fontSize: actualBalanceText.length > 20
-                  ? 20
-                  : actualBalanceText.length > 16
-                    ? 26
-                    : 38,
-                marginTop: spacing.xs,
-                flexShrink: 1,
-              },
-            ]}
-          >
-            {actualBalanceText}
-          </Text>
+          <Amount
+            minor={bundle.actualBalanceMinor}
+            hero
+            colorized={false}
+            color={palette.textSecondary}
+            style={{ marginTop: spacing.xs, textAlign: "left" }}
+          />
           {projected != null ? (
             <Pressable
               accessibilityRole="button"
@@ -408,7 +396,7 @@ export default function DashboardScreen() {
               )}
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
-                <Text style={[type.amount, { color: palette.textStrong }]}>{formatMinor(projected)}</Text>
+                <Amount minor={projected} colorized={false} color={palette.textStrong} style={{ textAlign: "left" }} />
               </View>
               {showForecast ? <ChevronUp size={18} color={palette.accentText} /> : <ChevronDown size={18} color={palette.accentText} />}
             </Pressable>
