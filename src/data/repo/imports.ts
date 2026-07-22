@@ -159,12 +159,12 @@ async function tombstoneImportRows(
   table: "transactions" | "cell_notes" | "installment_plans",
   ids: Iterable<string>,
 ): Promise<RowWrite[]> {
-  const unique = [...new Set(ids)];
-  if (unique.length === 0) return [];
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) return [];
   const sqlite = await getSqliteAsync();
   const writes: RowWrite[] = [];
-  for (let offset = 0; offset < unique.length; offset += 400) {
-    const chunk = unique.slice(offset, offset + 400);
+  for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+    const chunk = uniqueIds.slice(offset, offset + 400);
     const placeholders = chunk.map(() => "?").join(", ");
     const rows = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM ${table} WHERE user_id = ? AND id IN (${placeholders})`,

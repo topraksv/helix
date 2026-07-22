@@ -40,8 +40,8 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   }
 
   componentDidCatch(error: unknown, info: { componentStack?: string }) {
-    // The single place a render crash is observable — log it verbatim (this is
-    // where a crash-reporting SDK like Sentry would hook in for production).
+    // The single render-crash boundary. Production persists only the logger's
+    // redacted category; raw error/stack remains development-only.
     devError("error-boundary", error, info?.componentStack);
   }
 

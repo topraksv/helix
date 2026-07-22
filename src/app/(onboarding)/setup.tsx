@@ -50,7 +50,7 @@ export default function SetupScreen() {
   const importedYears = [...settings.keys()]
     .filter((k) => k.startsWith("import_batch:"))
     .map((k) => k.slice("import_batch:".length))
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
   const hasImport = importedYears.length > 0;
   // Template: every recommended category is shown and pre-selected; the user
   // unticks the ones they don't want.
