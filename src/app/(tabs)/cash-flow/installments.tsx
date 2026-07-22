@@ -18,7 +18,7 @@ import {
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, MonthStepper, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
-import { spacing, useTheme } from "../../../ui/theme";
+import { font, spacing, useTheme } from "../../../ui/theme";
 
 export default function InstallmentsScreen() {
   const plansState = usePlansState();
@@ -103,14 +103,14 @@ export default function InstallmentsScreen() {
       >
         <Spread style={{ paddingVertical: spacing.sm, alignItems: "flex-start" }}>
           <View style={{ flex: 1, paddingRight: spacing.sm }}>
-            <Body style={{ fontFamily: "Inter_500Medium" }}>
+            <Body style={{ fontFamily: font.medium }}>
               {installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}
             </Body>
             <Body muted style={{ marginTop: 2 }}>{sourceName.get(plan.paymentSourceId ?? "") ?? tr.installments.noSource}</Body>
             <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs }}>
               {plan.kind === "loan" ? <Badge text={tr.installments.loan} /> : null}
               {thisMonth ? <Badge text={tr.installments.thisMonthInstallment(thisMonth.installmentNo, progress.total)} tone="primary" /> : null}
-              <Badge text={tr.installments.progress(progress.paid, progress.total)} tone={finished ? "positive" : "muted"} />
+              <Badge text={tr.installments.progress(progress.paid, progress.total)} tone={finished ? "success" : "muted"} />
               {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
             </Row>
             {/* progress track */}
@@ -120,7 +120,7 @@ export default function InstallmentsScreen() {
                   height: 6,
                   borderRadius: 3,
                   width: `${Math.round((progress.paid / Math.max(progress.total, 1)) * 100)}%`,
-                  backgroundColor: finished ? palette.positive : palette.primary,
+                  backgroundColor: finished ? palette.success : palette.primary,
                 }}
               />
             </View>

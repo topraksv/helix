@@ -290,8 +290,8 @@ export default function SetupScreen() {
         </Row>
 
         {hasImport ? (
-          <Card style={{ borderColor: palette.positive, backgroundColor: palette.positive + "14" }}>
-            <Body style={{ color: palette.positiveText }}>{tr.onboarding.importedBanner(importedYears.join(", "))}</Body>
+          <Card style={{ borderColor: palette.success, backgroundColor: palette.success + "14" }}>
+            <Body style={{ color: palette.successText }}>{tr.onboarding.importedBanner(importedYears.join(", "))}</Body>
           </Card>
         ) : null}
 

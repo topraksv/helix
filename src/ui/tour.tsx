@@ -7,7 +7,7 @@ import { Banknote, CalendarCheck, ChartPie, CloudUpload, PlusCircle, Table2, typ
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
-import { radius, scrim, spacing, type, useTheme } from "./theme";
+import { controlSize, radius, scrim, spacing, type, useTheme } from "./theme";
 import { useModalAccessibility } from "./accessibility";
 
 const TOUR_KEY = "helix.tour.done";
@@ -112,9 +112,9 @@ export function TourModal({ onClose }: { onClose: () => void }) {
           />
           {/* Reserve the skip row's height on every slide (shown only when not
               last) so the card height — and thus the button — never shifts. */}
-          <View style={{ minHeight: 44, marginTop: spacing.sm, justifyContent: "center" }}>
+          <View style={{ minHeight: controlSize.minimumTarget, marginTop: spacing.sm, justifyContent: "center" }}>
             {!last ? (
-              <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center", minHeight: 44, justifyContent: "center" }}>
+              <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center", minHeight: controlSize.minimumTarget, justifyContent: "center" }}>
                 <Text style={[type.label, { color: palette.textSecondary }]}>{tr.tour.skip}</Text>
               </Pressable>
             ) : null}

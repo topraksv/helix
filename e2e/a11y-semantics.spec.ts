@@ -12,10 +12,43 @@
  * Only genuinely STATIC invariants (no truncation props, no font-scaling opt-out)
  * stay in the vitest file, where they belong.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { assertNoRuntimeErrors, collectRuntimeErrors, isolateExternalData, onboard } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
+
+async function expectKeyboardFocusVisible(page: Page, target: Locator): Promise<void> {
+  await target.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(target).toBeFocused();
+  const focus = await target.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      visible: element.matches(":focus-visible"),
+      outlineStyle: style.outlineStyle,
+      outlineWidth: Number.parseFloat(style.outlineWidth),
+    };
+  });
+  expect(focus.visible, "keyboard focus must match :focus-visible").toBe(true);
+  expect(focus.outlineStyle, "keyboard focus must not suppress its outline").not.toBe("none");
+  expect(focus.outlineWidth, "keyboard focus outline must have measurable width").toBeGreaterThan(0);
+}
+
+test("canonical interactive primitives retain visible keyboard focus", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  await expectKeyboardFocusVisible(page, page.getByRole("button", { name: /İşlem Ekle/ }).first());
+
+  await page.goto("/helix/transaction");
+  await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
+  await expectKeyboardFocusVisible(page, page.getByRole("textbox", { name: "Tutar · TRY" }));
+  await expectKeyboardFocusVisible(page, page.getByRole("radio", { name: "Gider", exact: true }));
+  await expectKeyboardFocusVisible(page, page.getByRole("switch", { name: "İade" }));
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
 
 test("form fields expose a programmatic label and announce their errors", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);

@@ -32,7 +32,7 @@ import { combineLiveQueryStatus } from "../../../data/live-state";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
-import { radius, spacing, type, useTheme } from "../../../ui/theme";
+import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { lightTap } from "../../../ui/haptics";
 
 type MatrixMode = "cards" | "rows" | "columns";
@@ -61,7 +61,7 @@ function MatrixTool({
         onPress();
       }}
       hitSlop={6}
-      style={{ flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", gap: 2 }}
+      style={{ flex: 1, minHeight: controlSize.minimumTarget, alignItems: "center", justifyContent: "center", gap: 2 }}
     >
       {({ pressed }) => (
         <>

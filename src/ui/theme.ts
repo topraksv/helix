@@ -27,7 +27,13 @@ export interface Palette {
   accentText: string;
   primaryText: string;
   onPrimary: string;
-  onNegative: string;
+  destructive: string;
+  onDestructive: string;
+  error: string;
+  errorText: string;
+  success: string;
+  successText: string;
+  /** Financial direction roles. Do not reuse them for generic status UI. */
   positive: string;
   positiveText: string;
   negative: string;
@@ -60,7 +66,12 @@ export const lightPalette: Palette = {
   accentText: "#AB5235",
   primaryText: "#0F0F0D",
   onPrimary: "#FFFFFF",
-  onNegative: "#FFFFFF",
+  destructive: "#A72519",
+  onDestructive: "#FFFFFF",
+  error: "#A72519",
+  errorText: "#A72519",
+  success: "#2E8B47",
+  successText: "#1F6B33",
   positive: "#2E8B47",
   positiveText: "#1F6B33",
   negative: "#A72519",
@@ -88,7 +99,12 @@ export const darkPalette: Palette = {
   accentText: "#D97959",
   primaryText: "#FAF9F5",
   onPrimary: "#1A1A19",
-  onNegative: "#0F0F0D",
+  destructive: "#DD493C",
+  onDestructive: "#0F0F0D",
+  error: "#DD493C",
+  errorText: "#FF8277",
+  success: "#57B76B",
+  successText: "#7CC98F",
   positive: "#57B76B",
   positiveText: "#7CC98F",
   negative: "#DD493C",
@@ -104,6 +120,38 @@ export const scrim = "rgba(15, 15, 13, 0.55)";
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 // Ultra-soft organic corners in the 12–16px editorial range.
 export const radius = { sm: 12, md: 14, lg: 16, xl: 22, full: 999 } as const;
+
+/** Shared control geometry. Keep compact visual controls distinct from the
+ *  minimum interactive target: compact buttons use hitSlop to reach 44pt. */
+export const controlSize = {
+  compact: 36,
+  minimumTarget: 44,
+  regular: 48,
+  inputAccessoryWidth: 42,
+  inputAccessoryInset: 44,
+} as const;
+
+export const iconSize = { compact: 15, control: 17, accessory: 18 } as const;
+export const borderWidth = { control: 1.5, toggle: 1 } as const;
+
+/** State opacity roles stay separate because their current perceptual weight is
+ *  intentional. Naming them prevents near-duplicate feature-local values. */
+export const stateOpacity = {
+  buttonDisabled: 0.45,
+  iconDisabled: 0.4,
+  controlDisabled: 0.5,
+  fieldDisabled: 0.6,
+  pressed: 0.85,
+  calendarDisabled: 0.3,
+  dragActive: 0.96,
+} as const;
+
+/** Platform-neutral ordering plus the Android elevation for a picked-up row. */
+export const layer = { dragActive: 10 } as const;
+export const elevation = { dragActive: 6 } as const;
+
+/** The toggle is custom on every platform, so its geometry is one contract. */
+export const toggleSize = { width: 46, height: 28, padding: 3 } as const;
 
 // Every face listed here must be loaded in `_layout.tsx` and used by a `type.*`
 // scale or an explicit fontFamily — an unused weight is ~340 KB of TTF and one
@@ -130,6 +178,10 @@ export const type = {
   body: { fontSize: 15, fontFamily: font.regular },
   label: { fontSize: 13, fontFamily: font.medium },
   small: { fontSize: 12, fontFamily: font.regular },
+  button: { fontSize: 15, fontFamily: font.medium },
+  buttonCompact: { fontSize: 13, fontFamily: font.medium },
+  field: { fontSize: 15, fontFamily: font.regular },
+  moneyInput: { fontSize: 17, fontFamily: font.semibold, fontVariant: ["tabular-nums" as const] },
   amountLg: {
     fontSize: 33,
     fontFamily: font.serifBold,
@@ -142,6 +194,10 @@ export const type = {
 
 export const cardShadow = { boxShadow: "0 2px 8px rgba(15, 15, 13, 0.05)" } as const;
 export const overlayShadow = { boxShadow: "0 4px 16px rgba(15, 15, 13, 0.18)" } as const;
+export const toggleThumbShadow = { boxShadow: "0 1px 3px rgba(15, 15, 13, 0.22)" } as const;
+
+/** Stable foreground for deterministic, name-derived badge colours. */
+export const generatedBadgeForeground = "#FFFFFF";
 
 /** Tab bar metrics — the single source for the bar itself AND for overlays
  *  that must clear it (undo snackbar). Web gets extra height so Turkish

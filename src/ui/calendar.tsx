@@ -8,7 +8,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { cardShadow, radius, scrim, spacing, type, useTheme } from "./theme";
+import { borderWidth, cardShadow, controlSize, radius, scrim, spacing, stateOpacity, type, useTheme } from "./theme";
 import { Button, FadeIn, IconButton, Label } from "./components";
 import { pushOverlay } from "./keyboard";
 import { useModalAccessibility } from "./accessibility";
@@ -70,7 +70,7 @@ export function CalendarSheet({
             </View>
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               {cells.map((day, i) => {
-                if (day == null) return <View key={`x${i}`} style={{ width: `${100 / 7}%`, height: 44 }} />;
+                if (day == null) return <View key={`x${i}`} style={{ width: `${100 / 7}%`, height: controlSize.minimumTarget }} />;
                 const iso: ISODate = `${month}-${String(day).padStart(2, "0")}`;
                 const selected = iso === value;
                 const isToday = iso === today;
@@ -86,7 +86,7 @@ export function CalendarSheet({
                       onSelect(iso);
                       onClose();
                     }}
-                    style={{ width: `${100 / 7}%`, height: 44, alignItems: "center", justifyContent: "center" }}
+                    style={{ width: `${100 / 7}%`, height: controlSize.minimumTarget, alignItems: "center", justifyContent: "center" }}
                   >
                     <View
                       style={{
@@ -98,7 +98,7 @@ export function CalendarSheet({
                         backgroundColor: selected ? palette.primarySoft : "transparent",
                         borderWidth: isToday && !selected ? StyleSheet.hairlineWidth : 0,
                         borderColor: palette.primaryText,
-                        opacity: disabled ? 0.3 : 1,
+                        opacity: disabled ? stateOpacity.calendarDisabled : 1,
                       }}
                     >
                       <Text
@@ -153,14 +153,14 @@ export function DateField({
           {
             backgroundColor: palette.surfaceAlt,
             borderRadius: radius.sm,
-            borderWidth: open ? 1.5 : StyleSheet.hairlineWidth,
+            borderWidth: open ? borderWidth.control : StyleSheet.hairlineWidth,
             borderColor: open ? palette.focus : palette.border,
             paddingHorizontal: spacing.md,
-            minHeight: 48,
+            minHeight: controlSize.regular,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            opacity: pressed ? 0.85 : 1,
+            opacity: pressed ? stateOpacity.pressed : 1,
           },
         ]}
       >

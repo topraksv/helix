@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { hexToRgb } from "../src/ui/badge-color";
 import { BRAND, brandPlate } from "../src/domain/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
-import { darkPalette, lightPalette, type Palette } from "../src/ui/theme";
+import { darkPalette, generatedBadgeForeground, lightPalette, type Palette } from "../src/ui/theme";
 
 function luminance(hex: string): number {
   const channels = hex.match(/[0-9a-f]{2}/gi);
@@ -31,6 +31,8 @@ function expectBodyTextContrast(palette: Palette): void {
     [palette.textMuted, palette.background],
     [palette.primaryText, palette.surface],
     [palette.primaryText, palette.primarySoft],
+    [palette.successText, palette.surface],
+    [palette.errorText, palette.surface],
     [palette.positiveText, palette.surface],
     [palette.negativeText, palette.surface],
     [palette.warningText, palette.surface],
@@ -48,9 +50,9 @@ function expectBodyTextContrast(palette: Palette): void {
     expect(contrastRatio(foreground, background), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
   }
   expect(contrastRatio(palette.onPrimary, palette.primary)).toBeGreaterThanOrEqual(4.5);
-  expect(contrastRatio(palette.onNegative, palette.negative)).toBeGreaterThanOrEqual(4.5);
+  expect(contrastRatio(palette.onDestructive, palette.destructive)).toBeGreaterThanOrEqual(4.5);
   expect(contrastRatio(palette.focus, palette.surfaceAlt)).toBeGreaterThanOrEqual(3);
-  for (const accent of [palette.primary, palette.positive, palette.negative, palette.warning]) {
+  for (const accent of [palette.primary, palette.success, palette.error, palette.destructive, palette.positive, palette.negative, palette.warning]) {
     expect(contrastRatio(accent, palette.surface)).toBeGreaterThanOrEqual(3);
   }
 }
@@ -64,17 +66,17 @@ function channels(hex: string): [number, number, number] {
 /** Income reads green, expense reads red, warning reads warm amber — and no
  *  semantic accent may drift purple/blue again (the sole blue is `focus`). */
 function expectSemanticHues(palette: Palette): void {
-  for (const green of [palette.positive, palette.positiveText]) {
+  for (const green of [palette.success, palette.successText, palette.positive, palette.positiveText]) {
     const [r, g, b] = channels(green);
     expect(g, `${green} should be green-dominant`).toBeGreaterThan(r);
     expect(g, `${green} should be green-dominant`).toBeGreaterThan(b);
   }
-  for (const red of [palette.negative, palette.negativeText]) {
+  for (const red of [palette.error, palette.errorText, palette.destructive, palette.negative, palette.negativeText]) {
     const [r, g, b] = channels(red);
     expect(r, `${red} should be red-dominant`).toBeGreaterThan(g);
     expect(r, `${red} should be red-dominant`).toBeGreaterThan(b);
   }
-  for (const accent of [palette.primary, palette.warning, palette.warningText, palette.positive, palette.negative]) {
+  for (const accent of [palette.primary, palette.warning, palette.warningText, palette.success, palette.error, palette.destructive, palette.positive, palette.negative]) {
     const [r, g, b] = channels(accent);
     expect(b, `${accent} must not be blue/purple-dominant`).toBeLessThanOrEqual(Math.max(r, g));
   }
@@ -111,6 +113,17 @@ describe("semantic theme contrast", () => {
     expectSemanticHues(darkPalette);
   });
 
+  it("keeps status, destructive-action and financial-direction roles explicit", () => {
+    for (const palette of [lightPalette, darkPalette]) {
+      expect(palette.success).toBe(palette.positive);
+      expect(palette.successText).toBe(palette.positiveText);
+      expect(palette.error).toBe(palette.negative);
+      expect(palette.errorText).toBe(palette.negativeText);
+      expect(palette.destructive).toBe(palette.negative);
+      expect(palette.onDestructive).toBeDefined();
+    }
+  });
+
   it("keeps every light-theme body foreground at WCAG AA", () => {
     expectBodyTextContrast(lightPalette);
   });
@@ -126,7 +139,7 @@ describe("semantic theme contrast", () => {
       const name = String.fromCharCode(hue);
       expect(badgeHue(name), `hue ${hue} must be reachable from a name`).toBe(hue);
       const background = initialsBadgeColor(name);
-      expect(contrastRatio("#ffffff", background), `hue ${hue} → ${background}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(generatedBadgeForeground, background), `hue ${hue} → ${background}`).toBeGreaterThanOrEqual(4.5);
     }
   });
 

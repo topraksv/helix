@@ -83,7 +83,7 @@ export default function SubscriptionsScreen() {
           ...(inTrial ? [{ text: tr.subs.trialEnds(shortDateLabel(s.trialEndDate!)), tone: "warning" as const }] : []),
           ...(s.autoPay ? [{ text: tr.subs.autoPay, tone: "primary" as const, icon: Repeat }] : []),
         ]
-      : [{ text: tr.subs.canceled, tone: "negative" as const }];
+      : [{ text: tr.subs.canceled, tone: "error" as const }];
     const openEdit = () => router.push({ pathname: "/subscription-form", params: { id: s.id } });
     return (
       <RuleRow

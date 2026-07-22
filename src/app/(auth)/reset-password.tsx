@@ -75,8 +75,8 @@ export default function ResetPasswordScreen() {
     return (
       <Screen scroll={false} maxWidth={440}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md }}>
-          <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: (success ? palette.positive : palette.negative) + "16" }}>
-            {success ? <CheckCircle2 accessible={false} size={28} color={palette.positive} /> : <AlertCircle accessible={false} size={28} color={palette.negative} />}
+          <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: (success ? palette.success : palette.error) + "16" }}>
+            {success ? <CheckCircle2 accessible={false} size={28} color={palette.success} /> : <AlertCircle accessible={false} size={28} color={palette.error} />}
           </View>
           <Text
             accessibilityRole="header"
@@ -128,9 +128,9 @@ export default function ResetPasswordScreen() {
           error={confirmation.length > 0 && confirmation !== password ? tr.auth.passwordsMismatch : null}
         />
         {error ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: palette.negative + "16", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
-            <AlertCircle accessible={false} size={17} color={palette.negative} />
-            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.label, { color: palette.negativeText, flex: 1 }]}>{error}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: palette.error + "16", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
+            <AlertCircle accessible={false} size={17} color={palette.error} />
+            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.label, { color: palette.errorText, flex: 1 }]}>{error}</Text>
           </View>
         ) : null}
         <Button label={tr.auth.resetSave} onPress={() => void save()} loading={busy} disabled={!valid} />

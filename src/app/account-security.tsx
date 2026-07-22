@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { Snowflake } from "lucide-react-native";
 import { useSession } from "../auth/session";
 import { performAccountFreeze } from "../auth/freeze";
@@ -22,6 +22,14 @@ import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 
 export default function AccountSecurityScreen() {
+  // Account freeze promises a cloud-confirmed write followed by sign-out. A
+  // local-only workspace cannot honor either promise, so it has no security
+  // action surface and direct links return to the honest local settings page.
+  if (!isSupabaseConfigured) return <Redirect href="/(tabs)/settings" />;
+  return <CloudAccountSecurityScreen />;
+}
+
+function CloudAccountSecurityScreen() {
   const { email, verifyPassword, changeEmail, changePassword, requestPasswordReset, signOut } = useSession();
   const userId = useUserId();
   const router = useRouter();
@@ -124,19 +132,17 @@ export default function AccountSecurityScreen() {
         danger: true,
       });
       if (!accepted) return;
-      if (isSupabaseConfigured) {
-        const password = await appPrompt(tr.account.confirmPasswordTitle, tr.account.freezePasswordBody, {
-          secure: true,
-          placeholder: tr.auth.password,
-          confirmLabel: tr.account.freezeConfirm,
-          danger: true,
-        });
-        if (password == null) return;
-        const verifyError = await verifyPassword(password);
-        if (verifyError) {
-          void appAlert(verifyError, tr.errors.title);
-          return;
-        }
+      const password = await appPrompt(tr.account.confirmPasswordTitle, tr.account.freezePasswordBody, {
+        secure: true,
+        placeholder: tr.auth.password,
+        confirmLabel: tr.account.freezeConfirm,
+        danger: true,
+      });
+      if (password == null) return;
+      const verifyError = await verifyPassword(password);
+      if (verifyError) {
+        void appAlert(verifyError, tr.errors.title);
+        return;
       }
 
       setFreezing(true);
@@ -148,7 +154,6 @@ export default function AccountSecurityScreen() {
           pendingOutboxCount: pendingSyncChangeCount,
           signOut,
           scheduleSync: () => scheduleSync(userId),
-          requiresCloud: isSupabaseConfigured,
         });
         if (outcome.status === "failed") {
           // A failure that could not even be rolled back leaves the account
@@ -174,8 +179,6 @@ export default function AccountSecurityScreen() {
 
   return (
     <Screen>
-      {isSupabaseConfigured ? (
-        <>
       <Card>
         <Heading style={{ marginTop: 0 }}>{tr.account.changeEmail}</Heading>
         {email ? <Body muted style={{ marginBottom: spacing.md }}>{tr.account.currentEmail(email)}</Body> : null}
@@ -248,8 +251,6 @@ export default function AccountSecurityScreen() {
       </Card>
 
       <View style={{ height: spacing.md }} />
-        </>
-      ) : null}
 
       <Card>
         <Heading style={{ marginTop: 0 }}>{tr.account.freeze}</Heading>

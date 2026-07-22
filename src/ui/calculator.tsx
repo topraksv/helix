@@ -9,7 +9,7 @@ import { Modal, Platform, Pressable, ScrollView, Text, View } from "react-native
 import { Delete } from "lucide-react-native";
 import { formatMinor, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
 import { tr } from "../i18n/tr";
-import { cardShadow, radius, scrim, spacing, type, useTheme } from "./theme";
+import { cardShadow, font, radius, scrim, spacing, type, useTheme } from "./theme";
 import { Button, FadeIn } from "./components";
 import { calculatorKeyHaptic } from "./calculator-feedback";
 import { haptic } from "./haptics";
@@ -264,7 +264,7 @@ export function CalculatorPad({
                   {key === "⌫" ? (
                     <Delete accessible={false} size={20} color={fg} />
                   ) : (
-                    <Text style={{ fontSize: 22, fontFamily: "Inter_500Medium", color: fg }}>{key}</Text>
+                    <Text style={{ fontSize: 22, fontFamily: font.medium, color: fg }}>{key}</Text>
                   )}
                 </Pressable>
               );

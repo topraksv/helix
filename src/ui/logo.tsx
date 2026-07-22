@@ -27,7 +27,7 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { InitialsBadge } from "./components";
-import { useTheme } from "./theme";
+import { font, useTheme } from "./theme";
 import { BRAND, brandPlate } from "../domain/brand-colors";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
@@ -254,7 +254,7 @@ export function Logo({
             justifyContent: "center",
           }}
         >
-          <Text style={{ color: ink, fontSize: size * (mark.length > 2 ? 0.26 : 0.34), fontFamily: "Inter_700Bold" }}>
+          <Text style={{ color: ink, fontSize: size * (mark.length > 2 ? 0.26 : 0.34), fontFamily: font.bold }}>
             {mark}
           </Text>
         </View>

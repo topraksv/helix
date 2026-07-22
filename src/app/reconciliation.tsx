@@ -173,7 +173,7 @@ export default function CatchUpScreen() {
             <Spread>
               <View style={{ flex: 1 }}>
                 <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
-                  {e.dueDate < today ? <Badge text={tr.dashboard.late} tone="negative" /> : null}
+                  {e.dueDate < today ? <Badge text={tr.dashboard.late} tone="error" /> : null}
                   {e.direction === "in" ? <Badge text={tr.dashboard.expectedIncome} tone="positive" /> : null}
                   <Body>{nameOf(e)}</Body>
                 </Row>

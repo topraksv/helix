@@ -7,83 +7,65 @@ history log.
 
 ## Current state — 2026-07-22, Europe/Istanbul
 
-- Package 2D implementation and local closure are complete on
-  `package-2-security-hardening`, continuing from signed checkpoint `3950e17`.
-  The single delivery PR is #53; it is open and not yet merged.
-- Material reliability fixes make onboarding/import sorts explicit and route
-  synchronous and asynchronous native haptic failures into one consumed promise
-  boundary. Focused tests cover both haptic failure modes. The web release budget
-  now rejects public `.map` files and JS/CSS `sourceMappingURL` references.
-- Security/release/test contracts now contain the stable ASVS v5, current
-  MASVS/MASTG, vulnerability intake, PII-free crash-health decision, source-map,
-  OTA integrity, incident/rotation, backup/restore and exact residual-control
-  classifications required for Package 2D.
-- Clean Node 22 install and dependency-tree validation pass. The release suite
-  passes 64 Vitest files / 480 tests and 21 Playwright tests, including visual
-  and accessibility gates. Expo exports 52 routes; entry/total-JS/export/font
-  budgets pass with 0 map files and 0 map references. Expo Doctor passes 18/18.
-- SonarQube 26.7 Quality Gate passes with 316 open maintainability smells,
-  17 fully grouped/dispositioned reliability impacts, and 0 open bug,
-  vulnerability or hotspot. The two security false positives are a public
-  `1Password` product/host alias and UI-only placeholder randomness; neither is
-  a credential, persisted identifier or security decision.
-- Semgrep reports 0 findings/0 parse errors; Trivy reports 0 vulnerability,
-  misconfiguration or secret; TruffleHog reports 0 verified/unverified secret
-  across 391 commits and the current candidate; Gitleaks reports 0 real secret
-  (the public Supabase publishable key is expected). Production npm audit is 0.
-  Full npm audit retains four moderate dev-only instances in the inaccessible
-  `esbuild serve` path. OSV's same esbuild row and two SheetJS metadata false
-  positives are dispositioned in `docs/SECURITY.md`. CycloneDX SBOM contains
-  1,034 components; five lifecycle-script instances belong to two reviewed
-  package families.
-- Remote Supabase migrations `…01`–`…14` equal local, public-schema lint is
-  clean and linked pgTAP passes 48/48. Security Advisor has three dispositioned
-  records: service-only `keep_alive` RLS/no-policy, the intentionally scoped
-  `delete_own_account` SECURITY DEFINER RPC and Free-plan HIBP. Performance
-  Advisor has 24 INFO records: 18 composite-FK index suggestions and six retained
-  unused-index observations.
-- GitHub protection is still strict: owner signatures, linear protected PRs,
-  admin enforcement, conversation resolution, force-push/deletion denial and
-  required Actions `quality`. GitHub-owned, SHA-pinned Actions only; private
-  vulnerability reporting, secret scanning, push protection and Dependabot
-  security updates are enabled. Open CodeQL, Dependabot and secret alerts are 0.
-  Dependency Review `review` passed its first PR run and is now enforced beside
-  `quality` as an exact GitHub Actions required check. Final PR checks and merge
-  remain pending.
+- Package 3B is complete on `package-3-ui-ux-fixes`. It establishes the
+  design-system token and primitive foundation without changing product flow,
+  navigation, information architecture, copy or rendered hierarchy. No PR,
+  merge, deploy, OTA or native build has occurred.
+- Semantic palette roles now distinguish success, error and destructive
+  actions from positive/negative financial direction. Their current light and
+  dark hex values remain identical to the previous output, so this is an
+  internal semantic boundary rather than a palette redesign.
+- Existing control geometry, icon sizes, border widths, typography, disabled
+  and transient opacities, toggle shadow/geometry and drag layer/elevation use
+  named tokens with their prior exact values. Raw Inter style references now
+  resolve through the shared font table.
+- `Field` and `MoneyField` share the canonical visible label, input-accessory
+  layout and assertive inline-error implementation. Validation timing,
+  keyboard behavior, limits, focus and calculator/password actions are
+  unchanged.
+- A focused design-system contract test pins the semantic typography and exact
+  metrics. Rendered accessibility coverage now proves visible keyboard focus
+  for the shared button, money input, segmented radio and toggle families.
+- All committed visual baselines pass without updates or meaningful pixel
+  differences. No implementation defect or new owner-approval item was found.
+- The two Package 3A P1 fixes remain green: exact large negative amounts stay
+  on one line, and local-only workspaces do not expose misleading cloud
+  account-security actions.
 
-## External, plan and device limits
+## Validation
 
-- Central crash/release-health telemetry is `BLOCKED_EXTERNAL`: no approved
-  provider account, privacy/retention decision or credentials exist. The
-  minimal PII-free Sentry rollout and alert thresholds are in `docs/RELEASE.md`.
-- Supabase Free keeps HIBP, session timebox/inactivity/single-session, automatic
-  backup/PITR and long log retention `PLAN_LIMITED`. No backup or isolated
-  restore environment is claimed.
-- Email confirmation, stronger coordinated password policy, custom SMTP,
-  CAPTCHA, enforced MFA, direct-DB SSL maintenance and network restrictions are
-  `BLOCKED_EXTERNAL`; none is silently enabled in this package.
-- VoiceOver/TalkBack, Dynamic Type, Reduced Motion, app-switcher cover,
-  lock-screen notifications, Keychain/biometric behavior, two installed clients,
-  low-memory import and installed OTA cold starts remain `DEVICE_ONLY` and are
-  not claimed as passed.
+- Clean `npm ci` completed with the locked dependency graph unchanged.
+- `npm run verify:release` passed: typecheck, 66 Vitest files / 487 tests,
+  zero-warning lint, 52-route production export, all bundle/font/source-map
+  budgets and 23/23 Playwright tests.
+- Expo Doctor passed 18/18.
+- Browser coverage includes light/dark visual baselines, 320px/long-content
+  layout, all-route axe checks, modal/field semantics, keyboard focus,
+  navigation/resilience, offline persistence and backup/restore.
+- Temporary probes, build exports and test-result directories were removed.
+  `.codex/package-3-ledger.md`, `.codex/package-3a-review.md` and
+  `.codex/package-3a-assets/` remain untracked and outside the checkpoint.
 
-## Delivery decision and rollback evidence
+## Package 3E device acceptance
 
-- Package 2D changes no native config, Expo SDK/plugin or runtime policy. After
-  merge, publish a `preview` OTA from clean final `main`. Production OTA remains
-  blocked unless an installed compatible binary can complete the required first
-  download + second cold-start acceptance flow; no native build is required by
-  this package itself.
+- `DEVICE-001..003` remain `DEVICE_ONLY`, not failed code and not completed
+  acceptance. Automated web evidence cannot replace physical VoiceOver,
+  TalkBack, Switch Control, Dynamic Type, Reduced Motion, native back/swipe,
+  keyboard/drag, notification/privacy, haptic and account-lifecycle checks.
+- A physical iPhone 16e running iOS 27.0 is paired and Developer Mode is on,
+  but Xcode 26.6 lacks matching platform support. No Android device, adb target
+  or AVD is available. These constraints carry unchanged into Package 3E.
+
+## Delivery and rollback evidence
+
+- Package 3B changes no dependency, migration, native config, Expo plugin,
+  runtime version or data model.
 - Last code-bearing web release commit: `408c098`; successful Pages run
   `29871029794`. Later handoff/test sync run `29873521094` also passed.
 - Last preview OTA group: `40d1d11d-1d30-4d93-91c4-670df321b198`; Android
   `019f86bd-0c1f-76c5-b5c4-121b5d03f396`, iOS
   `019f86bd-0c1f-70d3-8142-6f2284e10bb2`, runtime `1.0.0`.
-- Migrations 13 and 14 are privilege/index-only. Database rollback remains a
-  backward-compatible forward migration; never edit applied migration files.
 
 ## Next exact step
 
-Push this handoff-only signed commit to PR #53, wait for both required checks and
-CodeQL, merge through protection, then complete Pages/live smoke and preview OTA
-delivery from final `main`.
+`NEXT EXACT STEP = Package 3C from the latest signed checkpoint after resolving any new pending owner approvals.`

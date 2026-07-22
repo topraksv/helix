@@ -4,7 +4,7 @@ import { useRouter, type Href } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { navigateBack } from "./navigation";
-import { radius, useTheme } from "./theme";
+import { controlSize, radius, useTheme } from "./theme";
 
 /** Native-header back control with a deterministic parent for direct links. */
 export function HeaderBackButton({ fallback, exact }: { fallback: Href; exact?: boolean }) {
@@ -17,8 +17,8 @@ export function HeaderBackButton({ fallback, exact }: { fallback: Href; exact?: 
       hitSlop={4}
       onPress={() => navigateBack(router, fallback, exact)}
       style={({ pressed }) => ({
-        width: 44,
-        height: 44,
+        width: controlSize.minimumTarget,
+        height: controlSize.minimumTarget,
         borderRadius: radius.full,
         backgroundColor: pressed ? palette.surfaceHover : "transparent",
         alignItems: "center",

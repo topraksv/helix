@@ -32,18 +32,35 @@ import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
-import { cardShadow, radius, scrim, spacing, type, useTheme, type Palette } from "./theme";
+import {
+  borderWidth,
+  cardShadow,
+  controlSize,
+  font,
+  generatedBadgeForeground,
+  iconSize,
+  radius,
+  scrim,
+  spacing,
+  stateOpacity,
+  toggleSize,
+  toggleThumbShadow,
+  type,
+  useTheme,
+  type Palette,
+} from "./theme";
 import { useReducedMotion } from "./motion";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
+import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
     backgroundColor: palette.surfaceAlt,
-    borderWidth: 1.5,
-    borderColor: error ? palette.negative : active ? palette.focus : "transparent",
+    borderWidth: borderWidth.control,
+    borderColor: error ? palette.error : active ? palette.focus : "transparent",
   };
 }
 
@@ -294,9 +311,16 @@ export function Body({
   );
 }
 
-export function Label({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
+export function Label({
+  children,
+  style,
+  ...props
+}: {
+  children: ReactNode;
+  style?: StyleProp<TextStyle>;
+} & Omit<TextProps, "children" | "style">) {
   const { palette } = useTheme();
-  return <Text style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }, style]}>{children}</Text>;
+  return <Text {...props} style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }, style]}>{children}</Text>;
 }
 
 /** Section title used between card groups. */
@@ -327,6 +351,7 @@ export function Amount({
   minor,
   currency = "TRY",
   large,
+  hero,
   colorized = true,
   color,
   style,
@@ -334,27 +359,44 @@ export function Amount({
   minor: number;
   currency?: string;
   large?: boolean;
+  hero?: boolean;
   colorized?: boolean;
   color?: string;
   style?: StyleProp<TextStyle>;
 }) {
   const { palette } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
   const formatted = formatMinor(minor, currency);
-  // Detail amounts remain exact; only their font size adapts to available width.
-  const fittedSize = formatted.length > 22
-    ? (large ? 15 : 11)
-    : formatted.length > 18
-      ? (large ? 19 : 12)
-      : formatted.length > 15
-        ? (large ? 24 : 13)
-        : undefined;
+  const scale: AmountScale = hero ? "hero" : large ? "large" : "regular";
+  // Width/font-scale changes start a fresh fit pass so rotation and Dynamic
+  // Type can shrink or grow without opting out of system font scaling.
+  const fitKey = `${formatted}|${scale}|${width}|${fontScale}`;
+  const initialSize = initialAmountFontSize(scale);
+  const [fit, setFit] = useState({ key: fitKey, size: initialSize });
+  const fittedSize = fit.key === fitKey ? fit.size : initialSize;
+  const shrinkToNextStep = () => {
+    const next = nextAmountFontSize(scale, fittedSize);
+    if (next !== fittedSize) setFit({ key: fitKey, size: next });
+  };
   return (
     <Text
+      accessibilityLabel={formatted}
+      onTextLayout={(event) => {
+        if (event.nativeEvent.lines.length <= 1) return;
+        shrinkToNextStep();
+      }}
+      onLayout={(event) => {
+        // RN Web does not consistently dispatch onTextLayout. A wrapped value
+        // is taller than one derived line box, so the platform-neutral layout
+        // event provides the same fit signal without clipping or font caps.
+        const singleLineBudget = fittedSize * fontScale * 1.7;
+        if (event.nativeEvent.layout.height > singleLineBudget) shrinkToNextStep();
+      }}
       style={[
-        large ? type.amountLg : type.amount,
+        large || hero ? type.amountLg : type.amount,
         { color: resolved, flexShrink: 1, textAlign: "right" },
-        fittedSize == null ? null : { fontSize: fittedSize },
+        { fontSize: fittedSize },
         style,
       ]}
     >
@@ -403,7 +445,7 @@ export function Button({
   const colors = {
     primary: { background: palette.primary, foreground: palette.onPrimary },
     secondary: { background: palette.surfaceAlt, foreground: palette.text },
-    danger: { background: palette.negative, foreground: palette.onNegative },
+    danger: { background: palette.destructive, foreground: palette.onDestructive },
     ghost: { background: "transparent", foreground: palette.accentText },
   }[variant];
   const small = size === "sm";
@@ -427,15 +469,15 @@ export function Button({
       style={[
         {
           backgroundColor: colors.background,
-          borderRadius: radius.sm + 2,
+          borderRadius: radius.md,
           paddingVertical: small ? spacing.sm : spacing.md + 1,
           paddingHorizontal: small ? spacing.md : spacing.lg,
-          minHeight: small ? 36 : 48,
+          minHeight: small ? controlSize.compact : controlSize.regular,
           flexDirection: "row",
           gap: spacing.sm,
           alignItems: "center",
           justifyContent: "center",
-          opacity: disabled ? 0.45 : 1,
+          opacity: disabled ? stateOpacity.buttonDisabled : 1,
           transform: [{ scale: press.scale }],
         },
       ]}
@@ -444,9 +486,9 @@ export function Button({
         <ActivityIndicator accessibilityLabel={label} color={colors.foreground} />
       ) : (
         <>
-          {IconCmp ? <IconCmp accessible={false} size={small ? 15 : 17} color={colors.foreground} strokeWidth={2.2} /> : null}
+          {IconCmp ? <IconCmp accessible={false} size={small ? iconSize.compact : iconSize.control} color={colors.foreground} strokeWidth={2.2} /> : null}
           <Text
-            style={[type.label, { color: colors.foreground, fontSize: small ? 13 : 15, textAlign: "center", flexShrink: 1 }]}
+            style={[small ? type.buttonCompact : type.button, { color: colors.foreground, textAlign: "center", flexShrink: 1 }]}
           >
             {label}
           </Text>
@@ -462,7 +504,7 @@ export function IconButton({
   onPress,
   disabled,
   tone = "default",
-  size = 36,
+  size = controlSize.compact,
   label,
   haptic: hapticKind = "light",
 }: {
@@ -475,7 +517,7 @@ export function IconButton({
   haptic?: HapticKind;
 }) {
   const { palette } = useTheme();
-  const color = tone === "danger" ? palette.negative : tone === "primary" ? palette.accentText : palette.textSecondary;
+  const color = tone === "danger" ? palette.destructive : tone === "primary" ? palette.accentText : palette.textSecondary;
   return (
     <Pressable
       accessibilityRole="button"
@@ -495,7 +537,7 @@ export function IconButton({
           backgroundColor: pressed ? palette.surfaceHover : palette.surfaceAlt,
           alignItems: "center",
           justifyContent: "center",
-          opacity: disabled ? 0.4 : 1,
+          opacity: disabled ? stateOpacity.iconDisabled : 1,
         },
       ]}
     >
@@ -527,6 +569,31 @@ export function MonthStepper({
   );
 }
 
+const fieldAccessoryStyle = {
+  position: "absolute",
+  right: 0,
+  top: 0,
+  bottom: 0,
+  width: controlSize.inputAccessoryWidth,
+  alignItems: "center",
+  justifyContent: "center",
+} as const;
+
+/** One live-region contract for validation errors across shared fields. */
+function FieldError({ message }: { message?: string | null }) {
+  const { palette } = useTheme();
+  if (!message) return null;
+  return (
+    <Text
+      accessibilityRole="alert"
+      accessibilityLiveRegion="assertive"
+      style={[type.small, { color: palette.errorText, marginTop: spacing.xs }]}
+    >
+      {message}
+    </Text>
+  );
+}
+
 export function Field({
   label,
   error,
@@ -553,7 +620,7 @@ export function Field({
   );
   return (
     <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
-      {label ? <Text nativeID={labelId} style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }]}>{label}</Text> : null}
+      {label ? <Label nativeID={labelId}>{label}</Label> : null}
       <View>
         <TextInput
           placeholderTextColor={palette.textSecondary}
@@ -578,10 +645,9 @@ export function Field({
               color: palette.text,
               borderRadius: radius.sm,
               paddingHorizontal: spacing.md,
-              paddingRight: secure ? 44 : spacing.md,
-              minHeight: 48,
-              fontSize: 15,
-              fontFamily: "Inter_400Regular",
+              paddingRight: secure ? controlSize.inputAccessoryInset : spacing.md,
+              minHeight: controlSize.regular,
+              ...type.field,
             },
             // Multiline reads as an intentional text area: taller, top-aligned.
             props.multiline
@@ -601,21 +667,13 @@ export function Field({
             // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
             // 24). The box now fills the input's reserved 44px right padding
             // with the icon centred, so the mark does not visibly move.
-            style={{
-              position: "absolute",
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: 42,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+            style={fieldAccessoryStyle}
           >
-            {hidden ? <Eye accessible={false} size={18} color={palette.textSecondary} /> : <EyeOff accessible={false} size={18} color={palette.textSecondary} />}
+            {hidden ? <Eye accessible={false} size={iconSize.accessory} color={palette.textSecondary} /> : <EyeOff accessible={false} size={iconSize.accessory} color={palette.textSecondary} />}
           </Pressable>
         ) : null}
       </View>
-      {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.small, { color: palette.negativeText, marginTop: spacing.xs }]}>{error}</Text> : null}
+      <FieldError message={error} />
     </View>
   );
 }
@@ -652,7 +710,7 @@ export function MoneyField({
   const invalid = value.trim() !== "" && minor === null;
   return (
     <View style={{ marginBottom: spacing.md }}>
-      {label ? <Text nativeID={labelId} style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }]}>{label}</Text> : null}
+      {label ? <Label nativeID={labelId}>{label}</Label> : null}
       <View>
         <TextInput
           value={display}
@@ -674,15 +732,13 @@ export function MoneyField({
           onBlur={() => setFocused(false)}
           style={{
             ...controlStateStyle(palette, focused, invalid),
-            color: invalid ? palette.negativeText : disabled ? palette.textSecondary : palette.text,
+            color: invalid ? palette.errorText : disabled ? palette.textSecondary : palette.text,
             borderRadius: radius.sm,
             paddingHorizontal: spacing.md,
-            paddingRight: 44,
-            minHeight: 48,
-            fontSize: 17,
-            fontFamily: "Inter_600SemiBold",
-            fontVariant: ["tabular-nums"],
-            opacity: disabled ? 0.6 : 1,
+            paddingRight: controlSize.inputAccessoryInset,
+            minHeight: controlSize.regular,
+            ...type.moneyInput,
+            opacity: disabled ? stateOpacity.fieldDisabled : 1,
           }}
         />
         {disabled ? null : (
@@ -697,21 +753,13 @@ export function MoneyField({
             // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
             // 24). The box now fills the input's reserved 44px right padding
             // with the icon centred, so the mark does not visibly move.
-            style={{
-              position: "absolute",
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: 42,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+            style={fieldAccessoryStyle}
           >
-            <CalculatorIcon accessible={false} size={18} color={palette.textSecondary} />
+            <CalculatorIcon accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
           </Pressable>
         )}
       </View>
-      {invalid ? <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.small, { color: palette.negativeText, marginTop: spacing.xs }]}>{tr.common.amountLimit}</Text> : null}
+      <FieldError message={invalid ? tr.common.amountLimit : null} />
       {calcOpen ? (
         <LazyCalculatorModal
           returnFocusRef={calculatorTriggerRef}
@@ -788,11 +836,11 @@ export function Select<T extends string>({
             borderRadius: radius.sm,
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm,
-            minHeight: 48,
+            minHeight: controlSize.regular,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            opacity: disabled ? 0.5 : 1,
+            opacity: disabled ? stateOpacity.controlDisabled : 1,
             ...(pressed && !disabled ? { backgroundColor: palette.surfaceHover } : null),
           },
         ]}
@@ -802,7 +850,7 @@ export function Select<T extends string>({
         >
           {current?.label ?? placeholder ?? ""}
         </Text>
-        <ChevronDown accessible={false} size={17} color={palette.textSecondary} />
+        <ChevronDown accessible={false} size={iconSize.control} color={palette.textSecondary} />
       </Pressable>
       {open ? (
         <Modal transparent animationType="fade" visible onRequestClose={() => setOpen(false)}>
@@ -847,7 +895,7 @@ export function Select<T extends string>({
                         <Text
                           style={[
                             type.body,
-                            { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? "Inter_600SemiBold" : "Inter_400Regular" },
+                            { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? font.semibold : font.regular },
                           ]}
                         >
                           {option.label}
@@ -885,7 +933,7 @@ export function Segmented<T extends string>({
       style={{
         flexDirection: "row",
         backgroundColor: palette.surfaceAlt,
-        borderRadius: radius.sm + 2,
+        borderRadius: radius.md,
         padding: 3,
         marginBottom: noMargin ? 0 : spacing.md,
       }}
@@ -906,21 +954,21 @@ export function Segmented<T extends string>({
             style={[
               {
                 flex: 1,
-                minHeight: 44,
+                minHeight: controlSize.minimumTarget,
                 paddingVertical: spacing.sm,
                 paddingHorizontal: 2,
                 borderRadius: radius.sm - 1,
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: selected ? palette.surfaceStrong : "transparent",
-                opacity: disabled ? 0.5 : 1,
+                opacity: disabled ? stateOpacity.controlDisabled : 1,
               },
             ]}
           >
             <Text
               style={[
                 type.label,
-                { color: selected ? palette.primaryText : palette.textSecondary, fontFamily: "Inter_600SemiBold", textAlign: "center", width: "100%" },
+                { color: selected ? palette.primaryText : palette.textSecondary, fontFamily: font.semibold, textAlign: "center", width: "100%" },
               ]}
             >
               {option.label}
@@ -974,7 +1022,7 @@ export function ChipPicker<T extends string>({
               paddingHorizontal: spacing.md + 2,
               borderRadius: radius.full,
               backgroundColor: selected ? palette.primarySoft : palette.surfaceAlt,
-              minHeight: 44,
+              minHeight: controlSize.minimumTarget,
               justifyContent: "center",
             }}
           >
@@ -983,7 +1031,7 @@ export function ChipPicker<T extends string>({
                 type.label,
                 {
                   color: selected ? palette.primaryText : palette.text,
-                  fontFamily: selected ? "Inter_600SemiBold" : "Inter_500Medium",
+                  fontFamily: selected ? font.semibold : font.medium,
                 },
               ]}
             >
@@ -1002,7 +1050,7 @@ export function Badge({
   icon: IconCmp,
 }: {
   text: string;
-  tone?: "muted" | "positive" | "negative" | "warning" | "primary";
+  tone?: "muted" | "positive" | "negative" | "success" | "error" | "warning" | "primary";
   icon?: LucideIcon;
 }) {
   const { palette } = useTheme();
@@ -1010,6 +1058,8 @@ export function Badge({
     muted: { bg: palette.surfaceAlt, fg: palette.textSecondary },
     positive: { bg: palette.positive + "1F", fg: palette.positiveText },
     negative: { bg: palette.negative + "1F", fg: palette.negativeText },
+    success: { bg: palette.success + "1F", fg: palette.successText },
+    error: { bg: palette.error + "1F", fg: palette.errorText },
     warning: { bg: palette.warning + "1F", fg: palette.warningText },
     primary: { bg: palette.primarySoft, fg: palette.primaryText },
   }[tone];
@@ -1027,7 +1077,7 @@ export function Badge({
       }}
     >
       {IconCmp ? <IconCmp accessible={false} size={12} color={colors.fg} strokeWidth={2} /> : null}
-      <Text style={[type.small, { color: colors.fg, fontFamily: "Inter_500Medium", flexShrink: 1 }]}>{text}</Text>
+      <Text style={[type.small, { color: colors.fg, fontFamily: font.medium, flexShrink: 1 }]}>{text}</Text>
     </View>
   );
 }
@@ -1040,8 +1090,8 @@ export function StatusPill({ label, color, foreground = color }: { label: string
     <View
       style={{
         width: STATUS_W,
-        minHeight: 36,
-        borderRadius: radius.sm + 2,
+        minHeight: controlSize.compact,
+        borderRadius: radius.md,
         backgroundColor: color + "1F",
         alignItems: "center",
         justifyContent: "center",
@@ -1112,8 +1162,8 @@ export function DataStateNotice({
       accessibilityLiveRegion="assertive"
       accessibilityRole="alert"
       style={{
-        backgroundColor: (stale ? palette.warning : palette.negative) + "14",
-        borderColor: (stale ? palette.warning : palette.negative) + "55",
+        backgroundColor: (stale ? palette.warning : palette.error) + "14",
+        borderColor: (stale ? palette.warning : palette.error) + "55",
         borderWidth: StyleSheet.hairlineWidth,
         borderRadius: radius.md,
         padding: spacing.md,
@@ -1197,8 +1247,8 @@ export function ListRow({
       {IconCmp ? (
         <View
           style={{
-            width: 36,
-            height: 36,
+            width: controlSize.compact,
+            height: controlSize.compact,
             borderRadius: 11,
             backgroundColor: iconColor ? iconColor + "1F" : palette.primarySoft,
             alignItems: "center",
@@ -1209,7 +1259,7 @@ export function ListRow({
         </View>
       ) : null}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[type.body, { color: palette.text, fontFamily: "Inter_500Medium", flexShrink: 1 }]}>
+        <Text style={[type.body, { color: palette.text, fontFamily: font.medium, flexShrink: 1 }]}>
           {title}
         </Text>
         {subtitle ? (
@@ -1222,7 +1272,7 @@ export function ListRow({
       {chevron ? <ChevronRight accessible={false} size={17} color={palette.textSecondary} /> : null}
       </View>
       {stackRight ? (
-        <View style={{ marginTop: spacing.sm, marginLeft: IconCmp || leading ? 36 + spacing.md : 0, alignItems: "flex-end" }}>
+        <View style={{ marginTop: spacing.sm, marginLeft: IconCmp || leading ? controlSize.compact + spacing.md : 0, alignItems: "flex-end" }}>
           {right}
         </View>
       ) : null}
@@ -1249,9 +1299,9 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
 }
 
 /** Cross-platform toggle with one theme-aware geometry. */
-const TOGGLE_W = 46;
-const TOGGLE_H = 28;
-const TOGGLE_PAD = 3;
+const TOGGLE_W = toggleSize.width;
+const TOGGLE_H = toggleSize.height;
+const TOGGLE_PAD = toggleSize.padding;
 const TOGGLE_THUMB = TOGGLE_H - TOGGLE_PAD * 2;
 export function Toggle({
   value,
@@ -1287,7 +1337,7 @@ export function Toggle({
       hitSlop={10}
       disabled={disabled}
       onPress={() => onValueChange(!value)}
-      style={{ opacity: disabled ? 0.5 : 1 }}
+      style={{ opacity: disabled ? stateOpacity.controlDisabled : 1 }}
     >
       {/* The track carries its own boundary. Both fills are low-contrast warm
           neutrals (1.1–1.9:1 against the app's surfaces), so without it the
@@ -1300,7 +1350,7 @@ export function Toggle({
           height: TOGGLE_H,
           borderRadius: TOGGLE_H / 2,
           backgroundColor: trackColor,
-          borderWidth: 1,
+          borderWidth: borderWidth.toggle,
           borderColor: palette.controlBorder,
           justifyContent: "center",
         }}
@@ -1312,7 +1362,7 @@ export function Toggle({
             borderRadius: TOGGLE_THUMB / 2,
             backgroundColor: value ? palette.primary : palette.textSecondary,
             transform: [{ translateX: thumbX }],
-            boxShadow: "0 1px 3px rgba(15, 15, 13, 0.22)",
+            ...toggleThumbShadow,
           }}
         />
       </Animated.View>
@@ -1339,7 +1389,7 @@ export function InitialsBadge({ name, size = 36 }: { name: string; size?: number
         justifyContent: "center",
       }}
     >
-      <Text style={{ color: "#fff", fontSize: size * 0.38, fontFamily: "Inter_600SemiBold" }}>{initials}</Text>
+      <Text style={{ color: generatedBadgeForeground, fontSize: size * 0.38, fontFamily: font.semibold }}>{initials}</Text>
     </View>
   );
 }

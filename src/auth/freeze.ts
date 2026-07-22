@@ -24,15 +24,11 @@ export interface AccountFreezeEffects {
   /** Returns an error message, or null when the session ended. */
   signOut: () => Promise<string | null>;
   scheduleSync: () => void;
-  /** False for a local-only workspace: there is no cloud to confirm against. */
-  requiresCloud: boolean;
 }
 
 export type AccountFreezeOutcome =
   /** Frozen and signed out; every device will show the reactivation gate. */
   | { status: "frozen" }
-  /** Local-only workspace: flagged and queued, the session stays open. */
-  | { status: "local" }
   /**
    * Nothing was frozen. `rolledBack` reports whether the local flag was
    * actually restored — if even that failed the account is still marked
@@ -60,11 +56,6 @@ async function abandonFreeze(
 export async function performAccountFreeze(effects: AccountFreezeEffects): Promise<AccountFreezeOutcome> {
   try {
     await effects.setFrozen(true);
-
-    if (!effects.requiresCloud) {
-      effects.scheduleSync();
-      return { status: "local" };
-    }
 
     // Freezing is only meaningful once the flag — and every unsynced row it is
     // supposed to protect — is on the server. A push that "succeeded" while

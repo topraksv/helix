@@ -15,7 +15,7 @@ import React, { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
-import { cardShadow, radius, scrim, spacing, type, useTheme } from "./theme";
+import { cardShadow, font, radius, scrim, spacing, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { INPUT_LIMITS } from "../domain/input";
 import { useModalAccessibility } from "./accessibility";
@@ -208,7 +208,7 @@ export function PromptHost() {
           color: palette.text,
           backgroundColor: palette.surfaceAlt,
           marginBottom: spacing.lg,
-          fontFamily: "Inter_400Regular",
+          fontFamily: font.regular,
           fontSize: 16,
         }}
       />

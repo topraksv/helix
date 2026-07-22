@@ -9,7 +9,6 @@ function effects(overrides: Partial<AccountFreezeEffects> = {}) {
     pendingOutboxCount: vi.fn(async () => 0),
     signOut: vi.fn(async () => null),
     scheduleSync: vi.fn(),
-    requiresCloud: true,
     ...overrides,
   };
   return { deps: base, frozenWrites };
@@ -21,14 +20,6 @@ describe("account freeze lifecycle", () => {
     await expect(performAccountFreeze(deps)).resolves.toEqual({ status: "frozen" });
     expect(frozenWrites).toEqual([true]);
     expect(deps.signOut).toHaveBeenCalledTimes(1);
-  });
-
-  it("flags a local-only workspace without demanding a cloud confirmation", async () => {
-    const { deps, frozenWrites } = effects({ requiresCloud: false });
-    await expect(performAccountFreeze(deps)).resolves.toEqual({ status: "local" });
-    expect(frozenWrites).toEqual([true]);
-    expect(deps.syncNow).not.toHaveBeenCalled();
-    expect(deps.signOut).not.toHaveBeenCalled();
   });
 
   it("rolls the flag back when the push fails", async () => {

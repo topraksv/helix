@@ -22,7 +22,7 @@ import { useSession } from "../auth/session";
 import { useAccountFrozenState, useOnboardedState } from "../data/hooks";
 import { classifyRootRoute, resolveRootGuard } from "../domain/app-guard";
 import { kv } from "../services/kv";
-import { darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
+import { controlSize, darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -122,7 +122,7 @@ export default function RootLayout() {
                   setDbReady(false);
                   setAttempt((a) => a + 1);
                 }}
-                style={{ minHeight: 44, paddingHorizontal: 16, justifyContent: "center" }}
+                style={{ minHeight: controlSize.minimumTarget, paddingHorizontal: 16, justifyContent: "center" }}
               >
                 <Text style={{ color: primaryForeground, fontWeight: "600" }}>{tr.common.retry}</Text>
               </Pressable>

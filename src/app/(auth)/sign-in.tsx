@@ -6,7 +6,7 @@ import { isSupabaseConfigured } from "../../sync/supabase";
 import { Body, Button, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { BrandMark } from "../../ui/brand";
-import { radius, spacing, type, useTheme } from "../../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
 
@@ -121,14 +121,14 @@ export default function SignInScreen() {
               flexDirection: "row",
               alignItems: "center",
               gap: spacing.sm,
-              backgroundColor: palette.positive + "16",
+              backgroundColor: palette.success + "16",
               borderRadius: radius.sm,
               padding: spacing.md,
               marginBottom: spacing.md,
             }}
           >
-            <CheckCircle2 accessible={false} size={17} color={palette.positive} />
-            <Text accessibilityLiveRegion="polite" style={[type.label, { color: palette.positiveText, flex: 1 }]}>{tr.auth.resetSent}</Text>
+            <CheckCircle2 accessible={false} size={17} color={palette.success} />
+            <Text accessibilityLiveRegion="polite" style={[type.label, { color: palette.successText, flex: 1 }]}>{tr.auth.resetSent}</Text>
           </View>
         ) : null}
 
@@ -138,14 +138,14 @@ export default function SignInScreen() {
               flexDirection: "row",
               alignItems: "center",
               gap: spacing.sm,
-              backgroundColor: palette.negative + "16",
+              backgroundColor: palette.error + "16",
               borderRadius: radius.sm,
               padding: spacing.md,
               marginBottom: spacing.md,
             }}
           >
-            <AlertCircle accessible={false} size={17} color={palette.negative} />
-            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.label, { color: palette.negativeText, flex: 1 }]}>{error}</Text>
+            <AlertCircle accessible={false} size={17} color={palette.error} />
+            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.label, { color: palette.errorText, flex: 1 }]}>{error}</Text>
           </View>
         ) : null}
 
@@ -165,7 +165,7 @@ export default function SignInScreen() {
           <Body muted>{mode === "signIn" ? tr.auth.noAccount : mode === "signUp" ? tr.auth.haveAccount : tr.auth.rememberedPassword}</Body>
           <Pressable accessibilityRole="button" onPress={switchMode} hitSlop={8}>
             <Text
-              style={[type.body, { color: palette.primaryText, fontFamily: "Inter_600SemiBold" }]}
+              style={[type.body, { color: palette.primaryText, fontFamily: font.semibold }]}
             >
               {mode === "signIn" ? tr.auth.signUpAction : tr.auth.signInAction}
             </Text>

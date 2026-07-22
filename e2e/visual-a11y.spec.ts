@@ -4,6 +4,7 @@ import {
   addMarketExpense,
   assertNoRuntimeErrors,
   collectRuntimeErrors,
+  currentMonthKey,
   isolateExternalData,
   onboard,
   renderedBoundaryContrast,
@@ -160,6 +161,67 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
     }
   }
   expect(problems, problems.join("\n")).toEqual([]);
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("large exact negative amounts keep their sign and digits on one visual line", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await onboard(page);
+  await addMarketExpense(page, "Büyük tutar yerleşim kontrolü", "9876543,21");
+  const formatted = "-₺9.876.543,21";
+  const maxVisualLines = (text: string) => page.getByText(text, { exact: true }).evaluateAll((nodes) => Math.max(...nodes.map((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size;
+  })));
+  const minRenderedFontSize = (text: string) => page.getByText(text, { exact: true }).evaluateAll((nodes) =>
+    Math.min(...nodes.map((node) => Number.parseFloat(getComputedStyle(node).fontSize))),
+  );
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto("/helix/");
+  await expect.poll(() => maxVisualLines(formatted)).toBe(1);
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    for (const node of Array.from(document.querySelectorAll<HTMLElement>("*"))) node.scrollTop = 0;
+  });
+  await expect(page).toHaveScreenshot("dashboard-large-negative-phone-320-light.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixelRatio: maxVisualDiffPixelRatio,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await expect.poll(() => maxVisualLines(formatted)).toBe(1);
+  await expect(page).toHaveScreenshot("month-large-negative-phone-390-light.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixelRatio: maxVisualDiffPixelRatio,
+  });
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.goto("/helix/");
+  await expect.poll(() => maxVisualLines(formatted)).toBe(1);
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    for (const node of Array.from(document.querySelectorAll<HTMLElement>("*"))) node.scrollTop = 0;
+  });
+  await expect(page).toHaveScreenshot("dashboard-large-negative-phone-320-dark.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixelRatio: maxVisualDiffPixelRatio,
+  });
+
+  // The largest accepted single entry can produce an even wider aggregate;
+  // exact detail surfaces must still fit it without changing the input cap.
+  await addMarketExpense(page, "Azami tutar yerleşim kontrolü", "999999999999,99");
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto("/helix/");
+  await expect.poll(() => maxVisualLines("-₺1.000.009.876.543,20")).toBe(1);
+  await expect.poll(() => minRenderedFontSize("-₺1.000.009.876.543,20")).toBeGreaterThanOrEqual(12);
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
