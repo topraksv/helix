@@ -34,6 +34,7 @@ import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Scr
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { lightTap } from "../../../ui/haptics";
+import { shouldUseWideWorkspace } from "../../../ui/responsive";
 
 type MatrixMode = "cards" | "rows" | "columns";
 
@@ -150,7 +151,7 @@ export default function CashflowScreen() {
     cellNotesState.retry();
   };
   const { width } = useWindowDimensions();
-  const wide = width >= 900;
+  const wide = shouldUseWideWorkspace(width);
   const router = useRouter();
   const { palette } = useTheme();
   const [mode, setMode] = useState<MatrixMode>("rows");

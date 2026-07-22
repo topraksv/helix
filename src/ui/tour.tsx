@@ -2,7 +2,7 @@
  *  Shown once (kv flag), reopenable from Settings. */
 
 import React, { useEffect, useState } from "react";
-import { Modal, Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { Banknote, CalendarCheck, ChartPie, CloudUpload, PlusCircle, Table2, type LucideIcon } from "lucide-react-native";
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
@@ -44,83 +44,94 @@ export function TourModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}>
-        <FadeIn
+      <ScrollView
+        style={{ flex: 1, backgroundColor: scrim }}
+        contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <Pressable
+          accessible={false}
           accessibilityViewIsModal
-          style={{
-            width: Math.min(width - spacing.lg * 2, 420),
-            backgroundColor: palette.surface,
-            borderRadius: radius.lg,
-            padding: spacing.xl,
-          }}
+          onPress={() => {}}
+          style={{ width: Math.min(width - spacing.lg * 2, 420) }}
         >
-          <View
+          <FadeIn
             style={{
-              width: 64,
-              height: 64,
-              borderRadius: 20,
-              backgroundColor: palette.primarySoft,
-              alignItems: "center",
-              justifyContent: "center",
-              alignSelf: "center",
-              marginBottom: spacing.lg,
+              backgroundColor: palette.surface,
+              borderRadius: radius.lg,
+              padding: spacing.xl,
             }}
           >
-            <IconCmp accessible={false} size={30} color={palette.primary} strokeWidth={1.9} />
-          </View>
-          {/* A minimum keeps ordinary slides stable while larger Dynamic Type
-              may grow naturally instead of clipping the explanation. */}
-          <View style={{ minHeight: 210, justifyContent: "flex-start" }}>
             <View
-              ref={titleRef}
-              accessible
-              accessibilityRole="header"
-              accessibilityLiveRegion="polite"
-              accessibilityLabel={tr.a11y.tourStep(step + 1, SLIDES.length, slide.title)}
-              tabIndex={-1}
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 20,
+                backgroundColor: palette.primarySoft,
+                alignItems: "center",
+                justifyContent: "center",
+                alignSelf: "center",
+                marginBottom: spacing.lg,
+              }}
             >
-              <Text style={[type.heading, { color: palette.text, textAlign: "center", fontSize: 19 }]}>{slide.title}</Text>
+              <IconCmp accessible={false} size={30} color={palette.primary} strokeWidth={1.9} />
             </View>
-            <Text style={[type.body, { color: palette.textSecondary, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
-              {slide.body}
-            </Text>
-          </View>
-
-          {/* dots */}
-          <Row gap={spacing.sm} style={{ justifyContent: "center", marginVertical: spacing.xl }}>
-            {SLIDES.map((_, i) => (
+            {/* A minimum keeps ordinary slides stable while larger Dynamic Type
+                may grow naturally instead of clipping the explanation. */}
+            <View style={{ minHeight: 210, justifyContent: "flex-start" }}>
               <View
-                key={i}
-                accessible={false}
-                style={{
-                  width: i === step ? 20 : 7,
-                  height: 7,
-                  borderRadius: 4,
-                  backgroundColor: i === step ? palette.primary : palette.border,
-                }}
-              />
-            ))}
-          </Row>
+                ref={titleRef}
+                accessible
+                accessibilityRole="header"
+                accessibilityLiveRegion="polite"
+                accessibilityLabel={tr.a11y.tourStep(step + 1, SLIDES.length, slide.title)}
+                tabIndex={-1}
+              >
+                <Text style={[type.heading, { color: palette.text, textAlign: "center", fontSize: 19 }]}>{slide.title}</Text>
+              </View>
+              <Text style={[type.body, { color: palette.textSecondary, textAlign: "center", marginTop: spacing.sm, lineHeight: 22 }]}>
+                {slide.body}
+              </Text>
+            </View>
 
-          <Button
-            label={last ? tr.tour.start : tr.tour.next}
-            onPress={() => {
-              // Functional update + clamp so rapid taps can't overshoot or skip.
-              if (step >= SLIDES.length - 1) onClose();
-              else setStep((s) => Math.min(s + 1, SLIDES.length - 1));
-            }}
-          />
-          {/* Reserve the skip row's height on every slide (shown only when not
-              last) so the card height — and thus the button — never shifts. */}
-          <View style={{ minHeight: controlSize.minimumTarget, marginTop: spacing.sm, justifyContent: "center" }}>
-            {!last ? (
-              <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center", minHeight: controlSize.minimumTarget, justifyContent: "center" }}>
-                <Text style={[type.label, { color: palette.textSecondary }]}>{tr.tour.skip}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </FadeIn>
-      </View>
+            {/* dots */}
+            <Row gap={spacing.sm} style={{ justifyContent: "center", marginVertical: spacing.xl }}>
+              {SLIDES.map((_, i) => (
+                <View
+                  key={i}
+                  accessible={false}
+                  style={{
+                    width: i === step ? 20 : 7,
+                    height: 7,
+                    borderRadius: 4,
+                    backgroundColor: i === step ? palette.primary : palette.border,
+                  }}
+                />
+              ))}
+            </Row>
+
+            <Button
+              label={last ? tr.tour.start : tr.tour.next}
+              onPress={() => {
+                // Functional update + clamp so rapid taps can't overshoot or skip.
+                if (step >= SLIDES.length - 1) onClose();
+                else setStep((s) => Math.min(s + 1, SLIDES.length - 1));
+              }}
+            />
+            {/* Reserve the skip row's height on every slide (shown only when not
+                last) so the card height — and thus the button — never shifts. */}
+            <View style={{ minHeight: controlSize.minimumTarget, marginTop: spacing.sm, justifyContent: "center" }}>
+              {!last ? (
+                <Pressable accessibilityRole="button" onPress={onClose} style={{ alignSelf: "center", minHeight: controlSize.minimumTarget, justifyContent: "center" }}>
+                  <Text style={[type.label, { color: palette.textSecondary }]}>{tr.tour.skip}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </FadeIn>
+        </Pressable>
+      </ScrollView>
     </Modal>
   );
 }

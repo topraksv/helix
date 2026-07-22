@@ -29,6 +29,7 @@ import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../.
 import { StickyTable } from "../../../ui/sticky-table";
 import { HeaderBackButton } from "../../../ui/header-back";
 import { resolveBackTarget } from "../../../ui/navigation";
+import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
 type Period = "3m" | "6m" | "12m" | "year";
@@ -64,8 +65,8 @@ export default function AnalysisScreen() {
   const back = resolveBackTarget<Href>(from, { summary: "/(tabs)" }, "/(tabs)/cash-flow");
   const colors = useSeriesColors();
   const { width } = useWindowDimensions();
-  const compact = width < 900;
-  const narrow = width < 520;
+  const compact = !shouldUseWideWorkspace(width);
+  const narrow = shouldUseNarrowAnalytics(width);
   const liveStates = [categoriesState, personsState, sourcesState, budgetsState, transactionsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);

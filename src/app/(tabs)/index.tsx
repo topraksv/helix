@@ -37,6 +37,7 @@ import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
+import { shouldUseCompactChart } from "../../ui/responsive";
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
@@ -545,7 +546,7 @@ export default function DashboardScreen() {
                   slices={monthDonut.slices}
                   supplementalSlices={monthDonut.supplementalSlices}
                   totalMinor={monthDonut.totalMinor}
-                  size={width < 390 ? 144 : 168}
+                  size={shouldUseCompactChart(width) ? 144 : 168}
                 />
               ) : (
                 <Bars

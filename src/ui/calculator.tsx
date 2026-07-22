@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { Delete } from "lucide-react-native";
 import { formatMinor, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
 import { tr } from "../i18n/tr";
@@ -13,7 +13,6 @@ import { cardShadow, font, radius, scrim, spacing, type, useTheme } from "./them
 import { Button, FadeIn } from "./components";
 import { calculatorKeyHaptic } from "./calculator-feedback";
 import { haptic } from "./haptics";
-import { pushOverlay } from "./keyboard";
 import { useModalAccessibility } from "./accessibility";
 
 type Op = "+" | "-" | "×" | "÷";
@@ -298,7 +297,7 @@ export function CalculatorModal({
 }) {
   const { palette } = useTheme();
   const titleRef = useModalAccessibility(true, returnFocusRef);
-  useEffect(() => pushOverlay(), []); // suppress form Enter-submit while open
+  const { height } = useWindowDimensions();
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <Pressable
@@ -306,20 +305,28 @@ export function CalculatorModal({
         style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
-        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 340 }}>
-          <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
-            <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
-              <Text style={[type.heading, { color: palette.text, marginBottom: spacing.md }]}>{tr.tabs.calculator}</Text>
-            </View>
-            <CalculatorPad
-              onEscape={onClose}
-              onResult={(v) => {
-                onResult(v);
-                onClose();
-              }}
-            />
-          </FadeIn>
-        </Pressable>
+        <ScrollView
+          style={{ alignSelf: "stretch", maxHeight: Math.max(240, height - spacing.lg * 2) }}
+          contentContainerStyle={{ alignItems: "center" }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 340 }}>
+            <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
+              <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
+                <Text style={[type.heading, { color: palette.text, marginBottom: spacing.md }]}>{tr.tabs.calculator}</Text>
+              </View>
+              <CalculatorPad
+                onEscape={onClose}
+                onResult={(v) => {
+                  onResult(v);
+                  onClose();
+                }}
+              />
+            </FadeIn>
+          </Pressable>
+        </ScrollView>
       </Pressable>
     </Modal>
   );
