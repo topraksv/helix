@@ -82,6 +82,13 @@ describe("backup validation", () => {
     expect(isValidImportRow("transactions", transaction)).toBe(true);
   });
 
+  it("keeps pre-generation backups recoverable and validates supplied generations", () => {
+    expect(isValidImportRow("transactions", transaction)).toBe(true);
+    expect(isValidImportRow("transactions", { ...transaction, tombstone_version: 2 })).toBe(true);
+    expect(isValidImportRow("transactions", { ...transaction, tombstone_version: -1 })).toBe(false);
+    expect(isValidImportRow("transactions", { ...transaction, tombstone_version: 1.5 })).toBe(false);
+  });
+
   it("rejects unsafe money, invalid enums and impossible calendar dates", () => {
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: Number.MAX_SAFE_INTEGER + 1 })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, type: "refund" })).toBe(false);

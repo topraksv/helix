@@ -22,6 +22,9 @@ const syncColumns = {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   deletedAt: text("deleted_at"),
+  /** Monotonic delete generation. A stale client that last saw generation N
+   * cannot resurrect a row deleted at N+1, even if its wall clock is newer. */
+  tombstoneVersion: integer("tombstone_version").notNull().default(0),
 };
 
 export const persons = sqliteTable("persons", {

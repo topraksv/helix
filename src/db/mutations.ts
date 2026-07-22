@@ -13,6 +13,7 @@ import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
 import { deterministicId, naturalKeys } from "./ids";
+import { resolveTombstoneVersion } from "../sync/tombstone-policy";
 
 export interface RowWrite {
   table: SyncedTableName;
@@ -78,7 +79,12 @@ export function upsertSql(table: SyncedTableName, dbRow: Record<string, unknown>
     .map((k) => `${k} = excluded.${k}`)
     .join(", ");
   return {
-    sql: `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updates}`,
+    // A route/form may hold a stale row across an account boundary. Stamping
+    // `user_id` is not enough: without this conflict predicate, the upsert
+    // would turn an existing A row with the same id into a B row before RLS
+    // ever sees it. The zero-change result is treated as an ownership error by
+    // `persist` below.
+    sql: `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updates} WHERE ${table}.user_id = excluded.user_id`,
     args: keys.map((k) => normalizeForSqlite(dbRow[k])),
   };
 }
@@ -115,16 +121,78 @@ export async function writeRowBatchesAtomically(
     : null;
   const sqlite = await getSqliteAsync();
   await withTransaction(async () => {
-    const persist = async (table: SyncedTableName, row: Record<string, unknown>) => {
+    interface ExistingRowState {
+      userId: string;
+      deletedAt: string | null;
+      tombstoneVersion: number;
+    }
+    const stateKey = (table: SyncedTableName, id: string) => `${table}\u0000${id}`;
+    const loadBatchState = async (batch: readonly RowWrite[]): Promise<Map<string, ExistingRowState>> => {
+      const state = new Map<string, ExistingRowState>();
+      const idsByTable = new Map<SyncedTableName, string[]>();
+      for (const write of batch) {
+        if (typeof write.row.id !== "string" || write.row.id === "") {
+          throw new Error(`Write row id is invalid in ${write.table}`);
+        }
+        const ids = idsByTable.get(write.table) ?? [];
+        ids.push(write.row.id);
+        idsByTable.set(write.table, ids);
+      }
+      for (const [table, rawIds] of idsByTable) {
+        const ids = [...new Set(rawIds)];
+        for (let offset = 0; offset < ids.length; offset += 400) {
+          const chunk = ids.slice(offset, offset + 400);
+          const rows = await sqlite.getAllAsync<{
+            id: string;
+            user_id: string;
+            deleted_at: string | null;
+            tombstone_version: number;
+          }>(
+            `SELECT id, user_id, deleted_at, tombstone_version FROM ${table}
+             WHERE id IN (${chunk.map(() => "?").join(", ")})`,
+            chunk,
+          );
+          for (const existing of rows) {
+            state.set(stateKey(table, existing.id), {
+              userId: existing.user_id,
+              deletedAt: existing.deleted_at,
+              tombstoneVersion: existing.tombstone_version,
+            });
+          }
+        }
+      }
+      return state;
+    };
+    const persist = async (
+      table: SyncedTableName,
+      row: Record<string, unknown>,
+      states: Map<string, ExistingRowState>,
+    ) => {
       const timestamp = nowIso();
+      const id = String(row.id);
+      const key = stateKey(table, id);
+      const existing = states.get(key);
+      if (existing && existing.userId !== userId) {
+        throw new Error(`Write ownership conflict in ${table}`);
+      }
+      const requestedDeletedAt = "deletedAt" in row
+        ? (row.deletedAt == null ? null : String(row.deletedAt))
+        : (existing?.deletedAt ?? null);
+      const requestedVersion = Number.isSafeInteger(row.tombstoneVersion) && Number(row.tombstoneVersion) >= 0
+        ? Number(row.tombstoneVersion)
+        : 0;
+      const tombstoneVersion = resolveTombstoneVersion(existing ?? null, requestedDeletedAt, requestedVersion);
       const dbRow = toDbShape(table, {
         ...row,
         updatedAt: timestamp,
         createdAt: row.createdAt ?? timestamp,
         userId,
+        deletedAt: requestedDeletedAt,
+        tombstoneVersion,
       });
       const { sql, args } = upsertSql(table, dbRow);
-      await sqlite.runAsync(sql, args);
+      const result = await sqlite.runAsync(sql, args);
+      if (result.changes !== 1) throw new Error(`Write ownership conflict in ${table}`);
       // On an idempotency-key collision (two writes to the same row within the
       // same millisecond) the payload must be REPLACED, not ignored — otherwise
       // the stale first snapshot gets pushed and LWW echoes it back over the
@@ -135,11 +203,24 @@ export async function writeRowBatchesAtomically(
          ON CONFLICT(idempotency_key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`,
         [table, String(dbRow.id), JSON.stringify(dbRow), `${dbRow.id}:${dbRow.updated_at}`, nowIso()],
       );
+      states.set(key, { userId, deletedAt: requestedDeletedAt, tombstoneVersion });
     };
     for (const batch of batches) {
-      for (const write of batch) await persist(write.table, write.row);
+      const states = await loadBatchState(batch);
+      for (const write of batch) await persist(write.table, write.row, states);
     }
     if (lastEntryId) {
+      const lastEntryBatch: RowWrite[] = [{
+        table: "settings",
+        row: {
+          id: lastEntryId,
+          createdAt: nowIso(),
+          deletedAt: null,
+          key: "last_entry_at",
+          value: JSON.stringify(nowIso()),
+        },
+      }];
+      const states = await loadBatchState(lastEntryBatch);
       const timestamp = nowIso();
       await persist("settings", {
         id: lastEntryId,
@@ -147,7 +228,7 @@ export async function writeRowBatchesAtomically(
         deletedAt: null,
         key: "last_entry_at",
         value: JSON.stringify(timestamp),
-      });
+      }, states);
     }
   });
 }

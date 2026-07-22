@@ -170,7 +170,7 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
   // Final installments finishing within the horizon
   const finals = await sqlite.getAllAsync<{ title: string; effective_date: string }>(
     `SELECT ip.title, t.effective_date FROM transactions t
-     JOIN installment_plans ip ON ip.id = t.installment_plan_id
+     JOIN installment_plans ip ON ip.id = t.installment_plan_id AND ip.user_id = t.user_id
      WHERE t.user_id = ? AND t.deleted_at IS NULL AND ip.deleted_at IS NULL
        AND t.status = 'pending' AND t.installment_no = ip.installment_count
        AND t.effective_date BETWEEN ? AND ?`,

@@ -44,10 +44,10 @@ export async function buildTransactionsCsv(userId: string): Promise<string> {
             c.name as category, ps.name as source, p.name as person, t.installment_no, t.is_aggregate, t.note,
             cs.period_month, cs.statement_date
      FROM transactions t
-     LEFT JOIN categories c ON c.id = t.category_id
-     LEFT JOIN payment_sources ps ON ps.id = t.payment_source_id
-     LEFT JOIN persons p ON p.id = t.person_id
-     LEFT JOIN credit_card_statements cs ON cs.id = t.card_statement_id AND cs.deleted_at IS NULL
+     LEFT JOIN categories c ON c.id = t.category_id AND c.user_id = t.user_id
+     LEFT JOIN payment_sources ps ON ps.id = t.payment_source_id AND ps.user_id = t.user_id
+     LEFT JOIN persons p ON p.id = t.person_id AND p.user_id = t.user_id
+     LEFT JOIN credit_card_statements cs ON cs.id = t.card_statement_id AND cs.user_id = t.user_id AND cs.deleted_at IS NULL
      WHERE t.user_id = ? AND t.deleted_at IS NULL
      ORDER BY t.effective_date`,
     [userId],

@@ -298,7 +298,7 @@ describe("replace-mode import with an unreadable batch", () => {
         sql.includes("import_batch:")
           ? [{ key: "import_batch:2026", value: "{not json" }]
           : [],
-      getFirstAsync: async () => undefined,
+      getFirstAsync: async (sql: string) => sql.includes("FROM persons") ? { id: "person-self" } : undefined,
       runAsync: async () => undefined,
     });
     dependencies.readSetting.mockResolvedValue(null);
@@ -338,6 +338,18 @@ describe("replace-mode import with an unreadable batch", () => {
     await expect(
       repository.importSheets("user-1", { ...request, mode: "add" } as never),
     ).rejects.toBeInstanceOf(repository.ImportBatchUnreadableError);
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale or foreign self owner before planning any import writes", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getAllAsync: async () => [],
+      getFirstAsync: async () => undefined,
+      runAsync: async () => undefined,
+    });
+    await expect(
+      repository.importSheets("user-1", { ...request, selfId: "person-from-user-2", mode: "add" } as never),
+    ).rejects.toThrow("live self person");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 });

@@ -149,4 +149,13 @@ describe("created_at integrity", () => {
     // The INSERT branch must still carry it, or a new row would have none.
     expect(sql.slice(0, sql.indexOf("ON CONFLICT"))).toContain("created_at");
   });
+
+  it("cannot rewrite a colliding row from another local owner", () => {
+    apply(db, row());
+    apply(db, row({ user_id: "user-2", name: "foreign overwrite", updated_at: EDITED }));
+    const after = read(db);
+    expect(after.user_id).toBe("user-1");
+    expect(after.name).toBe("Market");
+    expect(after.updated_at).toBe(INSERTED);
+  });
 });

@@ -7,78 +7,48 @@ history log.
 
 ## Current state — 2026-07-22, Europe/Istanbul
 
-- Package 1 started from `37a296a`. Protected PR #49 carried the runtime work
-  and merged GitHub-verified as `408c098`; protected PR #50 carried linked
-  database verification and generated types and merged GitHub-verified as
-  `ccabdb7`.
-- The last code-bearing Pages run is `29871029794`, which completed
-  successfully for `408c098`. Protected PR #51 merged the test synchronization
-  and handoff as GitHub-verified `71f5c17`; its final Pages run `29873521094`
-  passed quality and deployed successfully. The deltas after `408c098` do not
-  alter the web runtime bundle.
-- Preview OTA group `40d1d11d-1d30-4d93-91c4-670df321b198` was published from
-  clean protected `ccabdb7`. Runtime is `1.0.0`, branch/channel are `preview`,
-  and the channel has one unconditional mapping to that branch. Android update
-  `019f86bd-0c1f-76c5-b5c4-121b5d03f396` and iOS update
-  `019f86bd-0c1f-70d3-8142-6f2284e10bb2` both carry the same Git commit.
-  Initial insights report zero installs/failures; installed-device acceptance
-  remains `BLOCKED` until two cold starts and the visible flow are exercised.
-- Linked Supabase has migrations `…01`–`…11` with exact local/remote parity and
-  clean public-schema lint. The privileged rollback suite passes 33/33
-  assertions; `finish(true)` completed and a negative probe proved that a
-  failing assertion is rejected. Linked database types were regenerated
-  verbatim.
-- Live Pages probes found status 200 plus the Helix shell for root, upcoming and
-  settings. The concrete dynamic month URL correctly returned GitHub Pages
-  status 404 with a body byte-identical to the root shell; its referenced entry
-  asset returned status 200. This is the documented custom-404 client-router
-  contract, not an application not-found screen.
+- Package 2A is complete on the single `package-2-security-hardening` branch,
+  started from Package 1 main `06406662e7b27163bcc6dfe85bb0bd4a9aa7c77b`.
+- Exact recovery-target validation, failed-global-sign-out local revoke,
+  remote `SIGNED_OUT` workspace cleanup, local owner-safe conflict upserts,
+  import self-owner validation and owner-safe export/notification joins are
+  implemented and adversarially tested.
+- Timestamp-only delete convergence was replaced with monotonic
+  `tombstone_version` across all 16 synced SQLite/Supabase tables. Stale lower
+  generations ACK the current server tombstone; explicit same-generation undo
+  remains supported. Legacy backups default the field to generation zero.
+- Linked Supabase migrations `…01`–`…12` have exact local/remote parity. Public
+  schema lint is clean; linked rollback pgTAP passes 45/45 assertions covering
+  RLS/policy/grant inventory, A/B isolation, tombstone generations and scoped
+  account deletion. Linked database types were regenerated verbatim.
+- All eight required security mutations were run, each target test failed, each
+  mutation was reverted, and every target passed again: owner filter,
+  `WITH CHECK`, session epoch, tombstone resurrection, import fail-closed,
+  recovery host/scheme, notification redaction and outbox owner isolation.
+- Commit gate passed with Node 22: `npm run verify` = 63 Vitest files / 472
+  tests, typecheck clean and zero-warning Expo lint. Browser E2E passed 21/21,
+  including real SQLite CRUD/restore, hostile routes, offline reload and a11y/
+  visual baselines. No screenshot baseline changed.
+- Physical OS validation remains device-only: lock-screen notification content,
+  app-switcher snapshot timing, biometric/Keychain behavior and two-installed-
+  client sync. No code-level critical/high security defect remains open.
+- Package 2A did not open a PR, merge, deploy Pages, publish OTA or create a
+  native build. The untracked `.codex/package-2-ledger.md` is intentionally not
+  part of the checkpoint.
 
-## Package 1 evidence
+## Rollback evidence
 
-Every project-owned file received a disposition: 310 starting files plus 15
-package additions, 325/325 reviewed. The audit covered:
-
-- bounded native auth-session storage and post-refresh session-epoch ownership;
-- real calendar-date, backup/import, favicon-host and notification fail-closed
-  boundaries;
-- tombstone-only authenticated Supabase access and persisted, rename-safe
-  transfer-category semantics;
-- one repository facade, atomic opening-balance writes and runtime-decoded
-  synced settings;
-- resolved live-data state, complete retry ownership, dirty-exit guards and
-  failure-preserving async editors across financial screens;
-- awaited shared undo, centralized Turkish copy and manifest-wide privacy/test
-  discovery;
-- dependency compatibility, scoped modern `xcode` UUID, and seven-day routine
-  package-publication quarantine;
-- two generated composite outbox indexes: a 100,000-row same-harness probe
-  changed batch reads 252.873→137.435 ms and acknowledgement reads
-  1,123.757→0.943 ms; regression tests assert both query plans.
-
-The full release gate passed with Node 22: clean install, typecheck, 62 Vitest
-files / 459 tests, zero-warning lint, 52-route production export, every bundle
-budget, and 21/21 Playwright visual/axe/behavior tests without baseline
-changes. The CI-only hydration race was traced to a 37 ms pre-hydration sample;
-the corrected exact test passed 20/20 repeated runs and the full browser suite
-passed 21/21 locally.
-
-Additional audit evidence: `expo install --check`; Expo Doctor 18/18; Drizzle
-check; reviewed Knip framework/generated/dynamic-import false positives; one
-justified lazy-calculator Madge cycle; reviewed Jscpd output; Semgrep 10 configs
-/ 0 findings; Gitleaks 398 commits plus exact worktree manifest / 0 real
-secrets; and dispositioned OSV findings.
-
-Production-export route UI-ready p50/p95 over ten rounds was dashboard
-119.0/232.4 ms, cash flow 119.4/167.1 ms, Settings 119.0/124.7 ms, and
-subscriptions 118.0/131.6 ms. Forty full route loads left documents at 1→1 and
-reduced listeners, nodes, and used JS heap. Markdown validation found 9/9 files,
-all relative targets/anchors, and all documented package scripts valid.
+- Last code-bearing release commit: `408c098`; successful Pages run
+  `29871029794`. Later Package 1 handoff/test sync Pages run `29873521094` also
+  passed.
+- Last preview OTA group:
+  `40d1d11d-1d30-4d93-91c4-670df321b198`; Android update
+  `019f86bd-0c1f-76c5-b5c4-121b5d03f396`, iOS update
+  `019f86bd-0c1f-70d3-8142-6f2284e10bb2`, runtime `1.0.0`.
+- Supabase migration 12 is already linked and additive. Do not remove the
+  column/function behavior while any Package 2A client can sync; use a forward
+  corrective migration if a defect is found.
 
 ## Next package
 
-No further implementation package is selected. Before starting one, verify
-current Git/PR/Pages state instead of inferring it from this snapshot. Physical
-VoiceOver/TalkBack, Dynamic Type, notification scheduling, app-switcher timing,
-two-device sync, and installed OTA acceptance still require real devices and
-remain explicitly `BLOCKED`.
+Run Package 2B from the latest signed checkpoint without repeating Package 2A.

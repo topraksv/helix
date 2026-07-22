@@ -67,7 +67,18 @@ export function isUuidShaped(id: unknown): id is string {
 }
 
 /** Corrupt local timestamps must not make a valid server row lose forever. */
-export function remoteWinsLww(localUpdatedAt: string | null, remoteUpdatedAt: string): boolean {
+export function remoteWinsLww(
+  localUpdatedAt: string | null,
+  remoteUpdatedAt: string,
+  localTombstoneVersion = 0,
+  remoteTombstoneVersion = 0,
+): boolean {
+  // Delete generations are server-coordinated and dominate wall clocks. A
+  // stale device may submit a later timestamp after being offline, but if it
+  // never observed generation N+1 it cannot revive or overwrite that delete.
+  if (remoteTombstoneVersion !== localTombstoneVersion) {
+    return remoteTombstoneVersion > localTombstoneVersion;
+  }
   const remote = Date.parse(remoteUpdatedAt);
   if (!Number.isFinite(remote)) return false;
   if (!localUpdatedAt) return true;

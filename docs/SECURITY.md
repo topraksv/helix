@@ -26,6 +26,9 @@ Postgres RLS'te uygulanır.
 - Şifre sıfırlama PKCE akışıdır. Web redirect'i Router'ın `/helix` base path'ini
   korumak zorundadır; kurulu build `helix://` şemasını kullanır. Recovery
   route'ları normal signed-in/onboarding guard'larından bilinçli olarak muaftır.
+  Callback içindeki bearer materyali yalnız runtime'ın birebir web
+  origin/base-path'i veya `helix://reset-password` hedefi eşleşirse kabul edilir;
+  farklı host, port, userinfo, scheme ve sibling route fail-closed reddedilir.
 - Bir e-postanın hesaba ait olup olmadığı sıfırlama akışında açığa çıkarılmaz
   (user enumeration).
 - Oturum saklama: native'de bounded, bozuk chunk marker’larında fail-closed
@@ -36,6 +39,13 @@ Postgres RLS'te uygulanır.
   (`startSyncSession`), çıkış/hesap silme `stopSyncSession`'ı bekler ve render'ı
   aşabilen her async iş `runSyncSessionTask` üzerinden koşar. A kullanıcısının
   geç dönen cevabı B aktifken yazamaz. Test: `session-epoch`, `session-task`.
+- Supabase gerçek bir `SIGNED_OUT` olayı bildirdiğinde owner-captured cleanup eski
+  epoch'i durdurur, bildirim/cache'i temizler, local workspace'i siler ve offline
+  bootstrap anahtarlarını kaldırır. Sıradan ağ kesintisi bu olayı üretmediği için
+  local-first offline erişim devam eder.
+- Açık çıkış global revoke sonucundaki hem throw'u hem `{ error }` değerini işler;
+  global revoke yapılamazsa persisted Supabase session'ı local scope'ta siler.
+  App workspace temizliği bu ağ sonucundan bağımsız olarak tamamlanır.
 - Native cihazda opsiyonel biyometrik app lock (`expo-local-authentication`).
 
 ## Yerel veri
@@ -65,14 +75,18 @@ Postgres RLS'te uygulanır.
   Linked rollout durumu [RELEASE.md](RELEASE.md#5--supabase-migration) içindedir.
 - `keep_alive` tablosu kullanıcı verisi tutmaz ve yalnız service-role
   heartbeat'ine açıktır.
+- Migration `00000000000012_tombstone_generation.sql` bütün 16 synced tabloda
+  monotonik `tombstone_version` taşır. Server trigger eski nesil write'ı mevcut
+  satırla ACK eder; böylece eski client'ın ileri saati silinmiş satırı diriltemez.
 - RPC: `delete_own_account` SECURITY DEFINER'dır ve öyle olmak zorundadır —
   kullanıcının `auth.users` üzerinde yetkisi yoktur. Gövde `auth.uid()` ile
   sınırlı, argümansız, `search_path = ''`, `execute` yalnız `authenticated`.
 - Trigger/RPC fonksiyonları sabit `search_path` ile yazılır (migration 3, 6, 7,
   8).
-- Kanıt: `supabase/tests/owner_integrity_and_rls.sql`, `plan(33)` — A/B
-  izolasyonu, owner değiştirme, anon/hard-delete reddi, cross-owner FK,
-  transfer constraint’i ve hesap-silme RPC davranışı.
+- Kanıt: `supabase/tests/owner_integrity_and_rls.sql`, `plan(45)` — 16 tablo için
+  RLS/policy/grant envanteri, A/B izolasyonu, owner değiştirme,
+  anon/hard-delete reddi, cross-owner FK, tombstone nesli, transfer constraint’i
+  ve hesap-silme RPC davranışı.
 
 ## Rol ayrımı ve secret'lar
 
@@ -107,6 +121,8 @@ içinde meta olarak taşınır ve `tests/release-config.test.ts` ile korunur:
 
 - Route param'ları düşmanca kabul edilir; domain predicate'iyle doğrulanmadan
   sorguya girmez.
+- Recovery URL'si query/hash parse edilmeden önce birebir callback origin/scheme/
+  path doğrulamasından geçer; token biçimi ayrıca `type=recovery` ister.
 - Workbook byte'ları SheetJS'e verilmeden önce ZIP central-directory
   entry/boyut/oran limitlerinden geçer; ardından sheet/row/cell/text limitleri
   uygulanır. XLSX dynamic import'tur.
@@ -214,7 +230,7 @@ Actions `quality` job’undadır.
 | A04 Insecure Design | APPLICABLE | outbox + `sync_dead_letters` karantina; all-or-nothing import; session epoch; `writeRows` tek transaction | `tests/sync-dead-letters.test.ts` (gerçek migration DDL'ine karşı), `tests/backup-validation.test.ts`, `tests/session-epoch.test.ts`, `tests/repository-contract.test.ts` (tek `writeRows`) | — |
 | A05 Security Misconfiguration | APPLICABLE | `src/app/+html.tsx` CSP; `dist/404.html` = root shell; sabit function `search_path`; açık table grant’ları | `tests/release-config.test.ts`; linked migration list + public-schema lint | **Bilinen:** `script-src 'unsafe-inline'` — statik export inline bootstrap üretiyor, `connect-src` daraltmasıyla telafi |
 | A06 Vulnerable Components | APPLICABLE | `package-lock.json`; SheetJS CDN pin; Dependabot guard'ları | clean `npm ci`; `npm ls --all`; `npm audit`ta kalan tek advisory zinciri dev-only Drizzle transpiler’ındaki dört moderate node | Advisory dispozisyonları [RELEASE.md](RELEASE.md#5b--dependabot-bulguları) içinde; runtime bundle’a girmez |
-| A07 Identification & Auth Failures | APPLICABLE | Supabase Auth; PKCE recovery; `src/auth/verification-brake.ts`; `src/auth/session.ts` epoch'ları | `tests/auth.test.ts` (expired/reused/malformed link), `tests/verification-brake.test.ts` (18 vaka), `tests/session-task.test.ts` | E-posta enumeration sıfırlama akışında açığa çıkmıyor |
+| A07 Identification & Auth Failures | APPLICABLE | Supabase Auth; exact-target PKCE recovery; remote `SIGNED_OUT` cleanup; `src/auth/verification-brake.ts`; `src/auth/session.ts` epoch'ları | `tests/auth.test.ts` (expired/reused/malformed/hostile-target link), `tests/privacy.test.ts`, `tests/verification-brake.test.ts` (18 vaka), `tests/session-task.test.ts` | E-posta enumeration sıfırlama akışında açığa çıkmıyor |
 | A08 Software & Data Integrity | APPLICABLE | Bütün Action referansları full-SHA pinli; OTA runtime `appVersion` + channel ayrımı; lockfile integrity; imzalı commit + korumalı `main` | `tests/release-config.test.ts`; clean `npm ci`; GitHub verified signature/check | **Bilinen:** ek OTA code-signing anahtarı yapılandırılmadı; güven sınırı EAS hesabı |
 | A09 Logging & Monitoring Failures | APPLICABLE | `src/services/logger.ts`, `src/services/diagnostics.ts` (12 kayıtlık bounded ring) | `tests/diagnostics.test.ts` (tam anahtar kümesi + negatif PII regex), `tests/privacy.test.ts` | **Bilinen:** merkezi crash/telemetry alerting yok — sessiz hata maintainer'a otomatik ulaşmıyor |
 | A10 SSRF | APPLICABLE | `src/domain/logo-domain.ts` public-host doğrulaması; sabit FX/market endpoint listesi; CSP `connect-src` | `tests/external-services.test.ts` (credential/port/localhost/IP reddi), `e2e/helpers.ts` host-eşleşmesi (substring değil) | Kullanıcı serbest URL giremiyor; yalnız domain adı |
@@ -247,7 +263,7 @@ uygulanabilirliğe göre değerlendirildi.
 | V1 Architecture | APPLICABLE | `docs/ARCHITECTURE.md` bağımlılık yönü + güven sınırları tablosu (bu belgenin başı) |
 | V2 Authentication | APPLICABLE | Supabase Auth; `tests/auth.test.ts`; şifre gücü form doğrulamasında (plan sınırı: leaked-password kontrolü Free plan'de yok) |
 | V3 Session Management | APPLICABLE | SecureStore + session epoch; `tests/session-epoch.test.ts`, `tests/session-task.test.ts` |
-| V4 Access Control | APPLICABLE | RLS; 33 assertion’lı linked pgTAP |
+| V4 Access Control | APPLICABLE | RLS; 45 assertion’lı linked pgTAP |
 | V5 Validation / Encoding | APPLICABLE | `route-params`, `backup-validation`, `spreadsheet-import`, `csvCell`; Semgrep 0 |
 | V6 Stored Cryptography | **DEVICE/BINARY ONLY** | `NSFileProtectionComplete` yalnız yerel `npx expo run:ios --device` build'inde etkinleşir; doğrulaması cihazda yapılır |
 | V7 Error Handling & Logging | APPLICABLE | `tests/diagnostics.test.ts`, `tests/privacy.test.ts`, `tests/undo-outcome.test.ts` (yanıltıcı başarı yok) |
