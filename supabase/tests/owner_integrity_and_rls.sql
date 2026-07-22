@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(45);
+select extensions.plan(48);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -148,6 +148,10 @@ select is(
       and has_table_privilege('authenticated', format('public.%I', name), 'INSERT')
       and has_table_privilege('authenticated', format('public.%I', name), 'UPDATE')
       and not has_table_privilege('authenticated', format('public.%I', name), 'DELETE')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'TRUNCATE')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'REFERENCES')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'TRIGGER')
+      and not has_table_privilege('authenticated', format('public.%I', name), 'MAINTAIN')
   ),
   16::bigint,
   'authenticated grants are limited to select, insert and update'
@@ -169,6 +173,43 @@ select is(
   ),
   0::bigint,
   'anon has no synced-table privilege'
+);
+
+select is(
+  (
+    select count(*)
+    from unnest(array[
+      'public.enforce_category_kind()'::regprocedure,
+      'public.enforce_expected_payment_ref()'::regprocedure,
+      'public.enforce_expense_budget_category()'::regprocedure,
+      'public.set_updated_at()'::regprocedure
+    ]) as functions(oid)
+    where not has_function_privilege('anon', oid, 'EXECUTE')
+      and not has_function_privilege('authenticated', oid, 'EXECUTE')
+  ),
+  4::bigint,
+  'trigger functions are not directly executable by client roles'
+);
+
+select ok(
+  not has_table_privilege('anon', 'public.keep_alive', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'INSERT')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'UPDATE')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'DELETE')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'TRUNCATE')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'REFERENCES')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'TRIGGER')
+    and not has_table_privilege('authenticated', 'public.keep_alive', 'MAINTAIN'),
+  'keepalive remains service-role only at the privilege layer'
+);
+
+select ok(
+  pg_catalog.to_regclass('public.idx_card_statement_user_source_period') is null
+    and pg_catalog.to_regclass(
+      'public.credit_card_statements_user_id_payment_source_id_period_mon_key'
+    ) is not null,
+  'the statement natural key has one covering index, not a duplicate copy'
 );
 
 select is(
