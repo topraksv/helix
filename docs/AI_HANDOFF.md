@@ -9,7 +9,7 @@ history log.
 
 - Package 2D implementation and local closure are complete on
   `package-2-security-hardening`, continuing from signed checkpoint `3950e17`.
-  The single Package 2 PR has not yet been opened or merged.
+  The single delivery PR is #53; it is open and not yet merged.
 - Material reliability fixes make onboarding/import sorts explicit and route
   synchronous and asynchronous native haptic failures into one consumed promise
   boundary. Focused tests cover both haptic failure modes. The web release budget
@@ -47,8 +47,9 @@ history log.
   required Actions `quality`. GitHub-owned, SHA-pinned Actions only; private
   vulnerability reporting, secret scanning, push protection and Dependabot
   security updates are enabled. Open CodeQL, Dependabot and secret alerts are 0.
-  Dependency Review `review` must first report successfully on the Package 2 PR,
-  then be added to the exact required checks before the final PR run and merge.
+  Dependency Review `review` passed its first PR run and is now enforced beside
+  `quality` as an exact GitHub Actions required check. Final PR checks and merge
+  remain pending.
 
 ## External, plan and device limits
 
@@ -83,7 +84,6 @@ history log.
 
 ## Next exact step
 
-Remove temporary analysis state and the Package 2 ledger, create signed
-owner-authored commits, push this existing branch, open the one Package 2 PR,
-enforce successful Dependency Review, merge through protection, then complete
-Pages/live smoke and preview OTA delivery from final `main`.
+Push this handoff-only signed commit to PR #53, wait for both required checks and
+CodeQL, merge through protection, then complete Pages/live smoke and preview OTA
+delivery from final `main`.
