@@ -20,6 +20,7 @@ import {
   failLiveQuery,
   initialLiveSnapshot,
   readSyncedFlag,
+  snapshotForParameters,
   startLiveQuery,
   type LiveSnapshot,
 } from "./live-state";
@@ -48,6 +49,12 @@ function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly 
   const retryRef = useRef<() => void>(() => {});
   const retry = useCallback(() => retryRef.current(), []);
   const [state, setState] = useState<LiveResult<T>>({ ...initialLiveSnapshot<T[]>([]), retry });
+  // Which question the snapshot in `state` actually answers. The effect below
+  // also resets it, but effects run AFTER the render that changed `deps`, so
+  // for exactly one render `state` would still hold the previous parameters'
+  // answer — resolved `updatedAt` and all.
+  const depsKey = JSON.stringify(deps ?? []);
+  const [answeredDeps, setAnsweredDeps] = useState(depsKey);
 
   // The builder object is recreated every render, but it only *changes*
   // when deps change — the effect closure capturing it is deps-accurate,
@@ -117,7 +124,17 @@ function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  return state;
+  // Report "not resolved yet" for the new parameters in the same render that
+  // changed them, and adjust the stored state so the next one agrees. React
+  // sanctions this shape for deriving state from changed inputs, and it keeps
+  // the rule out of a ref that the compiler must not see read during render.
+  const pending: LiveResult<T> = { ...initialLiveSnapshot<T[]>([]), retry };
+  const readable = snapshotForParameters(state, answeredDeps, depsKey, pending) as LiveResult<T>;
+  if (readable !== state) {
+    setAnsweredDeps(depsKey);
+    setState(pending);
+  }
+  return readable;
 }
 
 export function useUserId(): string {
