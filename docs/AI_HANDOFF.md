@@ -7,6 +7,19 @@ history log.
 
 ## Current state — 2026-07-25, Europe/Istanbul
 
+- **Fixed after the 3E release: an existing account no longer sees Quick Start
+  when it signs back in.** `useLive` dropped a snapshot whose parameters changed
+  inside an effect, and effects run after the render that changed them — so for
+  exactly one render the root guard read the signed-out query's resolved empty
+  result as this account's answer, decided it was not onboarded and redirected
+  to `/(onboarding)/setup` before the first-pull grace effect had started. Once
+  that redirect lands, the onboarding route legitimately renders until the pull
+  arrives, which is the second or two that was visible. A live snapshot is now
+  reported as unresolved in the same render its parameters change
+  (`snapshotForParameters`), so the guard waits instead. The same render window
+  could let a previous account's `account_frozen` flag gate the next one; both
+  are pinned by `tests/app-guard.test.ts`.
+
 - Package 3E (cross-device sync and session reliability) is delivered.
   Protected main carries `0ec54d1ce7af27f7959f1517697380bb5f1f2d51` (PR #59,
   squash), Pages run `30150439790` deployed it, and the `preview` OTA was

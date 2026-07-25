@@ -40,6 +40,27 @@ export function failLiveQuery<T>(previous: LiveSnapshot<T>, attempt: number, at:
 }
 
 /**
+ * The snapshot a consumer may read this render.
+ *
+ * A live query answers one question — a user, a month, an account. When its
+ * parameters change the previous answer is not a "last good snapshot" of the
+ * new one, and dropping it inside an effect is one render too late: effects run
+ * after the render that changed the parameters, so a guard reading during that
+ * render still sees the old question's resolved `updatedAt`. That is exactly
+ * how logout → login flashed Quick Start at an existing account — the signed
+ * out query's resolved empty result was read as "this account is not
+ * onboarded" before any effect, including the first-pull grace, had run.
+ */
+export function snapshotForParameters<T>(
+  snapshot: LiveSnapshot<T>,
+  answeredParameters: string,
+  currentParameters: string,
+  pending: LiveSnapshot<T>,
+): LiveSnapshot<T> {
+  return answeredParameters === currentParameters ? snapshot : pending;
+}
+
+/**
  * Read a synced boolean setting (`onboarded`, `account_frozen`) that a route
  * guard depends on. `null` means "not resolved yet" and must never be treated
  * as `false`.
