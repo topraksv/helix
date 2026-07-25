@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   addMarketExpense,
   assertNoRuntimeErrors,
@@ -16,6 +16,14 @@ import {
 // antialiasing. Keep the local budget strict and cap Linux at 4%, while the
 // semantic assertions below continue to guard exact labels and structure.
 const maxVisualDiffPixelRatio = process.platform === "linux" ? 0.04 : 0.01;
+
+/**
+ * The screen header carries the dashboard's greeting and today's date, both
+ * read from the clock. They are content, not layout, and baking them into a
+ * baseline makes the suite pass or fail by the hour it happens to run in.
+ * Masked everywhere a dashboard screenshot is taken; nothing else is hidden.
+ */
+const clockMask = (page: Page) => [page.locator('[data-testid="screen-header"]')];
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -189,6 +197,7 @@ test("large exact negative amounts keep their sign and digits on one visual line
   await expect(page).toHaveScreenshot("dashboard-large-negative-phone-320-light.png", {
     animations: "disabled",
     caret: "hide",
+    mask: clockMask(page),
     maxDiffPixelRatio: maxVisualDiffPixelRatio,
   });
 
@@ -212,6 +221,7 @@ test("large exact negative amounts keep their sign and digits on one visual line
   await expect(page).toHaveScreenshot("dashboard-large-negative-phone-320-dark.png", {
     animations: "disabled",
     caret: "hide",
+    mask: clockMask(page),
     maxDiffPixelRatio: maxVisualDiffPixelRatio,
   });
 
@@ -239,15 +249,16 @@ test("dashboard remains visually stable across viewport and theme matrix", async
     for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto("/helix/");
-      await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
       if (viewport.width === 320) {
         const visibleLabels = await page.getByRole("tab").allTextContents();
-        expect(visibleLabels).toEqual(["Özet", "Tablo", "Abonelik", "Hesap", "Ayarlar"]);
+        expect(visibleLabels).toEqual(["Durum", "Tablo", "Abonelikler", "Araçlar", "Ayarlar"]);
         expect(visibleLabels.join("")).not.toContain("…");
       }
       await expect(page).toHaveScreenshot(`dashboard-${viewport.name}-${scheme}.png`, {
         animations: "disabled",
         caret: "hide",
+        mask: clockMask(page),
         maxDiffPixelRatio: maxVisualDiffPixelRatio,
       });
     }

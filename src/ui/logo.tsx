@@ -27,7 +27,7 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { InitialsBadge } from "./components";
-import { font, useTheme } from "./theme";
+import { font } from "./theme";
 import { BRAND, brandPlate } from "../domain/brand-colors";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
@@ -44,6 +44,16 @@ function tileStyle(size: number) {
     overflow: "hidden" as const,
   };
 }
+
+/**
+ * The plate every remote favicon sits on, in both themes.
+ *
+ * Third-party marks are drawn for a light background and carry their own,
+ * wildly inconsistent, internal padding. Painting them on the theme surface
+ * made that padding look like a defect in dark mode; a constant light plate
+ * makes every tile read the same way instead.
+ */
+const FAVICON_PLATE = "#ffffff";
 
 /** Utility/service keywords → icon + accent (checked before brand lookup). */
 const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
@@ -197,7 +207,6 @@ export function Logo({
   domain?: string | null;
   size?: number;
 }) {
-  const { palette } = useTheme();
   const [failedDomain, setFailedDomain] = useState<string | null>(null);
 
   const utility = UTILITY_ICONS.find((u) => u.match.test(name));
@@ -211,7 +220,14 @@ export function Logo({
 
   if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {
     return (
-      <View style={[tileStyle(size), { backgroundColor: palette.surfaceAlt }]}>
+      // Favicons are not a uniform set: some are full-bleed app icons that
+      // reach every edge (iCloud), others are a centred mark on transparency
+      // (YouTube). Nothing can make both fill the tile identically without
+      // cropping one of them, so the tile itself is normalised instead — a
+      // constant light plate, the background this artwork is drawn for. On the
+      // theme surface the transparent margin read as a dark band above and
+      // below the mark; on the plate it is simply the icon's own white space.
+      <View style={[tileStyle(size), { backgroundColor: FAVICON_PLATE }]}>
         <Image
           accessible={false}
           accessibilityRole="none"
@@ -219,10 +235,10 @@ export function Logo({
           alt=""
           source={{ uri: faviconUrl }}
           onError={() => setFailedDomain(faviconDomain)}
-          // Fill the whole frame instead of floating at 72% inside it, which
-          // left a ring of the theme surface colour showing around the mark.
           style={{ width: size, height: size }}
-          contentFit="cover"
+          // `contain`, never `cover`: a favicon that is not square must letterbox
+          // rather than lose part of the mark to a crop.
+          contentFit="contain"
           cachePolicy="disk"
         />
       </View>

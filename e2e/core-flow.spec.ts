@@ -91,7 +91,7 @@ test("a clean browser restores a backup and a relationally invalid file writes n
   const chooserPromise = restorePage.waitForEvent("filechooser");
   await restorePage.getByRole("button", { name: /Yedek \(JSON\) içe aktar/ }).click();
   await (await chooserPromise).setFiles(backupPath);
-  await expect(restorePage.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+  await expect(restorePage.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await restorePage.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await restorePage.getByRole("button", { name: /Market.*345,67/ }).click();
   await expect(restorePage.getByText("Atomik geri yükleme kanıtı", { exact: true })).toBeVisible();

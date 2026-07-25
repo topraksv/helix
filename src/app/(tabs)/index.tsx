@@ -501,7 +501,11 @@ export default function DashboardScreen() {
               }
             />
           ))}
-          <Button label={tr.dashboard.allUpcoming} variant="ghost" onPress={() => router.push("/upcoming" as Href)} />
+          {/* A card's trailing link action is `sm`, like every other one in the
+              app. A regular button's 48pt minimum height centres its label
+              14.5pt from the card's padding while a ListRow insets its text by
+              10 — which is exactly the uneven top/bottom gap this card had. */}
+          <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
         </Card>
       ) : (
         <Card>

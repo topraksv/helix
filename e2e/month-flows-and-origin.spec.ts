@@ -64,7 +64,7 @@ test("an untouched month still reads zero rather than a borrowed number", async 
 test("the transfer classification appears once, in the row being edited", async ({ page }) => {
   await onboard(page);
   await page.goto("/helix/columns-editor");
-  const transferSwitches = page.getByRole("switch", { name: /Transfer kategorisi/ });
+  const transferSwitches = page.getByRole("switch", { name: /Yatırım kategorisi/ });
 
   // Exactly one: the new-category form. Never one under every column.
   await expect(transferSwitches).toHaveCount(1);
@@ -77,7 +77,7 @@ test("the transfer classification appears once, in the row being edited", async 
   // Editing a column reveals its own classification, and only its own.
   await page.getByRole("button", { name: "Düzenle · Market" }).click();
   await expect(transferSwitches).toHaveCount(2);
-  const rowSwitch = page.getByRole("switch", { name: "Market · Transfer kategorisi" });
+  const rowSwitch = page.getByRole("switch", { name: "Market · Yatırım kategorisi" });
   await expect(rowSwitch).toHaveAttribute("aria-checked", "false");
 
   // It reads and writes the edited category, saved together with the name.
@@ -88,7 +88,7 @@ test("the transfer classification appears once, in the row being edited", async 
 
   // Re-opening the row reads the persisted value back.
   await page.getByRole("button", { name: "Düzenle · Market" }).click();
-  await expect(page.getByRole("switch", { name: "Market · Transfer kategorisi" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("switch", { name: "Market · Yatırım kategorisi" })).toHaveAttribute("aria-checked", "true");
 });
 
 test("Analysis returns to Summary even after a detour through Budgets", async ({ page }) => {
@@ -97,7 +97,7 @@ test("Analysis returns to Summary even after a detour through Budgets", async ({
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("from")).toBe("summary");
 
-  await page.getByRole("button", { name: /Aylık bütçeni belirle/ }).click();
+  await page.getByRole("button", { name: /Aylık harcama limitini belirle/ }).click();
   await expect(page).toHaveURL(/settings\/budgets/);
 
   // Back to Analysis — with the origin it was opened with, not a bare URL.
@@ -108,7 +108,7 @@ test("Analysis returns to Summary even after a detour through Budgets", async ({
   // …so the next back reaches Summary, not the Financial Table.
   await page.getByRole("button", { name: "Geri" }).click();
   await expect(page).toHaveURL(/\/helix\/$/);
-  await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
 });
 
 test("Analysis opened from the Financial Table still goes back to it", async ({ page }) => {

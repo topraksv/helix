@@ -2,7 +2,8 @@ import React from "react";
 import { Stack } from "expo-router";
 import { tr } from "../../../i18n/tr";
 import { HeaderBackButton } from "../../../ui/header-back";
-import { stackScreenOptions } from "../../../ui/navigation";
+import { stackScreenOptions } from "../../../ui/header-bar";
+
 import { useTheme } from "../../../ui/theme";
 
 export const unstable_settings = { initialRouteName: "index" };

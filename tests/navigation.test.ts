@@ -2,26 +2,48 @@ import { describe, expect, it, vi } from "vitest";
 import { ANALYSIS_SOURCES, knownSource, navigateBack, resolveBackTarget } from "../src/ui/navigation";
 import { classifyRecordId } from "../src/domain/route-params";
 
+const mockRouter = (canGoBack: boolean) => ({
+  canGoBack: () => canGoBack,
+  back: vi.fn(),
+  replace: vi.fn(),
+  navigate: vi.fn(),
+});
+
 describe("safe back navigation", () => {
   it("uses stack history when a previous screen exists", () => {
-    const router = { canGoBack: () => true, back: vi.fn(), replace: vi.fn() };
+    const router = mockRouter(true);
     navigateBack(router, "/fallback");
     expect(router.back).toHaveBeenCalledOnce();
     expect(router.replace).not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 
   it("returns to the screen parent for a direct link", () => {
-    const router = { canGoBack: () => false, back: vi.fn(), replace: vi.fn() };
+    const router = mockRouter(false);
     navigateBack(router, "/fallback");
     expect(router.back).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledWith("/fallback");
   });
 
-  it("ignores available history when the source was recorded exactly", () => {
-    const router = { canGoBack: () => true, back: vi.fn(), replace: vi.fn() };
+  /**
+   * The recorded origin is in another tab, and this screen sits on a stack the
+   * anchored push mounted at its own index. Both have to be undone: a single
+   * cross-navigator replace left native standing on the anchor (the Financial
+   * Table), and would have left the stack wound up even where it "worked".
+   */
+  it("unwinds its own stack AND moves to the recorded source", () => {
+    const router = mockRouter(true);
+    navigateBack(router, "/(tabs)", true);
+    expect(router.back).toHaveBeenCalledOnce();
+    expect(router.navigate).toHaveBeenCalledWith("/(tabs)");
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("still reaches the recorded source when there is no stack to unwind", () => {
+    const router = mockRouter(false);
     navigateBack(router, "/(tabs)", true);
     expect(router.back).not.toHaveBeenCalled();
-    expect(router.replace).toHaveBeenCalledWith("/(tabs)");
+    expect(router.navigate).toHaveBeenCalledWith("/(tabs)");
   });
 });
 

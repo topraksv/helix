@@ -74,7 +74,7 @@ export async function onboard(page: Page): Promise<void> {
     await skipTour.click();
     await expect(skipTour).toBeHidden();
   }
-  await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
 }
 
 export async function openCashFlow(page: Page): Promise<void> {

@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, Text, useColorScheme, View } from "react-native";
+import { Platform, Pressable, Text, useColorScheme, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
@@ -31,8 +31,10 @@ import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
+import { BrandLoader } from "../ui/brand-loader";
 import { HeaderBackButton } from "../ui/header-back";
-import { stackScreenOptions } from "../ui/navigation";
+import { stackScreenOptions } from "../ui/header-bar";
+
 import { devError } from "../services/logger";
 import { PrivacyCover } from "../ui/privacy-cover";
 import {
@@ -94,7 +96,6 @@ export default function RootLayout() {
 
   const background = systemScheme === "dark" ? darkPalette.background : lightPalette.background;
   const foreground = systemScheme === "dark" ? darkPalette.text : lightPalette.text;
-  const primary = systemScheme === "dark" ? darkPalette.primary : lightPalette.primary;
   const primaryForeground = systemScheme === "dark" ? darkPalette.primaryText : lightPalette.primaryText;
   const fontsReady = fontsLoaded || fontsError != null || fontGrace;
 
@@ -143,7 +144,7 @@ export default function RootLayout() {
               </Pressable>
             </>
           ) : (
-            <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={primary} />
+            <BrandLoader />
           )}
         </View>
       )}
@@ -303,7 +304,7 @@ function RootLayoutInner() {
             />
           </View>
         ) : awaitingFirstPull || !guard.redirect ? (
-          <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={theme.palette.primary} />
+          <BrandLoader />
         ) : null}
       </View>
     );

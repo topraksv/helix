@@ -30,13 +30,15 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   const operationGuard = useOperationGuard();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"expense" | "income">("expense");
-  const [isTransfer, setIsTransfer] = useState(false);
+  const [isInvestment, setIsInvestment] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  // The transfer flag is a rarely-changed classification of the category, not
-  // a per-row switch: it belongs to the row being edited, alongside its name.
-  const [editTransfer, setEditTransfer] = useState(false);
+  // "Yatırım kategorisi" is a rarely-changed classification of the category,
+  // not a per-row switch: it belongs to the row being edited, alongside its
+  // name. It is persisted as `isTransfer` — the product concept is investment,
+  // the stored column keeps its original name (see ARCHITECTURE.md).
+  const [editInvestment, setEditInvestment] = useState(false);
   // Freeze the screen's scroll while a row is being dragged, so the vertical
   // drag reorders instead of scrolling the page.
   const [dragging, setDragging] = useState(false);
@@ -45,13 +47,13 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     name.trim() !== "" ||
       Boolean(
         editingCategory &&
-          (editName.trim() !== editingCategory.name || editTransfer !== editingCategory.isTransfer),
+          (editName.trim() !== editingCategory.name || editInvestment !== editingCategory.isTransfer),
       ),
   );
   const startEditing = (category: (typeof categories)[number]) => {
     setEditingId(category.id);
     setEditName(category.name);
-    setEditTransfer(category.isTransfer);
+    setEditInvestment(category.isTransfer);
   };
   const categoryPlaceholder = useRotatingPlaceholder(placeholderPools.category);
   const dataStatus = combineLiveQueryStatus([categoriesState]);
@@ -62,10 +64,10 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     await operationGuard.run(async () => {
       setAdding(true);
       try {
-        await createCategory(userId, { name, kind, isTransfer, sortOrder: categories.length });
+        await createCategory(userId, { name, kind, isTransfer: isInvestment, sortOrder: categories.length });
         scheduleSync(userId);
         setName("");
-        setIsTransfer(false);
+        setIsInvestment(false);
       } catch {
         void appAlert(tr.errors.saveFailed, tr.errors.title);
       } finally {
@@ -150,16 +152,16 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
           value={kind}
           onChange={(value) => {
             setKind(value);
-            if (value === "income") setIsTransfer(false);
+            if (value === "income") setIsInvestment(false);
           }}
         />
         {kind === "expense" ? (
           <Spread style={{ marginBottom: spacing.md }}>
             <View style={{ flex: 1, paddingRight: spacing.md }}>
-              <Body>{tr.settings.transferCategory}</Body>
-              <Body muted style={{ fontSize: 12 }}>{tr.settings.transferCategoryDesc}</Body>
+              <Body>{tr.settings.investmentCategory}</Body>
+              <Body muted style={{ fontSize: 12 }}>{tr.settings.investmentCategoryDesc}</Body>
             </View>
-            <Toggle label={tr.settings.transferCategory} value={isTransfer} onValueChange={setIsTransfer} />
+            <Toggle label={tr.settings.investmentCategory} value={isInvestment} onValueChange={setIsInvestment} />
           </Spread>
         ) : null}
         <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
@@ -200,7 +202,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                           void update(
                             c,
                             c.kind === "expense"
-                              ? { name: editName.trim(), isTransfer: editTransfer }
+                              ? { name: editName.trim(), isTransfer: editInvestment }
                               : { name: editName.trim() },
                           ).then((saved) => {
                             if (saved) setEditingId(null);
@@ -212,13 +214,13 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                     {c.kind === "expense" ? (
                       <Spread style={{ paddingBottom: spacing.sm }}>
                         <View style={{ flex: 1, paddingRight: spacing.md }}>
-                          <Body style={{ fontSize: 12 }}>{tr.settings.transferCategory}</Body>
-                          <Body muted style={{ fontSize: 12 }}>{tr.settings.transferCategoryDesc}</Body>
+                          <Body style={{ fontSize: 12 }}>{tr.settings.investmentCategory}</Body>
+                          <Body muted style={{ fontSize: 12 }}>{tr.settings.investmentCategoryDesc}</Body>
                         </View>
                         <Toggle
-                          label={`${c.name} · ${tr.settings.transferCategory}`}
-                          value={editTransfer}
-                          onValueChange={setEditTransfer}
+                          label={`${c.name} · ${tr.settings.investmentCategory}`}
+                          value={editInvestment}
+                          onValueChange={setEditInvestment}
                         />
                       </Spread>
                     ) : null}

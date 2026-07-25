@@ -28,6 +28,7 @@ import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, E
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { initialsBadgeColor } from "./badge-color";
+import { BrandLoader } from "./brand-loader";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
@@ -171,7 +172,10 @@ export function Screen({
 
   const header =
     title != null ? (
-      <View style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
+      // Identified so a visual baseline can mask it: the dashboard's title is
+      // a greeting and its subtitle today's date, both derived from the clock.
+      // Baking either into a screenshot makes the suite fail by the hour.
+      <View testID="screen-header" style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
         {leading}
         <View style={{ flex: 1 }}>
           <Text accessibilityRole="header" style={[type.title, { color: palette.text }]}>{title}</Text>
@@ -1149,9 +1153,11 @@ export function DataStateNotice({
         accessible
         accessibilityLiveRegion="polite"
         accessibilityLabel={tr.dataState.loading}
-        style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}
+        style={{ alignItems: "center", gap: spacing.sm, marginBottom: spacing.md, paddingVertical: spacing.md }}
       >
-        <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} />
+        {/* Short waits keep a plain spinner; a wait long enough to notice turns
+            into the breathing brand mark (see `ui/brand-loader.tsx`). */}
+        <BrandLoader size={48} />
         <Body muted>{tr.dataState.loading}</Body>
       </View>
     );
