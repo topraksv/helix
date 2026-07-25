@@ -23,6 +23,8 @@ import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Amount, Body, Button, Card, CardList, DataStateNotice, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "./components";
 import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
+import { userMessage } from "../domain/user-error";
+import { devError } from "../services/logger";
 import { spacing } from "./theme";
 import { useUndo } from "./undo";
 import { navigateBack } from "./navigation";
@@ -68,7 +70,8 @@ export function OpeningBalanceEditor() {
       allowExit(close);
     } catch (e) {
       errorNotice();
-      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+      devError("balance.current", e);
+      void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
     } finally {
       setSavingBalance(false);
     }
@@ -99,7 +102,8 @@ export function OpeningBalanceEditor() {
       scheduleSync(userId);
       allowExit(close);
     } catch (e) {
-      void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+      devError("balance.opening", e);
+      void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
     } finally {
       setSavingOpening(false);
     }

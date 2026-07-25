@@ -21,6 +21,8 @@ import { useOperationGuard } from "../../ui/operation-guard";
 import { readPickedText } from "../../services/picked-file";
 import { MonthDayField, monthDayLabel } from "../../ui/month-day-field";
 import { useDirtyExitGuard } from "../../ui/dirty-exit";
+import { UserFacingError, userMessage } from "../../domain/user-error";
+import { devError } from "../../services/logger";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const ALL_TEMPLATES: TemplateCategory[] = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
@@ -223,7 +225,7 @@ export default function SetupScreen() {
           // backup seeds the workspace and shows the "prepared" note (P1-2).
           const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
           if (picked.canceled || !picked.assets[0]) return;
-          if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
+          if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new UserFacingError(tr.errors.backupTooLarge);
           setBusy(true);
           const content = await readPickedText(picked.assets[0]);
           // Validate and restore the complete workspace atomically. Seeding first
@@ -240,7 +242,8 @@ export default function SetupScreen() {
           else allowExit(() => router.push("/import-wizard"));
         }
       } catch (e) {
-        void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+        devError("onboarding.import", e);
+        void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
       } finally {
         setBusy(false);
       }
@@ -263,7 +266,8 @@ export default function SetupScreen() {
         // (React #185). Keep the button in its loading state until the guard
         // unmounts this screen; only clear `busy` on failure.
       } catch (e) {
-        void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+        devError("onboarding.commit", e);
+        void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
         setBusy(false);
       }
     });

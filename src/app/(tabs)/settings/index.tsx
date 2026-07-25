@@ -37,6 +37,8 @@ import { syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalThemePreference } from "../../_layout";
+import { UserFacingError, userMessage } from "../../../domain/user-error";
+import { devError } from "../../../services/logger";
 import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
@@ -142,7 +144,11 @@ export default function SettingsScreen() {
       try {
         await operation();
       } catch (e) {
-        notify(`⚠ ${e instanceof Error ? e.message : String(e)}`);
+        // Backup, CSV and restore failures arrive from the file system, the
+        // share sheet or a rejected bundle. Only a message authored for the
+        // user may be shown; everything else stays in the dev-only log.
+        devError(`settings.${kind}`, e);
+        notify(`⚠ ${userMessage(e, tr.errors.requestFailed)}`);
       } finally {
         setDataBusy(null);
       }
@@ -176,7 +182,7 @@ export default function SettingsScreen() {
     if (picked.canceled || !picked.assets[0]) return;
     const asset = picked.assets[0];
     await runDataOperation("import", async () => {
-      if ((asset.size ?? 0) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
+      if ((asset.size ?? 0) > MAX_BACKUP_BYTES) throw new UserFacingError(tr.errors.backupTooLarge);
       const content = await readPickedText(asset);
       const result = await importBundle(userId, parseExportBundleText(content));
       const message =

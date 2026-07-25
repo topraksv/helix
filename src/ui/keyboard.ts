@@ -11,6 +11,7 @@
 
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
+import { focusOwnsEnterKey } from "./submit-shortcut";
 
 let openOverlays = 0;
 
@@ -33,7 +34,7 @@ function anyOverlayOpen(): boolean {
 /**
  * Submit `onSubmit` when the user presses Enter (web only). Disabled via
  * `enabled` (e.g. when the form is invalid), while any overlay is open, or when
- * focus is in a multiline textarea.
+ * the focused control owns Enter itself.
  */
 export function useSubmitOnEnter(onSubmit: () => void, enabled = true): void {
   const ref = useRef(onSubmit);
@@ -43,8 +44,7 @@ export function useSubmitOnEnter(onSubmit: () => void, enabled = true): void {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.isComposing || anyOverlayOpen()) return;
-      const el = document.activeElement as HTMLElement | null;
-      if (el && el.tagName === "TEXTAREA") return; // Enter = newline in notes
+      if (focusOwnsEnterKey(document.activeElement as HTMLElement | null)) return;
       e.preventDefault();
       ref.current();
     };
