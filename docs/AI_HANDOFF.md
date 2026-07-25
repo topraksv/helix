@@ -125,12 +125,25 @@ to an OTA-only one.
 
 ## Delivery and rollback evidence
 
-- Last delivered web release before this package is
-  `8a02162` ("close Package 4 reliability, privacy and recovery work", PR #62).
-- Last preview OTA is Package 3E group `07b13519-d3d7-4f10-a7d6-6c8cc7dc245f`,
-  runtime `1.0.0`, branch `preview`, from
-  `0ec54d1ce7af27f7959f1517697380bb5f1f2d51`.
-- Rollback anchor is the Package 3D release: main
+- Delivered web release is `71c665f0451ff7d512e98b7f2d795eda7acce51f`
+  ("agree month totals with their breakdown and keep back origins", PR #64),
+  Pages run `30168578249`, deployed head SHA identical to that commit.
+  Post-deploy smoke on the live site: `/`, `/404.html`, `/sw.js` and
+  `/cash-flow/analytics` all 200; a real Chromium load reported zero page and
+  console errors, zero failed same-origin requests, and the service worker
+  registered at `https://topraksv.github.io/helix/`. The deployed entry bundle
+  contains `projectedClosingMinor` / `plannedExpenseMinor` /
+  `plannedTransferMinor`, so the shipped JS really is this build. **The live app
+  requires sign-in, so the four fixes were exercised end-to-end against the
+  release's own local-only export, not against the owner's account.**
+- Preview OTA is group `e24a6876-188a-47df-8863-6cbc8416575c` (android
+  `019f9a77-336b-7ec2-97df-35f0836c5626`, iOS
+  `019f9a77-336b-7914-b8cd-25c9d4a1c5e3`), runtime `1.0.0`, branch `preview`,
+  from `71c665f0451ff7d512e98b7f2d795eda7acce51f` with a clean working tree.
+  The channel is still mapped unconditionally (`branchMappingLogic: "true"`) to
+  the `preview` branch. Installed delivery is **not** verified — no device.
+- Previous release, and the rollback anchor for this one: main
+  `8a02162` (PR #62); before it, Package 3D main
   `012847192cba2303bb5ff8c2f322e31325265853`, Pages run `30148599977`, OTA group
   `613cbec8-4f52-44b4-b907-0a2be3a5f938`.
 - This diff is TS/TSX, tests and docs only — no `app.json`, `eas.json`,
