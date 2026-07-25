@@ -253,6 +253,7 @@ blokajlar [TESTING.md](TESTING.md#gerçek-cihaz-kabulü) matrisindedir.
 | Database network restrictions | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Maintainer/CI kaynak aralıkları sabitlenip owner onayı alınmadan daraltılmaz |
 | MASVS-RESILIENCE | `N/A` | Bloklamaz | Anti-tamper/obfuscation/root tespiti threat model'de gerekçeli kapsam dışıdır |
 | `xlsx` otomatik npm uyarı kapsamı | `ACCEPTED RESIDUAL RISK` | Bloklamaz | CDN tarball'ı OSV + manuel upstream advisory kontrolüyle izlenir |
+| `brace-expansion` DoS (GHSA-mh99-v99m-4gvg, High) | `ACCEPTED RESIDUAL RISK` | Bloklamaz | Upstream'de düzeltme yalnız 5.0.8'de; 1.x ve 2.x hatlarına backport YOK. Ağaçtaki 5.x kopyaları override ile 5.0.8'e alındı. Kalan iki kopya `minimatch@3.1.5` (`brace-expansion@^1.1.7`) ve `minimatch@9.0.9` (`^2.0.2`) tarafından sabitleniyor ve yükseltilemiyor: brace-expansion 5 CommonJS'ten **fonksiyon değil nesne** döndürüyor (`{ EXPANSION_MAX, EXPANSION_MAX_LENGTH, expand }`), minimatch@3 ise `var expand = require('brace-expansion')` deyip `expand(pattern)` çağırıyor — zorlandığında eslint ve Expo CLI çöküyor. `minimatch@10`'a çıkmak da aynı duvara toslar (`require('minimatch')` yine nesne döndürür, `glob@7` kırılır). Yayımlanmış tarball'lar üzerinde doğrulandı. Erişilebilirlik: yalnız lint/build sırasında, bu repo'nun kendi yazdığı glob pattern'leri üzerinde çalışır; web bundle'ına, OTA payload'ına veya kullanıcı girdisine temas etmez. Kapanışı `BACKLOG-SDK-01` (Expo/RN/eslint major) yükseltmesine bağlıdır |
 
 ## Plan sınırlı opsiyonel kontroller
 
