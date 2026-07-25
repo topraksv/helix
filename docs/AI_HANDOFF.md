@@ -7,10 +7,12 @@ history log.
 
 ## Current state — 2026-07-25, Europe/Istanbul
 
-- Package 3E (cross-device sync and session reliability) is implemented on
-  `package-3e-device-sync`. It adds no second sync engine, no new abstraction
-  layer, no timer and no polling: the fixes are in the session layer that was
-  causing the failures.
+- Package 3E (cross-device sync and session reliability) is delivered.
+  Protected main carries `0ec54d1ce7af27f7959f1517697380bb5f1f2d51` (PR #59,
+  squash), Pages run `30150439790` deployed it, and the `preview` OTA was
+  published from that exact commit. It adds no second sync engine, no new
+  abstraction layer, no timer and no polling: the fixes are in the session layer
+  that was causing the failures.
 - **An ordinary sign-out no longer ends the account's other sessions.**
   `supabase.auth.signOut()` defaults to `scope: "global"`, so signing out of the
   web app revoked every refresh token: the phone's next refresh failed, Supabase
@@ -69,19 +71,25 @@ history log.
 
 ## Delivery and rollback evidence
 
-- Last delivered web release is the Package 3D protected-main commit
-  `012847192cba2303bb5ff8c2f322e31325265853`; Pages run `30148599977` and
-  `github-pages` deployment `5599398668` succeeded. The documentation-only
-  commit `f498dc724ca31d60b258ada7c1e8c5a0f5f4a355` redeployed the same
-  application bundle and carries no OTA of its own.
-- Last preview OTA is Package 3D group `613cbec8-4f52-44b4-b907-0a2be3a5f938`;
-  Android `019f981e-e55d-7bdd-806a-13b6db63386c`, iOS
-  `019f981e-e55d-7f6d-a931-4d8506d8d556`, runtime `1.0.0`, branch `preview`,
-  exact git commit `012847192cba2303bb5ff8c2f322e31325265853`, zero source-map
-  assets.
-- Package 3E is JS/TS, tests and documentation only, so it needs no native
-  rebuild. Production OTA stays withheld until installed-device cold-start and
-  synchronisation acceptance is genuinely verified.
+- Last delivered web release is the Package 3E protected-main commit
+  `0ec54d1ce7af27f7959f1517697380bb5f1f2d51`; Pages run `30150439790` and
+  `github-pages` deployment `5599744549` succeeded. Live smoke passed: static
+  routes 200, an unexported month URL 404 with a byte-identical root shell, no
+  `sourceMappingURL` and no `.map` served.
+- Last preview OTA is Package 3E group `07b13519-d3d7-4f10-a7d6-6c8cc7dc245f`;
+  Android `019f9856-024d-77a8-a911-7d2d54b098ed`, iOS
+  `019f9856-024d-738a-ac39-4bcf97a9adc0`, runtime `1.0.0`, branch `preview`,
+  exact git commit `0ec54d1ce7af27f7959f1517697380bb5f1f2d51`, clean working
+  tree, 34 assets per platform, zero source-map assets. The channel still maps
+  unconditionally to the `preview` branch.
+- Package 3E's diff is JS/TS, tests and documentation only — no `app.json`,
+  `eas.json`, lockfile, native directory, asset or Supabase migration change —
+  so no native rebuild was required. **Production OTA stays withheld** until
+  installed-device cold-start and synchronisation acceptance is genuinely
+  verified.
+- Rollback anchor is the Package 3D release: main
+  `012847192cba2303bb5ff8c2f322e31325265853`, Pages run `30148599977`, OTA group
+  `613cbec8-4f52-44b4-b907-0a2be3a5f938`.
 
 ## Next exact step
 
