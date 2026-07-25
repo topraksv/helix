@@ -305,9 +305,16 @@ export function CalculatorModal({
         style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
+        {/* The scroller only exists so a short viewport can reach the whole pad;
+            it must not decide where the pad sits. On web its default
+            `flexGrow: 1` stretched it to the full overlay height while the
+            content stayed pinned to the top, which is what pushed the popup up
+            and off screen. Growing the CONTENT and centring it there keeps the
+            pad centred whenever it fits and scrollable when it does not —
+            identically on both platforms. */}
         <ScrollView
           style={{ alignSelf: "stretch", maxHeight: Math.max(240, height - spacing.lg * 2) }}
-          contentContainerStyle={{ alignItems: "center" }}
+          contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center" }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           bounces={false}
@@ -315,7 +322,7 @@ export function CalculatorModal({
           <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 340 }}>
             <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
               <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
-                <Text style={[type.heading, { color: palette.text, marginBottom: spacing.md }]}>{tr.tabs.calculator}</Text>
+                <Text style={[type.heading, { color: palette.text, marginBottom: spacing.md }]}>{tr.a11y.calculatorTitle}</Text>
               </View>
               <CalculatorPad
                 onEscape={onClose}

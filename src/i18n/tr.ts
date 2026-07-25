@@ -3,8 +3,11 @@
 export const tr = {
   app: { name: "Helix", tagline: "Nakit akışın, taksitlerin ve aboneliklerin tek yerde." },
   meta: { description: "Aylık nakit akışı, taksitler ve abonelikler için çevrimdışı çalışabilen kişisel finans uygulaması." },
-  tabs: { dashboard: "Bütçe Özeti", cashflow: "Mali Tablo", subscriptions: "Abonelikler", calculator: "Hesap", settings: "Ayarlar" },
-  tabBar: { dashboard: "Özet", cashflow: "Tablo", subscriptions: "Abonelik", calculator: "Hesap", settings: "Ayarlar" },
+  // `tabs` is the accessible/screen name of each tab, `tabBar` its short footer
+  // label. They stay in step: the footer says "Durum", so the tab announces
+  // "Durum" too — a screen reader must not name a screen the UI never calls it.
+  tabs: { dashboard: "Durum", cashflow: "Mali Tablo", subscriptions: "Abonelikler", calculator: "Araçlar", settings: "Ayarlar" },
+  tabBar: { dashboard: "Durum", cashflow: "Tablo", subscriptions: "Abonelikler", calculator: "Araçlar", settings: "Ayarlar" },
   common: {
     save: "Kaydet", cancel: "Vazgeç", delete: "Sil", edit: "Düzenle", add: "Ekle",
     undo: "Geri Al", deleted: "Silindi", search: "Ara", close: "Kapat", done: "Tamam",
@@ -30,6 +33,9 @@ export const tr = {
     showPassword: "Şifreyi göster",
     hidePassword: "Şifreyi gizle",
     openCalculator: "Hesap makinesini aç",
+    // The tab is now called "Araçlar"; the popup inside an amount field is
+    // still just the calculator and must say so.
+    calculatorTitle: "Hesap Makinesi",
     selectOption: "Bir seçenek belirle",
     fieldError: (message: string) => `Alan hatası: ${message}`,
     tourStep: (step: number, total: number, title: string) => `${total} adımdan ${step}. ${title}`,
@@ -480,21 +486,21 @@ export const tr = {
     existingTitle: "Kolonların",
   },
   budgets: {
-    title: "Aylık Bütçeler",
+    title: "Aylık Harcama Limiti",
     settingsDesc: "Gider kalemlerine aylık sınır koy, kalanını ve aşımı izle.",
-    intro: "Yalnızca sana yön veren kategori hedefleri belirle. Bütçe bir harcama oluşturmaz; gerçekleşen işlemlerle ilerlemeyi gösterir.",
+    intro: "Yalnızca sana yön veren kategori hedefleri belirle. Limit bir harcama oluşturmaz; gerçekleşen işlemlerle ilerlemeyi gösterir.",
     category: "Gider kalemi",
     pickCategory: "Bir gider kalemi seç",
-    amount: "Aylık bütçe",
-    add: "Bütçe Ekle",
-    emptyTitle: "Bu ay için bütçe yok",
+    amount: "Aylık limit",
+    add: "Limit Ekle",
+    emptyTitle: "Bu ay için limit yok",
     emptyHint: "Önem verdiğin bir gider kalemini ve ulaşmak istediğin aylık sınırı seç.",
-    progress: (spent: string, budget: string) => `${spent} harcandı · ${budget} bütçe`,
-    over: (amount: string) => `Bütçe ${amount} aşıldı`,
+    progress: (spent: string, limit: string) => `${spent} harcandı · ${limit} limit`,
+    over: (amount: string) => `Limit ${amount} aşıldı`,
     remaining: (amount: string) => `${amount} kaldı`,
-    emptyAnalysisTitle: "Aylık bütçeni belirle",
+    emptyAnalysisTitle: "Aylık harcama limitini belirle",
     emptyAnalysisHint: "Önemli gider kalemlerinde ne kadar kaldığını Analiz ekranında izle.",
-    analysisTitle: (month: string) => `${month} bütçe durumu`,
+    analysisTitle: (month: string) => `${month} limit durumu`,
   },
   analysis: {
     findTransaction: "İşlem Bul",
@@ -587,8 +593,8 @@ export const tr = {
     showPending: "İleri Tarihli İşlemler Tabloda Görünsün",
     showPendingHint: "Kapatırsan gelecek tarihli kayıtlar hücrelerde gizlenir; bakiye zaten günü gelince etkilenir.",
     kindExpense: "Gider", kindIncome: "Gelir",
-    transferCategory: "Transfer kategorisi",
-    transferCategoryDesc: "Mali Tablo girişlerini harcama yerine bakiye transferi sayar.",
+    investmentCategory: "Yatırım kategorisi",
+    investmentCategoryDesc: "Bu kalemdeki tutarlar harcama değil, yatırıma aktarılan para sayılır.",
     addCategory: "Kategori Ekle",
     incomeRules: "Düzenli Gelirler",
     incomeRulesDesc: "Maaş, kira gibi her ay tekrar eden gelirleri bir kez tanımla.",
@@ -713,7 +719,7 @@ export const tr = {
     resultUnavailable: "Sonuç desteklenen tutar sınırını aşıyor",
   },
   tour: {
-    s1Title: "Bütçe Özeti",
+    s1Title: "Durum",
     s1Body: "Açılış ekranın: güncel bakiyen, ay sonunda nereye varacağının öngörüsü ve yaklaşan ödemeler bir arada. Canlı altın ve döviz fiyatları da burada. Yeni bir harcama veya gelir eklemek için İşlem Ekle yeterli.",
     s2Title: "İşlem Eklemek",
     s2Body: "Tutarı yaz, kategori seç, gün seç, bitti. Tarihi ileriye alırsan işlem o gün gelince bakiyene yansır. Taksitli bir harcamayı bir kez girersin, Helix aylara böler. Yanına küçük hesap makinesiyle tutarı hesaplayabilirsin.",

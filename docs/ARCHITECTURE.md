@@ -161,6 +161,14 @@ whose `null` means unresolved.
   semantic independently of its editable name. Fixed expenses are
   installment/subscription-linked;
   ordinary expenses default to variable.
+- **The product calls this concept "Yatırım"; storage calls it `transfer`.**
+  Every user-facing string is investment ("Yatırım kategorisi", the Yatırım
+  column, the Yatırım flow on a month card), and new UI code should be written
+  in those terms. The persisted names — the `is_transfer` column, the
+  `transfer` transaction type and its server check constraint — are deliberately
+  NOT renamed: they are the sync payload, the backup format and a migration
+  history that older clients and existing exports still speak. Rename the
+  vocabulary at the UI boundary, never in the row.
 - **Credit cards** require both statement and due days. A purchase keeps its
   real `purchase_date`, belongs to a persisted `credit_card_statements` period,
   and affects the ledger only on that statement's `due_date`. Non-card

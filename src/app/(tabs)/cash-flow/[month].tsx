@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronDown, ChevronUp, Inbox, StickyNote } from "lucide-react-native";
+import { ChevronDown, ChevronUp, Inbox } from "lucide-react-native";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
 import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
@@ -28,7 +28,7 @@ import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Body, Button, Card, DataStateNotice, Divider, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
@@ -213,7 +213,11 @@ export default function MonthDetailScreen() {
                     {category ? `${categoryIcon(category)} ` : ""}
                     {title}
                   </Heading>
-                  {note ? <StickyNote accessible={false} size={14} color={palette.textSecondary} /> : null}
+                  {/* A note is a piece of the user's own writing, so it is
+                      announced with a word in the app's own badge system —
+                      not a skeuomorphic sticky-note glyph that reads as
+                      decoration and says nothing at a glance. */}
+                  {note ? <Badge text={tr.common.note} /> : null}
                 </Row>
                 <Row gap={spacing.sm}>
                   <Amount minor={selfSum} />

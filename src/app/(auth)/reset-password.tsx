@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { AlertCircle, CheckCircle2, KeyRound } from "lucide-react-native";
 import { useSession } from "../../auth/session";
 import { tr } from "../../i18n/tr";
+import { BrandLoader } from "../../ui/brand-loader";
 import { Body, Button, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { radius, spacing, type, useTheme } from "../../ui/theme";
@@ -63,7 +64,7 @@ export default function ResetPasswordScreen() {
     return (
       <Screen scroll={false} maxWidth={440}>
         <View accessible accessibilityLiveRegion="polite" accessibilityLabel={tr.dataState.loading} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} />
+          <BrandLoader />
         </View>
       </Screen>
     );

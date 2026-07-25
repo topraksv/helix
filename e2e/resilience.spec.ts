@@ -25,10 +25,10 @@ test("offline relaunch keeps the SQLite ledger and avoids duplicate writes", asy
   // One controlled online navigation lets the active worker cache every
   // content-hashed asset before the true offline cold reload.
   await page.reload();
-  await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await expect(page.getByText(/-₺210,50/).first()).toBeVisible();
   await context.setOffline(false);
 
@@ -70,7 +70,7 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   await page.close();
   await second.bringToFront();
   await second.getByRole("button", { name: "Tekrar dene" }).click();
-  await expect(second.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible({ timeout: 20_000 });
+  await expect(second.getByRole("tab", { name: "Durum", selected: true })).toBeVisible({ timeout: 20_000 });
   await second.goto(`/helix/cash-flow/${currentMonthKey()}`);
   await expect(second.getByRole("button", { name: /Market.*410,00/ })).toBeVisible();
   await second.close();
@@ -84,7 +84,7 @@ test("protected and modal deep links keep deterministic navigation", async ({ pa
   const routes: [string, string][] = [
     ["/helix/upcoming", "Yaklaşan Takvimi"],
     ["/helix/cash-flow/analytics", "Analiz"],
-    ["/helix/settings/budgets", "Aylık Bütçeler"],
+    ["/helix/settings/budgets", "Aylık Harcama Limiti"],
     ["/helix/transaction", "Yeni İşlem"],
   ];
   for (const [route, heading] of routes) {
@@ -150,11 +150,11 @@ test("Analysis goes back to whichever screen opened it", async ({ page }, testIn
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
-  await page.getByRole("tab", { name: "Bütçe Özeti" }).click();
+  await page.getByRole("tab", { name: "Durum" }).click();
   await page.getByRole("button", { name: /Net değişim/ }).click();
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toHaveCount(0);
 
   await page.getByRole("tab", { name: "Mali Tablo" }).click();
@@ -178,7 +178,7 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
   await onboard(page);
   await addMarketExpense(page, "Aylık grafik", "820,00");
 
-  await page.getByRole("tab", { name: "Bütçe Özeti" }).click();
+  await page.getByRole("tab", { name: "Durum" }).click();
   await expect(page.getByRole("button", { name: /Ay sonu tahmini/ })).toBeVisible();
   await expect(page.getByRole("img", { name: /Halka grafik/ })).toBeVisible();
   await page.getByRole("radio", { name: "Sütun", exact: true }).click();
@@ -186,7 +186,7 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
 
   await page.getByRole("button", { name: /Net değişim/ }).click();
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Bütçe Özeti" }).click();
+  await page.getByRole("tab", { name: "Durum" }).click();
   await page.getByRole("tab", { name: "Mali Tablo" }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   await assertNoRuntimeErrors(errors, testInfo);
@@ -287,7 +287,7 @@ test("multi-entry settings screens return to whoever opened them", async ({ page
   await page.goto("/helix/cash-flow/analytics?from=summary");
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
   await page.goto("/helix/settings/budgets?from=analysis");
-  await expect(page.getByRole("heading", { name: "Aylık Bütçeler", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Aylık Harcama Limiti", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Geri", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
 
@@ -352,9 +352,9 @@ test("the FX provider is called once per session, not once per entry point", asy
     .toBeLessThanOrEqual(1);
 
   // Client-side navigation away and back must not add another inside the window.
-  await page.getByRole("tab", { name: "Bütçe Özeti" }).click();
-  await expect(page.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Hesap" }).click();
+  await page.getByRole("tab", { name: "Durum" }).click();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Araçlar" }).click();
   await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
   await page.waitForTimeout(1200);
   expect(fxCalls.length, "a repeat visit refetched inside the 60 s throttle").toBeLessThanOrEqual(1);

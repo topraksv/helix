@@ -1,13 +1,37 @@
-import { font, type Palette } from "./theme";
+
+export interface BackRouter<T> {
+  canGoBack: () => boolean;
+  back: () => void;
+  replace: (href: T) => void;
+  navigate: (href: T) => void;
+}
 
 export function navigateBack<T>(
-  router: { canGoBack: () => boolean; back: () => void; replace: (href: T) => void },
+  router: BackRouter<T>,
   fallback: T,
   /** Skip history and go straight to `fallback` (see `resolveBackTarget`). */
   exact = false,
 ): void {
-  if (!exact && router.canGoBack()) router.back();
-  else router.replace(fallback);
+  if (!exact) {
+    if (router.canGoBack()) router.back();
+    else router.replace(fallback);
+    return;
+  }
+  /**
+   * An exact target lives in ANOTHER navigator — the tab the user came from —
+   * while this screen sits on top of a stack that the anchored push mounted at
+   * its own index. Those are two separate things to undo, and a single
+   * cross-navigator `replace` only reliably does one of them: on web the URL
+   * rebuilds the whole tree so it looked right, but on native the action is
+   * dispatched to the nearest navigator, so the user was left standing on the
+   * anchor — the Financial Table — instead of the screen they came from.
+   *
+   * Unwind this stack first, then move to the recorded origin. Leaving the
+   * stack wound up would also mean returning to that tab later reopened the
+   * screen the user had just left.
+   */
+  if (router.canGoBack()) router.back();
+  router.navigate(fallback);
 }
 
 /**
@@ -53,15 +77,3 @@ export function knownSource(value: unknown, sources: Readonly<Record<string, unk
 
 /** Where Analysis returns to, per screen that is allowed to push it. */
 export const ANALYSIS_SOURCES = { summary: "/(tabs)" } as const;
-
-export function stackScreenOptions(palette: Palette) {
-  return {
-    headerStyle: { backgroundColor: palette.surface },
-    headerTintColor: palette.accentText,
-    headerTitleStyle: { color: palette.textStrong, fontFamily: font.semibold },
-    headerBackButtonDisplayMode: "minimal" as const,
-    headerShadowVisible: false,
-    gestureEnabled: true,
-    contentStyle: { backgroundColor: palette.background },
-  };
-}
