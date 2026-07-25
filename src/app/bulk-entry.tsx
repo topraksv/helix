@@ -15,6 +15,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { Body, Button, DataStateNotice, Heading, IconButton, MoneyField, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
+import { userMessage } from "../domain/user-error";
+import { devError } from "../services/logger";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -72,7 +74,8 @@ export default function BulkEntryModal() {
         setValues({});
         setMonth(addMonthsToKey(month, -1)); // convenient: walk backwards month by month
       } catch (e) {
-        void appAlert(e instanceof Error ? e.message : String(e), tr.errors.title);
+        devError("bulk-entry.save", e);
+        void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
       } finally {
         setBusy(false);
       }

@@ -134,7 +134,11 @@ test("an open dialog is a real modal that owns focus", async ({ page }, testInfo
     };
   });
   await page.getByRole("button", { name: /Yedek Oluştur/ }).click();
-  await expect(page.getByText(/E2E dialog semantics/)).toBeVisible();
+  // The dialog reports the outcome in the user's own language. A platform
+  // exception's text is developer material and must never reach the screen —
+  // this assertion is what previously proved the opposite.
+  await expect(page.getByText(/İşlem tamamlanamadı/)).toBeVisible();
+  await expect(page.getByText(/E2E dialog semantics/)).toHaveCount(0);
 
   // `useModalAccessibility` moves focus on a 40 ms timer, so poll rather than
   // sampling once — a single immediate read races the hook, not the app.
@@ -205,6 +209,58 @@ test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }, 
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(dialogTitle).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Tutar · TRY" })).toHaveValue("125,00");
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("Enter belongs to the focused control, not the form's primary save", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.goto("/helix/transaction");
+  await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
+
+  const amount = page.getByRole("textbox", { name: "Tutar · TRY" });
+  await amount.fill("250,00");
+  await page.getByRole("radio", { name: /Market/ }).click();
+
+  // 1 · The secondary action. Enter used to run the primary Save from here, so
+  // the entry was written AND the screen closed — the opposite of what the
+  // focused "save and add another" button promises.
+  await page.getByRole("button", { name: "Kaydet ve Yeni Ekle", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/helix\/transaction$/);
+  const notice = page.getByText("İşlem kaydedildi.");
+  await expect(notice).toBeVisible();
+  await expect(amount).toHaveValue("");
+  // A cleared field alone reads as "my input was discarded", and a screen
+  // reader sees nothing at all — the confirmation has to be announced.
+  await expect(
+    notice.locator("xpath=ancestor-or-self::*[@aria-live][1]"),
+  ).toHaveAttribute("aria-live", "polite");
+
+  // 2 · A switch flips instead of committing the entry.
+  await amount.fill("120,00");
+  const refund = page.getByRole("switch", { name: "İade" }).first();
+  const before = await refund.getAttribute("aria-checked");
+  await refund.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/helix\/transaction$/);
+  await expect(refund).not.toHaveAttribute("aria-checked", before ?? "false");
+
+  // 3 · A chip selects instead of saving whatever was selected before it.
+  const income = page.getByRole("radio", { name: "Gelir", exact: true });
+  await income.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/helix\/transaction$/);
+  await expect(income).toHaveAttribute("aria-checked", "true");
+
+  // 4 · The documented shortcut still works from a single-line field.
+  await page.getByRole("radio", { name: "Gider", exact: true }).click();
+  await page.getByRole("radio", { name: /Market/ }).click();
+  await amount.fill("99,00");
+  await amount.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/helix\/cash-flow$/);
 
   await assertNoRuntimeErrors(errors, testInfo);
 });

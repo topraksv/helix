@@ -376,6 +376,7 @@ export const tr = {
     alreadyPaid: "Ödenen Taksit",
     installmentInfo: (m: string, n: number) => `${n} taksit × ${m}`,
     saveAndNew: "Kaydet ve Yeni Ekle",
+    savedNotice: "İşlem kaydedildi.",
     deletedUndo: "İşlem silindi",
   },
   bulk: {

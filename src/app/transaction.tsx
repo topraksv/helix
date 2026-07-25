@@ -28,6 +28,7 @@ import { radius, spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
+import { useUndo } from "../ui/undo";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 type EntryType = "expense" | "income" | "transfer";
@@ -72,6 +73,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const router = useRouter();
   const { palette } = useTheme();
   const operationGuard = useOperationGuard();
+  const undo = useUndo();
   const liveStates = [categoriesState, sourcesState, personsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -267,6 +269,10 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           setAmountMinor(null);
           setIsReversal(false);
           setNote("");
+          // Staying on the form means the cleared amount is the only thing that
+          // changes, and a blank field reads just as easily as "my input was
+          // discarded". Confirm the write through the shared bar.
+          undo.show(tr.tx.savedNotice);
         } else {
           allowExit(close);
         }

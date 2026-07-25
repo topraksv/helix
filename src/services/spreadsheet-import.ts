@@ -14,6 +14,7 @@
 
 import type * as XLSXTypes from "xlsx";
 import { tr } from "../i18n/tr";
+import { UserFacingError } from "../domain/user-error";
 import type { MonthKey } from "../domain/dates";
 import { addMonthsToKey, yearOf } from "../domain/dates";
 import { isSupportedMinorAmount, roundHalfAwayFromZero, type Minor } from "../domain/money";
@@ -548,7 +549,7 @@ function worksheetToRawGrid(ws: XLSXTypes.WorkSheet, xlsx: XlsxModule): RawCell[
         (cell?.f && cell.f.length > MAX_CELL_TEXT_LENGTH) ||
         cell?.c?.some((comment) => (comment.t?.length ?? 0) > MAX_CELL_TEXT_LENGTH)
       ) {
-        throw new Error(tr.importer.workbookTooComplex);
+        throw new UserFacingError(tr.importer.workbookTooComplex);
       }
       row.push(cell ? { v: cell.v ?? null, f: cell.f, c: cell.c } : { v: null });
     }
@@ -559,14 +560,14 @@ function worksheetToRawGrid(ws: XLSXTypes.WorkSheet, xlsx: XlsxModule): RawCell[
 
 /** Parse every sheet in a workbook; unparseable sheets are reported, not dropped. */
 export function parseWorkbook(wb: XLSXTypes.WorkBook, xlsx: XlsxModule): ParsedWorkbook {
-  if (wb.SheetNames.length > MAX_WORKBOOK_SHEETS) throw new Error(tr.importer.workbookTooComplex);
+  if (wb.SheetNames.length > MAX_WORKBOOK_SHEETS) throw new UserFacingError(tr.importer.workbookTooComplex);
   const sheets: ParsedSheet[] = [];
   const unparsed: UnparsedSheet[] = [];
   const informational = new Set<string>();
   let totalCells = 0;
   for (const name of wb.SheetNames) {
     const worksheet = wb.Sheets[name];
-    if (!worksheet) throw new Error(tr.importer.workbookTooComplex);
+    if (!worksheet) throw new UserFacingError(tr.importer.workbookTooComplex);
     const ref = worksheet?.["!fullref"] ?? worksheet?.["!ref"];
     if (ref) {
       const range = xlsx.utils.decode_range(ref);
@@ -578,7 +579,7 @@ export function parseWorkbook(wb: XLSXTypes.WorkBook, xlsx: XlsxModule): ParsedW
         columns > MAX_WORKBOOK_COLUMNS_PER_SHEET ||
         totalCells > MAX_WORKBOOK_CELLS
       ) {
-        throw new Error(tr.importer.workbookTooComplex);
+        throw new UserFacingError(tr.importer.workbookTooComplex);
       }
     }
     const grid = worksheetToRawGrid(worksheet, xlsx);
@@ -617,7 +618,7 @@ export function validateWorkbookContainer(data: Uint8Array): void {
       break;
     }
   }
-  if (eocd < 0) throw new Error(tr.importer.workbookTooComplex);
+  if (eocd < 0) throw new UserFacingError(tr.importer.workbookTooComplex);
   const entryCount = view.getUint16(eocd + 10, true);
   const centralSize = view.getUint32(eocd + 12, true);
   const centralOffset = view.getUint32(eocd + 16, true);
@@ -626,14 +627,14 @@ export function validateWorkbookContainer(data: Uint8Array): void {
     centralOffset + centralSize > eocd ||
     centralOffset + centralSize > data.byteLength
   ) {
-    throw new Error(tr.importer.workbookTooComplex);
+    throw new UserFacingError(tr.importer.workbookTooComplex);
   }
 
   let offset = centralOffset;
   let totalUncompressed = 0;
   for (let index = 0; index < entryCount; index += 1) {
     if (offset + 46 > data.byteLength || view.getUint32(offset, true) !== 0x02014b50) {
-      throw new Error(tr.importer.workbookTooComplex);
+      throw new UserFacingError(tr.importer.workbookTooComplex);
     }
     const compressed = view.getUint32(offset + 20, true);
     const uncompressed = view.getUint32(offset + 24, true);
@@ -647,11 +648,11 @@ export function validateWorkbookContainer(data: Uint8Array): void {
       totalUncompressed > MAX_ZIP_UNCOMPRESSED_BYTES ||
       ratio > MAX_ZIP_RATIO
     ) {
-      throw new Error(tr.importer.workbookTooComplex);
+      throw new UserFacingError(tr.importer.workbookTooComplex);
     }
     offset += 46 + nameLength + extraLength + commentLength;
   }
-  if (offset !== centralOffset + centralSize) throw new Error(tr.importer.workbookTooComplex);
+  if (offset !== centralOffset + centralSize) throw new UserFacingError(tr.importer.workbookTooComplex);
 }
 
 /** Decode uploaded bytes on demand; the heavy XLSX module is not in startup JS. */

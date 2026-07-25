@@ -20,6 +20,7 @@ import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
+import { UserFacingError, userMessage } from "../domain/user-error";
 import { Body, Button, Card, ChipPicker, DataStateNotice, Row, Screen, SectionHeader } from "../ui/components";
 import { font, radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -28,6 +29,7 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { shouldUseWideImportGuide } from "../ui/responsive";
 import { readPickedBytes } from "../services/picked-file";
 import { MonthDayField } from "../ui/month-day-field";
+import { devError } from "../services/logger";
 
 // --- visual format guide ---------------------------------------------------
 function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
@@ -182,7 +184,7 @@ export default function ImportWizardModal() {
           copyToCacheDirectory: true,
         });
         if (picked.canceled || !picked.assets[0]) return;
-        if ((picked.assets[0].size ?? 0) > MAX_WORKBOOK_BYTES) throw new Error(tr.importer.fileTooLarge);
+        if ((picked.assets[0].size ?? 0) > MAX_WORKBOOK_BYTES) throw new UserFacingError(tr.importer.fileTooLarge);
         const bytes = await readPickedBytes(picked.assets[0]);
         const parsed = await parseWorkbookBytes(bytes);
         if (parsed.sheets.length === 0) {
@@ -195,7 +197,8 @@ export default function ImportWizardModal() {
         setExcluded([]);
         setCardCycleDrafts({});
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        devError("import.pick", e);
+        setError(userMessage(e, tr.errors.requestFailed));
       } finally {
         setBusy(false);
       }
@@ -239,7 +242,8 @@ export default function ImportWizardModal() {
         }
         await performImport("add");
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        devError("import.start", e);
+        setError(userMessage(e, tr.errors.requestFailed));
       } finally {
         setBusy(false);
       }
@@ -281,10 +285,11 @@ export default function ImportWizardModal() {
       } catch (e) {
         // A refused replace is a precise, actionable condition — never a raw
         // engine message, and never a silent downgrade to "add".
+        devError("import.run", e);
         setError(
           e instanceof ImportBatchUnreadableError
             ? tr.importer.batchUnreadable(e.years.join(", "))
-            : e instanceof Error ? e.message : String(e),
+            : userMessage(e, tr.errors.requestFailed),
         );
       } finally {
         setBusy(false);

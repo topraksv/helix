@@ -17,7 +17,9 @@ type UndoTone = Extract<HapticKind, "success" | "warning">;
 interface UndoState {
   message: string | null;
   onUndo: (() => Promise<unknown> | unknown) | null;
-  show: (message: string, onUndo: () => Promise<unknown> | unknown, tone?: UndoTone) => void;
+  /** `onUndo` is optional: the same bar also confirms an action that has
+   *  nothing to take back, and then renders without the action label. */
+  show: (message: string, onUndo?: (() => Promise<unknown> | unknown) | null, tone?: UndoTone) => void;
   clear: () => void;
 }
 
@@ -26,10 +28,10 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 export const useUndo = create<UndoState>((set) => ({
   message: null,
   onUndo: null,
-  show: (message, onUndo, tone = "success") => {
+  show: (message, onUndo = null, tone = "success") => {
     if (hideTimer) clearTimeout(hideTimer);
     haptic(tone);
-    set({ message, onUndo });
+    set({ message, onUndo: onUndo ?? null });
     hideTimer = setTimeout(() => set({ message: null, onUndo: null }), 6000);
   },
   clear: () => {
@@ -52,7 +54,12 @@ export function UndoSnackbar() {
       pointerEvents="box-none"
       style={{ position: "absolute", left: spacing.lg, right: spacing.lg, bottom, alignItems: "center" }}
     ><FadeIn>
+      {/* The bar is the only confirmation some actions get, so it is announced
+          rather than left as silent decoration. Polite: it reports an outcome
+          the user just caused and must not interrupt what they type next. */}
       <View
+        accessibilityLiveRegion="polite"
+        accessibilityRole="alert"
         style={{
           flexDirection: "row",
           alignItems: "center",

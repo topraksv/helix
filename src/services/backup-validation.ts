@@ -3,6 +3,7 @@ import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { parseDefinition, type ComputedColumnDefinition } from "../domain/computed-columns";
 import { tr } from "../i18n/tr";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
+import { UserFacingError, userMessage } from "../domain/user-error";
 
 const EXPORT_VERSION = 1;
 export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
@@ -24,13 +25,13 @@ export class ExportTextBuilder {
 
   addTable(table: SyncedTableName, rows: readonly Record<string, unknown>[]): void {
     this.totalRows += rows.length;
-    if (this.totalRows > MAX_BACKUP_ROWS) throw new Error(tr.errors.backupTooLarge);
+    if (this.totalRows > MAX_BACKUP_ROWS) throw new UserFacingError(tr.errors.backupTooLarge);
     this.parts.push(`${JSON.stringify(table)}:${JSON.stringify(rows)}`);
   }
 
   finish(): string {
     const content = `{"version":${EXPORT_VERSION},"exportedAt":${JSON.stringify(this.exportedAt)},"tables":{${this.parts.join(",")}}}`;
-    if (utf8ByteLength(content) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
+    if (utf8ByteLength(content) > MAX_BACKUP_BYTES) throw new UserFacingError(tr.errors.backupTooLarge);
     return content;
   }
 }
@@ -77,7 +78,7 @@ const RELATIONS = [
 export type ExistingImportIds = Partial<Record<SyncedTableName, ReadonlySet<string>>>;
 
 function invalidBackup(): never {
-  throw new Error(tr.errors.invalidBackupFile);
+  throw new UserFacingError(tr.errors.invalidBackupFile);
 }
 
 function isIsoTimestamp(value: unknown): boolean {
@@ -216,7 +217,7 @@ export function validateBundleRelationships(bundle: ExportBundle, existing: Exis
 }
 
 export function validateExportBundle(raw: unknown): ExportBundle {
-  if (!raw || typeof raw !== "object") throw new Error(tr.errors.invalidBackupFile);
+  if (!raw || typeof raw !== "object") throw new UserFacingError(tr.errors.invalidBackupFile);
   const bundle = raw as Partial<ExportBundle>;
   if (
     bundle.version !== EXPORT_VERSION ||
@@ -235,7 +236,7 @@ export function validateExportBundle(raw: unknown): ExportBundle {
     if (rows == null) continue;
     if (!Array.isArray(rows)) invalidBackup();
     totalRows += rows.length;
-    if (totalRows > MAX_BACKUP_ROWS) throw new Error(tr.errors.backupTooLarge);
+    if (totalRows > MAX_BACKUP_ROWS) throw new UserFacingError(tr.errors.backupTooLarge);
     const ids = new Set<string>();
     if (rows.some((row) => {
       if (!row || typeof row !== "object" || !isValidImportRow(table, row)) return true;
@@ -253,17 +254,13 @@ export function validateExportBundle(raw: unknown): ExportBundle {
 
 /** Parse a picked backup with a hard pre-JSON size bound. */
 export function parseExportBundleText(content: string): ExportBundle {
-  if (utf8ByteLength(content) > MAX_BACKUP_BYTES) throw new Error(tr.errors.backupTooLarge);
+  if (utf8ByteLength(content) > MAX_BACKUP_BYTES) throw new UserFacingError(tr.errors.backupTooLarge);
   try {
     return validateExportBundle(JSON.parse(content));
   } catch (error) {
-    if (
-      error instanceof Error &&
-      (error.message === tr.errors.backupTooLarge || error.message === tr.errors.invalidBackupFile)
-    ) {
-      throw error;
-    }
-    throw new Error(tr.errors.invalidBackupFile);
+    // A message authored for the user (size, shape) survives; a parser or
+    // engine failure becomes the one thing the user can act on.
+    throw new UserFacingError(userMessage(error, tr.errors.invalidBackupFile));
   }
 }
 

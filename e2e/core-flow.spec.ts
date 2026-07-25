@@ -56,13 +56,17 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
 
   // A failing backup used to reject into a bare `void export()` and show the
   // user nothing at all, which is indistinguishable from one still running.
+  // It must still report the failure — but in the app's own words: the
+  // exception here stands in for a storage, permission or share-sheet error
+  // whose text was written for a developer, not for the person exporting.
   await page.evaluate(() => {
     URL.createObjectURL = () => {
       throw new Error("E2E dışa aktarma hatası");
     };
   });
   await page.getByRole("button", { name: /Yedek Oluştur/ }).click();
-  await expect(page.getByText(/E2E dışa aktarma hatası/)).toBeVisible();
+  await expect(page.getByText(/İşlem tamamlanamadı/)).toBeVisible();
+  await expect(page.getByText(/E2E dışa aktarma hatası/)).toHaveCount(0);
   await page.getByRole("button", { name: "Tamam", exact: true }).click();
 
   await assertNoRuntimeErrors(errors, testInfo);
