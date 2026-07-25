@@ -246,7 +246,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
           {kind === "card_installment" && !cardSourceValid ? (
             <>
               <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: { from: "installment" } }, { withAnchor: true })} />
+              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: existing ? { from: "installment", record: existing.id } : { from: "installment" } }, { withAnchor: true })} />
             </>
           ) : null}
         </>

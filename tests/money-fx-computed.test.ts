@@ -22,6 +22,15 @@ describe("TR money formatting/parsing", () => {
     expect(formatMinor(-1877303)).toBe("-₺18.773,03");
   });
 
+  // Screens negate a sum for display (`-expenseMinor`), so an empty month
+  // handed the formatter `-0` and it printed a minus sign in front of nothing.
+  it("never signs a zero", () => {
+    expect(formatMinor(-0)).toBe("₺0,00");
+    expect(formatMinor(0)).toBe("₺0,00");
+    expect(formatMinor(-0)).toBe(formatMinor(0));
+    expect(formatMinorCompact(-0)).toBe(formatMinorCompact(0));
+  });
+
   it("parses Turkish-formatted input", () => {
     expect(parseTRAmountToMinor("18.822,92")).toBe(1882292);
     expect(parseTRAmountToMinor("1234,5")).toBe(123450);

@@ -10,6 +10,7 @@ import { FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronDown, ChevronUp, Inbox, StickyNote } from "lucide-react-native";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
+import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import {
   useCategoriesState,
@@ -145,40 +146,46 @@ export default function MonthDetailScreen() {
 
   const renderItem = ({ item }: { item: MonthListItem }) => {
     switch (item.kind) {
-      case "summary":
-        return ledgerMonth ? (
+      case "summary": {
+        if (!ledgerMonth) return null;
+        // The rows below this card list the month's real and planned entries,
+        // so the card is built from the same set — a future month showed a
+        // carried balance above three zeros while its own list had entries.
+        const flows = monthFlowTotals(ledgerMonth);
+        return (
           <Card>
             <Spread>
               <Body muted>{tr.cashflow.opening}</Body>
-              <Amount minor={ledgerMonth.openingMinor} />
+              <Amount minor={flows.openingMinor} />
             </Spread>
             <Spread style={{ marginTop: spacing.xs }}>
               <Body muted>{tr.cashflow.income}</Body>
-              <Amount minor={ledgerMonth.incomeMinor} colorized={false} color={palette.positiveText} />
+              <Amount minor={flows.incomeMinor} colorized={false} color={palette.positiveText} />
             </Spread>
             <Spread style={{ marginTop: spacing.xs }}>
               <Body muted>{tr.cashflow.expense}</Body>
-              <Amount minor={-ledgerMonth.expenseMinor} />
+              <Amount minor={-flows.expenseMinor} />
             </Spread>
-            {ledgerMonth.transferMinor !== 0 ? (
+            {flows.transferMinor !== 0 ? (
               <Spread style={{ marginTop: spacing.xs }}>
                 <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.transfer}</Body>
-                <Amount minor={-ledgerMonth.transferMinor} />
+                <Amount minor={-flows.transferMinor} />
               </Spread>
             ) : null}
-            {ledgerMonth.adjustmentMinor !== 0 ? (
+            {flows.adjustmentMinor !== 0 ? (
               <Spread style={{ marginTop: spacing.xs }}>
                 <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.adjustment}</Body>
-                <Amount minor={ledgerMonth.adjustmentMinor} />
+                <Amount minor={flows.adjustmentMinor} />
               </Spread>
             ) : null}
             <Divider />
             <Spread>
               <Heading style={{ marginVertical: 0 }}>{tr.cashflow.closing}</Heading>
-              <Amount minor={ledgerMonth.closingMinor} large />
+              <Amount minor={flows.closingMinor} large />
             </Spread>
           </Card>
-        ) : null;
+        );
+      }
       case "empty":
         return <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />;
       case "group-header": {

@@ -23,6 +23,7 @@ import {
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteComputedColumn, reorderComputedColumns, restoreComputedColumn, saveComputedColumn, setComputedColumnsHidden } from "../../../data/repo";
 import { creditCardSplit } from "../../../domain/analytics";
+import { monthColumnBasis } from "../../../domain/balance";
 import { evaluateComputedColumn, parseDefinition, type ComputedColumnDefinition } from "../../../domain/computed-columns";
 import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
@@ -129,9 +130,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
         const cc = creditCardSplit(toTxLike(allTx, persons, categories), creditCardIds, month.month, today);
         preview = evaluateComputedColumn(definition, {
           month: month.month,
-          byCategory: month.byCategory,
-          incomeMinor: month.incomeMinor,
-          expenseMinor: month.expenseMinor,
+          ...monthColumnBasis(month),
           ccSingleMinor: cc.singleMinor,
           ccInstallmentMinor: cc.installmentMinor,
         });

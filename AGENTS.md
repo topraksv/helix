@@ -98,6 +98,11 @@ Details and reasons: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   a persisted `credit_card_statements` period; ambiguous legacy rows never get a
   synthetic payment date.
 - **The ledger back-anchors** — data before the opening month still renders.
+- **A month total and its breakdown come from one accessor.** The balance chain
+  stays realized-only, but `byCategory` also carries planned rows — so any
+  surface showing a month total beside its flows uses `monthFlowTotals`, and a
+  computed column uses `monthColumnBasis`. Never pair `closingMinor` with
+  `byCategory`.
 - **Expected payments are derived lifecycle rows.** Reconcile only unpaid
   derivatives; paid/skipped history is immutable. Watch-only rules never create
   balance-affecting rows. Weekly/biweekly incomes advance 7/14 days from an
@@ -179,7 +184,12 @@ Details and reasons: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   declare `index` as the initial route and reset on tab blur. **A push into a
   nested tab stack from outside it must pass `{ withAnchor: true }`.** A screen
   reachable from more than one place records its source at the push site and
-  resolves with `resolveBackTarget`. Never set a root `(tabs)` initial route.
+  resolves with `resolveBackTarget`. **An exact back target is a `replace` to a
+  rebuilt URL, so it must carry the returned-to screen's own params with it** —
+  that screen's recorded origin (`knownSource`, re-validated against the same
+  allowlist) and the record it was editing (`classifyRecordId`). Dropping them
+  demotes the screen to a deep link, or a half-edited form to a blank new one.
+  Never set a root `(tabs)` initial route.
 - **Route params are hostile input.** Validate with the domain predicate
   (`isMonthKey`), query a safe substitute and `navigateBack` — an unchecked
   param crashes during render.

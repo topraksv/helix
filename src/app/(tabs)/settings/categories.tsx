@@ -12,7 +12,7 @@ import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
 import { LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
-import { Body, Button, Card, DataStateNotice, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
+import { Badge, Body, Button, Card, DataStateNotice, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -34,13 +34,25 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  // The transfer flag is a rarely-changed classification of the category, not
+  // a per-row switch: it belongs to the row being edited, alongside its name.
+  const [editTransfer, setEditTransfer] = useState(false);
   // Freeze the screen's scroll while a row is being dragged, so the vertical
   // drag reorders instead of scrolling the page.
   const [dragging, setDragging] = useState(false);
   const editingCategory = editingId ? categories.find((category) => category.id === editingId) : null;
   useDirtyExitGuard(
-    name.trim() !== "" || Boolean(editingCategory && editName.trim() !== editingCategory.name),
+    name.trim() !== "" ||
+      Boolean(
+        editingCategory &&
+          (editName.trim() !== editingCategory.name || editTransfer !== editingCategory.isTransfer),
+      ),
   );
+  const startEditing = (category: (typeof categories)[number]) => {
+    setEditingId(category.id);
+    setEditName(category.name);
+    setEditTransfer(category.isTransfer);
+  };
   const categoryPlaceholder = useRotatingPlaceholder(placeholderPools.category);
   const dataStatus = combineLiveQueryStatus([categoriesState]);
   const dataReady = categoriesState.updatedAt != null;
@@ -185,13 +197,31 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                         variant="secondary"
                         disabled={!editName.trim()}
                         onPress={() => {
-                          void update(c, { name: editName.trim() }).then((saved) => {
+                          void update(
+                            c,
+                            c.kind === "expense"
+                              ? { name: editName.trim(), isTransfer: editTransfer }
+                              : { name: editName.trim() },
+                          ).then((saved) => {
                             if (saved) setEditingId(null);
                           });
                         }}
                       />
                       <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
                     </Row>
+                    {c.kind === "expense" ? (
+                      <Spread style={{ paddingBottom: spacing.sm }}>
+                        <View style={{ flex: 1, paddingRight: spacing.md }}>
+                          <Body style={{ fontSize: 12 }}>{tr.settings.transferCategory}</Body>
+                          <Body muted style={{ fontSize: 12 }}>{tr.settings.transferCategoryDesc}</Body>
+                        </View>
+                        <Toggle
+                          label={`${c.name} · ${tr.settings.transferCategory}`}
+                          value={editTransfer}
+                          onValueChange={setEditTransfer}
+                        />
+                      </Spread>
+                    ) : null}
                     {index < group.length - 1 ? <Divider /> : null}
                   </View>
                 ) : (
@@ -209,34 +239,25 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                         <Body style={{ flex: 1 }}>
                           {categoryIcon(c)} {c.name}
                         </Body>
+                        {c.isTransfer ? <Badge text={tr.cashflow.transfer} /> : null}
                       </Row>
                       <Row gap={spacing.sm} style={{ alignItems: "center" }}>
+                        {/* Every column repeats these two controls, so the
+                            accessible name has to say WHICH column it acts on
+                            — "Düzenle" alone was ambiguous once per row. */}
                         <IconButton
                           icon={Pencil}
                           size={32}
-                          label={tr.common.edit}
-                          onPress={() => {
-                            setEditingId(c.id);
-                            setEditName(c.name);
-                          }}
+                          label={`${tr.common.edit} · ${c.name}`}
+                          onPress={() => startEditing(c)}
                         />
-                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(c)} />
+                        <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${c.name}`} haptic="none" onPress={() => void remove(c)} />
                       </Row>
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>
                       <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.settings.columnVisible}</Body>
                       <Toggle label={`${c.name} · ${tr.settings.columnVisible}`} value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
                     </Spread>
-                    {c.kind === "expense" ? (
-                      <Spread style={{ marginTop: spacing.xs }}>
-                        <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.settings.transferCategory}</Body>
-                        <Toggle
-                          label={`${c.name} · ${tr.settings.transferCategory}`}
-                          value={c.isTransfer}
-                          onValueChange={(value) => void update(c, { isTransfer: value })}
-                        />
-                      </Spread>
-                    ) : null}
                   </View>
                 )
               }

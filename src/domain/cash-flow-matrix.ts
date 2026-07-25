@@ -1,6 +1,6 @@
 /** Pure model for either orientation of the cash-flow matrix. */
 
-import type { MonthLedger } from "./balance";
+import { monthColumnBasis, type MonthLedger } from "./balance";
 import { creditCardSplitsByMonth } from "./analytics";
 import { evaluateComputedColumn, parseDefinition } from "./computed-columns";
 import { makeMonthKey, type ISODate, type MonthKey } from "./dates";
@@ -89,9 +89,7 @@ export function buildCashFlowMatrixModel(input: {
               month.month,
               evaluateComputedColumn(definition, {
                 month: month.month,
-                byCategory: month.byCategory,
-                incomeMinor: month.incomeMinor,
-                expenseMinor: month.expenseMinor,
+                ...monthColumnBasis(month),
                 ccSingleMinor: card?.singleMinor ?? 0,
                 ccInstallmentMinor: card?.installmentMinor ?? 0,
               }),

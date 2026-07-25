@@ -131,7 +131,18 @@ export const controlSize = {
   inputAccessoryInset: 44,
 } as const;
 
-export const iconSize = { compact: 15, control: 17, accessory: 18 } as const;
+/**
+ * `headerBack` is deliberately even.
+ *
+ * The chevron is centred inside `controlSize.minimumTarget`, so the leftover
+ * space is split in two. At 25pt each side got (44 − 25) / 2 = 9.5pt: a
+ * browser paints that as-is, but React Native rounds layout to the device
+ * pixel grid, so at @3x one side rounded 28.5 physical px up to 29 and the
+ * other kept 28 — the glyph sat one physical pixel off-centre inside its own
+ * circular target on native while the web header looked correct. An even size
+ * halves to a whole point at 1x, 2x and 3x alike.
+ */
+export const iconSize = { compact: 15, control: 17, accessory: 18, headerBack: 24 } as const;
 export const borderWidth = { control: 1.5, toggle: 1 } as const;
 
 /** State opacity roles stay separate because their current perceptual weight is

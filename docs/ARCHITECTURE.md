@@ -66,6 +66,15 @@ supabase/       remote migrations, config.toml, pgTAP tests.
 tests/          vitest suites. e2e/ = Playwright specs + visual baselines.
 ```
 
+`assets/images/splash-icon{,-dark}.png` and `assets/brand/symbol-{light,dark}-t.png`
+are byte-identical pairs, and they stay separate on purpose. The splash pair is
+an input to `expo prebuild`, baked into the native binary and changeable only by
+a rebuild; the brand pair is `require`d by `src/ui/brand.tsx`, bundled by Metro
+and shippable over OTA. One shared file would couple the two lifecycles, so a
+brand tweak delivered by OTA would silently disagree with the splash inside the
+installed app, with nothing in the repository showing it. Update both together —
+every logo commit so far has.
+
 `assets/screenshots/` holds the README gallery: a uniform 780×1688 dark set
 captured from a seeded multi-month demo restore, never from a real account.
 There is no committed capture script — regenerate by restoring a demo JSON
@@ -159,6 +168,18 @@ whose `null` means unresolved.
 - **The ledger back-anchors** (`resolveLedgerAnchor`): history entered before
   the configured opening month still renders — the start extends to the earliest
   data and the opening balance is back-computed.
+- **A month has two chains, and a surface picks exactly one.** The balance chain
+  (`openingMinor`/`closingMinor`, the Mali Tablo Ay Başı / Güncel Bakiye columns,
+  the current balance) counts realized self rows dated on or before today, and
+  nothing else — that is the Excel-verified model and it does not move. Beside
+  it, `byCategory` has always also carried the *planned* rows (pending, future,
+  `show_pending_in_table`), which is what a category cell shows. Anything that
+  displays a month total next to a breakdown must therefore read
+  `monthFlowTotals` (and a computed column `monthColumnBasis`): both are built
+  from the planned-inclusive set plus its own projected chain, so the total,
+  the three flows and the cells in the same row are one statement. Reading
+  `closingMinor` next to `byCategory` is the bug those accessors replace — it
+  showed a carried balance above three zeros for every future month.
 - **Expected payments are derived lifecycle rows.** Rule edits reconcile only
   unpaid derivatives; paid/skipped history is immutable. Watch-only rules never
   create balance-affecting rows. Recurring incomes are `monthly | weekly |

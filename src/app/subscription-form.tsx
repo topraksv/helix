@@ -306,7 +306,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           {!sourceValid ? (
             <>
               <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: { from: "subscription" } }, { withAnchor: true })} />
+              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: existing ? { from: "subscription", record: existing.id } : { from: "subscription" } }, { withAnchor: true })} />
             </>
           ) : null}
         </>

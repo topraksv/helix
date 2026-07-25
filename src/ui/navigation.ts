@@ -32,6 +32,28 @@ export function resolveBackTarget<T>(
   return { href: fallback, exact: false };
 }
 
+/**
+ * The recorded source itself, when it is one this app defined.
+ *
+ * An exact back navigation is a `router.replace` to a freshly built href, so
+ * whatever the returned-to screen was originally opened with is gone unless it
+ * is put back. A screen that both HAS an origin and pushes another screen must
+ * therefore hand its own origin over and get it returned — otherwise Summary →
+ * Analysis → Budgets → back → Analysis leaves Analysis looking like a deep
+ * link, and its next back goes to the Financial Table.
+ *
+ * Everything passed through here is validated against the same allowlist the
+ * receiving screen resolves with (`Object.hasOwn`, so `__proto__` and friends
+ * never match), so a hand-typed or hostile parameter can only ever degrade to
+ * "no recorded origin" — never widen into a route the app does not own.
+ */
+export function knownSource(value: unknown, sources: Readonly<Record<string, unknown>>): string | undefined {
+  return typeof value === "string" && Object.hasOwn(sources, value) ? value : undefined;
+}
+
+/** Where Analysis returns to, per screen that is allowed to push it. */
+export const ANALYSIS_SOURCES = { summary: "/(tabs)" } as const;
+
 export function stackScreenOptions(palette: Palette) {
   return {
     headerStyle: { backgroundColor: palette.surface },

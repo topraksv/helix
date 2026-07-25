@@ -47,6 +47,67 @@ export interface MonthLedger {
   byCategory: Map<string, Minor>;
   /** Rows with no category, kept visible without inventing a category id. */
   uncategorizedMinor: Minor;
+  /**
+   * The planned (not yet realized) half of this month, split by flow type.
+   *
+   * These come from EXACTLY the rows that also entered `byCategory`, which is
+   * what makes a month-focused card able to show a total and a breakdown that
+   * agree: the realized-only chain above is right for the balance but reads 0
+   * for every future month, while the category cells beside it already showed
+   * the planned amounts.
+   */
+  plannedIncomeMinor: Minor;
+  plannedExpenseMinor: Minor;
+  plannedTransferMinor: Minor;
+  /** The same chain as `openingMinor`/`closingMinor`, carrying the planned
+   *  flows too. Identical to them for a month with nothing planned. */
+  projectedOpeningMinor: Minor;
+  projectedClosingMinor: Minor;
+}
+
+/**
+ * What a month-focused surface (the Mali Tablo month cards, the month detail
+ * summary) must show: one total and the breakdown it is actually made of.
+ *
+ * Both live here so the two can never be sourced differently again —
+ * `closingMinor` minus a realized-only breakdown is the divergence this
+ * replaces, not a second opinion about it. The balance chain itself
+ * (`openingMinor`/`closingMinor`, the Mali Tablo balance columns, the current
+ * balance) stays realized-only and is untouched.
+ */
+export function monthFlowTotals(month: MonthLedger): {
+  openingMinor: Minor;
+  incomeMinor: Minor;
+  expenseMinor: Minor;
+  transferMinor: Minor;
+  adjustmentMinor: Minor;
+  closingMinor: Minor;
+} {
+  return {
+    openingMinor: month.projectedOpeningMinor,
+    incomeMinor: month.incomeMinor + month.plannedIncomeMinor,
+    expenseMinor: month.expenseMinor + month.plannedExpenseMinor,
+    transferMinor: month.transferMinor + month.plannedTransferMinor,
+    adjustmentMinor: month.adjustmentMinor,
+    closingMinor: month.projectedClosingMinor,
+  };
+}
+
+/**
+ * The month figures a computed column reads.
+ *
+ * `byCategory` already carries the planned rows, so pairing it with the
+ * realized-only income/expense made a formula like "Net Akış" read 0 for a
+ * future month while the category cell next to it in the SAME row showed the
+ * planned amount. One accessor, one dataset, every call site.
+ */
+export function monthColumnBasis(month: MonthLedger): {
+  byCategory: Map<string, Minor>;
+  incomeMinor: Minor;
+  expenseMinor: Minor;
+} {
+  const flows = monthFlowTotals(month);
+  return { byCategory: month.byCategory, incomeMinor: flows.incomeMinor, expenseMinor: flows.expenseMinor };
 }
 
 export interface LedgerInput {
@@ -126,10 +187,14 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
 
   const ledger: MonthLedger[] = [];
   let opening = openingBalanceMinor;
+  let projectedOpening = openingBalanceMinor;
   for (const month of months) {
     let income = 0;
     let expense = 0;
     let transfer = 0;
+    let plannedIncome = 0;
+    let plannedExpense = 0;
+    let plannedTransfer = 0;
     let uncategorized = 0;
     const byCategory = new Map<string, Minor>();
     for (const tx of byMonth.get(month) ?? []) {
@@ -141,13 +206,26 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
         byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
       } else uncategorized += flow.amountTryMinor;
     }
+    // One pass, one classification: whatever lands in a category cell is also
+    // counted in the planned totals, so a cell can never show an amount that
+    // the month's own breakdown denies.
     for (const tx of pendingByMonth.get(month) ?? []) {
+      const flow = financialFlow(tx);
+      if (flow.type === "income") plannedIncome += flow.amountTryMinor;
+      else if (flow.type === "expense") plannedExpense += flow.amountTryMinor;
+      else plannedTransfer += flow.amountTryMinor;
       if (tx.categoryId) {
-        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + financialFlow(tx).amountTryMinor);
-      } else uncategorized += financialFlow(tx).amountTryMinor;
+        byCategory.set(tx.categoryId, (byCategory.get(tx.categoryId) ?? 0) + flow.amountTryMinor);
+      } else uncategorized += flow.amountTryMinor;
     }
     const adjustment = adjustmentByMonth.get(month) ?? 0;
     const closing = opening + income - expense - transfer + adjustment;
+    const projectedClosing =
+      projectedOpening +
+      (income + plannedIncome) -
+      (expense + plannedExpense) -
+      (transfer + plannedTransfer) +
+      adjustment;
     ledger.push({
       month,
       openingMinor: opening,
@@ -158,8 +236,14 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
       closingMinor: closing,
       byCategory,
       uncategorizedMinor: uncategorized,
+      plannedIncomeMinor: plannedIncome,
+      plannedExpenseMinor: plannedExpense,
+      plannedTransferMinor: plannedTransfer,
+      projectedOpeningMinor: projectedOpening,
+      projectedClosingMinor: projectedClosing,
     });
     opening = closing;
+    projectedOpening = projectedClosing;
   }
   return ledger;
 }

@@ -4,7 +4,7 @@ import { useRouter, type Href } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { navigateBack } from "./navigation";
-import { controlSize, radius, useTheme } from "./theme";
+import { controlSize, iconSize, radius, useTheme } from "./theme";
 
 /** Native-header back control with a deterministic parent for direct links. */
 export function HeaderBackButton({ fallback, exact }: { fallback: Href; exact?: boolean }) {
@@ -25,7 +25,7 @@ export function HeaderBackButton({ fallback, exact }: { fallback: Href; exact?: 
         justifyContent: "center",
       })}
     >
-      <ChevronLeft accessible={false} size={25} color={palette.accentText} strokeWidth={2.2} />
+      <ChevronLeft accessible={false} size={iconSize.headerBack} color={palette.accentText} strokeWidth={2.2} />
     </Pressable>
   );
 }
