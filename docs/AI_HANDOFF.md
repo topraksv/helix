@@ -7,83 +7,82 @@ history log.
 
 ## Current state — 2026-07-25, Europe/Istanbul
 
-- Package 3D (UX flows, information architecture, forms, feedback) is
-  delivered. Protected main carries
-  `012847192cba2303bb5ff8c2f322e31325265853` (PR #57, squash), Pages run
-  `30148599977` deployed it, and the `preview` OTA was published from that exact
-  commit. It changes no financial calculation, ownership rule, sync or session
-  behaviour, navigation destination, presentation type, data model, dependency,
-  native configuration or runtime version.
-- **Engine errors no longer reach the screen.** `UserFacingError` /
-  `userMessage` (`src/domain/user-error.ts`) mark the messages authored for
-  people; a repository, database, file-system or share-sheet failure now
-  resolves to `tr.errors.saveFailed` / `tr.errors.requestFailed` instead of
-  English technical text, while backup, workbook and import diagnostics keep
-  their precise Turkish wording. Every one of those catch sites also logs
-  through the dev-only logger.
-- **Enter belongs to the focused control.** The web submit shortcut listened on
-  the window in the capture phase, so the form's primary Save answered every
-  Enter: focusing "Kaydet ve Yeni Ekle" saved and left the screen, the refund
-  switch committed the entry instead of flipping its sign, and a category chip
-  could not be chosen with the keyboard. `focusOwnsEnterKey`
-  (`src/ui/submit-shortcut.ts`, deliberately free of React Native so it is
-  unit-testable) hands Enter to buttons, switches, radios, tabs, links, options
-  and editable content; it still submits from a single-line field.
-- **A stay-on-screen save now confirms itself.** "Kaydet ve Yeni Ekle" shows
-  "İşlem kaydedildi." through the shared snackbar, which is announced politely
-  and needs no undo action. Owner-approved (`3D-F03`).
-- Owner dispositions: `3D-F04` (no new offline/pending wording) `KEEP AS IS`;
-  `3D-F05` (form disclosure and control count) `DEFER` to a later owner-reviewed
-  visual package. Neither was implemented.
+- Package 3E (cross-device sync and session reliability) is implemented on
+  `package-3e-device-sync`. It adds no second sync engine, no new abstraction
+  layer, no timer and no polling: the fixes are in the session layer that was
+  causing the failures.
+- **An ordinary sign-out no longer ends the account's other sessions.**
+  `supabase.auth.signOut()` defaults to `scope: "global"`, so signing out of the
+  web app revoked every refresh token: the phone's next refresh failed, Supabase
+  emitted `SIGNED_OUT`, the invalidation path wiped that device — unsynced
+  outbox rows included — and "Cihazlarını Güncelle" could only answer 401 until
+  the user signed in again. Sign-out is now device-scoped; `global` remains for
+  account deletion, where the identity itself is destroyed. Freeze is unaffected
+  (it locks other devices through the synced `account_frozen` flag).
+- **Sign-out will not destroy rows the cloud never received.** The flush is now
+  an invariant of the session layer rather than of one screen: one bounded push
+  runs first and, if rows survive it, sign-out refuses with
+  `SIGN_OUT_PENDING_CHANGES`. Settings keeps the only decision a screen should
+  own — whether the user accepts the loss — and re-calls with `force`.
+- **A dead session no longer promises an automatic sync.** After a failed
+  refresh the engine said "verilerin birazdan otomatik eşitlenecek" and kept
+  retrying a revoked token on the backoff. It now states that a sign-in is
+  needed and that local data is safe, and stops that backoff. A transient 401
+  still refreshes and retries silently.
+- Conflict policy is unchanged and deliberate: last-write-wins on the
+  server-normalised `updated_at`, with delete generations dominating wall
+  clocks. `3E-REVIEW-01` (telling the user when a concurrent edit was replaced)
+  is recorded as `PENDING OWNER APPROVAL`; it needs a product decision and, for
+  a recoverable variant, a schema change.
 
 ## Validation
 
-- Required `quality` on the merge commit passed: clean `npm ci`, typecheck,
-  68 Vitest files / 497 tests, zero-warning lint, 52-route production export,
-  entry/total/export/font budgets with `sourceMapFiles 0` and
-  `sourceMapReferences 0`, and 26/26 Playwright. Expo Doctor 18/18 locally.
-- Live smoke on the deployed commit passed: exported static routes return 200,
-  an unexported month URL returns 404 with a byte-identical root shell, the
-  entry bundle carries no `sourceMappingURL` and no `.map` sibling is served.
-- Mutation proof: with the pre-fix rules restored, 4 of the new unit assertions
-  fail; with the fixes in place all pass. The dialog-semantics E2E now asserts
-  the user-language outcome **and** the absence of the raw exception text — the
-  same test previously proved that raw text was on screen.
-- New browser regression: Enter on the secondary save, on the refund switch and
-  on a category chip each performs that control's own action and leaves the
-  route and draft alone, while Enter from the amount field still saves and
-  exits.
-- No screenshot baseline was updated.
+- `npm run verify:release` passed: typecheck, zero-warning lint, 69 Vitest files
+  / 511 tests, 52-route production export, entry/total/export/font budgets with
+  `sourceMapFiles 0` and `sourceMapReferences 0`, and the full Playwright suite.
+- `tests/multi-client-sync.test.ts` converges two isolated clients on the real
+  migration DDL in real SQLite, driving the shipping outbound validation,
+  acknowledgement rule and LWW/tombstone comparison against a PostgREST
+  stand-in that implements migration 12's `set_updated_at()` trigger: create,
+  edit, delete, stale-client resurrection, offline reconnect, duplicate-free
+  retry, concurrent-edit convergence, foreign-row refusal and queued-row
+  survival.
+- Mutation proof: removing the tombstone-generation branch fails the
+  resurrection assertion; restoring it passes. The sign-out scope assertions
+  previously encoded the defective global default.
+- Supabase schema is untouched by this package, so no migration, lint or pgTAP
+  re-run was required.
 
 ## Package 3E device acceptance
 
-- `DEVICE-001..003` remain `DEVICE_ONLY`, not failed code and not completed
-  acceptance. Automated web evidence cannot replace physical VoiceOver,
-  TalkBack, Switch Control, Dynamic Type, Reduced Motion, native back/swipe,
-  keyboard/drag, notification/privacy, haptic and account-lifecycle checks, the
-  two OTA cold starts or OTA adoption.
-- A physical iPhone 16e running iOS 27.0 is paired and Developer Mode is on,
-  but Xcode 26.6 lacks matching platform support. No Android device, adb target
-  or AVD is available. These constraints carry unchanged into Package 3E.
+- VoiceOver and TalkBack are `OWNER_NA` — explicitly excluded by owner decision.
+- Dynamic Type, Reduced Motion, native modal focus, physical landscape
+  calculator, haptics, notification entry, app-switcher privacy cover,
+  biometric/SecureStore, low-memory large import, two installed clients, and the
+  two OTA cold starts with adoption remain `DEVICE_ONLY` and **BLOCKED**: no iOS
+  simulator runtime is installed (`xcrun simctl` lists no devices), Xcode 26.6
+  still lacks platform support for the paired iPhone 16e on iOS 27.0, and there
+  is no `adb` or Android target. No simulator evidence is claimed.
+- Live two-device network convergence therefore stays unverified. The
+  convergence *rules* are proven by the integration suite above; what is missing
+  is an installed client on real hardware.
 
 ## Delivery and rollback evidence
 
 - Last delivered web release is the Package 3D protected-main commit
   `012847192cba2303bb5ff8c2f322e31325265853`; Pages run `30148599977` and
-  `github-pages` deployment `5599398668` succeeded.
+  `github-pages` deployment `5599398668` succeeded. The documentation-only
+  commit `f498dc724ca31d60b258ada7c1e8c5a0f5f4a355` redeployed the same
+  application bundle and carries no OTA of its own.
 - Last preview OTA is Package 3D group `613cbec8-4f52-44b4-b907-0a2be3a5f938`;
   Android `019f981e-e55d-7bdd-806a-13b6db63386c`, iOS
   `019f981e-e55d-7f6d-a931-4d8506d8d556`, runtime `1.0.0`, branch `preview`,
-  exact git commit `012847192cba2303bb5ff8c2f322e31325265853`, clean working
-  tree, 34 assets per platform and zero source-map assets. The channel still
-  maps unconditionally to the `preview` branch. Package 3D's diff is JS/TS,
-  tests and documentation only, so no native rebuild was required.
-- Installed delivery is **not** `VERIFIED`: the two required cold starts need a
-  device.
-- Rollback anchor is the Package 3C release: main
-  `3a03ebfdae740b5f970b9c7c687d8bed6b0d3b8c`, Pages run `29940726760`, OTA group
-  `765e686e-c64b-4ac1-81d3-c521f7b3cfbe`.
+  exact git commit `012847192cba2303bb5ff8c2f322e31325265853`, zero source-map
+  assets.
+- Package 3E is JS/TS, tests and documentation only, so it needs no native
+  rebuild. Production OTA stays withheld until installed-device cold-start and
+  synchronisation acceptance is genuinely verified.
 
 ## Next exact step
 
-`NEXT EXACT STEP = Package 3E from the final verified Package 3D release state.`
+`NEXT EXACT STEP = installed-device acceptance for Package 3E (two clients, two cold starts) before any production OTA.`

@@ -363,8 +363,10 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     const raw = e instanceof Error ? e.message : String(e);
     devError("sync", raw);
     // Expired token → refresh once and retry immediately, no user action.
-    if (allowRefresh && isAuthError(raw)) {
-      const refreshed = await runSessionEpochTask(sessionEpoch, userId, () => tryRefreshSession());
+    if (isAuthError(raw)) {
+      const refreshed = allowRefresh
+        ? await runSessionEpochTask(sessionEpoch, userId, () => tryRefreshSession())
+        : false;
       if (refreshed == null) return false;
       if (refreshed) {
         status.set({ state: "syncing" });
@@ -372,6 +374,13 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
         retryTimer = setTimeout(() => void syncNow(userId, false), 0);
         return false;
       }
+      // The refresh token itself is gone (revoked elsewhere, or expired while
+      // the app was closed). Retrying cannot fix that, so stop promising an
+      // automatic sync that will never happen, stop the backoff from hammering
+      // a dead session, and say plainly that the local data is safe and needs a
+      // sign-in to leave the device.
+      status.set({ state: "error", error: tr.sync.errReauth });
+      return false;
     }
     status.set({ state: "error", error: friendlySyncError(raw) });
     // Exponential backoff retry: 5s, 10s, 20s… capped at 5 min.
