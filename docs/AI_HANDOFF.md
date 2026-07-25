@@ -8,8 +8,10 @@ history log.
 ## Current state — 2026-07-25, Europe/Istanbul
 
 - Package 3D (UX flows, information architecture, forms, feedback) is
-  implemented on `package-3d-ux-flows`, branched from the delivered Package 3C
-  main. It changes no financial calculation, ownership rule, sync or session
+  delivered. Protected main carries
+  `012847192cba2303bb5ff8c2f322e31325265853` (PR #57, squash), Pages run
+  `30148599977` deployed it, and the `preview` OTA was published from that exact
+  commit. It changes no financial calculation, ownership rule, sync or session
   behaviour, navigation destination, presentation type, data model, dependency,
   native configuration or runtime version.
 - **Engine errors no longer reach the screen.** `UserFacingError` /
@@ -36,10 +38,13 @@ history log.
 
 ## Validation
 
-- `npm run verify:release` passed on the final tree: typecheck, zero-warning
-  lint, full Vitest suite, 52-route production export, entry/total/export/font
-  budgets with `sourceMapFiles 0` and `sourceMapReferences 0`, and the full
-  Playwright suite.
+- Required `quality` on the merge commit passed: clean `npm ci`, typecheck,
+  68 Vitest files / 497 tests, zero-warning lint, 52-route production export,
+  entry/total/export/font budgets with `sourceMapFiles 0` and
+  `sourceMapReferences 0`, and 26/26 Playwright. Expo Doctor 18/18 locally.
+- Live smoke on the deployed commit passed: exported static routes return 200,
+  an unexported month URL returns 404 with a byte-identical root shell, the
+  entry bundle carries no `sourceMappingURL` and no `.map` sibling is served.
 - Mutation proof: with the pre-fix rules restored, 4 of the new unit assertions
   fail; with the fixes in place all pass. The dialog-semantics E2E now asserts
   the user-language outcome **and** the absence of the raw exception text — the
@@ -63,20 +68,21 @@ history log.
 
 ## Delivery and rollback evidence
 
-- Last delivered web release is the Package 3C protected-main commit
-  `3a03ebfdae740b5f970b9c7c687d8bed6b0d3b8c`; Pages run `29940726760` and
-  `github-pages` deployment `5559706841` succeeded. The later documentation-only
-  commit `3601d23e089087b1e9797df8c15fec68cf9e2e45` redeployed the same
-  application bundle and intentionally carries no OTA of its own.
-- Last preview OTA is Package 3C group `765e686e-c64b-4ac1-81d3-c521f7b3cfbe`;
-  Android `019f97c3-7377-7d04-8967-371613b50555`, iOS
-  `019f97c3-7377-79e2-962b-1947079d62c3`, runtime `1.0.0`, branch `preview`,
-  exact git commit `3a03ebfdae740b5f970b9c7c687d8bed6b0d3b8c`, zero source-map
-  assets. Installed delivery is **not** `VERIFIED`: the two required cold starts
-  need a device.
-- Package 3D is JS/TS, tests and documentation only, so it needs no native
-  rebuild and is delivered as a protected-main Pages release plus one
-  exact-main `preview` OTA.
+- Last delivered web release is the Package 3D protected-main commit
+  `012847192cba2303bb5ff8c2f322e31325265853`; Pages run `30148599977` and
+  `github-pages` deployment `5599398668` succeeded.
+- Last preview OTA is Package 3D group `613cbec8-4f52-44b4-b907-0a2be3a5f938`;
+  Android `019f981e-e55d-7bdd-806a-13b6db63386c`, iOS
+  `019f981e-e55d-7f6d-a931-4d8506d8d556`, runtime `1.0.0`, branch `preview`,
+  exact git commit `012847192cba2303bb5ff8c2f322e31325265853`, clean working
+  tree, 34 assets per platform and zero source-map assets. The channel still
+  maps unconditionally to the `preview` branch. Package 3D's diff is JS/TS,
+  tests and documentation only, so no native rebuild was required.
+- Installed delivery is **not** `VERIFIED`: the two required cold starts need a
+  device.
+- Rollback anchor is the Package 3C release: main
+  `3a03ebfdae740b5f970b9c7c687d8bed6b0d3b8c`, Pages run `29940726760`, OTA group
+  `765e686e-c64b-4ac1-81d3-c521f7b3cfbe`.
 
 ## Next exact step
 
