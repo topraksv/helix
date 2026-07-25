@@ -1,6 +1,7 @@
 /** Payment source management: cards / cash / bank, per-person, card cycle. */
 
 import { Stack, useLocalSearchParams, type Href } from "expo-router";
+import { classifyRecordId } from "../../../domain/route-params";
 import { resolveBackTarget } from "../../../ui/navigation";
 import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
@@ -42,8 +43,25 @@ export default function SourcesScreen() {
   // it came from; `resolveBackTarget` validates it (typeof string +
   // Object.hasOwn, so a hand-typed or prototype-polluting value cannot match)
   // and falls back to the settings hub for deep links with no recorded source.
-  const { from } = useLocalSearchParams<{ from?: string }>();
-  const back = resolveBackTarget<Href>(from, { transaction: "/transaction", installment: "/installment-new", subscription: "/subscription-form", upcoming: "/upcoming" as Href }, "/(tabs)/settings");
+  // The three form sources can be editing an existing record, and returning to
+  // them exactly rebuilds their URL — without carrying `record` back, "fix this
+  // card's cycle" turned the half-edited transaction/plan/subscription into a
+  // blank new-record form. `classifyRecordId` re-validates it here, so only a
+  // usable id is ever put back into a route.
+  const { from, record } = useLocalSearchParams<{ from?: string; record?: string }>();
+  const recordId = classifyRecordId(record);
+  const withRecord = (pathname: string): Href =>
+    (recordId?.mode === "edit" ? { pathname, params: { id: recordId.id } } : pathname) as Href;
+  const back = resolveBackTarget<Href>(
+    from,
+    {
+      transaction: withRecord("/transaction"),
+      installment: withRecord("/installment-new"),
+      subscription: withRecord("/subscription-form"),
+      upcoming: "/upcoming" as Href,
+    },
+    "/(tabs)/settings",
+  );
   const userId = useUserId();
   const sourcesState = useSourcesState();
   const statementsState = useCreditCardStatementsState();

@@ -10,6 +10,7 @@ import React, { useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
+import { monthFlowTotals } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
@@ -293,6 +294,10 @@ export default function CashflowScreen() {
             <ScrollView ref={cardsScrollRef} showsVerticalScrollIndicator={false}>
               {bundle.yearMonths.map((m) => {
                 const isCurrent = m.month === monthKeyOf(todayISO());
+                // Total and breakdown come from one source: a future month's
+                // planned rows are already in its category cells, so the card
+                // must not show them as three zeros under a carried balance.
+                const flows = monthFlowTotals(m);
                 return (
                   <Card
                     key={m.month}
@@ -313,12 +318,12 @@ export default function CashflowScreen() {
                   >
                     <Spread>
                       <Text style={[type.heading, { color: isCurrent ? palette.primaryText : palette.text }]}>{monthLabel(m.month)}</Text>
-                      <Amount minor={m.closingMinor} />
+                      <Amount minor={flows.closingMinor} />
                     </Spread>
                     <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.md, alignItems: "stretch" }}>
-                      <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={m.incomeMinor} color={palette.positive} foreground={palette.positiveText} />
-                      <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={m.expenseMinor} color={palette.negative} foreground={palette.negativeText} />
-                      <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={m.transferMinor} color={palette.textSecondary} />
+                      <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={flows.incomeMinor} color={palette.positive} foreground={palette.positiveText} />
+                      <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={flows.expenseMinor} color={palette.negative} foreground={palette.negativeText} />
+                      <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={flows.transferMinor} color={palette.textSecondary} />
                     </View>
                   </Card>
                 );

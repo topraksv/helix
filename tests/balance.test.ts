@@ -218,6 +218,120 @@ describe("pending rows in table cells (display-only)", async () => {
   });
 });
 
+/**
+ * A month-focused card shows one total and the three flows it is made of. The
+ * realized-only chain is right for the balance but reads 0 for every future
+ * month, so August showed a carried balance above "Gelir 0 / Gider 0 /
+ * Yatırım 0" while the category cell beside it already showed the planned
+ * 50,00. `monthFlowTotals` is the single answer both halves come from.
+ */
+describe("a month's total and its breakdown come from one set of rows", async () => {
+  const { buildLedger, monthFlowTotals } = await import("../src/domain/balance");
+  const base = {
+    openingBalanceMinor: 1_000_00,
+    startMonth: "2026-07" as const,
+    endMonth: "2026-09" as const,
+    adjustments: [],
+    today: "2026-07-25" as const,
+    includePendingInCells: true,
+  };
+  const planned = (id: string, date: string, amountTryMinor: number, type: "income" | "expense" | "transfer", categoryId: string | null = "cat") => ({
+    id, type, amountTryMinor, effectiveDate: date, status: "pending" as const,
+    categoryId, paymentSourceId: null, personIsSelf: true,
+    categoryKind: type === "income" ? ("income" as const) : ("expense" as const),
+    installmentPlanId: null, subscriptionId: null, isAggregate: false,
+  });
+
+  it("reports a future month's planned expense instead of three zeros", () => {
+    const ledger = buildLedger({ ...base, transactions: [planned("t1", "2026-08-05", 50_00, "expense")] });
+    const august = required(ledger[1]);
+    const flows = monthFlowTotals(august);
+    expect(flows.expenseMinor).toBe(50_00);
+    expect(flows.expenseMinor).toBe(august.byCategory.get("cat"));
+    // The realized chain is deliberately untouched.
+    expect(august.expenseMinor).toBe(0);
+    expect(august.closingMinor).toBe(1_000_00);
+  });
+
+  it("keeps the shown total equal to the shown breakdown, every month", () => {
+    const ledger = buildLedger({
+      ...base,
+      adjustments: [{ date: "2026-07-20", amountMinor: -25_00 }],
+      transactions: [
+        // realized (past), planned income, planned expense, planned investment
+        { ...planned("r1", "2026-07-01", 200_00, "expense"), status: "realized" as const },
+        planned("t1", "2026-08-05", 50_00, "expense"),
+        planned("t2", "2026-08-15", 300_00, "income", "salary"),
+        planned("t3", "2026-09-10", 120_00, "transfer", "invest"),
+      ],
+    });
+    for (const month of ledger) {
+      const flows = monthFlowTotals(month);
+      expect(flows.closingMinor).toBe(
+        flows.openingMinor + flows.incomeMinor - flows.expenseMinor - flows.transferMinor + flows.adjustmentMinor,
+      );
+    }
+    // …and the projected chain carries forward, month to month.
+    expect(monthFlowTotals(required(ledger[0])).closingMinor).toBe(1_000_00 - 200_00 - 25_00);
+    expect(monthFlowTotals(required(ledger[1])).closingMinor).toBe(775_00 + 300_00 - 50_00);
+    expect(monthFlowTotals(required(ledger[2])).closingMinor).toBe(1_025_00 - 120_00);
+  });
+
+  it("classifies a planned investment as a transfer, not an expense", () => {
+    const ledger = buildLedger({ ...base, transactions: [planned("t3", "2026-09-10", 120_00, "transfer", "invest")] });
+    const flows = monthFlowTotals(required(ledger[2]));
+    expect(flows.transferMinor).toBe(120_00);
+    expect(flows.expenseMinor).toBe(0);
+  });
+
+  it("is identical to the realized chain for a settled month", () => {
+    const ledger = buildLedger({
+      ...base,
+      transactions: [{ ...planned("r1", "2026-07-01", 200_00, "expense"), status: "realized" as const }],
+    });
+    const july = required(ledger[0]);
+    expect(monthFlowTotals(july)).toMatchObject({
+      openingMinor: july.openingMinor,
+      incomeMinor: july.incomeMinor,
+      expenseMinor: july.expenseMinor,
+      transferMinor: july.transferMinor,
+      closingMinor: july.closingMinor,
+    });
+  });
+
+  it("stays at the realized numbers when pending cells are turned off", () => {
+    const transactions = [planned("t1", "2026-08-05", 50_00, "expense")];
+    const ledger = buildLedger({ ...base, includePendingInCells: false, transactions });
+    const august = required(ledger[1]);
+    // Nothing is displayed for the month, so nothing is claimed for it either.
+    expect(august.byCategory.get("cat")).toBeUndefined();
+    expect(monthFlowTotals(august)).toMatchObject({ expenseMinor: 0, closingMinor: august.closingMinor });
+  });
+
+  it("does not leak a planned row into a neighbouring month or year", () => {
+    const ledger = buildLedger({
+      ...base,
+      endMonth: "2027-01",
+      transactions: [planned("t1", "2026-12-31", 90_00, "expense"), planned("t2", "2027-01-01", 10_00, "expense")],
+    });
+    const december = required(ledger.find((m) => m.month === "2026-12"));
+    const january = required(ledger.find((m) => m.month === "2027-01"));
+    expect(monthFlowTotals(december).expenseMinor).toBe(90_00);
+    expect(monthFlowTotals(january).expenseMinor).toBe(10_00);
+    expect(monthFlowTotals(january).openingMinor).toBe(monthFlowTotals(december).closingMinor);
+  });
+
+  it("ignores a planned row that belongs to a watched person", () => {
+    const ledger = buildLedger({
+      ...base,
+      transactions: [{ ...planned("t1", "2026-08-05", 50_00, "expense"), personIsSelf: false }],
+    });
+    const august = required(ledger[1]);
+    expect(monthFlowTotals(august).expenseMinor).toBe(0);
+    expect(august.byCategory.get("cat")).toBeUndefined();
+  });
+});
+
 describe("resolveLedgerAnchor (prior-year history)", async () => {
   const { resolveLedgerAnchor } = await import("../src/domain/balance");
   const tx = (id: string, date: string, amt: number, type: "income" | "expense" = "expense") => ({

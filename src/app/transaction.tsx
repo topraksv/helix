@@ -443,7 +443,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
               : dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
           </Body>
           {isCreditCardExpense && !cardCycleValid ? (
-            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: { from: "transaction" } }, { withAnchor: true })} />
+            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: existing ? { from: "transaction", record: existing.id } : { from: "transaction" } }, { withAnchor: true })} />
           ) : null}
         </>
       )}

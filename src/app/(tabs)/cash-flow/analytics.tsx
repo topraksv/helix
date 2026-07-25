@@ -28,7 +28,7 @@ import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { HeaderBackButton } from "../../../ui/header-back";
-import { resolveBackTarget } from "../../../ui/navigation";
+import { ANALYSIS_SOURCES, knownSource, resolveBackTarget } from "../../../ui/navigation";
 import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
@@ -62,7 +62,16 @@ export default function AnalysisScreen() {
   // Analysis is reachable from the Financial Table (same stack) and from
   // Summary (another tab). Only the pusher knows which, so it says so.
   const { from } = useLocalSearchParams<{ from?: string }>();
-  const back = resolveBackTarget<Href>(from, { summary: "/(tabs)" }, "/(tabs)/cash-flow");
+  const back = resolveBackTarget<Href>(from, ANALYSIS_SOURCES, "/(tabs)/cash-flow");
+  // Budgets returns here with `router.replace`, which rebuilds this screen's
+  // URL from scratch. Hand it the origin so it can put it back; without that,
+  // a budgets round-trip silently turns "opened from Summary" into "deep link".
+  const origin = knownSource(from, ANALYSIS_SOURCES);
+  const openBudgets = () =>
+    router.push(
+      { pathname: "/(tabs)/settings/budgets", params: origin ? { from: "analysis", origin } : { from: "analysis" } } as never,
+      { withAnchor: true },
+    );
   const colors = useSeriesColors();
   const { width } = useWindowDimensions();
   const compact = !shouldUseWideWorkspace(width);
@@ -338,13 +347,13 @@ export default function AnalysisScreen() {
             title={tr.budgets.emptyAnalysisTitle}
             subtitle={tr.budgets.emptyAnalysisHint}
             chevron
-            onPress={() => router.push({ pathname: "/(tabs)/settings/budgets", params: { from: "analysis" } } as never, { withAnchor: true })}
+            onPress={openBudgets}
           />
         ) : (
           <>
             <Spread style={{ marginBottom: spacing.sm }}>
               <Heading style={{ marginTop: 0, marginBottom: 0 }}>{tr.budgets.analysisTitle(monthName(endMonth))}</Heading>
-              <Button label={tr.common.edit} size="sm" variant="ghost" onPress={() => router.push({ pathname: "/(tabs)/settings/budgets", params: { from: "analysis" } } as never, { withAnchor: true })} />
+              <Button label={tr.common.edit} size="sm" variant="ghost" onPress={openBudgets} />
             </Spread>
             {activeBudgetRows.map((budget) => (
               <ListRow

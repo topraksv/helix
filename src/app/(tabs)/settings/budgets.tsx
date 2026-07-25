@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, type Href } from "expo-router";
-import { resolveBackTarget } from "../../../ui/navigation";
+import { ANALYSIS_SOURCES, knownSource, resolveBackTarget } from "../../../ui/navigation";
 import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
@@ -30,8 +30,23 @@ export default function BudgetsScreen() {
   // it came from; `resolveBackTarget` validates it (typeof string +
   // Object.hasOwn, so a hand-typed or prototype-polluting value cannot match)
   // and falls back to the settings hub for deep links with no recorded source.
-  const { from } = useLocalSearchParams<{ from?: string }>();
-  const back = resolveBackTarget<Href>(from, { analysis: "/(tabs)/cash-flow/analytics" }, "/(tabs)/settings");
+  // `origin` is Analysis's OWN recorded source, handed over so returning to it
+  // exactly (a replace, which rebuilds the URL) restores it instead of dropping
+  // the user one screen further back than they came from. It is re-validated
+  // against the same allowlist Analysis resolves with, so an invented value can
+  // only degrade to "no origin".
+  const { from, origin } = useLocalSearchParams<{ from?: string; origin?: string }>();
+  const analysisOrigin = knownSource(origin, ANALYSIS_SOURCES);
+  const back = resolveBackTarget<Href>(
+    from,
+    {
+      analysis: {
+        pathname: "/(tabs)/cash-flow/analytics",
+        ...(analysisOrigin ? { params: { from: analysisOrigin } } : {}),
+      } as Href,
+    },
+    "/(tabs)/settings",
+  );
   const userId = useUserId();
   const categoriesState = useCategoriesState();
   const budgetsState = useCategoryBudgetsState();

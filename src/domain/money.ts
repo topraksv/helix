@@ -80,7 +80,11 @@ function formatterFor(currency: string): Intl.NumberFormat {
 
 /** ₺1.234,56 style formatting. */
 export function formatMinor(amountMinor: Minor, currency = "TRY"): string {
-  return formatterFor(currency).format(assertMinor(amountMinor) / 100);
+  // `-0` is a real JS value and Intl prints it as "-₺0,00". Callers negate a
+  // sum for display (an expense row shows `-expenseMinor`), so an empty month
+  // produced a minus sign in front of nothing. Zero has no sign to show.
+  const value = assertMinor(amountMinor) / 100;
+  return formatterFor(currency).format(value === 0 ? 0 : value);
 }
 
 // One-decimal grouped number formatter for the compact scale (e.g. "1,5").

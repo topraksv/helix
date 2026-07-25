@@ -9,6 +9,7 @@ import { Pressable, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Inbox } from "lucide-react-native";
 import { creditCardSplitsByMonth } from "../../../domain/analytics";
+import { monthColumnBasis } from "../../../domain/balance";
 import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
 import { makeMonthKey, monthKeyOf, todayISO } from "../../../domain/dates";
 import { isValidItemParams, singleParam, type ItemKind } from "../../../domain/route-params";
@@ -106,9 +107,7 @@ function ItemBreakdown({
         try {
           value = evaluateComputedColumn(parseDefinition(JSON.parse(compDef.definition)), {
             month,
-            byCategory: ledgerMonth.byCategory,
-            incomeMinor: ledgerMonth.incomeMinor,
-            expenseMinor: ledgerMonth.expenseMinor,
+            ...monthColumnBasis(ledgerMonth),
             ccSingleMinor: cc.singleMinor,
             ccInstallmentMinor: cc.installmentMinor,
           });
