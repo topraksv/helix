@@ -67,6 +67,33 @@ export function isUuidShaped(id: unknown): id is string {
 }
 
 /** Corrupt local timestamps must not make a valid server row lose forever. */
+/**
+ * Whether a pulled row REPLACED something the user could already see.
+ *
+ * Deliberately stricter than `remoteWinsLww`, which accepts an equal
+ * `updated_at` so a re-pulled row converges. That equality is exactly the shape
+ * of this device's OWN push coming back: the acknowledgement already stored the
+ * server's timestamp locally, so the row arrives identical. Telling the user
+ * "another device changed this" for their own save would be noise, so a
+ * notification needs a row that existed locally AND a strictly newer remote
+ * version (or a newer delete generation). A first pull into an empty workspace
+ * has no local row and therefore never announces anything.
+ */
+export function remoteSupersededLocal(
+  localUpdatedAt: string | null,
+  remoteUpdatedAt: string,
+  localTombstoneVersion = 0,
+  remoteTombstoneVersion = 0,
+): boolean {
+  if (localUpdatedAt == null) return false;
+  if (remoteTombstoneVersion !== localTombstoneVersion) {
+    return remoteTombstoneVersion > localTombstoneVersion;
+  }
+  const remote = Date.parse(remoteUpdatedAt);
+  const local = Date.parse(localUpdatedAt);
+  return Number.isFinite(remote) && Number.isFinite(local) && remote > local;
+}
+
 export function remoteWinsLww(
   localUpdatedAt: string | null,
   remoteUpdatedAt: string,

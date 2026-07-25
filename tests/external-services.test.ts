@@ -250,6 +250,54 @@ describe("live market freshness", () => {
     expect(marketSellRateTry("USD", 5_000 + 60_001)).toBeNull();
   });
 
+  it("never promotes a hydrated snapshot to live because another symbol ticks", async () => {
+    // The app was closed and reopened: the persisted USD quote is 30 s old, so
+    // it is still inside the 60 s contract by its OWN receipt time. Nothing has
+    // confirmed it since the restart, though — while the app was closed the feed
+    // could not tell us the price moved, because the provider only re-sends a
+    // symbol when it CHANGES and we were not connected to hear it. Live
+    // continuity may extend a quote this session actually saw; it must never
+    // vouch for one that only came off the disk.
+    kvStore.set(
+      "helix.markets.snapshot",
+      JSON.stringify({
+        lastEventAt: 5_000,
+        prices: { USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "dün", receivedAt: 5_000 } },
+      }),
+    );
+    useMarkets.setState({ status: "connecting", prices: {}, lastEventAt: null });
+    await hydrateSnapshot();
+
+    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, 35_000);
+    expect(useMarkets.getState().prices.USDTRY?.receivedAt).toBe(5_000);
+    // Its own 60 s window still applies, and it ends when the quote was really
+    // received — not 60 s after some other symbol happened to tick.
+    expect(marketSellRateTry("USD", 35_000)).toBe(40.5);
+    expect(marketSellRateTry("USD", 66_000)).toBeNull();
+    // …and the converter mirrors that instead of showing an unbadged rate.
+    expect(marketLastKnownRateTry("USD", 66_000)?.live).toBe(false);
+  });
+
+  it("resumes live continuity for a hydrated symbol once its own quote arrives", async () => {
+    kvStore.set(
+      "helix.markets.snapshot",
+      JSON.stringify({
+        lastEventAt: 5_000,
+        prices: { USDTRY: { code: "USDTRY", buyTry: 40, sellTry: 40.5, direction: "", at: "dün", receivedAt: 5_000 } },
+      }),
+    );
+    useMarkets.setState({ status: "connecting", prices: {}, lastEventAt: null });
+    await hydrateSnapshot();
+
+    // The feed confirms USDTRY itself, so this session has now seen it live.
+    applyFeed({ USDTRY: { code: "USDTRY", alis: "41", satis: "41.5", tarih: "t" } }, 10_000);
+    expect(useMarkets.getState().prices.USDTRY?.receivedAt).toBe(10_000);
+    // From here the ordinary unchanged-quote rule applies again.
+    applyFeed({ ALTIN: { code: "ALTIN", alis: "4000", satis: "4010", tarih: "t" } }, 40_000);
+    expect(useMarkets.getState().prices.USDTRY?.receivedAt).toBe(40_000);
+    expect(marketSellRateTry("USD", 40_000)).toBe(41.5);
+  });
+
   it("never lets a snapshot overwrite live quotes that already arrived", async () => {
     kvStore.set(
       "helix.markets.snapshot",

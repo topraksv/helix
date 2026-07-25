@@ -322,9 +322,23 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
     for (const { name, route, heading } of routes) {
       await page.goto(route);
       await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
+      // The transaction form carries two values that change without the UI
+      // changing: the amount placeholder rotates through a pool on every mount,
+      // and the payment day defaults to TODAY. Comparing them made this baseline
+      // decay a little further every day — it drifted to ~2% while the local cap
+      // is 1% and CI's glyph budget is 4%, so it failed here and stayed green
+      // there. Hide exactly those two boxes; the control fills, borders, chips
+      // and spacing this test exists for are still compared pixel for pixel.
+      const volatile = name === "transaction"
+        ? [
+            page.getByRole("textbox", { name: "Tutar · TRY" }),
+            page.getByRole("button", { name: "Ödeme Günü", exact: true }),
+          ]
+        : [];
       await expect(page).toHaveScreenshot(`follow-up-${name}-phone-390-${scheme}.png`, {
         animations: "disabled",
         caret: "hide",
+        mask: volatile,
         maxDiffPixelRatio: maxVisualDiffPixelRatio,
       });
     }

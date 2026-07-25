@@ -1,6 +1,11 @@
 # Supabase Free tier pauses projects after ~7 days of inactivity (spec §2.2).
 # This heartbeat writes AND reads every 3 days so the project never pauses,
 # even when the app itself is only opened once a month.
+#
+# Only status codes are echoed. The response bodies are still asserted against
+# (the read must contain an "id"), but printing them put PostgREST output —
+# including whatever an error response happens to carry — into a public Actions
+# log for no diagnostic gain the status code does not already provide.
 name: supabase-keepalive
 
 on:
@@ -27,12 +32,12 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Prefer: resolution=merge-duplicates" \
             -d "[{\"id\": 1, \"pinged_at\": \"$(date -u +%FT%TZ)\"}]")
-          echo "write: $write_status"; cat /tmp/write.json
+          echo "write: $write_status"
           [ "$write_status" = "201" ] || [ "$write_status" = "200" ]
           read_status=$(curl -sS -o /tmp/read.json -w "%{http_code}" \
             "$SUPABASE_URL/rest/v1/keep_alive?select=id,pinged_at&id=eq.1" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
-          echo "read: $read_status"; cat /tmp/read.json
+          echo "read: $read_status"
           [ "$read_status" = "200" ]
           grep -q '"id"' /tmp/read.json

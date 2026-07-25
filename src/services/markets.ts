@@ -35,6 +35,9 @@ interface MarketPrice {
   at: string;
   /** Local receipt time; provider text is display-only and not trusted for age. */
   receivedAt: number;
+  /** Restored from disk and not confirmed by the feed since. Such a quote may
+   *  be DISPLAYED, but live continuity must not vouch for it — see `applyFeed`. */
+  fromSnapshot?: boolean;
 }
 
 interface MarketsState {
@@ -96,6 +99,7 @@ export async function hydrateSnapshot(): Promise<void> {
         direction: "",
         at: typeof price.at === "string" ? price.at : "",
         receivedAt: Number(price.receivedAt),
+        fromSnapshot: true,
       };
     }
     const state = useMarkets.getState();
@@ -165,14 +169,21 @@ export function applyFeed(data: Record<string, FeedEntry>, now = Date.now()) {
   // The provider only re-sends a symbol whose price CHANGED, so a stable quote
   // (e.g. gold overnight while USD keeps ticking) stops arriving even though it
   // is still the current price. Keep every known quote, and extend the receipt
-  // time ONLY for quotes that are themselves still fresh — live continuity may
-  // keep a quote alive, but it must never resurrect one that already expired
-  // (a hydrated snapshot or a >60 s silence gap), or the converter would treat
-  // yesterday's rate as a fresh live rate on the next tick.
+  // time ONLY for quotes this session actually received live and that are
+  // themselves still fresh. Two exclusions, one reason each:
+  //  - an already expired quote (>60 s silence gap) must not be resurrected, or
+  //    the converter would treat yesterday's rate as a fresh live rate;
+  //  - a quote restored from the snapshot must not be vouched for at all. The
+  //    "still the current price" argument rests on having been CONNECTED
+  //    throughout, and a hydrated quote was read off the disk across a gap where
+  //    the app heard nothing. It keeps displaying with its real receipt time and
+  //    expires on it, until its own symbol ticks and proves it live again.
   const prices: Record<string, MarketPrice> = Object.fromEntries(
     Object.entries(useMarkets.getState().prices).map(([code, price]) => [
       code,
-      freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS) ? { ...price, receivedAt: now } : price,
+      !price.fromSnapshot && freshMarketQuote(price.receivedAt, now, MARKET_STALE_MS)
+        ? { ...price, receivedAt: now }
+        : price,
     ]),
   );
   for (const { code } of MARKET_SYMBOLS) {
