@@ -123,9 +123,28 @@ where the same React tree now runs.
 
 ## Delivery and rollback evidence
 
-Filled in by the release commit that follows this one; the previous release is
-`71c665f` (PR #64), Pages run `30168578249`, preview OTA group
-`e24a6876-188a-47df-8863-6cbc8416575c`, and that is the rollback anchor.
+- Delivered `098cfb3` (the ten items, PR #66), then `52b75b2` (dependency
+  patches, PR #67) and `35f7aa4` (the brace-expansion disposition, PR #68).
+  Pages deployed each; the final run is `30179505377` at `52b75b2`, and the
+  docs commit redeploys on top.
+- Preview OTA is group `39ffadf3-6a25-45b3-818f-f4687dfa6716` (android
+  `019f9ba5-8d89-7e5c-b7fd-5bf94d87941a`, iOS
+  `019f9ba5-8d89-7b09-99c4-fefd3eecb39a`), runtime `1.0.0`, branch `preview`,
+  from `52b75b2` with a clean tree. Installed delivery is **not** verified —
+  no device.
+- **Dependency posture.** `tar` is fully patched (7.5.22, alert closed).
+  `brace-expansion` is patched everywhere it can be: the three 5.x copies are
+  on 5.0.8, the two pinned by `minimatch@3.1.5` / `minimatch@9.0.9` cannot move
+  without breaking eslint and the Expo CLI, and that alert stays **open on
+  purpose** with its reasoning and closure condition in
+  [`SECURITY.md`](SECURITY.md). Do not "fix" it by forcing an override — both
+  the brace-expansion@5 and the minimatch@10 route were tested against the
+  published tarballs and both break CommonJS callers.
+- Rollback anchor is the previous release: `71c665f` (PR #64), Pages run
+  `30168578249`, OTA group `e24a6876-188a-47df-8863-6cbc8416575c`.
+- The app diff is TS/TSX, tests, baselines and docs; the only dependency change
+  is two `overrides` lines and the lockfile. No `app.json`, `eas.json`, native
+  directory or Supabase migration change — no native rebuild, no schema deploy.
 
 ## Next exact step
 
