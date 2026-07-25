@@ -115,14 +115,15 @@ kadar hiç doldurulmadı.
 
 | Platform | Senaryo | Sınıf | Mevcut release etkisi | Kabul ölçütü | Son durum |
 |---|---|---|---|---|---|
-| iOS | VoiceOver + Dynamic Type XL/AX | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native accessibility kabul iddiasını bloklar | Onboarding, işlem formu, tablo detayı, Settings okuma sırası; focus modalı açan elemana döner; metin/CTA kesilmez | BLOCKED — cihaz yok |
-| Android | TalkBack + font/display scale | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; Android shipped iddiasını bloklar | Aynı ana akış; role/state/hint doğru; hardware/system back deterministic parent’a gider | BLOCKED — verified build/device yok |
+| iOS | Dynamic Type XL/AX | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native accessibility kabul iddiasını bloklar | Onboarding, işlem formu, tablo detayı, Settings okuma sırası; focus modalı açan elemana döner; metin/CTA kesilmez | BLOCKED — cihaz yok |
+| iOS/Android | VoiceOver ve TalkBack | `OWNER_NA` | Hiçbir teslimi bloklamaz | Owner kararıyla kapsam dışı | `OWNER_NA` |
+| Android | Font/display scale | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; Android shipped iddiasını bloklar | Aynı ana akış; role/state/hint doğru; hardware/system back deterministic parent’a gider | BLOCKED — verified build/device yok |
 | iOS/Android | Reduced Motion | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native kabul iddiasını bloklar | Press/list/modal hareketleri azalır; işlev kaybı yok | BLOCKED — cihaz yok |
 | iOS/Android | App switcher/screenshot privacy | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; snapshot privacy iddiasını bloklar | Background anında finansal içerik yerine privacy cover snapshot’lanır | BLOCKED — OS timing cihaz ister |
 | iOS/Android | Bildirim/lock-screen | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native notification kabul iddiasını bloklar | Boot’ta izin sorulmaz; nötr preview varsayılan; opt-in detail; sign-out tüm account detail’i temizler; en yakın 60 planlanır | BLOCKED — OS scheduler cihaz ister |
 | iOS/Android | Keychain/SecureStore + biyometrik | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; cihaz secret/biometric iddiasını bloklar | Oturum OS-protected storage'da; biyometrik başarısızlık bypass etmez, hesap değişimi eski state'i açmaz | BLOCKED — gerçek keychain/biometric cihaz akışı yok |
 | Installed OTA | `preview` teslimi | `DEVICE_ONLY` | Preview publish'i bloklamaz; production OTA'yı ve installed-delivery doğrulamasını bloklar | Doğru runtime/channel; ilk cold start indirir, ikinci cold start hedef sürümün görünür kabul akışını açar | BLOCKED — installed binary erişilemedi |
-| İki installed client | Account switch/sync | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; iki-cihaz convergence iddiasını bloklar | A’nın geç işi B’ye yazmaz; offline event online olunca tek kez gider; delete/undo iki tarafta eşit | BLOCKED — iki client yok |
+| İki installed client | Account switch/sync | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; iki-cihaz convergence iddiasını bloklar | A’nın geç işi B’ye yazmaz; offline event online olunca tek kez gider; delete/undo iki tarafta eşit | BLOCKED — iki installed client yok. Convergence kurallarının kendisi `tests/multi-client-sync.test.ts` ile iki izole SQLite client + migration 12 trigger modeli üzerinde kanıtlanır; canlı ağ üzerinden iki-cihaz kabulü hâlâ cihaz ister. |
 | Düşük bellek cihaz | Büyük geçerli import | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; düşük-memory native kabul iddiasını bloklar | Limit içindeki dosya tamamlanır veya kontrollü hata verir; crash/yarım write yok | BLOCKED — cihaz profili yok |
 
 ### Cihaz sonuç kaydı

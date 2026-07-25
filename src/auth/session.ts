@@ -15,8 +15,8 @@ import {
   subscribeSupabaseAuthEvents,
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
-import { resetLocalWorkspace, writeSetting } from "../db/mutations";
-import { runSyncSessionTask, startSyncSession, stopSyncSession } from "../sync/engine";
+import { pendingOutboxCount, resetLocalWorkspace, writeSetting } from "../db/mutations";
+import { runSyncSessionTask, startSyncSession, stopSyncSession, syncNow } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { connectMarkets, disconnectMarkets } from "../services/markets";
 import { clearRateCache, loadRateCache } from "../services/fx-fetch";
@@ -24,7 +24,7 @@ import { clearAccountNotifications, rescheduleAll } from "../services/notificati
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { friendlyAuthError } from "./auth-errors";
-import { signOutWithLocalFallback } from "./sign-out";
+import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "./sign-out";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "./recovery";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
@@ -41,6 +41,13 @@ let verificationBrake: VerificationBrake = IDLE_BRAKE;
 let authLifecycleSubscribed = false;
 let explicitSignOutInProgress = false;
 let invalidationCleanup: Promise<void> | null = null;
+
+/**
+ * Sign-out refused because rows would be lost. Safe to show as-is — it names
+ * the outcome, not the machinery — and identity-comparable so the caller can
+ * offer "sign out anyway" instead of treating it as a failure.
+ */
+export const SIGN_OUT_PENDING_CHANGES = tr.auth.signOutPendingBlocked;
 
 const LAST_USER_KEY = "helix.last_user_id";
 /** Signed-in e-mail, persisted so an offline bootstrap can still re-auth. */
@@ -145,9 +152,11 @@ interface SessionStore {
   preparePasswordRecovery: (url: string | null) => Promise<"ready" | "expired" | "invalid">;
   /** Update the password from the recovery session and end that session. */
   completePasswordRecovery: (newPassword: string) => Promise<string | null>;
-  /** Wipe local finance data and end the session. Returns an error if the wipe
-   *  failed; in that case the authenticated session remains active. */
-  signOut: () => Promise<string | null>;
+  /** End the session on THIS device and wipe its local finance data. Returns an
+   *  error if the wipe failed or if unsynced rows would be destroyed
+   *  (`SIGN_OUT_PENDING_CHANGES`); in both cases the session stays active. Pass
+   *  `force` once the user has accepted losing those rows. */
+  signOut: (options?: { force?: boolean }) => Promise<string | null>;
   /** Permanently delete all data (cloud + this device) and sign out. Returns a
    *  user-facing error string when the cloud wipe could not complete. */
   deleteAccount: () => Promise<string | null>;
@@ -232,7 +241,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     if (error) return friendlyAuthError(error.message);
     const wsError = await ensureWorkspaceFor(data.user.id);
     if (wsError) {
-      await supabase.auth.signOut().catch(() => {});
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
@@ -259,7 +268,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     if (!data.user) return tr.errors.signUpFailed;
     const wsError = await ensureWorkspaceFor(data.user.id);
     if (wsError) {
-      await supabase.auth.signOut().catch(() => {});
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       return wsError;
     }
     await kv.set(LAST_USER_KEY, data.user.id);
@@ -329,8 +338,22 @@ export const useSession = create<SessionStore>((set, get) => ({
     return null;
   },
 
-  signOut: async () => {
+  signOut: async (options) => {
     const userId = get().userId;
+    // Unsynced rows only exist here. Flush them first and, if any survive, stop
+    // rather than delete a change the user believes is saved; `force` is the
+    // caller's proof that the user was asked and accepted the loss.
+    if (
+      userId &&
+      !options?.force &&
+      isSupabaseConfigured &&
+      (await pendingChangesWouldBeLost({
+        pendingCount: pendingOutboxCount,
+        flush: () => syncNow(userId),
+      }))
+    ) {
+      return SIGN_OUT_PENDING_CHANGES;
+    }
     // Abort scheduled/network work and wait for registered maintenance tasks.
     // The database cannot be wiped while an old user task can still write.
     await stopSyncSession(userId ?? undefined);
@@ -414,7 +437,9 @@ export const useSession = create<SessionStore>((set, get) => ({
     if (supabase) {
       explicitSignOutInProgress = true;
       try {
-        await signOutWithLocalFallback((options) => supabase.auth.signOut(options));
+        // The identity itself is gone, so every device's token should go with
+        // it — this is the one deliberate global revocation.
+        await signOutWithLocalFallback((options) => supabase.auth.signOut(options), "global");
       } finally {
         explicitSignOutInProgress = false;
       }

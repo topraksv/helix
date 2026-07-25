@@ -8,7 +8,7 @@ import {
   type LoginHistoryStorage,
 } from "../src/auth/login-history";
 import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "../src/auth/recovery";
-import { signOutWithLocalFallback } from "../src/auth/sign-out";
+import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "../src/auth/sign-out";
 import { tr } from "../src/i18n/tr";
 
 function memoryStorage(): LoginHistoryStorage {
@@ -119,31 +119,95 @@ describe("password recovery links", () => {
 });
 
 describe("session sign-out", () => {
-  it("falls back to a local revoke when global sign-out returns an error", async () => {
+  /**
+   * Supabase defaults `signOut()` to `scope: "global"`, which revokes every
+   * refresh token the account holds. Leaving the scope implicit meant signing
+   * out of the web app killed the phone: its refresh was rejected, the
+   * invalidation path wiped that device — unsynced rows included — and
+   * "Cihazlarını Güncelle" could only answer 401 until the user signed in
+   * again. An ordinary sign-out ends THIS device's session and nothing else.
+   */
+  it("ends only this device's session by default", async () => {
+    const calls: Array<string | undefined> = [];
+    await signOutWithLocalFallback(async (options) => {
+      calls.push(options?.scope);
+      return { error: null };
+    });
+    expect(calls).toEqual(["local"]);
+  });
+
+  it("revokes every device only when the caller asks for it", async () => {
+    const calls: Array<string | undefined> = [];
+    await signOutWithLocalFallback(async (options) => {
+      calls.push(options?.scope);
+      return { error: null };
+    }, "global");
+    expect(calls).toEqual(["global"]);
+  });
+
+  it("falls back to a local revoke when a global sign-out returns an error", async () => {
     const calls: Array<string | undefined> = [];
     await signOutWithLocalFallback(async (options) => {
       calls.push(options?.scope);
       return { error: options?.scope === "local" ? null : new Error("offline") };
-    });
-    expect(calls).toEqual([undefined, "local"]);
+    }, "global");
+    expect(calls).toEqual(["global", "local"]);
   });
 
-  it("does not repeat a successful global sign-out", async () => {
+  it("retries locally when the local revoke itself fails", async () => {
     const calls: Array<string | undefined> = [];
+    let first = true;
     await signOutWithLocalFallback(async (options) => {
       calls.push(options?.scope);
+      if (first) {
+        first = false;
+        throw new Error("transport");
+      }
       return { error: null };
     });
-    expect(calls).toEqual([undefined]);
+    // A persisted session that survives a failed revoke would silently reopen
+    // the account on the next bootstrap.
+    expect(calls).toEqual(["local", "local"]);
+  });
+});
+
+describe("sign-out data safety", () => {
+  it("lets a clean workspace sign out without a flush", async () => {
+    let flushes = 0;
+    const lost = await pendingChangesWouldBeLost({
+      pendingCount: async () => 0,
+      flush: async () => void flushes++,
+    });
+    expect(lost).toBe(false);
+    expect(flushes).toBe(0);
   });
 
-  it("also falls back when global sign-out throws", async () => {
-    const calls: Array<string | undefined> = [];
-    await signOutWithLocalFallback(async (options) => {
-      calls.push(options?.scope);
-      if (!options) throw new Error("transport");
-      return { error: null };
+  it("flushes queued rows and allows the sign-out once they land", async () => {
+    let pending = 3;
+    const lost = await pendingChangesWouldBeLost({
+      pendingCount: async () => pending,
+      flush: async () => {
+        pending = 0;
+      },
     });
-    expect(calls).toEqual([undefined, "local"]);
+    expect(lost).toBe(false);
+  });
+
+  it("reports the loss when rows cannot reach the server", async () => {
+    const lost = await pendingChangesWouldBeLost({
+      pendingCount: async () => 2,
+      flush: async () => {},
+    });
+    expect(lost).toBe(true);
+  });
+
+  it("treats a thrown flush as unsynced rather than as success", async () => {
+    const lost = await pendingChangesWouldBeLost({
+      pendingCount: async () => 1,
+      flush: async () => {
+        throw new Error("offline");
+      },
+    });
+    expect(lost).toBe(true);
   });
 });

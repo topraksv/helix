@@ -146,6 +146,7 @@ export const tr = {
     signOutPendingWarn: (n: number) =>
       `${n} kayıt henüz buluta eşitlenmedi. Şimdi çıkarsan bu kayıtlar kalıcı olarak silinir. Yine de çıkmak istiyor musun?`,
     signOutAnyway: "Yine de Çık",
+    signOutPendingBlocked: "Bazı değişikliklerin henüz eşitlenmedi. Verilerin cihazında korunuyor.",
     signOutLocalTitle: "Tüm veriler silinecek",
     signOutLocalWarn:
       "Bu cihaz buluta bağlı değil; verilerin yalnızca burada saklanıyor. Çıkarsan tüm verilerin kalıcı olarak silinir ve geri getirilemez. Önce 'Yedek Oluştur' ile dışa aktarmanı öneririz.",
@@ -272,6 +273,7 @@ export const tr = {
   sync: {
     errRls: "Eşitlemede geçici bir uyum sorunu oluştu; birazdan otomatik olarak yeniden denenecek.",
     errAuth: "Oturum yenileniyor; verilerin birazdan otomatik eşitlenecek.",
+    errReauth: "Eşitleme için tekrar giriş yapman gerekiyor. Verilerin cihazında korunuyor.",
     errNetwork: "İnternet bağlantısı yok. Bağlanınca verilerin otomatik eşitlenecek.",
     errGeneric: "Şu an eşitleme yapılamadı; birazdan otomatik olarak tekrar denenecek.",
     errQuarantined: "Bazı eski kayıtlar yalnız bu cihazda kaldı. Verilerin korunuyor; yeniden denemeden önce JSON yedek al.",

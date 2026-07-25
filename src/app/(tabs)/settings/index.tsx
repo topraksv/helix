@@ -26,7 +26,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react-native";
-import { useSession } from "../../../auth/session";
+import { SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
 import { useSettingsMapState, settingValue, useUserId } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
@@ -109,18 +109,21 @@ export default function SettingsScreen() {
         if (error) void appAlert(error, tr.errors.title);
         return;
       }
-      if ((await pendingSyncChangeCount()) > 0) {
-        await syncNow(userId);
-      }
-      const pending = await pendingSyncChangeCount();
-      if (pending > 0) {
+      // The session layer owns the flush and refuses to wipe rows the cloud
+      // never received; this screen owns the only thing it cannot decide —
+      // whether the user accepts losing them.
+      const error = await signOut();
+      if (error === SIGN_OUT_PENDING_CHANGES) {
+        const pending = await pendingSyncChangeCount();
         const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending), {
           confirmLabel: tr.auth.signOutAnyway,
           danger: true,
         });
         if (!proceed) return;
+        const forced = await signOut({ force: true });
+        if (forced) void appAlert(forced, tr.errors.title);
+        return;
       }
-      const error = await signOut();
       if (error) void appAlert(error, tr.errors.title);
     } catch {
       void appAlert(tr.errors.requestFailed, tr.errors.title);
