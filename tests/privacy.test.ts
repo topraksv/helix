@@ -51,6 +51,72 @@ describe("sensitive UI cover policy", () => {
     }
   });
 
+  /**
+   * Not every `helix.` key is a device preference.
+   *
+   * The entry form remembers the last used category and payment source so the
+   * next transaction starts where the last one ended. Those are ROW IDS from one
+   * account's workspace, kept in `localStorage` on web, and nothing used to
+   * remove them — so a shared browser carried the previous account's ids past
+   * sign-out. The reader validates them against the live categories, so they
+   * were never displayed to the next account; they were still that account's
+   * data sitting in a store the session no longer owned.
+   */
+  it("clears the entry form's account-scoped defaults with the account", () => {
+    const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
+    const form = readFileSync(join(process.cwd(), "src/app/transaction.tsx"), "utf8");
+    // The writer's key shape, resolved for every financial type the form emits.
+    expect(form).toContain("kv.set(`helix.last.${entryType}`");
+    const declared = session.match(/const ENTRY_DEFAULT_KEYS = \[([^\]]+)\]/)?.[1] ?? "";
+    for (const type of ["income", "expense", "transfer"]) {
+      expect(declared, `helix.last.${type} must be cleared on sign-out`).toContain(`"helix.last.${type}"`);
+    }
+    // Sign-out, account deletion, remote invalidation and account switch all
+    // reach the same reset; a fifth teardown path added without it would show up
+    // here as a count mismatch rather than as a silent leak.
+    expect(session.match(/await clearAccountScopedDeviceState\(\)/g)).toHaveLength(4);
+    // Assert the rule, not the literal: EVERY field the sync status store holds
+    // has to be named in the reset. Pinning the exact string made this break on
+    // an unrelated but correct change, and — worse — it would have stayed green
+    // if a new account-scoped field had been added and left behind.
+    const status = readFileSync(join(process.cwd(), "src/sync/status.ts"), "utf8");
+    const storeFields = [
+      ...(status.match(/create<SyncStatusStore>\(\(set\) => \(\{([\s\S]*?)\}\)\)/)?.[1] ?? "")
+        .matchAll(/^\s{2}(\w+):/gm),
+    ].map((match) => match[1]!).filter((field) => field !== "set");
+    const reset = session.match(/useSyncStatus\.getState\(\)\.set\(\{([^}]*)\}\)/)?.[1] ?? "";
+    expect(storeFields.length).toBeGreaterThanOrEqual(3);
+    for (const field of storeFields) {
+      expect(reset, `${field} must be reset when the account changes`).toContain(`${field}:`);
+    }
+  });
+
+  /**
+   * The undo bar quotes a real row ("Netflix · Silindi") and its action closes
+   * over the account's user id plus a row snapshot, in a module-level store that
+   * outlives the screen. Signing out inside its six-second life carried both
+   * across the account boundary — and the restore would have written that row
+   * into the next account's freshly wiped workspace.
+   */
+  it("drops the undo bar when the session it belongs to ends", () => {
+    const layout = readFileSync(join(process.cwd(), "src/app/_layout.tsx"), "utf8");
+    expect(layout).toContain("useUndo");
+    expect(layout).toMatch(/useEffect\(\(\) => \{\s*useUndo\.getState\(\)\.clear\(\);\s*\}, \[userId\]\)/);
+  });
+
+  /**
+   * A backup is a file: its `user_id` columns are input, not authority. Import
+   * stamps the importing account onto every row, so a bundle exported by another
+   * account restores as the importer's own data and can never create a row the
+   * server would accept as someone else's.
+   */
+  it("re-owns imported rows instead of trusting the file's user ids", () => {
+    const importer = readFileSync(join(process.cwd(), "src/services/export-import.ts"), "utf8");
+    expect(importer).toContain("...fromDbShape(table, raw as Record<string, unknown>), userId");
+    // Export is scoped the same way, by the authenticated owner and nothing else.
+    expect(importer).toContain("`SELECT * FROM ${table} WHERE user_id = ?`");
+  });
+
   it("keeps account cleanup and notification redaction wired to real boundaries", () => {
     const session = readFileSync(join(process.cwd(), "src/auth/session.ts"), "utf8");
     const notifications = readFileSync(join(process.cwd(), "src/services/notifications.ts"), "utf8");

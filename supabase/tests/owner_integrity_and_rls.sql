@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(48);
+select extensions.plan(59);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -569,6 +569,146 @@ select is(
   'transaction category kind must match its financial type'
 );
 
+
+-- ---------------------------------------------------------------------------
+-- Cross-user adversarial matrix (Package 4C)
+--
+-- The suite above proves user B cannot READ user A. These prove the writes a
+-- hostile or simply broken client can attempt: forging an owner, handing a row
+-- to another account, and reaching another account's parent row through every
+-- relationship shape the schema has. The composite `(user_id, parent_id)`
+-- foreign keys are what make the last one fail even when RLS would have let the
+-- row through, so each relation is asserted rather than assumed to inherit the
+-- guarantee from a sibling.
+-- ---------------------------------------------------------------------------
+
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (id, user_id, name, is_self) values (
+      '10000000-0000-4000-8000-000000000091',
+      '20000000-0000-4000-8000-000000000002',
+      'forged owner', false
+    )
+  $command$),
+  '42501',
+  'user A cannot insert a row owned by user B'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.persons
+    set user_id = '20000000-0000-4000-8000-000000000002'
+    where id = '10000000-0000-4000-8000-000000000011'
+  $command$),
+  '42501',
+  'user A cannot hand an owned row to user B'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (id, user_id, name, is_self)
+    values ('10000000-0000-4000-8000-000000000092', null, 'no owner', false)
+  $command$),
+  '42501',
+  'a row with no owner is refused before the not-null check'
+);
+
+select is(
+  pg_temp.exec_sqlstate($$truncate public.persons$$),
+  '42501',
+  'user A cannot truncate a synced table'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.payment_sources (id, user_id, name, type, person_id) values (
+      '10000000-0000-4000-8000-000000000093',
+      '10000000-0000-4000-8000-000000000001',
+      'A kart', 'credit_card',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23503',
+  'a payment source cannot point at another account''s person'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.credit_card_statements (
+      id, user_id, payment_source_id, period_month, statement_date, due_date
+    ) values (
+      '10000000-0000-4000-8000-000000000094',
+      '10000000-0000-4000-8000-000000000001',
+      '20000000-0000-4000-8000-000000000022',
+      '2026-08', '2026-08-20', '2026-09-05'
+    )
+  $command$),
+  '23503',
+  'a statement cannot point at another account''s payment source'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.price_history (
+      id, user_id, subscription_id, amount_minor, currency, effective_from
+    ) values (
+      '10000000-0000-4000-8000-000000000095',
+      '10000000-0000-4000-8000-000000000001',
+      '20000000-0000-4000-8000-000000000024',
+      1000, 'TRY', '2026-08-01'
+    )
+  $command$),
+  '23503',
+  'price history cannot point at another account''s subscription'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.cell_notes (id, user_id, month, category_id, body) values (
+      '10000000-0000-4000-8000-000000000096',
+      '10000000-0000-4000-8000-000000000001',
+      '2026-08',
+      '20000000-0000-4000-8000-000000000023',
+      'note'
+    )
+  $command$),
+  '23503',
+  'a cell note cannot point at another account''s category'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.transactions (
+      id, user_id, type, amount_minor, amount_try_minor, entry_date,
+      effective_date, status, category_id, person_id
+    ) values (
+      '10000000-0000-4000-8000-000000000097',
+      '10000000-0000-4000-8000-000000000001',
+      'expense', 10000, 10000, '2026-08-01', '2026-08-01', 'realized',
+      '20000000-0000-4000-8000-000000000023',
+      '10000000-0000-4000-8000-000000000011'
+    )
+  $command$),
+  '23514',
+  'a transaction cannot borrow another account''s category'
+);
+
+-- A join through a column both accounts share must not become a read path.
+select is(
+  (
+    select count(*)::bigint
+    from public.categories c
+    join public.persons p on p.user_id = c.user_id
+    where c.user_id = '20000000-0000-4000-8000-000000000002'
+  ),
+  0::bigint,
+  'joining on a shared column does not expose another account'
+);
+
 reset role;
 select set_config('request.jwt.claim.sub', '', true);
 set local role anon;
@@ -615,6 +755,29 @@ select is(
   1::bigint,
   'account deletion RPC cannot delete or return another identity'
 );
+
+-- A deleted account's access token stays syntactically valid until it expires,
+-- so a client that has not noticed the deletion keeps presenting the same
+-- `sub`. RLS alone would accept it — it only compares the claim to `user_id` —
+-- but every synced table's owner column references `auth.users`, so the
+-- identity has to still exist for the write to land.
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (id, user_id, name, is_self) values (
+      '10000000-0000-4000-8000-000000000098',
+      '10000000-0000-4000-8000-000000000001',
+      'ghost', false
+    )
+  $command$),
+  '23503',
+  'a stale token for a deleted account cannot write new rows'
+);
+
+reset role;
 
 select * from extensions.finish();
 rollback;

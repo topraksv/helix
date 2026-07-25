@@ -19,6 +19,7 @@ import { Fraunces_600SemiBold } from "@expo-google-fonts/fraunces/600SemiBold";
 import { Fraunces_700Bold } from "@expo-google-fonts/fraunces/700Bold";
 import { migrateDb } from "../db/migrate";
 import { useSession } from "../auth/session";
+import { useSyncStatus } from "../sync/status";
 import { useAccountFrozenState, useOnboardedState } from "../data/hooks";
 import { classifyRootRoute, resolveRootGuard } from "../domain/app-guard";
 import { kv } from "../services/kv";
@@ -27,7 +28,7 @@ import { Button, Screen, Title } from "../ui/components";
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
-import { UndoSnackbar } from "../ui/undo";
+import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
 import { HeaderBackButton } from "../ui/header-back";
@@ -119,6 +120,20 @@ export default function RootLayout() {
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
+                  // On web the usual cause is another tab holding the exclusive
+                  // OPFS access handle, which leaves wa-sqlite's VFS permanently
+                  // "Invalid VFS state" FOR THIS DOCUMENT: re-running the
+                  // migration in the same page fails identically forever, while
+                  // a reload (new realm, new worker) succeeds the moment the
+                  // other tab is gone. Retrying in place made the button look
+                  // like it did something and never recovered, so the user had
+                  // to guess that refreshing was the real remedy. Native has no
+                  // such realm-scoped VFS — its failures are a locked or corrupt
+                  // file, which re-opening genuinely retries.
+                  if (Platform.OS === "web" && typeof window !== "undefined") {
+                    window.location.reload();
+                    return;
+                  }
                   setDbReady(false);
                   setAttempt((a) => a + 1);
                 }}
@@ -190,6 +205,30 @@ function RootLayoutInner() {
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
+
+  // The undo bar belongs to the session that raised it. Its message quotes a
+  // real row ("Netflix · Silindi") and its action is a closure holding the
+  // previous account's user id and row snapshot, both of which survive the
+  // screen unmounting because the store is module-level. Signing out inside its
+  // six-second life therefore carried one account's row name — and a restore
+  // that would write that row into the next account's freshly wiped
+  // workspace — across the boundary. Every teardown path (sign-out, freeze,
+  // deletion, remote invalidation, account switch) changes `userId`, so this is
+  // the one place that sees all of them.
+  useEffect(() => {
+    useUndo.getState().clear();
+  }, [userId]);
+
+  // A pull replaced rows this device already showed, so the numbers on screen
+  // just changed under the user. Report it once, quietly, in the bar that
+  // already carries outcome messages: no modal, nothing to dismiss, no record
+  // name, no version and no conflict vocabulary. Self-originated writes are
+  // excluded upstream (`remoteSupersededLocal`), so this only ever means
+  // another session.
+  const remoteChangeAt = useSyncStatus((state) => state.remoteChangeAt);
+  useEffect(() => {
+    if (remoteChangeAt) useUndo.getState().show(tr.sync.remoteChangeNotice);
+  }, [remoteChangeAt]);
 
   useWorkspaceMaintenance(ready, userId, locked === false);
   useForegroundSync(ready, userId, locked === false);

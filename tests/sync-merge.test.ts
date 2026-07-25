@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyOutboxBatch, isUuidShaped, remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
-import { completedSyncState } from "../src/sync/status";
+import { classifyRefreshFailure, completedSyncState } from "../src/sync/status";
 
 describe("sync merge policy", () => {
   it("never reports a completed sync as healthy while quarantined rows remain", () => {
@@ -61,5 +61,38 @@ describe("sync merge policy", () => {
     expect(isUuidShaped("019f6bba2c657ea8a6c996d891155e83")).toBe(false); // missing hyphens
     expect(isUuidShaped(42)).toBe(false);
     expect(isUuidShaped(null)).toBe(false);
+  });
+});
+
+/**
+ * A failed token refresh has two completely different meanings and the engine
+ * used to give them one answer.
+ *
+ * `tryRefreshSession` returned a bare boolean, so "the refresh token was
+ * revoked" and "we could not reach the auth service at all" both became
+ * `false`. Both then produced "Eşitleme için tekrar giriş yapman gerekiyor" AND
+ * stopped the retry backoff — telling a user whose session is perfectly valid,
+ * and who is simply in a tunnel, to go and sign in again at a login screen they
+ * cannot reach either. Only an answer FROM the auth service can retire a
+ * session; silence from the network is a network problem.
+ */
+describe("token refresh failure classification", () => {
+  it("treats an unreachable auth service as a network problem, not a dead session", () => {
+    // supabase-js's own class for a transport failure.
+    const retryable = new Error("Failed to fetch");
+    retryable.name = "AuthRetryableFetchError";
+    expect(classifyRefreshFailure(retryable)).toBe("unavailable");
+    expect(classifyRefreshFailure(new Error("network request failed"))).toBe("unavailable");
+    expect(classifyRefreshFailure(new Error("timeout of 10000ms exceeded"))).toBe("unavailable");
+    expect(classifyRefreshFailure(new Error("Gateway Timeout (504)"))).toBe("unavailable");
+  });
+
+  it("retires the session only when the service actually answered", () => {
+    expect(classifyRefreshFailure(new Error("Invalid Refresh Token: Already Used"))).toBe("expired");
+    expect(classifyRefreshFailure(new Error("refresh_token_not_found"))).toBe("expired");
+    // An unrecognised answer still came FROM the service, so it is treated as a
+    // real refusal rather than optimistically retried forever.
+    expect(classifyRefreshFailure(new Error("something else"))).toBe("expired");
+    expect(classifyRefreshFailure(null)).toBe("expired");
   });
 });

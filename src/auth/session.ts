@@ -54,6 +54,33 @@ const LAST_USER_KEY = "helix.last_user_id";
 const LAST_EMAIL_KEY = "helix.last_email";
 /** Owner of the data currently in the local DB (for account-switch detection). */
 const LOCAL_OWNER_KEY = "helix.local_owner";
+/**
+ * Entry-form "smart default" keys (`helix.last.<transaction type>`), written by
+ * `src/app/transaction.tsx`.
+ *
+ * They look like a device preference and are not one: the stored value is a
+ * category id and a payment-source id, which exist only inside ONE account's
+ * workspace. On web the backing store is `localStorage`, so leaving them behind
+ * left the previous account's row ids readable on a shared browser after
+ * sign-out. `tests/privacy.test.ts` checks this list against the writer so the
+ * two cannot drift apart.
+ */
+const ENTRY_DEFAULT_KEYS = ["helix.last.income", "helix.last.expense", "helix.last.transfer"];
+
+/**
+ * Device-local state that belongs to the ACCOUNT rather than the device.
+ *
+ * The sync banner reports the last result of the account that produced it —
+ * its error text, and the `attention` state that counts that account's
+ * quarantined rows. Neither describes the next account, and nothing recomputes
+ * them until its first sync completes, so a signed-in user could read the
+ * previous one's sync failure as their own. Reset with the workspace, not after
+ * it.
+ */
+async function clearAccountScopedDeviceState(): Promise<void> {
+  useSyncStatus.getState().set({ state: "idle", lastSyncAt: null, error: null, remoteChangeAt: null });
+  await Promise.all(ENTRY_DEFAULT_KEYS.map((key) => kv.remove(key).catch(() => {})));
+}
 
 /**
  * Ensure the local DB belongs to `userId`. If a different account previously
@@ -70,6 +97,7 @@ async function ensureWorkspaceFor(userId: string): Promise<string | null> {
     disconnectMarkets();
     clearRateCache();
     await clearAccountNotifications(true).catch(() => {});
+    await clearAccountScopedDeviceState();
     try {
       await resetLocalWorkspace();
     } catch {
@@ -92,7 +120,7 @@ async function clearInvalidatedSession(): Promise<void> {
   disconnectMarkets();
   clearRateCache();
   await clearAccountNotifications(true).catch(() => {});
-  useSyncStatus.getState().set({ lastSyncAt: null });
+  await clearAccountScopedDeviceState();
   try {
     await resetLocalWorkspace();
   } catch {
@@ -360,7 +388,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     disconnectMarkets();
     clearRateCache();
     await clearAccountNotifications(true).catch(() => {});
-    useSyncStatus.getState().set({ lastSyncAt: null });
+    await clearAccountScopedDeviceState();
     // Best practice for a finance app: leave no plaintext financial data on the
     // device after an explicit sign-out. The cloud (RLS-scoped) is the source
     // of truth, so the next sign-in re-hydrates via the initial pull. Clearing
@@ -432,7 +460,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     disconnectMarkets();
     clearRateCache();
     await clearAccountNotifications(true).catch(() => {});
-    useSyncStatus.getState().set({ lastSyncAt: null });
+    await clearAccountScopedDeviceState();
     const supabase = getSupabase();
     if (supabase) {
       explicitSignOutInProgress = true;

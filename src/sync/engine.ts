@@ -9,10 +9,10 @@ import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { getSupabase } from "./supabase";
-import { completedSyncState, DEAD_LETTER_COUNT_SQL, useSyncStatus } from "./status";
+import { classifyRefreshFailure, completedSyncState, DEAD_LETTER_COUNT_SQL, useSyncStatus, type RefreshOutcome } from "./status";
 import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, runSessionEpochTask, type SessionEpochToken } from "./session-epoch";
-import { isUuidShaped, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
+import { isUuidShaped, remoteSupersededLocal, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
 import { prepareOutboundBatch } from "./outbound-validation";
 import type { Database } from "./database.types";
@@ -34,14 +34,15 @@ function friendlySyncError(raw: string): string {
  * 401s (autoRefresh can lag after the app was backgrounded); refreshing and
  * retrying recovers without ever asking the user to sign out and back in.
  */
-async function tryRefreshSession(): Promise<boolean> {
+async function tryRefreshSession(): Promise<RefreshOutcome> {
   const supabase = getSupabase();
-  if (!supabase) return false;
+  if (!supabase) return "unavailable";
   try {
     const { data, error } = await supabase.auth.refreshSession();
-    return !error && !!data.session;
-  } catch {
-    return false;
+    if (!error && data.session) return "refreshed";
+    return classifyRefreshFailure(error);
+  } catch (error) {
+    return classifyRefreshFailure(error);
   }
 }
 
@@ -215,9 +216,11 @@ async function pushOutbox(userId: string, token: SessionEpochToken): Promise<voi
   }
 }
 
-async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<void> {
+/** Returns how many pulled rows replaced a version this device already had. */
+async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<number> {
   const supabase = getSupabase()!;
   const sqlite = await getSqliteAsync();
+  let superseded = 0;
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
     assertActive(token);
     const allowed = KNOWN_COLUMNS.get(table)!;
@@ -265,6 +268,14 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
             Number(remote.tombstone_version),
           );
           if (!remoteWins) continue;
+          if (
+            remoteSupersededLocal(
+              local?.updated_at ?? null,
+              remote.updated_at as string,
+              local?.tombstone_version ?? 0,
+              Number(remote.tombstone_version),
+            )
+          ) superseded += 1;
           // Only accept columns this client's schema knows (ignore any extra
           // server columns) so the generated SQL is always well-formed.
           await upsertLocalRemote(table, remote, allowed);
@@ -283,6 +294,7 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<v
       if (data.length < PULL_PAGE) break;
     }
   }
+  return superseded;
 }
 
 let syncing = false;
@@ -344,7 +356,7 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
   status.set({ state: "syncing" });
   try {
     await pushOutbox(userId, token);
-    await pullAndMerge(userId, token);
+    const superseded = await pullAndMerge(userId, token);
     assertActive(token);
     const sqlite = await getSqliteAsync();
     const deadLetters = await sqlite.getFirstAsync<{ count: number }>(DEAD_LETTER_COUNT_SQL, []);
@@ -354,6 +366,10 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
       state: completionState,
       lastSyncAt: new Date().toISOString(),
       error: completionState === "attention" ? tr.sync.errQuarantined : null,
+      // Announce only a pull that replaced something the user could already
+      // see. Their own acknowledged writes come back with an identical
+      // timestamp and are excluded by `remoteSupersededLocal`.
+      ...(superseded > 0 ? { remoteChangeAt: new Date().toISOString() } : {}),
     });
     return true;
   } catch (e) {
@@ -362,27 +378,34 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     }
     const raw = e instanceof Error ? e.message : String(e);
     devError("sync", raw);
+    let message = friendlySyncError(raw);
     // Expired token → refresh once and retry immediately, no user action.
     if (isAuthError(raw)) {
-      const refreshed = allowRefresh
+      const outcome = allowRefresh
         ? await runSessionEpochTask(sessionEpoch, userId, () => tryRefreshSession())
-        : false;
-      if (refreshed == null) return false;
-      if (refreshed) {
+        : ("expired" as RefreshOutcome);
+      if (outcome == null) return false;
+      if (outcome === "refreshed") {
         status.set({ state: "syncing" });
         if (retryTimer) clearTimeout(retryTimer);
         retryTimer = setTimeout(() => void syncNow(userId, false), 0);
         return false;
       }
-      // The refresh token itself is gone (revoked elsewhere, or expired while
-      // the app was closed). Retrying cannot fix that, so stop promising an
-      // automatic sync that will never happen, stop the backoff from hammering
-      // a dead session, and say plainly that the local data is safe and needs a
-      // sign-in to leave the device.
-      status.set({ state: "error", error: tr.sync.errReauth });
-      return false;
+      if (outcome === "expired") {
+        // The refresh token itself is gone (revoked elsewhere, or expired while
+        // the app was closed). Retrying cannot fix that, so stop promising an
+        // automatic sync that will never happen, stop the backoff from hammering
+        // a dead session, and say plainly that the local data is safe and needs a
+        // sign-in to leave the device.
+        status.set({ state: "error", error: tr.sync.errReauth });
+        return false;
+      }
+      // `unavailable`: the refresh never reached the auth service, so it proves
+      // nothing about the session. Fall through to the ordinary backoff with
+      // the message that matches the real cause.
+      message = tr.sync.errNetwork;
     }
-    status.set({ state: "error", error: friendlySyncError(raw) });
+    status.set({ state: "error", error: message });
     // Exponential backoff retry: 5s, 10s, 20s… capped at 5 min.
     const delay = Math.min(5000 * 2 ** retryAttempt, 300_000);
     retryAttempt += 1;

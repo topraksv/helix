@@ -277,6 +277,9 @@ export const tr = {
     errNetwork: "İnternet bağlantısı yok. Bağlanınca verilerin otomatik eşitlenecek.",
     errGeneric: "Şu an eşitleme yapılamadı; birazdan otomatik olarak tekrar denenecek.",
     errQuarantined: "Bazı eski kayıtlar yalnız bu cihazda kaldı. Verilerin korunuyor; yeniden denemeden önce JSON yedek al.",
+    // Non-blocking: it reports something that already happened correctly, so it
+    // names no record, no device, no version and no conflict.
+    remoteChangeNotice: "Başka bir cihazdaki değişiklikler uygulandı.",
   },
   catchup: {
     title: "Onay Bekleyenler",

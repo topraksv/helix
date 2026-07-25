@@ -38,6 +38,46 @@ test("offline relaunch keeps the SQLite ledger and avoids duplicate writes", asy
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+/**
+ * Only one document may hold the local database.
+ *
+ * On web the workspace lives in a single OPFS file whose access handle is
+ * exclusive, so opening the app in a second tab necessarily fails — that part is
+ * the platform, and the important half is that it fails safely: the tab that
+ * already had the database keeps working and keeps every row.
+ *
+ * What was broken is the recovery. wa-sqlite leaves the FAILED document in an
+ * "Invalid VFS state" for as long as it lives, so re-running the migration in
+ * the same page returned the identical error forever — "Tekrar dene" looked like
+ * an action and was incapable of ever succeeding, while a plain browser refresh
+ * recovered instantly. The button now reloads on web, which is the only thing
+ * that actually works, so the remedy is not something the user has to guess.
+ */
+test("a second tab fails safely and its retry really recovers", async ({ page, context }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await addMarketExpense(page, "Tek sekme sahipliği", "410,00");
+
+  const second = await context.newPage();
+  await second.goto("/helix/");
+  await expect(second.getByText("Veritabanı hatası")).toBeVisible();
+
+  // The owning tab is untouched by the blocked one.
+  await page.bringToFront();
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await expect(page.getByRole("button", { name: /Market.*410,00/ })).toBeVisible();
+
+  await page.close();
+  await second.bringToFront();
+  await second.getByRole("button", { name: "Tekrar dene" }).click();
+  await expect(second.getByRole("tab", { name: "Bütçe Özeti", selected: true })).toBeVisible({ timeout: 20_000 });
+  await second.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await expect(second.getByRole("button", { name: /Market.*410,00/ })).toBeVisible();
+  await second.close();
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 test("protected and modal deep links keep deterministic navigation", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);

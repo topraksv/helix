@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { prepareOutboundBatch } from "../src/sync/outbound-validation";
-import { remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
+import { remoteSupersededLocal, remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
 import { required } from "./helpers";
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "../src/db/migrations");
@@ -221,6 +221,9 @@ class Client {
       .run(...events.map((event) => event.id));
   }
 
+  /** Rows a pull replaced that this client already had — the notice trigger. */
+  superseded = 0;
+
   private pull(server: FakeServer): void {
     for (;;) {
       const page = server.since(this.cursorTs, this.cursorId);
@@ -233,7 +236,18 @@ class Client {
           Number(local?.tombstone_version ?? 0),
           Number(remote.tombstone_version),
         );
-        if (wins) this.applyRemote(remote);
+        if (!wins) continue;
+        // Same order as `pullAndMerge`: decide the merge, then decide whether
+        // the user should be told their visible copy was replaced.
+        if (
+          remoteSupersededLocal(
+            local?.updated_at ?? null,
+            remote.updated_at,
+            Number(local?.tombstone_version ?? 0),
+            Number(remote.tombstone_version),
+          )
+        ) this.superseded += 1;
+        this.applyRemote(remote);
       }
       const last = required(page[page.length - 1]);
       this.cursorTs = last.updated_at;
@@ -286,6 +300,59 @@ describe("two clients on one account", () => {
     b.sync(server);
     a.sync(server);
     expect(a.row(ROW)?.note).toBe("B düzenledi");
+  });
+
+  /**
+   * `3E-REVIEW-01`, as decided by the owner: when another session's edit
+   * replaces what this device is showing, say so once — quietly, without a
+   * modal and without naming a record, a version or a "conflict". The hard part
+   * is the silence, not the message: this device's OWN acknowledged writes come
+   * back through the same pull, so a rule that merely asked "did the remote
+   * win?" would announce the user's own save to them.
+   */
+  it("announces an edit that arrived from the other device", () => {
+    a.write({ id: ROW, note: "ilk" });
+    a.sync(server);
+    b.sync(server);
+    b.write({ ...(b.row(ROW) as Row), note: "B düzenledi" });
+    b.sync(server);
+
+    a.superseded = 0;
+    a.sync(server);
+    expect(a.row(ROW)?.note).toBe("B düzenledi");
+    expect(a.superseded, "A's visible copy was replaced by B's edit").toBe(1);
+  });
+
+  it("stays silent about this device's own writes and its first pull", () => {
+    // A brand-new workspace pulling everything for the first time has no
+    // visible copy to replace, so nothing is announced.
+    a.write({ id: ROW, note: "ilk" });
+    a.sync(server);
+    b.superseded = 0;
+    b.sync(server);
+    expect(b.row(ROW)?.note).toBe("ilk");
+    expect(b.superseded, "a first pull is hydration, not someone else's change").toBe(0);
+
+    // A writes, pushes, and pulls its own acknowledged row straight back.
+    a.superseded = 0;
+    a.write({ ...(a.row(ROW) as Row), note: "A kendi yazdı" });
+    a.sync(server);
+    a.sync(server);
+    expect(a.row(ROW)?.note).toBe("A kendi yazdı");
+    expect(a.superseded, "a self-originated write must never be announced").toBe(0);
+  });
+
+  it("announces a delete performed on the other device", () => {
+    a.write({ id: ROW, note: "silinecek" });
+    a.sync(server);
+    b.sync(server);
+    b.softDelete(ROW);
+    b.sync(server);
+
+    a.superseded = 0;
+    a.sync(server);
+    expect(a.row(ROW)?.deleted_at).not.toBeNull();
+    expect(a.superseded, "a remote delete also replaced what A displayed").toBe(1);
   });
 
   it("applies a delete from A as a tombstone on B", () => {

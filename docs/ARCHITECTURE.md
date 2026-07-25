@@ -98,6 +98,22 @@ Sync ordering is server-authoritative: Supabase normalizes `updated_at` and the
 client merges that acknowledgement rather than trusting its own clock. Conflicts
 resolve last-write-wins on that server value.
 
+That rule is deterministic and convergent — both devices and the server agree on
+one value — but the earlier of two concurrent edits to the same row is replaced.
+**`3E-REVIEW-01` is decided:** the replacement is now *reported*, not prevented.
+A pull that overwrites a row this device already had raises one non-blocking
+notice in the shared outcome bar; there is no modal, no record name, no version
+number and no conflict vocabulary. The losing value is still not kept — making
+it recoverable would need a column to store it, which is a separate decision
+nobody has asked for.
+
+The trigger is `remoteSupersededLocal`, deliberately stricter than
+`remoteWinsLww`: the merge accepts an equal `updated_at` so a re-pulled row
+converges, and that equality is exactly the shape of this device's own
+acknowledged push coming back. Announcing on "did the remote win?" would
+therefore report the user's own save to them, and a first pull into an empty
+workspace — which has no local row at all — announces nothing.
+
 Imports are all-or-nothing on the same path. A JSON backup is validated
 completely — UUID-shaped ids, one source account, unique rows, every reference
 resolvable from the bundle or the current account — before a single write. An

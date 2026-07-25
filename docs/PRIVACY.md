@@ -26,17 +26,23 @@ vermemelidir. Güven sınırlarının mühendislik tarafı ve doğrulama matrisi
 |---|---|---|---|
 | İşlem, kategori, taksit, abonelik, düzenli gelir, kişi, ödeme yöntemi, bütçe, not, ayar | Cihaz SQLite | Cihaz SQLite + Supabase Postgres | Uygulamanın temel finansal verisi |
 | Sync outbox/dead-letter/cursor | Cihaz SQLite | Cihaz SQLite; geçerli satırlar sync için Supabase’e gider | Bozuk event local karantinada kalır; payload UI’da gösterilmez |
-| E-posta, auth identity | Yok | Supabase Auth | Şifre Helix tablolarında saklanmaz |
+| E-posta, auth identity | Yok | Supabase Auth | Kimlik doğrulamayı Supabase Auth yürütür; parola uygulama tarafından okunabilir biçimde saklanmaz ve hiçbir Helix tablosunda tutulmaz |
 | Auth session | Yok | Native’de SecureStore; web’de Supabase’in browser storage’ı | Web browser profiline erişebilen kişi session’a erişebilir |
 | Bildirim tercihi ve planı | Cihaz | Cihaz | Device-local; hesap değişiminde temizlenir |
 | Kur cache’i | Cihaz | Kullanıcı-scoped cihaz/remote satırları | Kaynak tarihiyle tutulur |
 | İç hata kırıntısı halkası | Cihaz | Cihaz | Bounded ve redacted; tutar/not/e-posta/token/payload kabul etmez; son kullanıcı ekranı değildir |
 
-İşletim sistemi ve browser kendi backup/cache davranışına sahip olabilir. iOS native
-build `NSFileProtectionComplete` entitlement’ı kullanır; app-created dosyalar cihaz
-kilitliyken okunamaz. Bu, ayrı bir uygulama-seviyesi SQLCipher şifrelemesi değildir.
-Web’de SQLite/OPFS ve `localStorage` güvenliği browser profili ve cihaz hesabının
-güvenliğine bağlıdır.
+İşletim sistemi ve browser kendi backup/cache davranışına sahip olabilir.
+Bugün kanıtlanmış olan koruma şudur: oturum materyali iOS'ta `expo-secure-store`
+üzerinden Keychain'de tutulur, finansal veri uygulamanın kendi sandbox'ındaki
+SQLite dosyasındadır ve uygulama kendi şifreleme katmanını (ör. SQLCipher)
+yazmaz. iOS native build `NSFileProtectionComplete` entitlement'ı ile
+yapılandırılmıştır, ancak bu yalnız yerel cihaz build'inde etkinleşir ve
+**gerçek cihazda henüz doğrulanmadı** — bu yüzden "cihaz kilitliyken tüm
+finansal dosyalar okunamaz" garantisi verilmez; ayrıntı
+[SECURITY.md](SECURITY.md) ve [TESTING.md](TESTING.md) cihaz matrisindedir.
+Web'de SQLite/OPFS ve `localStorage` güvenliği browser profili ve cihaz
+hesabının güvenliğine bağlıdır.
 
 ## Sync ve yetkilendirme
 
@@ -115,7 +121,17 @@ kullanıcının sorumluluğundadır. Helix export’u parola ile şifrelediğini
   kalıcı silmekle aynı değildir. Normal authenticated client fiziksel satır
   DELETE yetkisi taşımaz.
 - Çıkış; background işi durdurur, bildirim/kur state’ini temizler ve local finance
-  workspace’i siler. Hesaplı modda sonraki giriş remote veriyi yeniden çeker.
+  workspace’i siler. Hesaplı modda sonraki giriş remote veriyi yeniden çeker. Çıkış
+  remote veriyi silmez. Hesaba ait cihaz-yerel izler (sync durum çubuğu, giriş
+  formunun son kullanılan kategori/ödeme yöntemi kısayolu) workspace ile birlikte
+  temizlenir; tema, biometric ve tablo yerleşimi gibi cihaz tercihleri kalır.
+- **Dondurma** silme değildir ve token iptali de değildir: senkronize edilen
+  `account_frozen` ayarı sunucuya yazılır, sonra bu cihazın oturumu kapanır. Ayarı
+  çeken her cihaz uygulamayı yeniden etkinleştirme ekranının arkasına kilitler; hiç
+  finansal kayıt silinmez. Kilidi açan şey yeniden giriş yapmaktır — parola kontrolü
+  başarılı olunca bayrak temizlenir. Bu, cihazı eline geçiren birine karşı bir
+  kilittir; geçerli bir erişim jetonunu çalmış birine karşı sunucu tarafı bir engel
+  değildir. Böyle bir durumda doğru işlem parolayı değiştirmek veya hesabı silmektir.
 - **Hesabı Sil** yalnız çağıranın kendi kimliğini hedefleyen, sabit `search_path`’li
   `SECURITY DEFINER`
   `delete_own_account` RPC ile `auth.users` identity’sini siler; `ON DELETE CASCADE`
