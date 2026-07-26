@@ -100,7 +100,7 @@ Yayın sonrası:
 
 ```bash
 npx eas-cli channel:view preview --json --non-interactive
-npx eas-cli update:view <UPDATE_GROUP_ID> --json --non-interactive
+npx eas-cli update:view <UPDATE_GROUP_ID> --json
 npx eas-cli update:insights <UPDATE_GROUP_ID> --json --non-interactive
 ```
 
