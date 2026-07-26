@@ -4,7 +4,6 @@ import React, { useEffect, useId, useRef, useState, type ReactNode } from "react
 import {
   ActivityIndicator,
   Animated,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -208,18 +207,23 @@ export function Screen({
     wide && { width: "100%", maxWidth, alignSelf: "center" },
   ];
 
+  // No screen on either branch uses `KeyboardAvoidingView`.
+  //
+  // `behavior="padding"` pads the avoider by the keyboard's height measured in
+  // WINDOW coordinates, but a stack screen's frame starts below the native
+  // header, so it over-pads by the header height. On the non-scroll branch that
+  // was measured collapsing a `flex: 1` child to nothing — the cell editor went
+  // blank with the keyboard up, showing none of the field the user had just
+  // tapped. The scrolling branch carried the identical arithmetic and was left
+  // in place at the time as "degrades rather than breaks"; it was then reported
+  // breaking on the two longest forms in the app, the subscription form and the
+  // import wizard, which are exactly the ones with room to scroll past what the
+  // over-padding leaves.
+  //
+  // The scroller owns its keyboard inset instead:
+  // `automaticallyAdjustKeyboardInsets` lets iOS inset by the real overlap. One
+  // mechanism, and it belongs to the thing that can actually move.
   if (!scroll) {
-    // No KeyboardAvoidingView here, deliberately. `behavior="padding"` pads the
-    // avoider by the keyboard's height measured in WINDOW coordinates, but a
-    // stack screen's frame starts below the native header — so it over-padded
-    // by the header height and the `flex: 1` child collapsed to nothing. The
-    // cell editor showed a blank screen with the keyboard up: the field the
-    // user had just tapped was gone.
-    //
-    // A non-scroll screen hosts its own virtualized list, and that list is what
-    // should move: it sets `automaticallyAdjustKeyboardInsets` and iOS insets
-    // its content by the real overlap. One mechanism, owned by the thing that
-    // can actually scroll.
     return (
       <View style={{ flex: 1, backgroundColor: palette.background }}>
         <FadeIn style={[{ flex: 1 }, inner]}>
@@ -230,17 +234,20 @@ export function Screen({
     );
   }
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: palette.background }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView ref={activeScrollRef} contentContainerStyle={inner} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
+    <View style={{ flex: 1, backgroundColor: palette.background }}>
+      <ScrollView
+        ref={activeScrollRef}
+        contentContainerStyle={inner}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={scrollEnabled}
+        automaticallyAdjustKeyboardInsets
+      >
         <FadeIn>
           {header}
           {children}
         </FadeIn>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

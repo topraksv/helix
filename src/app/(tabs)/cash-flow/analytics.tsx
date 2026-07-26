@@ -10,7 +10,7 @@ import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
-import { filterTransactions } from "../../../domain/transaction-search";
+import { filterTransactions, sortTransactions, type TransactionSortMode } from "../../../domain/transaction-search";
 import { budgetProgress } from "../../../domain/budgets";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
@@ -24,13 +24,16 @@ import {
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { categoryIcon } from "../../../data/category-icons";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, Label, ListRow, MonthStepper, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
 type Period = "1m" | "3m" | "6m" | "12m" | "year" | "custom";
+
+/** Results shown before the user asks for the rest. */
+const RESULT_PREVIEW_COUNT = 5;
 
 export default function AnalysisScreen() {
   const today = todayISO();
@@ -49,6 +52,8 @@ export default function AnalysisScreen() {
   const [transactionType, setTransactionType] = useState<"expense" | "income" | "transfer" | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [searchScope, setSearchScope] = useState<"period" | "all">("period");
+  const [sortMode, setSortMode] = useState<TransactionSortMode>("recent");
+  const [showAllResults, setShowAllResults] = useState(false);
   const categoriesState = useCategoriesState();
   const personsState = usePersonsState();
   const sourcesState = useSourcesState();
@@ -107,6 +112,10 @@ export default function AnalysisScreen() {
   // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
   // back arrow can't wander into empty years forever.
   const minYear = allTx[0] ? yearOf(allTx[0].effectiveDate) : currentYear;
+  // Newest first: a custom range is nearly always anchored near today.
+  const monthOptions = monthRange(makeMonthKey(minYear, 1), currentMonth)
+    .reverse()
+    .map((month) => ({ value: month, label: monthLabel(month) }));
 
   const rows = categories
     .flatMap((category) => {
@@ -147,6 +156,11 @@ export default function AnalysisScreen() {
         },
       )
     : [];
+  const sortedResults = sortTransactions(searchResults, sortMode);
+  // A period can match hundreds of rows, and a wall of them answers no question.
+  // Five is what fits under the filters without scrolling; the rest are one tap
+  // away and the sort decides which five those are.
+  const visibleResults = showAllResults ? sortedResults : sortedResults.slice(0, RESULT_PREVIEW_COUNT);
 
   const trendRow = (selected ? rows.find((r) => r.category.id === selected) : null) ?? (categoryFilter ? rows[0] : null);
   const trendStartMonth = monthKeys[0];
@@ -209,12 +223,29 @@ export default function AnalysisScreen() {
         </Spread>
       ) : null}
       {period === "custom" ? (
-        <>
-          <Label>{tr.analysis.customStart}</Label>
-          <MonthStepper value={customStart} onChange={setCustomStart} max={currentMonth} />
-          <Label>{tr.analysis.customEnd}</Label>
-          <MonthStepper value={customEnd} onChange={setCustomEnd} max={currentMonth} />
-        </>
+        /* Two month lists side by side, not two steppers stacked. A stepper
+           asks for one tap per month, so reaching last March from July is six
+           of them twice over, and stacked they cost two thirds of the screen
+           before any data shows. The lists start at the newest month because
+           that is where a range usually begins. */
+        <Row style={{ alignItems: "flex-start" }}>
+          <View style={{ flex: 1 }}>
+            <Select
+              label={tr.analysis.customStart}
+              options={monthOptions}
+              value={customStart}
+              onChange={setCustomStart}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Select
+              label={tr.analysis.customEnd}
+              options={monthOptions}
+              value={customEnd}
+              onChange={setCustomEnd}
+            />
+          </View>
+        </Row>
       ) : null}
 
       <Select
@@ -282,6 +313,19 @@ export default function AnalysisScreen() {
             : tr.analysis.selectedPeriodRange(searchPeriodLabel)}
         </Body>
       ) : null}
+      {searchActive && sortedResults.length > 1 ? (
+        <Select
+          label={tr.analysis.sortLabel}
+          options={[
+            { value: "recent", label: tr.analysis.sortRecent },
+            { value: "oldest", label: tr.analysis.sortOldest },
+            { value: "highest", label: tr.analysis.sortHighest },
+            { value: "lowest", label: tr.analysis.sortLowest },
+          ]}
+          value={sortMode}
+          onChange={setSortMode}
+        />
+      ) : null}
       {searchActive && searchResults.length === 0 ? (
         <Card>
           <View style={{ gap: spacing.sm }}>
@@ -308,12 +352,12 @@ export default function AnalysisScreen() {
   // A broad filter can match every transaction, so results render inside the
   // screen's FlatList (real virtualization) with the card look split across
   // the first/last rows instead of a wrapping Card that mounts everything.
-  const renderResult = ({ item: t, index }: { item: (typeof searchResults)[number]; index: number }) => (
+  const renderResult = ({ item: t, index }: { item: (typeof visibleResults)[number]; index: number }) => (
     <View
       style={[
         { backgroundColor: palette.surface, paddingHorizontal: spacing.lg },
         index === 0 && { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingTop: spacing.sm },
-        index === searchResults.length - 1 && {
+        index === visibleResults.length - 1 && {
           borderBottomLeftRadius: radius.lg,
           borderBottomRightRadius: radius.lg,
           paddingBottom: spacing.sm,
@@ -349,12 +393,25 @@ export default function AnalysisScreen() {
           />
         </Spread>
       </Pressable>
-      {index < searchResults.length - 1 ? <Divider /> : null}
+      {index < visibleResults.length - 1 ? <Divider /> : null}
     </View>
   );
 
   const analysisFooter = (
     <View>
+      {/* Sits between the results and everything below them, so "show all"
+          reads as belonging to the list it grows rather than to the cards
+          after it. */}
+      {searchActive && sortedResults.length > RESULT_PREVIEW_COUNT ? (
+        <View style={{ alignItems: "center", marginTop: spacing.sm, marginBottom: spacing.md }}>
+          <Button
+            size="sm"
+            variant="ghost"
+            label={showAllResults ? tr.analysis.showFewerResults : tr.analysis.showAllResults(sortedResults.length)}
+            onPress={() => setShowAllResults(!showAllResults)}
+          />
+        </View>
+      ) : null}
       {activeBudgetRows.length === 0 ? (
         <Card>
           <ListRow
@@ -384,14 +441,21 @@ export default function AnalysisScreen() {
           renderItem={(budget) => (
             <ListRow
               title={categoryById.get(budget.categoryId)?.name ?? tr.common.none}
-              subtitle={tr.budgets.progress(formatMinorCompact(budget.spentMinor), formatMinorCompact(budget.amountMinor))}
-              right={
-                <Badge
-                  text={budget.remainingMinor < 0 ? tr.budgets.over(formatMinorCompact(-budget.remainingMinor)) : tr.budgets.remaining(formatMinorCompact(budget.remainingMinor))}
-                  tone={budget.remainingMinor < 0 ? "negative" : budget.ratio >= 0.8 ? "warning" : "positive"}
-                />
+              /* The badge reads the same figures as the line above it, so it
+                 belongs under them rather than in the row's action corner —
+                 stacked on the right it sat diagonally away from the numbers
+                 it qualifies. */
+              subtitle={
+                <View style={{ alignItems: "flex-start", gap: spacing.xs }}>
+                  <Body muted style={{ fontSize: 12 }}>
+                    {tr.budgets.progress(formatMinorCompact(budget.spentMinor), formatMinorCompact(budget.amountMinor))}
+                  </Body>
+                  <Badge
+                    text={budget.remainingMinor < 0 ? tr.budgets.over(formatMinorCompact(-budget.remainingMinor)) : tr.budgets.remaining(formatMinorCompact(budget.remainingMinor))}
+                    tone={budget.remainingMinor < 0 ? "negative" : budget.ratio >= 0.8 ? "warning" : "positive"}
+                  />
+                </View>
               }
-              stackRightOnNarrow
             />
           )}
         />
@@ -510,8 +574,8 @@ export default function AnalysisScreen() {
   return (
     <Screen scroll={false}>
       <FlatList
-        data={searchActive ? searchResults : []}
-        keyExtractor={(t: (typeof searchResults)[number]) => t.id}
+        data={searchActive ? visibleResults : []}
+        keyExtractor={(t: (typeof visibleResults)[number]) => t.id}
         renderItem={renderResult}
         ListHeaderComponent={searchHeader}
         ListFooterComponent={analysisFooter}
