@@ -29,6 +29,13 @@ Enter plan mode. Produce a design that:
   carry it;
 - states what it will **not** do, including anything in the baseline document
   that this package deliberately leaves out;
+- prices each sub-requirement — files, layers, rough lines — and applies
+  `AGENTS.md` § Sizing the work to each, **naming in writing anything it will
+  refuse to build and the simpler thing that covers the real need**;
+- lists any change to a shared or load-bearing file — `src/db/mutations.ts`,
+  `src/data/repo*`, `src/sync/engine.ts`, `src/ui/theme.ts`,
+  `src/ui/components.tsx` — with a sentence on why the change has to happen
+  *there* rather than at the caller;
 - names the `src/config/features.ts` flag and its single mount point;
 - lists the migrations, new tables and `SYNCED_TABLES` entries, if any;
 - lists which of the 23 visual baselines the change can move, and why;
@@ -38,9 +45,11 @@ Call `ExitPlanMode` and **wait**. Do not write code before the owner approves.
 
 ## 3. Implement
 
-Smallest change that fully does the job. Reuse before extending, extend before
+Build only what the approved design says. Reuse before extending, extend before
 adding. If you find yourself writing a second way to do something the repo
-already does, stop and use the first way.
+already does, stop and use the first way. Most of the excess in a package is not
+a wrong feature — it is a right feature plumbed through a layer that had no
+business knowing about it.
 
 Do not touch code outside $1's scope. If you find an unrelated defect, write it
 down and report it; do not fix it here.
@@ -67,7 +76,10 @@ Give the owner, in this order and nothing else:
 
 - what changed, in a few sentences, and why it reads better than the
   alternative;
-- files touched, with counts of added and removed lines;
+- files touched, with counts of added and removed lines, **grouped by the
+  concern they serve** and with the largest group defended in one sentence —
+  the owner is reading for lines that did not need to exist, so make them easy
+  to find rather than hard;
 - the `verify` result, verbatim enough to be checked;
 - baseline evidence, if any moved;
 - review findings and what was done about each;

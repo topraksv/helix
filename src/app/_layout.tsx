@@ -23,7 +23,16 @@ import { useSyncStatus } from "../sync/status";
 import { useAccountFrozenState, useOnboardedState } from "../data/hooks";
 import { classifyRootRoute, resolveRootGuard } from "../domain/app-guard";
 import { kv } from "../services/kv";
-import { controlSize, darkPalette, lightPalette, ThemeContext, type ThemePreference } from "../ui/theme";
+import {
+  controlSize,
+  darkPalette,
+  isPaletteId,
+  lightPalette,
+  PALETTES,
+  ThemeContext,
+  type PaletteId,
+  type ThemePreference,
+} from "../ui/theme";
 import { Button, Screen, Title } from "../ui/components";
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -31,9 +40,10 @@ import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
-import { LoadingIndicator } from "../ui/loading-indicator";
+import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { HeaderBackButton } from "../ui/header-back";
 import { stackScreenOptions } from "../ui/header-bar";
+import { PHASE2_FLAGS } from "../config/features";
 
 import { devError } from "../services/logger";
 import { PrivacyCover } from "../ui/privacy-cover";
@@ -49,10 +59,16 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 /** Allows the settings screen to switch theme at runtime (device-local pref). */
 const themePrefListeners = new Set<(p: ThemePreference) => void>();
+const palettePrefListeners = new Set<(p: PaletteId) => void>();
 
 export function setGlobalThemePreference(pref: ThemePreference) {
   void kv.set("helix.theme", pref);
   for (const listener of themePrefListeners) listener(pref);
+}
+
+export function setGlobalPalettePreference(pref: PaletteId) {
+  void kv.set("helix.palette", pref);
+  for (const listener of palettePrefListeners) listener(pref);
 }
 
 export default function RootLayout() {
@@ -110,9 +126,6 @@ export default function RootLayout() {
         <RootLayoutInner />
       ) : (
         <View
-          accessible={!dbError}
-          accessibilityLiveRegion="polite"
-          accessibilityLabel={dbError ? undefined : tr.dataState.loading}
           style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: 24, gap: 16 }}
         >
           {dbError ? (
@@ -144,7 +157,7 @@ export default function RootLayout() {
               </Pressable>
             </>
           ) : (
-            <LoadingIndicator />
+            <DelayedLoadingIndicator />
           )}
         </View>
       )}
@@ -155,6 +168,7 @@ export default function RootLayout() {
 function RootLayoutInner() {
   const systemScheme = useColorScheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
+  const [palettePref, setPalettePref] = useState<PaletteId>("clay");
   const { userId, ready, bootstrap, isOnlineSession, isNewSignup, isFreezing } = useSession();
   const { locked, unlock } = useBiometricLock(ready, userId);
   const onboardedState = useOnboardedState(userId);
@@ -185,18 +199,28 @@ function RootLayoutInner() {
 
   const scheme: "light" | "dark" =
     themePref === "system" ? (systemScheme === "dark" ? "dark" : "light") : themePref;
+  const paletteId = PHASE2_FLAGS.palettes ? palettePref : "clay";
   const theme = useMemo(
-    () => ({ palette: scheme === "dark" ? darkPalette : lightPalette, scheme }),
-    [scheme],
+    () => ({
+      palette: PALETTES[paletteId][scheme],
+      scheme,
+      paletteId,
+    }),
+    [paletteId, scheme],
   );
 
   useEffect(() => {
     void loadDevicePreferences();
-    void kv.get("helix.theme").then((v) => {
-      if (v === "light" || v === "dark" || v === "system") setThemePref(v);
+    void Promise.all([kv.get("helix.theme"), kv.get("helix.palette")]).then(([themeValue, paletteValue]) => {
+      if (themeValue === "light" || themeValue === "dark" || themeValue === "system") setThemePref(themeValue);
+      if (isPaletteId(paletteValue)) setPalettePref(paletteValue);
     });
     themePrefListeners.add(setThemePref);
-    return () => void themePrefListeners.delete(setThemePref);
+    palettePrefListeners.add(setPalettePref);
+    return () => {
+      themePrefListeners.delete(setThemePref);
+      palettePrefListeners.delete(setPalettePref);
+    };
   }, []);
 
   useEffect(() => {
@@ -287,9 +311,6 @@ function RootLayoutInner() {
     // rather than a bare background so the hold never reads as a white screen.
     return (
       <View
-        accessible={!guardQueryFailed}
-        accessibilityLiveRegion="polite"
-        accessibilityLabel={guardQueryFailed ? undefined : tr.dataState.loading}
         style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}
       >
         {guardQueryFailed ? (
@@ -304,7 +325,7 @@ function RootLayoutInner() {
             />
           </View>
         ) : awaitingFirstPull || !guard.redirect ? (
-          <LoadingIndicator />
+          <DelayedLoadingIndicator />
         ) : null}
       </View>
     );

@@ -28,7 +28,8 @@ import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, E
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { initialsBadgeColor } from "./badge-color";
-import { LoadingIndicator } from "./loading-indicator";
+import { DelayedLoading, LoadingIndicator } from "./loading-indicator";
+import type { TrackedOperationState } from "./operation-guard";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
@@ -1149,15 +1150,15 @@ export function DataStateNotice({
   if (status === "ready" || status === "refreshing") return null;
   if (status === "loading") {
     return (
-      <View
-        accessible
-        accessibilityLiveRegion="polite"
-        accessibilityLabel={tr.dataState.loading}
-        style={{ alignItems: "center", gap: spacing.sm, marginBottom: spacing.md, paddingVertical: spacing.md }}
-      >
-        <LoadingIndicator />
-        <Body muted>{tr.dataState.loading}</Body>
-      </View>
+      <DelayedLoading>
+        <View
+          accessibilityLiveRegion="polite"
+          style={{ alignItems: "center", gap: spacing.sm, marginBottom: spacing.md, paddingVertical: spacing.md }}
+        >
+          <LoadingIndicator />
+          <Body muted>{tr.dataState.loading}</Body>
+        </View>
+      </DelayedLoading>
     );
   }
   const stale = status === "stale";
@@ -1180,6 +1181,52 @@ export function DataStateNotice({
         <Button size="sm" variant="secondary" label={tr.common.retry} onPress={retry} />
       </View>
     </View>
+  );
+}
+
+/** Delayed long-operation feedback with caller-owned progress and cancellation. */
+export function OperationStatusNotice({
+  state,
+  label,
+  onCancel,
+}: {
+  state: TrackedOperationState;
+  label: string;
+  onCancel: () => void;
+}) {
+  const { palette } = useTheme();
+  if (!state.active) return null;
+  return (
+    <DelayedLoading>
+      <View
+        accessibilityLiveRegion="polite"
+        style={{
+          backgroundColor: palette.surfaceAlt,
+          borderColor: palette.border,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderRadius: radius.md,
+          padding: spacing.md,
+          marginBottom: spacing.md,
+          gap: spacing.sm,
+        }}
+      >
+        <Row gap={spacing.md} style={{ alignItems: "center" }}>
+          <LoadingIndicator progress={state.progress} label={label} />
+          <View style={{ flex: 1 }}>
+            <Body>{label}</Body>
+            {state.progress ? (
+              <Body muted style={{ marginTop: spacing.xs }}>
+                {tr.operation.progress(state.progress.completed, state.progress.total)}
+              </Body>
+            ) : null}
+          </View>
+        </Row>
+        <Body muted>{tr.operation.dataSafe}</Body>
+        <View style={{ alignSelf: "flex-start" }}>
+          <Button size="sm" variant="ghost" label={tr.common.cancel} onPress={onCancel} />
+        </View>
+      </View>
+    </DelayedLoading>
   );
 }
 

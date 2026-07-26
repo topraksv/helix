@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { hexToRgb } from "../src/ui/badge-color";
 import { BRAND, brandPlate } from "../src/domain/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
-import { darkPalette, generatedBadgeForeground, lightPalette, type Palette } from "../src/ui/theme";
+import { darkPalette, generatedBadgeForeground, lightPalette, PALETTES, type Palette } from "../src/ui/theme";
+
+const shippedPalettes = Object.values(PALETTES).flatMap(({ light, dark }) => [light, dark]);
 
 function luminance(hex: string): number {
   const channels = hex.match(/[0-9a-f]{2}/gi);
@@ -88,6 +90,10 @@ function expectSemanticHues(palette: Palette): void {
 }
 
 describe("semantic theme contrast", () => {
+  it("ships exactly the approved warm palette set", () => {
+    expect(Object.keys(PALETTES)).toEqual(["clay", "sand", "cinnamon"]);
+  });
+
   it("keeps the warm neutral ramp exact", () => {
     expect(lightPalette).toMatchObject({
       background: "#F8F8F7", surface: "#F5F4EF", surfaceAlt: "#F0EEE5",
@@ -106,15 +112,15 @@ describe("semantic theme contrast", () => {
   });
 
   it("keeps light semantic accents on the green/red/amber contract", () => {
-    expectSemanticHues(lightPalette);
+    for (const { light } of Object.values(PALETTES)) expectSemanticHues(light);
   });
 
   it("keeps dark semantic accents on the green/red/amber contract", () => {
-    expectSemanticHues(darkPalette);
+    for (const { dark } of Object.values(PALETTES)) expectSemanticHues(dark);
   });
 
   it("keeps status, destructive-action and financial-direction roles explicit", () => {
-    for (const palette of [lightPalette, darkPalette]) {
+    for (const palette of shippedPalettes) {
       expect(palette.success).toBe(palette.positive);
       expect(palette.successText).toBe(palette.positiveText);
       expect(palette.error).toBe(palette.negative);
@@ -124,12 +130,24 @@ describe("semantic theme contrast", () => {
     }
   });
 
-  it("keeps every light-theme body foreground at WCAG AA", () => {
-    expectBodyTextContrast(lightPalette);
+  it("keeps financial and status colours independent of palette preference", () => {
+    const semanticRoles = [
+      "success", "successText", "positive", "positiveText",
+      "error", "errorText", "negative", "negativeText",
+      "destructive", "onDestructive", "warning", "warningText", "focus",
+    ] as const;
+    for (const scheme of ["light", "dark"] as const) {
+      const reference = PALETTES.clay[scheme];
+      for (const palette of Object.values(PALETTES)) {
+        for (const role of semanticRoles) {
+          expect(palette[scheme][role], `${scheme}.${role}`).toBe(reference[role]);
+        }
+      }
+    }
   });
 
-  it("keeps every dark-theme body foreground at WCAG AA", () => {
-    expectBodyTextContrast(darkPalette);
+  it("keeps every shipped foreground at WCAG AA", () => {
+    for (const palette of shippedPalettes) expectBodyTextContrast(palette);
   });
 
   // Generated colours escape the token table above, so the badge that renders a
@@ -151,7 +169,7 @@ describe("semantic theme contrast", () => {
     const source = readFileSync("src/ui/undo.tsx", "utf8");
     const roles = [...source.matchAll(/color: palette\.([A-Za-z]+)/g)].map((match) => match[1]!);
     expect(roles.length, "undo snackbar must declare its text colours").toBeGreaterThan(0);
-    for (const palette of [lightPalette, darkPalette]) {
+    for (const palette of shippedPalettes) {
       for (const role of roles) {
         const foreground = palette[role as keyof Palette];
         expect(contrastRatio(foreground, palette.text), `${role} (${foreground}) on snackbar ${palette.text}`)
@@ -170,7 +188,7 @@ describe("semantic theme contrast", () => {
     // fill and a real row background, so it is the worst case the token has to
     // survive if either is ever used behind a control again.
     const controlSurfaces = ["background", "surface", "surfaceAlt", "surfaceHover", "primarySoft"] as const;
-    for (const palette of [lightPalette, darkPalette]) {
+    for (const palette of shippedPalettes) {
       for (const surface of controlSurfaces) {
         expect(
           contrastRatio(palette.controlBorder, palette[surface]),
@@ -197,9 +215,9 @@ describe("semantic theme contrast", () => {
     // would otherwise count as three distinct categories.
     const family = (palette: Palette) =>
       new Map<string, string>([
-        [palette.primary, "clay"],
-        [palette.primaryStrong, "clay"],
-        [palette.accentText, "clay"],
+        [palette.primary, "primary"],
+        [palette.primaryStrong, "primary"],
+        [palette.accentText, "primary"],
         [palette.positive, "green"],
         [palette.warning, "amber"],
         [palette.negative, "red"],
@@ -207,7 +225,7 @@ describe("semantic theme contrast", () => {
         [palette.textSecondary, "neutral"],
       ]);
 
-    for (const palette of [lightPalette, darkPalette]) {
+    for (const palette of shippedPalettes) {
       // Mirrors `useSeriesColors`, which cannot be imported here (it is a hook).
       const series = [
         palette.primary,

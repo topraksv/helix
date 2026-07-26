@@ -5,7 +5,7 @@ import * as Linking from "expo-linking";
 import { AlertCircle, CheckCircle2, KeyRound } from "lucide-react-native";
 import { useSession } from "../../auth/session";
 import { tr } from "../../i18n/tr";
-import { LoadingIndicator } from "../../ui/loading-indicator";
+import { DelayedLoadingIndicator } from "../../ui/loading-indicator";
 import { Body, Button, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { radius, spacing, type, useTheme } from "../../ui/theme";
@@ -63,8 +63,8 @@ export default function ResetPasswordScreen() {
   if (state === "checking") {
     return (
       <Screen scroll={false} maxWidth={440}>
-        <View accessible accessibilityLiveRegion="polite" accessibilityLabel={tr.dataState.loading} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <LoadingIndicator />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <DelayedLoadingIndicator />
         </View>
       </Screen>
     );

@@ -12,14 +12,14 @@ import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "..
 import { categoryTableEntryType } from "../domain/transactions";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { Body, Button, DataStateNotice, Heading, IconButton, MoneyField, Screen, Spread } from "../ui/components";
+import { Body, Button, DataStateNotice, Heading, IconButton, MoneyField, OperationStatusNotice, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
 import { devError } from "../services/logger";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
-import { useOperationGuard } from "../ui/operation-guard";
+import { OperationCancelledError, useTrackedOperation } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 
 export default function BulkEntryModal() {
@@ -31,9 +31,9 @@ export default function BulkEntryModal() {
   const router = useRouter();
   const [month, setMonth] = useState(addMonthsToKey(monthKeyOf(todayISO()), -1));
   const [values, setValues] = useState<Record<string, { raw: string; minor: number | null }>>({});
-  const [busy, setBusy] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
-  const operationGuard = useOperationGuard();
+  const operation = useTrackedOperation();
+  const busy = operation.state.active;
   const allowExit = useDirtyExitGuard(Object.values(values).some((value) => value.raw.trim() !== "") && !busy);
   const liveStates = [categoriesState, personsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
@@ -56,9 +56,9 @@ export default function BulkEntryModal() {
 
   const save = async () => {
     if (!selfId || entries.length === 0) return;
-    await operationGuard.run(async () => {
-      setBusy(true);
+    await operation.run(async ({ signal }) => {
       try {
+        if (signal.aborted) throw signal.reason;
         await bulkMonthEntry(
           userId,
           month,
@@ -69,15 +69,15 @@ export default function BulkEntryModal() {
             amountMinor: e.minor!,
           })),
         );
+        if (signal.aborted) throw signal.reason;
         scheduleSync(userId);
         setSavedMsg(tr.bulk.saved(monthLabel(month)));
         setValues({});
         setMonth(addMonthsToKey(month, -1)); // convenient: walk backwards month by month
       } catch (e) {
+        if (e instanceof OperationCancelledError) return;
         devError("bulk-entry.save", e);
         void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
-      } finally {
-        setBusy(false);
       }
     });
   };
@@ -116,6 +116,11 @@ export default function BulkEntryModal() {
 
       <Body muted style={{ marginBottom: spacing.md }}>{tr.bulk.hint}</Body>
       {savedMsg ? <Body style={{ marginBottom: spacing.md }}>✅ {savedMsg}</Body> : null}
+      <OperationStatusNotice
+        state={operation.state}
+        label={tr.operation.saving}
+        onCancel={operation.cancel}
+      />
       <View style={{ gap: spacing.sm }}>
         <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
         <Button label={tr.common.done} variant="secondary" onPress={() => allowExit(() => navigateBack(router, "/(tabs)/cash-flow"))} />

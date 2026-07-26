@@ -1,36 +1,63 @@
 /**
- * The app's waiting indicator.
+ * The app's one waiting visual and one delayed-reveal boundary.
  *
- * Deliberately NOT a logo, and deliberately not two things in sequence. A mark
- * that appears part-way through a wait changes shape while the user is looking
- * at it, and at the size a loading state can afford, a detailed logo is a
- * smudge. Both were tried and both read worse than the spinner they replaced.
- *
- * What is here instead: three dots easing in and out on a staggered loop. One
- * appearance for the whole wait, no image to decode, nothing laid out twice,
- * and it animates only `opacity` — which runs on the native driver, so the
- * loop costs nothing on the JS thread while the app is busy doing the very
- * work being waited on. Reduced motion holds the dots still rather than
- * blinking them.
+ * `DelayedLoading` owns the shared 350 ms threshold, so callers delay either
+ * the whole notice or the compact indicator without stacking timers.
+ * `LoadingIndicator` itself is immediate: three easing dots for indeterminate
+ * work, or the same stable frame as a progress bar when a phase ratio exists.
+ * Reduced motion holds the dots still.
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, View } from "react-native";
 import { useReducedMotion } from "./motion";
 import { tr } from "../i18n/tr";
-import { useTheme } from "./theme";
+import { loadingSize, radius, useTheme } from "./theme";
 
 const CYCLE_MS = 1200;
 const DOTS = 3;
+export const LOADING_DELAY_MS = 350;
 
-export function LoadingIndicator({ size = 8 }: { size?: number }) {
+export interface ProgressValue {
+  completed: number;
+  total: number;
+}
+
+export function DelayedLoading({
+  active = true,
+  children,
+}: {
+  active?: boolean;
+  children: ReactNode;
+}) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setVisible(false);
+      return;
+    }
+    const timer = setTimeout(() => setVisible(true), LOADING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [active]);
+  return visible ? children : null;
+}
+
+export function LoadingIndicator({
+  size = 8,
+  progress,
+  label = tr.dataState.loading,
+}: {
+  size?: number;
+  progress?: ProgressValue | null;
+  label?: string;
+}) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
   // One value per dot, so each sits at its own point in the same cycle.
   const values = useRef(Array.from({ length: DOTS }, () => new Animated.Value(0))).current;
 
   useEffect(() => {
-    if (reducedMotion) return;
+    if (reducedMotion || progress) return;
     const loops = values.map((value, index) =>
       Animated.loop(
         Animated.sequence([
@@ -45,28 +72,62 @@ export function LoadingIndicator({ size = 8 }: { size?: number }) {
     return () => {
       for (const loop of loops) loop.stop();
     };
-  }, [values, reducedMotion]);
+  }, [progress, reducedMotion, values]);
 
+  const completed = progress
+    ? Math.min(Math.max(progress.completed, 0), Math.max(progress.total, 1))
+    : 0;
+  const total = progress ? Math.max(progress.total, 1) : 1;
   return (
     <View
       accessible
       accessibilityRole="progressbar"
-      accessibilityLabel={tr.dataState.loading}
+      accessibilityLabel={label}
       accessibilityState={{ busy: true }}
+      accessibilityValue={progress ? { min: 0, max: total, now: completed } : undefined}
       style={{ flexDirection: "row", alignItems: "center", gap: size }}
     >
-      {values.map((value, index) => (
-        <Animated.View
-          key={index}
+      {progress ? (
+        <View
           style={{
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            backgroundColor: palette.primary,
-            opacity: reducedMotion ? 0.55 : value.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
+            width: loadingSize.progressWidth,
+            height: Math.max(size - 2, 6),
+            borderRadius: radius.full,
+            backgroundColor: palette.surfaceStrong,
+            overflow: "hidden",
           }}
-        />
-      ))}
+        >
+          <View
+            style={{
+              width: `${Math.round((completed / total) * 100)}%`,
+              height: "100%",
+              borderRadius: radius.full,
+              backgroundColor: palette.primary,
+            }}
+          />
+        </View>
+      ) : (
+        values.map((value, index) => (
+          <Animated.View
+            key={index}
+            style={{
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              backgroundColor: palette.primary,
+              opacity: reducedMotion ? 0.55 : value.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
+            }}
+          />
+        ))
+      )}
     </View>
+  );
+}
+
+export function DelayedLoadingIndicator(props: React.ComponentProps<typeof LoadingIndicator>) {
+  return (
+    <DelayedLoading>
+      <LoadingIndicator {...props} />
+    </DelayedLoading>
   );
 }

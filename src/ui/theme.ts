@@ -43,12 +43,52 @@ export interface Palette {
   focus: string;
 }
 
+const lightSemanticColors = {
+  destructive: "#A72519",
+  onDestructive: "#FFFFFF",
+  error: "#A72519",
+  errorText: "#A72519",
+  success: "#2E8B47",
+  successText: "#1F6B33",
+  positive: "#2E8B47",
+  positiveText: "#1F6B33",
+  negative: "#A72519",
+  negativeText: "#A72519",
+  warning: "#A87B17",
+  warningText: "#7A5A10",
+  focus: "#207FDE",
+} satisfies Pick<Palette,
+  | "destructive" | "onDestructive" | "error" | "errorText"
+  | "success" | "successText" | "positive" | "positiveText"
+  | "negative" | "negativeText" | "warning" | "warningText" | "focus"
+>;
+
+const darkSemanticColors = {
+  destructive: "#DD493C",
+  onDestructive: "#0F0F0D",
+  error: "#DD493C",
+  errorText: "#FF8277",
+  success: "#57B76B",
+  successText: "#7CC98F",
+  positive: "#57B76B",
+  positiveText: "#7CC98F",
+  negative: "#DD493C",
+  negativeText: "#FF8277",
+  warning: "#E0A83C",
+  warningText: "#E3B978",
+  focus: "#4594E3",
+} satisfies Pick<Palette,
+  | "destructive" | "onDestructive" | "error" | "errorText"
+  | "success" | "successText" | "positive" | "positiveText"
+  | "negative" | "negativeText" | "warning" | "warningText" | "focus"
+>;
+
 // Warm neutral/clay ramp with semantic accents tuned to the paper palette:
 // income/positive is a garden green, expense/negative a brick red, warning a
 // warm ochre. Purple and blue accents are banned (the sole blue is the focus
 // ring, an a11y convention). `*Text` variants are the AA-safe foregrounds for
 // body-size text; the base tokens are fills/chart marks (3:1 contract).
-export const lightPalette: Palette = {
+const clayLight: Palette = {
   background: "#F8F8F7",
   surface: "#F5F4EF",
   surfaceAlt: "#F0EEE5",
@@ -66,22 +106,10 @@ export const lightPalette: Palette = {
   accentText: "#AB5235",
   primaryText: "#0F0F0D",
   onPrimary: "#FFFFFF",
-  destructive: "#A72519",
-  onDestructive: "#FFFFFF",
-  error: "#A72519",
-  errorText: "#A72519",
-  success: "#2E8B47",
-  successText: "#1F6B33",
-  positive: "#2E8B47",
-  positiveText: "#1F6B33",
-  negative: "#A72519",
-  negativeText: "#A72519",
-  warning: "#A87B17",
-  warningText: "#7A5A10",
-  focus: "#207FDE",
+  ...lightSemanticColors,
 };
 
-export const darkPalette: Palette = {
+const clayDark: Palette = {
   background: "#1A1A19",
   surface: "#222220",
   surfaceAlt: "#2D2D2A",
@@ -99,20 +127,110 @@ export const darkPalette: Palette = {
   accentText: "#D97959",
   primaryText: "#FAF9F5",
   onPrimary: "#1A1A19",
-  destructive: "#DD493C",
-  onDestructive: "#0F0F0D",
-  error: "#DD493C",
-  errorText: "#FF8277",
-  success: "#57B76B",
-  successText: "#7CC98F",
-  positive: "#57B76B",
-  positiveText: "#7CC98F",
-  negative: "#DD493C",
-  negativeText: "#FF8277",
-  warning: "#E0A83C",
-  warningText: "#E3B978",
-  focus: "#4594E3",
+  ...darkSemanticColors,
 };
+
+const sandLight: Palette = {
+  background: "#FBF5E8",
+  surface: "#F7EEDC",
+  surfaceAlt: "#EFE3CC",
+  surfaceHover: "#E7D6B8",
+  surfaceStrong: "#D8C29D",
+  border: "#776244",
+  controlBorder: "#776244",
+  textStrong: "#1C140A",
+  text: "#352816",
+  textSecondary: "#5C4B34",
+  textMuted: "#75664F",
+  primary: "#A95A24",
+  primaryStrong: "#B9642B",
+  primarySoft: "#F2DCC8",
+  accentText: "#884318",
+  primaryText: "#1C140A",
+  onPrimary: "#FFFFFF",
+  ...lightSemanticColors,
+};
+
+const sandDark: Palette = {
+  background: "#1C1812",
+  surface: "#252019",
+  surfaceAlt: "#332A20",
+  surfaceHover: "#403428",
+  surfaceStrong: "#534434",
+  border: "#645442",
+  controlBorder: "#A38F73",
+  textStrong: "#FFF9ED",
+  text: "#F3EBDD",
+  textSecondary: "#C0B29F",
+  textMuted: "#9F927F",
+  primary: "#D98545",
+  primaryStrong: "#CF7436",
+  primarySoft: "#513621",
+  accentText: "#F0A064",
+  primaryText: "#FFF9ED",
+  onPrimary: "#1C1812",
+  ...darkSemanticColors,
+};
+
+const cinnamonLight: Palette = {
+  background: "#FAF5F2",
+  surface: "#F6EEE9",
+  surfaceAlt: "#EEE1D9",
+  surfaceHover: "#E5D4CA",
+  surfaceStrong: "#D5BCAE",
+  border: "#745B4E",
+  controlBorder: "#745B4E",
+  textStrong: "#1A110D",
+  text: "#35251E",
+  textSecondary: "#5C4A41",
+  textMuted: "#76655C",
+  primary: "#A84F30",
+  primaryStrong: "#B95B39",
+  primarySoft: "#F0D9D0",
+  accentText: "#8E3D24",
+  primaryText: "#1A110D",
+  onPrimary: "#FFFFFF",
+  ...lightSemanticColors,
+};
+
+const cinnamonDark: Palette = {
+  background: "#1D1715",
+  surface: "#281F1C",
+  surfaceAlt: "#352925",
+  surfaceHover: "#43322D",
+  surfaceStrong: "#554039",
+  border: "#634C44",
+  controlBorder: "#A28579",
+  textStrong: "#FFF8F4",
+  text: "#F4EAE5",
+  textSecondary: "#C2B0A8",
+  textMuted: "#A08E86",
+  primary: "#D77753",
+  primaryStrong: "#CB6541",
+  primarySoft: "#533126",
+  accentText: "#ED9271",
+  primaryText: "#FFF8F4",
+  onPrimary: "#1D1715",
+  ...darkSemanticColors,
+};
+
+export type PaletteId = "clay" | "sand" | "cinnamon";
+
+export const DEFAULT_PALETTE_ID: PaletteId = "clay";
+export const PALETTE_IDS = ["clay", "sand", "cinnamon"] as const satisfies readonly PaletteId[];
+export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
+  clay: { light: clayLight, dark: clayDark },
+  sand: { light: sandLight, dark: sandDark },
+  cinnamon: { light: cinnamonLight, dark: cinnamonDark },
+};
+
+/** Backwards-compatible aliases for code that needs the default brand palette. */
+export const lightPalette = PALETTES.clay.light;
+export const darkPalette = PALETTES.clay.dark;
+
+export function isPaletteId(value: string | null): value is PaletteId {
+  return value != null && PALETTE_IDS.some((id) => id === value);
+}
 
 /** Shared modal scrim — warm ink, matching `textStrong`'s hue. */
 export const scrim = "rgba(15, 15, 13, 0.55)";
@@ -129,6 +247,10 @@ export const controlSize = {
   regular: 48,
   inputAccessoryWidth: 42,
   inputAccessoryInset: 44,
+} as const;
+
+export const loadingSize = {
+  progressWidth: 120,
 } as const;
 
 /**
@@ -226,9 +348,14 @@ export type ThemePreference = "system" | "light" | "dark";
 export interface Theme {
   palette: Palette;
   scheme: "light" | "dark";
+  paletteId: PaletteId;
 }
 
-export const ThemeContext = createContext<Theme>({ palette: lightPalette, scheme: "light" });
+export const ThemeContext = createContext<Theme>({
+  palette: lightPalette,
+  scheme: "light",
+  paletteId: DEFAULT_PALETTE_ID,
+});
 
 export function useTheme(): Theme {
   return useContext(ThemeContext);
