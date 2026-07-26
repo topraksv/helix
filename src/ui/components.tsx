@@ -28,7 +28,7 @@ import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, E
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { initialsBadgeColor } from "./badge-color";
-import { BrandLoader } from "./brand-loader";
+import { LoadingIndicator } from "./loading-indicator";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
@@ -1155,9 +1155,7 @@ export function DataStateNotice({
         accessibilityLabel={tr.dataState.loading}
         style={{ alignItems: "center", gap: spacing.sm, marginBottom: spacing.md, paddingVertical: spacing.md }}
       >
-        {/* Short waits keep a plain spinner; a wait long enough to notice turns
-            into the breathing brand mark (see `ui/brand-loader.tsx`). */}
-        <BrandLoader size={48} />
+        <LoadingIndicator />
         <Body muted>{tr.dataState.loading}</Body>
       </View>
     );

@@ -84,7 +84,7 @@ for (const viewport of [{ w: 320, h: 640 }, { w: 390, h: 844 }, { w: 1280, h: 72
   });
 }
 
-test("a wait long enough to notice becomes the breathing brand mark", async ({ page, context }) => {
+test("a wait shows one indicator for its whole duration", async ({ page, context }) => {
   // Hold the SQLite wasm so the app stays in its boot wait.
   await context.route("**/*.wasm", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 9_000));
@@ -92,13 +92,21 @@ test("a wait long enough to notice becomes the breathing brand mark", async ({ p
   });
   await page.goto("/helix/");
 
-  // Before the threshold the wait is still just a spinner — a logo flashing on
-  // every quick load would be worse than the spinner it replaces.
-  await expect(page.locator('[role="progressbar"] img')).toHaveCount(0);
+  const indicator = page.locator('[role="progressbar"]');
+  await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveAttribute("aria-label", /hazırlanıyor/i);
 
-  await expect(page.locator('[role="progressbar"] img')).toHaveCount(1, { timeout: 6_000 });
-  const mark = page.locator('[role="progressbar"] img');
-  await expect(mark).toBeVisible();
-  expect(await mark.getAttribute("src")).toMatch(/symbol-(light|dark)-t/);
-  await expect(page.locator('[role="progressbar"]')).toHaveAttribute("aria-label", /hazırlanıyor/i);
+  // Three dots, and nothing that has to decode or lay out a second time. The
+  // indicator must not swap representation part-way through the wait, which is
+  // what a logo appearing after a threshold did.
+  const shape = async () => indicator.evaluate((el) => ({
+    dots: el.querySelectorAll("div").length,
+    images: el.querySelectorAll("img,svg").length,
+  }));
+  const first = await shape();
+  expect(first.dots).toBe(3);
+  expect(first.images).toBe(0);
+
+  await page.waitForTimeout(2_500);
+  expect(await shape()).toEqual(first);
 });

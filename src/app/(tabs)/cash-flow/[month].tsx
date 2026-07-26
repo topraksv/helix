@@ -28,7 +28,7 @@ import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, Divider, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
@@ -207,18 +207,30 @@ export default function MonthDetailScreen() {
                 setExpanded(open ? null : categoryId);
               }}
             >
-              <Spread>
-                <Row gap={spacing.sm} style={{ flex: 1, paddingRight: spacing.md }}>
-                  <Heading style={{ marginVertical: 0, flexShrink: 1 }}>
+              <Spread style={{ alignItems: "flex-start" }}>
+                <View style={{ flex: 1, paddingRight: spacing.md }}>
+                  <Heading style={{ marginVertical: 0 }}>
                     {category ? `${categoryIcon(category)} ` : ""}
                     {title}
                   </Heading>
-                  {/* A note is a piece of the user's own writing, so it is
-                      announced with a word in the app's own badge system —
-                      not a skeuomorphic sticky-note glyph that reads as
-                      decoration and says nothing at a glance. */}
-                  {note ? <Badge text={tr.common.note} /> : null}
-                </Row>
+                  {/* The note itself is the indicator. A badge saying "Not"
+                      read like a category of its own, and a floating pill
+                      never lined up with the serif heading beside it. Quoting
+                      the user's own words needs no label to be understood,
+                      and it stacks under the title so both share one edge. */}
+                  {note ? (
+                    <View
+                      style={{
+                        marginTop: spacing.xs,
+                        paddingLeft: spacing.sm,
+                        borderLeftWidth: 2,
+                        borderLeftColor: palette.border,
+                      }}
+                    >
+                      <Body muted style={{ fontSize: 12 }}>{note.body}</Body>
+                    </View>
+                  ) : null}
+                </View>
                 <Row gap={spacing.sm}>
                   <Amount minor={selfSum} />
                   {open ? <ChevronUp accessible={false} size={16} color={palette.textSecondary} /> : <ChevronDown accessible={false} size={16} color={palette.textSecondary} />}

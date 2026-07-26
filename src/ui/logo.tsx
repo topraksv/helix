@@ -46,14 +46,18 @@ function tileStyle(size: number) {
 }
 
 /**
- * The plate every remote favicon sits on, in both themes.
+ * How much of the tile a remote favicon fills.
  *
- * Third-party marks are drawn for a light background and carry their own,
- * wildly inconsistent, internal padding. Painting them on the theme surface
- * made that padding look like a defect in dark mode; a constant light plate
- * makes every tile read the same way instead.
+ * Favicons are not a uniform set: some are full-bleed app icons that reach
+ * every edge (iCloud), others a centred mark on transparency (YouTube). The
+ * mismatch people actually see is the FILL RATIO, not the colour behind it —
+ * so every mark is inset to the same fraction and the tile itself paints
+ * nothing. A plate cannot win here: the theme surface turned a transparent
+ * margin into a dark band, and a constant white one put a hard white square
+ * behind every logo in dark mode. Painting nothing removes the box that was
+ * being unevenly filled in the first place.
  */
-const FAVICON_PLATE = "#ffffff";
+const FAVICON_FILL = 0.82;
 
 /** Utility/service keywords → icon + accent (checked before brand lookup). */
 const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
@@ -220,14 +224,7 @@ export function Logo({
 
   if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {
     return (
-      // Favicons are not a uniform set: some are full-bleed app icons that
-      // reach every edge (iCloud), others are a centred mark on transparency
-      // (YouTube). Nothing can make both fill the tile identically without
-      // cropping one of them, so the tile itself is normalised instead — a
-      // constant light plate, the background this artwork is drawn for. On the
-      // theme surface the transparent margin read as a dark band above and
-      // below the mark; on the plate it is simply the icon's own white space.
-      <View style={[tileStyle(size), { backgroundColor: FAVICON_PLATE }]}>
+      <View style={tileStyle(size)}>
         <Image
           accessible={false}
           accessibilityRole="none"
@@ -235,9 +232,9 @@ export function Logo({
           alt=""
           source={{ uri: faviconUrl }}
           onError={() => setFailedDomain(faviconDomain)}
-          style={{ width: size, height: size }}
-          // `contain`, never `cover`: a favicon that is not square must letterbox
-          // rather than lose part of the mark to a crop.
+          style={{ width: Math.round(size * FAVICON_FILL), height: Math.round(size * FAVICON_FILL) }}
+          // `contain`, never `cover`: a favicon that is not square must fit
+          // whole rather than lose part of the mark to a crop.
           contentFit="contain"
           cachePolicy="disk"
         />

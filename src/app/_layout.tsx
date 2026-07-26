@@ -31,7 +31,7 @@ import { FrozenGate } from "../ui/frozen-gate";
 import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
-import { BrandLoader } from "../ui/brand-loader";
+import { LoadingIndicator } from "../ui/loading-indicator";
 import { HeaderBackButton } from "../ui/header-back";
 import { stackScreenOptions } from "../ui/header-bar";
 
@@ -144,7 +144,7 @@ export default function RootLayout() {
               </Pressable>
             </>
           ) : (
-            <BrandLoader />
+            <LoadingIndicator />
           )}
         </View>
       )}
@@ -304,7 +304,7 @@ function RootLayoutInner() {
             />
           </View>
         ) : awaitingFirstPull || !guard.redirect ? (
-          <BrandLoader />
+          <LoadingIndicator />
         ) : null}
       </View>
     );
