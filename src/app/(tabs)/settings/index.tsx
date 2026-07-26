@@ -317,7 +317,9 @@ export default function SettingsScreen() {
           <Button
             label={tr.common.save}
             variant="secondary"
-            size="sm"
+            // Full size on purpose: `sm` is 36 px against the field's 48, so
+            // bottom-aligning them left a visible step. Same height, same
+            // baseline, no adjustment needed.
             disabled={!reminderField.canSave}
             onPress={() => {
               const next = Number(reminderStr);
@@ -509,6 +511,10 @@ export default function SettingsScreen() {
         <ListRow
           icon={LogOut}
           title={tr.auth.signOut}
+          // The wait is a real flush before a real wipe, and it is kept: a row
+          // the user believes is saved must reach the server before the device
+          // copy goes. Saying so is what turns it from a stall into a step.
+          subtitle={signingOut ? tr.operation.signingOut : undefined}
           right={signingOut ? <DelayedLoadingIndicator size={7} label={tr.auth.signOut} /> : undefined}
           onPress={() => void handleSignOut()}
         />

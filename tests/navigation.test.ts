@@ -1,12 +1,13 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { ANALYSIS_SOURCES, knownSource, navigateBack, resolveBackTarget } from "../src/ui/navigation";
-import { classifyRecordId } from "../src/domain/route-params";
+import { navigateBack } from "../src/ui/navigation";
 
+const root = process.cwd();
 const mockRouter = (canGoBack: boolean) => ({
   canGoBack: () => canGoBack,
   back: vi.fn(),
   replace: vi.fn(),
-  navigate: vi.fn(),
 });
 
 describe("safe back navigation", () => {
@@ -15,7 +16,6 @@ describe("safe back navigation", () => {
     navigateBack(router, "/fallback");
     expect(router.back).toHaveBeenCalledOnce();
     expect(router.replace).not.toHaveBeenCalled();
-    expect(router.navigate).not.toHaveBeenCalled();
   });
 
   it("returns to the screen parent for a direct link", () => {
@@ -24,154 +24,67 @@ describe("safe back navigation", () => {
     expect(router.back).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledWith("/fallback");
   });
+});
+
+/**
+ * The structural rule that replaced the recorded-origin subsystem.
+ *
+ * A screen that lives in one tab but is reachable from another used to be
+ * pushed with `{ withAnchor: true }`, which mounts that tab's index underneath.
+ * Plain history then popped to a screen the user had never visited, so the back
+ * button was taught to navigate to a recorded origin instead — and the iOS edge
+ * swipe, which pops the stack without consulting any of that, kept landing on
+ * the anchor.
+ *
+ * Those screens now have a root-level route, and a cross-tab push goes there.
+ * What sits underneath is the screen the user came from, so history is right
+ * for the button and the gesture alike. These assertions guard the structure,
+ * because the structure is what makes the two agree.
+ */
+describe("cross-tab screens are reachable at the root", () => {
+  const appDir = join(root, "src/app");
+  const source = (path: string) => readFileSync(join(appDir, path), "utf8");
+  const multiEntry = [
+    { file: "analytics.tsx", inTab: "(tabs)/cash-flow/analytics" },
+    { file: "payment-sources.tsx", inTab: "(tabs)/settings/payment-sources" },
+    { file: "incomes.tsx", inTab: "(tabs)/settings/incomes" },
+    { file: "budgets.tsx", inTab: "(tabs)/settings/budgets" },
+  ];
+
+  it("gives every multi-entry screen a root route over the same component", () => {
+    for (const { file, inTab } of multiEntry) {
+      expect(source(file), `${file} must re-export ${inTab}`).toContain(`export { default } from "./${inTab}"`);
+    }
+  });
+
+  it("registers each of them on the root stack", () => {
+    const layout = source("_layout.tsx");
+    for (const { file } of multiEntry) {
+      const name = file.replace(".tsx", "");
+      expect(layout, `${name} needs a root Stack.Screen`).toContain(`<Stack.Screen name="${name}"`);
+    }
+  });
 
   /**
-   * The recorded origin is in another tab, and this screen sits on a stack the
-   * anchored push mounted at its own index. Both have to be undone: a single
-   * cross-navigator replace left native standing on the anchor (the Financial
-   * Table), and would have left the stack wound up even where it "worked".
+   * The anchor is the mechanism this design removes. One left behind would
+   * reintroduce exactly the split it was removed to close: a button that goes
+   * one way and a swipe that goes another.
    */
-  it("unwinds its own stack AND moves to the recorded source", () => {
-    const router = mockRouter(true);
-    navigateBack(router, "/(tabs)", true);
-    expect(router.back).toHaveBeenCalledOnce();
-    expect(router.navigate).toHaveBeenCalledWith("/(tabs)");
-    expect(router.replace).not.toHaveBeenCalled();
-  });
-
-  it("still reaches the recorded source when there is no stack to unwind", () => {
-    const router = mockRouter(false);
-    navigateBack(router, "/(tabs)", true);
-    expect(router.back).not.toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith("/(tabs)");
-  });
-});
-
-// Analysis sits inside the Cash Flow stack but is reachable from Summary too.
-// The anchored push required for a cross-tab entry mounts that stack at its own
-// index, so history says "Financial Table" for a user who came from Summary.
-describe("back target for a screen with several entry points", () => {
-  const sources = { summary: "/(tabs)" } as const;
-  const fallback = "/(tabs)/cash-flow";
-
-  it("returns to Summary when Summary pushed the screen", () => {
-    expect(resolveBackTarget("summary", sources, fallback)).toEqual({ href: "/(tabs)", exact: true });
-  });
-
-  it("pops history normally for a same-stack entry", () => {
-    expect(resolveBackTarget(undefined, sources, fallback)).toEqual({ href: fallback, exact: false });
-  });
-
-  it("treats an unknown or hostile source as a direct link, never as a match", () => {
-    for (const hostile of ["", "settings", "__proto__", "toString", "constructor", 42, null, {}]) {
-      expect(resolveBackTarget(hostile, sources, fallback)).toEqual({ href: fallback, exact: false });
-    }
-  });
-});
-
-/**
- * An exact back navigation is a `replace` to a freshly built href, so anything
- * the returned-to screen was opened with is gone unless it is handed over and
- * put back. Summary → Analysis → Budgets → back → Analysis → back landed on
- * the Financial Table: Budgets returned to the bare `/cash-flow/analytics`,
- * which erased `from=summary`, and Analysis then behaved like a deep link.
- */
-type Target = string | { pathname: string; params?: Record<string, string | undefined> };
-
-describe("an origin survives a round trip through another screen", () => {
-  const analysisBack = (from: unknown, origin: unknown) =>
-    resolveBackTarget<Target>(
-      from,
-      {
-        analysis: {
-          pathname: "/(tabs)/cash-flow/analytics",
-          ...(knownSource(origin, ANALYSIS_SOURCES) ? { params: { from: knownSource(origin, ANALYSIS_SOURCES) } } : {}),
-        },
-      },
-      "/(tabs)/settings",
-    );
-
-  it("returns to Analysis WITH the origin Analysis was opened with", () => {
-    expect(analysisBack("analysis", "summary")).toEqual({
-      href: { pathname: "/(tabs)/cash-flow/analytics", params: { from: "summary" } },
-      exact: true,
-    });
-  });
-
-  it("returns to a bare Analysis when it had no origin of its own", () => {
-    expect(analysisBack("analysis", undefined)).toEqual({
-      href: { pathname: "/(tabs)/cash-flow/analytics" },
-      exact: true,
-    });
-  });
-
-  it("never forwards an origin the app did not define", () => {
-    for (const hostile of ["", "table", "__proto__", "constructor", "https://evil.example", "/(tabs)/settings", 7, null, {}]) {
-      expect(knownSource(hostile, ANALYSIS_SOURCES)).toBeUndefined();
-      expect(analysisBack("analysis", hostile)).toEqual({
-        href: { pathname: "/(tabs)/cash-flow/analytics" },
-        exact: true,
-      });
-    }
-  });
-
-  it("keeps Summary reachable from Analysis once the origin is restored", () => {
-    expect(resolveBackTarget("summary", ANALYSIS_SOURCES, "/(tabs)/cash-flow")).toEqual({
-      href: "/(tabs)",
-      exact: true,
-    });
-  });
-});
-
-/**
- * The same loss with a record id: "fix this card's cycle" pushed Payment
- * Sources from a half-edited transaction/plan/subscription, and its back
- * control returned to the bare modal route — a blank NEW-record form.
- */
-describe("a record being edited survives the payment-sources detour", () => {
-  const withRecord = (record: unknown) => (pathname: string): Target => {
-    const id = classifyRecordId(record);
-    return id?.mode === "edit" ? { pathname, params: { id: id.id } } : pathname;
-  };
-  const sourcesBack = (from: unknown, record: unknown) => {
-    const target = withRecord(record);
-    return resolveBackTarget<Target>(
-      from,
-      {
-        transaction: target("/transaction"),
-        installment: target("/installment-new"),
-        subscription: target("/subscription-form"),
-        upcoming: "/upcoming",
-      },
-      "/(tabs)/settings",
-    );
-  };
-
-  it("reopens the very record the user was editing", () => {
-    expect(sourcesBack("transaction", "abc-123")).toEqual({
-      href: { pathname: "/transaction", params: { id: "abc-123" } },
-      exact: true,
-    });
-    expect(sourcesBack("subscription", "sub-9")).toEqual({
-      href: { pathname: "/subscription-form", params: { id: "sub-9" } },
-      exact: true,
-    });
-    expect(sourcesBack("installment", "plan-4")).toEqual({
-      href: { pathname: "/installment-new", params: { id: "plan-4" } },
-      exact: true,
-    });
-  });
-
-  it("opens the new-record form when there was no record", () => {
-    expect(sourcesBack("transaction", undefined)).toEqual({ href: "/transaction", exact: true });
-  });
-
-  it("ignores a malformed record id instead of binding it to a route", () => {
-    expect(sourcesBack("transaction", ["a", "b"])).toEqual({ href: "/transaction", exact: true });
-    expect(sourcesBack("transaction", "   ")).toEqual({ href: "/transaction", exact: true });
-  });
-
-  it("leaves a source that carries no record alone", () => {
-    expect(sourcesBack("upcoming", "abc-123")).toEqual({ href: "/upcoming", exact: true });
+  it("pushes nothing with an anchor anywhere in the app", () => {
+    // Comments are stripped first: the rule is about what the app does, and
+    // the files that explain why the anchor is gone have to be able to name it.
+    const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (entry.name.endsWith(".tsx") && code(readFileSync(path, "utf8")).includes("withAnchor")) {
+          offenders.push(path.slice(root.length + 1));
+        }
+      }
+    };
+    walk(appDir);
+    expect(offenders).toEqual([]);
   });
 });

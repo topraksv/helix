@@ -12,7 +12,8 @@ import { useFocusEffect } from "expo-router";
 import { ArrowDownUp } from "lucide-react-native";
 import { formatMinor, roundHalfAwayFromZero } from "../domain/money";
 import { todayISO } from "../domain/dates";
-import { ensureFreshRates, loadRateCache, lookupRate, SUPPORTED_CURRENCIES, useFxRates, type Currency } from "../services/fx-fetch";
+import { ensureFreshRates, loadRateCache, lookupRate, useFxRates, type Currency } from "../services/fx-fetch";
+import { CurrencyPicker } from "./currency-picker";
 import { marketLastKnownRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
 import { clockOrDateTimeLabel, dateLabel, tr } from "../i18n/tr";
@@ -77,7 +78,6 @@ export function CurrencyConverter() {
   const resultMinor = converted != null && Number.isSafeInteger(converted) ? converted : null;
   const resultOutOfRange = minor != null && ready && resultMinor == null;
 
-  const options = SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }));
   const swap = () => {
     setFrom(to);
     setTo(from);
@@ -94,7 +94,7 @@ export function CurrencyConverter() {
           setMinor(m);
         }}
       />
-      <Segmented options={options} value={from} onChange={(c) => setFrom(c as Currency)} />
+      <CurrencyPicker value={from} onChange={setFrom} />
 
       <View style={{ alignItems: "center", marginVertical: spacing.xs }}>
         <Pressable
@@ -116,7 +116,7 @@ export function CurrencyConverter() {
       </View>
 
       <Label>{tr.calc.convertTo}</Label>
-      <Segmented options={options} value={to} onChange={(c) => setTo(c as Currency)} />
+      <CurrencyPicker value={to} onChange={setTo} />
 
       <View
         style={{

@@ -19,8 +19,8 @@
  * working.
  */
 
-import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useMemo, useRef } from "react";
+import { PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReduceTransparency } from "./motion";
@@ -35,6 +35,41 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   // same shape in a solid `surface` rather than an imitation of a system look
   // neither platform has.
   const glass = Platform.OS === "ios" && !reduceTransparency;
+
+  // Dragging across the bar scrubs through the tabs. The geometry and the
+  // current index are read from refs so the responder can be created once:
+  // rebuilding it per render would drop an in-flight gesture.
+  const barRef = useRef<View>(null);
+  const barBox = useRef({ x: 0, width: 0 });
+  const latest = useRef({ routes: state.routes, index: state.index });
+  latest.current = { routes: state.routes, index: state.index };
+
+  const goToIndex = (index: number) => {
+    const { routes, index: current } = latest.current;
+    const route = routes[index];
+    if (!route || index === current) return;
+    const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+    if (!event.defaultPrevented) navigation.navigate(route.name, route.params);
+  };
+
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        // Claim only a deliberate horizontal drag, so a tap still reaches the
+        // Pressable underneath and a vertical scroll still belongs to the page.
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+        onPanResponderMove: (_event, gesture) => {
+          const { width, x } = barBox.current;
+          const count = latest.current.routes.length;
+          if (width <= 0 || count === 0) return;
+          const slot = Math.floor(((gesture.moveX - x) / width) * count);
+          goToIndex(Math.min(Math.max(slot, 0), count - 1));
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- created once on purpose; live values come from refs
+    [],
+  );
 
   return (
     // Two views on purpose: an absolutely positioned element with both `left`
@@ -54,7 +89,10 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       }}
     >
     <View
+      ref={barRef}
       accessibilityRole="tablist"
+      onLayout={() => barRef.current?.measureInWindow((x, _y, width) => { barBox.current = { x, width }; })}
+      {...pan.panHandlers}
       style={{
         width: "100%",
         maxWidth: TAB_BAR.maxWidth,

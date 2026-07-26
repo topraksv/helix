@@ -4,7 +4,7 @@
 
 import React, { useDeferredValue, useState } from "react";
 import { FlatList, Pressable, Text, useWindowDimensions, View } from "react-native";
-import { Stack, useLocalSearchParams, useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, Inbox, Target } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
@@ -27,8 +27,6 @@ import { categoryIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
-import { HeaderBackButton } from "../../../ui/header-back";
-import { ANALYSIS_SOURCES, knownSource, resolveBackTarget } from "../../../ui/navigation";
 import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
@@ -59,19 +57,13 @@ export default function AnalysisScreen() {
   const allTx = transactionsState.data;
   const router = useRouter();
   const { palette } = useTheme();
-  // Analysis is reachable from the Financial Table (same stack) and from
-  // Summary (another tab). Only the pusher knows which, so it says so.
-  const { from } = useLocalSearchParams<{ from?: string }>();
-  const back = resolveBackTarget<Href>(from, ANALYSIS_SOURCES, "/(tabs)/cash-flow");
-  // Budgets returns here with `router.replace`, which rebuilds this screen's
-  // URL from scratch. Hand it the origin so it can put it back; without that,
-  // a budgets round-trip silently turns "opened from Summary" into "deep link".
-  const origin = knownSource(from, ANALYSIS_SOURCES);
-  const openBudgets = () =>
-    router.push(
-      { pathname: "/(tabs)/settings/budgets", params: origin ? { from: "analysis", origin } : { from: "analysis" } } as never,
-      { withAnchor: true },
-    );
+  // Budgets lives in the Settings tab, so opening it from here is a cross-tab
+  // push and belongs at the root: what sits under it is this screen, which is
+  // where both the back button and the edge swipe then return. It used to be
+  // an anchored push that relayed this screen's own origin so Budgets could
+  // rebuild the URL it came from — a whole mechanism that existed only because
+  // the anchor put the wrong screen underneath in the first place.
+  const openBudgets = () => router.push("/budgets");
   const colors = useSeriesColors();
   const { width } = useWindowDimensions();
   const compact = !shouldUseWideWorkspace(width);
@@ -478,7 +470,6 @@ export default function AnalysisScreen() {
   if (!dataReady) {
     return (
       <Screen>
-        <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
@@ -486,7 +477,6 @@ export default function AnalysisScreen() {
 
   return (
     <Screen scroll={false}>
-      <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
       <FlatList
         data={searchActive ? searchResults : []}
         keyExtractor={(t: (typeof searchResults)[number]) => t.id}

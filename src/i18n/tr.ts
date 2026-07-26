@@ -9,6 +9,7 @@ export const tr = {
   tabs: { dashboard: "Durum", cashflow: "Mali Tablo", subscriptions: "Abonelikler", calculator: "Araçlar", settings: "Ayarlar" },
   tabBar: { dashboard: "Durum", cashflow: "Tablo", subscriptions: "Abonelikler", calculator: "Araçlar", settings: "Ayarlar" },
   common: {
+    otherCurrencies: "Para birimi seç",
     save: "Kaydet", cancel: "Vazgeç", delete: "Sil", edit: "Düzenle", add: "Ekle",
     undo: "Geri Al", deleted: "Silindi", search: "Ara", close: "Kapat", done: "Tamam",
     total: "Toplam", note: "Not", notes: "Notlar", none: "Kategorisiz", retry: "Tekrar dene",
@@ -152,6 +153,7 @@ export const tr = {
     signOutPendingWarn: (n: number) =>
       `${n} kayıt henüz buluta eşitlenmedi. Şimdi çıkarsan bu kayıtlar kalıcı olarak silinir. Yine de çıkmak istiyor musun?`,
     signOutAnyway: "Yine de Çık",
+    restoringData: "Verilerin güncelleniyor…",
     signOutPendingBlocked: "Bazı değişikliklerin henüz eşitlenmedi. Verilerin cihazında korunuyor.",
     signOutLocalTitle: "Tüm veriler silinecek",
     signOutLocalWarn:
@@ -769,6 +771,7 @@ export const tr = {
     error: "Cihazındaki finans verileri şu an okunamadı. Boş sonuç göstermek yerine verileri koruduk.",
   },
   operation: {
+    signingOut: "Verilerin kaydediliyor, sonra bu cihazdan siliniyor",
     progress: (completed: number, total: number) => `${completed}/${total} tamamlandı`,
     dataSafe: "Verilerin güvende; tamamlanmamış değişiklikler kaydedilmedi.",
     importing: "Kayıtlar içe aktarılıyor",

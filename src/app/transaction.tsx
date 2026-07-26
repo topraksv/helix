@@ -15,7 +15,8 @@ import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKe
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
 import { formatMinor, isSupportedMinorAmount } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
-import { lookupRate, SUPPORTED_CURRENCIES, useFxRates } from "../services/fx-fetch";
+import { lookupRate, useFxRates } from "../services/fx-fetch";
+import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Badge, Body, Button, ChipPicker, DataStateNotice, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Toggle } from "../ui/components";
@@ -373,11 +374,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       {showCurrency ? (
         <>
           <Label>{tr.tx.currency}</Label>
-          <ChipPicker
-            options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
-            value={currency as never}
-            onChange={(c) => setCurrency(c)}
-          />
+          <CurrencyPicker value={currency} onChange={setCurrency} />
         </>
       ) : (
         <View style={{ alignSelf: "flex-start", marginBottom: spacing.md }}>
@@ -443,7 +440,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
               : dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
           </Body>
           {isCreditCardExpense && !cardCycleValid ? (
-            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: existing ? { from: "transaction", record: existing.id } : { from: "transaction" } }, { withAnchor: true })} />
+            <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
           ) : null}
         </>
       )}

@@ -1,6 +1,3 @@
-import { Stack, useLocalSearchParams, type Href } from "expo-router";
-import { ANALYSIS_SOURCES, knownSource, resolveBackTarget } from "../../../ui/navigation";
-import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { PiggyBank, Pencil, Trash2 } from "lucide-react-native";
@@ -24,29 +21,6 @@ export default function BudgetsScreen() {
    * An undo that fails must say so — the snackbar dismisses on tap either way,
    * so a swallowed rejection left the row deleted with no message.
    */
-  // Reachable from more than one place, and every external push is anchored —
-  // which mounts settings/index UNDERNEATH this screen, so plain history would
-  // send the user back to a screen they never visited. The pusher records where
-  // it came from; `resolveBackTarget` validates it (typeof string +
-  // Object.hasOwn, so a hand-typed or prototype-polluting value cannot match)
-  // and falls back to the settings hub for deep links with no recorded source.
-  // `origin` is Analysis's OWN recorded source, handed over so returning to it
-  // exactly (a replace, which rebuilds the URL) restores it instead of dropping
-  // the user one screen further back than they came from. It is re-validated
-  // against the same allowlist Analysis resolves with, so an invented value can
-  // only degrade to "no origin".
-  const { from, origin } = useLocalSearchParams<{ from?: string; origin?: string }>();
-  const analysisOrigin = knownSource(origin, ANALYSIS_SOURCES);
-  const back = resolveBackTarget<Href>(
-    from,
-    {
-      analysis: {
-        pathname: "/(tabs)/cash-flow/analytics",
-        ...(analysisOrigin ? { params: { from: analysisOrigin } } : {}),
-      } as Href,
-    },
-    "/(tabs)/settings",
-  );
   const userId = useUserId();
   const categoriesState = useCategoriesState();
   const budgetsState = useCategoryBudgetsState();
@@ -126,7 +100,6 @@ export default function BudgetsScreen() {
   if (!dataReady) {
     return (
       <Screen>
-        <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
@@ -134,7 +107,6 @@ export default function BudgetsScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.budgets.intro}</Body>
       <MonthStepper value={month} onChange={changeMonth} />
