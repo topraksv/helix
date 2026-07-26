@@ -43,7 +43,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx expo lint
-      - run: npx expo export -p web
+      # `--clear` is mandatory on every production bundle: Metro's transform
+      # cache is shared by `expo export` and `eas update` and its key does NOT
+      # include EXPO_PUBLIC_* values, so a cache left behind by the local-only
+      # E2E export produces a bundle with no Supabase configuration at all.
+      - run: npx expo export -p web --clear
       - run: npm run bundle:check
       # Exercise the real browser SQLite/OPFS implementation in local-only
       # mode. This is intentionally after the production export/budget: E2E's

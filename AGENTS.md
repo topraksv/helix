@@ -277,7 +277,11 @@ Scope, layers and device acceptance: [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Shipping
 
-`main` is protected: package branch → PR → required `quality` check → merge.
+**`main` is the only branch.** It is protected — required `quality` check,
+signed commits, linear history, `enforce_admins` — so a change reaches it
+through a PR, but the branch carrying that PR is scaffolding: create it when the
+work is ready to ship, delete it on merge. No long-lived branches, no release
+tags, no per-package naming scheme. If something is wrong, go back a commit.
 Never bypass the check or force-push. **Pushing to `main` ships only the web
 app** — the phone needs a separate EAS Update, and native config, icons, SDK or
 runtime changes need a local device rebuild instead. Exact commands, evidence

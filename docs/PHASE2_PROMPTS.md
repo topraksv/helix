@@ -59,7 +59,7 @@ Her paket için: yapıştıracağın komut, tasarım onayında **görmen gereken
 ### P0 — Faz 2 kurulumu ✅
 
 Bu dosya, `PHASE2.md`, `/paket` komutu, `src/config/features.ts` ve
-`v1-pre-phase2` tag'i. Ürün değişikliği yok. Bittiğinde P1'e geç.
+Ürün değişikliği yok.
 
 ---
 
@@ -206,10 +206,12 @@ login sonrası onboarding flash'ı; yayımlanmamış özelliğin tanıtılması.
 |---|---|
 | Bir özelliği anında kapat | `src/config/features.ts` içinde `false` → deploy |
 | Bir paketi tamamen geri al | `git revert -m 1 <merge-sha>` → PR |
-| Faz 2'nin tamamından çık | `git revert` ile paketleri ters sırada, ya da `v1-pre-phase2` tag'ine dön |
+| Faz 2'nin tamamından çık | Paketleri ters sırada `git revert`; son Faz 1 commit'i `a8ca1d1` |
 
-Faz 2 için yeni branch stratejisi, workflow veya deploy hattı **yok**. Mevcut
-`main` korumalı akış aynen geçerli.
+**Tek dal var: `main`.** Tag yok, uzun ömürlü dal yok, paket-dalı isimlendirmesi
+yok. `main` korumalı olduğu için değişiklik bir PR ile giriyor, ama o PR'ı
+taşıyan dal iskele: merge'de siliniyor. Bir şey yanlış giderse bir commit
+geriye dönülür.
 
 ## Bekleyen kararlar
 
