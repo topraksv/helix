@@ -21,10 +21,10 @@ import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
 import { UserFacingError, userMessage } from "../domain/user-error";
-import { Body, Button, Card, ChipPicker, DataStateNotice, Row, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, Card, ChipPicker, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader } from "../ui/components";
 import { font, radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
-import { useOperationGuard } from "../ui/operation-guard";
+import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { shouldUseWideImportGuide } from "../ui/responsive";
 import { readPickedBytes } from "../services/picked-file";
@@ -146,12 +146,12 @@ export default function ImportWizardModal() {
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [excluded, setExcluded] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [reimportYears, setReimportYears] = useState<number[] | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
   const scrollRef = useRef<ScrollView>(null);
-  const operationGuard = useOperationGuard();
+  const operation = useTrackedOperation();
+  const busy = operation.state.active;
   useDirtyExitGuard(workbook != null && doneCount == null && !busy);
   const liveStates = [personsState, sourcesState];
   const dataStatus = combineLiveQueryStatus(liveStates);
@@ -167,8 +167,7 @@ export default function ImportWizardModal() {
   }, [doneCount]);
 
   const pick = async () => {
-    await operationGuard.run(async () => {
-      setBusy(true);
+    await operation.run(async ({ signal }) => {
       try {
         setError(null);
         setReimportYears(null);
@@ -186,7 +185,9 @@ export default function ImportWizardModal() {
         if (picked.canceled || !picked.assets[0]) return;
         if ((picked.assets[0].size ?? 0) > MAX_WORKBOOK_BYTES) throw new UserFacingError(tr.importer.fileTooLarge);
         const bytes = await readPickedBytes(picked.assets[0]);
+        if (signal.aborted) throw signal.reason;
         const parsed = await parseWorkbookBytes(bytes);
+        if (signal.aborted) throw signal.reason;
         if (parsed.sheets.length === 0) {
           setError(parsed.unparsed[0]?.reason ?? tr.importer.parseError);
           setWorkbook(null);
@@ -197,10 +198,9 @@ export default function ImportWizardModal() {
         setExcluded([]);
         setCardCycleDrafts({});
       } catch (e) {
+        if (e instanceof OperationCancelledError) return;
         devError("import.pick", e);
         setError(userMessage(e, tr.errors.requestFailed));
-      } finally {
-        setBusy(false);
       }
     });
   };
@@ -231,26 +231,25 @@ export default function ImportWizardModal() {
 
   const startImport = async () => {
     if (selectedYears.length === 0) return;
-    await operationGuard.run(async () => {
-      setBusy(true);
+    await operation.run(async (context) => {
       setError(null);
       try {
         const already = await importedYears(userId, selectedYears);
+        if (context.signal.aborted) throw context.signal.reason;
         if (already.length > 0) {
           setReimportYears(already.sort((a, b) => a - b));
           return;
         }
-        await performImport("add");
+        await performImport("add", context);
       } catch (e) {
+        if (e instanceof OperationCancelledError) return;
         devError("import.start", e);
         setError(userMessage(e, tr.errors.requestFailed));
-      } finally {
-        setBusy(false);
       }
     });
   };
 
-  const performImport = async (mode: "replace" | "add") => {
+  const performImport = async (mode: "replace" | "add", context: TrackedOperationContext) => {
     const selfId = persons.find((p) => p.isSelf)?.id;
     if (!selfId) {
       setError(tr.importer.missingSelf);
@@ -258,7 +257,8 @@ export default function ImportWizardModal() {
     }
     if (selectedYears.length === 0) return;
     setReimportYears(null);
-    const { imported } = await importSheets(userId, {
+    context.report(1, 4);
+    const request = {
       sheets: activeSheets,
       excludedLabels: excluded,
       selectedYears,
@@ -271,18 +271,23 @@ export default function ImportWizardModal() {
           return [card, { statementDay: Number(cycle.statementDay), dueDay: Number(cycle.dueDay) }];
         }),
       ),
-    });
+    };
+    context.report(2, 4);
+    if (context.signal.aborted) throw context.signal.reason;
+    const { imported } = await importSheets(userId, request);
+    context.report(3, 4);
     scheduleSync(userId);
+    context.report(4, 4);
     setDoneCount(imported);
   };
 
   const doImport = async (mode: "replace" | "add") => {
-    await operationGuard.run(async () => {
-      setBusy(true);
+    await operation.run(async (context) => {
       setError(null);
       try {
-        await performImport(mode);
+        await performImport(mode, context);
       } catch (e) {
+        if (e instanceof OperationCancelledError) return;
         // A refused replace is a precise, actionable condition — never a raw
         // engine message, and never a silent downgrade to "add".
         devError("import.run", e);
@@ -291,8 +296,6 @@ export default function ImportWizardModal() {
             ? tr.importer.batchUnreadable(e.years.join(", "))
             : userMessage(e, tr.errors.requestFailed),
         );
-      } finally {
-        setBusy(false);
       }
     });
   };
@@ -347,6 +350,11 @@ export default function ImportWizardModal() {
         onPress={() => void pick()}
         disabled={busy}
         loading={busy && workbook == null}
+      />
+      <OperationStatusNotice
+        state={operation.state}
+        label={workbook ? tr.operation.importing : tr.dataState.loading}
+        onCancel={operation.cancel}
       />
 
       {error ? (

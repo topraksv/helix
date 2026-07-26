@@ -44,6 +44,30 @@ not happen. Do not speculatively rewrite working code, and do not run
 destructive Git or database operations (force-push, history rewrite, hard
 delete, `db reset` against linked) without an explicit instruction.
 
+## Sizing the work
+
+The smallest change that fully solves the problem wins. A feature request, a
+backlog note or a scope document is a **wish list, not a specification**: price
+each requirement — files, layers, rough lines — and argue in writing against any
+whose cost is out of proportion to what the user gets, before building it. A
+need the user can already meet with a control they can see is not a requirement.
+Faithfully satisfying a brief is not the goal.
+
+- **Presentation never enters the data layer.** `src/db/mutations.ts` and
+  `src/data/repo*` say what is written, never how a screen feels while it
+  happens — no progress callback, no UI-owned `AbortSignal`. Every user write
+  funnels through `writeRows`; a parameter added there is one every call site
+  must now reason about. A screen reports the phases it already knows.
+- **Progress counts the user's units** — months, entries, files — never rows.
+- **A state you cannot reach is not a feature.** Name the case where a user sees
+  it, or delete the machinery behind it.
+- **One mechanism per behaviour.** A second delay, guard or cache that call
+  sites switch off means the first one sits at the wrong level.
+- **Defensive code needs a reachable failure.** Name the sequence it prevents,
+  or drop it.
+- **A module's header comment is part of the module.** Change what it does and
+  the rationale above it becomes a lie the next agent will trust.
+
 ## Toolchain
 
 - **Expo SDK 54** — read <https://docs.expo.dev/versions/v54.0.0/> before

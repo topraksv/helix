@@ -35,13 +35,17 @@ Hangi pakette olursan ol geçerli. Gördüğün sorunun karşısındakini yapı�
 
 | Gördüğün | Yapıştır |
 |---|---|
-| Yeni dosya/servis/store yığını | `Bu kaç yeni dosya? Her biri için hangi mevcut yapının yetmediğini tek cümleyle yaz. Yetiyorsa onu kullan.` |
-| Mevcut bir primitive'in kopyası | `Bu projede zaten var. Yenisini kurma, mevcudu genişlet.` |
+| **Şartnamedeki her maddeyi sorgusuz uygulamış** | `Şartname istek listesi, spesifikasyon değil. Her maddenin bedelini çıkar; pahalı olanı yapmadan önce bana itiraz et. En küçük çözüm kazanır.` |
+| Yeni dosya/servis/store yığını, ya da mevcut bir primitive'in kopyası | `Bu kaç yeni dosya? Her biri için hangi mevcut yapının yetmediğini tek cümleyle yaz. Yetiyorsa onu kullan.` |
+| Görünmesi imkânsız bir durum, ya da gerekçesi yazılamayan savunma kodu | `Bunu kullanıcı hangi gerçek senaryoda görüyor / bu hangi olay sırasını engelliyor? Yazamıyorsan arkasındaki kodu da yazma.` |
+| Veri katmanına UI parametresi (`writeRows`, repo imzaları) | `Sunum katmanı veri katmanına girmiyor. Progress/cancel çağıranın kendi seviyesinde.` |
+| İlerleme "satır" sayıyor | `İlerleme kullanıcının birimiyle sayılır: ay, kayıt, dosya, yıl. Veritabanı satırı değil.` |
 | Flag iş mantığının içinde | `Flag sadece mount noktasında. Domain veya repo yoluna flag girmeyecek.` |
+| Elle renk (`palette.x + "14"`) veya çıplak ölçü (`width: 120`) | `src/ui/ içinde çıplak değer olmaz. Token ekle; renkse tüm paletlere ve theme-contrast'a.` |
 | Kapsam dışına taşma | `Bu paketin kapsamı PHASE2.md'de yazılı. Dışındakini not et, yapma.` |
-| "Düzelttim" ama kanıt yok | `Kanıt yok. verify çıktısını ve değişen dosyaları göster.` |
-| Baseline'a bakmadan güncelleme | `Baseline'ı görmeden kaydetme. actual/diff görsellerini aç ve neyin neden değiştiğini yaz.` |
+| Kanıt yok, ya da baseline'a bakmadan güncellemiş | `Kanıt yok. verify çıktısını, değişen dosyaları ve varsa actual/diff görsellerini göster.` |
 | Cihazda doğrulanmamışı doğrulanmış sayma | `Bu cihazda denenmedi. Öyle yaz.` |
+| Owner kararını sorup beklemek yerine uygulamış | `Bu karar bana ait. Seçenekleri sun, uygulama.` |
 | Metin üç noktayla kırpılmış | `Üç nokta yasak. Sar, kısalt veya düzeni değiştir.` |
 
 ## Paketler
@@ -63,14 +67,16 @@ Bu dosya, `PHASE2.md`, `/paket` komutu, `src/config/features.ts` ve
 Feature 2 (yüklenme) + Feature 4 (paletler).
 
 ✅ **Görmen gereken:** `Palette` şekli değişmiyor, `theme.ts` içinde palet
-kaydı; tercih `kv helix.palette`; `theme-contrast.test.ts` sözleşmesi
-korunup tüm paletler üzerinde döngüye alınıyor; loader tarafında gecikmeli
-gösterim + gerçek determinate progress + settings'teki 3 `ActivityIndicator`'ın
-tekleştirilmesi.
+kaydı; tercih `kv helix.palette`; `theme-contrast.test.ts` sözleşmesi korunup
+tüm paletler üzerinde döngüye alınıyor; loader tarafında tek gecikme eşiği +
+çağıranın kendi fazlarından gelen ilerleme + bekleme görünürken iptal +
+settings'teki 3 `ActivityIndicator`'ın tekleştirilmesi.
 
 ❌ **Durdur:** paralel bir tema sistemi; renklerin runtime'da üretilmesi
-(`hsl()` hesabı); mavi/mor accent; **nefes alan logo** — bu bir commit önce
-bilerek silindi, geri gelmesi ayrı bir karar.
+(`hsl()` hesabı); mavi/mor accent; **nefes alan logo** — bir commit önce bilerek
+silindi, geri gelmesi ayrı bir karar; **takılma sayacı (`stalled`) ve ayrı
+`retry` yolu** — iptal beklemeyle birlikte görünür, tekrar denemek zaten
+butonun kendisi.
 
 ☎️ **Konuşalım:** kaç palet ve isimleri (Karar #4). Agent öneri getirir, sen
 seçersin.

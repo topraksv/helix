@@ -17,16 +17,26 @@ the workflow; `PHASE2_PROMPTS.md` is the owner's operating sheet for it.
 A package is **not** finished when the code works. It is finished when the owner
 has seen the evidence and said so. Never open a PR before that.
 
+The scope notes below are a **wish list, not a specification** — `AGENTS.md`
+§ Sizing the work governs, and a requirement here that cannot pay for itself is
+argued against rather than built. A decision listed as open at the end of this
+file is raised at the design gate and answered by the owner; choosing one and
+reporting "no open decisions" takes a decision that was theirs.
+
 ## Rollback contract
 
 Three tiers, none of which needs a new branch strategy, workflow or pipeline.
 
-1. **Flag** — `src/config/features.ts`. Every user-visible Phase 2 surface is
-   behind one boolean. Turning it off must remove the surface and leave the app
-   in its Phase 1 behaviour, with `npm run verify` still green. The branch lives
-   **at the mount point only**: a route's registration, a tab's entry, a card's
-   render. Never thread a flag through domain logic, a repository or a sync
-   path — a flag that reaches the write path is a bug, not a rollout.
+1. **Flag** — `src/config/features.ts`. A flag guards a **new surface**: a route,
+   a tab entry, a card, a settings section that did not exist in Phase 1.
+   Turning it off removes that surface and leaves the app in its Phase 1
+   behaviour, with `npm run verify` still green. The branch lives **at the mount
+   point only**; a flag that reaches domain logic, a repository or a sync path
+   is a bug, not a rollout.
+
+   A refinement of an existing primitive is **not** flagged. Forking a shared
+   component so both the old and new behaviour stay alive costs more than it
+   protects and breaks "one mechanism per behaviour" — tier 2 covers it.
 2. **One merge commit per package** — `git revert -m 1 <merge-sha>` removes
    exactly one package.
 3. **`v1-pre-phase2`** — the signed tag on `a8ca1d1`, the last Phase 1 release.
@@ -77,12 +87,18 @@ it is looped over every shipped palette instead, and the exact-hex pin binds to
 the Clay palette. Income green, expense red, warning amber and every WCAG
 threshold are palette-independent.
 
-**F2 loading.** In scope: a delayed-show threshold so a short wait never
-flashes; determinate progress where a real ratio exists (import, export,
-restore, bulk write); a stalled-operation state with retry/cancel and an
-explicit "your data is safe"; and moving the three remaining
-`ActivityIndicator` call sites in `settings/index.tsx` onto the one primitive,
-which is what PR #70 set out to do and did not finish.
+**F2 loading.** Four things, and nothing behind them:
+
+1. A delayed-show threshold, in one place, so a short wait never flashes.
+2. Determinate progress only where the **caller** already holds a ratio in the
+   user's units — the import wizard's phases, not a row counter borrowed from
+   the write layer.
+3. While a wait is visible: the operation's name, "your data is safe", and a
+   cancel. Cancel appears with the wait, not behind a stall timer. There is no
+   retry affordance — cancelling an atomic write rolls it back completely, so
+   the original button is the retry.
+4. The three remaining `ActivityIndicator` call sites in `settings/index.tsx`
+   move onto the one primitive, finishing what PR #70 started.
 
 Out of scope by default: **a logo or breathing mark**. That was built
 (`brand-loader.tsx`, PR #66) and deliberately removed one commit later (PR #70)
@@ -158,6 +174,14 @@ Source is `expo-document-picker` (owner's decision: no new native dependency),
 so PDF and image files, no camera. **OCR is out of scope.** Export, backup,
 account deletion and retention must all account for stored files.
 
+The cost this package carries is already written down:
+[`RELEASE.md`](RELEASE.md#database-backup-ve-geri-yükleme) records that the
+project has no Storage bucket today and that a database dump therefore covers
+everything. The moment a bucket exists that stops being true, and a separate
+object backup and restore path becomes part of this package — not a follow-up.
+`SECURITY.md`'s trust-boundary table and `PRIVACY.md`'s data table both gain a
+row.
+
 ### P8 — Shared lists
 
 The only place in this codebase where a parallel mechanism is justified, and the
@@ -171,6 +195,15 @@ them.
 
 Isolation is the acceptance criterion: a member reaches the shared list and
 nothing else. Prove it with two real accounts, not with policy reading.
+
+**This package is not additive, and the design gate must say so out loud.** It
+falsifies a sentence the project publishes in two places —
+[`README.md`](../README.md) "başka bir hesap satırlarını okuyamaz" and
+[`PRIVACY.md`](PRIVACY.md) "her satır kendi sahibine bağlıdır" — rewrites the
+A01 row of `SECURITY.md`'s verification matrix, and extends the 48-assertion
+pgTAP suite to a second authorization model. Those four documents are part of
+the package, not paperwork after it. Weigh that against what is being bought: a
+shopping list.
 
 ### P9 — Tour refresh
 

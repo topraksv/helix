@@ -29,8 +29,14 @@ describe("backup import result counts", () => {
     dependencies.getAllAsync.mockImplementation(async (sql: string) =>
       sql.includes("FROM settings") ? [{ id: settingId, updated_at: timestamp }] : [],
     );
-    dependencies.writeRowBatchesAtomically.mockImplementation(async (_userId, batches: Iterable<unknown[]>) => {
-      for (const _batch of batches) { /* consume the lazy restore plan */ }
+    dependencies.writeRowBatchesAtomically.mockImplementation(async (
+      _userId,
+      batches: Iterable<unknown[]>,
+      _isUserEntry: boolean,
+    ) => {
+      for (const batch of batches) {
+        for (const _write of batch) void _write;
+      }
     });
   });
 
@@ -52,5 +58,50 @@ describe("backup import result counts", () => {
     });
 
     expect(result).toEqual({ imported: 0, skipped: 1 });
+  });
+
+  it("reports restore phases instead of storage-row progress", async () => {
+    const newerId = "00000000-0000-4000-8000-000000000004";
+    const progress: Array<[number, number]> = [];
+    const result = await importBundle(targetUserId, {
+      version: 1,
+      exportedAt: timestamp,
+      tables: {
+        settings: [
+          {
+            id: settingId,
+            user_id: sourceUserId,
+            key: "theme",
+            value: JSON.stringify("dark"),
+            created_at: timestamp,
+            updated_at: timestamp,
+            deleted_at: null,
+          },
+          {
+            id: newerId,
+            user_id: sourceUserId,
+            key: "palette",
+            value: JSON.stringify("sand"),
+            created_at: timestamp,
+            updated_at: "2026-07-21T10:00:00.000Z",
+            deleted_at: null,
+          },
+        ],
+      },
+    }, {
+      onProgress: (completed, total) => progress.push([completed, total]),
+    });
+
+    expect(result).toEqual({ imported: 1, skipped: 1 });
+    expect(progress).toEqual([[1, 3], [2, 3], [3, 3]]);
+  });
+
+  it("honours cancellation before restore planning or writes", async () => {
+    const controller = new AbortController();
+    const reason = new Error("cancelled");
+    controller.abort(reason);
+
+    await expect(importBundle(targetUserId, {}, { signal: controller.signal })).rejects.toBe(reason);
+    expect(dependencies.writeRowBatchesAtomically).not.toHaveBeenCalled();
   });
 });

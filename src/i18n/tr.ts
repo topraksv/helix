@@ -572,6 +572,10 @@ export const tr = {
     reminderDays: "Hatırlatma: Kaç Gün Önce",
     biometric: "Face ID Kilidi",
     theme: "Tema", themeSystem: "Sistem", themeLight: "Açık", themeDark: "Koyu",
+    palette: "Renk Paleti",
+    paletteClay: "Kil",
+    paletteSand: "Kum",
+    paletteCinnamon: "Tarçın",
     export: "Yedek Oluştur",
     exportDesc: "Tüm verinin tek dosyalık kopyasını indir. Bir aksilikte ya da başka bir cihazda bununla geri yükleyebilirsin.",
     exportCsv: "İşlemleri CSV'ye Aktar",
@@ -763,6 +767,12 @@ export const tr = {
     loading: "Cihazındaki veriler hazırlanıyor…",
     stale: "Son kayıtlı veriler gösteriliyor; güncelleme şu an tamamlanamadı.",
     error: "Cihazındaki finans verileri şu an okunamadı. Boş sonuç göstermek yerine verileri koruduk.",
+  },
+  operation: {
+    progress: (completed: number, total: number) => `${completed}/${total} tamamlandı`,
+    dataSafe: "Verilerin güvende; tamamlanmamış değişiklikler kaydedilmedi.",
+    importing: "Kayıtlar içe aktarılıyor",
+    saving: "Kayıtlar güvenle yazılıyor",
   },
   sources: {
     credit_card: "Kredi Kartı",

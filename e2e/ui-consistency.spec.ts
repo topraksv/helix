@@ -1,7 +1,7 @@
 /**
  * Layout and feedback rules that only a real render can prove: a card's own
- * padding reading evenly, a popup staying inside the viewport, and a wait long
- * enough to notice turning into the brand mark instead of spinning forever.
+ * padding reading evenly, a popup staying inside the viewport, palette
+ * persistence, and one stable wait indicator.
  */
 
 import { expect, test, type Page } from "@playwright/test";
@@ -43,6 +43,24 @@ test("a card's trailing action leaves the same gap as its first row", async ({ p
   // A regular button's 48pt minimum height used to centre its label 4.5px
   // deeper than the first row's text sits from the top.
   expect(Math.abs(insets.top - insets.bottom)).toBeLessThanOrEqual(1);
+});
+
+test("palette preference repaints immediately and survives a reload", async ({ page }) => {
+  await onboard(page);
+  await page.goto("/helix/settings");
+  const clay = page.getByRole("radio", { name: "Kil", exact: true });
+  const sand = page.getByRole("radio", { name: "Kum", exact: true });
+  await expect(clay).toHaveAttribute("aria-checked", "true");
+  const clayFill = await clay.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+  await sand.click();
+  await expect(sand).toHaveAttribute("aria-checked", "true");
+  const sandFill = await sand.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(sandFill).not.toBe(clayFill);
+  expect(await page.evaluate(() => localStorage.getItem("helix.palette"))).toBe("sand");
+
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "Kum", exact: true })).toHaveAttribute("aria-checked", "true");
 });
 
 for (const viewport of [{ w: 320, h: 640 }, { w: 390, h: 844 }, { w: 1280, h: 720 }]) {
@@ -109,4 +127,14 @@ test("a wait shows one indicator for its whole duration", async ({ page, context
 
   await page.waitForTimeout(2_500);
   expect(await shape()).toEqual(first);
+});
+
+test("a short boot wait never flashes a loading indicator", async ({ page, context }) => {
+  await context.route("**/*.wasm", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await route.continue();
+  });
+  await page.goto("/helix/");
+  await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Hemen Kullanmaya Başla/ })).toBeVisible();
 });

@@ -27,7 +27,7 @@ export type Phase2Flag =
 
 /** Not `as const`: these are switches, and literal `false` would narrow every guarded branch to dead code. */
 export const PHASE2_FLAGS: Record<Phase2Flag, boolean> = {
-  palettes: false,
+  palettes: true,
   glassTabBar: false,
   privacyPeek: false,
   extendedCurrencies: false,

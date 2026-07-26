@@ -1,7 +1,7 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
 import React, { useState } from "react";
-import { ActivityIndicator, Platform, View } from "react-native";
+import { Platform, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
@@ -36,19 +36,21 @@ import { disableNotifications, enableNotifications, rescheduleAll, updateNotific
 import { syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
-import { setGlobalThemePreference } from "../../_layout";
+import { setGlobalPalettePreference, setGlobalThemePreference } from "../../_layout";
 import { UserFacingError, userMessage } from "../../../domain/user-error";
 import { devError } from "../../../services/logger";
 import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, DataStateNotice, Field, ListRow, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
-import { useOperationGuard } from "../../../ui/operation-guard";
+import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
 import { spacing, useTheme } from "../../../ui/theme";
-import type { ThemePreference } from "../../../ui/theme";
+import type { PaletteId, ThemePreference } from "../../../ui/theme";
 import { readPickedText } from "../../../services/picked-file";
+import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
+import { PHASE2_FLAGS } from "../../../config/features";
 
 export default function SettingsScreen() {
   const userId = useUserId();
@@ -57,7 +59,7 @@ export default function SettingsScreen() {
   const settings = settingsState.data;
   const sync = useSyncStatus();
   const router = useRouter();
-  const { palette } = useTheme();
+  const { palette, paletteId } = useTheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
   const [localPreferencesLoaded, setLocalPreferencesLoaded] = useState(false);
@@ -138,15 +140,19 @@ export default function SettingsScreen() {
   // (storage quota, permission, unreadable file) rejected into nowhere — an
   // error looked exactly like an operation still running. The shared guard
   // serialises them, the busy row reports progress, and every failure surfaces.
-  const dataOps = useOperationGuard();
+  const dataOps = useTrackedOperation();
   const [dataBusy, setDataBusy] = useState<"export" | "csv" | "import" | null>(null);
 
-  const runDataOperation = async (kind: "export" | "csv" | "import", operation: () => Promise<void>) => {
-    await dataOps.run(async () => {
+  const runDataOperation = async (
+    kind: "export" | "csv" | "import",
+    operation: (context: TrackedOperationContext) => Promise<void>,
+  ) => {
+    await dataOps.run(async (context) => {
       setDataBusy(kind);
       try {
-        await operation();
+        await operation(context);
       } catch (e) {
+        if (e instanceof OperationCancelledError) return;
         // Backup, CSV and restore failures arrive from the file system, the
         // share sheet or a rejected bundle. Only a message authored for the
         // user may be shown; everything else stays in the dev-only log.
@@ -159,22 +165,24 @@ export default function SettingsScreen() {
   };
 
   const exportJson = () =>
-    runDataOperation("export", async () => {
+    runDataOperation("export", async ({ signal }) => {
       const path = await saveTextFile(
         `helix-yedek-${new Date().toISOString().slice(0, 10)}.json`,
-        await buildExportText(userId),
+        await buildExportText(userId, signal),
         "application/json",
       );
+      if (signal.aborted) throw signal.reason;
       if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "application/json" });
     });
 
   const exportCsv = () =>
-    runDataOperation("csv", async () => {
+    runDataOperation("csv", async ({ signal }) => {
       const path = await saveTextFile(
         `helix-islemler-${new Date().toISOString().slice(0, 10)}.csv`,
-        await buildTransactionsCsv(userId),
+        await buildTransactionsCsv(userId, signal),
         "text/csv",
       );
+      if (signal.aborted) throw signal.reason;
       if (path && (await Sharing.isAvailableAsync())) await Sharing.shareAsync(path, { mimeType: "text/csv" });
     });
 
@@ -184,10 +192,14 @@ export default function SettingsScreen() {
     const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
     if (picked.canceled || !picked.assets[0]) return;
     const asset = picked.assets[0];
-    await runDataOperation("import", async () => {
+    await runDataOperation("import", async ({ signal, report }) => {
       if ((asset.size ?? 0) > MAX_BACKUP_BYTES) throw new UserFacingError(tr.errors.backupTooLarge);
       const content = await readPickedText(asset);
-      const result = await importBundle(userId, parseExportBundleText(content));
+      if (signal.aborted) throw signal.reason;
+      const result = await importBundle(userId, parseExportBundleText(content), {
+        signal,
+        onProgress: report,
+      });
       const message =
         result.skipped > 0
           ? `${tr.settings.importSuccess(result.imported)} ${tr.errors.importInvalidRows(result.skipped)}`
@@ -272,6 +284,21 @@ export default function SettingsScreen() {
             setGlobalThemePreference(v);
           }}
         />
+        {PHASE2_FLAGS.palettes ? (
+          <>
+            <Body style={{ marginBottom: spacing.sm }}>{tr.settings.palette}</Body>
+            <Segmented<PaletteId>
+              options={[
+                { value: "clay", label: tr.settings.paletteClay },
+                { value: "sand", label: tr.settings.paletteSand },
+                { value: "cinnamon", label: tr.settings.paletteCinnamon },
+              ]}
+              value={paletteId}
+              disabled={!localPreferencesLoaded}
+              onChange={setGlobalPalettePreference}
+            />
+          </>
+        ) : null}
         <Field
           label={tr.settings.reminderDays}
           value={reminderStr}
@@ -423,7 +450,7 @@ export default function SettingsScreen() {
           title={tr.settings.export}
           subtitle={tr.settings.exportDesc}
           chevron={dataBusy !== "export"}
-          right={dataBusy === "export" ? <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} /> : undefined}
+          right={dataBusy === "export" ? <DelayedLoadingIndicator size={7} label={tr.settings.export} /> : undefined}
           onPress={() => void exportJson()}
         />
         <ListRow
@@ -431,7 +458,7 @@ export default function SettingsScreen() {
           title={tr.settings.exportCsv}
           subtitle={tr.settings.exportCsvDesc}
           chevron={dataBusy !== "csv"}
-          right={dataBusy === "csv" ? <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} /> : undefined}
+          right={dataBusy === "csv" ? <DelayedLoadingIndicator size={7} label={tr.settings.exportCsv} /> : undefined}
           onPress={() => void exportCsv()}
         />
         <ListRow
@@ -439,11 +466,22 @@ export default function SettingsScreen() {
           title={tr.settings.import}
           subtitle={tr.settings.importDesc}
           chevron={dataBusy !== "import"}
-          right={dataBusy === "import" ? <ActivityIndicator accessibilityLabel={tr.dataState.loading} color={palette.primary} /> : undefined}
+          right={dataBusy === "import" ? <DelayedLoadingIndicator size={7} label={tr.settings.import} /> : undefined}
           onPress={() => void importJson()}
         />
         <ListRow icon={FileSpreadsheet} title={tr.importer.title} subtitle={tr.importer.settingsDesc} chevron onPress={() => router.push("/import-wizard")} />
       </Card>
+      <OperationStatusNotice
+        state={dataOps.state}
+        label={
+          dataBusy === "export"
+            ? tr.settings.export
+            : dataBusy === "csv"
+              ? tr.settings.exportCsv
+              : tr.settings.import
+        }
+        onCancel={dataOps.cancel}
+      />
 
       <Card>
         <ListRow icon={BookOpen} title={tr.tour.replay} subtitle={tr.tour.replayDesc} chevron onPress={() => setTourOpen(true)} />

@@ -18,27 +18,41 @@ import {
 } from "./backup-validation";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
 
+interface RestoreOperationOptions {
+  signal?: AbortSignal;
+  onProgress?: (completed: number, total: number) => void;
+}
+
+const RESTORE_PHASE_COUNT = 3;
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason ?? new Error("Operation cancelled");
+}
+
 /**
  * Build a restorable JSON file one table at a time. This never retains all
  * SQLite row arrays alongside the final string. The output is rejected if this
  * app could not safely import it back.
  */
-export async function buildExportText(userId: string): Promise<string> {
+export async function buildExportText(userId: string, signal?: AbortSignal): Promise<string> {
   const sqlite = await getSqliteAsync();
   const exportedAt = new Date().toISOString();
   const builder = new ExportTextBuilder(exportedAt);
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    throwIfAborted(signal);
     const rows = await sqlite.getAllAsync<Record<string, unknown>>(
       `SELECT * FROM ${table} WHERE user_id = ?`,
       [userId],
     );
+    throwIfAborted(signal);
     builder.addTable(table, rows);
   }
   return builder.finish();
 }
 
-export async function buildTransactionsCsv(userId: string): Promise<string> {
+export async function buildTransactionsCsv(userId: string, signal?: AbortSignal): Promise<string> {
   const sqlite = await getSqliteAsync();
+  throwIfAborted(signal);
   const rows = await sqlite.getAllAsync<Record<string, unknown>>(
     `SELECT t.purchase_date, t.effective_date, t.entry_date, t.type, t.status, t.amount_minor, t.currency, t.amount_try_minor,
             c.name as category, ps.name as source, p.name as person, t.installment_no, t.is_aggregate, t.note,
@@ -52,6 +66,7 @@ export async function buildTransactionsCsv(userId: string): Promise<string> {
      ORDER BY t.effective_date`,
     [userId],
   );
+  throwIfAborted(signal);
   const header = "harcama_tarihi;odeme_tarihi;ekstre_donemi;ekstre_kesim_tarihi;giris_tarihi;tur;durum;tutar;para_birimi;tutar_try;kategori;kaynak;kisi;taksit_no;toplu;not";
   const lines = rows.map((r) =>
     [
@@ -102,13 +117,19 @@ export async function saveTextFile(filename: string, content: string, mime: stri
  * restore never clobbers fresher local edits. The entire bundle is validated
  * before the first write and then committed in one SQLite transaction.
  */
-export async function importBundle(userId: string, input: unknown): Promise<{ imported: number; skipped: number }> {
+export async function importBundle(
+  userId: string,
+  input: unknown,
+  options?: RestoreOperationOptions,
+): Promise<{ imported: number; skipped: number }> {
+  throwIfAborted(options?.signal);
   const bundle = validateExportBundle(input);
   const sqlite = await getSqliteAsync();
   let imported = 0;
   let skipped = 0;
   const localState = {} as Record<SyncedTableName, { updatedAt: Map<string, number>; ids: Set<string> }>;
   for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    throwIfAborted(options?.signal);
     const localRows = await sqlite.getAllAsync<{ id: string; updated_at: string }>(
       `SELECT id, updated_at FROM ${table} WHERE user_id = ?`,
       [userId],
@@ -118,6 +139,7 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
       ids: new Set(localRows.map((row) => row.id)),
     };
   }
+  options?.onProgress?.(1, RESTORE_PHASE_COUNT);
   validateBundleRelationships(
     bundle,
     Object.fromEntries(Object.entries(localState).map(([table, state]) => [table, state.ids])) as ExistingImportIds,
@@ -127,12 +149,14 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
       .filter((row) => row.type === "transfer" && typeof row.category_id === "string")
       .map((row) => String(row.category_id)),
   );
+  options?.onProgress?.(2, RESTORE_PHASE_COUNT);
   function* restoreBatches(): Generator<{ table: SyncedTableName; row: Record<string, unknown> }[]> {
     let batch: { table: SyncedTableName; row: Record<string, unknown> }[] = [];
     for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
       const rows = bundle.tables[table];
       if (!Array.isArray(rows)) continue;
       for (const raw of rows) {
+        throwIfAborted(options?.signal);
         const incoming = Date.parse(String(raw.updated_at));
         const local = localState[table].updatedAt.get(String(raw.id));
         if (local != null && local >= incoming) {
@@ -157,5 +181,6 @@ export async function importBundle(userId: string, input: unknown): Promise<{ im
   // One transaction for every table: a malformed/out-of-space restore can no
   // longer leave half the backup applied.
   await writeRowBatchesAtomically(userId, restoreBatches(), false);
+  options?.onProgress?.(3, RESTORE_PHASE_COUNT);
   return { imported, skipped };
 }
