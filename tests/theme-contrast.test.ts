@@ -94,6 +94,20 @@ describe("semantic theme contrast", () => {
     expect(Object.keys(PALETTES)).toEqual(["clay", "sand", "cinnamon"]);
   });
 
+  // The floating tab bar paints `surfaceTranslucent` over whatever scrolls
+  // past. Pinning its opaque prefix to `surface` is what lets every contrast
+  // pair already proved against `surface` carry over, so the bar's label can
+  // never become unreadable by drifting to a colour nothing measured.
+  it("keeps the translucent surface a faded `surface`, never a second colour", () => {
+    for (const palette of shippedPalettes) {
+      expect(palette.surfaceTranslucent.slice(0, 7)).toBe(palette.surface);
+      const alpha = Number.parseInt(palette.surfaceTranslucent.slice(7), 16);
+      expect(palette.surfaceTranslucent).toHaveLength(9);
+      expect(alpha).toBeGreaterThanOrEqual(0xe0);
+      expect(alpha).toBeLessThan(0xff);
+    }
+  });
+
   it("keeps the warm neutral ramp exact", () => {
     expect(lightPalette).toMatchObject({
       background: "#F8F8F7", surface: "#F5F4EF", surfaceAlt: "#F0EEE5",

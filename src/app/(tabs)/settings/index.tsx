@@ -43,7 +43,7 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
 import { spacing, useTheme } from "../../../ui/theme";
@@ -299,30 +299,40 @@ export default function SettingsScreen() {
             />
           </>
         ) : null}
-        <Field
-          label={tr.settings.reminderDays}
-          value={reminderStr}
-          onChangeText={setReminderDraft}
-          keyboardType="number-pad"
-          editable={settingsState.updatedAt != null}
-        />
-        <Button
-          label={tr.common.save}
-          variant="secondary"
-          size="sm"
-          disabled={!reminderField.canSave}
-          onPress={() => {
-            const next = Number(reminderStr);
-            void setReminderDays(userId, next)
-              // Release the draft so the field follows the persisted value again
-              // instead of pinning the just-saved string over later changes.
-              .then(() => {
-                setReminderDraft(null);
-                return rescheduleAll(userId);
-              })
-              .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
-          }}
-        />
+        {/* The field holds a one- or two-digit number, so a full-width save
+            button under it left a wide empty band and read as a second, larger
+            action. Beside the input it stays the smaller of the two and the row
+            keeps its own bottom margin, which the field no longer carries. */}
+        <Row gap={spacing.sm} style={{ alignItems: "flex-end", marginBottom: spacing.md }}>
+          <View style={{ flex: 1 }}>
+            <Field
+              label={tr.settings.reminderDays}
+              value={reminderStr}
+              onChangeText={setReminderDraft}
+              keyboardType="number-pad"
+              editable={settingsState.updatedAt != null}
+              noMargin
+            />
+          </View>
+          <Button
+            label={tr.common.save}
+            variant="secondary"
+            size="sm"
+            disabled={!reminderField.canSave}
+            onPress={() => {
+              const next = Number(reminderStr);
+              void setReminderDays(userId, next)
+                // Release the draft so the field follows the persisted value
+                // again instead of pinning the just-saved string over later
+                // changes.
+                .then(() => {
+                  setReminderDraft(null);
+                  return rescheduleAll(userId);
+                })
+                .catch(() => void appAlert(tr.errors.saveFailed, tr.errors.title));
+            }}
+          />
+        </Row>
         {Platform.OS !== "web" ? (
           <>
             <ListRow
@@ -492,12 +502,22 @@ export default function SettingsScreen() {
         {isSupabaseConfigured ? (
           <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
         ) : null}
-        <ListRow icon={LogOut} title={tr.auth.signOut} onPress={() => void handleSignOut()} />
+        {/* Signing out flushes, stops background work, clears device state and
+            wipes the workspace before the screen can change. `signingOut` used
+            to exist only to block a second tap, so the row sat silent through
+            all of it and the wait read as a freeze. */}
+        <ListRow
+          icon={LogOut}
+          title={tr.auth.signOut}
+          right={signingOut ? <DelayedLoadingIndicator size={7} label={tr.auth.signOut} /> : undefined}
+          onPress={() => void handleSignOut()}
+        />
         <ListRow
           icon={Trash2}
           iconColor={palette.destructive}
           title={tr.account.delete}
           subtitle={tr.account.deleteDesc}
+          right={deleting ? <DelayedLoadingIndicator size={7} label={tr.account.delete} /> : undefined}
           onPress={() => void handleDeleteAccount()}
         />
       </Card>

@@ -102,6 +102,18 @@ git diff -- e2e/__screenshots__
 Her değişen görüntü 320/390 mobil ve ilgili tablet/desktop görünümünde gözle
 incelenmeden kabul edilmez. Sadece testi yeşile çevirmek için baseline yenilenmez.
 
+> **AÇIK KUSUR — bu kapı şu an içerik karşılaştırmıyor.** 2026-07-26'da
+> ölçüldü: uygulama 1440'ta 560 px genişliğinde ortalanmış bir tab bar render
+> ederken commit'li baseline tam genişlik bar gösteriyordu ve `playwright test`
+> geçti; `--update-snapshots` dosyayı yeniden yazmadı. Aynı sessiz kayma
+> `tab-settings` ve `tab-subscriptions` dosyalarını 18–26 Temmuz arası bayat
+> bıraktı (eski sekme adları, PR #66'da değişmiş metinler). Boyutu farklı bir
+> görsel testi düşürüyor, yani boyut kontrolü çalışıyor; içerik kontrolü en az
+> bazı snapshot'larda çalışmıyor. Sebep bulunmadı. **Bu kapanana kadar görsel
+> kanıt manuel sayılır:** baseline yenilendiğinde değişen her görüntü açılıp
+> gözle incelenir, ve "23 baseline release'i bloklar" ifadesi bu satır
+> silinmeden doğru kabul edilemez.
+
 ## Linked Supabase kabulü
 
 Migration içeren paket, [RELEASE.md](RELEASE.md) sırasını uygular. Minimum kanıt:
@@ -139,6 +151,7 @@ kadar hiç doldurulmadı.
 | iOS | Bekleyen yazma varken uygulamayı öldürme | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native dayanıklılık iddiasını bloklar | Çevrimdışı kaydedilen satır relaunch sonrası yerinde durur, outbox'ta tek kopya kalır ve bağlantı dönünce sunucuya bir kez gider | BLOCKED — installed build yok |
 | iOS | Header geri butonu ve başlık (JS header) | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native header iddiasını bloklar | Geri ikonu kendi 44pt alanında ortalı, arkasında sistem "glass" kapsülü YOK, başlıkla aynı dikey merkezde; safe-area ve başlık hizası bozulmaz | BLOCKED — cihaz yok. iOS 26 UIKit her bar button item'ın arkasına paylaşılan cam arka plan çiziyor ve RNS 4.16 bunu `headerLeft` için kapatamıyor; bu yüzden header artık her platformda React ile çiziliyor (`src/ui/header-bar.tsx`), web'de doğrulandı |
 | iOS | Özet → Net Değişim → Analiz → Geri | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native geri-navigasyon iddiasını bloklar | Geri, Mali Tablo'ya değil Özet'e döner; sonra Mali Tablo'ya geçince Analiz açık kalmaz | BLOCKED — cihaz yok. Tek cross-navigator `replace` native'de yalnız yakın navigatöre gidiyordu; `navigateBack` artık önce kendi stack'ini geri sarıp sonra origin'e gidiyor, web'de doğrulandı |
+| iOS | Özet → Net Değişim → Analiz → **kenardan sağa kaydırma** | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native geri-navigasyon iddiasını bloklar | Kaydırma da Özet'e döner, butonla aynı hedefe — Mali Tablo'ya değil | BLOCKED — **web'de doğrulanamaz**: tarayıcı geçmişi zaten doğru davranır, kusur native stack pop'una özgü. Kaydırma `navigateBack`'e hiç uğramıyordu; hedef artık `HeaderBackButton` içindeki tek `beforeRemove` dinleyicisinde, yani iki yol ayrışamaz |
 | iOS @3x (Pro/Plus) | Header geri ikonunun optik merkezi | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; native header hizası iddiasını bloklar | Chevron kendi 44pt dairesel hedefinin içinde yatay ve dikey ortalı; basılı/odaklı durumda daire ikonu simetrik sarar; başlık hizası ve safe-area bozulmaz | BLOCKED — cihaz yok. Sebep aritmetikle kapatıldı: ikon 24pt olduğu için (44 − 24) / 2 = 10pt her yoğunlukta tam sayıya düşer (`tests/design-system-contract.test.ts`); 25pt'te 9,5pt @3x'te 28/29 fiziksel piksele bölünüyordu. Web tarafı 320/390 px'te ölçüldü: her kenar 9,5 px, simetrik |
 | Düşük bellek cihaz | Büyük geçerli import | `DEVICE_ONLY` | Web/preview publish'i bloklamaz; düşük-memory native kabul iddiasını bloklar | Limit içindeki dosya tamamlanır veya kontrollü hata verir; crash/yarım write yok | BLOCKED — cihaz profili yok |
 

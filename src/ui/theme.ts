@@ -5,6 +5,14 @@ import { createContext, useContext } from "react";
 export interface Palette {
   background: string;
   surface: string;
+  /**
+   * `surface` with alpha, for the floating tab bar that content scrolls under.
+   * The opaque prefix must stay identical to `surface` so every contrast pair
+   * already proved against `surface` still holds once it composites; the alpha
+   * is high enough that what shows through reads as texture, not as a second
+   * background. Reduce Transparency swaps it for `surface` itself.
+   */
+  surfaceTranslucent: string;
   surfaceAlt: string;
   surfaceHover: string;
   surfaceStrong: string;
@@ -91,6 +99,7 @@ const darkSemanticColors = {
 const clayLight: Palette = {
   background: "#F8F8F7",
   surface: "#F5F4EF",
+  surfaceTranslucent: "#F5F4EFEB",
   surfaceAlt: "#F0EEE5",
   surfaceHover: "#E8E5D8",
   surfaceStrong: "#DED8C4",
@@ -112,6 +121,7 @@ const clayLight: Palette = {
 const clayDark: Palette = {
   background: "#1A1A19",
   surface: "#222220",
+  surfaceTranslucent: "#222220EB",
   surfaceAlt: "#2D2D2A",
   surfaceHover: "#393937",
   surfaceStrong: "#494946",
@@ -133,6 +143,7 @@ const clayDark: Palette = {
 const sandLight: Palette = {
   background: "#FBF5E8",
   surface: "#F7EEDC",
+  surfaceTranslucent: "#F7EEDCEB",
   surfaceAlt: "#EFE3CC",
   surfaceHover: "#E7D6B8",
   surfaceStrong: "#D8C29D",
@@ -154,6 +165,7 @@ const sandLight: Palette = {
 const sandDark: Palette = {
   background: "#1C1812",
   surface: "#252019",
+  surfaceTranslucent: "#252019EB",
   surfaceAlt: "#332A20",
   surfaceHover: "#403428",
   surfaceStrong: "#534434",
@@ -175,6 +187,7 @@ const sandDark: Palette = {
 const cinnamonLight: Palette = {
   background: "#FAF5F2",
   surface: "#F6EEE9",
+  surfaceTranslucent: "#F6EEE9EB",
   surfaceAlt: "#EEE1D9",
   surfaceHover: "#E5D4CA",
   surfaceStrong: "#D5BCAE",
@@ -196,6 +209,7 @@ const cinnamonLight: Palette = {
 const cinnamonDark: Palette = {
   background: "#1D1715",
   surface: "#281F1C",
+  surfaceTranslucent: "#281F1CEB",
   surfaceAlt: "#352925",
   surfaceHover: "#43322D",
   surfaceStrong: "#554039",
@@ -336,11 +350,49 @@ export const generatedBadgeForeground = "#FFFFFF";
  *  that must clear it (undo snackbar). Web gets extra height so Turkish
  *  descenders (ç/ğ) aren't clipped, and a floor because mobile web reports no
  *  bottom inset. */
-export const TAB_BAR = { height: 56, webHeight: 64, minBottomInset: 8, webMinBottomInset: 14 } as const;
+/**
+ * The floating tab bar.
+ *
+ * The safe-area inset sits UNDER the bar, not inside it. While the bar was
+ * docked to the bottom edge its height had to swallow the home indicator, so
+ * its bottom padding was always larger than its top and the icons rode high in
+ * a bar that was supposed to look symmetrical. A floating bar clears the
+ * indicator by standing above it, which makes the padding even by construction.
+ */
+export const TAB_BAR = {
+  /** The bar itself — content only, no safe area. */
+  height: 56,
+  webHeight: 60,
+  /** Distance from the bar to the bottom edge when there is no home indicator. */
+  minBottomGap: 10,
+  /** Side inset of the bar, and the gap it keeps from the content above it. */
+  sideInset: 12,
+  gap: 10,
+  /**
+   * A floating bar that spans a 1440 px viewport stops reading as floating and
+   * starts reading as a stretched pill — each of the five targets becomes
+   * ~288 px wide. Bounded and centred it stays a bar on every width, sitting
+   * under the same content column the screens are already limited to.
+   */
+  maxWidth: 560,
+} as const;
 
-export function tabBarHeight(bottomInset: number, isWeb: boolean): number {
-  const pad = Math.max(bottomInset, isWeb ? TAB_BAR.webMinBottomInset : TAB_BAR.minBottomInset);
-  return (isWeb ? TAB_BAR.webHeight : TAB_BAR.height) + pad;
+export function tabBarHeight(isWeb: boolean): number {
+  return isWeb ? TAB_BAR.webHeight : TAB_BAR.height;
+}
+
+/** How far the bar's own bottom edge sits above the screen's. */
+export function tabBarBottomOffset(bottomInset: number): number {
+  return Math.max(bottomInset, TAB_BAR.minBottomGap);
+}
+
+/**
+ * Space a tab scene must leave under its content. The bar floats over the
+ * scene, so react-navigation no longer reserves its height — this is the single
+ * source every scroller and overlay reads instead of guessing an offset.
+ */
+export function tabBarClearance(bottomInset: number, isWeb: boolean): number {
+  return tabBarHeight(isWeb) + tabBarBottomOffset(bottomInset) + TAB_BAR.gap;
 }
 
 export type ThemePreference = "system" | "light" | "dark";

@@ -24,6 +24,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
+import { useScrollToTop } from "@react-navigation/native";
 import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
@@ -45,6 +46,7 @@ import {
   scrim,
   spacing,
   stateOpacity,
+  tabBarClearance,
   toggleSize,
   toggleThumbShadow,
   type,
@@ -157,12 +159,23 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const segments = useSegments();
+  // Pressing the tab you are already on returns that screen to the top. The
+  // navigator's own hook is used rather than a listener here because it also
+  // resolves the cases a hand-rolled one gets wrong: nested stacks, whether
+  // this screen is the stack's first, and a listener that called
+  // preventDefault. Screens outside a tab navigator are a no-op.
+  const ownScrollRef = useRef<ScrollView>(null);
+  const activeScrollRef = scrollRef ?? ownScrollRef;
+  useScrollToTop(activeScrollRef);
   const wide = width > maxWidth + spacing.xl * 2;
-  // Tab scenes already sit above the tab bar, whose own height reserves the
-  // bottom safe-area inset — adding it again here just leaves dead space at the
-  // end of a scroll. Only modal / stack scenes (no tab bar under them) need it.
+  // The tab bar floats over its scene, so the navigator no longer reserves its
+  // height — the last row would otherwise sit under it. `tabBarClearance` is
+  // the single source for that space; a modal or stack scene has no bar over it
+  // and only needs the safe-area inset.
   const inTabs = segments[0] === "(tabs)";
-  const bottomPad = inTabs ? spacing.lg : Math.max(insets.bottom, spacing.lg) + spacing.md;
+  const bottomPad = inTabs
+    ? tabBarClearance(insets.bottom, Platform.OS === "web")
+    : Math.max(insets.bottom, spacing.lg) + spacing.md;
   // Content must clear the status bar / Dynamic Island on headerless full
   // screens. Titled screens already inset the top; the auth + onboarding
   // screens run with `headerShown: false` and no title, so they need it too
@@ -215,7 +228,7 @@ export function Screen({
       style={{ flex: 1, backgroundColor: palette.background }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView ref={scrollRef} contentContainerStyle={inner} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
+      <ScrollView ref={activeScrollRef} contentContainerStyle={inner} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
         <FadeIn>
           {header}
           {children}
@@ -1406,12 +1419,20 @@ export function Toggle({
           justifyContent: "center",
         }}
       >
+        {/* The thumb carries the tab bar's material language — a crisp hairline
+            edge over the shadow, so it reads as a lens sitting on the track
+            rather than a flat dot. The TRACK deliberately stays opaque: its two
+            fills are what `theme-contrast.test.ts` measures, and letting the
+            row behind show through is how this control once vanished
+            completely on the refund row. */}
         <Animated.View
           style={{
             width: TOGGLE_THUMB,
             height: TOGGLE_THUMB,
             borderRadius: TOGGLE_THUMB / 2,
             backgroundColor: value ? palette.primary : palette.textSecondary,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.surfaceTranslucent,
             transform: [{ translateX: thumbX }],
             ...toggleThumbShadow,
           }}

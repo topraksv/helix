@@ -5,7 +5,7 @@ import { Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { FadeIn } from "./components";
-import { font, overlayShadow, radius, spacing, tabBarHeight, type, useTheme } from "./theme";
+import { font, overlayShadow, radius, spacing, tabBarClearance, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { haptic, selectionTap, type HapticKind } from "./haptics";
 import { runUndo } from "../domain/undo-outcome";
@@ -47,8 +47,9 @@ export function UndoSnackbar() {
   const [undoing, setUndoing] = React.useState(false);
   if (!message) return null;
   // Clear the real tab bar (shared TAB_BAR metrics), not a hardcoded offset
-  // that silently drifts when the bar changes.
-  const bottom = tabBarHeight(insets.bottom, Platform.OS === "web") + spacing.lg;
+  // that silently drifts when the bar changes. The bar floats, so the space it
+  // occupies is its clearance, not just its height.
+  const bottom = tabBarClearance(insets.bottom, Platform.OS === "web") + spacing.md;
   return (
     <View
       pointerEvents="box-none"
