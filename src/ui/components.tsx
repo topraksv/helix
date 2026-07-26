@@ -209,18 +209,24 @@ export function Screen({
   ];
 
   if (!scroll) {
-    // Non-scroll screens host their own virtualized list; they still need the
-    // keyboard inset when that list's header contains inputs.
+    // No KeyboardAvoidingView here, deliberately. `behavior="padding"` pads the
+    // avoider by the keyboard's height measured in WINDOW coordinates, but a
+    // stack screen's frame starts below the native header — so it over-padded
+    // by the header height and the `flex: 1` child collapsed to nothing. The
+    // cell editor showed a blank screen with the keyboard up: the field the
+    // user had just tapped was gone.
+    //
+    // A non-scroll screen hosts its own virtualized list, and that list is what
+    // should move: it sets `automaticallyAdjustKeyboardInsets` and iOS insets
+    // its content by the real overlap. One mechanism, owned by the thing that
+    // can actually scroll.
     return (
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: palette.background }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <View style={{ flex: 1, backgroundColor: palette.background }}>
         <FadeIn style={[{ flex: 1 }, inner]}>
           {header}
           {children}
         </FadeIn>
-      </KeyboardAvoidingView>
+      </View>
     );
   }
   return (
@@ -1119,7 +1125,13 @@ export function Badge({
         borderRadius: radius.full,
         paddingHorizontal: spacing.sm + 2,
         paddingVertical: 3,
-        alignSelf: "flex-start",
+        // `center`, not `flex-start`: this only has to stop the badge
+        // stretching to the container's width. `flex-start` also overrode the
+        // row's `alignItems: center`, so a badge beside a two-line label hung
+        // from the top of the row — visible on any investment category whose
+        // name wraps. A caller that wants it packed left in a COLUMN says so on
+        // its own container, the way `currency-converter.tsx` already does.
+        alignSelf: "center",
         flexDirection: "row",
         alignItems: "center",
         gap: spacing.xs,

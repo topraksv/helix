@@ -119,8 +119,16 @@ test("a clean browser restores a backup and a relationally invalid file writes n
   await expect(invalidPage.getByText("Geçersiz yedek dosyası", { exact: true })).toBeVisible();
   await invalidPage.getByRole("button", { name: "Tamam" }).click();
   await invalidPage.getByRole("button", { name: "Hemen Kullanmaya Başla" }).click();
+  // The rejected file must have written nothing, so this browser still has no
+  // workspace — /transaction is guarded and lands back on setup.
+  //
+  // This replaces an assertion that could not fail: it asked whether a
+  // "POISON_CATEGORY" radio existed on /transaction, and /transaction had
+  // always redirected here, so the count was zero no matter what the import
+  // did. Assert the redirect and the absence of the name anywhere instead.
   await invalidPage.goto("/helix/transaction");
-  await expect(invalidPage.getByRole("radio", { name: "POISON_CATEGORY" })).toHaveCount(0);
+  await expect(invalidPage).toHaveURL(/\/helix\/setup$/);
+  await expect(invalidPage.getByText("POISON_CATEGORY")).toHaveCount(0);
   await invalidContext.close();
 
   await assertNoRuntimeErrors(errors, testInfo);

@@ -5,7 +5,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { isolateExternalData, onboard } from "./helpers";
+import { isolateExternalData, onboard, pickOption } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -30,7 +30,7 @@ test("a card's trailing action leaves the same gap as its first row", async ({ p
   // A future-dated expense gives the Upcoming card a row and its footer link.
   await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("750,00");
-  await page.getByRole("radio", { name: /Market/ }).click();
+  await pickOption(page, "Kategori", /Market/);
   await page.getByRole("button", { name: "Ödeme Günü" }).click();
   const days = await page.getByRole("button").evaluateAll((els) =>
     els.map((e) => e.getAttribute("aria-label")).filter((l): l is string => !!l && /^\d{1,2} \w+ \d{4}$/.test(l)));

@@ -11,7 +11,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { addMonthsToKey } from "../src/domain/dates";
-import { currentMonthKey, isolateExternalData, onboard } from "./helpers";
+import { currentMonthKey, isolateExternalData, onboard, pickOption } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -21,7 +21,7 @@ async function addPlannedExpense(page: Page, months: number, amount: string): Pr
   await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
-  await page.getByRole("radio", { name: /Market/ }).click();
+  await pickOption(page, "Kategori", /Market/);
   await page.getByRole("radio", { name: "Sadece ay" }).click();
   for (let step = 0; step < months; step++) await page.getByRole("button", { name: "Sonraki" }).click();
   const save = page.getByRole("button", { name: "Kaydet", exact: true });

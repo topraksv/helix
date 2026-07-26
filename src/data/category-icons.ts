@@ -4,6 +4,8 @@
  * level with the template ones. Kind-based fallback guarantees an icon.
  */
 
+import type { PaymentSourceType } from "../domain/types";
+
 const RULES: [RegExp, string][] = [
   [/kira/i, "🏠"],
   [/market|gıda|mutfak/i, "🛒"],
@@ -51,4 +53,24 @@ export function suggestCategoryIcon(name: string, kind: "expense" | "income"): s
 /** Display icon for a category row (stored icon, else a live suggestion). */
 export function categoryIcon(category: { name: string; kind: "expense" | "income"; icon: string | null }): string {
   return category.icon ?? suggestCategoryIcon(category.name, category.kind);
+}
+
+/**
+ * Payment sources get an icon for the same reason categories do: they are now
+ * picked from a dropdown row rather than a chip, and a row of plain names is
+ * slower to scan than a row that leads with a shape. Keyed on the type, not the
+ * name, because the type is a closed set and the name is the user's.
+ */
+const SOURCE_TYPE_ICONS: Record<PaymentSourceType, string> = {
+  credit_card: "💳",
+  debit_card: "🏧",
+  virtual_card: "🔒",
+  e_wallet: "📱",
+  cash: "💵",
+  direct_debit: "🔁",
+  bank_transfer: "🏦",
+};
+
+export function paymentSourceIcon(type: PaymentSourceType): string {
+  return SOURCE_TYPE_ICONS[type];
 }

@@ -7,14 +7,14 @@ import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategor
 import { useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon } from "../data/category-icons";
+import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { isMonthDay, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { CurrencyPicker } from "../ui/currency-picker";
-import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Label, MoneyField, Row, Screen, Segmented, Spread, Toggle } from "../ui/components";
+import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Label, MoneyField, Row, Screen, Segmented, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -267,9 +267,10 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       />
       <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.billingDayHint}</Body>
 
-      <Label>{tr.tx.category}</Label>
       {expenseCategories.length > 0 ? (
-        <ChipPicker
+        <Select
+          label={tr.tx.category}
+          placeholder={tr.tx.categoryPlaceholder}
           options={expenseCategories.map((category) => ({ value: category.id, label: `${categoryIcon(category)} ${category.name}` }))}
           value={selectedCategoryId}
           onChange={(value) => {
@@ -300,8 +301,13 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       ) : null}
       {sources.length > 0 ? (
         <>
-          <Label>{tr.tx.source}</Label>
-          <ChipPicker options={sources.map((s) => ({ value: s.id, label: s.name }))} value={sourceId} onChange={setSourceId} />
+          <Select
+            label={tr.tx.source}
+            placeholder={tr.tx.sourcePlaceholder}
+            options={sources.map((s) => ({ value: s.id, label: `${paymentSourceIcon(s.type)} ${s.name}` }))}
+            value={sourceId}
+            onChange={setSourceId}
+          />
           {!sourceValid ? (
             <>
               <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>

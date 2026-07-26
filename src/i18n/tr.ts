@@ -370,6 +370,7 @@ export const tr = {
     rateNotFound: "⚠ Kur bulunamadı. Önce internetle bir kez kur çek",
     singleCharge: "Tek Çekim",
     category: "Kategori", source: "Ödeme Yöntemi", person: "Kimin İçin",
+    categoryPlaceholder: "Kategori seç", sourcePlaceholder: "Ödeme yöntemi seç",
     categoryRequiredEmpty: "İşlem için bir kategori gerekli. Önce bir kalem ekle.",
     effectiveDate: "Ödeme Günü",
     effectiveDateHint: "Tutar bakiyene bu gün yansır.",
