@@ -66,9 +66,17 @@ In order:
    looked at.
 4. `/code-review` on the diff. Report every finding with its disposition.
 5. `/security-review` as well for P6, P7 and P8.
-6. Set the package's flag to `false` and confirm the app still builds and
-   behaves as it did before the package. This is the rollback claim; do not make
-   it untested.
+6. If the package added a new surface, set its flag to `false` and confirm the
+   app still builds and behaves as it did before. This is the rollback claim; do
+   not make it untested.
+
+Then answer three questions and **keep working until all three hold** — a report
+is a claim that they do, so do not write one before they are true:
+
+1. Can this be removed in one commit, leaving Phase 1 behaviour and a green
+   `npm run verify`?
+2. How many layers does it cross, and is the data layer untouched?
+3. What is left behind — an unused token, string, ref, prop or export?
 
 ## 5. Report, and stop again
 

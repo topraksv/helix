@@ -7,8 +7,9 @@ history log.
 
 ## Current state — 2026-07-26, Europe/Istanbul
 
-Phase 2 package P1 is merged, web-deployed and owner-accepted. Do not begin P2
-until the owner starts the next package.
+Phase 2 package P1 is merged, web-deployed, published to the `preview` EAS
+channel and owner-accepted. Do not begin the next package until the owner starts
+it.
 
 ### P1 — visual identity and loading feedback
 
@@ -53,6 +54,10 @@ implementation unit rather than the user's operation phases.
 
 - No physical iOS or Android acceptance was run for palette persistence,
   startup theme resolution or cancellation.
+- The fresh P1 OTA has no recorded installs yet. Expo Go can exercise the P1 UI
+  through a development server, but it does not consume the runtime `1.0.0`
+  `preview` channel; installed OTA delivery still needs the preview build and
+  two cold starts.
 - Once the atomic Excel repository commit begins, it is deliberately not
   interruptible; cancellation is available around the caller-owned phases and
   the all-or-nothing data invariant remains authoritative.
@@ -65,17 +70,23 @@ implementation unit rather than the user's operation phases.
   artefact. Root, Upcoming and Settings returned 200; the dynamic
   `/cash-flow/2026-07` route returned the expected 404 with a body identical to
   the root shell, and its entry JavaScript asset returned 200.
-- No P1 EAS Update was published. Installed preview builds do not receive P1
-  from the web merge; mobile delivery needs a separately authorized OTA.
+- Preview OTA group `0610a0a0-e3fb-4eaa-9f07-f975b6e74a34` was published from
+  the clean P1 app commit `73e8477` for runtime `1.0.0`: Android
+  `019f9dea-4ce0-7eaf-b7ab-9ba6fd001a44`, iOS
+  `019f9dea-4ce0-730d-8b35-a6039bdc9f71`.
+- The `preview` channel still has one unconditional mapping to the `preview`
+  branch, and both updates report the expected commit with
+  `isGitWorkingTreeDirty=false`. Initial insights are 0 installs, 0 failed
+  installs and 0% crash rate on both platforms; this proves publication, not
+  installed delivery.
 - Rollback is a protected revert of `73e8477`; `75e42c2` is the pre-P1 main
   anchor.
 
 ## Next package
 
-The next package is **P2 — navigation shell**. Start with its design gate and
-the current Phase 2 contract; do not carry forward an older scope note. Do not
-redesign the palette mechanism when revisiting colours and names.
+Follow the execution order and device rule in the current Phase 2 contract.
+Do not redesign the palette mechanism when revisiting colours and names.
 
 ## Next exact step
 
-`NEXT EXACT STEP = stop; begin P2 only when the owner explicitly starts the next package.`
+`NEXT EXACT STEP = owner checks P1 through Expo Go and, separately, verifies the preview OTA with two cold starts; do not begin another package until explicitly requested.`

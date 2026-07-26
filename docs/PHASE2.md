@@ -47,24 +47,37 @@ on a device. Dead flags are worse than no flags.
 
 ## Packages
 
-Order is a dependency chain, not a priority list. Each package resolves a
-constraint the next one needs.
+An identifier is a name, not a position — P4 stays P4 wherever it runs. The
+table is in **execution order**, set by two things: what a package depends on,
+and where its result can actually be proved.
 
-| # | Package | Baseline features | Depends on |
-|---|---|---|---|
-| P0 | Phase 2 setup | — | — |
-| P1 | Visual signature | F2 loading, F4 palettes | P0 |
-| P2 | Navigation shell | F1 glass footer | P1 |
-| P3 | Privacy Peek | F3 | P1 |
-| P4 | Extended currencies | F9 | — |
-| P5 | Scenario Lab | F5 | P1, P3 |
-| P6 | Investments | F8 | P2, P3, P4 |
-| P7 | Receipt Vault | F6 | P3 |
-| P8 | Shared lists | F7 | P3 |
-| P9 | Tour refresh | F10 | everything it describes |
+`docs/TESTING.md`'s device acceptance matrix has never had a row filled. Until
+it does, a package whose result only exists on a device is an investment in a
+surface nobody can look at, so those run last rather than first.
 
-P0–P4 stand alone as a coherent release. P5 onward is optional and may stop at
-any package boundary.
+| Order | # | Package | Baseline | Depends on | Proved where |
+|---:|---|---|---|---|---|
+| 1 | P0 | Phase 2 setup | — | — | repo |
+| 2 | P1 | Visual signature | F2 loading, F4 palettes | P0 | web |
+| 3 | P4 | Extended currencies | F9 | — | web |
+| 4 | P3 | Privacy Peek | F3 | P1 | web (app-switcher on device) |
+| 5 | P5 | Scenario Lab | F5 | P1, P3 | web |
+| 6 | P2 | Navigation shell | F1 glass footer | P1 | **device** |
+| 7 | P6 | Investments | F8 | P2, P3, P4 | web + device |
+| 8 | P7 | Receipt Vault | F6 | P3 | **device** |
+| 9 | P8 | Shared lists | F7 | P3 | two real accounts |
+| 10 | P9 | Tour refresh | F10 | everything it describes | web |
+
+P0, P1, P4 and P3 stand alone as a coherent release. Everything after is
+optional and may stop at any package boundary.
+
+**P2 moves as soon as device acceptance is possible.** It is not deprioritised
+work — a floating tab bar is judged on safe area, landscape, Reduce
+Transparency and a real keyboard, none of which headless Chromium can show. The
+moment a device run is on the table, P2 is the next package.
+
+**P8 has not been agreed.** It is listed last and carries an open decision
+below; do not start it on the strength of appearing in this table.
 
 ### P0 — Phase 2 setup
 
@@ -100,12 +113,15 @@ threshold are palette-independent.
 4. The three remaining `ActivityIndicator` call sites in `settings/index.tsx`
    move onto the one primitive, finishing what PR #70 started.
 
-Out of scope by default: **a logo or breathing mark**. That was built
-(`brand-loader.tsx`, PR #66) and deliberately removed one commit later (PR #70)
-with the reasoning kept in the header of
-[`loading-indicator.tsx`](../src/ui/loading-indicator.tsx) and in
-[`ARCHITECTURE.md`](ARCHITECTURE.md#rejected-approaches). Re-proposing it needs
-an owner decision and new evidence, not a preference.
+Palettes are Clay (default), Sand and Cinnamon — owner's decision, 2026-07-26.
+Colours and names are cheap to change later precisely because the shape does
+not; changing one is editing a token object, not a system.
+
+The loading indicator is **not** a logo or a breathing mark. It was built
+(`brand-loader.tsx`, PR #66), removed one commit later (PR #70), and the owner
+closed the question permanently on 2026-07-26. Do not propose it, do not offer
+it as an option, do not raise it as an alternative. The reasoning is in
+[`ARCHITECTURE.md`](ARCHITECTURE.md#rejected-approaches).
 
 ### P2 — Navigation shell
 
@@ -223,6 +239,8 @@ Carried here until taken, then recorded in the package that consumes them.
 | 1 | Sixth tab, or investments inside an existing tab | P6 |
 | 2 | Sale proceeds: transfer by default, income as an explicit option | P6 |
 | 3 | Privacy Peek strict mode in the first release | P3 |
-| 4 | Palette count and names | P1 |
 | 5 | Push notifications for shared lists (server-side work) | P8 |
-| 6 | Re-opening the loading-mark question | P1 |
+| 7 | **Whether P8 ships at all.** It is the one package that is not additive — it falsifies a sentence `README.md` and `PRIVACY.md` both publish, rewrites `SECURITY.md`'s A01 row and extends the pgTAP suite to a second authorization model, in exchange for a shopping list. A personal, owner-scoped list is the cheap half and needs none of that. | P8 |
+
+Taken: **#4** palettes are Clay, Sand, Cinnamon (2026-07-26). **#6** the
+loading mark is closed permanently (2026-07-26) — see P1.

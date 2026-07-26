@@ -66,7 +66,12 @@ Faithfully satisfying a brief is not the goal.
 - **Defensive code needs a reachable failure.** Name the sequence it prevents,
   or drop it.
 - **A module's header comment is part of the module.** Change what it does and
-  the rationale above it becomes a lie the next agent will trust.
+  the rationale above it becomes a lie the next agent will trust. Comments here
+  earn their place by explaining a *why* the code cannot — the constraint, the
+  incident, the rejected alternative. A comment that restates the line below it
+  is noise; match what the surrounding files already do.
+- **Correct, secure, fast enough and consistent with what is here is finished.**
+  Polishing past that is the same mistake as building past the requirement.
 
 ## Toolchain
 
