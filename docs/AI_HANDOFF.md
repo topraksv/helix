@@ -12,9 +12,9 @@ working tree is clean and everything below is merged, deployed and published.
 
 | | |
 |---|---|
-| Last release commit | `62b86af` |
+| Last release commit | `aedd662` |
 | Web | GitHub Pages, `deploy-web` success |
-| Native | EAS Update group `6827383f-79c1-4394-978a-c36960f3e741`, channel `preview` |
+| Native | EAS Update group `4c34b868-3482-42b5-8c44-688c7e945a87`, channel `preview` |
 | Gate | 71 files / 560 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
 
 **Work is being handed to a different agent.** Nothing in this file assumes you
@@ -98,6 +98,24 @@ Transparency, the edge-swipe back gesture (which **cannot** be proved on web —
 browser history already behaves correctly there) and the tab-bar drag.
 
 ## What the last delivery changed
+
+- **`Badge` carries no `alignSelf`.** It had `flex-start` (hung from the top of
+  a wrapped row), then `center` (overrode `alignItems: flex-end` on the stacked
+  budget rows). No single value is right for both axes, so the container states
+  its own and a column caller sets `alignItems` itself. Worth remembering as a
+  shape: a shared primitive that dictates its cross-axis position will be wrong
+  in half its call sites.
+- **`Select` has one `onCreate` slot**, used by every category and payment
+  source dropdown. The "manage payment sources" button beside the installment
+  form is gone.
+- **`ChipPicker` has a `compact` variant** for rows of one- and two-character
+  labels; the month-day row needed 380 pt where its narrowest caller has 326.
+- **`RuleRow` centres its columns** instead of hanging them from the top.
+- **Analysis gained a 1-month window and a custom start/end range**, built from
+  the existing `MonthStepper`. The period slicer moved to its own row because
+  six segments cannot share one with the year switcher.
+
+## What the delivery before that changed
 
 Read the commits; this is only the shape of it.
 
