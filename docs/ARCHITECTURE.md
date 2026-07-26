@@ -264,6 +264,25 @@ Incidents that produced a rule. Kept so the rule is not "simplified" away.
   person/category from the live query each render instead of seeding state
   before it resolves.
 
+## What is deliberately absent
+
+Not a backlog. Each of these is a thing a reviewer will expect to find, and each
+is missing on purpose. Adding one is a decision with a cost, not a gap to close
+quietly. `AGENTS.md` § Who Helix is for is the reasoning; this is the list.
+
+| Absent | Why, and what stands in for it |
+|---|---|
+| Analytics, product metrics, session recording | There is one user and they can be asked. Any of these would send behaviour off-device for a question a conversation answers. |
+| Crash reporting / release-health service | A bounded 12-entry in-device ring (`src/services/diagnostics.ts`) instead. The cost is real and recorded: a silent failure does not reach the maintainer automatically (`SECURITY.md` A09). |
+| A feature-flag framework | Built during Phase 2 setup and deleted — eight of nine flags were read by nothing. Rollback is `git revert -m 1 <merge-sha>`. |
+| A second state or data-fetching library | zustand is the incumbent. A measured defect has to justify a second. |
+| A design-token pipeline, theming DSL, component catalogue | `src/ui/theme.ts` plus `src/ui/components.tsx`. Three palettes do not need machinery. |
+| Multi-tenant or org/workspace modelling | Every table is `auth.uid() = user_id`. P8 is the only proposal that would change it, and it is unagreed precisely because of what it costs. |
+| Server-side code of any kind | Postgres, RLS and a handful of RPCs. No API tier to secure, deploy, version or pay for. |
+| A device CI lane | None exists, and `TESTING.md`'s acceptance matrix has never had a row filled. Anything only true on hardware is written down as unproven rather than claimed. |
+| Paid Supabase controls (PITR, leaked-password check, log drain) | Free tier. Listed as `PLAN_LIMITED` in `SECURITY.md`, with the manual procedure that covers each. |
+| i18n machinery | One locale. `src/i18n/tr.ts` is a plain object, and UI strings live only there. |
+
 ## Rejected approaches
 
 - **The synchronous SQLite bridge** — SharedArrayBuffer + COOP/COEP + a service

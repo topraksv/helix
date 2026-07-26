@@ -165,6 +165,7 @@ Kanıt gereksinimleri, Supabase migration sırası ve rollback prosedürü
 | [docs/RELEASE.md](docs/RELEASE.md) | Branch, PR kapısı, Pages, OTA, native build, Supabase, rollback |
 | [docs/SECURITY.md](docs/SECURITY.md) | Güven sınırları, RLS, secret yönetimi, doğrulama matrisi |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Hangi veri nerede, üçüncü taraf istekleri, saklama ve silme |
+| [docs/PHASE2.md](docs/PHASE2.md) | Faz 2 kapsamı, paket sırası, bir paketin nasıl koşturulduğu |
 | [AGENTS.md](AGENTS.md) | Kodlama ajanları için kalıcı kurallar |
 
 ## Lisans / License

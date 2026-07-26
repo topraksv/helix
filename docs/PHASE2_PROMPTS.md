@@ -127,8 +127,8 @@ Yayına girdi, aynı gün kaldırıldı. Sebebi ve çıkarılan ders
 
 ### P4 — Genişletilmiş döviz · `/paket P4`
 
-✅ **Görmen gereken:** `FETCHED_FX_CURRENCIES` genişliyor, kaynak TCMB ∩
-Frankfurter (ikisi de anahtarsız); tek `CurrencyPicker` mevcut dialog üstünde;
+✅ **Görmen gereken:** `FETCHED_FX_CURRENCIES` genişliyor, kaynak TCMB +
+exchangerate-api açık uç (ikisi de anahtarsız); tek `CurrencyPicker` mevcut dialog üstünde;
 özet kartı **hiç değişmiyor**; `marketSellRateTry` 60 sn sözleşmesi aynı.
 
 ❌ **Durdur:** istemciye gömülen API anahtarı; uzun listenin segmented control'e
