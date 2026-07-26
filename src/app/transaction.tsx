@@ -402,6 +402,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           options={categoryOptions}
           value={categoryId}
           onChange={setCategoryId}
+          onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
         />
       ) : (
         <View style={{ marginBottom: spacing.md }}>
@@ -418,6 +419,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           options={sourceOptions}
           value={sourceId}
           onChange={setSourceId}
+          onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
         />
       ) : null}
 

@@ -25,7 +25,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
 import { useScrollToTop } from "@react-navigation/native";
-import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, type LucideIcon } from "lucide-react-native";
+import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, Plus, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { initialsBadgeColor } from "./badge-color";
@@ -834,6 +834,7 @@ export function Select<T extends string>({
   onChange,
   placeholder,
   disabled = false,
+  onCreate,
   trigger,
 }: {
   label?: string;
@@ -848,6 +849,16 @@ export function Select<T extends string>({
   onChange: (v: T) => void;
   placeholder?: string;
   disabled?: boolean;
+  /**
+   * A create action pinned under the options.
+   *
+   * An empty list used to be handled by standing a "manage payment sources"
+   * button beside the field, which said the right thing in the wrong place —
+   * you learn you have nothing to pick only after opening the picker. Living
+   * here it is also there when the list is NOT empty, which is when "none of
+   * these" actually happens.
+   */
+  onCreate?: { label: string; run: () => void };
   /**
    * Render the control that opens the list. A caller whose control already
    * exists in another shape — a chip in a row of chips — uses this instead of
@@ -939,6 +950,30 @@ export function Select<T extends string>({
                       );
                     })}
                   </ScrollView>
+                  {onCreate ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={onCreate.label}
+                      onPress={() => {
+                        setOpen(false);
+                        onCreate.run();
+                      }}
+                      style={({ pressed }) => ({
+                        paddingHorizontal: spacing.lg,
+                        paddingVertical: spacing.md,
+                        borderTopWidth: StyleSheet.hairlineWidth,
+                        borderTopColor: palette.border,
+                        backgroundColor: pressed ? palette.surfaceHover : palette.surface,
+                      })}
+                    >
+                      <Row gap={spacing.sm}>
+                        <Plus accessible={false} size={iconSize.control} color={palette.primary} style={{ width: SELECT_ICON_W }} />
+                        <Text style={[type.body, { flex: 1, color: palette.primaryText, fontFamily: font.medium }]}>
+                          {onCreate.label}
+                        </Text>
+                      </Row>
+                    </Pressable>
+                  ) : null}
                 </FadeIn>
               </Pressable>
             </Pressable>
@@ -1065,6 +1100,7 @@ export function ChipPicker<T extends string>({
   multi,
   values,
   onToggle,
+  compact = false,
 }: {
   options: { value: T; label: string }[];
   value?: T | null;
@@ -1072,10 +1108,18 @@ export function ChipPicker<T extends string>({
   multi?: boolean;
   values?: T[];
   onToggle?: (v: T) => void;
+  /**
+   * Tighter side padding, for a row whose labels are one or two characters.
+   * A month-day row is six numbers and the words "Ayın sonu": at the default
+   * padding the six numbers cost more in padding than in text and pushed the
+   * words onto a second line. The touch target keeps its full height and gains
+   * hit slop to make up the width.
+   */
+  compact?: boolean;
 }) {
   const { palette } = useTheme();
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: compact ? spacing.xs + 2 : spacing.sm, marginBottom: spacing.md }}>
       {options.map((option) => {
         const selected = multi ? (values ?? []).includes(option.value) : option.value === value;
         return (
@@ -1093,10 +1137,10 @@ export function ChipPicker<T extends string>({
             accessibilityRole={multi ? "checkbox" : "radio"}
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected }}
-            hitSlop={4}
+            hitSlop={compact ? 8 : 4}
             style={{
               paddingVertical: spacing.sm + 2,
-              paddingHorizontal: spacing.md + 2,
+              paddingHorizontal: compact ? spacing.sm + 2 : spacing.md + 2,
               borderRadius: radius.full,
               backgroundColor: selected ? palette.primarySoft : palette.surfaceAlt,
               minHeight: controlSize.minimumTarget,
@@ -1147,13 +1191,12 @@ export function Badge({
         borderRadius: radius.full,
         paddingHorizontal: spacing.sm + 2,
         paddingVertical: 3,
-        // `center`, not `flex-start`: this only has to stop the badge
-        // stretching to the container's width. `flex-start` also overrode the
-        // row's `alignItems: center`, so a badge beside a two-line label hung
-        // from the top of the row — visible on any investment category whose
-        // name wraps. A caller that wants it packed left in a COLUMN says so on
-        // its own container, the way `currency-converter.tsx` already does.
-        alignSelf: "center",
+        // No `alignSelf`. It cannot be right for both axes: `flex-start` hung
+        // the badge from the top of a row whose label wrapped, and `center`
+        // then overrode `alignItems: flex-end` on the stacked budget rows and
+        // left their badges floating mid-row. The container knows which axis it
+        // is — rows already centre, and a COLUMN caller states its own
+        // alignment so the badge shrinks to its text instead of stretching.
         flexDirection: "row",
         alignItems: "center",
         gap: spacing.xs,

@@ -277,6 +277,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
             setCategoryId(value);
             setShowCategoryOffer(false);
           }}
+          onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
         />
       ) : null}
       {showCategoryOffer && !selectedCategoryId ? (
@@ -307,12 +308,10 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
             options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
             value={sourceId}
             onChange={setSourceId}
+            onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
           />
           {!sourceValid ? (
-            <>
-              <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
-            </>
+            <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
           ) : null}
         </>
       ) : null}
