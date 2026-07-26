@@ -13,7 +13,7 @@ import { isMonthDay, monthKeyOf, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { SUPPORTED_CURRENCIES } from "../services/fx-fetch";
+import { CurrencyPicker } from "../ui/currency-picker";
 import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Label, MoneyField, Row, Screen, Segmented, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
@@ -234,7 +234,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       {showCurrency ? (
         <>
           <Label>{tr.tx.currency}</Label>
-          <ChipPicker options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))} value={currency as never} onChange={setCurrency} />
+          <CurrencyPicker value={currency} onChange={setCurrency} />
         </>
       ) : (
         <View style={{ alignSelf: "flex-start", marginBottom: spacing.md }}>
@@ -306,7 +306,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           {!sourceValid ? (
             <>
               <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push({ pathname: "/(tabs)/settings/payment-sources", params: existing ? { from: "subscription", record: existing.id } : { from: "subscription" } }, { withAnchor: true })} />
+              <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
             </>
           ) : null}
         </>

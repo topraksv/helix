@@ -415,6 +415,25 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
   }
 }
 
+/**
+ * Push the outbox and nothing else.
+ *
+ * Sign-out flushes before it wipes so a queued row is never deleted while the
+ * user believes it is saved. A full `syncNow` also PULLS, which fetches remote
+ * pages into a database that is about to be dropped — on a real account that
+ * turned an instant sign-out into a wait for the network. Only the push
+ * decides whether anything would be lost.
+ */
+export async function flushOutbox(userId: string): Promise<void> {
+  const token = sessionEpoch.capture(userId);
+  if (!token || !getSupabase()) return;
+  try {
+    await pushOutbox(userId, token);
+  } catch {
+    // The caller re-counts the outbox; a failed push simply leaves rows in it.
+  }
+}
+
 export async function syncNow(userId: string, allowRefresh = true): Promise<boolean> {
   const token = sessionEpoch.capture(userId);
   // A late maintenance callback from a signed-out account must be a no-op. The

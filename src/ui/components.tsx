@@ -825,6 +825,7 @@ export function Select<T extends string>({
   onChange,
   placeholder,
   disabled = false,
+  trigger,
 }: {
   label?: string;
   options: { value: T; label: string }[];
@@ -832,12 +833,85 @@ export function Select<T extends string>({
   onChange: (v: T) => void;
   placeholder?: string;
   disabled?: boolean;
+  /**
+   * Render the control that opens the list. A caller whose control already
+   * exists in another shape — a chip in a row of chips — uses this instead of
+   * standing a second field next to it, and the modal, its focus trap and its
+   * keyboard behaviour stay here rather than being written again.
+   */
+  trigger?: (open: () => void, selected: string | null) => ReactNode;
 }) {
   const { palette, scheme } = useTheme();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<View>(null);
   const modalTitleRef = useModalAccessibility(open, triggerRef);
   const current = options.find((o) => o.value === value);
+  const optionsModal = (
+          <Modal transparent animationType="fade" visible onRequestClose={() => setOpen(false)}>
+            <Pressable
+              accessible={false}
+              style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
+              onPress={() => setOpen(false)}
+            >
+              <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
+                <FadeIn
+                  style={[
+                    { backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: spacing.sm, maxHeight: 420 },
+                    scheme === "light" && cardShadow,
+                  ]}
+                >
+                  <View ref={modalTitleRef} accessible accessibilityRole="header" tabIndex={-1}>
+                    <Text style={[type.heading, { color: palette.text, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}>
+                      {label ?? tr.a11y.selectOption}
+                    </Text>
+                  </View>
+                  <ScrollView>
+                    {options.map((option) => {
+                      const selected = option.value === value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          accessibilityRole="radio"
+                          aria-checked={selected}
+                          accessibilityState={{ checked: selected, selected }}
+                          onPress={() => {
+                            onChange(option.value);
+                            setOpen(false);
+                          }}
+                          style={({ pressed }) => [
+                            {
+                              paddingHorizontal: spacing.lg,
+                              paddingVertical: spacing.md,
+                              backgroundColor: selected ? palette.primarySoft : pressed ? palette.surfaceAlt : "transparent",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              type.body,
+                              { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? font.semibold : font.regular },
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </FadeIn>
+              </Pressable>
+            </Pressable>
+          </Modal>
+  );
+
+  if (trigger) {
+    return (
+      <>
+        <View ref={triggerRef}>{trigger(() => setOpen(true), current?.label ?? null)}</View>
+        {open ? optionsModal : null}
+      </>
+    );
+  }
   return (
     <View style={{ marginBottom: spacing.md }}>
       {label ? <Label>{label}</Label> : null}
@@ -870,63 +944,7 @@ export function Select<T extends string>({
         </Text>
         <ChevronDown accessible={false} size={iconSize.control} color={palette.textSecondary} />
       </Pressable>
-      {open ? (
-        <Modal transparent animationType="fade" visible onRequestClose={() => setOpen(false)}>
-          <Pressable
-            accessible={false}
-            style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
-            onPress={() => setOpen(false)}
-          >
-            <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
-              <FadeIn
-                style={[
-                  { backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: spacing.sm, maxHeight: 420 },
-                  scheme === "light" && cardShadow,
-                ]}
-              >
-                <View ref={modalTitleRef} accessible accessibilityRole="header" tabIndex={-1}>
-                  <Text style={[type.heading, { color: palette.text, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}>
-                    {label ?? tr.a11y.selectOption}
-                  </Text>
-                </View>
-                <ScrollView>
-                  {options.map((option) => {
-                    const selected = option.value === value;
-                    return (
-                      <Pressable
-                        key={option.value}
-                        accessibilityRole="radio"
-                        aria-checked={selected}
-                        accessibilityState={{ checked: selected, selected }}
-                        onPress={() => {
-                          onChange(option.value);
-                          setOpen(false);
-                        }}
-                        style={({ pressed }) => [
-                          {
-                            paddingHorizontal: spacing.lg,
-                            paddingVertical: spacing.md,
-                            backgroundColor: selected ? palette.primarySoft : pressed ? palette.surfaceAlt : "transparent",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            type.body,
-                            { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? font.semibold : font.regular },
-                          ]}
-                        >
-                          {option.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              </FadeIn>
-            </Pressable>
-          </Pressable>
-        </Modal>
-      ) : null}
+      {open ? optionsModal : null}
     </View>
   );
 }

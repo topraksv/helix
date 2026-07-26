@@ -16,7 +16,7 @@ import {
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
 import { pendingOutboxCount, resetLocalWorkspace, writeSetting } from "../db/mutations";
-import { runSyncSessionTask, startSyncSession, stopSyncSession, syncNow } from "../sync/engine";
+import { flushOutbox, runSyncSessionTask, startSyncSession, stopSyncSession } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
 import { connectMarkets, disconnectMarkets } from "../services/markets";
 import { clearRateCache, loadRateCache } from "../services/fx-fetch";
@@ -380,7 +380,7 @@ export const useSession = create<SessionStore>((set, get) => ({
       isSupabaseConfigured &&
       (await pendingChangesWouldBeLost({
         pendingCount: pendingOutboxCount,
-        flush: () => syncNow(userId),
+        flush: () => flushOutbox(userId),
       }))
     ) {
       return SIGN_OUT_PENDING_CHANGES;

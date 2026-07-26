@@ -5,9 +5,6 @@
  * (with the real amount, since salaries vary).
  */
 
-import { Stack, useLocalSearchParams, type Href } from "expo-router";
-import { resolveBackTarget } from "../../../ui/navigation";
-import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Banknote } from "lucide-react-native";
@@ -33,14 +30,6 @@ const KINDS: IncomeKind[] = ["salary", "rent", "allowance", "other"];
 const QUICK_DAYS = [1, 5, 10, 15, 25, 28] as const;
 
 export default function IncomeRulesScreen() {
-  // Reachable from more than one place, and every external push is anchored —
-  // which mounts settings/index UNDERNEATH this screen, so plain history would
-  // send the user back to a screen they never visited. The pusher records where
-  // it came from; `resolveBackTarget` validates it (typeof string +
-  // Object.hasOwn, so a hand-typed or prototype-polluting value cannot match)
-  // and falls back to the settings hub for deep links with no recorded source.
-  const { from } = useLocalSearchParams<{ from?: string }>();
-  const back = resolveBackTarget<Href>(from, { upcoming: "/upcoming" as Href }, "/(tabs)/settings");
   const userId = useUserId();
   const incomesState = useRecurringIncomesState();
   const personsState = usePersonsState();
@@ -190,7 +179,6 @@ export default function IncomeRulesScreen() {
   if (!dataReady) {
     return (
       <Screen>
-        <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
@@ -198,7 +186,6 @@ export default function IncomeRulesScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.incomes.intro}</Body>
       <Card>

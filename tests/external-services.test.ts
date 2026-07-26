@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isMarketFeedSocket } from "../e2e/helpers";
-import { parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider";
+import { FETCHED_FX_CURRENCIES, parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
@@ -41,13 +41,45 @@ describe("external FX provider validation", () => {
       <Currency CurrencyCode="GBP"><Unit>100</Unit><ForexSelling>5250.0000</ForexSelling></Currency>
       <Currency CurrencyCode="JPY"><Unit>100</Unit><ForexSelling>27.0000</ForexSelling></Currency>
     </Tarih_Date>`);
+    // JPY is the case the `Unit` division exists for: TCMB really does quote it
+    // per 100, so a parser that ignored the field would price a yen at 27 lira.
     expect(batch).toEqual({
       rateDate: "2026-07-14",
       rates: [
         { currency: "USD", rateTry: 40.5 },
         { currency: "GBP", rateTry: 52.5 },
+        { currency: "JPY", rateTry: 0.27 },
       ],
     });
+  });
+
+  /**
+   * The list is the measured intersection of what TCMB and Frankfurter both
+   * publish. TCMB carries more (AED, SAR, RUB, AZN, KWD…) and sends no CORS
+   * headers, so web can only ever read Frankfurter: a TCMB-only currency would
+   * work on a phone and stay permanently empty in a browser. Pinning the set
+   * keeps adding one a deliberate act with that trade-off in view.
+   */
+  it("offers only the currencies both providers publish", () => {
+    // The pure list is asserted here rather than `SUPPORTED_CURRENCIES`, which
+    // lives in the service layer and pulls React Native into a node-env suite.
+    // TRY leads that one by construction — it is `["TRY", ...this]`.
+    expect([...FETCHED_FX_CURRENCIES].sort()).toEqual(
+      ["AUD", "CAD", "CHF", "CNY", "DKK", "EUR", "GBP", "JPY", "KRW", "NOK", "RON", "SEK", "USD"],
+    );
+    expect(FETCHED_FX_CURRENCIES).not.toContain("TRY");
+  });
+
+  /**
+   * A wider currency list must not widen what counts as a LIVE rate. The market
+   * socket carries two pairs; everything else has only a dated cache, and a
+   * ledger-writing conversion that accepted a dated rate as live would book a
+   * yesterday's number as today's.
+   */
+  it("keeps the live market rate to the two pairs the socket actually carries", () => {
+    const source = readFileSync(join(process.cwd(), "src/services/markets.ts"), "utf8");
+    const mapped = [...source.matchAll(/currency === "([A-Z]{3})"/g)].map((match) => match[1]);
+    expect([...new Set(mapped)].sort()).toEqual(["EUR", "USD"]);
   });
 
   it("rejects undated or empty TCMB payloads instead of stamping today", () => {

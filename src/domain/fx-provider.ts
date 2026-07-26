@@ -2,7 +2,20 @@
 
 import { daysInMonth, makeISODate, type ISODate } from "./dates";
 
-export const FETCHED_FX_CURRENCIES = ["USD", "EUR", "GBP"] as const;
+/**
+ * The currencies BOTH providers publish, measured against their live lists on
+ * 2026-07-26 rather than assumed.
+ *
+ * TCMB carries several more that matter regionally (AED, SAR, RUB, AZN, KWD…)
+ * and Frankfurter carries none of them. TCMB sends no CORS headers, so web can
+ * only ever read Frankfurter: shipping a TCMB-only currency would work on a
+ * phone and stay permanently empty in a browser, which is a worse answer than
+ * not offering it. The intersection behaves identically everywhere.
+ */
+export const FETCHED_FX_CURRENCIES = [
+  "USD", "EUR", "GBP", "CHF", "JPY", "AUD", "CAD",
+  "SEK", "NOK", "DKK", "CNY", "KRW", "RON",
+] as const;
 
 interface ProviderRate {
   currency: (typeof FETCHED_FX_CURRENCIES)[number];

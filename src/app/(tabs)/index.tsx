@@ -523,14 +523,13 @@ export default function DashboardScreen() {
           title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
           subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
           chevron
-          // Record the source: the anchored push mounts the Cash Flow stack at
-          // its own index, so Analysis must be told it was opened from Summary
-          // or its back control pops to the Financial Table instead.
-          onPress={() =>
-            router.push({ pathname: "/(tabs)/cash-flow/analytics", params: { from: "summary" } } as Href, {
-              withAnchor: true,
-            })
-          }
+          // Root-level route, not the tab's own. Pushing into the Cash Flow
+          // stack from here would mount that tab's index underneath, and the
+          // iOS edge swipe pops to whatever is underneath — the Financial
+          // Table, not this screen. At the root, what is underneath IS this
+          // screen, so the gesture and the back button agree without anything
+          // having to correct them.
+          onPress={() => router.push("/analytics")}
         />
         <Divider />
         {hasMonthFlow ? (

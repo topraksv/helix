@@ -57,7 +57,15 @@ export default function Root({ children }: PropsWithChildren) {
             __html:
               "html,body,#root{height:100%;width:100%;max-width:100%;overflow:hidden;overscroll-behavior:none;}" +
               "body{position:fixed;top:0;left:0;right:0;bottom:0;margin:0;}" +
-              "*{box-sizing:border-box;}",
+              "*{box-sizing:border-box;}" +
+              // Chrome is not selectable. Dragging to scroll a table or a list
+              // painted a selection across every label it crossed, which reads
+              // as a web page rather than an app and, on mobile web, pops the
+              // copy menu over the thing being dragged. Fields keep their caret;
+              // if a value ever needs to be copyable, it opts back in there and
+              // not by loosening this.
+              "#root{-webkit-user-select:none;user-select:none;}" +
+              "input,textarea{-webkit-user-select:text;user-select:text;}",
           }}
         />
         {/* Register the offline service worker only under the deployed /helix/

@@ -93,17 +93,18 @@ test("the transfer classification appears once, in the row being edited", async 
 
 test("Analysis returns to Summary even after a detour through Budgets", async ({ page }) => {
   await onboard(page);
+  // Opened from another tab, so it is the ROOT route: what sits under it is
+  // Summary itself. Nothing records an origin any more, and there is no query
+  // parameter to lose on the way back.
   await page.getByRole("button", { name: /Net değişim/ }).click();
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  expect(new URL(page.url()).searchParams.get("from")).toBe("summary");
+  await expect(page).toHaveURL(/\/helix\/analytics$/);
 
   await page.getByRole("button", { name: /Aylık harcama limitini belirle/ }).click();
-  await expect(page).toHaveURL(/settings\/budgets/);
+  await expect(page).toHaveURL(/\/helix\/budgets$/);
 
-  // Back to Analysis — with the origin it was opened with, not a bare URL.
   await page.getByRole("button", { name: "Geri" }).click();
-  await expect(page).toHaveURL(/cash-flow\/analytics/);
-  expect(new URL(page.url()).searchParams.get("from")).toBe("summary");
+  await expect(page).toHaveURL(/\/helix\/analytics$/);
 
   // …so the next back reaches Summary, not the Financial Table.
   await page.getByRole("button", { name: "Geri" }).click();

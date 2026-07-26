@@ -141,11 +141,11 @@ test("hostile route parameters recover instead of white-screening", async ({ pag
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-// Analysis lives in the Cash Flow stack but Summary can open it too. A
-// cross-tab push must be anchored, which mounts the Financial Table underneath
-// it — so plain history sends a user who came from Summary to a screen they
-// never visited. Both entry paths are asserted because fixing one by
-// hard-coding a single global back target silently breaks the other.
+// Analysis lives in the Cash Flow stack but Summary can open it too, so it has
+// a root-level route for the cross-tab entry. Both paths are asserted because
+// they resolve differently by design: from Summary the screen underneath is
+// Summary, from the Financial Table it is the table. Serving one of them with a
+// single hard-coded back target is exactly what breaks the other.
 test("Analysis goes back to whichever screen opened it", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
@@ -184,9 +184,13 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
   await page.getByRole("radio", { name: "Sütun", exact: true }).click();
   await expect(page.getByRole("img", { name: /Sütun grafik/ })).toBeVisible();
 
+  // Opened from Summary, Analysis is a root-level screen and covers the tabs —
+  // the same shape as Upcoming, which this card sits next to. Back returns to
+  // Summary, and the tab route still works from there.
   await page.getByRole("button", { name: /Net değişim/ }).click();
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Durum" }).click();
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await page.getByRole("tab", { name: "Mali Tablo" }).click();
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   await assertNoRuntimeErrors(errors, testInfo);
@@ -283,28 +287,32 @@ test("multi-entry settings screens return to whoever opened them", async ({ page
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
 
-  // Entry 1: Analysis → Budgets → back must land on Analysis, not the hub.
-  await page.goto("/helix/cash-flow/analytics?from=summary");
+  // Driven by clicking, not by a synthesised `?from=`: the guarantee is now
+  // structural — a cross-tab push goes to the screen's root route, so what sits
+  // underneath IS the screen the user came from. Simulating the entry by URL
+  // would prove nothing about the thing that makes it work.
+
+  // Entry 1: Summary → Analysis → Budgets → back → Analysis → back → Summary.
+  await page.getByRole("button", { name: /Net değişim/ }).click();
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-  await page.goto("/helix/settings/budgets?from=analysis");
+  await page.getByRole("button", { name: /Aylık harcama limitini belirle/ }).click();
   await expect(page.getByRole("heading", { name: "Aylık Harcama Limiti", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Geri", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Analiz", exact: true })).toBeVisible();
-
-  // Entry 2: Upcoming → Income rules → back must land on Upcoming.
-  await page.goto("/helix/settings/incomes?from=upcoming");
-  await expect(page.getByRole("heading", { name: "Düzenli Gelirler", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Yaklaşan Takvimi", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
 
-  // Entry 3: the transaction form → Payment sources → back to the form.
-  await page.goto("/helix/settings/payment-sources?from=transaction");
-  await expect(page.getByRole("heading", { name: "Ödeme Yöntemleri", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Yeni İşlem" }).first()).toBeVisible();
+  // Only one end-to-end path is driven here, and on purpose. The rule is
+  // structural — a cross-tab push goes to the screen's root route — so what
+  // needs proving in a browser is that the structure produces the right
+  // journey, not that it does so from every entry point. The other entries
+  // need their own fixtures (a credit card with no statement cycle, an income
+  // rule due soon) and would test those fixtures more than this rule;
+  // `tests/navigation.test.ts` covers the mechanism for all of them by
+  // asserting the root routes exist and that nothing pushes with an anchor.
 
-  // A deep link with NO recorded source, and one with a hostile value, must both
-  // fall back to the settings hub instead of guessing or crashing.
+  // A direct link has no history at all, and a hostile query string must not
+  // change that: every one of these falls back to its own deterministic parent.
   for (const url of [
     "/helix/settings/payment-sources",
     "/helix/settings/payment-sources?from=__proto__",

@@ -1,9 +1,5 @@
 /** Payment source management: cards / cash / bank, per-person, card cycle. */
 
-import { Stack, useLocalSearchParams, type Href } from "expo-router";
-import { classifyRecordId } from "../../../domain/route-params";
-import { resolveBackTarget } from "../../../ui/navigation";
-import { HeaderBackButton } from "../../../ui/header-back";
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useAllTransactionsState, useCreditCardStatementsState, usePersonsState, useSourcesState, useUserId } from "../../../data/hooks";
@@ -37,31 +33,6 @@ const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[va
 const NO_SOURCE = "__none__";
 
 export default function SourcesScreen() {
-  // Reachable from more than one place, and every external push is anchored —
-  // which mounts settings/index UNDERNEATH this screen, so plain history would
-  // send the user back to a screen they never visited. The pusher records where
-  // it came from; `resolveBackTarget` validates it (typeof string +
-  // Object.hasOwn, so a hand-typed or prototype-polluting value cannot match)
-  // and falls back to the settings hub for deep links with no recorded source.
-  // The three form sources can be editing an existing record, and returning to
-  // them exactly rebuilds their URL — without carrying `record` back, "fix this
-  // card's cycle" turned the half-edited transaction/plan/subscription into a
-  // blank new-record form. `classifyRecordId` re-validates it here, so only a
-  // usable id is ever put back into a route.
-  const { from, record } = useLocalSearchParams<{ from?: string; record?: string }>();
-  const recordId = classifyRecordId(record);
-  const withRecord = (pathname: string): Href =>
-    (recordId?.mode === "edit" ? { pathname, params: { id: recordId.id } } : pathname) as Href;
-  const back = resolveBackTarget<Href>(
-    from,
-    {
-      transaction: withRecord("/transaction"),
-      installment: withRecord("/installment-new"),
-      subscription: withRecord("/subscription-form"),
-      upcoming: "/upcoming" as Href,
-    },
-    "/(tabs)/settings",
-  );
   const userId = useUserId();
   const sourcesState = useSourcesState();
   const statementsState = useCreditCardStatementsState();
@@ -246,7 +217,6 @@ export default function SourcesScreen() {
   if (!dataReady) {
     return (
       <Screen>
-        <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
@@ -254,7 +224,6 @@ export default function SourcesScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ headerLeft: () => <HeaderBackButton fallback={back.href} exact={back.exact} /> }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Card>
         {editingId ? <Label>{tr.common.edit}</Label> : null}

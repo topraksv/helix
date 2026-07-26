@@ -325,7 +325,14 @@ function RootLayoutInner() {
             />
           </View>
         ) : awaitingFirstPull || !guard.redirect ? (
-          <DelayedLoadingIndicator />
+          // A silent spinner after a correct password reads as a stall. The
+          // hold is the account's first pull, so it says so.
+          <View style={{ alignItems: "center", gap: 12 }}>
+            <DelayedLoadingIndicator />
+            {awaitingFirstPull ? (
+              <Text style={{ color: theme.palette.textSecondary, textAlign: "center" }}>{tr.auth.restoringData}</Text>
+            ) : null}
+          </View>
         ) : null}
       </View>
     );
@@ -361,6 +368,10 @@ function RootLayoutInner() {
           <Stack.Screen name="columns-editor" options={{ presentation: "card", title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="upcoming" options={{ title: tr.upcoming.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
+          <Stack.Screen name="analytics" options={{ title: tr.analysis.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
+          <Stack.Screen name="payment-sources" options={{ title: tr.settings.sources, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="incomes" options={{ title: tr.settings.incomeRules, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="budgets" options={{ title: tr.budgets.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
         </Stack>
         </ErrorBoundary>
         <UndoSnackbar />

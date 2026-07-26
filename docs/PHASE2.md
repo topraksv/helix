@@ -60,7 +60,7 @@ surface nobody can look at, so those run last rather than first.
 |---:|---|---|---|---|---|
 | 1 | P0 | Phase 2 setup | — | — | repo |
 | 2 | P1 | Visual signature | F2 loading, F4 palettes | P0 | web |
-| 3 | P4 | Extended currencies | F9 | — | web |
+| 3 | P4 | Extended currencies | F9 | — | shipped |
 | 4 | P3 | Privacy Peek | F3 | P1 | web (app-switcher on device) |
 | 5 | P5 | Scenario Lab | F5 | P1, P3 | web |
 | 6 | P2 | Navigation shell | F1 glass footer | P1 | shipped |
@@ -162,10 +162,22 @@ Every package after this one builds its surfaces masked from the start.
 
 ### P4 — Extended currencies
 
-`FETCHED_FX_CURRENCIES` grows to the intersection of what TCMB and Frankfurter
-both publish — both keyless, so **no API key enters a client**. A shared
-`CurrencyPicker` (TRY / USD / EUR, then a searchable "Diğer") is built on the
-existing dialog primitive and replaces every ad-hoc currency control.
+**Shipped 2026-07-26.** `FETCHED_FX_CURRENCIES` is the *measured* intersection
+of what TCMB and Frankfurter both publish — thirteen codes, checked against
+their live lists rather than assumed, both keyless so **no API key enters a
+client**. TCMB carries several more that matter regionally (AED, SAR, RUB, AZN,
+KWD) and sends no CORS headers, so web can only ever read Frankfurter: a
+TCMB-only currency would work on a phone and stay permanently empty in a
+browser. The intersection behaves identically everywhere, and a test pins it so
+widening the set stays a deliberate act.
+
+`CurrencyPicker` is TRY / USD / EUR as chips plus one "Diğer" chip that opens
+the list directly — no second field appears to hold what the chip already
+shows. It passes a chip-shaped trigger to the existing `Select`, so the modal,
+its focus trap and its keyboard behaviour are not written twice. Its `value` is
+a plain string on purpose: the column is free text, and a row written before
+this list existed can hold a code the app no longer offers. Such a value is
+shown as-is and left alone.
 
 The summary card does not change: golds plus USD and EUR. The 60 s
 `marketSellRateTry` contract does not change; new currencies use the dated FX
