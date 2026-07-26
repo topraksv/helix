@@ -12,12 +12,13 @@ in the documents below and is read on demand.
 | Trust boundaries, RLS, secrets, verification matrix | [`docs/SECURITY.md`](docs/SECURITY.md) |
 | User-facing data behaviour | [`docs/PRIVACY.md`](docs/PRIVACY.md) |
 | Current work state, blockers, next package | [`docs/AI_HANDOFF.md`](docs/AI_HANDOFF.md) |
+| Phase 2 scope, package order, rollout flags, rollback | [`docs/PHASE2.md`](docs/PHASE2.md) |
 | Public presentation | [`README.md`](README.md) |
 
 A fact belongs to exactly one of those files. If you need to state it somewhere
 else, link instead of copying. Agent-facing files (`AGENTS.md`, `CLAUDE.md`,
-`docs/ARCHITECTURE.md`, `docs/AI_HANDOFF.md`) are written in English; the
-owner-facing contracts under `docs/` are Turkish. Code is English, UI is Turkish.
+`docs/ARCHITECTURE.md`, `docs/AI_HANDOFF.md`, `docs/PHASE2.md`) are written in
+English; the owner-facing contracts under `docs/` are Turkish. Code is English, UI is Turkish.
 
 ## Working protocol
 
