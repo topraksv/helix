@@ -12,9 +12,11 @@ Sırayı bozma. Her paket tek komutla başlar:
 /paket P1
 ```
 
-Bir paket kapanmadan sonrakine geçme. Sıra [`PHASE2.md`](PHASE2.md#packages)
-içinde ve yürütme sırasına göre dizili: **P0 → P1 → P4 → P3 → P5 → P2 → P6 →
-P7 → P8 → P9.** Numara bir isim, sıra değil — P4 nerede koşarsa koşsun P4.
+Bir paket kapanmadan sonrakine geçme. Numara bir isim, sıra değil — P4 nerede
+koşarsa koşsun P4.
+
+**Biten:** P0 → P1 → P4 → P2. **Geri çekilen:** P3.
+**Kalan sıra: P7 → P6 → P9.** P5 ve P8 backlog'da.
 
 ## Her turun şekli
 
@@ -58,8 +60,7 @@ Her paket için: yapıştıracağın komut, tasarım onayında **görmen gereken
 
 ### P0 — Faz 2 kurulumu ✅
 
-Bu dosya, `PHASE2.md`, `/paket` komutu, `src/config/features.ts` ve
-Ürün değişikliği yok.
+Bu dosya, `PHASE2.md` ve `/paket` komutu. Ürün değişikliği yok.
 
 ---
 
@@ -104,16 +105,11 @@ padding hesabı.
 
 ---
 
-### P3 — Privacy Peek · `/paket P3`
+### P3 — Privacy Peek · **geri çekildi**
 
-✅ **Görmen gereken:** maskeleme `Amount` primitive'i + `<Private>` içinde;
-placeholder genişliği `amount-layout.ts`'ten; **accessibility label de maskeli**;
-cihaz-bazlı `kv`, hesaba yazılmıyor; mevcut `PrivacyCover` aynen duruyor.
-
-❌ **Durdur:** ekran ekran maskeleme; hesap verisine yazılan tercih; maskeliyken
-ekran okuyucunun rakamı okuması; her toggle'da toast.
-
-☎️ **Konuşalım:** sıkı mod ilk sürüme girsin mi (Karar #3). Varsayılan: hayır.
+Yayına girdi, aynı gün kaldırıldı. Sebebi ve çıkarılan ders
+[`PHASE2.md`](PHASE2.md#p3--privacy-peek--withdrawn-2026-07-26) içinde. Bu paket
+çalıştırılmaz.
 
 ---
 
@@ -131,7 +127,7 @@ eski snapshot'ın "güncel" gösterilmesi.
 
 ---
 
-### P5 — Scenario Lab · `/paket P5`
+### P5 — Scenario Lab · **backlog**
 
 ✅ **Görmen gereken:** kendi tabloları; mevcut projection kodunu **okuyor**;
 gerçek kayıt/outbox üretmiyor; "plan olarak uygula" açık onay + özet;
@@ -173,7 +169,7 @@ sync'ini bekletmesi; OCR (kapsam dışı); kamera (yeni native bağımlılık).
 
 ---
 
-### P8 — Paylaşılan listeler · `/paket P8` ⚠️ owner izolasyonunu delen tek paket
+### P8 — Paylaşılan listeler · **backlog** ⚠️ owner izolasyonunu delen tek paket
 
 ✅ **Görmen gereken:** üç tablo kendi RLS ailesiyle; `SYNCED_TABLES`'a
 **eklenmiyor**; owner-scoped yol gevşetilmiyor; davet/ayrılma/paylaşımı kapatma
@@ -204,7 +200,6 @@ login sonrası onboarding flash'ı; yayımlanmamış özelliğin tanıtılması.
 
 | Ne istiyorsun | Komut |
 |---|---|
-| Bir özelliği anında kapat | `src/config/features.ts` içinde `false` → deploy |
 | Bir paketi tamamen geri al | `git revert -m 1 <merge-sha>` → PR |
 | Faz 2'nin tamamından çık | Paketleri ters sırada `git revert`; son Faz 1 commit'i `a8ca1d1` |
 
@@ -212,6 +207,11 @@ login sonrası onboarding flash'ı; yayımlanmamış özelliğin tanıtılması.
 yok. `main` korumalı olduğu için değişiklik bir PR ile giriyor, ama o PR'ı
 taşıyan dal iskele: merge'de siliniyor. Bir şey yanlış giderse bir commit
 geriye dönülür.
+
+## Kalan sıra
+
+**P7 → P6 → P9.** Sahibinin kararı, 2026-07-26. P5 ve P8 backlog'a alındı; bu
+dosyadaki bölümleri sırf geri dönerlerse diye duruyor, sırada değiller.
 
 ## Bekleyen kararlar
 
@@ -221,7 +221,6 @@ Numaralar [`PHASE2.md`](PHASE2.md) ile aynı. Cevapladıkça oraya işlenir.
 |---|---|---|
 | 1 | Altıncı sekme mi, mevcut sekme içinde mi | P6'dan önce |
 | 2 | Satış geliri: varsayılan transfer, gelir açık seçenek | P6'dan önce |
-| 3 | Privacy Peek sıkı mod ilk sürümde mi | P3 sırasında |
 | 4 | Palet sayısı ve isimleri | P1 sırasında |
 | 5 | Paylaşılan listede push bildirimi | P8'den önce |
 | 6 | Yüklenme markası konusu yeniden açılsın mı | P1 sırasında |

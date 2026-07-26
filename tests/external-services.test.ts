@@ -133,6 +133,9 @@ describe("live market freshness", () => {
     expect(MARKET_SYMBOLS.map(({ code }) => code)).toEqual([
       "ALTIN",
       "CEYREK_YENI",
+      // The provider's full coin. `TEK` and `ATA` are separate quotes, so
+      // dropping either one silently removes a coin the owner tracks.
+      "TEK_YENI",
       "ATA_YENI",
       "USDTRY",
       "EURTRY",

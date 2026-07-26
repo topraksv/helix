@@ -1,5 +1,5 @@
-import { useSyncExternalStore } from "react";
-import { AccessibilityInfo, type EmitterSubscription } from "react-native";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { AccessibilityInfo, Animated, Easing, type EmitterSubscription } from "react-native";
 
 let reducedMotion = false;
 let nativeSubscription: EmitterSubscription | null = null;
@@ -67,4 +67,45 @@ function subscribeTransparency(listener: () => void) {
  */
 export function useReduceTransparency(): boolean {
   return useSyncExternalStore(subscribeTransparency, () => reduceTransparency, () => false);
+}
+
+/** One dim-and-return of a waiting caption. */
+const WAITING_PULSE_MS = 1600;
+/**
+ * The dimmest a waiting caption may go.
+ *
+ * Measured, not chosen: at 0.72 the faintest moment of the faintest palette
+ * (clay/sand light) still reads 5.2:1 against its background, so the text
+ * clears 4.5:1 throughout the cycle. A deeper trough would trade legibility
+ * for motion on screens where this caption is the only thing to read.
+ */
+const WAITING_PULSE_FLOOR = 0.72;
+
+/**
+ * The app's one "still working" text animation.
+ *
+ * A caption that is merely dimmed reads as decoration and gets skipped; the
+ * pulse is what says the app is still doing something. Reduced motion holds it
+ * at full strength rather than dropping to the floor.
+ */
+export function useWaitingPulse(): Animated.Value {
+  const reducedMotion = useReducedMotion();
+  const [pulse] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    if (reducedMotion) {
+      pulse.setValue(1);
+      return;
+    }
+    const step = (toValue: number) =>
+      Animated.timing(pulse, {
+        toValue,
+        duration: WAITING_PULSE_MS / 2,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      });
+    const loop = Animated.loop(Animated.sequence([step(WAITING_PULSE_FLOOR), step(1)]));
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, reducedMotion]);
+  return pulse;
 }

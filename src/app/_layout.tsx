@@ -43,11 +43,9 @@ import { loadDevicePreferences } from "../services/device-preferences";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { HeaderBackButton } from "../ui/header-back";
 import { stackScreenOptions } from "../ui/header-bar";
-import { PHASE2_FLAGS } from "../config/features";
 
 import { devError } from "../services/logger";
 import { PrivacyCover } from "../ui/privacy-cover";
-import { usePrivacy } from "../ui/privacy";
 import {
   useBiometricLock,
   useFirstPullGrace,
@@ -200,7 +198,7 @@ function RootLayoutInner() {
 
   const scheme: "light" | "dark" =
     themePref === "system" ? (systemScheme === "dark" ? "dark" : "light") : themePref;
-  const paletteId = PHASE2_FLAGS.palettes ? palettePref : "clay";
+  const paletteId = palettePref;
   const theme = useMemo(
     () => ({
       palette: PALETTES[paletteId][scheme],
@@ -212,9 +210,6 @@ function RootLayoutInner() {
 
   useEffect(() => {
     void loadDevicePreferences();
-    // Resolved before anything paints: an amount that appears and is then
-    // masked has already been shown to whoever was looking.
-    void usePrivacy.getState().load();
     void Promise.all([kv.get("helix.theme"), kv.get("helix.palette")]).then(([themeValue, paletteValue]) => {
       if (themeValue === "light" || themeValue === "dark" || themeValue === "system") setThemePref(themeValue);
       if (isPaletteId(paletteValue)) setPalettePref(paletteValue);

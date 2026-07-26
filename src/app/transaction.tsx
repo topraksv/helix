@@ -113,12 +113,14 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const [countStr, setCountStr] = useState("2");
   const [paidStr, setPaidStr] = useState("0");
   const [busy, setBusy] = useState(false);
+  // Only what a save would write. `showCurrency` is disclosure — revealing the
+  // currency row changes nothing that could be lost, so asking "discard your
+  // changes?" for it prompts about a change the user never made.
   const draftSnapshot = JSON.stringify({
     entryType,
     amountRaw,
     isReversal,
     currency,
-    showCurrency,
     ...(isEdit ? { categoryId, sourceId, personChoice } : {}),
     dateMode,
     monthKey,

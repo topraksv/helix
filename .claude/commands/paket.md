@@ -36,7 +36,6 @@ Enter plan mode. Produce a design that:
   `src/data/repo*`, `src/sync/engine.ts`, `src/ui/theme.ts`,
   `src/ui/components.tsx` — with a sentence on why the change has to happen
   *there* rather than at the caller;
-- names the `src/config/features.ts` flag and its single mount point;
 - lists the migrations, new tables and `SYNCED_TABLES` entries, if any;
 - lists which of the 23 visual baselines the change can move, and why;
 - separates anything needing an owner decision from what you will just do.

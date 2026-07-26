@@ -101,7 +101,6 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     name,
     amountRaw,
     currency,
-    showCurrency,
     cycle,
     intervalStr,
     billingDayStr,

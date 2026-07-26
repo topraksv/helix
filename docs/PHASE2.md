@@ -25,26 +25,18 @@ reporting "no open decisions" takes a decision that was theirs.
 
 ## Rollback contract
 
-Two tiers, and neither adds a branch, a tag, a workflow or a pipeline. `main` is
-the only branch; going back a commit is the general answer, and a flag is the
-one case where that is too slow.
+**One merge commit per package.** `git revert -m 1 <merge-sha>` removes exactly
+one package, and reverting them in reverse order removes the wave. `a8ca1d1` is
+the last Phase 1 commit if the whole thing has to come out. No branch, tag,
+workflow or pipeline is added for any of this.
 
-1. **Flag** — `src/config/features.ts`. A flag guards a **new surface**: a route,
-   a tab entry, a card, a settings section that did not exist in Phase 1.
-   Turning it off removes that surface and leaves the app in its Phase 1
-   behaviour, with `npm run verify` still green. The branch lives **at the mount
-   point only**; a flag that reaches domain logic, a repository or a sync path
-   is a bug, not a rollout.
-
-   A refinement of an existing primitive is **not** flagged. Forking a shared
-   component so both the old and new behaviour stay alive costs more than it
-   protects and breaks "one mechanism per behaviour" — tier 2 covers it.
-2. **One merge commit per package** — `git revert -m 1 <merge-sha>` removes
-   exactly one package, and reverting them in reverse order removes the wave.
-   `a8ca1d1` is the last Phase 1 commit if the whole thing has to come out.
-
-A flag is deleted, not flipped, once its package has shipped and been accepted
-on a device. Dead flags are worse than no flags.
+A flag tier was built (`src/config/features.ts`) and then deleted, because it
+never earned its place: of nine flags, eight were never read by anything, and
+the one that was (`palettes`) stayed `true` from the day it shipped. It was a
+rollback mechanism nobody could have rolled back with. If a future package
+genuinely needs to hide a half-finished surface, the flag belongs in that
+package and dies with it — not in a table written in advance for surfaces that
+do not exist yet.
 
 ## Packages
 
@@ -61,29 +53,32 @@ surface nobody can look at, so those run last rather than first.
 | 1 | P0 | Phase 2 setup | — | — | repo |
 | 2 | P1 | Visual signature | F2 loading, F4 palettes | P0 | web |
 | 3 | P4 | Extended currencies | F9 | — | shipped |
-| 4 | P3 | Privacy Peek | F3 | P1 | shipped |
-| 5 | P5 | Scenario Lab | F5 | P1, P3 | web |
-| 6 | P2 | Navigation shell | F1 glass footer | P1 | shipped |
-| 7 | P6 | Investments | F8 | P2, P3, P4 | web + device |
-| 8 | P7 | Receipt Vault | F6 | P3 | **device** |
-| 9 | P8 | Shared lists | F7 | P3 | two real accounts |
-| 10 | P9 | Tour refresh | F10 | everything it describes | web |
+| 4 | P2 | Navigation shell | F1 glass footer | P1 | shipped |
+| 5 | P3 | Privacy Peek | F3 | P1 | **withdrawn** |
+| 6 | P7 | Receipt Vault | F6 | — | **device** |
+| 7 | P6 | Investments | F8 | P2, P4 | web + device |
+| 8 | P9 | Tour refresh | F10 | everything it describes | web |
+| — | P5 | Scenario Lab | F5 | P1 | **backlog** |
+| — | P8 | Shared lists | F7 | — | **backlog** |
 
-P0, P1, P4 and P3 stand alone as a coherent release. Everything after is
-optional and may stop at any package boundary.
+P0, P1, P2 and P4 are shipped and stand alone as a coherent release.
+
+**The remaining order is P7 → P6 → P9, set by the owner on 2026-07-26.** It
+overrides the dependency-and-provability ordering this table was first built
+from, and the reason is worth keeping: P9 describes what shipped, so it can only
+be written once P7 and P6 either exist or are abandoned. P5 and P8 moved to the
+backlog in the same decision — P8 was never agreed, and P5 was displaced rather
+than rejected.
 
 **P2 shipped early, at the owner's request.** Its metrics and centring were
 proved by measuring the live render rather than by a screenshot; safe area,
 landscape, Reduce Transparency and the iOS glass material still need a device
 run, and `TESTING.md` carries those rows.
 
-**P8 has not been agreed.** It is listed last and carries an open decision
-below; do not start it on the strength of appearing in this table.
-
 ### P0 — Phase 2 setup
 
-This file, `.claude/commands/paket.md`, `PHASE2_PROMPTS.md`,
-`src/config/features.ts`. No product change.
+This file, `.claude/commands/paket.md`, `PHASE2_PROMPTS.md`. No product change.
+The flag module it also created is gone — see the rollback contract above.
 
 ### P1 — Visual signature
 
@@ -147,24 +142,25 @@ modules) stays out: it cannot ship over OTA and there is no working device build
 path today. The background layer is the only thing that would change if real
 blur is adopted after one exists — priced at the gate, not adopted silently.
 
-### P3 — Privacy Peek
+### P3 — Privacy Peek — **withdrawn 2026-07-26**
 
-**Shipped 2026-07-26.** Masking happens at the **render edge** — inside the
-`Amount` primitive and a `<Private>` wrapper — never screen by screen, so a
-surface added later inherits it instead of having to remember. One glyph per
-digit keeps each amount's rough width, so nothing reflows when it is revealed.
-The accessibility label is masked with the value: a masked amount a screen
-reader still announces is not masked.
+Shipped, then removed the same day at the owner's decision. Recorded because the
+mistake is repeatable, not because the feature might come back.
 
-Market prices are deliberately **not** masked. The gold and FX quotes are the
-world's numbers, not the user's, and hiding them conceals nothing about the
-account.
+Baseline F3 was three things: start hidden, peek while held, and a manual
+switch. Only the manual switch was built. That third alone is the one a user
+cannot benefit from — it needs you to predict the moment someone will look over
+your shoulder and tap first, which is exactly the moment nobody predicts. The
+owner's verdict was "amaçsız", and it was correct: the shipped part was the part
+that did no work.
 
-Device-local `kv`, never account state, never synced. The existing
-`PrivacyCover` stays exactly as it is. Strict mode (descriptions, names,
-account labels) is an owner decision and is **off** unless taken.
+The lesson is about slicing, not about privacy. A feature split across three
+mechanisms is not three deliverables; the two that carry the value were dropped
+and the leftover was reported as done.
 
-Every package after this one builds its surfaces masked from the start.
+Removed with it: the store, the `<Private>` wrapper (defined, never once used),
+the masking branch inside `Amount`, and the settings toggle. `PrivacyCover` —
+which covers the app in the task switcher — is unrelated and untouched.
 
 ### P4 — Extended currencies
 
@@ -190,7 +186,9 @@ The summary card does not change: golds plus USD and EUR. The 60 s
 path only. Changing the selected currency never silently converts a typed
 amount.
 
-### P5 — Scenario Lab
+### P5 — Scenario Lab — **backlog (2026-07-26)**
+
+Displaced, not rejected. The scope below stands if it comes back.
 
 Owns `scenarios` and `scenario_changes` and **reads** the existing projection
 code. It may not produce a transaction, an expected payment or an outbox event.
@@ -229,7 +227,9 @@ object backup and restore path becomes part of this package — not a follow-up.
 `SECURITY.md`'s trust-boundary table and `PRIVACY.md`'s data table both gain a
 row.
 
-### P8 — Shared lists
+### P8 — Shared lists — **backlog (2026-07-26)**
+
+Still unagreed, and now explicitly parked. Decision #7 below stays open.
 
 The only place in this codebase where a parallel mechanism is justified, and the
 justification is written here so it is not copied anywhere else: every existing
@@ -269,7 +269,6 @@ Carried here until taken, then recorded in the package that consumes them.
 |---|---|---|
 | 1 | Sixth tab, or investments inside an existing tab | P6 |
 | 2 | Sale proceeds: transfer by default, income as an explicit option | P6 |
-| 3 | Privacy Peek strict mode in the first release | P3 |
 | 5 | Push notifications for shared lists (server-side work) | P8 |
 | 7 | **Whether P8 ships at all.** It is the one package that is not additive — it falsifies a sentence `README.md` and `PRIVACY.md` both publish, rewrites `SECURITY.md`'s A01 row and extends the pgTAP suite to a second authorization model, in exchange for a shopping list. A personal, owner-scoped list is the cheap half and needs none of that. | P8 |
 
