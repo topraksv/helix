@@ -280,5 +280,5 @@ Incidents that produced a rule. Kept so the rule is not "simplified" away.
   the size a loading state can afford, a detailed mark is a smudge; swapping a
   spinner for a mark part-way through a wait changes shape while the user is
   watching it. Three dots cover the whole wait instead
-  (`src/ui/loading-indicator.tsx`). Reopening this needs new evidence, not a
-  preference.
+  (`src/ui/loading-indicator.tsx`). **Closed by the owner on 2026-07-26** — this
+  is not to be proposed, offered as an option or revisited.

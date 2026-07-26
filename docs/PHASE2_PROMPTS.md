@@ -12,8 +12,9 @@ Sırayı bozma. Her paket tek komutla başlar:
 /paket P1
 ```
 
-Bir paket kapanmadan sonrakine geçme. Paketler birbirinin bağımlılığını çözüyor;
-sıra bozulunca aynı iş iki kez yapılır.
+Bir paket kapanmadan sonrakine geçme. Sıra [`PHASE2.md`](PHASE2.md#packages)
+içinde ve yürütme sırasına göre dizili: **P0 → P1 → P4 → P3 → P5 → P2 → P6 →
+P7 → P8 → P9.** Numara bir isim, sıra değil — P4 nerede koşarsa koşsun P4.
 
 ## Her turun şekli
 
@@ -73,13 +74,13 @@ tüm paletler üzerinde döngüye alınıyor; loader tarafında tek gecikme eşi
 settings'teki 3 `ActivityIndicator`'ın tekleştirilmesi.
 
 ❌ **Durdur:** paralel bir tema sistemi; renklerin runtime'da üretilmesi
-(`hsl()` hesabı); mavi/mor accent; **nefes alan logo** — bir commit önce bilerek
-silindi, geri gelmesi ayrı bir karar; **takılma sayacı (`stalled`) ve ayrı
-`retry` yolu** — iptal beklemeyle birlikte görünür, tekrar denemek zaten
+(`hsl()` hesabı); mavi/mor accent; **nefes alan logo** — konu kalıcı olarak
+kapatıldı, öneri olarak bile getirilmeyecek; **takılma sayacı (`stalled`) ve
+ayrı `retry` yolu** — iptal beklemeyle birlikte görünür, tekrar denemek zaten
 butonun kendisi.
 
-☎️ **Konuşalım:** kaç palet ve isimleri (Karar #4). Agent öneri getirir, sen
-seçersin.
+✅ **Kararlar alındı:** paletler Kil / Kum / Tarçın (#4); yüklenme markası
+kalıcı olarak kapalı (#6). P1'de sorulacak bir şey kalmadı.
 
 **Merge'ten sonra bir kez:** geri alma tatbikatı yap.
 `git revert -m 1 <P1-merge>` → `npm run verify` → revert'i geri al. Makinenin
