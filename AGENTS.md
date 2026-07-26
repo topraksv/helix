@@ -20,6 +20,33 @@ else, link instead of copying. Agent-facing files (`AGENTS.md`, `CLAUDE.md`,
 `docs/ARCHITECTURE.md`, `docs/AI_HANDOFF.md`, `docs/PHASE2.md`) are written in
 English; the owner-facing contracts under `docs/` are Turkish. Code is English, UI is Turkish.
 
+## Who Helix is for
+
+One person uses this app: its owner. They are also its only reviewer, its only
+tester and its only support channel. Nothing here is validated by a second
+opinion, an analytics dashboard or a bug report from a stranger.
+
+The intended path is staged — the owner today, a close circle later, possibly a
+real product after that. It is written down so you know the direction, **not so
+you build for it**.
+
+- **Build for the stage the project is in.** No analytics, no crash service, no
+  multi-tenant abstraction, no scale work, no framework for a feature that has
+  one caller. "It will need this later" is not a reason; later has its own
+  package, and it can afford its own change.
+- **Do not foreclose the next stage either.** Money stays integer minor units,
+  ids stay UUIDs, RLS stays owner-scoped and provable, sync stays
+  server-authoritative and idempotent. These already survive more than one user
+  and cost nothing to keep — breaking them to save a day is the one shortcut
+  that cannot be bought back.
+- **The UI bar is high because one person sees every screen, every day.** There
+  is no second user whose different taste averages out a careless decision, and
+  no usage metric that will surface it later. A rough edge stays rough until
+  someone notices it by hand, so it does not ship rough.
+- **A defect reaches the owner by the owner hitting it.** There is no telemetry
+  and no error inbox — see `docs/PRIVACY.md` for why that is deliberate. This is
+  the whole reason the evidence rules below are strict rather than fussy.
+
 ## Working protocol
 
 The repository is the only shared memory between agents. No agent can see

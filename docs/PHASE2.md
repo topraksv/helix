@@ -246,14 +246,21 @@ which covers the app in the task switcher — is unrelated and untouched.
 
 ### P4 — Extended currencies
 
-**Shipped 2026-07-26.** `FETCHED_FX_CURRENCIES` is the *measured* intersection
-of what TCMB and Frankfurter both publish — thirteen codes, checked against
-their live lists rather than assumed, both keyless so **no API key enters a
-client**. TCMB carries several more that matter regionally (AED, SAR, RUB, AZN,
-KWD) and sends no CORS headers, so web can only ever read Frankfurter: a
-TCMB-only currency would work on a phone and stay permanently empty in a
-browser. The intersection behaves identically everywhere, and a test pins it so
-widening the set stays a deliberate act.
+**Shipped 2026-07-26.** `FETCHED_FX_CURRENCIES` is 21 codes, and the number is
+a consequence rather than a target. It began as the *measured* intersection of
+what TCMB and Frankfurter both publish — thirteen codes — because TCMB sends no
+CORS headers, so web can only read the fallback, and a TCMB-only currency would
+work on a phone and sit permanently empty in a browser. Replacing Frankfurter
+with exchangerate-api's open endpoint dissolved the constraint: it is keyless,
+~0.2 s, 3 KB, states its own publication time (which is what gets stored rather
+than "today"), and carries the regionally important codes the old fallback did
+not — ALL, RUB, AED, SAR, AZN, KWD, BGN, GEL. Still no API key in a client. A
+test pins the list so widening it stays a deliberate act.
+
+**Harem keeps gold and live USD/EUR.** Measured before deciding: no keyless
+*live* FX feed exists — every free option is a daily reference rate. Moving the
+market card onto one would make "Canlı Piyasalar" show yesterday's number, so
+that request was argued against rather than implemented.
 
 `CurrencyPicker` is TRY / USD / EUR as chips plus one "Diğer" chip that opens
 the list directly — no second field appears to hold what the chip already
