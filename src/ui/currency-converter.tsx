@@ -17,7 +17,7 @@ import { CurrencyPicker } from "./currency-picker";
 import { marketLastKnownRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
 import { clockOrDateTimeLabel, dateLabel, tr } from "../i18n/tr";
-import { Badge, Body, Label, MoneyField, Segmented } from "./components";
+import { Badge, Body, Label, MoneyField } from "./components";
 import { controlSize, iconSize, radius, spacing, type, useTheme } from "./theme";
 
 export function CurrencyConverter() {

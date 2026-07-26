@@ -33,7 +33,7 @@ import {
   type PaletteId,
   type ThemePreference,
 } from "../ui/theme";
-import { Button, Screen, Title } from "../ui/components";
+import { Button, Screen, Title, WaitingNotice } from "../ui/components";
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
@@ -47,6 +47,7 @@ import { PHASE2_FLAGS } from "../config/features";
 
 import { devError } from "../services/logger";
 import { PrivacyCover } from "../ui/privacy-cover";
+import { usePrivacy } from "../ui/privacy";
 import {
   useBiometricLock,
   useFirstPullGrace,
@@ -211,6 +212,9 @@ function RootLayoutInner() {
 
   useEffect(() => {
     void loadDevicePreferences();
+    // Resolved before anything paints: an amount that appears and is then
+    // masked has already been shown to whoever was looking.
+    void usePrivacy.getState().load();
     void Promise.all([kv.get("helix.theme"), kv.get("helix.palette")]).then(([themeValue, paletteValue]) => {
       if (themeValue === "light" || themeValue === "dark" || themeValue === "system") setThemePref(themeValue);
       if (isPaletteId(paletteValue)) setPalettePref(paletteValue);
@@ -324,15 +328,13 @@ function RootLayoutInner() {
               }}
             />
           </View>
-        ) : awaitingFirstPull || !guard.redirect ? (
-          // A silent spinner after a correct password reads as a stall. The
-          // hold is the account's first pull, so it says so.
-          <View style={{ alignItems: "center", gap: 12 }}>
-            <DelayedLoadingIndicator />
-            {awaitingFirstPull ? (
-              <Text style={{ color: theme.palette.textSecondary, textAlign: "center" }}>{tr.auth.restoringData}</Text>
-            ) : null}
-          </View>
+        ) : awaitingFirstPull ? (
+          // A silent spinner after a correct password reads as a stall. This
+          // hold is the account's first pull, and a brand-new account has
+          // nothing to pull — so the two say different things.
+          <WaitingNotice message={isNewSignup ? tr.auth.restoringDataFresh : tr.auth.restoringData} />
+        ) : !guard.redirect ? (
+          <DelayedLoadingIndicator />
         ) : null}
       </View>
     );

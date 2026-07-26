@@ -4,7 +4,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, History, PartyPopper, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
@@ -30,10 +30,11 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Heading, HeroCard, ListRow, Row, Screen, SectionHeader, Segmented, Spread, STATUS_W } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Heading, HeroCard, IconButton, ListRow, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
 import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
+import { usePrivacy } from "../../ui/privacy";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
@@ -161,6 +162,8 @@ function greeting(): string {
 }
 
 export default function DashboardScreen() {
+  const hideAmounts = usePrivacy((state) => state.hidden);
+  const togglePrivacy = usePrivacy((state) => state.toggle);
   const userId = useUserId();
   const previousLoginAt = useSession((state) => state.previousLoginAt);
   const today = todayISO();
@@ -326,7 +329,20 @@ export default function DashboardScreen() {
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
   return (
-    <Screen title={greeting()} subtitle={dateLabel(today)} leading={<BrandMark size={40} />}>
+    <Screen
+      title={greeting()}
+      subtitle={dateLabel(today)}
+      leading={<BrandMark size={40} />}
+      // One tap, on the screen the numbers are largest. The preference is
+      // device-local and the data is untouched — this hides, it does not edit.
+      right={
+        <IconButton
+          icon={hideAmounts ? EyeOff : Eye}
+          label={hideAmounts ? tr.privacy.show : tr.privacy.hide}
+          onPress={togglePrivacy}
+        />
+      }
+    >
       <FirstRunTour />
       <DataStateNotice status={dataStatus} retry={retryData} />
       {previousLoginAt ? (

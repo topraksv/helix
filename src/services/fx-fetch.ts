@@ -1,6 +1,6 @@
 /**
  * FX rate fetching (spec §2.5). Primary: TCMB today.xml (official TRY rates,
- * free, keyless). Fallback: Frankfurter (ECB, keyless). Rates cache into the
+ * free, keyless). Fallback: exchangerate-api's open endpoint (keyless). Rates cache into the
  * fx_rates table; lookups fall back to the last known rate with a stale flag.
  */
 
@@ -15,7 +15,7 @@ import { pickRate, type FxRate, type RateLookup } from "../domain/fx";
 import {
   FETCHED_FX_CURRENCIES,
   isValidRateDate,
-  parseFrankfurterRates,
+  parseOpenExchangeRates,
   parseTcmbRates,
   type ProviderRateBatch,
 } from "../domain/fx-provider";
@@ -52,10 +52,12 @@ async function fetchFromTcmb(signal?: AbortSignal): Promise<ProviderRateBatch> {
   return parseTcmbRates(await boundedFetchText("https://www.tcmb.gov.tr/kurlar/today.xml", signal));
 }
 
-async function fetchFromFrankfurter(signal?: AbortSignal): Promise<ProviderRateBatch> {
-  const symbols = FETCHED_FX_CURRENCIES.join(",");
-  const text = await boundedFetchText(`https://api.frankfurter.dev/v1/latest?base=TRY&symbols=${symbols}`, signal);
-  return parseFrankfurterRates(JSON.parse(text) as unknown);
+async function fetchFromOpenRates(signal?: AbortSignal): Promise<ProviderRateBatch> {
+  // The whole table is one 3 KB document, so there is nothing to gain by asking
+  // for a subset — and asking for one would put the currency list in the URL,
+  // which is a second place for it to drift from `FETCHED_FX_CURRENCIES`.
+  const text = await boundedFetchText("https://open.er-api.com/v6/latest/TRY", signal);
+  return parseOpenExchangeRates(JSON.parse(text) as unknown);
 }
 
 /** Shared throttle for every rate fetch, whichever entry point starts it. */
@@ -67,16 +69,16 @@ export async function refreshRates(userId: string, signal?: AbortSignal): Promis
   // calls this directly on boot (it needs to await it inside the session task),
   // which used to leave `lastEnsureAt` at 0 — so a converter mounting within the
   // next minute fired a SECOND request for the same rates. Measured: every route
-  // issued one Frankfurter request, the calculator issued two.
+  // issued one rate request, the calculator issued two.
   lastEnsureAt = Date.now();
   let batch: ProviderRateBatch;
   // TCMB's today.xml sends no CORS headers, so on web it always fails with a
-  // noisy console error — use only the CORS-enabled Frankfurter (ECB) feed
-  // there. Native has no CORS restriction, so it prefers TCMB with Frankfurter
+  // noisy console error — use only the CORS-enabled open endpoint there.
+  // Native has no CORS restriction, so it prefers TCMB with that feed
   // as a fallback.
   if (Platform.OS === "web") {
     try {
-      batch = await fetchFromFrankfurter(signal);
+      batch = await fetchFromOpenRates(signal);
     } catch {
       return false;
     }
@@ -85,7 +87,7 @@ export async function refreshRates(userId: string, signal?: AbortSignal): Promis
       batch = await fetchFromTcmb(signal);
     } catch {
       try {
-        batch = await fetchFromFrankfurter(signal);
+        batch = await fetchFromOpenRates(signal);
       } catch {
         return false;
       }

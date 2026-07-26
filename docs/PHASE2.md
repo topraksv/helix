@@ -61,7 +61,7 @@ surface nobody can look at, so those run last rather than first.
 | 1 | P0 | Phase 2 setup | — | — | repo |
 | 2 | P1 | Visual signature | F2 loading, F4 palettes | P0 | web |
 | 3 | P4 | Extended currencies | F9 | — | shipped |
-| 4 | P3 | Privacy Peek | F3 | P1 | web (app-switcher on device) |
+| 4 | P3 | Privacy Peek | F3 | P1 | shipped |
 | 5 | P5 | Scenario Lab | F5 | P1, P3 | web |
 | 6 | P2 | Navigation shell | F1 glass footer | P1 | shipped |
 | 7 | P6 | Investments | F8 | P2, P3, P4 | web + device |
@@ -149,10 +149,16 @@ blur is adopted after one exists — priced at the gate, not adopted silently.
 
 ### P3 — Privacy Peek
 
-Masking happens at the **render edge** — inside the `Amount` primitive and a new
-`<Private>` wrapper — never screen by screen. Placeholder width comes from
-`amount-layout.ts` so nothing reflows. The accessibility label is masked with
-the value; a masked amount that a screen reader still reads out is a leak.
+**Shipped 2026-07-26.** Masking happens at the **render edge** — inside the
+`Amount` primitive and a `<Private>` wrapper — never screen by screen, so a
+surface added later inherits it instead of having to remember. One glyph per
+digit keeps each amount's rough width, so nothing reflows when it is revealed.
+The accessibility label is masked with the value: a masked amount a screen
+reader still announces is not masked.
+
+Market prices are deliberately **not** masked. The gold and FX quotes are the
+world's numbers, not the user's, and hiding them conceals nothing about the
+account.
 
 Device-local `kv`, never account state, never synced. The existing
 `PrivacyCover` stays exactly as it is. Strict mode (descriptions, names,

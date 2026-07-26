@@ -20,6 +20,7 @@ import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { Select } from "./components";
 import { SUPPORTED_CURRENCIES, type Currency } from "../services/fx-fetch";
+import { CURRENCY_INFO } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
 import { controlSize, font, radius, spacing, stateOpacity, type, useTheme } from "./theme";
 
@@ -73,13 +74,26 @@ export function CurrencyPicker({
 
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
-      {PRIMARY.map((code) => chip(code, value === code, () => onChange(code)))}
+      {PRIMARY.map((code) => chip(`${CURRENCY_INFO[code].flag} ${code}`, value === code, () => onChange(code), CURRENCY_INFO[code].name))}
       <Select<Currency>
+        label={tr.common.otherCurrencies}
         placeholder={tr.common.otherCurrencies}
-        options={OTHERS.map((code) => ({ value: code, label: code }))}
+        // Flag, name and code: the list is read by country far more often than
+        // by ISO code, and the code alone made a fourteen-row sheet unscannable.
+        options={OTHERS.map((code) => ({
+          value: code,
+          label: `${CURRENCY_INFO[code].flag}  ${CURRENCY_INFO[code].name} · ${code}`,
+        }))}
         value={isPrimary ? null : (value as Currency)}
         onChange={onChange}
-        trigger={(open) => chip(isPrimary ? tr.common.other : value, !isPrimary, open, tr.common.otherCurrencies)}
+        trigger={(open) =>
+          chip(
+            isPrimary ? tr.common.other : `${CURRENCY_INFO[value as Currency]?.flag ?? ""} ${value}`.trim(),
+            !isPrimary,
+            open,
+            tr.common.otherCurrencies,
+          )
+        }
       />
     </View>
   );
