@@ -37,6 +37,17 @@ CI sırası özellikle önemlidir: önce gerçek production export `dist/` için
 boşaltıp ayrı `dist-e2e/` local-only artefact’ını oluşturur. Test env’i Pages
 artefact’ına karışamaz.
 
+**Her production derlemesi `--clear` kullanmak zorundadır.** Metro’nun transform
+cache’i `expo export` ile `eas update` arasında paylaşılır ve cache anahtarı
+`EXPO_PUBLIC_*` değerlerini içermez — yani cache hangi env ile kurulduysa o
+yapışır. İki yönü de ölçüldü: `--clear` olmadan E2E export’u üretim Supabase
+URL’ini local-only artefact’a gömüyor; E2E export’unun bıraktığı boş-env cache
+ise sonraki üretim bundle’ını `isSupabaseConfigured = false` halde üretiyor.
+İkincisi giriş ve sync’i sessizce yok eder ve ne export, ne bütçe, ne OTA kanıt
+listesi bunu görür. Bu yüzden `bundle:check` artık `EXPO_PUBLIC_SUPABASE_URL`
+doluyken entry bundle’ında o değeri arar ve bulamazsa release’i bloklar; OTA
+yayını `--clear-cache` ile yapılır ([RELEASE.md](RELEASE.md#3--mobil-eas-ota)).
+
 ## Otomatik davranış matrisi
 
 | Öncelik | Akış/risk | Test türü | Senaryo | Beklenen | Kanıt |

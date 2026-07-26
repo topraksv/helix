@@ -128,8 +128,9 @@ async function clearInvalidatedSession(): Promise<void> {
     // bootstrap credentials below so this invalid session cannot reopen.
   }
   if (useSession.getState().userId !== userId) return;
-  await kv.remove(LAST_USER_KEY);
-  await kv.remove(LAST_EMAIL_KEY);
+  // Before the key removals, for the same reason as signOut: the guard would
+  // otherwise read the emptied workspace as an unfinished setup and route to
+  // Quick Start rather than sign-in.
   useSession.setState({
     userId: null,
     email: null,
@@ -138,6 +139,8 @@ async function clearInvalidatedSession(): Promise<void> {
     isFreezing: false,
     previousLoginAt: null,
   });
+  await kv.remove(LAST_USER_KEY);
+  await kv.remove(LAST_EMAIL_KEY);
 }
 
 function ensureAuthLifecycleSubscription(): void {
@@ -411,6 +414,13 @@ export const useSession = create<SessionStore>((set, get) => ({
       }
       return tr.errors.workspaceResetFailed;
     }
+    // Ends the session in the same turn as the wipe, before any further await.
+    // The route guard reads `onboarded` from the live database: while a user id
+    // survives an emptied workspace it resolves false, which is indistinguishable
+    // from a genuinely incomplete setup, and the guard sends the user to Quick
+    // Start instead of sign-in. The remote revoke and the key removals below can
+    // take seconds on a device, so that window was the whole bug.
+    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
     const supabase = getSupabase();
     if (supabase) {
       explicitSignOutInProgress = true;
@@ -423,7 +433,6 @@ export const useSession = create<SessionStore>((set, get) => ({
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
     await kv.remove(LAST_EMAIL_KEY);
-    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
     return null;
   },
 
@@ -480,10 +489,12 @@ export const useSession = create<SessionStore>((set, get) => ({
       // workspace: ensureWorkspaceFor will retry the wipe first.
       return tr.errors.workspaceResetFailed;
     }
+    // Same reason as signOut: an emptied workspace under a live user id reads as
+    // "setup never finished" and routes to Quick Start instead of sign-in.
+    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
     await kv.remove(LOCAL_OWNER_KEY);
     await kv.remove(LAST_USER_KEY);
     await kv.remove(LAST_EMAIL_KEY);
-    set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
     return null;
   },
 

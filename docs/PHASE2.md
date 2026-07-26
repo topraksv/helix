@@ -25,7 +25,9 @@ reporting "no open decisions" takes a decision that was theirs.
 
 ## Rollback contract
 
-Three tiers, none of which needs a new branch strategy, workflow or pipeline.
+Two tiers, and neither adds a branch, a tag, a workflow or a pipeline. `main` is
+the only branch; going back a commit is the general answer, and a flag is the
+one case where that is too slow.
 
 1. **Flag** — `src/config/features.ts`. A flag guards a **new surface**: a route,
    a tab entry, a card, a settings section that did not exist in Phase 1.
@@ -38,9 +40,8 @@ Three tiers, none of which needs a new branch strategy, workflow or pipeline.
    component so both the old and new behaviour stay alive costs more than it
    protects and breaks "one mechanism per behaviour" — tier 2 covers it.
 2. **One merge commit per package** — `git revert -m 1 <merge-sha>` removes
-   exactly one package.
-3. **`v1-pre-phase2`** — the signed tag on `a8ca1d1`, the last Phase 1 release.
-   The anchor for taking the whole wave back out.
+   exactly one package, and reverting them in reverse order removes the wave.
+   `a8ca1d1` is the last Phase 1 commit if the whole thing has to come out.
 
 A flag is deleted, not flipped, once its package has shipped and been accepted
 on a device. Dead flags are worse than no flags.
@@ -82,7 +83,7 @@ below; do not start it on the strength of appearing in this table.
 ### P0 — Phase 2 setup
 
 This file, `.claude/commands/paket.md`, `PHASE2_PROMPTS.md`,
-`src/config/features.ts`, the `v1-pre-phase2` tag. No product change.
+`src/config/features.ts`. No product change.
 
 ### P1 — Visual signature
 
@@ -133,6 +134,13 @@ No new native dependency (owner's decision): web gets a real `backdropFilter`,
 native gets a layered high-alpha surface. Call it a frosted surface, not blur,
 in every string and comment. Reduce Transparency and Increase Contrast fall back
 to a solid `surface`.
+
+`expo-glass-tabs` (owner, 2026-07-26) is the one candidate worth pricing against
+that decision at the design gate, because it is purpose-built for exactly this
+bar. It is still a new native dependency: it cannot ship over OTA, it needs a
+local device rebuild, and it puts the app's most-used control inside someone
+else's release cadence. Weigh it honestly and bring the comparison — do not
+adopt it silently, and do not dismiss it silently either.
 
 ### P3 — Privacy Peek
 

@@ -98,10 +98,11 @@ Then **wait for approval**. Do not branch, commit, push or open a PR before it.
 
 ## 6. Ship
 
-Once approved: commit on `phase-2/<package>-<slug>` following the commit rules in
-`AGENTS.md` — a body that explains the reasoning, and **no AI attribution of any
-kind**. Push, open the PR, and wait for the required `quality` check. Use
-`/loop 10m` to watch the run rather than polling by hand.
+Once approved: commit following the commit rules in `AGENTS.md` — a body that
+explains the reasoning, and **no AI attribution of any kind**. `main` is
+protected, so push a short-lived branch, open the PR, and wait for the required
+`quality` check; use `/loop 10m` to watch the run rather than polling by hand.
+The branch is scaffolding — delete it on merge, and never create a tag.
 
 Merge only after the check is green and the owner says so. Then rewrite
 `docs/AI_HANDOFF.md` in place, move anything durable into its canonical

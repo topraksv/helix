@@ -84,9 +84,17 @@ JS/asset-only değişiklik, protected `main` release commit’inden yayımlanır
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 git status --short                  # boş olmalı
 git rev-parse HEAD                  # handoff'taki release commit'i olmalı
-npx eas-cli update --channel preview \
+npx eas-cli update --channel preview --clear-cache \
   -m "<kısa, davranış odaklı özet>" --non-interactive
 ```
+
+`--clear-cache` opsiyonel değildir. `eas update` bundle’ı Metro ile üretir ve o
+cache’i `expo export` ile paylaşır; cache anahtarı `EXPO_PUBLIC_*` değerlerini
+içermediği için, bu komuttan hemen önce koşan `verify:release` (E2E export’uyla
+biter) boş-env bir cache bırakır. Bayrak olmadan yayımlanan bundle
+`isSupabaseConfigured = false` olur: kurulu uygulamada giriş ve sync kaybolur,
+ve aşağıdaki kanıt listesinin hiçbir maddesi bunu göstermez. Ölçüm ve web
+tarafındaki karşılığı [TESTING.md](TESTING.md#release-kapısı) içindedir.
 
 Kurulu test build’i `preview` channel’ını tüketir (`app.json`
 `updates.requestHeaders.expo-channel-name`, `eas.json` `build.preview.channel`)
@@ -110,7 +118,9 @@ Aşağıdaki kanıtlar eşleşmeden paket teslim edildi sayılmaz:
 - runtime `1.0.0` ve branch `preview`;
 - update metadata Git commit’i release commit’iyle aynı;
 - channel remote’da hâlâ `preview` branch’ine bağlı;
-- bundle upload iki platformda başarılı.
+- bundle upload iki platformda başarılı;
+- yayın `--clear-cache` ile yapıldı; cihazda giriş ekranı açılıyor ve hesaba
+  girilebiliyor (Supabase yapılandırmasının bundle’a girdiğinin tek kanıtı).
 
 Kurulu binary update’i ilk cold start’ta indirir, bir sonraki cold start’ta açar.
 Bu yüzden **iki tam kapat/aç** + hedef sürümdeki görünür kabul akışı doğrulanmadan installed

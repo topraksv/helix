@@ -62,6 +62,37 @@ if (!entry) {
   console.error(`No Expo entry bundle found under ${relative(process.cwd(), root) || root}`);
   process.exitCode = 1;
 }
+// Metro's transform cache is shared by `expo export` and `eas update`, and its
+// key does not include EXPO_PUBLIC_* values. A cache left behind by the
+// local-only E2E export therefore yields a bundle where isSupabaseConfigured is
+// false — sign-in and sync silently gone, with nothing in the export, the
+// budget or the OTA evidence to show it. `--clear` prevents that; this proves
+// it, because remembering a flag is not a control.
+// Opt-in, because only a real production export makes this claim. CI puts the
+// values in the job environment; locally only Expo reads `.env`, so the check
+// reads it too — one that quietly skips itself is the failure mode it exists to
+// catch, which is why the skip is printed rather than assumed.
+if (entry && process.argv.includes("--require-supabase-config")) {
+  if (!process.env.EXPO_PUBLIC_SUPABASE_URL) {
+    try {
+      process.loadEnvFile(".env");
+    } catch {
+      // Neither environment nor .env: a local-only build, which is a legitimate
+      // configuration with nothing to inline.
+    }
+  }
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    console.log("supabaseConfigInlined: skipped (no EXPO_PUBLIC_SUPABASE_URL configured)");
+  } else {
+    const inlined = (await readFile(entry.path, "utf8")).includes(supabaseUrl);
+    console.log(`supabaseConfigInlined: ${inlined} (expected true)`);
+    if (!inlined) {
+      console.error("Entry bundle carries no Supabase configuration. Re-export with --clear.");
+      process.exitCode = 1;
+    }
+  }
+}
 if (sourceMaps.length > 0) {
   console.error(`Public source maps found: ${sourceMaps.map((file) => relative(root, file.path)).join(", ")}`);
 }
