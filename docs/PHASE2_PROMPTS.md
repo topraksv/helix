@@ -12,9 +12,11 @@ Sırayı bozma. Her paket tek komutla başlar:
 /paket P1
 ```
 
-Bir paket kapanmadan sonrakine geçme. Sıra [`PHASE2.md`](PHASE2.md#packages)
-içinde ve yürütme sırasına göre dizili: **P0 → P1 → P4 → P3 → P5 → P2 → P6 →
-P7 → P8 → P9.** Numara bir isim, sıra değil — P4 nerede koşarsa koşsun P4.
+Bir paket kapanmadan sonrakine geçme. Numara bir isim, sıra değil — P4 nerede
+koşarsa koşsun P4.
+
+**Biten:** P0 → P1 → P4 → P2. **Geri çekilen:** P3.
+**Kalan sıra: P7 → P6 → P9.** P5 ve P8 backlog'da.
 
 ## Her turun şekli
 
@@ -125,7 +127,7 @@ eski snapshot'ın "güncel" gösterilmesi.
 
 ---
 
-### P5 — Scenario Lab · `/paket P5`
+### P5 — Scenario Lab · **backlog**
 
 ✅ **Görmen gereken:** kendi tabloları; mevcut projection kodunu **okuyor**;
 gerçek kayıt/outbox üretmiyor; "plan olarak uygula" açık onay + özet;
@@ -167,7 +169,7 @@ sync'ini bekletmesi; OCR (kapsam dışı); kamera (yeni native bağımlılık).
 
 ---
 
-### P8 — Paylaşılan listeler · `/paket P8` ⚠️ owner izolasyonunu delen tek paket
+### P8 — Paylaşılan listeler · **backlog** ⚠️ owner izolasyonunu delen tek paket
 
 ✅ **Görmen gereken:** üç tablo kendi RLS ailesiyle; `SYNCED_TABLES`'a
 **eklenmiyor**; owner-scoped yol gevşetilmiyor; davet/ayrılma/paylaşımı kapatma
@@ -205,6 +207,11 @@ login sonrası onboarding flash'ı; yayımlanmamış özelliğin tanıtılması.
 yok. `main` korumalı olduğu için değişiklik bir PR ile giriyor, ama o PR'ı
 taşıyan dal iskele: merge'de siliniyor. Bir şey yanlış giderse bir commit
 geriye dönülür.
+
+## Kalan sıra
+
+**P7 → P6 → P9.** Sahibinin kararı, 2026-07-26. P5 ve P8 backlog'a alındı; bu
+dosyadaki bölümleri sırf geri dönerlerse diye duruyor, sırada değiller.
 
 ## Bekleyen kararlar
 

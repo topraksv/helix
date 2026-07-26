@@ -53,24 +53,27 @@ surface nobody can look at, so those run last rather than first.
 | 1 | P0 | Phase 2 setup | — | — | repo |
 | 2 | P1 | Visual signature | F2 loading, F4 palettes | P0 | web |
 | 3 | P4 | Extended currencies | F9 | — | shipped |
-| 4 | P3 | Privacy Peek | F3 | P1 | **withdrawn** |
-| 5 | P5 | Scenario Lab | F5 | P1 | web |
-| 6 | P2 | Navigation shell | F1 glass footer | P1 | shipped |
+| 4 | P2 | Navigation shell | F1 glass footer | P1 | shipped |
+| 5 | P3 | Privacy Peek | F3 | P1 | **withdrawn** |
+| 6 | P7 | Receipt Vault | F6 | — | **device** |
 | 7 | P6 | Investments | F8 | P2, P4 | web + device |
-| 8 | P7 | Receipt Vault | F6 | — | **device** |
-| 9 | P8 | Shared lists | F7 | — | two real accounts |
-| 10 | P9 | Tour refresh | F10 | everything it describes | web |
+| 8 | P9 | Tour refresh | F10 | everything it describes | web |
+| — | P5 | Scenario Lab | F5 | P1 | **backlog** |
+| — | P8 | Shared lists | F7 | — | **backlog** |
 
-P0, P1, P2 and P4 stand alone as a coherent release. Everything after is
-optional and may stop at any package boundary.
+P0, P1, P2 and P4 are shipped and stand alone as a coherent release.
+
+**The remaining order is P7 → P6 → P9, set by the owner on 2026-07-26.** It
+overrides the dependency-and-provability ordering this table was first built
+from, and the reason is worth keeping: P9 describes what shipped, so it can only
+be written once P7 and P6 either exist or are abandoned. P5 and P8 moved to the
+backlog in the same decision — P8 was never agreed, and P5 was displaced rather
+than rejected.
 
 **P2 shipped early, at the owner's request.** Its metrics and centring were
 proved by measuring the live render rather than by a screenshot; safe area,
 landscape, Reduce Transparency and the iOS glass material still need a device
 run, and `TESTING.md` carries those rows.
-
-**P8 has not been agreed.** It is listed last and carries an open decision
-below; do not start it on the strength of appearing in this table.
 
 ### P0 — Phase 2 setup
 
@@ -183,7 +186,9 @@ The summary card does not change: golds plus USD and EUR. The 60 s
 path only. Changing the selected currency never silently converts a typed
 amount.
 
-### P5 — Scenario Lab
+### P5 — Scenario Lab — **backlog (2026-07-26)**
+
+Displaced, not rejected. The scope below stands if it comes back.
 
 Owns `scenarios` and `scenario_changes` and **reads** the existing projection
 code. It may not produce a transaction, an expected payment or an outbox event.
@@ -222,7 +227,9 @@ object backup and restore path becomes part of this package — not a follow-up.
 `SECURITY.md`'s trust-boundary table and `PRIVACY.md`'s data table both gain a
 row.
 
-### P8 — Shared lists
+### P8 — Shared lists — **backlog (2026-07-26)**
+
+Still unagreed, and now explicitly parked. Decision #7 below stays open.
 
 The only place in this codebase where a parallel mechanism is justified, and the
 justification is written here so it is not copied anywhere else: every existing

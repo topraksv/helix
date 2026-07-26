@@ -96,12 +96,15 @@ currency renamed the last chip and reflowed the row onto a second line.
   when one exists.
 - The market card's longest label wraps below a 375pt viewport. Wrapping is the
   sanctioned behaviour (never truncate), but it makes that one row taller.
-- P8 (shared lists) is still an open product decision — see `PHASE2.md`.
+- P8 (shared lists) is backlogged and still an open product decision.
 
 ## Next package
 
-`PHASE2.md` order puts **P5 (Scenario Lab)** next. Its dependency on P3 is gone
-with P3; it needs only P1, and it is web-provable.
+**P7 (Receipt Vault)**, then P6, then P9 — the owner's order, 2026-07-26. P5 and
+P8 are backlog. P9 stays last because it describes what actually shipped.
+
+P7 is device-provable only (file picking, Storage upload), and no device run has
+ever happened — raise that at its design gate rather than after building it.
 
 ## Next exact step
 
