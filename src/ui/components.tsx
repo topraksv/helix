@@ -29,7 +29,7 @@ import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, E
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { initialsBadgeColor } from "./badge-color";
-import { DelayedLoading, LoadingIndicator } from "./loading-indicator";
+import { DelayedLoading, DelayedLoadingIndicator, LOADING_DOT_SLOT, LoadingIndicator } from "./loading-indicator";
 import type { TrackedOperationState } from "./operation-guard";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
@@ -54,6 +54,7 @@ import {
   type Palette,
 } from "./theme";
 import { useReducedMotion } from "./motion";
+import { maskAmount, usePrivacy } from "./privacy";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
@@ -385,7 +386,12 @@ export function Amount({
   const { palette } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
-  const formatted = formatMinor(minor, currency);
+  // Masked at the formatter, so every amount in the app inherits it and the
+  // accessibility label below carries the mask too — a hidden number a screen
+  // reader still announces is not hidden.
+  const hidden = usePrivacy((state) => state.hidden);
+  const real = formatMinor(minor, currency);
+  const formatted = hidden ? maskAmount(real) : real;
   const scale: AmountScale = hero ? "hero" : large ? "large" : "regular";
   // Width/font-scale changes start a fresh fit pass so rotation and Dynamic
   // Type can shrink or grow without opting out of system font scaling.
@@ -866,7 +872,7 @@ export function Select<T extends string>({
                     </Text>
                   </View>
                   <ScrollView>
-                    {options.map((option) => {
+                    {options.map((option, index) => {
                       const selected = option.value === value;
                       return (
                         <Pressable
@@ -882,7 +888,20 @@ export function Select<T extends string>({
                             {
                               paddingHorizontal: spacing.lg,
                               paddingVertical: spacing.md,
-                              backgroundColor: selected ? palette.primarySoft : pressed ? palette.surfaceAlt : "transparent",
+                              // A fourteen-row sheet read as one flat surface.
+                              // The rule between rows is the device the
+                              // financial table already uses, and the
+                              // alternating tint gives the eye something to
+                              // track across a wide row.
+                              borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                              borderTopColor: palette.border,
+                              backgroundColor: selected
+                                ? palette.primarySoft
+                                : pressed
+                                  ? palette.surfaceHover
+                                  : index % 2 === 1
+                                    ? palette.surfaceAlt
+                                    : "transparent",
                             },
                           ]}
                         >
@@ -1258,6 +1277,45 @@ export function OperationStatusNotice({
         </View>
       </View>
     </DelayedLoading>
+  );
+}
+
+/**
+ * A full-screen hold that says what is happening.
+ *
+ * The indicator's own 350 ms threshold means it appears AFTER its caption, and a
+ * caption that is centred alone and then shoved down when the dots arrive reads
+ * as a glitch rather than as work. The dots therefore occupy a reserved slot
+ * from the first frame — nothing moves when they turn up, only the caption fades
+ * in, so the screen looks like it is doing something rather than stuck.
+ */
+export function WaitingNotice({ message }: { message: string }) {
+  return (
+    <View style={{ alignItems: "center", gap: spacing.md }}>
+      <View style={{ height: LOADING_DOT_SLOT, justifyContent: "center" }}>
+        <DelayedLoadingIndicator />
+      </View>
+      <FadeIn>
+        <Body muted style={{ textAlign: "center" }}>{message}</Body>
+      </FadeIn>
+    </View>
+  );
+}
+
+/**
+ * Hides its children while Privacy Peek is on.
+ *
+ * For sensitive text that is not an `Amount` — a person's name beside a figure,
+ * a note that names what was bought. The placeholder keeps the row's height so
+ * nothing reflows, and the accessible name goes with it.
+ */
+export function Private({ children, label }: { children: ReactNode; label: string }) {
+  const hidden = usePrivacy((state) => state.hidden);
+  if (!hidden) return <>{children}</>;
+  return (
+    <View accessible accessibilityLabel={tr.privacy.hiddenValue} style={{ justifyContent: "center" }}>
+      <Body muted>{"•".repeat(Math.min(Math.max(label.length, 3), 12))}</Body>
+    </View>
   );
 }
 

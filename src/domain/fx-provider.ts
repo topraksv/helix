@@ -3,18 +3,21 @@
 import { daysInMonth, makeISODate, type ISODate } from "./dates";
 
 /**
- * The currencies BOTH providers publish, measured against their live lists on
+ * What the app offers, checked against both providers' live lists on
  * 2026-07-26 rather than assumed.
  *
- * TCMB carries several more that matter regionally (AED, SAR, RUB, AZN, KWD…)
- * and Frankfurter carries none of them. TCMB sends no CORS headers, so web can
- * only ever read Frankfurter: shipping a TCMB-only currency would work on a
- * phone and stay permanently empty in a browser, which is a worse answer than
- * not offering it. The intersection behaves identically everywhere.
+ * This used to be the INTERSECTION of TCMB and Frankfurter, because TCMB sends
+ * no CORS headers — web can only read the fallback, so a currency the fallback
+ * lacked would work on a phone and stay permanently empty in a browser. The
+ * fallback now covers every TCMB code and 130 more, so the constraint is gone
+ * and the regionally useful ones (AED, SAR, RUB, AZN, KWD) are available on
+ * both platforms. The list stays curated rather than complete: a picker with
+ * 166 entries is not a feature.
  */
 export const FETCHED_FX_CURRENCIES = [
   "USD", "EUR", "GBP", "CHF", "JPY", "AUD", "CAD",
   "SEK", "NOK", "DKK", "CNY", "KRW", "RON",
+  "RUB", "AED", "SAR", "AZN", "KWD", "ALL", "BGN", "GEL",
 ] as const;
 
 interface ProviderRate {
@@ -68,13 +71,25 @@ export function parseTcmbRates(xml: string): ProviderRateBatch {
   return { rateDate, rates };
 }
 
-/** Parse Frankfurter's TRY-base response and invert it to TRY per unit. */
-export function parseFrankfurterRates(value: unknown): ProviderRateBatch {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Frankfurter response");
+/**
+ * Parse exchangerate-api's open endpoint and invert it to TRY per unit.
+ *
+ * Its `rates` are quoted per one TRY, the same direction Frankfurter used, so
+ * the inversion is unchanged. What differs is the date: this feed states the
+ * moment it was published as an RFC 2822 string, and that stated moment is what
+ * gets stored — a rate is never stamped with "today" just because today is when
+ * it was read.
+ */
+export function parseOpenExchangeRates(value: unknown): ProviderRateBatch {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid FX response");
   const data = value as Record<string, unknown>;
-  const rateDate = typeof data.date === "string" ? calendarDate(data.date) : null;
+  if (data.result !== "success") throw new Error("FX provider reported a failure");
+  const published = typeof data.time_last_update_unix === "number" ? data.time_last_update_unix : null;
+  const rateDate = published != null && Number.isFinite(published) && published > 0
+    ? calendarDate(new Date(published * 1000).toISOString().slice(0, 10))
+    : null;
   if (!rateDate || !data.rates || typeof data.rates !== "object" || Array.isArray(data.rates)) {
-    throw new Error("Invalid Frankfurter response");
+    throw new Error("Invalid FX response");
   }
   const rawRates = data.rates as Record<string, unknown>;
   const rates = FETCHED_FX_CURRENCIES.flatMap((currency) => {
@@ -83,6 +98,39 @@ export function parseFrankfurterRates(value: unknown): ProviderRateBatch {
     const rateTry = 1 / perTry;
     return Number.isFinite(rateTry) && rateTry > 0 && rateTry <= 1_000_000 ? [{ currency, rateTry }] : [];
   });
-  if (rates.length === 0) throw new Error("Frankfurter response has no supported rates");
+  if (rates.length === 0) throw new Error("FX response has no supported rates");
   return { rateDate, rates };
 }
+
+/**
+ * Flag and name per currency, so the list reads as places rather than as codes.
+ *
+ * The flag is an emoji built from the country's regional-indicator pair — no
+ * image, no request, no licence, and it inherits the row's text colour. XDR and
+ * other supranational codes would have no flag, which is one more reason the
+ * offered set stays curated.
+ */
+export const CURRENCY_INFO: Record<(typeof FETCHED_FX_CURRENCIES)[number] | "TRY", { flag: string; name: string }> = {
+  TRY: { flag: "🇹🇷", name: "Türk Lirası" },
+  USD: { flag: "🇺🇸", name: "Amerikan Doları" },
+  EUR: { flag: "🇪🇺", name: "Euro" },
+  GBP: { flag: "🇬🇧", name: "İngiliz Sterlini" },
+  CHF: { flag: "🇨🇭", name: "İsviçre Frangı" },
+  JPY: { flag: "🇯🇵", name: "Japon Yeni" },
+  AUD: { flag: "🇦🇺", name: "Avustralya Doları" },
+  CAD: { flag: "🇨🇦", name: "Kanada Doları" },
+  SEK: { flag: "🇸🇪", name: "İsveç Kronu" },
+  NOK: { flag: "🇳🇴", name: "Norveç Kronu" },
+  DKK: { flag: "🇩🇰", name: "Danimarka Kronu" },
+  CNY: { flag: "🇨🇳", name: "Çin Yuanı" },
+  KRW: { flag: "🇰🇷", name: "Güney Kore Wonu" },
+  RON: { flag: "🇷🇴", name: "Rumen Leyi" },
+  RUB: { flag: "🇷🇺", name: "Rus Rublesi" },
+  AED: { flag: "🇦🇪", name: "BAE Dirhemi" },
+  SAR: { flag: "🇸🇦", name: "Suudi Riyali" },
+  AZN: { flag: "🇦🇿", name: "Azerbaycan Manatı" },
+  KWD: { flag: "🇰🇼", name: "Kuveyt Dinarı" },
+  ALL: { flag: "🇦🇱", name: "Arnavut Leki" },
+  BGN: { flag: "🇧🇬", name: "Bulgar Levası" },
+  GEL: { flag: "🇬🇪", name: "Gürcistan Larisi" },
+};

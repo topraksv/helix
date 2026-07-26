@@ -33,7 +33,7 @@ içermez ve düzeltme hazır olmadan sömürü ayrıntısı yayımlanmaz.
 | Cihaz | OS dosya koruması, keychain/SecureStore | uygulama içi girdi, import dosyası, route param |
 | Client → Supabase | JWT'nin `auth.uid()` claim'i | client'ın gönderdiği `user_id`, gizlenmiş buton, route guard |
 | Supabase | RLS policy'leri, owner-aware FK/trigger | anon rolü, service-role dışı ayrıcalık varsayımı |
-| Dış feed (TCMB, Frankfurter, Harem, favicon) | hiçbiri | yanıt boyutu, şekli, tarihi, host'u |
+| Dış feed (TCMB, exchangerate-api, Harem, favicon) | hiçbiri | yanıt boyutu, şekli, tarihi, host'u |
 | Yayın hattı | protected `main`: required `quality` check (strict), imzalı commit, lineer geçmiş, `enforce_admins`, force-push/silme kapalı | doğrulanmamış artefact, elle Pages/OTA müdahalesi |
 
 Client tarafındaki hiçbir kontrol yetkilendirme sayılmaz. Yetki tek yerde,
@@ -129,10 +129,11 @@ içinde meta olarak taşınır ve `tests/release-config.test.ts` ile korunur:
 
 - `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`,
   `form-action 'self'`;
-- `connect-src` yalnız Supabase, Frankfurter ve Harem websocket'ine izin verir —
+- `connect-src` yalnız Supabase, exchangerate-api'nin open uç noktası ve Harem
+  websocket'ine izin verir —
   XSS exfiltration hedeflerini kısıtlayan asıl kontrol budur. TCMB listede
   yoktur çünkü `today.xml` CORS başlığı göndermez ve web zaten yalnız
-  Frankfurter'ı çağırır (`src/services/fx-fetch.ts`);
+  o uç noktayı çağırır (`src/services/fx-fetch.ts`);
 - `script-src` `'unsafe-inline'` içerir: export her build'de inline bootstrap
   script'i üretir, statik hash mümkün değildir. **Bilinen zayıflık.**
 - `img-src` `https://*.gstatic.com`'a izin vermek zorundadır; favicon servisi
@@ -310,7 +311,7 @@ feed'dir. Satırlar bu yüzeye göre değerlendirildi.
 | API7 SSRF | APPLICABLE | favicon host doğrulaması, sabit endpoint listesi | A10 ile aynı kanıt | — |
 | API8 Security Misconfiguration | APPLICABLE | `anon` grant'ı kaldırıldı, CSP, sabit `search_path` | pgTAP: anon `42501` (sessiz boş sonuç değil); `db lint --linked` Helix şemasında 0 | — |
 | API9 Improper Inventory Management | APPLICABLE | tek Supabase projesi; `preview`/`production` channel ayrımı `eas.json`'da | `tests/release-config.test.ts`; `preview` → branch `preview` koşulsuz mapping doğrulandı | Yayımlanmış production store build'i yok |
-| API10 Unsafe Consumption of APIs | APPLICABLE | TCMB/Frankfurter/Harem yanıt doğrulaması; abort signal + timeout + boyut sınırı | `tests/external-services.test.ts`: tarihsiz TCMB reddi, geçersiz Frankfurter reddi, quote şekil/tazelik kontratı (7 invariant mutasyon kanıtlı) | Harem feed'i resmî SLA'sız — 60 sn sonrası canlı sayılmıyor |
+| API10 Unsafe Consumption of APIs | APPLICABLE | TCMB/exchangerate-api/Harem yanıt doğrulaması; abort signal + timeout + boyut sınırı | `tests/external-services.test.ts`: tarihsiz TCMB reddi, sağlayıcının kendi `result: error` yanıtının ve tarihsiz payload'ın reddi, quote şekil/tazelik kontratı (7 invariant mutasyon kanıtlı) | Harem feed'i resmî SLA'sız — 60 sn sonrası canlı sayılmıyor |
 
 ### OWASP ASVS v5.0.0 — kategori düzeyi uzlaştırma
 

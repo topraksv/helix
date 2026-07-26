@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isMarketFeedSocket } from "../e2e/helpers";
-import { FETCHED_FX_CURRENCIES, parseFrankfurterRates, parseTcmbRates } from "../src/domain/fx-provider";
+import { FETCHED_FX_CURRENCIES, parseOpenExchangeRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
@@ -54,18 +54,18 @@ describe("external FX provider validation", () => {
   });
 
   /**
-   * The list is the measured intersection of what TCMB and Frankfurter both
-   * publish. TCMB carries more (AED, SAR, RUB, AZN, KWD…) and sends no CORS
-   * headers, so web can only ever read Frankfurter: a TCMB-only currency would
-   * work on a phone and stay permanently empty in a browser. Pinning the set
-   * keeps adding one a deliberate act with that trade-off in view.
+   * Pinned so widening the picker stays a deliberate act. Every code here is
+   * carried by BOTH providers, which is what keeps a phone and a browser
+   * showing the same set — TCMB sends no CORS headers, so web reads only the
+   * fallback.
    */
-  it("offers only the currencies both providers publish", () => {
+  it("offers a curated set both providers carry", () => {
     // The pure list is asserted here rather than `SUPPORTED_CURRENCIES`, which
     // lives in the service layer and pulls React Native into a node-env suite.
     // TRY leads that one by construction — it is `["TRY", ...this]`.
     expect([...FETCHED_FX_CURRENCIES].sort()).toEqual(
-      ["AUD", "CAD", "CHF", "CNY", "DKK", "EUR", "GBP", "JPY", "KRW", "NOK", "RON", "SEK", "USD"],
+      ["AED", "ALL", "AUD", "AZN", "BGN", "CAD", "CHF", "CNY", "DKK", "EUR", "GBP",
+       "GEL", "JPY", "KRW", "KWD", "NOK", "RON", "RUB", "SAR", "SEK", "USD"],
     );
     expect(FETCHED_FX_CURRENCIES).not.toContain("TRY");
   });
@@ -87,16 +87,22 @@ describe("external FX provider validation", () => {
     expect(() => parseTcmbRates(`<Tarih_Date Date="02/30/2026"></Tarih_Date>`)).toThrow();
   });
 
-  it("validates Frankfurter data and preserves its source date", () => {
-    expect(parseFrankfurterRates({ date: "2026-07-13", rates: { USD: 0.025, EUR: 0.02, BAD: 10 } })).toEqual({
-      rateDate: "2026-07-13",
+  it("validates the open FX feed and stores the date IT declares", () => {
+    // 2026-07-25T09:00:00Z — the moment the provider published, not the moment
+    // the app happened to read it.
+    const published = 1_784_970_000;
+    expect(parseOpenExchangeRates({ result: "success", time_last_update_unix: published, rates: { USD: 0.025, EUR: 0.02, BAD: 10 } })).toEqual({
+      rateDate: "2026-07-25",
       rates: [
         { currency: "USD", rateTry: 40 },
         { currency: "EUR", rateTry: 50 },
       ],
     });
-    expect(() => parseFrankfurterRates({ date: "2026-07-13", rates: { USD: 0 } })).toThrow();
-    expect(() => parseFrankfurterRates({ date: "invalid", rates: { USD: 0.025 } })).toThrow();
+    // A provider-reported failure, a missing timestamp and an unusable rate are
+    // all refusals rather than a stamped-today guess.
+    expect(() => parseOpenExchangeRates({ result: "error", time_last_update_unix: published, rates: { USD: 0.025 } })).toThrow();
+    expect(() => parseOpenExchangeRates({ result: "success", rates: { USD: 0.025 } })).toThrow();
+    expect(() => parseOpenExchangeRates({ result: "success", time_last_update_unix: published, rates: { USD: 0 } })).toThrow();
   });
 });
 

@@ -10,59 +10,54 @@ history log.
 `main` is the only branch. No tags, no long-lived branches: a PR carries a
 change because the branch is protected, and that branch is deleted on merge.
 
-P1 and P2 are merged, deployed and OTA-published. This change set is P4 plus the
-navigation rework and the follow-ups the owner reported against P2.
+P1, P2 and P4 are merged, deployed and OTA-published. This change set is P3 plus
+the follow-ups reported against the previous one.
 
 ## In this change set
 
-### Navigation: the anchor is gone
+### P3 — Privacy Peek
 
-A screen living in one tab but reachable from another was pushed with
-`{ withAnchor: true }`, which mounts that tab's index underneath it. Plain
-history then popped to a screen the user had never visited, so the back button
-was taught to navigate to a recorded origin instead — and the iOS edge swipe,
-which pops the stack without consulting any of that, kept landing on the anchor.
-An earlier attempt corrected the gesture afterwards with a `beforeRemove`
-listener; that is what made the swipe visibly go to the Financial Table and jump
-back a second later.
+Masking lives at the render edge: inside `Amount` and a `<Private>` wrapper, so
+a surface added later inherits it rather than having to remember. One glyph per
+digit keeps each amount's rough width, so revealing one does not reflow the row,
+and the accessibility label is masked with the value — a masked amount a screen
+reader still announces is not masked. Device-local `kv`, resolved before the
+first paint so nothing flashes, never written to the account. One tap on the
+dashboard, mirrored by a settings toggle; the existing `PrivacyCover` is
+untouched. Market quotes are deliberately NOT masked: the gold and FX prices are
+the world's numbers, not the user's.
 
-Those screens now have a root-level route — `analytics`, `payment-sources`,
-`incomes`, `budgets`, each re-exporting the in-tab component — and a cross-tab
-push goes there. What sits underneath IS the screen the user came from, so the
-button and the gesture agree by construction. **This removed machinery rather
-than adding it:** `withAnchor` at seven call sites, `resolveBackTarget`'s exact
-mode, `ANALYSIS_SOURCES`, `knownSource`, the `from`/`origin`/`record` param
-relays, four inline `headerLeft` overrides and the listener.
-`src/ui/navigation.ts` went from 80 lines to 30.
+Strict mode (names, notes, account labels) is still an open owner decision and
+is not built.
 
-One visible consequence: Analysis opened from Summary now covers the tab bar,
-the same shape as Upcoming, which the neighbouring card opens. Opened from the
-Financial Table it still sits inside that tab.
+### FX: a different fallback, a wider list
 
-### P4 — extended currencies
+The fallback moved from Frankfurter to exchangerate-api's open endpoint —
+keyless, ~0.2 s, 3 KB, and it states its own publication time, which is what
+gets stored. That removed the intersection constraint: the list went from 13 to
+21 and now includes ALL, RUB, AED, SAR, AZN, KWD, BGN and GEL, which TCMB
+carries but the old fallback did not, so web could never read them.
 
-Thirteen codes, the *measured* intersection of TCMB and Frankfurter rather than
-an assumed list. TCMB-only currencies are excluded on purpose: it sends no CORS
-headers, so they would work on a phone and stay permanently empty on web.
-`CurrencyPicker` is TRY/USD/EUR plus one "Diğer" chip that opens the list
-directly, built on `Select`'s modal through a new `trigger` prop. The market
-layer is untouched — `marketSellRateTry` still knows only USD and EUR, and a
-test now pins that so a wider currency list cannot widen what counts as live.
+**Harem keeps gold AND live USD/EUR.** Measured before deciding: no keyless
+*live* FX feed exists — every free option is a daily reference rate. Moving the
+market card onto one would make "Canlı Piyasalar" show yesterday's number, so
+the request to take FX off Harem was argued against rather than implemented.
 
-### The owner's follow-ups
+### Reported follow-ups
 
-- Sign-out was slow because it ran a full `syncNow` before wiping — push **and
-  pull**, fetching remote pages into a database about to be dropped. Only the
-  push decides whether anything would be lost, so it now calls `flushOutbox`.
-  The safety is unchanged: a row the server never received still blocks the
-  sign-out and still asks.
-- Both waits say what they are: "Verilerin kaydediliyor…" under the sign-out
-  row, "Verilerin güncelleniyor…" during the first pull after sign-in.
-- Dragging across the tab bar switches tabs (`PanResponder`, 8 px threshold so a
-  tap still reaches the button underneath).
-- Web chrome is no longer text-selectable; inputs keep their caret.
-- The reminder-days save button matches its field: `sm` is 36 px against the
-  field's 48, which is why bottom-aligning them showed a step.
+- **Web chrome really is unselectable now.** `#root` alone did nothing:
+  react-native-web puts its own `user-select:text` class on every Text, and a
+  class beats inheritance. `#root *` outranks it, `#root input` outranks that.
+  Measured, not assumed.
+- **The waiting state no longer jumps.** The dots hold a reserved slot from the
+  first frame and the caption fades in, and the three cases say different
+  things: an existing account's first pull, a brand-new account, and sign-out.
+- **The budget screen stopped claiming unsaved changes it did not have.** It
+  tested "is the field non-empty" while opening an existing budget prefills it —
+  it now compares against the value it loaded, which is what `AGENTS.md` already
+  required.
+- The currency picker gained a real title, a flag and Turkish name per row, and
+  rows separated by a rule with an alternating tint, like the financial table.
 
 ## Not yet proven
 
@@ -89,9 +84,9 @@ test now pins that so a wider currency list cannot widen what counts as live.
 
 ## Next package
 
-`PHASE2.md` order puts **P3 (Privacy Peek)** next. It is web-provable and every
-package after it inherits masked surfaces.
+`PHASE2.md` order puts **P5 (Scenario Lab)** next: it depends on P1 and P3, both
+of which are now in, and it is web-provable.
 
 ## Next exact step
 
-`NEXT EXACT STEP = owner checks this delivery on a device; then either the visual-gate defect or P3, whichever they choose.`
+`NEXT EXACT STEP = owner checks this delivery on a device; then either the visual-gate defect or P5, whichever they choose.`

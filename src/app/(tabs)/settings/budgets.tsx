@@ -36,6 +36,13 @@ export default function BudgetsScreen() {
   const [month, setMonth] = useState(monthKeyOf(todayISO()));
   const [categoryChoice, setCategoryChoice] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
+  /**
+   * What the editor was OPENED with. Dirtiness is this compared against the
+   * field, not "is the field non-empty" — tapping an existing budget prefills
+   * it, so the emptiness test called every untouched visit unsaved and asked
+   * the user to discard changes they had not made.
+   */
+  const [loadedAmountRaw, setLoadedAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const expenseCategories = categories.filter((category) => category.kind === "expense");
@@ -45,7 +52,7 @@ export default function BudgetsScreen() {
   const progress = budgetProgress(monthBudgets, toTxLike(transactions, persons, categories), month, todayISO());
   const progressById = new Map(progress.map((row) => [row.id, row]));
   const categoryById = new Map(categories.map((category) => [category.id, category]));
-  useDirtyExitGuard(Boolean(amountRaw.trim()) && !busy);
+  useDirtyExitGuard(amountRaw !== loadedAmountRaw && !busy);
   const liveStates = [categoriesState, budgetsState, transactionsState, personsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -59,6 +66,7 @@ export default function BudgetsScreen() {
   const reset = () => {
     setCategoryChoice(null);
     setAmountRaw("");
+    setLoadedAmountRaw("");
     setAmountMinor(null);
   };
   const changeMonth = (next: string) => {
@@ -66,8 +74,10 @@ export default function BudgetsScreen() {
     setMonth(next);
   };
   const startEdit = (budget: (typeof budgets)[number]) => {
+    const loaded = (budget.amountMinor / 100).toFixed(2).replace(".", ",");
     setCategoryChoice(budget.categoryId);
-    setAmountRaw((budget.amountMinor / 100).toFixed(2).replace(".", ","));
+    setAmountRaw(loaded);
+    setLoadedAmountRaw(loaded);
     setAmountMinor(budget.amountMinor);
   };
   const save = async () => {
@@ -119,7 +129,9 @@ export default function BudgetsScreen() {
           onChange={(value) => {
             setCategoryChoice(value);
             const existing = monthBudgets.find((budget) => budget.categoryId === value);
-            setAmountRaw(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");
+            const loaded = existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "";
+            setAmountRaw(loaded);
+            setLoadedAmountRaw(loaded);
             setAmountMinor(existing?.amountMinor ?? null);
           }}
         />

@@ -29,7 +29,7 @@ export default function Root({ children }: PropsWithChildren) {
             // every logo silently falls back to the local chip.
             "img-src 'self' data: blob: https://www.google.com https://*.gstatic.com",
             "font-src 'self' data:",
-            "connect-src 'self' https://*.supabase.co https://api.frankfurter.dev wss://hrmsocketonly.haremaltin.com",
+            "connect-src 'self' https://*.supabase.co https://open.er-api.com wss://hrmsocketonly.haremaltin.com",
             "worker-src 'self' blob:",
             "object-src 'none'",
             "base-uri 'self'",
@@ -64,8 +64,13 @@ export default function Root({ children }: PropsWithChildren) {
               // copy menu over the thing being dragged. Fields keep their caret;
               // if a value ever needs to be copyable, it opts back in there and
               // not by loosening this.
-              "#root{-webkit-user-select:none;user-select:none;}" +
-              "input,textarea{-webkit-user-select:text;user-select:text;}",
+              // Descendants, not just the container: react-native-web puts its
+              // own `user-select:text` class on every Text it renders, and a
+              // class beats inheritance — so `#root` alone changed nothing that
+              // was actually selectable. `#root *` outranks that class, and
+              // `#root input` outranks `#root *` so fields keep their caret.
+              "#root,#root *{-webkit-user-select:none;user-select:none;}" +
+              "#root input,#root textarea{-webkit-user-select:text;user-select:text;}",
           }}
         />
         {/* Register the offline service worker only under the deployed /helix/

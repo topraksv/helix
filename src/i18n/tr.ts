@@ -9,7 +9,7 @@ export const tr = {
   tabs: { dashboard: "Durum", cashflow: "Mali Tablo", subscriptions: "Abonelikler", calculator: "Araçlar", settings: "Ayarlar" },
   tabBar: { dashboard: "Durum", cashflow: "Tablo", subscriptions: "Abonelikler", calculator: "Araçlar", settings: "Ayarlar" },
   common: {
-    otherCurrencies: "Para birimi seç",
+    otherCurrencies: "Hangi para birimi?",
     save: "Kaydet", cancel: "Vazgeç", delete: "Sil", edit: "Düzenle", add: "Ekle",
     undo: "Geri Al", deleted: "Silindi", search: "Ara", close: "Kapat", done: "Tamam",
     total: "Toplam", note: "Not", notes: "Notlar", none: "Kategorisiz", retry: "Tekrar dene",
@@ -37,7 +37,7 @@ export const tr = {
     // The tab is now called "Araçlar"; the popup inside an amount field is
     // still just the calculator and must say so.
     calculatorTitle: "Hesap Makinesi",
-    selectOption: "Bir seçenek belirle",
+    selectOption: "Seç",
     fieldError: (message: string) => `Alan hatası: ${message}`,
     tourStep: (step: number, total: number, title: string) => `${total} adımdan ${step}. ${title}`,
     calculatorKey: (key: string) => ({
@@ -70,6 +70,12 @@ export const tr = {
     discardAction: "Değişiklikleri sil",
   },
   privacy: {
+    hiddenValue: "Gizli",
+    show: "Tutarları göster",
+    hide: "Tutarları gizle",
+    settingsTitle: "Tutarları Gizle",
+    settingsDesc: "Ekrandaki tutarları noktalarla değiştirir. Yalnız bu cihazda geçerlidir; verilerin ve yedeklerin değişmez.",
+
     coverTitle: "Finansal bilgilerin gizlendi",
     coverBody: "Helix yeniden etkin olduğunda kaldığın yerden devam edebilirsin.",
     framedBody: "Güvenliğin için Helix başka bir sitenin içinde gösterilmez. Uygulamayı doğrudan açabilirsin.",
@@ -153,7 +159,8 @@ export const tr = {
     signOutPendingWarn: (n: number) =>
       `${n} kayıt henüz buluta eşitlenmedi. Şimdi çıkarsan bu kayıtlar kalıcı olarak silinir. Yine de çıkmak istiyor musun?`,
     signOutAnyway: "Yine de Çık",
-    restoringData: "Verilerin güncelleniyor…",
+    restoringData: "Kayıtların bu cihaza indiriliyor",
+    restoringDataFresh: "Hesabın hazırlanıyor",
     signOutPendingBlocked: "Bazı değişikliklerin henüz eşitlenmedi. Verilerin cihazında korunuyor.",
     signOutLocalTitle: "Tüm veriler silinecek",
     signOutLocalWarn:
@@ -771,7 +778,7 @@ export const tr = {
     error: "Cihazındaki finans verileri şu an okunamadı. Boş sonuç göstermek yerine verileri koruduk.",
   },
   operation: {
-    signingOut: "Verilerin kaydediliyor, sonra bu cihazdan siliniyor",
+    signingOut: "Değişikliklerin gönderiliyor, sonra bu cihazdaki kopya siliniyor",
     progress: (completed: number, total: number) => `${completed}/${total} tamamlandı`,
     dataSafe: "Verilerin güvende; tamamlanmamış değişiklikler kaydedilmedi.",
     importing: "Kayıtlar içe aktarılıyor",

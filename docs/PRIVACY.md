@@ -68,7 +68,7 @@ Policy, trigger ve grant ayrıntısı: [SECURITY.md](SECURITY.md).
 | Expo EAS Update | Kurulu uygulamaya JS/asset update | Runtime/channel ve update istemi; ağ sağlayıcısı normal bağlantı metadata’sını görebilir | Finansal payload update isteğine eklenmez |
 | GitHub Pages | Web uygulamasını sunmak | Normal HTTP metadata | Finansal veri app tarafında browser storage/Supabase akışındadır |
 | TCMB | Resmî TRY kuru — **yalnız native**; `today.xml` CORS başlığı göndermediği için web bu kaynağı hiç çağırmaz | Salt okunur GET | Timeout, boyut/şekil/tarih doğrulaması |
-| Frankfurter | Web’de tek kur kaynağı; native’de TCMB alınamazsa fallback | İstenen para birimi sembolleri | Salt okunur; kaynak tarihi zorunlu |
+| exchangerate-api (open uç nokta) | Web’de tek kur kaynağı; native’de TCMB alınamazsa fallback | Salt okunur GET; hiçbir kullanıcı verisi gönderilmez | Anahtarsız; yanıtın kendi yayın zamanı saklanır, “bugün” uydurulmaz |
 | Harem Altın websocket | Canlı altın/döviz piyasa kartı | Salt okunur socket bağlantısı | Resmî SLA yok; 60 sn feed sessizliğinde veri canlı sayılmaz. Son geçerli fiyatlar zaman damgasıyla cihazda saklanır (kişisel veri içermez); hesap makinesi çevirisi bu son kuru ancak zaman damgasını açıkça göstererek kullanır, deftere yazan dönüşümler yalnız 60 sn içinde teyitli canlı kuru kabul eder |
 | Google favicon | Bilinen abonelik logosu | Sıkı doğrulanmış/encode edilmiş public domain | İstek `google.com/s2`'ye gider ve Google `*.gstatic.com`'a yönlendirir; utility, unknown, IP/local/invalid host gönderilmez; disk cache + local fallback var |
 
