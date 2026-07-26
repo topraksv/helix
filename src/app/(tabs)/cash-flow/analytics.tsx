@@ -484,6 +484,7 @@ export default function AnalysisScreen() {
         ListHeaderComponent={searchHeader}
         ListFooterComponent={analysisFooter}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       />
     </Screen>

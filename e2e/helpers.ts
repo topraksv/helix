@@ -82,12 +82,25 @@ export async function openCashFlow(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
 }
 
+/**
+ * Choose a value from one of the form dropdowns (category, payment source).
+ *
+ * These used to be chip rows, so a test could click the option directly. They
+ * are `Select` now: the field is a button carrying the label, and the options
+ * are radios inside its modal. Routed through one helper so a later change to
+ * the control is one edit here rather than six across the suite.
+ */
+export async function pickOption(page: Page, field: string, option: string | RegExp): Promise<void> {
+  await page.getByRole("button", { name: field, exact: true }).click();
+  await page.getByRole("radio", { name: option }).click();
+}
+
 export async function addMarketExpense(page: Page, note: string, amount = "1.234,56"): Promise<void> {
   await openCashFlow(page);
   await page.getByRole("button", { name: "İşlem Ekle" }).click();
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill(amount);
-  await page.getByRole("radio", { name: /Market/ }).click();
+  await pickOption(page, "Kategori", /Market/);
   await page.getByRole("textbox", { name: "Not" }).fill(note);
   const save = page.getByRole("button", { name: "Kaydet", exact: true });
   await expect(save).toBeEnabled();

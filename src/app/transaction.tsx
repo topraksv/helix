@@ -9,7 +9,7 @@ import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, up
 import { useAllTransactionsState, useCategoriesState, usePersonsState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon } from "../data/category-icons";
+import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
@@ -19,7 +19,7 @@ import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, ChipPicker, DataStateNotice, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Toggle } from "../ui/components";
+import { Badge, Body, Button, ChipPicker, DataStateNotice, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -173,8 +173,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const kindForCategories = entryType === "income" ? "income" : "expense";
   const categoryOptions = categories
     .filter((c) => c.kind === kindForCategories)
-    .map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }));
+    .map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }));
 
+  const sourceOptions = sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }));
   const selectedSource = sources.find((source) => source.id === sourceId);
   const isCreditCardExpense = entryType === "expense" && selectedSource?.type === "credit_card";
   const cardCycle = selectedSource
@@ -384,27 +385,40 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         </View>
       )}
       {currency !== "TRY" ? (
-        <View style={{ marginBottom: spacing.md }}>
+        <View style={{ marginBottom: spacing.md, alignItems: "flex-start" }}>
           {tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinor(tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
           {!historicalRateTry && rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
         </View>
       ) : null}
 
-      <Label>{tr.tx.category}</Label>
+      {/* Category and payment source are open-ended lists — a household can
+          carry forty categories — so they read as one dropdown row rather than
+          a chip block that dwarfs the rest of the form. Person stays chips: it
+          is bounded by the household and usually two. */}
       {categoryOptions.length > 0 ? (
-        <ChipPicker options={categoryOptions} value={categoryId} onChange={setCategoryId} />
+        <Select
+          label={tr.tx.category}
+          placeholder={tr.tx.categoryPlaceholder}
+          options={categoryOptions}
+          value={categoryId}
+          onChange={setCategoryId}
+        />
       ) : (
         <View style={{ marginBottom: spacing.md }}>
+          <Label>{tr.tx.category}</Label>
           <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.categoryRequiredEmpty}</Body>
           <Button size="sm" variant="secondary" label={tr.settings.categories} onPress={() => router.push("/columns-editor")} />
         </View>
       )}
 
       {sources.length > 0 && entryType !== "income" ? (
-        <>
-          <Label>{tr.tx.source}</Label>
-          <ChipPicker options={sources.map((s) => ({ value: s.id, label: s.name }))} value={sourceId} onChange={setSourceId} />
-        </>
+        <Select
+          label={tr.tx.source}
+          placeholder={tr.tx.sourcePlaceholder}
+          options={sourceOptions}
+          value={sourceId}
+          onChange={setSourceId}
+        />
       ) : null}
 
       {persons.length > 1 ? (
@@ -414,16 +428,22 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         </>
       ) : null}
 
-      <Label>{isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.whenLabel}</Label>
+      {/* This label heads the month/day switch. A credit-card expense has no
+          switch — its date is always the purchase day — and the `DateField`
+          below already carries that name, so heading nothing here printed
+          "Harcama Günü" twice, once above the other. */}
       {!isCreditCardExpense ? (
-        <Segmented
-          options={[
-            { value: "month", label: tr.tx.monthOnly },
-            { value: "day", label: tr.tx.specificDay },
-          ]}
-          value={dateMode}
-          onChange={setDateMode}
-        />
+        <>
+          <Label>{tr.tx.whenLabel}</Label>
+          <Segmented
+            options={[
+              { value: "month", label: tr.tx.monthOnly },
+              { value: "day", label: tr.tx.specificDay },
+            ]}
+            value={dateMode}
+            onChange={setDateMode}
+          />
+        </>
       ) : null}
       {dateless ? (
         <>

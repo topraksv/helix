@@ -13,7 +13,7 @@
  * stay in the vitest file, where they belong.
  */
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { assertNoRuntimeErrors, collectRuntimeErrors, isolateExternalData, onboard } from "./helpers";
+import { assertNoRuntimeErrors, collectRuntimeErrors, isolateExternalData, onboard, pickOption } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -186,7 +186,7 @@ test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }, 
   await page.goto("/helix/transaction");
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("125,00");
-  await page.getByRole("radio", { name: /Market/ }).click();
+  await pickOption(page, "Kategori", /Market/);
 
   await page.getByRole("button", { name: "Geri", exact: true }).click();
   const dialogTitle = page.getByRole("heading", { name: "Kaydedilmemiş değişiklikler var" });
@@ -221,7 +221,7 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   const amount = page.getByRole("textbox", { name: "Tutar · TRY" });
   await amount.fill("250,00");
-  await page.getByRole("radio", { name: /Market/ }).click();
+  await pickOption(page, "Kategori", /Market/);
 
   // 1 · The secondary action. Enter used to run the primary Save from here, so
   // the entry was written AND the screen closed — the opposite of what the
@@ -256,7 +256,7 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   // 4 · The documented shortcut still works from a single-line field.
   await page.getByRole("radio", { name: "Gider", exact: true }).click();
-  await page.getByRole("radio", { name: /Market/ }).click();
+  await pickOption(page, "Kategori", /Market/);
   await amount.fill("99,00");
   await amount.focus();
   await page.keyboard.press("Enter");

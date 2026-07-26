@@ -7,13 +7,13 @@ import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequire
 import { useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon } from "../data/category-icons";
+import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react-native";
-import { Body, Button, ChipPicker, DataStateNotice, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Spread } from "../ui/components";
+import { Body, Button, ChipPicker, DataStateNotice, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -241,8 +241,13 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
 
       {sources.length > 0 ? (
         <>
-          <Label>{tr.tx.source}</Label>
-          <ChipPicker options={sourceOptions.map((s) => ({ value: s.id, label: s.name }))} value={sourceId} onChange={setSourceId} />
+          <Select
+            label={tr.tx.source}
+            placeholder={tr.tx.sourcePlaceholder}
+            options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
+            value={sourceId}
+            onChange={setSourceId}
+          />
           {kind === "card_installment" && !cardSourceValid ? (
             <>
               <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
@@ -257,9 +262,10 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
           <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         </>
       ) : null}
-      <Label>{tr.tx.category}</Label>
-      <ChipPicker
-        options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }))}
+      <Select
+        label={tr.tx.category}
+        placeholder={tr.tx.categoryPlaceholder}
+        options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))}
         value={categoryId}
         onChange={setCategoryId}
       />

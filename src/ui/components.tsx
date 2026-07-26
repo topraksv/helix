@@ -209,18 +209,24 @@ export function Screen({
   ];
 
   if (!scroll) {
-    // Non-scroll screens host their own virtualized list; they still need the
-    // keyboard inset when that list's header contains inputs.
+    // No KeyboardAvoidingView here, deliberately. `behavior="padding"` pads the
+    // avoider by the keyboard's height measured in WINDOW coordinates, but a
+    // stack screen's frame starts below the native header — so it over-padded
+    // by the header height and the `flex: 1` child collapsed to nothing. The
+    // cell editor showed a blank screen with the keyboard up: the field the
+    // user had just tapped was gone.
+    //
+    // A non-scroll screen hosts its own virtualized list, and that list is what
+    // should move: it sets `automaticallyAdjustKeyboardInsets` and iOS insets
+    // its content by the real overlap. One mechanism, owned by the thing that
+    // can actually scroll.
     return (
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: palette.background }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <View style={{ flex: 1, backgroundColor: palette.background }}>
         <FadeIn style={[{ flex: 1 }, inner]}>
           {header}
           {children}
         </FadeIn>
-      </KeyboardAvoidingView>
+      </View>
     );
   }
   return (
@@ -817,6 +823,9 @@ function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: num
   return <CalculatorModal {...props} />;
 }
 
+/** Width of a select row's icon column, so every label starts at one x. */
+const SELECT_ICON_W = 22;
+
 /** Dropdown select: field-styled trigger opening a modal option list. */
 export function Select<T extends string>({
   label,
@@ -828,7 +837,13 @@ export function Select<T extends string>({
   trigger,
 }: {
   label?: string;
-  options: { value: T; label: string }[];
+  /**
+   * `icon` is separate from `label` on purpose. Packing an emoji into the
+   * label string left every name starting at a different x — emoji advance
+   * widths differ — so a list of categories read as a ragged left edge. Its
+   * own fixed column makes the names line up.
+   */
+  options: { value: T; label: string; icon?: string }[];
   value: T | null;
   onChange: (v: T) => void;
   placeholder?: string;
@@ -856,7 +871,11 @@ export function Select<T extends string>({
               <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
                 <FadeIn
                   style={[
-                    { backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: spacing.sm, maxHeight: 420 },
+                    // No vertical padding: the rows are tinted bands and they
+                    // have to reach the card's edges, or the last one sits on a
+                    // strip of bare surface. `overflow: hidden` is what lets a
+                    // full-bleed band keep the card's rounded corners.
+                    { backgroundColor: palette.surface, borderRadius: radius.lg, maxHeight: 420, overflow: "hidden" },
                     scheme === "light" && cardShadow,
                   ]}
                 >
@@ -899,14 +918,23 @@ export function Select<T extends string>({
                             },
                           ]}
                         >
-                          <Text
-                            style={[
-                              type.body,
-                              { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? font.semibold : font.regular },
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
+                          <Row gap={spacing.sm}>
+                            {option.icon ? (
+                              <Text style={[type.body, { width: SELECT_ICON_W, textAlign: "center" }]}>{option.icon}</Text>
+                            ) : null}
+                            <Text
+                              style={[
+                                type.body,
+                                {
+                                  flex: 1,
+                                  color: selected ? palette.primaryText : palette.text,
+                                  fontFamily: selected ? font.semibold : font.regular,
+                                },
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </Row>
                         </Pressable>
                       );
                     })}
@@ -1119,7 +1147,13 @@ export function Badge({
         borderRadius: radius.full,
         paddingHorizontal: spacing.sm + 2,
         paddingVertical: 3,
-        alignSelf: "flex-start",
+        // `center`, not `flex-start`: this only has to stop the badge
+        // stretching to the container's width. `flex-start` also overrode the
+        // row's `alignItems: center`, so a badge beside a two-line label hung
+        // from the top of the row — visible on any investment category whose
+        // name wraps. A caller that wants it packed left in a COLUMN says so on
+        // its own container, the way `currency-converter.tsx` already does.
+        alignSelf: "center",
         flexDirection: "row",
         alignItems: "center",
         gap: spacing.xs,
