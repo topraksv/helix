@@ -276,3 +276,9 @@ Incidents that produced a rule. Kept so the rule is not "simplified" away.
   pickers and toggles for constrained values.
 - **A second state or data-fetching library** — zustand is the incumbent. A
   measured defect has to justify adding one.
+- **A logo as the loading indicator** — built and removed one commit later. At
+  the size a loading state can afford, a detailed mark is a smudge; swapping a
+  spinner for a mark part-way through a wait changes shape while the user is
+  watching it. Three dots cover the whole wait instead
+  (`src/ui/loading-indicator.tsx`). Reopening this needs new evidence, not a
+  preference.
