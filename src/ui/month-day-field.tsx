@@ -28,7 +28,7 @@ export function MonthDayField({
   return (
     <>
       <Label>{label}</Label>
-      <ChipPicker options={options} value={selected} onChange={onChange} />
+      <ChipPicker compact options={options} value={selected} onChange={onChange} />
       <Field
         accessibilityLabel={label}
         value={value === String(MONTH_END_DAY) ? "" : value}

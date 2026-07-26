@@ -1,8 +1,14 @@
 /**
  * Shared list row for recurring rules (subscriptions, income rules): the price
- * sits top-right with the edit/delete actions in the same right column below
- * it, and dates/status render as compact wrapping badges (the same language as
- * the payment-method cycle chips) so long values never break the hierarchy.
+ * sits in the right column with the edit/delete actions below it, and
+ * dates/status render as compact wrapping badges (the same language as the
+ * payment-method cycle chips) so long values never break the hierarchy.
+ *
+ * The three columns centre against the row rather than hanging from its top.
+ * The badges wrap, so the label column's height depends on how many a rule
+ * happens to carry — a subscription in trial with auto-pay is three lines
+ * where a plain one is one — and top alignment left the logo and the price
+ * stranded against the first line of a much taller row.
  */
 
 import React, { type ReactNode } from "react";
@@ -75,7 +81,7 @@ export function RuleRow({
   );
 
   return (
-    <View style={{ flexDirection: "row", gap: spacing.md, paddingVertical: spacing.sm, alignItems: "flex-start" }}>
+    <View style={{ flexDirection: "row", gap: spacing.md, paddingVertical: spacing.sm, alignItems: "center" }}>
       {leading}
       {onPress ? (
         <Pressable

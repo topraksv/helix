@@ -7,7 +7,7 @@ import { FlatList, Pressable, Text, useWindowDimensions, View } from "react-nati
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, Inbox, Target } from "lucide-react-native";
 import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
-import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf } from "../../../domain/dates";
+import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { filterTransactions } from "../../../domain/transaction-search";
@@ -24,13 +24,13 @@ import {
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { categoryIcon } from "../../../data/category-icons";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, Label, ListRow, MonthStepper, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { radius, spacing, type, useTheme } from "../../../ui/theme";
 
-type Period = "3m" | "6m" | "12m" | "year";
+type Period = "1m" | "3m" | "6m" | "12m" | "year" | "custom";
 
 export default function AnalysisScreen() {
   const today = todayISO();
@@ -38,6 +38,10 @@ export default function AnalysisScreen() {
   const currentMonth = monthKeyOf(today);
   const [period, setPeriod] = useState<Period>("year");
   const [year, setYear] = useState(currentYear);
+  // A custom window is two months the user names outright. Seeded to the last
+  // six so switching to it shows a real range instead of an empty one.
+  const [customStart, setCustomStart] = useState<MonthKey>(addMonthsToKey(currentMonth, -5));
+  const [customEnd, setCustomEnd] = useState<MonthKey>(currentMonth);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [chartType, setChartType] = useState<"pie" | "bars">("pie");
@@ -83,7 +87,11 @@ export default function AnalysisScreen() {
   const [startMonth, endMonth] =
     period === "year"
       ? [makeMonthKey(year, 1), year === currentYear ? currentMonth : makeMonthKey(year, 12)]
-      : [addMonthsToKey(currentMonth, -(Number(period.replace("m", "")) - 1)), currentMonth];
+      : period === "custom"
+        // Ordered here rather than guarded at each stepper: whichever end the
+        // user moves past the other, the window stays a window.
+        ? [customStart <= customEnd ? customStart : customEnd, customStart <= customEnd ? customEnd : customStart]
+        : [addMonthsToKey(currentMonth, -(Number(period.replace("m", "")) - 1)), currentMonth];
   const monthKeys = monthRange(startMonth, endMonth);
   const searchPeriodLabel = `${monthLabel(startMonth)} – ${monthLabel(endMonth)}`;
 
@@ -177,29 +185,37 @@ export default function AnalysisScreen() {
   const searchHeader = (
     <View>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      {/* Period slicer + (year mode) year switcher — one aligned axis */}
-      <Spread style={{ marginBottom: spacing.md, gap: spacing.md }}>
-        <View style={{ flex: 1, maxWidth: 380 }}>
-          <Segmented
-            noMargin
-            options={[
-              { value: "3m", label: tr.analysis.period3m },
-              { value: "6m", label: tr.analysis.period6m },
-              { value: "12m", label: tr.analysis.period12m },
-              { value: "year", label: tr.analysis.periodYear },
-            ]}
-            value={period}
-            onChange={setPeriod}
-          />
-        </View>
-        {period === "year" ? (
-          <Row gap={spacing.sm}>
-            <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={year <= minYear} />
-            <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
-            <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= currentYear} />
-          </Row>
-        ) : null}
-      </Spread>
+      {/* The slicer owns its own row. It used to share one with the year
+          switcher, which was affordable at four segments and is not at six —
+          the switcher took a third of the width and left "12 Ay" wrapping.
+          Whatever the chosen period needs sits under it instead. */}
+      <Segmented
+        options={[
+          { value: "1m", label: tr.analysis.period1m },
+          { value: "3m", label: tr.analysis.period3m },
+          { value: "6m", label: tr.analysis.period6m },
+          { value: "12m", label: tr.analysis.period12m },
+          { value: "year", label: tr.analysis.periodYear },
+          { value: "custom", label: tr.analysis.periodCustom },
+        ]}
+        value={period}
+        onChange={setPeriod}
+      />
+      {period === "year" ? (
+        <Spread style={{ marginBottom: spacing.md }}>
+          <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={year <= minYear} />
+          <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
+          <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= currentYear} />
+        </Spread>
+      ) : null}
+      {period === "custom" ? (
+        <>
+          <Label>{tr.analysis.customStart}</Label>
+          <MonthStepper value={customStart} onChange={setCustomStart} max={currentMonth} />
+          <Label>{tr.analysis.customEnd}</Label>
+          <MonthStepper value={customEnd} onChange={setCustomEnd} max={currentMonth} />
+        </>
+      ) : null}
 
       <Select
         label={tr.tx.category}
@@ -223,6 +239,11 @@ export default function AnalysisScreen() {
         value={transactionType ?? "all"}
         onChange={(value) => setTransactionType(value === "all" ? null : value)}
       />
+      {/* Both fields keep one line: the selected range used to be spelled out
+          inside this control's own trigger, which wrapped to three lines in a
+          half-width column and left it taller than the field beside it. The
+          range is the same for the whole search, so it belongs in the hint
+          below rather than inside a collapsed dropdown. */}
       <Row style={{ alignItems: "flex-start" }}>
         <View style={{ flex: 1 }}>
           <Select
@@ -244,7 +265,7 @@ export default function AnalysisScreen() {
                 value: "period",
                 label: sourceFilter == null
                   ? tr.analysis.searchPeriodDisabled
-                  : tr.analysis.selectedPeriod(searchPeriodLabel),
+                  : tr.analysis.selectedPeriod,
               },
               { value: "all", label: tr.analysis.allTime },
             ]}
@@ -254,9 +275,11 @@ export default function AnalysisScreen() {
           />
         </View>
       </Row>
-      {sourceFilter == null ? (
+      {sourceFilter == null || searchScope === "period" ? (
         <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
-          {tr.analysis.searchPeriodRequiresSource}
+          {sourceFilter == null
+            ? tr.analysis.searchPeriodRequiresSource
+            : tr.analysis.selectedPeriodRange(searchPeriodLabel)}
         </Body>
       ) : null}
       {searchActive && searchResults.length === 0 ? (
@@ -312,7 +335,7 @@ export default function AnalysisScreen() {
               {t.note ? ` · ${t.note}` : ""}
             </Body>
             {t.amountTryMinor < 0 ? (
-              <View style={{ marginTop: spacing.xs }}>
+              <View style={{ marginTop: spacing.xs, alignItems: "flex-start" }}>
                 <Badge text={tr.tx.reversalLabel(t.type)} tone={t.type === "income" ? "negative" : "positive"} />
               </View>
             ) : null}
@@ -332,8 +355,8 @@ export default function AnalysisScreen() {
 
   const analysisFooter = (
     <View>
-      <Card>
-        {activeBudgetRows.length === 0 ? (
+      {activeBudgetRows.length === 0 ? (
+        <Card>
           <ListRow
             icon={Target}
             title={tr.budgets.emptyAnalysisTitle}
@@ -341,29 +364,38 @@ export default function AnalysisScreen() {
             chevron
             onPress={openBudgets}
           />
-        ) : (
-          <>
+        </Card>
+      ) : (
+        /* `CardList` rather than bare rows in a `Card`: these are a list, and
+           every other list in the app carries the rule between its rows. The
+           heading is the list's own header, so its spacing comes from the same
+           place as the rows' instead of a margin picked here. */
+        <CardList
+          items={activeBudgetRows}
+          keyExtractor={(budget) => budget.id}
+          header={
             <Spread style={{ marginBottom: spacing.sm }}>
-              <Heading style={{ marginTop: 0, marginBottom: 0 }}>{tr.budgets.analysisTitle(monthName(endMonth))}</Heading>
+              <Heading style={{ marginTop: 0, marginBottom: 0, flexShrink: 1 }}>
+                {tr.budgets.analysisTitle(monthName(endMonth))}
+              </Heading>
               <Button label={tr.common.edit} size="sm" variant="ghost" onPress={openBudgets} />
             </Spread>
-            {activeBudgetRows.map((budget) => (
-              <ListRow
-                key={budget.id}
-                title={categoryById.get(budget.categoryId)?.name ?? tr.common.none}
-                subtitle={tr.budgets.progress(formatMinorCompact(budget.spentMinor), formatMinorCompact(budget.amountMinor))}
-                right={
-                  <Badge
-                    text={budget.remainingMinor < 0 ? tr.budgets.over(formatMinorCompact(-budget.remainingMinor)) : tr.budgets.remaining(formatMinorCompact(budget.remainingMinor))}
-                    tone={budget.remainingMinor < 0 ? "negative" : budget.ratio >= 0.8 ? "warning" : "positive"}
-                  />
-                }
-                stackRightOnNarrow
-              />
-            ))}
-          </>
-        )}
-      </Card>
+          }
+          renderItem={(budget) => (
+            <ListRow
+              title={categoryById.get(budget.categoryId)?.name ?? tr.common.none}
+              subtitle={tr.budgets.progress(formatMinorCompact(budget.spentMinor), formatMinorCompact(budget.amountMinor))}
+              right={
+                <Badge
+                  text={budget.remainingMinor < 0 ? tr.budgets.over(formatMinorCompact(-budget.remainingMinor)) : tr.budgets.remaining(formatMinorCompact(budget.remainingMinor))}
+                  tone={budget.remainingMinor < 0 ? "negative" : budget.ratio >= 0.8 ? "warning" : "positive"}
+                />
+              }
+              stackRightOnNarrow
+            />
+          )}
+        />
+      )}
 
       {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
         <Card>
