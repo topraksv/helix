@@ -70,12 +70,6 @@ export const tr = {
     discardAction: "Değişiklikleri sil",
   },
   privacy: {
-    hiddenValue: "Gizli",
-    show: "Tutarları göster",
-    hide: "Tutarları gizle",
-    settingsTitle: "Tutarları Gizle",
-    settingsDesc: "Ekrandaki tutarları noktalarla değiştirir. Yalnız bu cihazda geçerlidir; verilerin ve yedeklerin değişmez.",
-
     coverTitle: "Finansal bilgilerin gizlendi",
     coverBody: "Helix yeniden etkin olduğunda kaldığın yerden devam edebilirsin.",
     framedBody: "Güvenliğin için Helix başka bir sitenin içinde gösterilmez. Uygulamayı doğrudan açabilirsin.",
@@ -755,7 +749,8 @@ export const tr = {
     live: "Canlı",
     gram: "Gram Altın",
     quarter: "Çeyrek Altın",
-    republic: "Cumhuriyet (Ata)",
+    full: "Tam Altın",
+    republic: "Cumhuriyet Altını",
     usd: "Dolar",
     eur: "Euro",
     buy: "Alış",

@@ -53,8 +53,7 @@ import {
   useTheme,
   type Palette,
 } from "./theme";
-import { useReducedMotion } from "./motion";
-import { maskAmount, usePrivacy } from "./privacy";
+import { useReducedMotion, useWaitingPulse } from "./motion";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
@@ -386,12 +385,7 @@ export function Amount({
   const { palette } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
-  // Masked at the formatter, so every amount in the app inherits it and the
-  // accessibility label below carries the mask too — a hidden number a screen
-  // reader still announces is not hidden.
-  const hidden = usePrivacy((state) => state.hidden);
-  const real = formatMinor(minor, currency);
-  const formatted = hidden ? maskAmount(real) : real;
+  const formatted = formatMinor(minor, currency);
   const scale: AmountScale = hero ? "hero" : large ? "large" : "regular";
   // Width/font-scale changes start a fresh fit pass so rotation and Dynamic
   // Type can shrink or grow without opting out of system font scaling.
@@ -1289,32 +1283,37 @@ export function OperationStatusNotice({
  * from the first frame — nothing moves when they turn up, only the caption fades
  * in, so the screen looks like it is doing something rather than stuck.
  */
-export function WaitingNotice({ message }: { message: string }) {
+/**
+ * A caption for work the user is waiting on.
+ *
+ * Full `text`, never muted: it is the only thing on screen saying what is
+ * happening, so it is not secondary to anything. The pulse comes from the
+ * shared `useWaitingPulse` so the login hold and the sign-out row breathe at
+ * one rate instead of two.
+ */
+export function WaitingText({ message, heading = false }: { message: string; heading?: boolean }) {
+  const { palette } = useTheme();
+  const pulse = useWaitingPulse();
   return (
-    <View style={{ alignItems: "center", gap: spacing.md }}>
-      <View style={{ height: LOADING_DOT_SLOT, justifyContent: "center" }}>
-        <DelayedLoadingIndicator />
-      </View>
-      <FadeIn>
-        <Body muted style={{ textAlign: "center" }}>{message}</Body>
-      </FadeIn>
-    </View>
+    <Animated.Text
+      style={[
+        heading ? type.heading : type.body,
+        { color: palette.text, textAlign: heading ? "center" : "left", opacity: pulse },
+      ]}
+    >
+      {message}
+    </Animated.Text>
   );
 }
 
-/**
- * Hides its children while Privacy Peek is on.
- *
- * For sensitive text that is not an `Amount` — a person's name beside a figure,
- * a note that names what was bought. The placeholder keeps the row's height so
- * nothing reflows, and the accessible name goes with it.
- */
-export function Private({ children, label }: { children: ReactNode; label: string }) {
-  const hidden = usePrivacy((state) => state.hidden);
-  if (!hidden) return <>{children}</>;
+/** The whole screen while the account's first pull lands. */
+export function WaitingNotice({ message }: { message: string }) {
   return (
-    <View accessible accessibilityLabel={tr.privacy.hiddenValue} style={{ justifyContent: "center" }}>
-      <Body muted>{"•".repeat(Math.min(Math.max(label.length, 3), 12))}</Body>
+    <View style={{ alignItems: "center", gap: spacing.lg }}>
+      <View style={{ height: LOADING_DOT_SLOT, justifyContent: "center" }}>
+        <DelayedLoadingIndicator />
+      </View>
+      <WaitingText message={message} heading />
     </View>
   );
 }
@@ -1370,7 +1369,8 @@ export function ListRow({
   iconColor?: string;
   leading?: ReactNode;
   title: string;
-  subtitle?: string;
+  /** A plain string gets the row's caption styling; a node renders as given. */
+  subtitle?: ReactNode;
   right?: ReactNode;
   onPress?: () => void;
   chevron?: boolean;
@@ -1402,10 +1402,12 @@ export function ListRow({
         <Text style={[type.body, { color: palette.text, fontFamily: font.medium, flexShrink: 1 }]}>
           {title}
         </Text>
-        {subtitle ? (
+        {typeof subtitle === "string" ? (
           <Text style={[type.small, { color: palette.textSecondary, marginTop: 1, flexShrink: 1 }]}>
             {subtitle}
           </Text>
+        ) : subtitle ? (
+          <View style={{ marginTop: 1 }}>{subtitle}</View>
         ) : null}
       </View>
       {stackRight ? null : right}

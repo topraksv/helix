@@ -22,6 +22,9 @@ const SNAPSHOT_PERSIST_MS = 30_000;
 export const MARKET_SYMBOLS = [
   { code: "ALTIN", label: tr.markets.gram },
   { code: "CEYREK_YENI", label: tr.markets.quarter },
+  // The provider names the full coin `TEK`, not `TAM`, and publishes it apart
+  // from `ATA` (Cumhuriyet) — two separate quotes, ~1000 TL apart, not aliases.
+  { code: "TEK_YENI", label: tr.markets.full },
   { code: "ATA_YENI", label: tr.markets.republic },
   { code: "USDTRY", label: tr.markets.usd },
   { code: "EURTRY", label: tr.markets.eur },

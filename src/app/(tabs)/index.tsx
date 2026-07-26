@@ -4,7 +4,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, Eye, EyeOff, History, PartyPopper, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
@@ -30,11 +30,10 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Heading, HeroCard, IconButton, ListRow, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Heading, HeroCard, ListRow, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
 import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
-import { usePrivacy } from "../../ui/privacy";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
@@ -43,10 +42,17 @@ import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
-// Fixed widths prevent quote rows from shifting as values arrive.
-const MARKET_BUY_W = 78;
-const MARKET_SELL_W = 92;
+// Genuinely fixed, not a floor: as `minWidth` these grew with whatever that one
+// row happened to hold, so a five-digit coin sat a few pixels left of a
+// four-digit one and the "Alış"/"Satış" captions stopped sitting over their own
+// columns. Measured in Inter at the sizes actually used: these hold `99.999,99`
+// (62pt) and `99.999,99 ₺` (91pt), which is past double the dearest quote the
+// feed carries. Every pixel here comes out of the label, whose longest value
+// (`Cumhuriyet Altını`, 121pt) has to stay on one line down to a 375pt phone.
+const MARKET_BUY_W = 66;
+const MARKET_SELL_W = 94;
 const MARKET_TREND_W = 15;
+const MARKET_COL_GAP = spacing.xs;
 
 function MarketsCard() {
   const { palette } = useTheme();
@@ -90,13 +96,19 @@ function MarketsCard() {
           {/* column headers over the price columns */}
           <Spread style={{ marginBottom: spacing.xs }}>
             <View />
-            <Row gap={spacing.sm}>
-              <Text style={[type.small, { color: palette.textSecondary, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{tr.markets.buy}</Text>
-              <Text style={[type.small, { color: palette.textSecondary, minWidth: MARKET_SELL_W, textAlign: "right" }]}>{tr.markets.sell}</Text>
+            <Row gap={MARKET_COL_GAP}>
+              <Text style={[type.small, { color: palette.textSecondary, width: MARKET_BUY_W, textAlign: "right" }]}>{tr.markets.buy}</Text>
+              <Text style={[type.small, { color: palette.textSecondary, width: MARKET_SELL_W, textAlign: "right" }]}>{tr.markets.sell}</Text>
               <View style={{ width: MARKET_TREND_W }} />
             </Row>
           </Spread>
-          {quoted.map(({ code, label }) => {
+          {/* Six near-identical number rows read as one block. The rule and the
+              alternating tint are the financial table's own device, and the
+              negative inset lets the band reach the card's edges instead of
+              floating inside its padding — including the bottom one, so the
+              last band ends where the card ends rather than sitting on a strip
+              of untinted surface. */}
+          {quoted.map(({ code, label }, index) => {
             const p = prices[code]!;
             const direction = p.direction === "up"
               ? tr.markets.rising
@@ -108,21 +120,34 @@ function MarketsCard() {
                 key={code}
                 accessible
                 accessibilityLabel={tr.markets.quote(label, priceText(p.buyTry), `${priceText(p.sellTry)} ₺`, direction)}
-                style={{ paddingVertical: spacing.sm - 2 }}
+                style={{
+                  paddingVertical: spacing.sm,
+                  paddingHorizontal: spacing.lg,
+                  marginHorizontal: -spacing.lg,
+                  marginBottom: index === quoted.length - 1 ? -spacing.lg : 0,
+                  borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
+                  borderTopColor: palette.border,
+                  backgroundColor: index % 2 === 1 ? palette.surfaceAlt : "transparent",
+                }}
               >
-                <Body>{label}</Body>
-                <Row gap={spacing.sm}>
-                  <Text style={[type.amountSm, { color: palette.textSecondary, minWidth: MARKET_BUY_W, textAlign: "right" }]}>{priceText(p.buyTry)}</Text>
-                  <Text style={[type.amount, { color: palette.text, minWidth: MARKET_SELL_W, textAlign: "right" }]}>
+                {/* The label yields the width, never the figures: a number that
+                    wrapped would break the columns it shares with five other
+                    rows. */}
+                <Body style={{ flex: 1, minWidth: 0 }}>{label}</Body>
+                <Row gap={MARKET_COL_GAP} style={{ flexShrink: 0 }}>
+                  <Text style={[type.amountSm, { color: palette.textSecondary, width: MARKET_BUY_W, textAlign: "right" }]}>{priceText(p.buyTry)}</Text>
+                  <Text style={[type.amount, { color: palette.text, width: MARKET_SELL_W, textAlign: "right" }]}>
                     {`${priceText(p.sellTry)} ₺`}
                   </Text>
-                  {p.direction === "up" ? (
-                    <TrendingUp accessible={false} size={MARKET_TREND_W} color={palette.positive} />
-                  ) : p.direction === "down" ? (
-                    <TrendingDown accessible={false} size={MARKET_TREND_W} color={palette.negative} />
-                  ) : (
-                    <View style={{ width: MARKET_TREND_W }} />
-                  )}
+                  {/* One slot whether or not it holds an arrow, so a flat quote
+                      does not shift the two number columns beside it. */}
+                  <View style={{ width: MARKET_TREND_W, alignItems: "center" }}>
+                    {p.direction === "up" ? (
+                      <TrendingUp accessible={false} size={MARKET_TREND_W} color={palette.positive} />
+                    ) : p.direction === "down" ? (
+                      <TrendingDown accessible={false} size={MARKET_TREND_W} color={palette.negative} />
+                    ) : null}
+                  </View>
                 </Row>
               </Spread>
             );
@@ -162,8 +187,6 @@ function greeting(): string {
 }
 
 export default function DashboardScreen() {
-  const hideAmounts = usePrivacy((state) => state.hidden);
-  const togglePrivacy = usePrivacy((state) => state.toggle);
   const userId = useUserId();
   const previousLoginAt = useSession((state) => state.previousLoginAt);
   const today = todayISO();
@@ -333,15 +356,6 @@ export default function DashboardScreen() {
       title={greeting()}
       subtitle={dateLabel(today)}
       leading={<BrandMark size={40} />}
-      // One tap, on the screen the numbers are largest. The preference is
-      // device-local and the data is untouched — this hides, it does not edit.
-      right={
-        <IconButton
-          icon={hideAmounts ? EyeOff : Eye}
-          label={hideAmounts ? tr.privacy.show : tr.privacy.hide}
-          onPress={togglePrivacy}
-        />
-      }
     >
       <FirstRunTour />
       <DataStateNotice status={dataStatus} retry={retryData} />

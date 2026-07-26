@@ -53,9 +53,16 @@ export function CurrencyPicker({
       accessibilityLabel={hint}
       onPress={onPress}
       style={({ pressed }) => ({
+        // Four equal columns rather than four intrinsic widths. Picking a
+        // currency renames the last chip ("Diğer" → "🇦🇱 ALL"), and at intrinsic
+        // width that one extra glyph pushed it onto a second line on a phone —
+        // the row reflowed as a side effect of choosing. Sharing the width means
+        // the label can change without the layout moving.
+        flex: 1,
         minHeight: controlSize.minimumTarget,
         justifyContent: "center",
-        paddingHorizontal: spacing.lg,
+        alignItems: "center",
+        paddingHorizontal: spacing.sm,
         borderRadius: radius.full,
         backgroundColor: selected ? palette.primarySoft : palette.surfaceAlt,
         opacity: pressed ? stateOpacity.pressed : 1,
@@ -64,7 +71,11 @@ export function CurrencyPicker({
       <Text
         style={[
           type.label,
-          { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? font.semibold : font.regular },
+          {
+            color: selected ? palette.primaryText : palette.text,
+            fontFamily: selected ? font.semibold : font.regular,
+            textAlign: "center",
+          },
         ]}
       >
         {label}
@@ -73,8 +84,12 @@ export function CurrencyPicker({
   );
 
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+    <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
       {PRIMARY.map((code) => chip(`${CURRENCY_INFO[code].flag} ${code}`, value === code, () => onChange(code), CURRENCY_INFO[code].name))}
+      {/* `Select` renders its trigger inside a wrapper of its own, so the
+          fourth column has to be claimed out here or the chip's own `flex`
+          would only divide that intrinsic wrapper. */}
+      <View style={{ flex: 1 }}>
       <Select<Currency>
         label={tr.common.otherCurrencies}
         placeholder={tr.common.otherCurrencies}
@@ -95,6 +110,7 @@ export function CurrencyPicker({
           )
         }
       />
+      </View>
     </View>
   );
 }

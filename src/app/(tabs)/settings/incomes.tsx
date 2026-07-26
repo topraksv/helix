@@ -78,7 +78,10 @@ export default function IncomeRulesScreen() {
       recurrence !== editingIncome.recurrence ||
       anchorDate !== (editingIncome.anchorDate ?? todayISO()) ||
       personId !== editingIncome.personId ||
-      categoryId !== editingIncome.categoryId
+      // The user's own choice, not the derived fallback: a legacy income with
+      // no category resolves to a default the user never picked, and comparing
+      // that would report an edit nobody made.
+      categoryChoice !== editingIncome.categoryId
     : Boolean(
       (nameTouched && name.trim()) ||
       amountRaw.trim() ||

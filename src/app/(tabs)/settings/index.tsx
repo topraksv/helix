@@ -43,21 +43,17 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Segmented, Toggle } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Segmented, Toggle, WaitingText } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
 import { spacing, useTheme } from "../../../ui/theme";
 import type { PaletteId, ThemePreference } from "../../../ui/theme";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
-import { PHASE2_FLAGS } from "../../../config/features";
-import { usePrivacy } from "../../../ui/privacy";
 
 export default function SettingsScreen() {
   const userId = useUserId();
   const { signOut, deleteAccount, verifyPassword } = useSession();
-  const hideAmounts = usePrivacy((state) => state.hidden);
-  const togglePrivacy = usePrivacy((state) => state.toggle);
   const settingsState = useSettingsMapState();
   const settings = settingsState.data;
   const sync = useSyncStatus();
@@ -287,30 +283,17 @@ export default function SettingsScreen() {
             setGlobalThemePreference(v);
           }}
         />
-        {PHASE2_FLAGS.palettes ? (
-          <>
-            <Body style={{ marginBottom: spacing.sm }}>{tr.settings.palette}</Body>
-            <Segmented<PaletteId>
-              options={[
-                { value: "clay", label: tr.settings.paletteClay },
-                { value: "sand", label: tr.settings.paletteSand },
-                { value: "cinnamon", label: tr.settings.paletteCinnamon },
-              ]}
-              value={paletteId}
-              disabled={!localPreferencesLoaded}
-              onChange={setGlobalPalettePreference}
-            />
-          </>
-        ) : null}
-        {/* Discoverable where preferences live, and mirrored by the one-tap
-            control on the dashboard — the same device-local switch, not a
-            second setting. */}
-        <Toggle
-          label={tr.privacy.settingsTitle}
-          value={hideAmounts}
-          onValueChange={togglePrivacy}
+        <Body style={{ marginBottom: spacing.sm }}>{tr.settings.palette}</Body>
+        <Segmented<PaletteId>
+          options={[
+            { value: "clay", label: tr.settings.paletteClay },
+            { value: "sand", label: tr.settings.paletteSand },
+            { value: "cinnamon", label: tr.settings.paletteCinnamon },
+          ]}
+          value={paletteId}
+          disabled={!localPreferencesLoaded}
+          onChange={setGlobalPalettePreference}
         />
-        <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md }}>{tr.privacy.settingsDesc}</Body>
         {/* The field holds a one- or two-digit number, so a full-width save
             button under it left a wide empty band and read as a second, larger
             action. Beside the input it stays the smaller of the two and the row
@@ -526,7 +509,7 @@ export default function SettingsScreen() {
           // The wait is a real flush before a real wipe, and it is kept: a row
           // the user believes is saved must reach the server before the device
           // copy goes. Saying so is what turns it from a stall into a step.
-          subtitle={signingOut ? tr.operation.signingOut : undefined}
+          subtitle={signingOut ? <WaitingText message={tr.operation.signingOut} /> : undefined}
           right={signingOut ? <DelayedLoadingIndicator size={7} label={tr.auth.signOut} /> : undefined}
           onPress={() => void handleSignOut()}
         />

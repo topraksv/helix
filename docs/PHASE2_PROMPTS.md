@@ -58,8 +58,7 @@ Her paket için: yapıştıracağın komut, tasarım onayında **görmen gereken
 
 ### P0 — Faz 2 kurulumu ✅
 
-Bu dosya, `PHASE2.md`, `/paket` komutu, `src/config/features.ts` ve
-Ürün değişikliği yok.
+Bu dosya, `PHASE2.md` ve `/paket` komutu. Ürün değişikliği yok.
 
 ---
 
@@ -104,16 +103,11 @@ padding hesabı.
 
 ---
 
-### P3 — Privacy Peek · `/paket P3`
+### P3 — Privacy Peek · **geri çekildi**
 
-✅ **Görmen gereken:** maskeleme `Amount` primitive'i + `<Private>` içinde;
-placeholder genişliği `amount-layout.ts`'ten; **accessibility label de maskeli**;
-cihaz-bazlı `kv`, hesaba yazılmıyor; mevcut `PrivacyCover` aynen duruyor.
-
-❌ **Durdur:** ekran ekran maskeleme; hesap verisine yazılan tercih; maskeliyken
-ekran okuyucunun rakamı okuması; her toggle'da toast.
-
-☎️ **Konuşalım:** sıkı mod ilk sürüme girsin mi (Karar #3). Varsayılan: hayır.
+Yayına girdi, aynı gün kaldırıldı. Sebebi ve çıkarılan ders
+[`PHASE2.md`](PHASE2.md#p3--privacy-peek--withdrawn-2026-07-26) içinde. Bu paket
+çalıştırılmaz.
 
 ---
 
@@ -204,7 +198,6 @@ login sonrası onboarding flash'ı; yayımlanmamış özelliğin tanıtılması.
 
 | Ne istiyorsun | Komut |
 |---|---|
-| Bir özelliği anında kapat | `src/config/features.ts` içinde `false` → deploy |
 | Bir paketi tamamen geri al | `git revert -m 1 <merge-sha>` → PR |
 | Faz 2'nin tamamından çık | Paketleri ters sırada `git revert`; son Faz 1 commit'i `a8ca1d1` |
 
@@ -221,7 +214,6 @@ Numaralar [`PHASE2.md`](PHASE2.md) ile aynı. Cevapladıkça oraya işlenir.
 |---|---|---|
 | 1 | Altıncı sekme mi, mevcut sekme içinde mi | P6'dan önce |
 | 2 | Satış geliri: varsayılan transfer, gelir açık seçenek | P6'dan önce |
-| 3 | Privacy Peek sıkı mod ilk sürümde mi | P3 sırasında |
 | 4 | Palet sayısı ve isimleri | P1 sırasında |
 | 5 | Paylaşılan listede push bildirimi | P8'den önce |
 | 6 | Yüklenme markası konusu yeniden açılsın mı | P1 sırasında |

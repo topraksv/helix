@@ -10,54 +10,67 @@ history log.
 `main` is the only branch. No tags, no long-lived branches: a PR carries a
 change because the branch is protected, and that branch is deleted on merge.
 
-P1, P2 and P4 are merged, deployed and OTA-published. This change set is P3 plus
-the follow-ups reported against the previous one.
+P1, P2 and P4 are merged, deployed and OTA-published. **P3 (Privacy Peek) was
+withdrawn** — see `PHASE2.md`. This change set is that removal plus the
+follow-ups the owner reported against the previous delivery.
 
 ## In this change set
 
-### P3 — Privacy Peek
+### P3 withdrawn, and the flag module with it
 
-Masking lives at the render edge: inside `Amount` and a `<Private>` wrapper, so
-a surface added later inherits it rather than having to remember. One glyph per
-digit keeps each amount's rough width, so revealing one does not reflow the row,
-and the accessibility label is masked with the value — a masked amount a screen
-reader still announces is not masked. Device-local `kv`, resolved before the
-first paint so nothing flashes, never written to the account. One tap on the
-dashboard, mirrored by a settings toggle; the existing `PrivacyCover` is
-untouched. Market quotes are deliberately NOT masked: the gold and FX prices are
-the world's numbers, not the user's.
+Privacy Peek shipped as one third of baseline F3 — the manual switch, without
+start-hidden or peek-while-held — and the owner's verdict was that the shipped
+third does no work on its own. Removed whole: the store, the masking branch in
+`Amount`, the settings toggle, and the `<Private>` wrapper, which was defined
+and never once used. `PrivacyCover` (task-switcher cover) is unrelated and
+untouched.
 
-Strict mode (names, notes, account labels) is still an open owner decision and
-is not built.
+`src/config/features.ts` went with it. Of nine flags, eight were read by nothing
+and the ninth (`palettes`) had been `true` since it shipped, so the "flag" tier
+of the rollback contract could not have rolled anything back. `PHASE2.md` now
+records revert-a-merge as the single tier.
 
-### FX: a different fallback, a wider list
+### Dirty-exit false positives — the actual cause
 
-The fallback moved from Frankfurter to exchangerate-api's open endpoint —
-keyless, ~0.2 s, 3 KB, and it states its own publication time, which is what
-gets stored. That removed the intersection constraint: the list went from 13 to
-21 and now includes ALL, RUB, AED, SAR, AZN, KWD, BGN and GEL, which TCMB
-carries but the old fallback did not, so web could never read them.
+All seventeen `useDirtyExitGuard` call sites were read, not just the one fixed
+last time. Two were genuinely wrong, both from comparing something a save would
+never write:
 
-**Harem keeps gold AND live USD/EUR.** Measured before deciding: no keyless
-*live* FX feed exists — every free option is a daily reference rate. Moving the
-market card onto one would make "Canlı Piyasalar" show yesterday's number, so
-the request to take FX off Harem was argued against rather than implemented.
+- `transaction.tsx` / `subscription-form.tsx` tracked `showCurrency` — the
+  *disclosure* state of the currency row — inside the draft snapshot. Tapping
+  "Para birimi değiştir" and leaving asked the user to discard changes they had
+  not made. That is the two-tap reproduction the owner reported.
+- `incomes.tsx` compared the derived category against the stored one, so editing
+  a legacy income with a null `category_id` was dirty on open.
 
-### Reported follow-ups
+`tests/dirty-exit.test.ts` now pins disclosure state out of both snapshots.
 
-- **Web chrome really is unselectable now.** `#root` alone did nothing:
-  react-native-web puts its own `user-select:text` class on every Text, and a
-  class beats inheritance. `#root *` outranks it, `#root input` outranks that.
-  Measured, not assumed.
-- **The waiting state no longer jumps.** The dots hold a reserved slot from the
-  first frame and the caption fades in, and the three cases say different
-  things: an existing account's first pull, a brand-new account, and sign-out.
-- **The budget screen stopped claiming unsaved changes it did not have.** It
-  tested "is the field non-empty" while opening an existing budget prefills it —
-  it now compares against the value it loaded, which is what `AGENTS.md` already
-  required.
-- The currency picker gained a real title, a flag and Turkish name per row, and
-  rows separated by a rule with an alternating tint, like the financial table.
+### The waiting caption is readable and alive
+
+It was `Body muted` after a one-shot fade: correct on paper (7.5:1) and still
+the faintest role in the app, on a screen where it is the only thing to read.
+It is now full `text` at heading size with a continuous pulse, from one shared
+`useWaitingPulse` used by both the first-pull screen and the sign-out row.
+The 0.72 floor is measured, not chosen — worst palette 5.2:1 at the trough —
+and `theme-contrast.test.ts` reads the constant so deepening the pulse fails
+the gate.
+
+### Canlı Piyasalar
+
+`TEK_YENI` (Tam Altın) added after connecting to the feed and confirming it is a
+separate quote from `ATA_YENI`, ~1000 TL apart. Names follow the provider's own:
+Gram / Çeyrek / Tam / Cumhuriyet Altını. Rows got the financial table's rule and
+alternating tint, edge to edge including the bottom band. The columns were
+`minWidth`, so they grew per row and the "Alış"/"Satış" captions drifted off
+their own columns; they are fixed widths now, sized from measured Inter metrics
+against the longest label.
+
+### FX verified end to end
+
+`open.er-api.com` was exercised through the app's own `parseOpenExchangeRates`:
+21/21 currencies, today's business date, and USD/EUR within 0.06% of the Harem
+socket. The currency chips are four equal columns now — picking a non-primary
+currency renamed the last chip and reflowed the row onto a second line.
 
 ## Not yet proven
 
@@ -68,6 +81,9 @@ the request to take FX off Harem was argued against rather than implemented.
 - **The visual gate does not compare content.** Measured and reproducible, cause
   unknown; see the warning block in `TESTING.md`. Every regenerated baseline
   must be opened and looked at until it is fixed.
+- The market card renders only with live socket quotes, so no automated test
+  covers its layout. Its column arithmetic was measured against real Inter
+  metrics rather than screenshotted.
 
 ## Open items
 
@@ -78,14 +94,14 @@ the request to take FX off Harem was argued against rather than implemented.
 - Real iOS glass needs `expo-blur`, which cannot ship over OTA and has no device
   build path today. The bar's background layer is the only thing that changes
   when one exists.
-- The toggle keeps an opaque track on purpose; only the thumb carries the bar's
-  material language. Revisit only together with `theme-contrast.test.ts`.
+- The market card's longest label wraps below a 375pt viewport. Wrapping is the
+  sanctioned behaviour (never truncate), but it makes that one row taller.
 - P8 (shared lists) is still an open product decision — see `PHASE2.md`.
 
 ## Next package
 
-`PHASE2.md` order puts **P5 (Scenario Lab)** next: it depends on P1 and P3, both
-of which are now in, and it is web-provable.
+`PHASE2.md` order puts **P5 (Scenario Lab)** next. Its dependency on P3 is gone
+with P3; it needs only P1, and it is web-provable.
 
 ## Next exact step
 

@@ -164,6 +164,33 @@ describe("semantic theme contrast", () => {
     for (const palette of shippedPalettes) expectBodyTextContrast(palette);
   });
 
+  /**
+   * The waiting caption pulses, so its faintest frame is the one that has to
+   * pass — a token that clears AA at full strength says nothing about the
+   * trough. The floor is read from `motion.ts` rather than restated here, so
+   * deepening the pulse fails this test instead of quietly dimming the only
+   * text on the sign-in and sign-out screens.
+   */
+  it("keeps the waiting caption readable at the bottom of its pulse", () => {
+    const source = readFileSync("src/ui/motion.ts", "utf8");
+    const floor = Number(/WAITING_PULSE_FLOOR = ([\d.]+)/.exec(source)?.[1]);
+    expect(floor).toBeGreaterThan(0);
+    for (const palette of shippedPalettes) {
+      // `hexToRgb` is normalised to 0–1, so scale back before re-encoding.
+      const bg = hexToRgb(palette.background);
+      const fg = hexToRgb(palette.text);
+      const dimmed = `#${fg
+        .map((value, index) =>
+          Math.round((floor * value + (1 - floor) * (bg[index] ?? 0)) * 255)
+            .toString(16)
+            .padStart(2, "0"),
+        )
+        .join("")}`;
+      expect(contrastRatio(dimmed, palette.background), `dimmed text on ${palette.background}`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   // Generated colours escape the token table above, so the badge that renders a
   // white monogram on a name-derived hue needs its own contract.
   it("keeps the white initials monogram at WCAG AA on every reachable hue", () => {
