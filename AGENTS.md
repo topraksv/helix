@@ -12,7 +12,7 @@ in the documents below and is read on demand.
 | Trust boundaries, RLS, secrets, verification matrix | [`docs/SECURITY.md`](docs/SECURITY.md) |
 | User-facing data behaviour | [`docs/PRIVACY.md`](docs/PRIVACY.md) |
 | Current work state, blockers, next package | [`docs/AI_HANDOFF.md`](docs/AI_HANDOFF.md) |
-| Phase 2 scope, package order, rollout flags, rollback | [`docs/PHASE2.md`](docs/PHASE2.md) |
+| Phase 2 scope, package order, how a package runs, rollback | [`docs/PHASE2.md`](docs/PHASE2.md) |
 | Public presentation | [`README.md`](README.md) |
 
 A fact belongs to exactly one of those files. If you need to state it somewhere
@@ -43,6 +43,37 @@ running the relevant checks. Never imply agent-to-agent communication that did
 not happen. Do not speculatively rewrite working code, and do not run
 destructive Git or database operations (force-push, history rewrite, hard
 delete, `db reset` against linked) without an explicit instruction.
+
+## What counts as evidence
+
+Every rule here was bought with a wrong answer that had already been reported as
+right. They are cheap to follow and expensive to skip.
+
+- **Measure the claim; do not reason it out.** A colour is a computed contrast
+  ratio, a width is the string measured in the real font, a provider's response
+  is the endpoint actually called, a dependency's behaviour is the published
+  tarball actually opened, and "it does not ship to users" is a search of the
+  export. Arithmetic that sounds right is how a wrong number gets committed.
+- **Read every call site before declaring a class of bug fixed.** One matching
+  file is where the search starts, not where it ends. Fixing the first of
+  seventeen guards and reporting the class closed is a false claim, not a
+  partial one.
+- **Run the gate, not the part of it you changed.** A green single test file
+  proves nothing about the typecheck, the lint or the visual suite. `npm run
+  verify` is the floor.
+- **A recorded disposition is a snapshot, not a fact.** Before relying on a note
+  that an upstream fix does not exist, or that a version cannot be taken, check
+  upstream again and say when you checked. Notes go stale silently; the next
+  agent inherits the staleness as certainty.
+- **Ship a whole slice or none of it.** A feature split across three mechanisms
+  is not three deliverables. Build the parts that carry the value or argue the
+  feature down — never ship the leftover and report it as done.
+- **Delete the scaffolding with the thing it scaffolded.** A flag, a shim or a
+  compatibility branch that outlives its package becomes furniture nobody dares
+  move.
+- **Report the measurement that failed as readily as the ones that passed.** A
+  delivery note that lists only successes is not a record, and the owner cannot
+  price what they cannot see.
 
 ## Sizing the work
 

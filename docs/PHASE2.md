@@ -11,8 +11,10 @@ package prompt can be one line.
 
 ## How a package runs
 
-One package at a time, in the order below. `.claude/commands/paket.md` encodes
-the workflow; `PHASE2_PROMPTS.md` is the owner's operating sheet for it.
+One package at a time, in the order below. `PHASE2_PROMPTS.md` is the owner's
+operating sheet; the six steps here are the agent's, and they are written
+tool-neutral on purpose — every agent working this repository runs the same
+ones, whatever its own command names are.
 
 A package is **not** finished when the code works. It is finished when the owner
 has seen the evidence and said so. Never open a PR before that.
@@ -22,6 +24,86 @@ The scope notes below are a **wish list, not a specification** — `AGENTS.md`
 argued against rather than built. A decision listed as open at the end of this
 file is raised at the design gate and answered by the owner; choosing one and
 reporting "no open decisions" takes a decision that was theirs.
+
+### 1. Ground yourself
+
+Read this file's row and section for the package, and `docs/AI_HANDOFF.md`. Run
+`git status`, inspect the diff and recent history. **A note is not evidence** —
+where the handoff describes code, read the code before relying on it. Confirm
+the packages it depends on are merged; if one is not, stop and say so.
+
+### 2. Design, and stop
+
+Produce a design before writing code, and put it in front of the owner. It must:
+
+- name every existing primitive, hook, repository function and token it reuses,
+  with paths — a new file needs a sentence saying why an existing one could not
+  carry it;
+- state what it will **not** do, including anything in the baseline document
+  this package deliberately leaves out;
+- price each sub-requirement — files, layers, rough lines — against `AGENTS.md`
+  § Sizing the work, **naming in writing anything it refuses to build and the
+  simpler thing that covers the real need**;
+- list any change to a shared or load-bearing file — `src/db/mutations.ts`,
+  `src/data/repo*`, `src/sync/engine.ts`, `src/ui/theme.ts`,
+  `src/ui/components.tsx` — with a sentence on why it has to happen *there*
+  rather than at the caller;
+- list the migrations, new tables and `SYNCED_TABLES` entries, if any;
+- list which of the 23 visual baselines the change can move, and why;
+- separate what needs an owner decision from what you will simply do.
+
+**Wait for approval.** Do not write code before it.
+
+### 3. Implement
+
+Build only what the approved design says. Reuse before extending, extend before
+adding. If you find yourself writing a second way to do something the repo
+already does, stop and use the first. Most of the excess in a package is not a
+wrong feature — it is a right feature plumbed through a layer that had no
+business knowing about it.
+
+Do not touch code outside the package's scope. Write down any unrelated defect
+you find and report it; do not fix it here.
+
+### 4. Prove it
+
+`npm run verify`, then `npm run verify:release` if the change can affect
+rendering, routes, bundle size or the export. If a baseline moved, open the
+actual/diff images and say what changed and why it is correct — never re-record
+a baseline you have not looked at. Review the diff for excess and for defects,
+and for P6/P7/P8 review it for security as well; report every finding with its
+disposition. `AGENTS.md` § What counts as evidence governs all of this.
+
+Then answer three questions, and **keep working until all three hold** — a
+report is a claim that they do:
+
+1. Can this be removed in one commit, leaving Phase 1 behaviour and a green
+   `npm run verify`?
+2. How many layers does it cross, and is the data layer untouched?
+3. What is left behind — an unused token, string, ref, prop or export?
+
+### 5. Report, and stop again
+
+Give the owner, in this order and nothing else: what changed and why it reads
+better than the alternative; files touched with added/removed counts **grouped
+by the concern they serve**, the largest group defended in one sentence; the
+`verify` result verbatim enough to be checked; baseline evidence if any moved;
+review findings and their disposition; **what is still unproven**, with anything
+needing a real device saying so plainly; and any owner decision the package
+surfaced. Then **wait**.
+
+### 6. Ship
+
+Once approved, commit per `AGENTS.md` § Commit messages — a body explaining the
+reasoning, signed, and **no AI attribution of any kind**. Push a short-lived
+branch, open the PR, wait for the required `quality` check. Merge only when it
+is green and the owner says so; delete the branch, never create a tag. Then
+rewrite `docs/AI_HANDOFF.md` in place, move anything durable into its canonical
+document, and update the package's row and any resolved decision here.
+
+Pushing to `main` ships the web app only. The phone needs a separate EAS Update
+— `docs/RELEASE.md` has the exact command and why `--clear-cache` is not
+optional.
 
 ## Rollback contract
 
@@ -208,7 +290,18 @@ category. Prices are last-known with their date and are never presented as live.
 The **sixth tab** is a separate owner decision — five tabs already crowd a
 320 pt phone. Do not add it without one.
 
-### P7 — Receipt Vault
+### P7 — Receipt Vault — **next**
+
+**Raise this at the design gate, before building anything.** P7's result exists
+only on a device: picking a file, uploading it, getting it back. No device run
+has ever happened on this project — `TESTING.md`'s acceptance matrix has never
+had a row filled. So either the owner accepts a package whose main claim cannot
+be demonstrated by the gate that ships it, or a device build comes first. That
+is the owner's call and it is cheaper made now than after the code exists.
+
+The web side (upload from a browser, list, download, delete) *is* provable, so
+one honest option is to scope the package to what can be shown and record the
+native path as unproven rather than claiming it.
 
 An `attachments` table carries **metadata only**; bytes never enter a sync
 payload. Files go to a private Supabase Storage bucket whose policy keys on an

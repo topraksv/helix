@@ -7,105 +7,117 @@ history log.
 
 ## Current state — 2026-07-26, Europe/Istanbul
 
-`main` is the only branch. No tags, no long-lived branches: a PR carries a
-change because the branch is protected, and that branch is deleted on merge.
+`main` is the only branch. No tags, no long-lived branches, no open PRs. The
+working tree is clean and everything below is merged, deployed and published.
 
-P1, P2 and P4 are merged, deployed and OTA-published. **P3 (Privacy Peek) was
-withdrawn** — see `PHASE2.md`. This change set is that removal plus the
-follow-ups the owner reported against the previous delivery.
+| | |
+|---|---|
+| Last release commit | `be5dd8b` |
+| Feature commit in that release | `54f27e1` |
+| Web | GitHub Pages, `deploy-web` success |
+| Native | EAS Update group `56820991-e445-460f-8848-accd27bebebe`, channel `preview` |
+| Gate | 71 files / 560 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
 
-## In this change set
+**Work is being handed to a different agent.** Nothing in this file assumes you
+saw the sessions that produced it. Where it describes code, read the code.
 
-### P3 withdrawn, and the flag module with it
+## Phase 2 status
 
-Privacy Peek shipped as one third of baseline F3 — the manual switch, without
-start-hidden or peek-while-held — and the owner's verdict was that the shipped
-third does no work on its own. Removed whole: the store, the masking branch in
-`Amount`, the settings toggle, and the `<Private>` wrapper, which was defined
-and never once used. `PrivacyCover` (task-switcher cover) is unrelated and
-untouched.
+| Package | Feature | State |
+|---|---|---|
+| P0 | setup | done |
+| P1 | palettes + one loading indicator | **shipped** |
+| P4 | 21 currencies + FX provider | **shipped** |
+| P2 | floating tab bar | **shipped** |
+| P3 | Privacy Peek | **withdrawn** — see `PHASE2.md` |
+| **P7** | Receipt Vault | **next** |
+| P6 | Investments | after P7 |
+| P9 | Tour refresh | last, by definition |
+| P5 | Scenario Lab | **backlog** |
+| P8 | Shared lists | **backlog**, never agreed |
 
-`src/config/features.ts` went with it. Of nine flags, eight were read by nothing
-and the ninth (`palettes`) had been `true` since it shipped, so the "flag" tier
-of the rollback contract could not have rolled anything back. `PHASE2.md` now
-records revert-a-merge as the single tier.
+Order is the owner's, 2026-07-26. P9 is last because it describes what actually
+shipped, so it cannot be written until P7 and P6 exist or are abandoned.
 
-### Dirty-exit false positives — the actual cause
+## Decisions already taken — do not reopen
 
-All seventeen `useDirtyExitGuard` call sites were read, not just the one fixed
-last time. Two were genuinely wrong, both from comparing something a save would
-never write:
+- **Palettes stay on the warm ramp.** Clay, Sand, Cinnamon. A blue- or
+  purple-dominant accent is rejected outright by `theme-contrast.test.ts`.
+- **The breathing/logo loading mark is closed permanently.** Built, removed one
+  commit later, then closed by the owner. Do not propose it, not even as an
+  option.
+- **No new native dependency without a device build path.** `expo-blur` (and
+  `expo-glass-tabs` on top of it) cannot ship over OTA, so iOS "glass" is an
+  honest translucent surface, not a claim of blur.
+- **`main` is the only branch.** A PR branch is scaffolding; delete it on merge.
+  No tags, no per-package naming.
+- **Rollback is `git revert -m 1 <merge-sha>`.** The feature-flag module was
+  deleted — eight of nine flags were read by nothing.
 
-- `transaction.tsx` / `subscription-form.tsx` tracked `showCurrency` — the
-  *disclosure* state of the currency row — inside the draft snapshot. Tapping
-  "Para birimi değiştir" and leaving asked the user to discard changes they had
-  not made. That is the two-tap reproduction the owner reported.
-- `incomes.tsx` compared the derived category against the stored one, so editing
-  a legacy income with a null `category_id` was dirty on open.
+## Open owner decisions
 
-`tests/dirty-exit.test.ts` now pins disclosure state out of both snapshots.
+Raise these at the design gate of the package they block; do not choose for the
+owner and report "no open decisions".
 
-### The waiting caption is readable and alive
+| # | Decision | Blocks |
+|---|---|---|
+| — | **Does P7 ship without a device run?** Its main claim (pick a file, upload, get it back) exists only on a device, and no device run has ever happened here. Web-only scope is the honest alternative. | P7, before design |
+| — | File size and total storage limits | P7 |
+| 1 | Sixth tab, or investments inside an existing tab — five tabs already crowd a 320 pt phone | P6, before design |
+| 2 | Sale proceeds: transfer by default, income as an explicit option | P6, before design |
+| 5 | Push notifications for shared lists (server-side work) | P8 |
+| 7 | **Whether P8 ships at all** — the one package that is not additive | P8 |
 
-It was `Body muted` after a one-shot fade: correct on paper (7.5:1) and still
-the faintest role in the app, on a screen where it is the only thing to read.
-It is now full `text` at heading size with a continuous pulse, from one shared
-`useWaitingPulse` used by both the first-pull screen and the sign-out row.
-The 0.72 floor is measured, not chosen — worst palette 5.2:1 at the trough —
-and `theme-contrast.test.ts` reads the constant so deepening the pulse fails
-the gate.
+## Known defects, unassigned
 
-### Canlı Piyasalar
-
-`TEK_YENI` (Tam Altın) added after connecting to the feed and confirming it is a
-separate quote from `ATA_YENI`, ~1000 TL apart. Names follow the provider's own:
-Gram / Çeyrek / Tam / Cumhuriyet Altını. Rows got the financial table's rule and
-alternating tint, edge to edge including the bottom band. The columns were
-`minWidth`, so they grew per row and the "Alış"/"Satış" captions drifted off
-their own columns; they are fixed widths now, sized from measured Inter metrics
-against the longest label.
-
-### FX verified end to end
-
-`open.er-api.com` was exercised through the app's own `parseOpenExchangeRates`:
-21/21 currencies, today's business date, and USD/EUR within 0.06% of the Harem
-socket. The currency chips are four equal columns now — picking a non-primary
-currency renamed the last chip and reflowed the row onto a second line.
-
-## Not yet proven
-
-- **No device run has ever happened.** `TESTING.md`'s matrix has never had a row
-  filled. The iOS glass material, safe area, landscape, Reduce Transparency, the
-  edge-swipe fix and the tab-bar drag are all device-only. The swipe fix
-  **cannot be proved on web** — browser history already behaves correctly there.
 - **The visual gate does not compare content.** Measured and reproducible, cause
-  unknown; see the warning block in `TESTING.md`. Every regenerated baseline
-  must be opened and looked at until it is fixed.
-- The market card renders only with live socket quotes, so no automated test
-  covers its layout. Its column arithmetic was measured against real Inter
-  metrics rather than screenshotted.
-
-## Open items
-
-- The visual-gate defect is unassigned and is the highest-value thing to fix
-  next: it silently weakens every screenshot claim in the release gate.
+  unknown: the suite passed a baseline showing a full-width tab bar while the app
+  rendered a 560 pt centred one, and two baselines were stale for a week. Until
+  it is fixed, every regenerated baseline must be opened and looked at by a
+  human. `TESTING.md` carries the warning block. **This is the highest-value
+  thing on this list** — it silently weakens every screenshot claim in the
+  release gate.
 - `visual-a11y.spec.ts` "modal actions stay reachable in a short landscape
-  viewport" is flaky — it measures a bounding box before the modal settles.
-- Real iOS glass needs `expo-blur`, which cannot ship over OTA and has no device
-  build path today. The bar's background layer is the only thing that changes
-  when one exists.
-- The market card's longest label wraps below a 375pt viewport. Wrapping is the
-  sanctioned behaviour (never truncate), but it makes that one row taller.
-- P8 (shared lists) is backlogged and still an open product decision.
+  viewport" is flaky; it measures a bounding box before the modal settles.
+- The market card renders only with live socket quotes, so no automated test
+  covers its layout. Its column widths were measured against real Inter metrics
+  instead. Its longest label wraps below a 375 pt viewport — wrapping is the
+  sanctioned behaviour (never truncate), but that row gets taller.
+- `brace-expansion` DoS (GHSA-mh99-v99m-4gvg) stays open in Dependabot and
+  **cannot be closed by pinning**. The tree is already on the best available
+  versions. Full measurements and why in `SECURITY.md`; closure rides on the
+  `BACKLOG-SDK-01` Expo/RN/eslint upgrade.
 
-## Next package
+## Not proven anywhere
 
-**P7 (Receipt Vault)**, then P6, then P9 — the owner's order, 2026-07-26. P5 and
-P8 are backlog. P9 stays last because it describes what actually shipped.
+**No device run has ever happened.** `TESTING.md`'s acceptance matrix has never
+had a row filled. Everything below is claimed from code and web behaviour only:
+the iOS translucent tab bar, safe-area handling, landscape, Reduce
+Transparency, the edge-swipe back gesture (which **cannot** be proved on web —
+browser history already behaves correctly there) and the tab-bar drag.
 
-P7 is device-provable only (file picking, Storage upload), and no device run has
-ever happened — raise that at its design gate rather than after building it.
+## What the last delivery changed
+
+Read the commits; this is only the shape of it.
+
+- **P3 withdrawn.** It had shipped as one third of its baseline — the manual
+  switch, without start-hidden or peek-while-held — and that third is the one a
+  user cannot benefit from. Removed whole, including a `<Private>` wrapper that
+  was defined and never once used.
+- **Unsaved-changes prompt fixed properly.** All seventeen `useDirtyExitGuard`
+  call sites were read. Two compared something a save would never write:
+  `showCurrency` (the *disclosure* state of the currency row) sat inside the
+  draft snapshot in two forms, and `incomes.tsx` compared a derived category
+  default against a stored null. `tests/dirty-exit.test.ts` pins the first.
+- **Waiting caption** moved to full `text` at heading size with a shared
+  `useWaitingPulse`; the 0.72 floor is measured (worst palette 5.2:1 at the
+  trough) and `theme-contrast.test.ts` reads the constant.
+- **Markets:** `TEK_YENI` (Tam Altın) added after confirming on the live feed
+  that it is a distinct quote from `ATA_YENI`. Columns went from `minWidth` to
+  fixed widths sized from measured Inter metrics.
+- **FX verified end to end** through the app's own parser: 21/21 currencies,
+  correct business date, USD/EUR within 0.06 % of the Harem socket.
 
 ## Next exact step
 
-`NEXT EXACT STEP = owner checks this delivery on a device; then either the visual-gate defect or P5, whichever they choose.`
+`NEXT EXACT STEP = raise the P7 device-provability decision with the owner, then run PHASE2.md § How a package runs for P7.`
