@@ -97,7 +97,8 @@ export function CurrencyPicker({
         // by ISO code, and the code alone made a fourteen-row sheet unscannable.
         options={OTHERS.map((code) => ({
           value: code,
-          label: `${CURRENCY_INFO[code].flag}  ${CURRENCY_INFO[code].name} · ${code}`,
+          label: `${CURRENCY_INFO[code].name} · ${code}`,
+          icon: CURRENCY_INFO[code].flag,
         }))}
         value={isPrimary ? null : (value as Currency)}
         onChange={onChange}

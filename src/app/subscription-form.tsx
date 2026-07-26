@@ -271,7 +271,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         <Select
           label={tr.tx.category}
           placeholder={tr.tx.categoryPlaceholder}
-          options={expenseCategories.map((category) => ({ value: category.id, label: `${categoryIcon(category)} ${category.name}` }))}
+          options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
           value={selectedCategoryId}
           onChange={(value) => {
             setCategoryId(value);
@@ -304,7 +304,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           <Select
             label={tr.tx.source}
             placeholder={tr.tx.sourcePlaceholder}
-            options={sources.map((s) => ({ value: s.id, label: `${paymentSourceIcon(s.type)} ${s.name}` }))}
+            options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
             value={sourceId}
             onChange={setSourceId}
           />

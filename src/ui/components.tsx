@@ -823,6 +823,9 @@ function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: num
   return <CalculatorModal {...props} />;
 }
 
+/** Width of a select row's icon column, so every label starts at one x. */
+const SELECT_ICON_W = 22;
+
 /** Dropdown select: field-styled trigger opening a modal option list. */
 export function Select<T extends string>({
   label,
@@ -834,7 +837,13 @@ export function Select<T extends string>({
   trigger,
 }: {
   label?: string;
-  options: { value: T; label: string }[];
+  /**
+   * `icon` is separate from `label` on purpose. Packing an emoji into the
+   * label string left every name starting at a different x — emoji advance
+   * widths differ — so a list of categories read as a ragged left edge. Its
+   * own fixed column makes the names line up.
+   */
+  options: { value: T; label: string; icon?: string }[];
   value: T | null;
   onChange: (v: T) => void;
   placeholder?: string;
@@ -862,7 +871,11 @@ export function Select<T extends string>({
               <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
                 <FadeIn
                   style={[
-                    { backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: spacing.sm, maxHeight: 420 },
+                    // No vertical padding: the rows are tinted bands and they
+                    // have to reach the card's edges, or the last one sits on a
+                    // strip of bare surface. `overflow: hidden` is what lets a
+                    // full-bleed band keep the card's rounded corners.
+                    { backgroundColor: palette.surface, borderRadius: radius.lg, maxHeight: 420, overflow: "hidden" },
                     scheme === "light" && cardShadow,
                   ]}
                 >
@@ -905,14 +918,23 @@ export function Select<T extends string>({
                             },
                           ]}
                         >
-                          <Text
-                            style={[
-                              type.body,
-                              { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? font.semibold : font.regular },
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
+                          <Row gap={spacing.sm}>
+                            {option.icon ? (
+                              <Text style={[type.body, { width: SELECT_ICON_W, textAlign: "center" }]}>{option.icon}</Text>
+                            ) : null}
+                            <Text
+                              style={[
+                                type.body,
+                                {
+                                  flex: 1,
+                                  color: selected ? palette.primaryText : palette.text,
+                                  fontFamily: selected ? font.semibold : font.regular,
+                                },
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </Row>
                         </Pressable>
                       );
                     })}

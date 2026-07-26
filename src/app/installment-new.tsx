@@ -244,7 +244,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
           <Select
             label={tr.tx.source}
             placeholder={tr.tx.sourcePlaceholder}
-            options={sourceOptions.map((s) => ({ value: s.id, label: `${paymentSourceIcon(s.type)} ${s.name}` }))}
+            options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
             value={sourceId}
             onChange={setSourceId}
           />
@@ -265,7 +265,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
       <Select
         label={tr.tx.category}
         placeholder={tr.tx.categoryPlaceholder}
-        options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: `${categoryIcon(c)} ${c.name}` }))}
+        options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))}
         value={categoryId}
         onChange={setCategoryId}
       />
