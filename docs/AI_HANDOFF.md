@@ -7,8 +7,8 @@ history log.
 
 ## Current state — 2026-07-26, Europe/Istanbul
 
-Phase 2 package P1 is implemented on `phase-2/p1-gorsel-imza` and is awaiting
-the required pull-request quality gate and owner merge approval.
+Phase 2 package P1 is merged, web-deployed and owner-accepted. Do not begin P2
+until the owner starts the next package.
 
 ### P1 — visual identity and loading feedback
 
@@ -39,10 +39,15 @@ implementation unit rather than the user's operation phases.
 - Final `npm run verify:release` passed: typecheck, zero-warning lint, **70
   Vitest files / 559 tests**, production export budgets and **40 Playwright
   tests**.
+- PR #72 `quality` passed, then the protected `main` release repeated the full
+  gate successfully.
 - All **23 visual baselines** remained unchanged; no actual/diff evidence was
   produced.
 - With `PHASE2_FLAGS.palettes` temporarily set to `false`, `npm run verify`
   passed with **70 files / 559 tests**. The flag was restored to `true`.
+- The owner interactively tested and accepted P1. The current palette colours
+  and names are not the desired final choices, but the accepted structure makes
+  that a palette-value and label change rather than another theme redesign.
 
 ## Not yet proven
 
@@ -51,17 +56,26 @@ implementation unit rather than the user's operation phases.
 - Once the atomic Excel repository commit begins, it is deliberately not
   interruptible; cancellation is available around the caller-owned phases and
   the all-or-nothing data invariant remains authoritative.
-- The required pull-request `quality` check and owner merge approval are still
-  pending.
 
-## Open items and next package
+## Delivery and rollback evidence
 
-- P1 must remain unmerged until the owner reviews the pull request and its
-  required check.
-- After P1 is merged, the next package is **P2 — navigation shell**. Start with
-  its design gate and current Phase 2 contract; do not carry forward an older
-  scope note.
+- P1 merged through PR #72 as `73e8477`. GitHub reports the squash commit's
+  signature as verified; its parent is `75e42c2`.
+- Pages run `30196865809` passed `quality` and deployed the production
+  artefact. Root, Upcoming and Settings returned 200; the dynamic
+  `/cash-flow/2026-07` route returned the expected 404 with a body identical to
+  the root shell, and its entry JavaScript asset returned 200.
+- No P1 EAS Update was published. Installed preview builds do not receive P1
+  from the web merge; mobile delivery needs a separately authorized OTA.
+- Rollback is a protected revert of `73e8477`; `75e42c2` is the pre-P1 main
+  anchor.
+
+## Next package
+
+The next package is **P2 — navigation shell**. Start with its design gate and
+the current Phase 2 contract; do not carry forward an older scope note. Do not
+redesign the palette mechanism when revisiting colours and names.
 
 ## Next exact step
 
-`NEXT EXACT STEP = open the P1 pull request, wait for the required quality check, and stop for owner approval without merging.`
+`NEXT EXACT STEP = stop; begin P2 only when the owner explicitly starts the next package.`
