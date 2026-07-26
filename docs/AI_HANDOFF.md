@@ -12,10 +12,9 @@ working tree is clean and everything below is merged, deployed and published.
 
 | | |
 |---|---|
-| Last release commit | `be5dd8b` |
-| Feature commit in that release | `54f27e1` |
+| Last release commit | `62b86af` |
 | Web | GitHub Pages, `deploy-web` success |
-| Native | EAS Update group `56820991-e445-460f-8848-accd27bebebe`, channel `preview` |
+| Native | EAS Update group `6827383f-79c1-4394-978a-c36960f3e741`, channel `preview` |
 | Gate | 71 files / 560 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
 
 **Work is being handed to a different agent.** Nothing in this file assumes you
@@ -79,6 +78,8 @@ owner and report "no open decisions".
   release gate.
 - `visual-a11y.spec.ts` "modal actions stay reachable in a short landscape
   viewport" is flaky; it measures a bounding box before the modal settles.
+- The keyboard fix on non-scroll screens is iOS-only. `KeyboardAvoidingView`
+  was already inert on web, so the Playwright suite cannot show the difference.
 - The market card renders only with live socket quotes, so no automated test
   covers its layout. Its column widths were measured against real Inter metrics
   instead. Its longest label wraps below a 375 pt viewport — wrapping is the
@@ -99,6 +100,28 @@ browser history already behaves correctly there) and the tab-bar drag.
 ## What the last delivery changed
 
 Read the commits; this is only the shape of it.
+
+- **The cell editor went blank** when its quick-entry field was tapped.
+  `Screen`'s `KeyboardAvoidingView` used `behavior="padding"`, which pads by the
+  keyboard height in WINDOW coordinates while a stack screen's frame starts
+  below the native header — it over-padded by the header height and the
+  `flex: 1` child collapsed. Non-scroll screens host their own list, so the list
+  takes the inset now and the avoider is gone. **iOS-only, and no device run has
+  happened** — the web suite cannot prove this one.
+- **Category and payment source became dropdowns.** Sixteen chips pushed date,
+  note and save below the fold. `Select` already had the rows, the tint and the
+  focus trap, so no new component. Option icons are a separate field rendered in
+  a fixed column — packed into the label string, differing emoji widths left
+  every name at a different x. Person stays chips: bounded by the household.
+- **`Badge` no longer pins itself to the top of a row** (`alignSelf` was
+  `flex-start`, overriding the row's centring).
+- **An E2E test that could not fail was replaced.** It asked whether a
+  `POISON_CATEGORY` radio existed on `/transaction`, but `/transaction` always
+  redirected to setup in that context, so the count was zero whatever the import
+  did. Worth remembering as a shape: an absence assertion on a screen you have
+  not proved is rendered asserts nothing.
+
+## What the delivery before that changed
 
 - **P3 withdrawn.** It had shipped as one third of its baseline — the manual
   switch, without start-hidden or peek-while-held — and that third is the one a
