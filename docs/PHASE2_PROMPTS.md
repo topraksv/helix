@@ -6,14 +6,23 @@ zaten okuyor. Burada sadece **sen ne yapıyorsun** yazıyor.
 
 ## Kullanımı
 
-Sırayı bozma. Her paket tek komutla başlar:
+Sırayı bozma, bir paket kapanmadan sonrakine geçme. Numara bir isim, sıra değil
+— P4 nerede koşarsa koşsun P4.
+
+**Claude Code'da:**
 
 ```
-/paket P1
+/paket P7
 ```
 
-Bir paket kapanmadan sonrakine geçme. Numara bir isim, sıra değil — P4 nerede
-koşarsa koşsun P4.
+**Codex'te** (slash komutu yok, agent `AGENTS.md`'yi zaten okuyor):
+
+```
+Faz 2 paketi P7'yi çalıştır. Adımlar docs/PHASE2.md § How a package runs
+içinde; onları takip et. Tasarımı onaylatmadan kod yazma.
+```
+
+İkisi de aynı altı adımı koşar. Fark yalnızca hangi araçları çağırdıkları.
 
 **Biten:** P0 → P1 → P4 → P2. **Geri çekilen:** P3.
 **Kalan sıra: P7 → P6 → P9.** P5 ve P8 backlog'da.
@@ -43,7 +52,10 @@ Hangi pakette olursan ol geçerli. Gördüğün sorunun karşısındakini yapı�
 | Görünmesi imkânsız bir durum, ya da gerekçesi yazılamayan savunma kodu | `Bunu kullanıcı hangi gerçek senaryoda görüyor / bu hangi olay sırasını engelliyor? Yazamıyorsan arkasındaki kodu da yazma.` |
 | Veri katmanına UI parametresi (`writeRows`, repo imzaları) | `Sunum katmanı veri katmanına girmiyor. Progress/cancel çağıranın kendi seviyesinde.` |
 | İlerleme "satır" sayıyor | `İlerleme kullanıcının birimiyle sayılır: ay, kayıt, dosya, yıl. Veritabanı satırı değil.` |
-| Flag iş mantığının içinde | `Flag sadece mount noktasında. Domain veya repo yoluna flag girmeyecek.` |
+| **Ölçmeden "düzeldi" demiş** | `Bunu neyle ölçtün? Renkse kontrast oranı, genişlikse gerçek fontla ölçüm, sağlayıcıysa çağrılan uç, bağımlılıksa açılan tarball. Sayı göster.` |
+| **Aynı hatanın tek örneğini düzeltip sınıfı kapatmış** | `Bu hook/desen kaç yerde çağrılıyor? Hepsini oku, sonra hangilerinin gerçekten hatalı olduğunu söyle.` |
+| Sadece değiştirdiği testi koşmuş | `Tek test dosyası kanıt değil. npm run verify koş.` |
+| Bir özelliğin sadece bir parçasını yapıp "bitti" demiş | `Bu özellik kaç mekanizmadan oluşuyor? Değeri taşıyan parçayı yap, ya da özelliği bana karşı savunup küçült. Artığı teslim etme.` |
 | Elle renk (`palette.x + "14"`) veya çıplak ölçü (`width: 120`) | `src/ui/ içinde çıplak değer olmaz. Token ekle; renkse tüm paletlere ve theme-contrast'a.` |
 | Kapsam dışına taşma | `Bu paketin kapsamı PHASE2.md'de yazılı. Dışındakini not et, yapma.` |
 | Kanıt yok, ya da baseline'a bakmadan güncellemiş | `Kanıt yok. verify çıktısını, değişen dosyaları ve varsa actual/diff görsellerini göster.` |
