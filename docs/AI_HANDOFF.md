@@ -12,10 +12,10 @@ working tree is clean and everything below is merged, deployed and published.
 
 | | |
 |---|---|
-| Last release commit | `aedd662` |
+| Last release commit | `1ee06cb` |
 | Web | GitHub Pages, `deploy-web` success |
-| Native | EAS Update group `4c34b868-3482-42b5-8c44-688c7e945a87`, channel `preview` |
-| Gate | 71 files / 560 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
+| Native | EAS Update group `9e7c80bd-c450-467e-8646-6a171d8ec1d0`, channel `preview` |
+| Gate | 71 files / 563 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
 
 **Work is being handed to a different agent.** Nothing in this file assumes you
 saw the sessions that produced it. Where it describes code, read the code.
@@ -98,6 +98,24 @@ Transparency, the edge-swipe back gesture (which **cannot** be proved on web —
 browser history already behaves correctly there) and the tab-bar drag.
 
 ## What the last delivery changed
+
+- **No screen uses `KeyboardAvoidingView` any more.** Its window-coordinate
+  padding over-padded every stack screen by the header height. The non-scroll
+  branch was fixed a week earlier; the scrolling branch was knowingly left as
+  "degrades rather than breaks" and then broke — reported as the whole screen
+  vanishing at the bottom of the subscription form and the import wizard, the
+  two longest forms in the app. **Not reproducible on web and not verified on a
+  device**: react-native-web's avoider is inert, so the mechanism cannot exist
+  there. Fixed on measured-wrong arithmetic, not on a repro. *The lesson is the
+  one worth keeping: a defect recorded as tolerable is still a defect, and it
+  came back as the most serious report of the week.*
+- Search results are bounded to five with a show-all toggle and four sort
+  modes. `sortTransactions` (domain, tested) compares magnitude for the amount
+  modes so a large refund ranks with the large sums.
+- The custom analysis range is two month dropdowns, not two stacked steppers.
+- The budget badge sits under the figures it qualifies.
+
+## What the delivery before that changed
 
 - **`Badge` carries no `alignSelf`.** It had `flex-start` (hung from the top of
   a wrapped row), then `center` (overrode `alignItems: flex-end` on the stacked
