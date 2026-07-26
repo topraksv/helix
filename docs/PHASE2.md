@@ -63,7 +63,7 @@ surface nobody can look at, so those run last rather than first.
 | 3 | P4 | Extended currencies | F9 | — | web |
 | 4 | P3 | Privacy Peek | F3 | P1 | web (app-switcher on device) |
 | 5 | P5 | Scenario Lab | F5 | P1, P3 | web |
-| 6 | P2 | Navigation shell | F1 glass footer | P1 | **device** |
+| 6 | P2 | Navigation shell | F1 glass footer | P1 | shipped |
 | 7 | P6 | Investments | F8 | P2, P3, P4 | web + device |
 | 8 | P7 | Receipt Vault | F6 | P3 | **device** |
 | 9 | P8 | Shared lists | F7 | P3 | two real accounts |
@@ -72,10 +72,10 @@ surface nobody can look at, so those run last rather than first.
 P0, P1, P4 and P3 stand alone as a coherent release. Everything after is
 optional and may stop at any package boundary.
 
-**P2 moves as soon as device acceptance is possible.** It is not deprioritised
-work — a floating tab bar is judged on safe area, landscape, Reduce
-Transparency and a real keyboard, none of which headless Chromium can show. The
-moment a device run is on the table, P2 is the next package.
+**P2 shipped early, at the owner's request.** Its metrics and centring were
+proved by measuring the live render rather than by a screenshot; safe area,
+landscape, Reduce Transparency and the iOS glass material still need a device
+run, and `TESTING.md` carries those rows.
 
 **P8 has not been agreed.** It is listed last and carries an open decision
 below; do not start it on the strength of appearing in this table.
@@ -127,20 +127,25 @@ it as an option, do not raise it as an alternative. The reasoning is in
 ### P2 — Navigation shell
 
 A custom tab bar via `<Tabs tabBar={…}>`. The tab **count and order do not
-change** here. Content inset keeps coming from `tabBarHeight()` in `theme.ts` —
-one source, already read by `Screen` and `UndoSnackbar`.
+change** here. Because the bar floats, the navigator no longer reserves its
+height, so the space a scene must leave is `tabBarClearance()` in `theme.ts` —
+one source, read by the bar, `Screen` and `UndoSnackbar` alike.
 
-No new native dependency (owner's decision): web gets a real `backdropFilter`,
-native gets a layered high-alpha surface. Call it a frosted surface, not blur,
-in every string and comment. Reduce Transparency and Increase Contrast fall back
-to a solid `surface`.
+**Shipped 2026-07-26.** The shape is identical everywhere; the material is not.
+Only iOS gets `surfaceTranslucent` — Android and web get the same bar in solid
+`surface` rather than an imitation of a system look neither platform has (owner,
+2026-07-26). Reduce Transparency turns iOS solid too. There is no React Native
+API for Increase Contrast, so it is not claimed anywhere.
 
-`expo-glass-tabs` (owner, 2026-07-26) is the one candidate worth pricing against
-that decision at the design gate, because it is purpose-built for exactly this
-bar. It is still a new native dependency: it cannot ship over OTA, it needs a
-local device rebuild, and it puts the app's most-used control inside someone
-else's release cadence. Weigh it honestly and bring the comparison — do not
-adopt it silently, and do not dismiss it silently either.
+The safe-area inset sits **under** the bar, not inside it: a docked bar had to
+swallow the home indicator, which made its bottom padding permanently larger
+than its top. Measured after the change at 390 and 1440: side insets 12/12, tab
+padding 5/5, bar centred to the pixel.
+
+`expo-blur` (and `expo-glass-tabs`, which is built on it plus four more native
+modules) stays out: it cannot ship over OTA and there is no working device build
+path today. The background layer is the only thing that would change if real
+blur is adopted after one exists — priced at the gate, not adopted silently.
 
 ### P3 — Privacy Peek
 

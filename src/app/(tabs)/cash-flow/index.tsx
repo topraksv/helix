@@ -6,7 +6,7 @@
  * Phones can also switch to a compact month-card list.
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
@@ -32,6 +32,7 @@ import {
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { lightTap } from "../../../ui/haptics";
@@ -161,6 +162,7 @@ export default function CashflowScreen() {
   // Card view: scroll the current month into view on open (mirrors the table's
   // current-month centering). Reset the one-shot flag whenever view/year flips.
   const cardsScrollRef = React.useRef<ScrollView>(null);
+  const tableRef = useRef<ScrollView>(null);
   const didFocusCards = React.useRef(false);
   React.useEffect(() => {
     didFocusCards.current = false;
@@ -213,6 +215,10 @@ export default function CashflowScreen() {
 
   const orientation = mode === "columns" ? "monthsAsColumns" : "monthsAsRows";
   const showTable = mode !== "cards";
+  // This tab hosts its own scroller instead of `Screen`'s, and swaps between
+  // two, so the tab-press-returns-to-top hook is pointed at whichever view is
+  // mounted. The hook re-subscribes when the ref identity changes.
+  useScrollToTop(showTable ? tableRef : cardsScrollRef);
   // In column-focused view the categories are rows, so the editor label flips.
   const editLabel = orientation === "monthsAsColumns" ? tr.cashflow.editRows : tr.cashflow.editColumns;
   // Open the column/row editor as a modal so closing returns to Mali Tablo
@@ -274,6 +280,7 @@ export default function CashflowScreen() {
             <View style={{ flex: 1 }} onLayout={(e) => setTableAreaH(e.nativeEvent.layout.height)}>
               {tableAreaH > 0 ? (
                 <MatrixTable
+                  scrollRef={tableRef}
                   year={year}
                   bundle={bundle}
                   columnCategories={columnCategories}
@@ -350,6 +357,7 @@ function MatrixTable({
   measuredHeight,
   pinnedKey,
   onTogglePin,
+  scrollRef,
 }: {
   year: number;
   bundle: LedgerBundle;
@@ -364,6 +372,7 @@ function MatrixTable({
   measuredHeight: number;
   pinnedKey: string | null;
   onTogglePin: (key: string) => void;
+  scrollRef: React.RefObject<ScrollView | null>;
 }) {
   const { palette } = useTheme();
   const router = useRouter();
@@ -513,6 +522,7 @@ function MatrixTable({
   return (
     <Card padded={false} style={{ alignSelf: "stretch" }}>
       <StickyTable
+        scrollRef={scrollRef}
         cornerLabel={cornerLabel}
         columns={stickyColumns}
         rows={stickyRows}

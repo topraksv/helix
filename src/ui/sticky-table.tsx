@@ -160,6 +160,7 @@ export function StickyTable({
   focusColumnKey,
   focusRowKey,
   height,
+  scrollRef,
 }: {
   cornerLabel: string;
   columns: StickyColumn[];
@@ -181,9 +182,12 @@ export function StickyTable({
   focusRowKey?: string;
   /** Explicit viewport height; when omitted the table flexes to fill. */
   height?: number;
+  /** The table's vertical scroller, so a tab press can return it to the top. */
+  scrollRef?: React.RefObject<ScrollView | null>;
 }) {
   const { palette } = useTheme();
-  const vRef = useRef<ScrollView>(null);
+  const ownVRef = useRef<ScrollView>(null);
+  const vRef = scrollRef ?? ownVRef;
   const bodyHRef = useRef<ScrollView>(null);
   const headerHRef = useRef<ScrollView>(null);
   useWebInteractions(vRef, bodyHRef, headerHRef, rowHeight, cellWidth);
