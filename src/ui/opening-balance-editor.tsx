@@ -19,6 +19,7 @@ import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState,
 import { combineLiveQueryStatus } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
+import { formatMinor } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Amount, Body, Button, Card, CardList, DataStateNotice, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "./components";
 import { appAlert } from "./dialog";
@@ -64,10 +65,24 @@ export function OpeningBalanceEditor() {
     if (computed == null || effectiveTarget == null || !balanceDirty) return;
     setSavingBalance(true);
     try {
-      await setCurrentBalance(userId, effectiveTarget, computed, tr.settings.balanceAdjustmentNote);
+      // The note carries what the delta cannot: an adjustment row stores only
+      // the difference, so "+₺95.000,00" on its own never said what the balance
+      // went from or to.
+      await setCurrentBalance(
+        userId,
+        effectiveTarget,
+        computed,
+        tr.settings.balanceAdjustmentNote(formatMinor(computed), formatMinor(effectiveTarget)),
+      );
       scheduleSync(userId);
       successNotice();
-      allowExit(close);
+      // Stays put. Correcting a balance is usually followed by looking at what
+      // it did to the history right below, and closing the screen took that
+      // away. The field re-derives from the new computed balance once the
+      // draft is dropped, so it shows the figure that was just saved.
+      setTargetRaw(null);
+      setTargetMinor(null);
+      undo.show(tr.settings.balanceAdjustmentSaved, null, "success");
     } catch (e) {
       errorNotice();
       devError("balance.current", e);

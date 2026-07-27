@@ -271,8 +271,15 @@ function RootLayoutInner() {
     if (guard.redirect) router.replace(guard.redirect);
   }, [guard.redirect, router]);
 
+  // A bare background here is indistinguishable from the app having died, and
+  // that is exactly how a stuck lock read was reported: "the screen vanishes".
+  // The indicator is delayed, so a normal boot still shows nothing at all.
   if (!ready || locked === null) {
-    return <View style={{ flex: 1, backgroundColor: theme.palette.background }} />;
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.palette.background, alignItems: "center", justifyContent: "center" }}>
+        <DelayedLoadingIndicator />
+      </View>
+    );
   }
 
   if (locked) {

@@ -128,7 +128,11 @@ export default function AnalysisScreen() {
   const deferredQuery = useDeferredValue(query);
   const q = deferredQuery.trim().toLocaleLowerCase("tr-TR");
   const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
-  const searchActive = q.length > 0 || transactionType != null || categoryFilter != null || sourceFilter != null;
+  // Asking for all time is itself a request to see records, so it counts as a
+  // filter. Without it, clearing the payment method back to "Tümü" emptied
+  // the list even though the owner had just told the screen what to search.
+  const searchActive =
+    q.length > 0 || transactionType != null || categoryFilter != null || sourceFilter != null || searchScope === "all";
   const searchResults = searchActive
     ? filterTransactions(
         allTx.map((transaction) => {
@@ -156,6 +160,9 @@ export default function AnalysisScreen() {
         },
       )
     : [];
+  // "Tüm zamanlar" takes the window out of the question, so the controls that
+  // set it stop accepting input rather than sitting there implying otherwise.
+  const allTimeSearch = searchScope === "all";
   const sortedResults = sortTransactions(searchResults, sortMode);
   // A period can match hundreds of rows, and a wall of them answers no question.
   // Five is what fits under the filters without scrolling; the rest are one tap
@@ -204,6 +211,7 @@ export default function AnalysisScreen() {
           the switcher took a third of the width and left "12 Ay" wrapping.
           Whatever the chosen period needs sits under it instead. */}
       <Segmented
+        disabled={allTimeSearch}
         options={[
           { value: "1m", label: tr.analysis.period1m },
           { value: "3m", label: tr.analysis.period3m },
@@ -217,9 +225,9 @@ export default function AnalysisScreen() {
       />
       {period === "year" ? (
         <Spread style={{ marginBottom: spacing.md }}>
-          <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={year <= minYear} />
+          <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={allTimeSearch || year <= minYear} />
           <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
-          <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= currentYear} />
+          <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={allTimeSearch || year >= currentYear} />
         </Spread>
       ) : null}
       {period === "custom" ? (
@@ -235,6 +243,7 @@ export default function AnalysisScreen() {
               options={monthOptions}
               value={customStart}
               onChange={setCustomStart}
+              disabled={allTimeSearch}
             />
           </View>
           <View style={{ flex: 1 }}>
@@ -243,6 +252,7 @@ export default function AnalysisScreen() {
               options={monthOptions}
               value={customEnd}
               onChange={setCustomEnd}
+              disabled={allTimeSearch}
             />
           </View>
         </Row>
@@ -281,38 +291,24 @@ export default function AnalysisScreen() {
             label={tr.analysis.searchSource}
             options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name }))]}
             value={sourceFilter ?? ""}
-            onChange={(value) => {
-              const next = value || null;
-              setSourceFilter(next);
-              if (!next) setSearchScope("period");
-            }}
+            onChange={(value) => setSourceFilter(value || null)}
           />
         </View>
         <View style={{ flex: 1 }}>
           <Select
             label={tr.analysis.searchPeriod}
             options={[
-              {
-                value: "period",
-                label: sourceFilter == null
-                  ? tr.analysis.searchPeriodDisabled
-                  : tr.analysis.selectedPeriod,
-              },
+              { value: "period", label: tr.analysis.selectedPeriod },
               { value: "all", label: tr.analysis.allTime },
             ]}
             value={searchScope}
             onChange={setSearchScope}
-            disabled={sourceFilter == null}
           />
         </View>
       </Row>
-      {sourceFilter == null || searchScope === "period" ? (
-        <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
-          {sourceFilter == null
-            ? tr.analysis.searchPeriodRequiresSource
-            : tr.analysis.selectedPeriodRange(searchPeriodLabel)}
-        </Body>
-      ) : null}
+      <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
+        {searchScope === "period" ? tr.analysis.selectedPeriodRange(searchPeriodLabel) : tr.analysis.allTimeHint}
+      </Body>
       {searchActive && sortedResults.length > 1 ? (
         <Select
           label={tr.analysis.sortLabel}

@@ -380,6 +380,20 @@ function MatrixTable({
   const currentMonth = monthKeyOf(today);
 
   const noteByCell = new Map(cellNotes.map((note) => [`${note.month}:${note.categoryId}`, note.body]));
+  // A reconciled month looks exactly like an ordinary one in this table, so the
+  // closing figure silently stopped matching the flows above it. It carries the
+  // same marker a cell note does — the cell has something extra behind it.
+  const adjustmentByMonth = new Map(
+    bundle.yearMonths
+      .filter((month) => month.adjustmentMinor !== 0)
+      .map((month) => [month.month, tr.cashflow.adjustedCell(formatMinor(month.adjustmentMinor))]),
+  );
+  const noteFor = (column: { key: string; categoryId?: string | null }, month: MonthKey): string | undefined =>
+    column.key === "closing"
+      ? adjustmentByMonth.get(month)
+      : column.categoryId
+        ? noteByCell.get(`${month}:${column.categoryId}`)
+        : undefined;
 
   const matrix = buildCashFlowMatrixModel({
     year,
@@ -484,7 +498,7 @@ function MatrixTable({
       cells: columns.map((c) =>
         cell(
           c.values.get(slot.month) ?? null,
-          c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
+          noteFor(c, slot.month),
           pressFor(c, slot.month),
           false,
           slot.month,
@@ -504,7 +518,7 @@ function MatrixTable({
       cells: months.map((slot) =>
         cell(
           c.values.get(slot.month) ?? null,
-          c.categoryId ? noteByCell.get(`${slot.month}:${c.categoryId}`) : undefined,
+          noteFor(c, slot.month),
           pressFor(c, slot.month),
           slot.month === currentMonth,
           slot.month,

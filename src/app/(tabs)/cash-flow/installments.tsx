@@ -51,6 +51,17 @@ export default function InstallmentsScreen() {
     if (tx.installmentPlanId && tx.note && !noteByPlan.has(tx.installmentPlanId)) noteByPlan.set(tx.installmentPlanId, tx.note);
   }
 
+  // The stepper used to walk to any month in either direction, so a plan ending
+  // in October 2027 still offered 2035 — every one of those months empty. The
+  // bounds are the plans themselves; with no plans at all there is nowhere to
+  // go, so it stays on this month.
+  const planMonths = allTx
+    .filter((t) => t.installmentPlanId != null)
+    .map((t) => monthKeyOf(t.effectiveDate))
+    .sort();
+  const firstPlanMonth = planMonths[0] ?? viewMonth;
+  const lastPlanMonth = planMonths.at(-1) ?? viewMonth;
+
   const itemsByPlan = new Map<string, GeneratedInstallment[]>();
   for (const t of allTx) {
     if (!t.installmentPlanId || t.installmentNo == null) continue;
@@ -147,7 +158,7 @@ export default function InstallmentsScreen() {
   return (
     <Screen>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <MonthStepper value={viewMonth} onChange={setViewMonth} />
+      <MonthStepper value={viewMonth} onChange={setViewMonth} min={firstPlanMonth} max={lastPlanMonth} />
 
       <Card>
         <Body muted>{tr.installments.thisMonthTotal} · {monthLabel(viewMonth)}</Body>

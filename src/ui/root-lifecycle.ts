@@ -15,34 +15,81 @@ import { tr } from "../i18n/tr";
 
 export function useBiometricLock(ready: boolean, userId: string | null) {
   const [locked, setLocked] = useState<boolean | null>(null);
+  /** One prompt at a time: iOS queues a second and asks the owner twice. */
+  const authenticating = useRef(false);
+
+  /**
+   * Resolve the lock preference, and NEVER leave it unresolved.
+   *
+   * The root renders a bare background while `locked` is null, so a read that
+   * neither resolves nor rejects visibly is the whole app going blank. This
+   * read can genuinely fail: iOS seals app storage under
+   * `NSFileProtectionComplete`, so a SecureStore get issued around a resume can
+   * reject. It used to run in an async IIFE with no `catch`, and because the
+   * effect's deps do not change afterwards nothing ever retried — the app
+   * stayed blank on every screen until it was force-quit.
+   *
+   * On failure it keeps a value it already had, and locks if it had none.
+   * Locking is the recoverable end of a read we cannot trust; unlocking is not.
+   */
+  const resolveLock = useCallback(async () => {
+    if (!userId) {
+      setLocked(false);
+      return;
+    }
+    try {
+      const enabled = (await kv.get("helix.biometric")) === "true";
+      setLocked(enabled && Platform.OS !== "web");
+    } catch (error) {
+      devWarning("lock.read", String(error));
+      setLocked((current) => current ?? Platform.OS !== "web");
+    }
+  }, [userId]);
 
   useEffect(() => {
     if (!ready) return;
-    void (async () => {
-      if (!userId) {
-        setLocked(false);
-        return;
-      }
-      const enabled = (await kv.get("helix.biometric")) === "true";
-      setLocked(enabled && Platform.OS !== "web");
-    })();
-  }, [ready, userId]);
+    void resolveLock();
+  }, [ready, resolveLock]);
 
   const unlock = useCallback(async () => {
-    const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.lock.prompt });
-    if (result.success) setLocked(false);
+    if (authenticating.current) return;
+    authenticating.current = true;
+    try {
+      // Biometrics only. With the device fallback left on, iOS answered "Face
+      // ID ile Aç" with a passcode keypad, which is neither what the button
+      // says nor what the setting promises. A failed or cancelled attempt
+      // leaves the lock screen and its button, which is the retry.
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: tr.lock.prompt,
+        disableDeviceFallback: true,
+        cancelLabel: tr.common.cancel,
+      });
+      if (result.success) setLocked(false);
+    } catch (error) {
+      devWarning("lock.auth", String(error));
+    } finally {
+      authenticating.current = false;
+    }
   }, []);
 
   useEffect(() => {
     if (Platform.OS === "web" || !userId) return;
     const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        // A resume is also the moment the earlier read is most likely to have
+        // failed, so this doubles as the retry that the deps cannot provide.
+        if (locked === null) void resolveLock();
+        return;
+      }
       if (state !== "background") return;
-      void kv.get("helix.biometric").then((value) => {
-        if (value === "true") setLocked(true);
-      });
+      void kv.get("helix.biometric")
+        .then((value) => {
+          if (value === "true") setLocked(true);
+        })
+        .catch((error) => devWarning("lock.read", String(error)));
     });
     return () => subscription.remove();
-  }, [userId]);
+  }, [userId, locked, resolveLock]);
 
   useEffect(() => {
     if (locked === true) void unlock();

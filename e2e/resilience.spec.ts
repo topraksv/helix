@@ -201,8 +201,8 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   await page.setViewportSize({ width: 320, height: 720 });
   await onboard(page);
 
-  // Create one payment source so Analytics can prove the source → period
-  // dependency with a real persisted option, not a mocked component state.
+  // One real persisted payment source, so the source filter is exercised
+  // against an actual option rather than mocked component state.
   await page.goto("/helix/settings/payment-sources");
   await page.getByRole("textbox", { name: "Yöntem Ekle" }).fill("Günlük Hesap");
   await page.getByRole("radio", { name: "Nakit", exact: true }).click();
@@ -220,8 +220,11 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   );
   expect(typeBoxes.every((box) => box != null && box.height === typeBoxes[0]?.height && box.y === typeBoxes[0]?.y)).toBe(true);
 
+  // Choosing WHEN to search never depended on choosing a payment method: the
+  // period field is usable from the start, and picking a source or clearing it
+  // back to "Tümü" leaves it alone.
   const period = page.getByRole("button", { name: "Arama dönemi", exact: true });
-  await expect(period).toBeDisabled();
+  await expect(period).toBeEnabled();
   await page.getByRole("button", { name: "Ödeme yöntemi", exact: true }).click();
   await page.getByRole("radio", { name: "Günlük Hesap", exact: true }).click();
   await expect(period).toBeEnabled();
@@ -230,6 +233,9 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   await period.click();
   await expect(page.getByRole("radio", { name: "Tüm zamanlar", exact: true })).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Escape");
+  // …and once the search covers all time, the window controls above it stop
+  // accepting input, because nothing they set applies to it any more.
+  await expect(page.getByRole("radio", { name: "Yıl", exact: true })).toBeDisabled();
 
   await page.goto("/helix/settings/incomes");
   await page.getByRole("textbox", { name: "Başlık" }).fill("Uzun Açıklamalı Aylık Düzenli Maaş Geliri");
