@@ -12,10 +12,10 @@ working tree is clean and everything below is merged, deployed and published.
 
 | | |
 |---|---|
-| Last release commit | `675df38` |
+| Last release commit | `350abce` |
 | Web | GitHub Pages, `deploy-web` success |
-| Native | EAS Update group `7ac366d3-876d-4c36-a5a7-04956e9b6297`, channel `preview` |
-| Gate | 71 files / 563 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
+| Native | EAS Update group `09d39a71-13c8-47a9-911d-954dba992fb6`, channel `preview` |
+| Gate | 71 files / 567 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
 
 **Work is being handed to a different agent.** Nothing in this file assumes you
 saw the sessions that produced it. Where it describes code, read the code.
@@ -108,6 +108,29 @@ Transparency, the edge-swipe back gesture (which **cannot** be proved on web —
 browser history already behaves correctly there) and the tab-bar drag.
 
 ## What the last delivery changed
+
+- **The palette was not the problem; the tonal architecture was.** Page, cards,
+  hero and tab bar all sat inside a few points of lightness, so the app read as
+  flat however the hexes moved. The balance now sits on the one saturated slab
+  (`heroSurface` in `theme.ts`) and the surface ramps step visibly at every
+  join. *Worth keeping: four palettes were proposed and rejected before anyone
+  measured the lightness range. Re-picking values inside a flat architecture
+  cannot fix flatness.*
+- **Dark refuses the accent at surface scale.** Filled with `primarySoft` the
+  dark hero was the largest coloured area on screen and turned each theme into
+  a wash of one hue. Dark ramps are near-neutral charcoal now (top-of-ramp
+  chroma 17 → 12); the theme lives in the accent on small elements.
+- **Amber / Çelik / Servi.** Ids stay `clay`/`ocean`/`forest` — they are on
+  devices that already chose. `resolvePaletteId` migrates retired values.
+- **Semantics are per palette.** The contract moved from "same colour" to "same
+  meaning" and the tests moved with it. The blue/purple ban now covers semantic
+  accents only: it exists so a status never reads blue, and a brand identity is
+  not a status.
+- The `frontend-design` skill's first calibration note described this app
+  exactly — cream background, serif display, terracotta accent is the most
+  common AI-default look. Worth reading before the next visual pass.
+
+## What the delivery before that changed
 
 - **The "vanishing screen" was the lock preference, not the keyboard avoider.**
   `useBiometricLock` read `helix.biometric` in an async block with no `catch`;
