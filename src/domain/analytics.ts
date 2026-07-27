@@ -63,16 +63,21 @@ export function categoryRangeMatrix(
 }
 
 /** Cumulative series for one category across a month range (trend chart). */
-export function cumulativeSeries(
+/**
+ * What the category cost in each month of the window.
+ *
+ * This used to accumulate. A running total only ever climbs, so every category
+ * drew the same rising line and the one question the chart is opened for —
+ * which months were heavy — was the one it could not answer. A month is now
+ * its own point, and a month with nothing in it is a zero rather than a
+ * repeat of the previous value.
+ */
+export function monthlySeries(
   row: CategoryYearRow,
   start: MonthKey,
   end: MonthKey,
-): { month: MonthKey; cumulativeMinor: Minor }[] {
-  let running = 0;
-  return monthRange(start, end).map((month) => {
-    running += row.monthly.get(month) ?? 0;
-    return { month, cumulativeMinor: running };
-  });
+): { month: MonthKey; amountMinor: Minor }[] {
+  return monthRange(start, end).map((month) => ({ month, amountMinor: row.monthly.get(month) ?? 0 }));
 }
 
 export interface Distribution {

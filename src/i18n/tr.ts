@@ -203,7 +203,7 @@ export const tr = {
     resetLinkTitle: "Şifre yenileme",
     resetLinkHint: "Mevcut şifrene erişemiyorsan hesabındaki e-posta adresine güvenli bir yenileme bağlantısı gönder.",
   },
-  lock: { title: "Kilidi Aç", prompt: "Devam etmek için kimliğini doğrula", button: "Face ID ile Aç" },
+  lock: { title: "Helix kilitli", prompt: "Devam etmek için kimliğini doğrula", button: "Kilidi Aç" },
   onboarding: {
     welcome: "Hoş geldin",
     intro: "Birkaç adımda kurulumu tamamlayalım.",
@@ -541,7 +541,7 @@ export const tr = {
     chartBars: "Sütun",
     chartExpenseDist: "Harcama ve yatırım dağılımı",
     monthlyFlows: "Aylık gelir, gider ve yatırım",
-    trendOf: (c: string) => `${c} (kümülatif)`,
+    trendOf: (c: string) => `${c} (aylık)`,
   },
   settings: {
     title: "Ayarlar",

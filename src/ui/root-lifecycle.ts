@@ -30,7 +30,11 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
    * stayed blank on every screen until it was force-quit.
    *
    * On failure it keeps a value it already had, and locks if it had none.
-   * Locking is the recoverable end of a read we cannot trust; unlocking is not.
+   * **That default is only safe because `unlock` keeps the device passcode as a
+   * fallback.** Locking on an unreadable preference plus a biometrics-only
+   * prompt is how the owner got shut out of their own app: Face ID was the only
+   * key, and nothing was left to try when it did not open. Do not tighten one
+   * of these without re-reading the other.
    */
   const resolveLock = useCallback(async () => {
     if (!userId) {
@@ -55,14 +59,16 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
     if (authenticating.current) return;
     authenticating.current = true;
     try {
-      // Biometrics only. With the device fallback left on, iOS answered "Face
-      // ID ile Aç" with a passcode keypad, which is neither what the button
-      // says nor what the setting promises. A failed or cancelled attempt
-      // leaves the lock screen and its button, which is the retry.
+      // Plain iOS behaviour: the face first, the device passcode when the face
+      // does not open it, and it keeps asking until one of them does.
+      //
+      // This was briefly biometrics-only, to stop a passcode appearing under a
+      // button that says "Face ID ile Aç". That reasoning was right about the
+      // label and catastrophic about the lock — it removed the only way back in
+      // when the face fails, and the owner was shut out of the app. A lock on
+      // one's own data must always have a second key.
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: tr.lock.prompt,
-        disableDeviceFallback: true,
-        cancelLabel: tr.common.cancel,
       });
       if (result.success) setLocked(false);
     } catch (error) {
@@ -82,6 +88,10 @@ export function useBiometricLock(ready: boolean, userId: string | null) {
         return;
       }
       if (state !== "background") return;
+      // The auth prompt itself backgrounds the app, so re-locking here answered
+      // a successful unlock by immediately asking again — the second prompt the
+      // owner kept seeing after entering the right passcode.
+      if (authenticating.current) return;
       void kv.get("helix.biometric")
         .then((value) => {
           if (value === "true") setLocked(true);
