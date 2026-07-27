@@ -7,31 +7,47 @@ history log.
 
 ## Current state — 2026-07-27, Europe/Istanbul
 
-`main` is the only long-lived branch. The repository hygiene package is the
-resulting HEAD; use `git log` for its hash. It does not change product behaviour,
-data, UI, migrations, dependencies or the production bundle.
+`main` is the only long-lived branch. The engineering quality package was
+squash-merged through [PR #98](https://github.com/topraksv/helix/pull/98).
 
 | | |
 |---|---|
-| Last product release commit | `350abce` |
-| Web | GitHub Pages via the resulting `main` `deploy-web` run |
-| Native | EAS Update group `09d39a71-13c8-47a9-911d-954dba992fb6`, channel `preview`; unchanged because the cleanup production bundle is byte-identical |
-| Gate | 71 Vitest files / 567 tests; 40 Playwright; bundle within budget; `supabaseConfigInlined: true` |
+| Last product release commit | `faba0689b3330c2c00cd21e1d455923855165faf` |
+| Web | [GitHub Pages run 30303880841](https://github.com/topraksv/helix/actions/runs/30303880841), successful |
+| Native | EAS Update group `0d7066ab-e99e-457d-8b08-828ec7e3a5b5`, channel/branch `preview`, runtime `1.0.0`, Android + iOS |
+| Gate | 71 Vitest files / 568 tests; 40 Playwright; Expo Doctor 18/18; linked pgTAP 59/59 |
 
-The cleanup package narrows generated-output ignores, aligns ESLint's E2E output
-path, moves the UI-owned brand colour table from `src/domain/` to `src/ui/`,
-corrects the Phase 2 open-decision list, installs the project cleanup and
-explicit-only architecture skills, and adds the delta-focused end-of-task
-hygiene rule to `AGENTS.md`.
+The repository-wide audit inventoried 614 starting tracked files and reviewed
+284 production, test and configuration files file-by-file. The remaining
+documents, assets and vendored skill files were classified and reference-scanned
+where applicable. No reproducible P0/P1 remained.
 
-`npm run verify:release` passes. Production export remains 4,739,591-byte entry
-JavaScript, 5,368,773-byte total JavaScript, 9,271,276-byte total export, six
-fonts / 1,518,000 bytes, zero source maps and inlined Supabase configuration.
-`npm ls --all` and Expo public config resolution pass.
+The package replaces percentage-based cross-platform screenshot tolerance with
+23 Darwin/Linux baseline pairs and a five-pixel absolute budget, makes the FX
+and invalid-backup tests fail on the real protected boundaries, fixes linked
+pgTAP completion under the CLI role, and keeps the installed navigation graph
+unchanged while aligning Expo's supported manifest range.
 
-`npx expo-doctor` remains 17/18 and `npx expo install --check` remains non-zero
-for the pre-existing `@react-navigation/native` 7.3.14 versus Expo's expected
-`^7.1.8`. This package deliberately does not upgrade dependencies.
+Credit-card statement history now aggregates transactions in one pass. The
+deterministic 120-statement / 100,000-transaction benchmark measured 82.50 ms →
+2.26 ms median and 86.17 ms → 2.44 ms p95, with zero mismatched totals.
+
+Production export is 4,739,691-byte entry JavaScript, 5,368,873-byte total
+JavaScript and 9,271,376-byte total export, with six fonts / 1,518,000 bytes,
+zero source maps and inlined Supabase configuration. Live Pages smoke verified
+root/upcoming/settings as 200, and the dynamic month URL as the expected 404
+with a root-identical application shell and a loadable release entry asset.
+
+The EAS group contains one Android and one iOS update for the release commit;
+the channel still maps unconditionally to the `preview` branch. Initial
+insights show zero installs and zero failed installs. Installed delivery remains
+unverified until the owner performs two cold starts and a visible login flow on
+the preview build.
+
+Existing non-blocking tool output remains: Node's experimental SQLite warning,
+the `NO_COLOR`/`FORCE_COLOR` warning and Expo Notifications' unsupported web
+listener notice. `npm ci` reports 29 audit advisories (4 moderate, 25 high);
+this package did not force or major-upgrade dependencies.
 
 ## Open product backlog
 
@@ -42,14 +58,14 @@ for the pre-existing `@react-navigation/native` 7.3.14 versus Expo's expected
 
 ## Open structural and acceptance findings
 
+- The documented `src/ui/components.tsx` ↔ `src/ui/calculator.tsx` cycle is a P3
+  structural preference. Breaking it would broaden the UI seam without measured
+  runtime or bundle benefit; this audit deliberately left it unchanged.
 - `src/ui/tab-bar.tsx` imports a type from the transitive
   `@react-navigation/bottom-tabs` package. Adding a direct dependency or
-  changing the type seam needs a separate package decision.
-- Timing-sensitive accessibility/performance checks have produced isolated
-  local flakes but pass in the final full release gate. Do not weaken them or
-  regenerate goldens as a cleanup workaround.
-- No device acceptance run has happened. Every device-only claim remains
-  `BLOCKED` in [`TESTING.md`](TESTING.md).
+  changing the type seam remains a separate package decision.
+- No device acceptance run happened. Every device-only claim remains `BLOCKED`
+  in [`TESTING.md`](TESTING.md).
 
 ## Phase 2
 
@@ -59,5 +75,6 @@ are in [`PHASE2.md`](PHASE2.md).
 
 ## Next exact step
 
-Raise whether P7 may ship without a device run, then settle its file-size and
-total-storage limits. If P7 proceeds, run `PHASE2.md` § “How a package runs”.
+Perform two full close/open cycles on the installed preview build, confirm the
+target update and login flow, then raise whether P7 may ship without a device
+run and settle its file-size and total-storage limits.
