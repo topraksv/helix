@@ -33,7 +33,8 @@ export default function BudgetsScreen() {
   const { palette } = useTheme();
   const undo = useUndo();
   const guard = useOperationGuard();
-  const [month, setMonth] = useState(monthKeyOf(todayISO()));
+  const currentMonth = monthKeyOf(todayISO());
+  const [month, setMonth] = useState(currentMonth);
   const [categoryChoice, setCategoryChoice] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
   /**
@@ -119,7 +120,10 @@ export default function BudgetsScreen() {
     <Screen>
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.budgets.intro}</Body>
-      <MonthStepper value={month} onChange={changeMonth} />
+      {/* Forward only. A limit is something to steer by, and a month that has
+          already happened cannot be steered — setting one there would only
+          rewrite how a closed month scores itself. */}
+      <MonthStepper value={month} onChange={changeMonth} min={currentMonth} />
       <Card>
         <Select
           label={tr.budgets.category}
