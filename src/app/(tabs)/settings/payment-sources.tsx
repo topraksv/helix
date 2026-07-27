@@ -211,6 +211,18 @@ export default function SourcesScreen() {
   const editingStatements = editingId
     ? statements.filter((statement) => statement.paymentSourceId === editingId).sort((a, b) => b.dueDate.localeCompare(a.dueDate))
     : [];
+  const editingStatementIds = new Set(editingStatements.map((statement) => statement.id));
+  const statementAmountById = new Map<string, number>();
+  if (editingStatementIds.size > 0) {
+    for (const transaction of transactions) {
+      const statementId = transaction.cardStatementId;
+      if (!statementId || !editingStatementIds.has(statementId)) continue;
+      statementAmountById.set(
+        statementId,
+        (statementAmountById.get(statementId) ?? 0) + transaction.amountTryMinor,
+      );
+    }
+  }
   const replacementOptions = resolving ? eligibleReplacements(resolving.source.id, resolving.usage) : [];
   const cardReplacementRequired = Boolean(resolving && resolving.usage.cardInstallmentPlans > 0);
 
@@ -261,9 +273,7 @@ export default function SourcesScreen() {
         <Card>
           <Label>{tr.sources.statementHistory}</Label>
           {editingStatements.map((statement) => {
-            const amount = transactions
-              .filter((transaction) => transaction.cardStatementId === statement.id)
-              .reduce((sum, transaction) => sum + transaction.amountTryMinor, 0);
+            const amount = statementAmountById.get(statement.id) ?? 0;
             return (
               <Spread key={statement.id} style={{ paddingVertical: spacing.xs, alignItems: "center" }}>
                 <View style={{ flex: 1, paddingRight: spacing.md }}>

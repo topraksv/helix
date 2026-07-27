@@ -104,7 +104,7 @@ Postgres RLS'te uygulanır.
   sınırlı, argümansız, `search_path = ''`, `execute` yalnız `authenticated`.
 - Trigger/RPC fonksiyonları sabit `search_path` ile yazılır (migration 3, 6, 7,
   8).
-- Kanıt: `supabase/tests/owner_integrity_and_rls.sql`, `plan(48)` — 16 tablo için
+- Kanıt: `supabase/tests/owner_integrity_and_rls.sql`, `plan(59)` — 16 tablo için
   RLS/policy/grant envanteri, A/B izolasyonu, owner değiştirme,
   anon/hard-delete reddi, cross-owner FK, tombstone nesli, transfer constraint’i
   ve hesap-silme RPC davranışı.
@@ -325,7 +325,7 @@ doğrulandığı veya L1 uyumluluğu sağlandığı iddiası değildir.
 | Architecture | APPLICABLE | `docs/ARCHITECTURE.md` bağımlılık yönü + güven sınırları tablosu (bu belgenin başı) |
 | Authentication | APPLICABLE | Supabase Auth; `tests/auth.test.ts`; şifre gücü form doğrulamasında (plan sınırı: leaked-password kontrolü Free plan'de yok) |
 | Session Management | APPLICABLE | SecureStore + session epoch; `tests/session-epoch.test.ts`, `tests/session-task.test.ts` |
-| Access Control | APPLICABLE | RLS; 48 assertion'lı linked pgTAP |
+| Access Control | APPLICABLE | RLS; 59 assertion'lı linked pgTAP |
 | Validation / Encoding | APPLICABLE | `route-params`, `backup-validation`, `spreadsheet-import`, `csvCell`; Semgrep 0 |
 | Stored Cryptography | **DEVICE/BINARY ONLY** | `NSFileProtectionComplete` yalnız yerel `npx expo run:ios --device` build'inde etkinleşir; doğrulaması cihazda yapılır |
 | Error Handling & Logging | APPLICABLE | `tests/diagnostics.test.ts`, `tests/privacy.test.ts`, `tests/undo-outcome.test.ts` (yanıltıcı başarı yok) |

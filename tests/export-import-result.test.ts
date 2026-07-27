@@ -104,4 +104,51 @@ describe("backup import result counts", () => {
     await expect(importBundle(targetUserId, {}, { signal: controller.signal })).rejects.toBe(reason);
     expect(dependencies.writeRowBatchesAtomically).not.toHaveBeenCalled();
   });
+
+  it("rejects a dangling relationship before the atomic writer is called", async () => {
+    const personId = "00000000-0000-4000-8000-000000000010";
+    await expect(importBundle(targetUserId, {
+      version: 1,
+      exportedAt: timestamp,
+      tables: {
+        persons: [{
+          id: personId,
+          user_id: sourceUserId,
+          created_at: timestamp,
+          updated_at: timestamp,
+          deleted_at: null,
+          tombstone_version: 0,
+          name: "Ben",
+          is_self: 1,
+        }],
+        transactions: [{
+          id: "00000000-0000-4000-8000-000000000012",
+          user_id: sourceUserId,
+          created_at: timestamp,
+          updated_at: timestamp,
+          deleted_at: null,
+          tombstone_version: 0,
+          type: "expense",
+          amount_minor: 1_000,
+          currency: "TRY",
+          fx_rate: null,
+          amount_try_minor: 1_000,
+          entry_date: "2026-07-15",
+          purchase_date: null,
+          effective_date: "2026-07-15",
+          status: "realized",
+          category_id: "00000000-0000-4000-8000-000000000011",
+          payment_source_id: null,
+          person_id: personId,
+          installment_plan_id: null,
+          installment_no: null,
+          card_statement_id: null,
+          subscription_id: null,
+          is_aggregate: 0,
+          note: null,
+        }],
+      },
+    })).rejects.toThrow("Geçersiz yedek dosyası");
+    expect(dependencies.writeRowBatchesAtomically).not.toHaveBeenCalled();
+  });
 });
