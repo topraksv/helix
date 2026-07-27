@@ -213,6 +213,63 @@ test("a dirty-exit dialog isolates the form's Enter shortcut", async ({ page }, 
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+test("dirty drafts guard browser unload and same-screen context changes", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  await page.goto("/helix/transaction");
+  await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("125,00");
+  const blockedUnload = await page.evaluate(() => {
+    const event = new Event("beforeunload", { bubbles: false, cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(blockedUnload, "a dirty web form must warn before reload or tab close").toBe(true);
+
+  await page.goto("/helix/settings/budgets");
+  const amount = page.getByRole("textbox", { name: "Aylık limit" });
+  await amount.fill("2.500");
+  const monthHeading = page.getByRole("heading").filter({ hasText: /\b20\d{2}\b/ });
+  const monthBefore = await monthHeading.textContent();
+  await page.getByRole("button", { name: "Sonraki" }).click();
+  const dialogTitle = page.getByRole("heading", { name: "Kaydedilmemiş değişiklikler var" });
+  await expect(dialogTitle).toBeVisible();
+  await expect(amount).toHaveValue("2.500");
+  await expect(monthHeading).toHaveText(monthBefore ?? "");
+
+  await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
+  await expect(dialogTitle).toHaveCount(0);
+  await expect(amount).toHaveValue("2.500");
+
+  await page.getByRole("button", { name: "Sonraki" }).click();
+  await expect(dialogTitle).toBeVisible();
+  await page.getByRole("button", { name: "Değişiklikleri sil", exact: true }).click();
+  await expect(dialogTitle).toHaveCount(0);
+  await expect(amount).toHaveValue("");
+  await expect(monthHeading).not.toHaveText(monthBefore ?? "");
+
+  await page.goto("/helix/bulk-entry");
+  const bulkAmount = page.getByRole("textbox").first();
+  await bulkAmount.fill("750");
+  await page.getByRole("button", { name: "Tamam", exact: true }).click();
+  await expect(dialogTitle).toBeVisible();
+  await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
+  await expect(page).toHaveURL(/\/helix\/bulk-entry$/);
+  await expect(bulkAmount).toHaveValue("750");
+  await page.getByRole("button", { name: "Tamam", exact: true }).click();
+  await page.getByRole("button", { name: "Değişiklikleri sil", exact: true }).click();
+
+  await page.goto("/helix/settings/categories");
+  const newCategory = page.getByRole("textbox", { name: "Kategori Ekle" });
+  await newCategory.fill("Yeni taslak");
+  await page.getByRole("button", { name: "Düzenle · Market", exact: true }).click();
+  await expect(dialogTitle).toHaveCount(0);
+  await expect(newCategory).toHaveValue("Yeni taslak");
+  await expect(page.getByRole("textbox", { name: "Düzenle · Market" })).toBeVisible();
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 test("Enter belongs to the focused control, not the form's primary save", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);

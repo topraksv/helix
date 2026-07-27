@@ -43,17 +43,17 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   // drag reorders instead of scrolling the page.
   const [dragging, setDragging] = useState(false);
   const editingCategory = editingId ? categories.find((category) => category.id === editingId) : null;
-  useDirtyExitGuard(
-    name.trim() !== "" ||
-      Boolean(
-        editingCategory &&
-          (editName.trim() !== editingCategory.name || editInvestment !== editingCategory.isTransfer),
-      ),
+  const editDraftDirty = Boolean(
+    editingCategory &&
+      (editName.trim() !== editingCategory.name || editInvestment !== editingCategory.isTransfer),
   );
+  const { confirmDiscard } = useDirtyExitGuard(name.trim() !== "" || editDraftDirty);
   const startEditing = (category: (typeof categories)[number]) => {
-    setEditingId(category.id);
-    setEditName(category.name);
-    setEditInvestment(category.isTransfer);
+    confirmDiscard(() => {
+      setEditingId(category.id);
+      setEditName(category.name);
+      setEditInvestment(category.isTransfer);
+    }, editDraftDirty);
   };
   const categoryPlaceholder = useRotatingPlaceholder(placeholderPools.category);
   const dataStatus = combineLiveQueryStatus([categoriesState]);

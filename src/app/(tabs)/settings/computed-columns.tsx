@@ -106,7 +106,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   const computedDraftDirty = editingColumn
     ? name.trim() !== editingColumn.name || JSON.stringify(definition) !== JSON.stringify(storedDefinition)
     : Boolean(name.trim() || plus.length || minus.length || op !== "sum" || ccPart !== "single");
-  useDirtyExitGuard(computedDraftDirty && !busy);
+  const { confirmDiscard } = useDirtyExitGuard(computedDraftDirty && !busy);
   const liveStates = [columnsState, categoriesState, ledgerState, sourcesState, transactionsState, personsState, settingsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -175,17 +175,19 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
 
   // Load an existing column back into the form for editing.
   const startEdit = (c: (typeof columns)[number]) => {
-    setEditingId(c.id);
-    setName(c.name);
-    try {
-      const def = parseDefinition(JSON.parse(c.definition));
-      setOp(def.op);
-      setPlus(def.op === "sum" ? def.categoryIds : def.op === "difference" ? def.plusCategoryIds : []);
-      setMinus(def.op === "difference" ? def.minusCategoryIds : []);
-      setCcPart(def.op === "cc_split" ? def.part : "single");
-    } catch {
-      /* keep whatever is in the form */
-    }
+    confirmDiscard(() => {
+      setEditingId(c.id);
+      setName(c.name);
+      try {
+        const def = parseDefinition(JSON.parse(c.definition));
+        setOp(def.op);
+        setPlus(def.op === "sum" ? def.categoryIds : def.op === "difference" ? def.plusCategoryIds : []);
+        setMinus(def.op === "difference" ? def.minusCategoryIds : []);
+        setCcPart(def.op === "cc_split" ? def.part : "single");
+      } catch {
+        /* keep whatever is in the form */
+      }
+    });
   };
 
   const remove = async (c: (typeof columns)[number]) => {

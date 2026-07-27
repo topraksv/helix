@@ -54,6 +54,7 @@ import {
   type Palette,
 } from "./theme";
 import { useReducedMotion, useWaitingPulse } from "./motion";
+import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
@@ -893,18 +894,20 @@ export function Select<T extends string>({
   trigger?: (open: () => void, selected: string | null) => ReactNode;
 }) {
   const { palette, scheme } = useTheme();
+  const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<View>(null);
   const modalTitleRef = useModalAccessibility(open, triggerRef);
   const current = options.find((o) => o.value === value);
   const optionsModal = (
-          <Modal transparent animationType="fade" visible onRequestClose={() => setOpen(false)}>
+          <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={() => setOpen(false)}>
             <Pressable
               accessible={false}
+              tabIndex={-1}
               style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
               onPress={() => setOpen(false)}
             >
-              <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
+              <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
                 <FadeIn
                   style={[
                     // No vertical padding: the rows are tinted bands and they
@@ -1338,7 +1341,8 @@ export function OperationStatusNotice({
 }: {
   state: TrackedOperationState;
   label: string;
-  onCancel: () => void;
+  /** Omit once an atomic commit starts because abort cannot roll it back. */
+  onCancel?: () => void;
 }) {
   const { palette } = useTheme();
   if (!state.active) return null;
@@ -1368,9 +1372,11 @@ export function OperationStatusNotice({
           </View>
         </Row>
         <Body muted>{tr.operation.dataSafe}</Body>
-        <View style={{ alignSelf: "flex-start" }}>
-          <Button size="sm" variant="ghost" label={tr.common.cancel} onPress={onCancel} />
-        </View>
+        {onCancel ? (
+          <View style={{ alignSelf: "flex-start" }}>
+            <Button size="sm" variant="ghost" label={tr.common.cancel} onPress={onCancel} />
+          </View>
+        ) : null}
       </View>
     </DelayedLoading>
   );

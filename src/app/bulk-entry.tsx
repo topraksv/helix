@@ -32,9 +32,10 @@ export default function BulkEntryModal() {
   const [month, setMonth] = useState(addMonthsToKey(monthKeyOf(todayISO()), -1));
   const [values, setValues] = useState<Record<string, { raw: string; minor: number | null }>>({});
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [committing, setCommitting] = useState(false);
   const operation = useTrackedOperation();
   const busy = operation.state.active;
-  const allowExit = useDirtyExitGuard(Object.values(values).some((value) => value.raw.trim() !== "") && !busy);
+  const { confirmDiscard } = useDirtyExitGuard(Object.values(values).some((value) => value.raw.trim() !== "") && !busy);
   const liveStates = [categoriesState, personsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -53,12 +54,20 @@ export default function BulkEntryModal() {
     const v = values[c.id];
     return v && v.raw.trim() !== "" && v.minor === null;
   });
+  const changeMonth = (next: string) => {
+    confirmDiscard(() => {
+      setValues({});
+      setSavedMsg(null);
+      setMonth(next);
+    });
+  };
 
   const save = async () => {
     if (!selfId || entries.length === 0) return;
     await operation.run(async ({ signal }) => {
       try {
         if (signal.aborted) throw signal.reason;
+        setCommitting(true);
         await bulkMonthEntry(
           userId,
           month,
@@ -69,7 +78,6 @@ export default function BulkEntryModal() {
             amountMinor: e.minor!,
           })),
         );
-        if (signal.aborted) throw signal.reason;
         scheduleSync(userId);
         setSavedMsg(tr.bulk.saved(monthLabel(month)));
         setValues({});
@@ -78,6 +86,8 @@ export default function BulkEntryModal() {
         if (e instanceof OperationCancelledError) return;
         devError("bulk-entry.save", e);
         void appAlert(userMessage(e, tr.errors.saveFailed), tr.errors.title);
+      } finally {
+        setCommitting(false);
       }
     });
   };
@@ -95,12 +105,12 @@ export default function BulkEntryModal() {
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Body muted style={{ marginBottom: spacing.md }}>{tr.bulk.subtitle}</Body>
       <Spread style={{ marginBottom: spacing.lg }}>
-        <IconButton icon={ChevronLeft} label={tr.bulk.month} onPress={() => setMonth(addMonthsToKey(month, -1))} />
+        <IconButton icon={ChevronLeft} label={tr.bulk.month} onPress={() => changeMonth(addMonthsToKey(month, -1))} />
         <Heading>{monthLabel(month)}</Heading>
         <IconButton
           icon={ChevronRight}
           label={tr.bulk.month}
-          onPress={() => setMonth(addMonthsToKey(month, 1))}
+          onPress={() => changeMonth(addMonthsToKey(month, 1))}
           disabled={isCurrentOrFutureMonth(addMonthsToKey(month, 1))}
         />
       </Spread>
@@ -119,11 +129,11 @@ export default function BulkEntryModal() {
       <OperationStatusNotice
         state={operation.state}
         label={tr.operation.saving}
-        onCancel={operation.cancel}
+        onCancel={committing ? undefined : operation.cancel}
       />
       <View style={{ gap: spacing.sm }}>
         <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
-        <Button label={tr.common.done} variant="secondary" onPress={() => allowExit(() => navigateBack(router, "/(tabs)/cash-flow"))} />
+        <Button label={tr.common.done} variant="secondary" onPress={() => confirmDiscard(() => navigateBack(router, "/(tabs)/cash-flow"))} />
       </View>
     </Screen>
   );

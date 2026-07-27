@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { hexToRgb } from "../src/ui/badge-color";
 import { BRAND, brandPlate } from "../src/ui/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
-import { darkPalette, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../src/ui/theme";
+import { darkPalette, DEFAULT_PALETTE_ID, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../src/ui/theme";
 
 const shippedPalettes = Object.values(PALETTES).flatMap(({ light, dark }) => [light, dark]);
 
@@ -118,7 +118,7 @@ describe("semantic theme contrast", () => {
    */
   it("resolves a retired, unknown or missing preference to the default", () => {
     for (const stored of ["sand", "cinnamon", "violet", "", null]) {
-      expect(resolvePaletteId(stored), `stored: ${String(stored)}`).toBe("clay");
+      expect(resolvePaletteId(stored), `stored: ${String(stored)}`).toBe(DEFAULT_PALETTE_ID);
     }
     for (const id of Object.keys(PALETTES)) {
       expect(resolvePaletteId(id)).toBe(id);
@@ -140,24 +140,24 @@ describe("semantic theme contrast", () => {
   });
 
   /**
-   * Sonbahar is the default and therefore the one users see without choosing.
+   * Çelik is the default and therefore the one users see without choosing.
    * Pinning it stops a "small tidy-up" of the shared tokens from quietly
    * restyling the app for everyone who never opened the theme picker.
    */
   it("keeps the default ramp exact", () => {
     expect(lightPalette).toMatchObject({
-      background: "#ECE5DC", surface: "#FBF8F4", surfaceAlt: "#E9E1D8",
-      surfaceHover: "#DDD0C2", surfaceStrong: "#CDBCAA", textStrong: "#2A211B",
-      text: "#3A3028", textSecondary: "#62564C", textMuted: "#6D6157",
-      primary: "#A55335", accentText: "#7B3A28", primaryStrong: "#88432D",
-      primarySoft: "#EED8CC", border: "#8B796A",
+      background: "#E7ECEB", surface: "#FAFBF9", surfaceAlt: "#E2EAE9",
+      surfaceHover: "#CEDBDB", surfaceStrong: "#B7CACB", textStrong: "#223138",
+      text: "#2A3A40", textSecondary: "#586A70", textMuted: "#586A70",
+      primary: "#356B7F", accentText: "#285669", primaryStrong: "#285469",
+      primarySoft: "#D3E5EA", border: "#71858B",
     });
     expect(darkPalette).toMatchObject({
-      background: "#121110", surface: "#1E1B19", surfaceAlt: "#282421",
-      surfaceHover: "#342F2B", surfaceStrong: "#443E38", textStrong: "#F2ECE6",
-      text: "#E5DDD6", textSecondary: "#BEB2A8", textMuted: "#9D9289",
-      primary: "#D88967", accentText: "#E7A68B", primaryStrong: "#BE6B4A",
-      primarySoft: "#3C2A22", border: "#62574E",
+      background: "#101315", surface: "#1A1E20", surfaceAlt: "#242A2C",
+      surfaceHover: "#2F3639", surfaceStrong: "#3F4649", textStrong: "#EFF2F2",
+      text: "#E1E6E6", textSecondary: "#BAC5C7", textMuted: "#99A6A9",
+      primary: "#86B4C3", accentText: "#B9D7DF", primaryStrong: "#6D9CAB",
+      primarySoft: "#2A3A40", border: "#58666C",
     });
   });
 

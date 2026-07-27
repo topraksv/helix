@@ -337,7 +337,7 @@ export const tr = {
        row-focused one never mentioned that tapping a month opens it, although
        it does there too. A one-line version fit the width and lost the reader,
        so this says the whole thing in plain sentences and wraps if it must. */
-    tableHint: "Kaleme dokun: aylık dökümü açılır. Aya dokun: o ay açılır. 📌 kolonu sabitler.",
+    tableHint: "Tabloyu yana kaydır. Kaleme dokun: aylık dökümü açılır. Aya dokun: o ay açılır. 📌 kolonu sabitler.",
     cellTransactions: "Hareketler",
     cellNote: "Hücre Notu",
     uncategorizedLegacy: "Kategorisiz eski kayıtlar",

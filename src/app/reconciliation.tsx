@@ -46,7 +46,7 @@ export default function CatchUpScreen() {
   const [editing, setEditing] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
-  useDirtyExitGuard(editing != null && amountRaw.trim() !== "");
+  const { confirmDiscard } = useDirtyExitGuard(editing != null && amountRaw.trim() !== "");
   // One confirmation at a time (spinner on the active button) — a double-tap
   // must not submit the same expected item twice.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -221,7 +221,15 @@ export default function CatchUpScreen() {
                 </View>
                 <Row gap={spacing.sm}>
                   <View style={{ flex: 1 }}>
-                    <Button label={tr.catchup.fixAmount} variant="secondary" onPress={() => { setEditing(e.id); setAmountRaw(""); setAmountMinor(null); }} />
+                    <Button
+                      label={tr.catchup.fixAmount}
+                      variant="secondary"
+                      onPress={() => confirmDiscard(() => {
+                        setEditing(e.id);
+                        setAmountRaw("");
+                        setAmountMinor(null);
+                      })}
+                    />
                   </View>
                   <Button
                     label={tr.common.skip}

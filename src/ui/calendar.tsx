@@ -11,6 +11,8 @@ import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { borderWidth, cardShadow, controlSize, radius, scrim, spacing, stateOpacity, type, useTheme } from "./theme";
 import { Button, FadeIn, IconButton, Label } from "./components";
 import { useModalAccessibility } from "./accessibility";
+import { useReducedMotion } from "./motion";
+import { modalAnimationType } from "./modal-motion";
 
 function daysInMonth(month: MonthKey): number {
   return new Date(yearOf(month), monthOf(month), 0).getDate();
@@ -36,6 +38,7 @@ export function CalendarSheet({
   returnFocusRef?: React.RefObject<View | null>;
 }) {
   const { palette } = useTheme();
+  const reducedMotion = useReducedMotion();
   const titleRef = useModalAccessibility(true, returnFocusRef);
   const today = todayISO();
   const [month, setMonth] = useState<MonthKey>(value ? monthKeyOf(value) : monthKeyOf(today));
@@ -44,13 +47,14 @@ export function CalendarSheet({
   const cells: (number | null)[] = [...Array<null>(lead).fill(null), ...Array.from({ length: total }, (_, i) => i + 1)];
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
       <Pressable
         accessible={false}
+        tabIndex={-1}
         style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
-        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 360 }}>
+        <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 360 }}>
           <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md }}>
               <IconButton icon={ChevronLeft} label={tr.common.previous} onPress={() => setMonth(addMonthsToKey(month, -1))} />

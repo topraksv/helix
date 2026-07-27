@@ -334,20 +334,20 @@ const serviDark: Palette = {
 
 export type PaletteId = "clay" | "ocean" | "forest";
 
-export const DEFAULT_PALETTE_ID: PaletteId = "clay";
+export const DEFAULT_PALETTE_ID: PaletteId = "ocean";
 export const PALETTE_IDS = ["clay", "ocean", "forest"] as const satisfies readonly PaletteId[];
 
 export const PALETTE_META = {
   clay: {
-    label: "Sonbahar",
+    label: "Amber",
     description: "Keten, pişmiş toprak, zeytin ve eskitilmiş pirinç.",
   },
   ocean: {
-    label: "Gelgit",
+    label: "Çelik",
     description: "İnci, derin akıntı, deniz köpüğü ve soluk mercan.",
   },
   forest: {
-    label: "Orman",
+    label: "Servi",
     description: "Mantar taşı, servi, liken ve yabani meyve.",
   },
 } as const satisfies Record<PaletteId, { label: string; description: string }>;
@@ -359,8 +359,8 @@ export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
 };
 
 /** Varsayılan marka paletini kullanan eski kodlar için geriye uyumlu alias'lar. */
-export const lightPalette = PALETTES.clay.light;
-export const darkPalette = PALETTES.clay.dark;
+export const lightPalette = PALETTES[DEFAULT_PALETTE_ID].light;
+export const darkPalette = PALETTES[DEFAULT_PALETTE_ID].dark;
 
 export function isPaletteId(value: string | null): value is PaletteId {
   return value != null && PALETTE_IDS.some((id) => id === value);

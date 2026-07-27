@@ -108,7 +108,7 @@ export function OpeningBalanceEditor() {
   const openingDirty = openingMinor !== currentOpening || startMonth !== currentStart;
 
   const close = () => navigateBack(router, "/(tabs)/cash-flow");
-  const allowExit = useDirtyExitGuard((balanceDirty || openingDirty) && !savingBalance && !savingOpening);
+  const { allowExit } = useDirtyExitGuard((balanceDirty || openingDirty) && !savingBalance && !savingOpening);
 
   const saveOpening = async () => {
     if (openingMinor == null) return;

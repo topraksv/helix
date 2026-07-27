@@ -92,7 +92,7 @@ export default function IncomeRulesScreen() {
       personChoice ||
       categoryChoice
     );
-  useDirtyExitGuard(incomeDraftDirty && !busy);
+  const { confirmDiscard } = useDirtyExitGuard(incomeDraftDirty && !busy);
   const liveStates = [incomesState, personsState, categoriesState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -122,17 +122,19 @@ export default function IncomeRulesScreen() {
   };
 
   const startEdit = (r: (typeof incomes)[number]) => {
-    setEditingId(r.id);
-    setKind(r.kind as IncomeKind);
-    setName(r.name);
-    setNameTouched(true);
-    setAmountRaw((r.defaultAmountMinor / 100).toFixed(2).replace(".", ","));
-    setAmountMinor(r.defaultAmountMinor);
-    setPayDayStr(String(r.payDay));
-    setRecurrence(r.recurrence);
-    setAnchorDate(r.anchorDate ?? todayISO());
-    setPersonChoice(r.personId);
-    setCategoryChoice(r.categoryId ?? null);
+    confirmDiscard(() => {
+      setEditingId(r.id);
+      setKind(r.kind as IncomeKind);
+      setName(r.name);
+      setNameTouched(true);
+      setAmountRaw((r.defaultAmountMinor / 100).toFixed(2).replace(".", ","));
+      setAmountMinor(r.defaultAmountMinor);
+      setPayDayStr(String(r.payDay));
+      setRecurrence(r.recurrence);
+      setAnchorDate(r.anchorDate ?? todayISO());
+      setPersonChoice(r.personId);
+      setCategoryChoice(r.categoryId ?? null);
+    });
   };
 
   const save = async () => {

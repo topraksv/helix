@@ -149,10 +149,11 @@ export default function ImportWizardModal() {
   const [reimportYears, setReimportYears] = useState<number[] | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
+  const [committing, setCommitting] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const operation = useTrackedOperation();
   const busy = operation.state.active;
-  useDirtyExitGuard(workbook != null && doneCount == null && !busy);
+  const { confirmDiscard } = useDirtyExitGuard(workbook != null && doneCount == null && !busy);
   const liveStates = [personsState, sourcesState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -274,7 +275,8 @@ export default function ImportWizardModal() {
     };
     context.report(2, 4);
     if (context.signal.aborted) throw context.signal.reason;
-    const { imported } = await importSheets(userId, request);
+    setCommitting(true);
+    const { imported } = await importSheets(userId, request).finally(() => setCommitting(false));
     context.report(3, 4);
     scheduleSync(userId);
     context.report(4, 4);
@@ -347,14 +349,14 @@ export default function ImportWizardModal() {
         icon={Upload}
         label={workbook ? tr.importer.pickAgain : tr.importer.pick}
         variant={workbook ? "secondary" : "primary"}
-        onPress={() => void pick()}
+        onPress={() => confirmDiscard(() => void pick())}
         disabled={busy}
         loading={busy && workbook == null}
       />
       <OperationStatusNotice
         state={operation.state}
         label={workbook ? tr.operation.importing : tr.dataState.loading}
-        onCancel={operation.cancel}
+        onCancel={committing ? undefined : operation.cancel}
       />
 
       {error ? (

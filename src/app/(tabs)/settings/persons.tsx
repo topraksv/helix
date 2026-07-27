@@ -39,9 +39,8 @@ export default function PersonsScreen() {
   const [replacementId, setReplacementId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const editingPerson = editingId ? persons.find((person) => person.id === editingId) : null;
-  useDirtyExitGuard(
-    name.trim() !== "" || Boolean(editingPerson && editName.trim() !== editingPerson.name),
-  );
+  const editDraftDirty = Boolean(editingPerson && editName.trim() !== editingPerson.name);
+  const { confirmDiscard } = useDirtyExitGuard(name.trim() !== "" || editDraftDirty);
   const personPlaceholder = useRotatingPlaceholder(placeholderPools.person);
   const dataStatus = combineLiveQueryStatus([personsState]);
   const dataReady = personsState.updatedAt != null;
@@ -198,7 +197,15 @@ export default function PersonsScreen() {
                 {p.isSelf ? <Badge text={tr.persons.selfBadge} tone="primary" /> : <Badge text={tr.installments.watchOnly} />}
               </Row>
               <Row gap={spacing.sm}>
-                <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => { setEditingId(p.id); setEditName(p.name); }} />
+                <IconButton
+                  icon={Pencil}
+                  size={32}
+                  label={tr.common.edit}
+                  onPress={() => confirmDiscard(() => {
+                    setEditingId(p.id);
+                    setEditName(p.name);
+                  }, editDraftDirty)}
+                />
                 {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(p)} /> : null}
               </Row>
             </Spread>

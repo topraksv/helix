@@ -13,6 +13,7 @@ import {
   toggleSize,
   type,
 } from "../src/ui/theme";
+import { modalAnimationType } from "../src/ui/modal-motion";
 
 const root = process.cwd();
 
@@ -25,6 +26,11 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe("design-system metric contracts", () => {
+  it("removes modal transitions when the operating system requests reduced motion", () => {
+    expect(modalAnimationType(true)).toBe("none");
+    expect(modalAnimationType(false)).toBe("fade");
+  });
+
   it("keeps compact controls, touch targets and regular fields distinct", () => {
     expect(controlSize).toEqual({
       compact: 36,

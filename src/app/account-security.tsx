@@ -44,7 +44,7 @@ function CloudAccountSecurityScreen() {
   const [pwBusy, setPwBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [freezing, setFreezing] = useState(false);
-  const allowExit = useDirtyExitGuard(Boolean(newEmail || emailPassword || currentPassword || newPassword));
+  const { allowExit } = useDirtyExitGuard(Boolean(newEmail || emailPassword || currentPassword || newPassword));
 
   const emailValid = /.+@.+\..+/.test(newEmail.trim());
 

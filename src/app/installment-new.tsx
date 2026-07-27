@@ -84,7 +84,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
   const [busy, setBusy] = useState(false);
   const draftSnapshot = JSON.stringify({ kind, title, amountRaw, countStr, paidStr, startMonth, sourceId, personChoice, categoryId });
   const initialDraftSnapshot = React.useRef(draftSnapshot).current;
-  const allowExit = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
   const selectedSource = sources.find((source) => source.id === sourceId);
   const cardSourceValid = kind !== "card_installment" || Boolean(
     selectedSource?.type === "credit_card" &&

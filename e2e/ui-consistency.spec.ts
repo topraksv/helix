@@ -53,23 +53,51 @@ test("palette preference repaints immediately and survives a reload", async ({ p
   // device that had already chosen a theme.
   const amber = page.getByRole("radio", { name: "Amber", exact: true });
   const celik = page.getByRole("radio", { name: "Çelik", exact: true });
-  await expect(amber).toHaveAttribute("aria-checked", "true");
-  const amberFill = await amber.evaluate((element) => getComputedStyle(element).backgroundColor);
-
-  await celik.click();
   await expect(celik).toHaveAttribute("aria-checked", "true");
   const celikFill = await celik.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+  await amber.click();
+  await expect(amber).toHaveAttribute("aria-checked", "true");
+  const amberFill = await amber.evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(celikFill).not.toBe(amberFill);
-  expect(await page.evaluate(() => localStorage.getItem("helix.palette"))).toBe("ocean");
+  expect(await page.evaluate(() => localStorage.getItem("helix.palette"))).toBe("clay");
 
   await page.reload();
-  await expect(page.getByRole("radio", { name: "Çelik", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Amber", exact: true })).toHaveAttribute("aria-checked", "true");
 
   // A preference written by a build that shipped `sand` must not strand the
   // app on a palette it no longer has.
   await page.evaluate(() => localStorage.setItem("helix.palette", "sand"));
   await page.reload();
-  await expect(page.getByRole("radio", { name: "Amber", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Çelik", exact: true })).toHaveAttribute("aria-checked", "true");
+});
+
+test("primary work surfaces reflow without page overflow across the target viewport matrix", async ({ page }) => {
+  await onboard(page);
+  const viewports = [
+    { width: 320, height: 568 },
+    { width: 375, height: 667 },
+    { width: 390, height: 844 },
+    { width: 430, height: 932 },
+    { width: 768, height: 1024 },
+    { width: 820, height: 1180 },
+    { width: 1024, height: 768 },
+    { width: 1280, height: 800 },
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+  ];
+  const routes = ["/helix/", "/helix/cash-flow", "/helix/transaction", "/helix/settings"];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    for (const route of routes) {
+      await page.goto(route);
+      await expect.poll(
+        () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+        `${route} must not create page-level horizontal overflow at ${viewport.width}x${viewport.height}`,
+      ).toBeLessThanOrEqual(1);
+    }
+  }
 });
 
 for (const viewport of [{ w: 320, h: 640 }, { w: 390, h: 844 }, { w: 1280, h: 720 }]) {

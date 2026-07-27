@@ -353,11 +353,13 @@ export default function DashboardScreen() {
   };
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
+  const wideDashboard = width >= 960;
   return (
     <Screen
       title={greeting()}
       subtitle={dateLabel(today)}
       leading={<BrandMark size={40} />}
+      maxWidth={1120}
     >
       <FirstRunTour />
       <DataStateNotice status={dataStatus} retry={retryData} />
@@ -492,8 +494,10 @@ export default function DashboardScreen() {
         ) : null}
       </Row>
 
-      {/* Upcoming payments */}
-      <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
+      <View style={wideDashboard ? { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg } : undefined}>
+        <View style={wideDashboard ? { flex: 1.12 } : undefined}>
+          {/* Upcoming payments */}
+          <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
       {dataStatus === "loading" || dataStatus === "error" ? null : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
         <Card>
           {late.map((e) => (
@@ -563,8 +567,10 @@ export default function DashboardScreen() {
         </Card>
       )}
 
-      <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
-      <Card>
+        </View>
+        <View style={wideDashboard ? { flex: 0.88 } : undefined}>
+          <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
+          <Card>
         <ListRow
           icon={ChartNoAxesColumn}
           title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
@@ -610,11 +616,13 @@ export default function DashboardScreen() {
         ) : (
           <Body muted style={{ marginTop: spacing.md }}>{tr.analysis.noResults}</Body>
         )}
-      </Card>
+          </Card>
 
-      {/* Last on purpose: gold and FX are the world's numbers, and they sit
-          after everything that is actually the owner's. */}
-      <MarketsCard />
+          {/* Last on purpose: gold and FX are the world's numbers, and they sit
+              after everything that is actually the owner's. */}
+          <MarketsCard />
+        </View>
+      </View>
     </Screen>
   );
 }

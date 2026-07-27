@@ -202,26 +202,43 @@ whose `null` means unresolved.
 
 ## Design language
 
-**Warm Organic Editorial / Vintage Botanical Modernism** (moved off the old
-indigo fintech palette in 2026-07). Do not regress toward indigo.
+**Connected Financial Ledger.** Helix should feel like a precise personal
+instrument: calm, owned and layered, without resembling a bank console, crypto
+terminal or generic card dashboard. The helix idea appears through paired
+columns, repeated alignment and connected sequences—not literal spirals or
+decorative DNA on every screen.
 
-- **Palette:** `src/ui/theme.ts` is the only source for the warm neutral/clay
-  ramp and the semantic accents — income/positive green, expense/negative red,
-  warning warm amber. Purple is banned; the only blue is the `focus` ring.
-  `tests/theme-contrast.test.ts` enforces the hue contract and WCAG AA for every
-  `*Text` role. Charts derive series from those roles; modal scrims use `scrim`.
-  Anthropic's own fonts are proprietary, so Inter + Fraunces are the closest
-  shippable pair.
-- **Typography:** headings and amounts in the serif **Fraunces**
-  (`@expo-google-fonts/fraunces`), body in **Inter**. `font.*` and `type.*`
-  tokens live in `theme.ts`. A 2.5 s font-load grace in `_layout.tsx` falls back
-  to system fonts, which is what prevents the mobile-web white screen.
-- **Motion:** `Animated.spring` only — `useSpringPress(0.96)` +
-  `AnimatedPressable` for press feedback, `FadeIn` for list transitions. Shared
-  primitives in `src/ui/motion.ts` honor the system reduced-motion preference;
-  do not add screen-local accessibility listeners.
-- **Radii/shadow:** soft — `radius` tokens 12–22, `cardShadow` at very low
-  opacity.
+- **Palette:** `src/ui/theme.ts` owns three complete light/dark systems:
+  Çelik is the neutral pearl/steel default, with Amber and Servi retained as
+  user choices. Accent colour marks hierarchy and interaction; it never washes
+  a whole dark screen. Income/positive green, expense/negative red and warning
+  amber keep the same meaning in every palette. `tests/theme-contrast.test.ts`
+  enforces WCAG AA for every `*Text` role. Charts derive series from semantic
+  roles and modal scrims use `scrim`.
+- **Typography:** Inter carries dense reading, controls and tabular figures.
+  Fraunces is an editorial signature reserved for brand-level headings and
+  high-value totals, rather than a decorative face on every label.
+  `font.*` and `type.*` tokens live in `theme.ts`. A 2.5 s font-load grace in
+  `_layout.tsx` falls back to system fonts, preventing the mobile-web white
+  screen.
+- **Voice:** direct, calm and non-judgmental. State what happened, preserve
+  financial precision, and name the next useful action. Avoid bureaucratic bank
+  language, promotional urgency, childish celebration, blame and vague
+  “something went wrong” copy. Labels remain visible; placeholder text never
+  carries a field's only instruction. User vocabulary is canonical in
+  `src/i18n/tr.ts`.
+- **Layout:** phones keep one ordered reading column. At 960 pt and above, the
+  dashboard becomes an asymmetric ledger: the balance and primary action span
+  the work area, while owner obligations and analytical/reference information
+  occupy paired columns. Dense data remains in shared tables, never scattered
+  into one card per value.
+- **Motion:** motion confirms continuity or state change; it is not decoration.
+  `useSpringPress` and `FadeIn` provide the shared vocabulary. Every animated
+  primitive, including RN `Modal`, reads the single reduced-motion source in
+  `src/ui/motion.ts`; do not add screen-local accessibility listeners.
+- **Radii/shadow:** soft radii and low-opacity shadow separate real layers.
+  Repeated rows use dividers or tonal bands; avoid nesting rounded cards or
+  turning every label/action into a pill.
 - **Logo:** the botanical DNA-helix mark. `BrandMark` in `src/ui/brand.tsx`
   renders the theme-aware transparent symbol from `assets/brand/`.
   `src/ui/logo.tsx` is unrelated — it resolves subscription *merchant* favicons.

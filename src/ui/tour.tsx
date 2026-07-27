@@ -9,6 +9,8 @@ import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
 import { controlSize, radius, scrim, spacing, type, useTheme } from "./theme";
 import { useModalAccessibility } from "./accessibility";
+import { useReducedMotion } from "./motion";
+import { modalAnimationType } from "./modal-motion";
 
 const TOUR_KEY = "helix.tour.done";
 
@@ -35,6 +37,7 @@ export function FirstRunTour() {
 
 export function TourModal({ onClose }: { onClose: () => void }) {
   const { palette } = useTheme();
+  const reducedMotion = useReducedMotion();
   const { width } = useWindowDimensions();
   const [step, setStep] = useState(0);
   const titleRef = useModalAccessibility(true);
@@ -43,7 +46,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
   const last = step === SLIDES.length - 1;
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
       <ScrollView
         style={{ flex: 1, backgroundColor: scrim }}
         contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
@@ -53,6 +56,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
       >
         <Pressable
           accessible={false}
+          tabIndex={-1}
           accessibilityViewIsModal
           onPress={() => {}}
           style={{ width: Math.min(width - spacing.lg * 2, 420) }}
