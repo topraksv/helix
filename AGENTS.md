@@ -71,6 +71,32 @@ not happen. Do not speculatively rewrite working code, and do not run
 destructive Git or database operations (force-push, history rewrite, hard
 delete, `db reset` against linked) without an explicit instruction.
 
+## End-of-task repository hygiene
+
+- Before the final response, inspect only the files created or changed by the
+  task and remove its unused screenshots, image copies, video, trace, report,
+  coverage, log, cache, debug output, temporary files, empty directories and
+  helpers.
+- Verify every new asset, test, dependency, config, script and document has a
+  real caller or consumer; remove it if the completed task does not use it.
+- Keep generated output out of Git with the narrowest accurate `.gitignore`
+  pattern, then check moved or deleted files for remaining code, config, test,
+  route, script and documentation references.
+- Keep this daily check delta-focused. Do not rescan the whole repository after
+  a small change.
+- Use `$repo-cleanup` on the affected scope when a task adds or changes many
+  files, dependencies, assets, tests or directories. Run a full repository
+  cleanup after a large feature, release preparation, long agent session or
+  substantial generated output.
+- Use `$improve-codebase-architecture` only when the owner explicitly requests
+  an architecture review or the task changes module seams, dependency
+  directions or broad file placement. Never use cleanup as a pretext for an
+  automatic architecture refactor.
+- Hygiene must not change product behaviour, introduce a large refactor,
+  upgrade dependencies or delete owner work.
+- Run the relevant lint, type-check, test and build checks. Mention cleanup in
+  one or two final bullets; do not create a repository cleanup report.
+
 ## What counts as evidence
 
 Every rule here was bought with a wrong answer that had already been reported as
