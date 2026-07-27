@@ -12,9 +12,9 @@ working tree is clean and everything below is merged, deployed and published.
 
 | | |
 |---|---|
-| Last release commit | `1ee06cb` |
+| Last release commit | `675df38` |
 | Web | GitHub Pages, `deploy-web` success |
-| Native | EAS Update group `9e7c80bd-c450-467e-8646-6a171d8ec1d0`, channel `preview` |
+| Native | EAS Update group `7ac366d3-876d-4c36-a5a7-04956e9b6297`, channel `preview` |
 | Gate | 71 files / 563 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
 
 **Work is being handed to a different agent.** Nothing in this file assumes you
@@ -52,6 +52,16 @@ shipped, so it cannot be written until P7 and P6 exist or are abandoned.
   No tags, no per-package naming.
 - **Rollback is `git revert -m 1 <merge-sha>`.** The feature-flag module was
   deleted — eight of nine flags were read by nothing.
+
+## Backlog raised by the owner, priced and not built
+
+- **Weekly / biweekly subscription cycles.** `subscriptions.cycle` is a DB enum
+  (`monthly|yearly|custom`), `billingDay` is a month day, and `nextDueDate` is
+  generated from months. Weekly needs an ISO anchor and a different generator,
+  so it costs a Supabase migration, a `database.types.ts` regeneration, changes
+  to the expected-payment lifecycle and its tests. Recurring incomes already
+  have this machinery (`recurrence` + `anchorDate`); subscriptions do not. It
+  belongs in its own package, not bolted onto a batch of fixes.
 
 ## Open owner decisions
 
@@ -98,6 +108,32 @@ Transparency, the edge-swipe back gesture (which **cannot** be proved on web —
 browser history already behaves correctly there) and the tab-bar drag.
 
 ## What the last delivery changed
+
+- **The "vanishing screen" was the lock preference, not the keyboard avoider.**
+  `useBiometricLock` read `helix.biometric` in an async block with no `catch`;
+  iOS seals app storage under `NSFileProtectionComplete`, so that read can
+  reject around a resume, `locked` stayed `null`, and the root renders a bare
+  background for exactly that state — with nothing to retry it. *An earlier
+  delivery blamed `KeyboardAvoidingView` for this and was wrong. That was a real
+  defect and worth removing, but it was not this one; three clues (all screens,
+  after returning from another app, cured by a restart) pointed at root state,
+  not at a form.* Now: the read cannot leave the value unresolved, a resume
+  retries it, and the bare background carries the delayed indicator so no future
+  stall is invisible.
+- Face ID is biometrics-only with one prompt at a time; the device fallback was
+  answering "Face ID ile Aç" with a passcode keypad.
+- The discard prompt fires before the screen moves: the swipe gesture is
+  disabled while a form is dirty, because native stack finishes that transition
+  natively and `preventDefault` cannot cancel it.
+- Analysis: the search period no longer requires a payment method, and all-time
+  disables the window controls above it. **Consequence to watch:** that slicer
+  also drives the charts and the matrix, so they cannot be re-scoped while
+  all-time is selected.
+- Installments are bounded by their own plans; budgets cannot be set in a past
+  month; a reconciled month is marked in Mali Tablo and its note records the
+  before and after rather than a bare delta.
+
+## What the delivery before that changed
 
 - **No screen uses `KeyboardAvoidingView` any more.** Its window-coordinate
   padding over-padded every stack screen by the header height. The non-scroll
