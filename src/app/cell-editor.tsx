@@ -258,9 +258,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
         data={cellTx}
         keyExtractor={(t) => t.id}
         keyboardShouldPersistTaps="handled"
-        // The quick-entry field lives in this list's header; `Screen` no longer
-        // pads the whole scene, so the list owns the keyboard inset.
-        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={header}
         ListEmptyComponent={<EmptyState title={tr.cashflow.emptyMonth} />}

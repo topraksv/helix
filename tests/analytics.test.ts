@@ -3,7 +3,7 @@ import {
   categoryMonthMatrix,
   categoryRangeMatrix,
   creditCardSplit,
-  cumulativeSeries,
+  monthlySeries,
   distributionForRange,
   fixedVsVariable,
   normalizedMonthlyLoadMinor,
@@ -32,10 +32,11 @@ describe("categoryMonthMatrix + YTD", () => {
     expect(matrix.get("market")!.ytdMinor).toBe(50_00);
   });
 
-  it("builds cumulative series for the trend chart", () => {
+  /** Per month, not a running total: March is empty, so March is zero. */
+  it("builds a per-month series for the trend chart", () => {
     const matrix = categoryMonthMatrix(txs, 2026, TODAY);
-    const series = cumulativeSeries(matrix.get("kk")!, "2026-01", "2026-03");
-    expect(series.map((p) => p.cumulativeMinor)).toEqual([140_00, 290_00, 290_00]);
+    const series = monthlySeries(matrix.get("kk")!, "2026-01", "2026-03");
+    expect(series.map((p) => p.amountMinor)).toEqual([140_00, 150_00, 0]);
   });
 
   it("does not count transfer categories as income or expense analytics", () => {

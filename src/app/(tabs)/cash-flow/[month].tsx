@@ -319,8 +319,7 @@ export default function MonthDetailScreen() {
         }
         renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
-        // Cell-note editors open inline in these rows.
-        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}
       />
     </Screen>

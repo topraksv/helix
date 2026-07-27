@@ -6,7 +6,7 @@ import React, { useDeferredValue, useState } from "react";
 import { FlatList, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, Inbox, Target } from "lucide-react-native";
-import { categoryRangeMatrix, cumulativeSeries, distributionForRange } from "../../../domain/analytics";
+import { categoryRangeMatrix, distributionForRange, monthlySeries } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
@@ -548,8 +548,8 @@ export default function AnalysisScreen() {
               {
                 label: trendRow.category.name,
                 color: colors[0],
-                points: cumulativeSeries(trendRow.data, trendStartMonth, trendEndMonth).map(
-                  (p) => p.cumulativeMinor,
+                points: monthlySeries(trendRow.data, trendStartMonth, trendEndMonth).map(
+                  (p) => p.amountMinor,
                 ),
               },
             ]}
@@ -576,7 +576,7 @@ export default function AnalysisScreen() {
         ListHeaderComponent={searchHeader}
         ListFooterComponent={analysisFooter}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}
       />
     </Screen>

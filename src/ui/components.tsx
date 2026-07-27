@@ -207,22 +207,22 @@ export function Screen({
     wide && { width: "100%", maxWidth, alignSelf: "center" },
   ];
 
-  // No screen on either branch uses `KeyboardAvoidingView`.
+  // Nothing here adjusts a content inset, and that is the point.
   //
-  // `behavior="padding"` pads the avoider by the keyboard's height measured in
-  // WINDOW coordinates, but a stack screen's frame starts below the native
-  // header, so it over-pads by the header height. On the non-scroll branch that
-  // was measured collapsing a `flex: 1` child to nothing — the cell editor went
-  // blank with the keyboard up, showing none of the field the user had just
-  // tapped. The scrolling branch carried the identical arithmetic and was left
-  // in place at the time as "degrades rather than breaks"; it was then reported
-  // breaking on the two longest forms in the app, the subscription form and the
-  // import wizard, which are exactly the ones with room to scroll past what the
-  // over-padding leaves.
+  // Two attempts at keyboard avoidance both made things worse.
+  // `KeyboardAvoidingView` with `behavior="padding"` measured the keyboard in
+  // window coordinates while a stack screen starts below the native header, so
+  // it over-padded by the header height and collapsed the content. Replacing it
+  // with `automaticallyAdjustKeyboardInsets` handed the same job to UIKit, and
+  // UIKit's bottom inset survived an app switch without being taken back: the
+  // scrollable area grew every time the app returned from the background, which
+  // is the "scrolls downwards forever" the owner reported.
   //
-  // The scroller owns its keyboard inset instead:
-  // `automaticallyAdjustKeyboardInsets` lets iOS inset by the real overlap. One
-  // mechanism, and it belongs to the thing that can actually move.
+  // So the padding is ours and only ours: `contentContainerStyle` already
+  // carries the safe-area space, and `automaticallyAdjustContentInsets={false}`
+  // stops UIKit adding to it. A focused field near the bottom of a long form
+  // can therefore sit under the keyboard — recorded as an open item rather than
+  // patched with a third mechanism in the same breath as removing the second.
   if (!scroll) {
     return (
       <View style={{ flex: 1, backgroundColor: palette.background }}>
@@ -240,7 +240,7 @@ export function Screen({
         contentContainerStyle={inner}
         keyboardShouldPersistTaps="handled"
         scrollEnabled={scrollEnabled}
-        automaticallyAdjustKeyboardInsets
+        automaticallyAdjustContentInsets={false}
       >
         <FadeIn>
           {header}
