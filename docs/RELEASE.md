@@ -179,7 +179,7 @@ Komutlar:
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 npx --no-install supabase db push --linked
 npx --no-install supabase migration list --linked
-npx --no-install supabase db lint --linked
+npx --no-install supabase db lint --linked --schema public
 npx --no-install supabase test db --linked supabase/tests
 npx --no-install supabase gen types typescript --linked > src/sync/database.types.ts
 npm run typecheck
@@ -199,7 +199,7 @@ grant'larını yalnız `SELECT/INSERT/UPDATE` olarak yeniden kurar ve public
 varsayılanlarını fail-closed yapar; migration 14 statement natural-key unique
 index'inin birebir kopyasını kaldırır. `migration list` local/remote sürümleri
 birebir gösterir, public-schema lint temizdir ve linked CLI'nin rollback
-transaction'ı üzerinden pgTAP 48/48 geçer.
+transaction'ı üzerinden pgTAP 59/59 geçer.
 `src/sync/database.types.ts` linked şemadan verbatim yeniden üretilmiştir (son
 doğrulama 2026-07-22).
 

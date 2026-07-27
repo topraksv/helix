@@ -779,5 +779,10 @@ select is(
 
 reset role;
 
+-- `reset role` returns to the Supabase CLI's short-lived login role, which can
+-- execute the assertions through the test search_path but cannot execute
+-- `extensions.finish()`. Re-assume the privileged fixture role for pgTAP's
+-- summary; the surrounding transaction still rolls every fixture back.
+set local role postgres;
 select * from extensions.finish();
 rollback;

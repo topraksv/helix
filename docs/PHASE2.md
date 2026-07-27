@@ -347,7 +347,7 @@ nothing else. Prove it with two real accounts, not with policy reading.
 falsifies a sentence the project publishes in two places —
 [`README.md`](../README.md) "başka bir hesap satırlarını okuyamaz" and
 [`PRIVACY.md`](PRIVACY.md) "her satır kendi sahibine bağlıdır" — rewrites the
-A01 row of `SECURITY.md`'s verification matrix, and extends the 48-assertion
+A01 row of `SECURITY.md`'s verification matrix, and extends the 59-assertion
 pgTAP suite to a second authorization model. Those four documents are part of
 the package, not paperwork after it. Weigh that against what is being bought: a
 shopping list.

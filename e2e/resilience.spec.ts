@@ -342,17 +342,24 @@ test("multi-entry settings screens return to whoever opened them", async ({ page
  * `ensureFreshRates`. The throttle timestamp used to be armed only by the
  * wrapper, so the boot fetch left it at 0 and the converter — mounting on the
  * calculator screen within the next minute — issued a second request for the
- * same rates. Measured before the fix: every route made one Frankfurter request,
+ * same rates. Measured before the fix: every route made one rate request,
  * the calculator made two.
  */
 test("the FX provider is called once per session, not once per entry point", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   const fxCalls: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().includes("frankfurter")) fxCalls.push(request.url());
-  });
-
   await onboard(page);
+  await page.route("https://open.er-api.com/v6/latest/TRY", async (route) => {
+    fxCalls.push(route.request().url());
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: "success",
+        time_last_update_unix: 1_784_970_000,
+        rates: { USD: 0.025, EUR: 0.02 },
+      }),
+    });
+  });
 
   // Every `goto` in this suite is a full page load, so one load == one app
   // session. Count exactly one load: the calculator, where BOTH callers run —
@@ -360,18 +367,25 @@ test("the FX provider is called once per session, not once per entry point", asy
   fxCalls.length = 0;
   await page.goto("/helix/calculator");
   await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
-  await page.waitForTimeout(1500);
-
-  expect(fxCalls.length, `FX provider called ${fxCalls.length}× in one session: ${fxCalls.join(", ")}`)
-    .toBeLessThanOrEqual(1);
+  await expect.poll(
+    () => fxCalls.length,
+    { message: `FX provider was not called exactly once: ${fxCalls.join(", ")}` },
+  ).toBe(1);
 
   // Client-side navigation away and back must not add another inside the window.
   await page.getByRole("tab", { name: "Durum" }).click();
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
   await page.getByRole("tab", { name: "Araçlar" }).click();
   await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
-  await page.waitForTimeout(1200);
-  expect(fxCalls.length, "a repeat visit refetched inside the 60 s throttle").toBeLessThanOrEqual(1);
+  const repeatVisitObservationStartedAt = Date.now();
+  await expect.poll(
+    () => Date.now() - repeatVisitObservationStartedAt >= 1_000 ? fxCalls.length : null,
+    {
+      timeout: 2_000,
+      intervals: [50],
+      message: "a repeat visit refetched inside the 60 s throttle",
+    },
+  ).toBe(1);
 
   await assertNoRuntimeErrors(errors, testInfo);
 });

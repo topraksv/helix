@@ -10,12 +10,12 @@ import {
   renderedBoundaryContrast,
 } from "./helpers";
 
-// The committed baselines are rendered on macOS. Chromium on Ubuntu lays out
-// the same font files identically but rasterizes glyph edges differently; the
-// CI failure artifact proved the remaining 2–3% diff was confined to text
-// antialiasing. Keep the local budget strict and cap Linux at 4%, while the
-// semantic assertions below continue to guard exact labels and structure.
-const maxVisualDiffPixelRatio = process.platform === "linux" ? 0.04 : 0.01;
+// Baselines are platform-specific because Chromium's glyph rasterization
+// differs between macOS and Linux. Comparing each platform to its own committed
+// image lets the test reject even a small content change instead of hiding it
+// inside a whole-page percentage budget. Five isolated pixels cover the
+// measured Linux rasterizer noise; hiding one tab already changes 142 pixels.
+const maxVisualDiffPixels = 5;
 
 /**
  * The screen header carries the dashboard's greeting and today's date, both
@@ -49,23 +49,38 @@ test("main routes have no WCAG A/AA violations", async ({ page }, testInfo) => {
  * walks EVERY reachable route with real data, and also asserts the WCAG 2.2
  * target size that axe's 2.1 ruleset does not cover.
  */
-const ALL_ROUTES = [
+const LOCAL_STATIC_ROUTES = [
   "/helix/", "/helix/cash-flow", "/helix/cash-flow/analytics", "/helix/cash-flow/installments",
   "/helix/subscriptions", "/helix/calculator", "/helix/settings", "/helix/settings/categories",
   "/helix/settings/computed-columns", "/helix/settings/payment-sources", "/helix/settings/persons",
   "/helix/settings/incomes", "/helix/settings/budgets", "/helix/settings/opening-balance",
   "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
-  "/helix/cell-editor", "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
-  "/helix/account-security", "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template",
+  "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
+  "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template",
 ];
 
-test("every reachable route stays accessible with real data", async ({ page }, testInfo) => {
+async function localReachableRoutes(page: Page): Promise<string[]> {
+  await page.goto("/helix/cash-flow");
+  const realCell = page.locator('[role="button"][aria-label*=", Market,"]').first();
+  await expect(realCell).toBeVisible();
+  await realCell.click();
+  await expect(page).toHaveURL(/\/helix\/cell-editor\?/);
+  const cellEditor = new URL(page.url());
+  return [
+    ...LOCAL_STATIC_ROUTES,
+    `/helix/cash-flow/${currentMonthKey()}`,
+    `${cellEditor.pathname}${cellEditor.search}`,
+  ];
+}
+
+test("every local-mode reachable route stays accessible with real data", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "A11y taraması");
+  const routes = await localReachableRoutes(page);
   const problems: string[] = [];
-  for (const route of ALL_ROUTES) {
+  for (const route of routes) {
     await page.goto(route);
     await expect(page.locator("#root")).toBeVisible();
     const undersized = await page.evaluate(() => {
@@ -112,6 +127,7 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Yerleşim taraması");
+  const routes = await localReachableRoutes(page);
 
   const scan = (withControl: boolean) =>
     page.evaluate((injectControl: boolean) => {
@@ -157,7 +173,7 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
   const problems: string[] = [];
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const route of ALL_ROUTES) {
+    for (const route of routes) {
       await page.goto(route);
       await expect(page.locator("#root")).toBeVisible();
       const found = await scan(false);
@@ -198,7 +214,7 @@ test("large exact negative amounts keep their sign and digits on one visual line
     animations: "disabled",
     caret: "hide",
     mask: clockMask(page),
-    maxDiffPixelRatio: maxVisualDiffPixelRatio,
+    maxDiffPixels: maxVisualDiffPixels,
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -207,7 +223,7 @@ test("large exact negative amounts keep their sign and digits on one visual line
   await expect(page).toHaveScreenshot("month-large-negative-phone-390-light.png", {
     animations: "disabled",
     caret: "hide",
-    maxDiffPixelRatio: maxVisualDiffPixelRatio,
+    maxDiffPixels: maxVisualDiffPixels,
   });
 
   await page.setViewportSize({ width: 320, height: 720 });
@@ -222,7 +238,7 @@ test("large exact negative amounts keep their sign and digits on one visual line
     animations: "disabled",
     caret: "hide",
     mask: clockMask(page),
-    maxDiffPixelRatio: maxVisualDiffPixelRatio,
+    maxDiffPixels: maxVisualDiffPixels,
   });
 
   // The largest accepted single entry can produce an even wider aggregate;
@@ -259,7 +275,7 @@ test("dashboard remains visually stable across viewport and theme matrix", async
         animations: "disabled",
         caret: "hide",
         mask: clockMask(page),
-        maxDiffPixelRatio: maxVisualDiffPixelRatio,
+        maxDiffPixels: maxVisualDiffPixels,
       });
     }
   }
@@ -283,7 +299,7 @@ test("every primary tab has a permanent mobile visual baseline", async ({ page }
     await expect(page).toHaveScreenshot(`tab-${name}-phone-390-light.png`, {
       animations: "disabled",
       caret: "hide",
-      maxDiffPixelRatio: maxVisualDiffPixelRatio,
+      maxDiffPixels: maxVisualDiffPixels,
     });
   }
   await assertNoRuntimeErrors(errors, testInfo);
@@ -346,11 +362,20 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
             page.getByRole("button", { name: "Ödeme Günü", exact: true }),
           ]
         : [];
+      if (name === "transaction") {
+        const note = page.getByRole("textbox", { name: "Not", exact: true });
+        await note.fill("Görsel kontrol");
+        await note.evaluate((element) => (element as HTMLElement).blur());
+      } else if (name === "payment-sources") {
+        const sourceName = page.getByRole("textbox", { name: "Yöntem Ekle", exact: true });
+        await sourceName.fill("Görsel yöntem");
+        await sourceName.evaluate((element) => (element as HTMLElement).blur());
+      }
       await expect(page).toHaveScreenshot(`follow-up-${name}-phone-390-${scheme}.png`, {
         animations: "disabled",
         caret: "hide",
         mask: volatile,
-        maxDiffPixelRatio: maxVisualDiffPixelRatio,
+        maxDiffPixels: maxVisualDiffPixels,
       });
     }
   }

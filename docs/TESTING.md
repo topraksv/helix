@@ -58,7 +58,7 @@ yayını `--clear-cache` ile yapılır ([RELEASE.md](RELEASE.md#3--mobil-eas-ota
 | P1 | Onboarding → işlem yaşam döngüsü | Browser E2E | quick start → gider ekle → ay detayı → edit → delete/undo → JSON export | Gerçek browser SQLite’ta tek ve geri alınabilir kayıt | `e2e/core-flow.spec.ts` |
 | P1 | Temiz DB restore/atomiklik | Browser E2E | export → yeni context restore; dangling ref’li bundle | Geçerli bundle 1:1 gelir; invalid bundle sıfır satır yazar | `e2e/core-flow.spec.ts`, `backup-validation` |
 | P1 | Offline cold relaunch | Browser E2E | service worker cache → offline reload → online | SQLite veri korunur; yeniden mount duplicate üretmez | `e2e/resilience.spec.ts` |
-| P1 | İki-user yetkilendirme | Remote pgTAP | 16 tablo RLS/policy/grant envanteri; A/B izolasyonu, owner değiştirme, anon erişim, cross-owner FK, client hard-delete reddi, tombstone nesli, hesap-silme RPC’si, transfer constraint’i | 48 assertion; fixture rollback | `supabase/tests/owner_integrity_and_rls.sql` |
+| P1 | İki-user yetkilendirme | Remote pgTAP | 16 tablo RLS/policy/grant envanteri; A/B izolasyonu, owner değiştirme, anon erişim, cross-owner FK, client hard-delete reddi, tombstone nesli, hesap-silme RPC’si, transfer constraint’i | 59 assertion; fixture rollback | `supabase/tests/owner_integrity_and_rls.sql` |
 | P1 | Hostile import/backup | Unit/stress | yüksek oranlı ZIP, büyük entry, >100k row, duplicate/mixed owner | SheetJS/write öncesi bounded red | `spreadsheet-import`, `backup-validation`, `import-plan` |
 | P2 | Route/guard/deep link | Browser E2E + unit | protected ve modal direkt URL; auth/onboarding/recovery guard | Hata ekranı/hydration exception yok; deterministic parent | `e2e/resilience.spec.ts`, `app-guard`, `navigation` |
 | P2 | Form durumları | Unit + browser component | invalid limit, dirty exit, loading/busy, password-manager metadata | Hata görünür/duyurulur; veri sessiz kaybolmaz; double submit yok | `input-policy`, `dirty-exit`, `accessibility-contract`, core E2E |
@@ -101,18 +101,10 @@ git diff -- e2e/__screenshots__
 
 Her değişen görüntü 320/390 mobil ve ilgili tablet/desktop görünümünde gözle
 incelenmeden kabul edilmez. Sadece testi yeşile çevirmek için baseline yenilenmez.
-
-> **AÇIK KUSUR — bu kapı şu an içerik karşılaştırmıyor.** 2026-07-26'da
-> ölçüldü: uygulama 1440'ta 560 px genişliğinde ortalanmış bir tab bar render
-> ederken commit'li baseline tam genişlik bar gösteriyordu ve `playwright test`
-> geçti; `--update-snapshots` dosyayı yeniden yazmadı. Aynı sessiz kayma
-> `tab-settings` ve `tab-subscriptions` dosyalarını 18–26 Temmuz arası bayat
-> bıraktı (eski sekme adları, PR #66'da değişmiş metinler). Boyutu farklı bir
-> görsel testi düşürüyor, yani boyut kontrolü çalışıyor; içerik kontrolü en az
-> bazı snapshot'larda çalışmıyor. Sebep bulunmadı. **Bu kapanana kadar görsel
-> kanıt manuel sayılır:** baseline yenilendiğinde değişen her görüntü açılıp
-> gözle incelenir, ve "23 baseline release'i bloklar" ifadesi bu satır
-> silinmeden doğru kabul edilemez.
+macOS ve Linux kendi commit'li baseline'larını kullanır; platformlar arası yazı
+rasterizasyon farkı böylece tüm sayfanın yüzde bütçesiyle maskelenmez. Ölçülen
+tekil raster gürültüsü için en fazla 5 farklı piksele izin verilir; oran bazlı
+bütçe yoktur.
 
 ## Linked Supabase kabulü
 
