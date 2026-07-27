@@ -21,6 +21,8 @@ import { font, spacing, type, useTheme } from "./theme";
 /** Default fixed metrics; exported so callers can size a table to its content. */
 export const STICKY_ROW_HEIGHT = 52;
 export const STICKY_HEADER_HEIGHT = 56;
+/** Fixed right-hand strip holding a header's pin and computed-column mark. */
+const STICKY_MARKER_W = 16;
 
 export interface StickyColumn {
   key: string;
@@ -251,10 +253,22 @@ export function StickyTable({
     headerHRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false });
   };
 
-  // When a header has both a tap action (open month) and pin, the label opens
-  // and a small pin icon (top-right) toggles the fixed column; otherwise the
-  // whole header runs the single action. The computed-column marker sits
-  // bottom-right so the two markers never share a corner.
+  /**
+   * Header: a fixed marker column on the right, the label centred beside it.
+   *
+   * Three shapes were tried before this one. Opposite corners (pin top-right,
+   * sigma bottom-right) sat on different baselines and let a long centred label
+   * run under both. A dedicated marker row above the label removed the overlap
+   * and bought a band of empty space taller than the text beneath it. Inline
+   * siblings removed the gap but moved the markers with every label: a column's
+   * pin landed somewhere new each time the name grew a word.
+   *
+   * The markers own a fixed strip at the right edge, vertically centred as a
+   * pair with the sigma directly under the pin, so they hold the same position
+   * in every column regardless of its name. The label is padded by that width
+   * on BOTH sides, which keeps it optically centred in the cell while making it
+   * impossible for it to reach the strip.
+   */
   const headerCell = (c: StickyColumn) => {
     const isCurrent = c.key === currentColumnKey;
     const both = !!onColumnPress && !!onTogglePin;
@@ -262,7 +276,13 @@ export function StickyTable({
     return (
       <View
         key={c.key}
-        style={{ width: cellWidth, height: resolvedHeaderHeight, backgroundColor: isCurrent ? palette.primarySoft : "transparent", justifyContent: "center", paddingHorizontal: spacing.sm }}
+        style={{
+          width: cellWidth,
+          height: resolvedHeaderHeight,
+          backgroundColor: isCurrent ? palette.primarySoft : "transparent",
+          justifyContent: "center",
+          paddingHorizontal: STICKY_MARKER_W,
+        }}
       >
         <Pressable
           disabled={!labelAction}
@@ -280,20 +300,34 @@ export function StickyTable({
             {c.label}
           </Text>
         </Pressable>
-        {both ? (
-          <Pressable
-            onPress={() => { lightTap(); onTogglePin!(c.key); }}
-            hitSlop={16}
-            accessibilityRole="button"
-            accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.label) : tr.a11y.pinColumn(c.label)}
-            style={{ position: "absolute", top: 2, right: 2, padding: 6 }}
+        {both || c.icon ? (
+          <View
+            style={{
+              position: "absolute",
+              right: 2,
+              top: 0,
+              bottom: 0,
+              width: STICKY_MARKER_W,
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 3,
+            }}
           >
-            <Pin accessible={false} size={12} color={palette.textSecondary} />
-          </Pressable>
-        ) : null}
-        {c.icon ? (
-          <View style={{ position: "absolute", bottom: 4, right: 4 }}>
-            <c.icon accessible={false} size={11} color={palette.textSecondary} strokeWidth={2.2} />
+            {both ? (
+              <Pressable
+                onPress={() => { lightTap(); onTogglePin!(c.key); }}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.label) : tr.a11y.pinColumn(c.label)}
+              >
+                <Pin
+                  accessible={false}
+                  size={12}
+                  color={pinnedKey === c.key ? palette.primaryText : palette.textSecondary}
+                />
+              </Pressable>
+            ) : null}
+            {c.icon ? <c.icon accessible={false} size={11} color={palette.textSecondary} strokeWidth={2.2} /> : null}
           </View>
         ) : null}
       </View>

@@ -30,7 +30,7 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, Heading, HeroCard, ListRow, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, Heading, HeroCard, ListRow, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
 import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
@@ -38,7 +38,7 @@ import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
 import { shouldUseCompactChart } from "../../ui/responsive";
-import { font, radius, spacing, type, useTheme } from "../../ui/theme";
+import { font, heroSurface, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
@@ -231,7 +231,9 @@ export default function DashboardScreen() {
   };
   const router = useRouter();
   const undo = useUndo();
-  const { palette } = useTheme();
+  const { palette, scheme } = useTheme();
+  const hero = heroSurface(palette, scheme);
+  const heroInk = hero.ink;
   const { width } = useWindowDimensions();
   const chartColors = useSeriesColors();
   // Re-render when FX rates land so foreign-currency projections settle.
@@ -395,14 +397,17 @@ export default function DashboardScreen() {
 
       {bundle ? (
         <HeroCard>
-          <Text style={[type.label, { color: palette.primaryText, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
+          <Text style={[type.label, { color: heroInk, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
             {tr.dashboard.actualBalance}
           </Text>
+          {/* The balance was drawn in `textSecondary` — the app's single most
+              important figure rendered in the role reserved for supporting
+              text. On the slab it takes the full foreground. */}
           <Amount
             minor={bundle.actualBalanceMinor}
             hero
             colorized={false}
-            color={palette.textSecondary}
+            color={heroInk}
             style={{ marginTop: spacing.xs, textAlign: "left" }}
           />
           {projected != null ? (
@@ -415,21 +420,24 @@ export default function DashboardScreen() {
                 alignItems: "center",
                 gap: spacing.sm,
                 marginTop: spacing.md,
-                backgroundColor: pressed ? palette.surfaceHover : palette.surface,
+                // Lifted out of the slab rather than dropped on top of it: a
+                // pale card here would have re-introduced the flat stack the
+                // slab exists to break.
+                backgroundColor: pressed ? heroInk + "33" : hero.inset,
                 borderRadius: radius.md,
                 padding: spacing.md,
               })}
             >
               {projectedDelta != null && projectedDelta >= 0 ? (
-                <TrendingUp size={18} color={palette.accentText} />
+                <TrendingUp size={18} color={heroInk} />
               ) : (
-                <TrendingDown size={18} color={palette.accentText} />
+                <TrendingDown size={18} color={heroInk} />
               )}
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
-                <Amount minor={projected} colorized={false} color={palette.textStrong} style={{ textAlign: "left" }} />
+                <Text style={[type.label, { color: heroInk }]}>{tr.dashboard.forecastToggle}</Text>
+                <Amount minor={projected} colorized={false} color={heroInk} style={{ textAlign: "left" }} />
               </View>
-              {showForecast ? <ChevronUp size={18} color={palette.accentText} /> : <ChevronDown size={18} color={palette.accentText} />}
+              {showForecast ? <ChevronUp size={18} color={heroInk} /> : <ChevronDown size={18} color={heroInk} />}
             </Pressable>
           ) : null}
         </HeroCard>
@@ -468,7 +476,11 @@ export default function DashboardScreen() {
         </Card>
       ) : null}
 
-      {/* Quick actions */}
+      {/* The add action wears the same colour here as it does on every other
+          screen. It was briefly quiet, to stop two saturated blocks stacking
+          under the balance slab — but a person learns one button by its colour,
+          and having it change appearance with the screen it is launched from
+          costs more than the stacking does. */}
       <Row style={{ marginBottom: spacing.lg }}>
         <View style={{ flex: 1 }}>
           <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
@@ -538,13 +550,18 @@ export default function DashboardScreen() {
           <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
         </Card>
       ) : (
+        /* A quiet line, not a monument. The full empty state — big mark, serif
+           headline, four lines of explanation — was the largest thing on the
+           dashboard, and what it announced was that there was nothing to do.
+           `EmptyState` still earns its size on a screen that IS the empty list;
+           inside a card beside real figures it outranked them. */
         <Card>
-          <EmptyState icon={PartyPopper} title={tr.dashboard.noUpcoming} hint={tr.dashboard.upcomingHint} />
+          <Row gap={spacing.sm}>
+            <PartyPopper accessible={false} size={18} color={palette.textMuted} />
+            <Body muted style={{ flex: 1 }}>{tr.dashboard.noUpcoming}</Body>
+          </Row>
         </Card>
       )}
-
-      {/* Live markets */}
-      <MarketsCard />
 
       <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
       <Card>
@@ -594,6 +611,10 @@ export default function DashboardScreen() {
           <Body muted style={{ marginTop: spacing.md }}>{tr.analysis.noResults}</Body>
         )}
       </Card>
+
+      {/* Last on purpose: gold and FX are the world's numbers, and they sit
+          after everything that is actually the owner's. */}
+      <MarketsCard />
     </Screen>
   );
 }

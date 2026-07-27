@@ -42,11 +42,13 @@ import { devError } from "../../../services/logger";
 import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
-import { tr } from "../../../i18n/tr";
+import { dateLabel, tr } from "../../../i18n/tr";
 import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Segmented, Toggle, WaitingText } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
-import { spacing, useTheme } from "../../../ui/theme";
+import { font, radius, spacing, useTheme } from "../../../ui/theme";
+import { todayISO } from "../../../domain/dates";
+import { formatMinor } from "../../../domain/money";
 import type { PaletteId, ThemePreference } from "../../../ui/theme";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
@@ -287,8 +289,8 @@ export default function SettingsScreen() {
         <Segmented<PaletteId>
           options={[
             { value: "clay", label: tr.settings.paletteClay },
-            { value: "sand", label: tr.settings.paletteSand },
-            { value: "cinnamon", label: tr.settings.paletteCinnamon },
+            { value: "ocean", label: tr.settings.paletteOcean },
+            { value: "forest", label: tr.settings.paletteForest },
           ]}
           value={paletteId}
           disabled={!localPreferencesLoaded}
@@ -399,6 +401,24 @@ export default function SettingsScreen() {
                   />
                 }
               />
+            ) : null}
+            {/* The switch only changes what a reminder says when it fires, so
+                flipping it appeared to do nothing at all. Showing the two
+                versions is what makes it a choice rather than a mystery. */}
+            {notifications ? (
+              <View style={{ paddingBottom: spacing.md, gap: spacing.xs }}>
+                <Body muted style={{ fontSize: 12 }}>{tr.settings.notificationPreview}</Body>
+                <View style={{ backgroundColor: palette.surfaceAlt, borderRadius: radius.md, padding: spacing.md, gap: 2 }}>
+                  <Body style={{ fontFamily: font.medium }}>
+                    {notificationDetails ? tr.notif.upcomingTitle : tr.notif.privateTitle}
+                  </Body>
+                  <Body muted style={{ fontSize: 12 }}>
+                    {notificationDetails
+                      ? tr.notif.upcoming(tr.settings.notificationSampleName, dateLabel(todayISO()), formatMinor(29_90))
+                      : tr.notif.privateBody}
+                  </Body>
+                </View>
+              </View>
             ) : null}
           </>
         ) : null}

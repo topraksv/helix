@@ -8,7 +8,7 @@
 
 import React, { useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
 import { monthFlowTotals } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
@@ -452,6 +452,10 @@ function MatrixTable({
   // closing stay non-interactive by design.
   const pressFor = (c: CashFlowMatrixColumn, month: MonthKey): (() => void) | undefined => {
     if (c.categoryId) return () => router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId! } });
+    // A reconciled closing figure is the one system cell with somewhere to go:
+    // the adjustment that moved it. Root-level route, so what sits underneath
+    // is this screen and both the back button and the edge swipe return here.
+    if (c.key === "closing" && adjustmentByMonth.has(month)) return () => router.push("/opening-balance" as Href);
     if (c.system) return undefined;
     return () => openBreakdown(c.key); // computed column cell → its breakdown
   };
@@ -463,10 +467,12 @@ function MatrixTable({
     highlighted: boolean,
     month: MonthKey,
     columnLabel: string,
+    markerTone: "note" | "adjustment" = "note",
   ) => (
     <MatrixCell
       value={value}
       note={note}
+      markerTone={markerTone}
       onPress={onPress}
       highlighted={highlighted}
       fontSize={fontSize}
@@ -503,6 +509,7 @@ function MatrixTable({
           false,
           slot.month,
           c.label,
+          c.key === "closing" ? "adjustment" : "note",
         ),
       ),
     }));
@@ -523,6 +530,7 @@ function MatrixTable({
           slot.month === currentMonth,
           slot.month,
           c.label,
+          c.key === "closing" ? "adjustment" : "note",
         ),
       ),
     }));
@@ -577,7 +585,7 @@ function MatrixTable({
         </Pressable>
       ) : null}
       <Text style={[type.small, { color: palette.textSecondary, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, textAlign: "center" }]}>
-        {isColumns ? tr.cashflow.monthTapHint : tr.cashflow.pinHint}
+        {tr.cashflow.tableHint}
       </Text>
     </Card>
   );
@@ -586,6 +594,7 @@ function MatrixTable({
 function MatrixCell({
   value,
   note,
+  markerTone = "note",
   highlighted,
   onPress,
   fontSize,
@@ -593,6 +602,8 @@ function MatrixCell({
 }: {
   value: number | null;
   note?: string;
+  /** What the corner dot means, so the two never look alike. */
+  markerTone?: "note" | "adjustment";
   highlighted?: boolean;
   onPress?: () => void;
   fontSize: number;
@@ -636,7 +647,21 @@ function MatrixCell({
       >
         {value == null || value === 0 ? "" : formatMinorCompact(value)}
       </Text>
-      {note ? <View style={{ position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: 3, backgroundColor: palette.warning }} /> : null}
+      {note ? (
+        <View
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            width: 6,
+            height: 6,
+            borderRadius: 3,
+            // A reconciled month is not a note, and wearing the note's amber
+            // dot said it was — same mark, nothing behind it when tapped.
+            backgroundColor: markerTone === "adjustment" ? palette.primary : palette.warning,
+          }}
+        />
+      ) : null}
     </Pressable>
   );
 }

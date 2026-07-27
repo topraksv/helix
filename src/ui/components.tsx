@@ -40,6 +40,7 @@ import {
   controlSize,
   font,
   generatedBadgeForeground,
+  heroSurface,
   iconSize,
   radius,
   scrim,
@@ -294,13 +295,30 @@ export function Card({
 }
 
 /** Quiet tonal hero container for the dashboard balance. */
+/**
+ * The one saturated slab in the app.
+ *
+ * It used to be `primarySoft`, a tint meant for chips, stretched over a whole
+ * card — which put the app's most important figure on the palest thing on the
+ * screen. With page, cards and hero all inside a few points of lightness there
+ * was nothing to anchor the eye, and every theme looked the same from here
+ * because the theme's own colour appeared nowhere.
+ *
+ * Filled with `primary` it does three jobs at once: the balance becomes
+ * unmistakably the most important thing, the page gains a real tonal range, and
+ * choosing a theme visibly changes the screen you look at most. `onPrimary` on
+ * `primary` is already held to 4.5:1 by `theme-contrast.test.ts`, so the type
+ * on it is proved rather than assumed.
+ *
+ * It is also the whole accent budget. Anything directly beneath it is quiet.
+ */
 export function HeroCard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  const { palette } = useTheme();
+  const { palette, scheme } = useTheme();
   return (
     <View
       style={[
         {
-          backgroundColor: palette.primarySoft,
+          backgroundColor: heroSurface(palette, scheme).fill,
           borderRadius: radius.lg,
           padding: spacing.xl,
           marginBottom: spacing.md,

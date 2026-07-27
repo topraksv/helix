@@ -538,9 +538,11 @@ export default function AnalysisScreen() {
         </Card>
       )}
 
-      {trendRow && trendStartMonth && trendEndMonth ? (
+      {/* One month is one point: there is no shape to read and nothing to
+          compare it against, so the chart earns no space. */}
+      {trendRow && trendStartMonth && trendEndMonth && monthKeys.length > 1 ? (
         <Card>
-          <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(trendRow.category.name)}</Heading>
+          <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(trendRow.category.name, monthKeys.length)}</Heading>
           <Lines
             width={Math.min(width - spacing.lg * 4, 640)}
             xLabels={monthKeys.map(shortMonthLabel)}

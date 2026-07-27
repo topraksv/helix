@@ -48,19 +48,28 @@ test("a card's trailing action leaves the same gap as its first row", async ({ p
 test("palette preference repaints immediately and survives a reload", async ({ page }) => {
   await onboard(page);
   await page.goto("/helix/settings");
-  const clay = page.getByRole("radio", { name: "Kil", exact: true });
-  const sand = page.getByRole("radio", { name: "Kum", exact: true });
-  await expect(clay).toHaveAttribute("aria-checked", "true");
-  const clayFill = await clay.evaluate((element) => getComputedStyle(element).backgroundColor);
+  // Names are the product, ids are storage: the stored value stays `ocean`
+  // while the label reads "Çelik", because renaming an id would reset every
+  // device that had already chosen a theme.
+  const amber = page.getByRole("radio", { name: "Amber", exact: true });
+  const celik = page.getByRole("radio", { name: "Çelik", exact: true });
+  await expect(amber).toHaveAttribute("aria-checked", "true");
+  const amberFill = await amber.evaluate((element) => getComputedStyle(element).backgroundColor);
 
-  await sand.click();
-  await expect(sand).toHaveAttribute("aria-checked", "true");
-  const sandFill = await sand.evaluate((element) => getComputedStyle(element).backgroundColor);
-  expect(sandFill).not.toBe(clayFill);
-  expect(await page.evaluate(() => localStorage.getItem("helix.palette"))).toBe("sand");
+  await celik.click();
+  await expect(celik).toHaveAttribute("aria-checked", "true");
+  const celikFill = await celik.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(celikFill).not.toBe(amberFill);
+  expect(await page.evaluate(() => localStorage.getItem("helix.palette"))).toBe("ocean");
 
   await page.reload();
-  await expect(page.getByRole("radio", { name: "Kum", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Çelik", exact: true })).toHaveAttribute("aria-checked", "true");
+
+  // A preference written by a build that shipped `sand` must not strand the
+  // app on a palette it no longer has.
+  await page.evaluate(() => localStorage.setItem("helix.palette", "sand"));
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "Amber", exact: true })).toHaveAttribute("aria-checked", "true");
 });
 
 for (const viewport of [{ w: 320, h: 640 }, { w: 390, h: 844 }, { w: 1280, h: 720 }]) {
