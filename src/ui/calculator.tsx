@@ -14,6 +14,8 @@ import { Button, FadeIn } from "./components";
 import { calculatorKeyHaptic } from "./calculator-feedback";
 import { haptic } from "./haptics";
 import { useModalAccessibility } from "./accessibility";
+import { useReducedMotion } from "./motion";
+import { modalAnimationType } from "./modal-motion";
 
 type Op = "+" | "-" | "×" | "÷";
 
@@ -126,11 +128,14 @@ export function CalculatorPad({
   onResult,
   resultLabel,
   onEscape,
+  landscape = false,
 }: {
   onResult?: (major: number) => void;
   resultLabel?: string;
   /** Escape key handler (popup passes its close); otherwise Escape clears. */
   onEscape?: () => void;
+  /** Short modal landscape uses two panels so every action is visible at once. */
+  landscape?: boolean;
 }) {
   const { palette, scheme } = useTheme();
   const { state, press, value, text } = useCalculator();
@@ -201,10 +206,8 @@ export function CalculatorPad({
 
   // Fixed-height display with three stable rows (operand line · main · preview)
   // so typing an operator or seeing the live preview never resizes the box.
-  return (
-    <View>
-      {/* display */}
-      <View
+  const displayNode = (
+    <View
         accessible
         accessibilityLiveRegion="polite"
         accessibilityLabel={tr.a11y.calculatorDisplay(
@@ -221,19 +224,20 @@ export function CalculatorPad({
           justifyContent: "center",
           alignItems: "flex-end",
         }}
-      >
-        <CalculatorLine
-          text={state.op ? `${new Intl.NumberFormat("tr-TR").format(state.accumulator ?? 0)} ${state.op}` : " "}
-          color={palette.textSecondary}
-        />
-        <CalculatorLine text={text} color={palette.text} main />
-        <CalculatorLine
-          text={preview != null ? `= ${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}` : " "}
-          color={preview != null ? palette.primaryText : "transparent"}
-        />
-      </View>
-      {/* keys */}
-      <View style={{ gap: spacing.sm }}>
+    >
+      <CalculatorLine
+        text={state.op ? `${new Intl.NumberFormat("tr-TR").format(state.accumulator ?? 0)} ${state.op}` : " "}
+        color={palette.textSecondary}
+      />
+      <CalculatorLine text={text} color={palette.text} main />
+      <CalculatorLine
+        text={preview != null ? `= ${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 6 }).format(preview)}` : " "}
+        color={preview != null ? palette.primaryText : "transparent"}
+      />
+    </View>
+  );
+  const keysNode = (
+    <View style={{ gap: spacing.sm }}>
         {KEYS.map((row, r) => (
           <View key={r} style={{ flexDirection: "row", gap: spacing.sm }}>
             {row.map((key) => {
@@ -250,7 +254,7 @@ export function CalculatorPad({
                   style={({ pressed }) => [
                     {
                       flex: key === "0" ? 2.09 : 1,
-                      minHeight: 56,
+                      minHeight: landscape ? 48 : 56,
                       borderRadius: radius.md,
                       backgroundColor: bg,
                       alignItems: "center",
@@ -270,17 +274,29 @@ export function CalculatorPad({
             })}
           </View>
         ))}
-      </View>
-      {onResult ? (
-        <View style={{ marginTop: spacing.lg }}>
-          <Button
-            label={resultMinor == null ? tr.calc.resultUnavailable : `${resultLabel ?? tr.calc.useResult} · ${formatMinor(resultMinor)}`}
-            onPress={() => onResult(value)}
-            disabled={resultMinor == null}
-            haptic="success"
-          />
-        </View>
-      ) : null}
+    </View>
+  );
+  const resultNode = onResult ? (
+    <View style={{ marginTop: landscape ? spacing.md : spacing.lg }}>
+      <Button
+        label={resultMinor == null ? tr.calc.resultUnavailable : `${resultLabel ?? tr.calc.useResult} · ${formatMinor(resultMinor)}`}
+        onPress={() => onResult(value)}
+        disabled={resultMinor == null}
+        haptic="success"
+      />
+    </View>
+  ) : null;
+
+  return landscape ? (
+    <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.lg }}>
+      <View style={{ flex: 1 }}>{displayNode}{resultNode}</View>
+      <View style={{ flex: 1 }}>{keysNode}</View>
+    </View>
+  ) : (
+    <View>
+      {displayNode}
+      {keysNode}
+      {resultNode}
     </View>
   );
 }
@@ -296,12 +312,15 @@ export function CalculatorModal({
   returnFocusRef?: React.RefObject<View | null>;
 }) {
   const { palette } = useTheme();
+  const reducedMotion = useReducedMotion();
   const titleRef = useModalAccessibility(true, returnFocusRef);
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const shortLandscape = width > height && height <= 480;
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
       <Pressable
         accessible={false}
+        tabIndex={-1}
         style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
@@ -319,12 +338,13 @@ export function CalculatorModal({
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 340 }}>
+          <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: shortLandscape ? 680 : 340 }}>
             <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
               <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
                 <Text style={[type.heading, { color: palette.text, marginBottom: spacing.md }]}>{tr.a11y.calculatorTitle}</Text>
               </View>
               <CalculatorPad
+                landscape={shortLandscape}
                 onEscape={onClose}
                 onResult={(v) => {
                   onResult(v);

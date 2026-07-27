@@ -72,7 +72,7 @@ export default function SourcesScreen() {
       dueDayStr.trim() ||
       statementDayStr.trim()
     );
-  useDirtyExitGuard(sourceDraftDirty && !busy);
+  const { confirmDiscard } = useDirtyExitGuard(sourceDraftDirty && !busy);
   const sourcePlaceholder = useRotatingPlaceholder(placeholderPools.source);
   const liveStates = [sourcesState, statementsState, transactionsState, personsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
@@ -109,12 +109,14 @@ export default function SourcesScreen() {
   };
 
   const startEdit = (src: (typeof sources)[number]) => {
-    setEditingId(src.id);
-    setName(src.name);
-    setSourceType(src.type);
-    setPersonChoice(src.personId);
-    setDueDayStr(src.dueDay != null ? String(src.dueDay) : "");
-    setStatementDayStr(src.statementDay != null ? String(src.statementDay) : "");
+    confirmDiscard(() => {
+      setEditingId(src.id);
+      setName(src.name);
+      setSourceType(src.type);
+      setPersonChoice(src.personId);
+      setDueDayStr(src.dueDay != null ? String(src.dueDay) : "");
+      setStatementDayStr(src.statementDay != null ? String(src.statementDay) : "");
+    });
   };
 
   const save = async () => {

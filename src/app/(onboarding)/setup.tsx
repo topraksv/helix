@@ -98,7 +98,7 @@ export default function SetupScreen() {
     editingPersonDirty ||
     sources.length > 0 ||
     sourceFormDirty;
-  const allowExit = useDirtyExitGuard(draftDirty && !busy && !committed);
+  const { allowExit } = useDirtyExitGuard(draftDirty && !busy && !committed);
   const dataStatus = combineLiveQueryStatus([settingsState]);
   const dataReady = settingsState.updatedAt != null;
 

@@ -56,7 +56,7 @@ const LOCAL_STATIC_ROUTES = [
   "/helix/settings/incomes", "/helix/settings/budgets", "/helix/settings/opening-balance",
   "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
   "/helix/columns-editor", "/helix/import-wizard", "/helix/opening-balance",
-  "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template",
+  "/helix/reconciliation", "/helix/upcoming", "/helix/workspace-template", "/helix/account-security",
 ];
 
 async function localReachableRoutes(page: Page): Promise<string[]> {
@@ -404,9 +404,13 @@ test("modal actions stay reachable in a short landscape viewport", async ({ page
   const calculatorModal = page.locator('[aria-modal="true"]');
   await expect(calculatorModal).toBeVisible();
   const result = page.getByRole("button", { name: /Sonucu Kullan/ });
-  await result.scrollIntoViewIfNeeded();
   const resultBox = await result.boundingBox();
   expect(resultBox && resultBox.y >= 0 && resultBox.y + resultBox.height <= 390).toBe(true);
+  await expect(page).toHaveScreenshot("calculator-modal-landscape-844-light.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixels: maxVisualDiffPixels,
+  });
 
   await page.keyboard.press("Escape");
   await expect(calculatorModal).toHaveCount(0);

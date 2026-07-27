@@ -53,7 +53,7 @@ export default function BudgetsScreen() {
   const progress = budgetProgress(monthBudgets, toTxLike(transactions, persons, categories), month, todayISO());
   const progressById = new Map(progress.map((row) => [row.id, row]));
   const categoryById = new Map(categories.map((category) => [category.id, category]));
-  useDirtyExitGuard(amountRaw !== loadedAmountRaw && !busy);
+  const { confirmDiscard } = useDirtyExitGuard(amountRaw !== loadedAmountRaw && !busy);
   const liveStates = [categoriesState, budgetsState, transactionsState, personsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -71,15 +71,19 @@ export default function BudgetsScreen() {
     setAmountMinor(null);
   };
   const changeMonth = (next: string) => {
-    reset();
-    setMonth(next);
+    confirmDiscard(() => {
+      reset();
+      setMonth(next);
+    });
   };
   const startEdit = (budget: (typeof budgets)[number]) => {
-    const loaded = (budget.amountMinor / 100).toFixed(2).replace(".", ",");
-    setCategoryChoice(budget.categoryId);
-    setAmountRaw(loaded);
-    setLoadedAmountRaw(loaded);
-    setAmountMinor(budget.amountMinor);
+    confirmDiscard(() => {
+      const loaded = (budget.amountMinor / 100).toFixed(2).replace(".", ",");
+      setCategoryChoice(budget.categoryId);
+      setAmountRaw(loaded);
+      setLoadedAmountRaw(loaded);
+      setAmountMinor(budget.amountMinor);
+    });
   };
   const save = async () => {
     if (!categoryId || amountMinor == null || amountMinor <= 0) return;
@@ -130,14 +134,14 @@ export default function BudgetsScreen() {
           options={expenseCategories.map((category) => ({ value: category.id, label: category.name }))}
           value={categoryId}
           placeholder={tr.budgets.pickCategory}
-          onChange={(value) => {
+          onChange={(value) => confirmDiscard(() => {
             setCategoryChoice(value);
             const existing = monthBudgets.find((budget) => budget.categoryId === value);
             const loaded = existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "";
             setAmountRaw(loaded);
             setLoadedAmountRaw(loaded);
             setAmountMinor(existing?.amountMinor ?? null);
-          }}
+          })}
         />
         <MoneyField
           label={tr.budgets.amount}

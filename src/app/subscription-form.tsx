@@ -114,7 +114,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     note,
   });
   const initialDraftSnapshot = React.useRef(draftSnapshot).current;
-  const allowExit = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
 
   const billingDay = Number(billingDayStr);
   const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);

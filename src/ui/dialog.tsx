@@ -20,6 +20,8 @@ import { tr } from "../i18n/tr";
 import { INPUT_LIMITS } from "../domain/input";
 import { useModalAccessibility } from "./accessibility";
 import { advanceRequestQueue, emptyRequestQueue, enqueueRequest, type RequestQueue } from "./request-queue";
+import { useReducedMotion } from "./motion";
+import { modalAnimationType } from "./modal-motion";
 
 interface DialogRequest {
   title: string;
@@ -134,14 +136,16 @@ function DialogShell({
   children: React.ReactNode;
 }) {
   const { palette, scheme } = useTheme();
+  const reducedMotion = useReducedMotion();
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onDismiss}>
+    <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onDismiss}>
       <Pressable
         accessible={false}
+        tabIndex={-1}
         style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
         onPress={onDismiss}
       >
-        <Pressable accessible={false} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
+        <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
           <FadeIn
             style={[
               { backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg },

@@ -131,7 +131,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     paidStr,
   });
   const initialDraftSnapshot = React.useRef(draftSnapshot).current;
-  const allowExit = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
 
   // Smart defaults (new entries only): remember last used category/source.
   React.useEffect(() => {

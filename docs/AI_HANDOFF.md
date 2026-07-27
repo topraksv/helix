@@ -5,49 +5,51 @@ Short-lived state only. Git and the working tree win. Stable rules belong in
 facts belong in their canonical documents. Replace this file; never append a
 history log.
 
-## Current state — 2026-07-27, Europe/Istanbul
+## Current state — 2026-07-28, Europe/Istanbul
 
-`main` is the only long-lived branch. The engineering quality package was
-squash-merged through [PR #98](https://github.com/topraksv/helix/pull/98).
+`main` is the only long-lived branch. The product UI/UX, accessibility and brand
+package is complete on `agent/ui-ux-brand-remediation` and is awaiting its
+required PR, quality check and squash merge.
 
 | | |
 |---|---|
-| Last product release commit | `faba0689b3330c2c00cd21e1d455923855165faf` |
-| Web | [GitHub Pages run 30303880841](https://github.com/topraksv/helix/actions/runs/30303880841), successful |
-| Native | EAS Update group `0d7066ab-e99e-457d-8b08-828ec7e3a5b5`, channel/branch `preview`, runtime `1.0.0`, Android + iOS |
-| Gate | 71 Vitest files / 568 tests; 40 Playwright; Expo Doctor 18/18; linked pgTAP 59/59 |
+| Last product release commit | `045c11479a811b084bfc812ff80c3a54896bfbe4` |
+| Web | Previous successful [GitHub Pages run 30303880841](https://github.com/topraksv/helix/actions/runs/30303880841); this package not deployed yet |
+| Native | New binary required because `app.json` orientation and splash/adaptive colours changed; no OTA is valid for this package |
+| Gate | 71 Vitest files / 569 tests; 42 Playwright; Expo Doctor 18/18; release export and bundle budget clean |
 
-The repository-wide audit inventoried 614 starting tracked files and reviewed
-284 production, test and configuration files file-by-file. The remaining
-documents, assets and vendored skill files were classified and reference-scanned
-where applicable. No reproducible P0/P1 remained.
+The package establishes the Connected Financial Ledger design direction:
+Çelik is the default palette, desktop dashboard information is arranged as an
+asymmetric ledger while phone density is preserved, palette names match their
+visible identity, and cash-flow horizontal continuation is explicit. The design
+language and rejected generic dashboard treatments are recorded in
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-The package replaces percentage-based cross-platform screenshot tolerance with
-23 Darwin/Linux baseline pairs and a five-pixel absolute budget, makes the FX
-and invalid-backup tests fail on the real protected boundaries, fixes linked
-pgTAP completion under the CLI role, and keeps the installed navigation graph
-unchanged while aligning Expo's supported manifest range.
+Draft protection now covers browser unload and same-screen context changes,
+including budgets, categories, people, payment sources, incomes, computed
+columns, reconciliation, bulk entry and import replacement. Atomic bulk/import
+commits cannot be cancelled after their write boundary. Modal motion follows
+Reduce Motion, modal wrappers are removed from the keyboard tab order, and the
+calculator fits all controls and its result in 844×390 landscape without an
+initial scroll.
 
-Credit-card statement history now aggregates transactions in one pass. The
-deterministic 120-statement / 100,000-transaction benchmark measured 82.50 ms →
-2.26 ms median and 86.17 ms → 2.44 ms p95, with zero mismatched totals.
+The responsive smoke matrix covers 320×568, 375×667, 390×844, 430×932,
+768×1024, 820×1180, 1024×768, 1280×800, 1440×900 and 1920×1080 across the
+dashboard, cash flow, transaction and settings routes. Darwin and Linux visual
+baselines were rendered independently; the suite includes a dedicated
+844×390 calculator baseline. Account security is included in the real-data axe
+route set.
 
-Production export is 4,739,691-byte entry JavaScript, 5,368,873-byte total
-JavaScript and 9,271,376-byte total export, with six fonts / 1,518,000 bytes,
-zero source maps and inlined Supabase configuration. Live Pages smoke verified
-root/upcoming/settings as 200, and the dynamic month URL as the expected 404
-with a root-identical application shell and a loadable release entry asset.
-
-The EAS group contains one Android and one iOS update for the release commit;
-the channel still maps unconditionally to the `preview` branch. Initial
-insights show zero installs and zero failed installs. Installed delivery remains
-unverified until the owner performs two cold starts and a visible login flow on
-the preview build.
+Fresh `npm run verify:release` completed with typecheck and lint clean,
+569/569 Vitest tests, 42/42 Playwright tests and 56 exported routes. The
+production export is 4,742,231-byte entry JavaScript, 5,371,413-byte total
+JavaScript and 9,273,916-byte total export, with six fonts / 1,518,000 bytes,
+zero source maps and inlined Supabase configuration. Compared with the previous
+release, JavaScript and total export each grew by 2,540 bytes.
 
 Existing non-blocking tool output remains: Node's experimental SQLite warning,
 the `NO_COLOR`/`FORCE_COLOR` warning and Expo Notifications' unsupported web
-listener notice. `npm ci` reports 29 audit advisories (4 moderate, 25 high);
-this package did not force or major-upgrade dependencies.
+listener notice. Dependency policy and the Expo-managed matrix were not changed.
 
 ## Open product backlog
 
@@ -58,14 +60,18 @@ this package did not force or major-upgrade dependencies.
 
 ## Open structural and acceptance findings
 
-- The documented `src/ui/components.tsx` ↔ `src/ui/calculator.tsx` cycle is a P3
-  structural preference. Breaking it would broaden the UI seam without measured
-  runtime or bundle benefit; this audit deliberately left it unchanged.
-- `src/ui/tab-bar.tsx` imports a type from the transitive
-  `@react-navigation/bottom-tabs` package. Adding a direct dependency or
-  changing the type seam remains a separate package decision.
-- No device acceptance run happened. Every device-only claim remains `BLOCKED`
-  in [`TESTING.md`](TESTING.md).
+- Installed iOS and Android acceptance is `BLOCKED`: Xcode is installed, but no
+  iOS simulator/device is available and `adb` reports no Android device.
+  Validate rotation, keyboard avoidance, VoiceOver/TalkBack, Dynamic Type,
+  native focus return, safe areas and the new splash colours on a fresh local
+  device build before claiming native acceptance.
+- The documented `src/ui/components.tsx` ↔ `src/ui/calculator.tsx` cycle remains
+  a P3 structural preference. It has no measured runtime or bundle cost and was
+  outside this product audit.
+- Desktop empty-fixture whitespace and the existing global radius scale were
+  reviewed and left unchanged: filling the empty state would add decorative
+  dashboard content, while a global radius rewrite would create broad geometry
+  churn without a demonstrated usability gain.
 
 ## Phase 2
 
@@ -75,6 +81,6 @@ are in [`PHASE2.md`](PHASE2.md).
 
 ## Next exact step
 
-Perform two full close/open cycles on the installed preview build, confirm the
-target update and login flow, then raise whether P7 may ship without a device
-run and settle its file-size and total-storage limits.
+Open the package PR, wait for the protected `quality` check, squash-merge it,
+verify the resulting Pages deployment, then make a fresh local iOS/Android
+device build for the blocked native acceptance matrix.
