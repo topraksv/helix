@@ -6,8 +6,8 @@
  * cannot be loaded by vitest.
  */
 
-import { contrastRatio, hexToRgb } from "../ui/badge-color";
-import { darkPalette, lightPalette } from "../ui/theme";
+import { contrastRatio, hexToRgb } from "./badge-color";
+import { darkPalette, lightPalette } from "./theme";
 
 /**
  * Accent colour + optional short monogram for well-known subscriptions, keyed

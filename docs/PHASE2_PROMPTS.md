@@ -233,6 +233,5 @@ Numaralar [`PHASE2.md`](PHASE2.md) ile aynı. Cevapladıkça oraya işlenir.
 |---|---|---|
 | 1 | Altıncı sekme mi, mevcut sekme içinde mi | P6'dan önce |
 | 2 | Satış geliri: varsayılan transfer, gelir açık seçenek | P6'dan önce |
-| 4 | Palet sayısı ve isimleri | P1 sırasında |
 | 5 | Paylaşılan listede push bildirimi | P8'den önce |
-| 6 | Yüklenme markası konusu yeniden açılsın mı | P1 sırasında |
+| 7 | P8'in hiç yayımlanıp yayımlanmayacağı | P8'den önce |

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { hexToRgb } from "../src/ui/badge-color";
-import { BRAND, brandPlate } from "../src/domain/brand-colors";
+import { BRAND, brandPlate } from "../src/ui/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
 import { darkPalette, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../src/ui/theme";
 

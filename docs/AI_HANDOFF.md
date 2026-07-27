@@ -5,237 +5,59 @@ Short-lived state only. Git and the working tree win. Stable rules belong in
 facts belong in their canonical documents. Replace this file; never append a
 history log.
 
-## Current state — 2026-07-26, Europe/Istanbul
+## Current state — 2026-07-27, Europe/Istanbul
 
-`main` is the only branch. No tags, no long-lived branches, no open PRs. The
-working tree is clean and everything below is merged, deployed and published.
+`main` is the only long-lived branch. The repository hygiene package is the
+resulting HEAD; use `git log` for its hash. It does not change product behaviour,
+data, UI, migrations, dependencies or the production bundle.
 
 | | |
 |---|---|
-| Last release commit | `350abce` |
-| Web | GitHub Pages, `deploy-web` success |
-| Native | EAS Update group `09d39a71-13c8-47a9-911d-954dba992fb6`, channel `preview` |
-| Gate | 71 files / 567 unit tests, 40 Playwright, bundle within budget, `supabaseConfigInlined: true` |
+| Last product release commit | `350abce` |
+| Web | GitHub Pages via the resulting `main` `deploy-web` run |
+| Native | EAS Update group `09d39a71-13c8-47a9-911d-954dba992fb6`, channel `preview`; unchanged because the cleanup production bundle is byte-identical |
+| Gate | 71 Vitest files / 567 tests; 40 Playwright; bundle within budget; `supabaseConfigInlined: true` |
 
-**Work is being handed to a different agent.** Nothing in this file assumes you
-saw the sessions that produced it. Where it describes code, read the code.
+The cleanup package narrows generated-output ignores, aligns ESLint's E2E output
+path, moves the UI-owned brand colour table from `src/domain/` to `src/ui/`,
+corrects the Phase 2 open-decision list, installs the project cleanup and
+explicit-only architecture skills, and adds the delta-focused end-of-task
+hygiene rule to `AGENTS.md`.
 
-## Phase 2 status
+`npm run verify:release` passes. Production export remains 4,739,591-byte entry
+JavaScript, 5,368,773-byte total JavaScript, 9,271,276-byte total export, six
+fonts / 1,518,000 bytes, zero source maps and inlined Supabase configuration.
+`npm ls --all` and Expo public config resolution pass.
 
-| Package | Feature | State |
-|---|---|---|
-| P0 | setup | done |
-| P1 | palettes + one loading indicator | **shipped** |
-| P4 | 21 currencies + FX provider | **shipped** |
-| P2 | floating tab bar | **shipped** |
-| P3 | Privacy Peek | **withdrawn** — see `PHASE2.md` |
-| **P7** | Receipt Vault | **next** |
-| P6 | Investments | after P7 |
-| P9 | Tour refresh | last, by definition |
-| P5 | Scenario Lab | **backlog** |
-| P8 | Shared lists | **backlog**, never agreed |
+`npx expo-doctor` remains 17/18 and `npx expo install --check` remains non-zero
+for the pre-existing `@react-navigation/native` 7.3.14 versus Expo's expected
+`^7.1.8`. This package deliberately does not upgrade dependencies.
 
-Order is the owner's, 2026-07-26. P9 is last because it describes what actually
-shipped, so it cannot be written until P7 and P6 exist or are abandoned.
+## Open product backlog
 
-## Decisions already taken — do not reopen
+- Weekly / biweekly subscription cycles remain requested but unbuilt.
+  `subscriptions.cycle` is still `monthly | yearly | custom`; adding shorter
+  cadences needs an ISO anchor, a Supabase migration, generated-type refresh and
+  expected-payment lifecycle tests. Keep it as its own package.
 
-- **Palettes stay on the warm ramp.** Clay, Sand, Cinnamon. A blue- or
-  purple-dominant accent is rejected outright by `theme-contrast.test.ts`.
-- **The breathing/logo loading mark is closed permanently.** Built, removed one
-  commit later, then closed by the owner. Do not propose it, not even as an
-  option.
-- **No new native dependency without a device build path.** `expo-blur` (and
-  `expo-glass-tabs` on top of it) cannot ship over OTA, so iOS "glass" is an
-  honest translucent surface, not a claim of blur.
-- **`main` is the only branch.** A PR branch is scaffolding; delete it on merge.
-  No tags, no per-package naming.
-- **Rollback is `git revert -m 1 <merge-sha>`.** The feature-flag module was
-  deleted — eight of nine flags were read by nothing.
+## Open structural and acceptance findings
 
-## Backlog raised by the owner, priced and not built
+- `src/ui/tab-bar.tsx` imports a type from the transitive
+  `@react-navigation/bottom-tabs` package. Adding a direct dependency or
+  changing the type seam needs a separate package decision.
+- Timing-sensitive accessibility/performance checks have produced isolated
+  local flakes but pass in the final full release gate. Do not weaken them or
+  regenerate goldens as a cleanup workaround.
+- No device acceptance run has happened. Every device-only claim remains
+  `BLOCKED` in [`TESTING.md`](TESTING.md).
 
-- **Weekly / biweekly subscription cycles.** `subscriptions.cycle` is a DB enum
-  (`monthly|yearly|custom`), `billingDay` is a month day, and `nextDueDate` is
-  generated from months. Weekly needs an ISO anchor and a different generator,
-  so it costs a Supabase migration, a `database.types.ts` regeneration, changes
-  to the expected-payment lifecycle and its tests. Recurring incomes already
-  have this machinery (`recurrence` + `anchorDate`); subscriptions do not. It
-  belongs in its own package, not bolted onto a batch of fixes.
+## Phase 2
 
-## Open owner decisions
-
-Raise these at the design gate of the package they block; do not choose for the
-owner and report "no open decisions".
-
-| # | Decision | Blocks |
-|---|---|---|
-| — | **Does P7 ship without a device run?** Its main claim (pick a file, upload, get it back) exists only on a device, and no device run has ever happened here. Web-only scope is the honest alternative. | P7, before design |
-| — | File size and total storage limits | P7 |
-| 1 | Sixth tab, or investments inside an existing tab — five tabs already crowd a 320 pt phone | P6, before design |
-| 2 | Sale proceeds: transfer by default, income as an explicit option | P6, before design |
-| 5 | Push notifications for shared lists (server-side work) | P8 |
-| 7 | **Whether P8 ships at all** — the one package that is not additive | P8 |
-
-## Known defects, unassigned
-
-- **The visual gate does not compare content.** Measured and reproducible, cause
-  unknown: the suite passed a baseline showing a full-width tab bar while the app
-  rendered a 560 pt centred one, and two baselines were stale for a week. Until
-  it is fixed, every regenerated baseline must be opened and looked at by a
-  human. `TESTING.md` carries the warning block. **This is the highest-value
-  thing on this list** — it silently weakens every screenshot claim in the
-  release gate.
-- `visual-a11y.spec.ts` "modal actions stay reachable in a short landscape
-  viewport" is flaky; it measures a bounding box before the modal settles.
-- The keyboard fix on non-scroll screens is iOS-only. `KeyboardAvoidingView`
-  was already inert on web, so the Playwright suite cannot show the difference.
-- The market card renders only with live socket quotes, so no automated test
-  covers its layout. Its column widths were measured against real Inter metrics
-  instead. Its longest label wraps below a 375 pt viewport — wrapping is the
-  sanctioned behaviour (never truncate), but that row gets taller.
-- `brace-expansion` DoS (GHSA-mh99-v99m-4gvg) stays open in Dependabot and
-  **cannot be closed by pinning**. The tree is already on the best available
-  versions. Full measurements and why in `SECURITY.md`; closure rides on the
-  `BACKLOG-SDK-01` Expo/RN/eslint upgrade.
-
-## Not proven anywhere
-
-**No device run has ever happened.** `TESTING.md`'s acceptance matrix has never
-had a row filled. Everything below is claimed from code and web behaviour only:
-the iOS translucent tab bar, safe-area handling, landscape, Reduce
-Transparency, the edge-swipe back gesture (which **cannot** be proved on web —
-browser history already behaves correctly there) and the tab-bar drag.
-
-## What the last delivery changed
-
-- **The palette was not the problem; the tonal architecture was.** Page, cards,
-  hero and tab bar all sat inside a few points of lightness, so the app read as
-  flat however the hexes moved. The balance now sits on the one saturated slab
-  (`heroSurface` in `theme.ts`) and the surface ramps step visibly at every
-  join. *Worth keeping: four palettes were proposed and rejected before anyone
-  measured the lightness range. Re-picking values inside a flat architecture
-  cannot fix flatness.*
-- **Dark refuses the accent at surface scale.** Filled with `primarySoft` the
-  dark hero was the largest coloured area on screen and turned each theme into
-  a wash of one hue. Dark ramps are near-neutral charcoal now (top-of-ramp
-  chroma 17 → 12); the theme lives in the accent on small elements.
-- **Amber / Çelik / Servi.** Ids stay `clay`/`ocean`/`forest` — they are on
-  devices that already chose. `resolvePaletteId` migrates retired values.
-- **Semantics are per palette.** The contract moved from "same colour" to "same
-  meaning" and the tests moved with it. The blue/purple ban now covers semantic
-  accents only: it exists so a status never reads blue, and a brand identity is
-  not a status.
-- The `frontend-design` skill's first calibration note described this app
-  exactly — cream background, serif display, terracotta accent is the most
-  common AI-default look. Worth reading before the next visual pass.
-
-## What the delivery before that changed
-
-- **The "vanishing screen" was the lock preference, not the keyboard avoider.**
-  `useBiometricLock` read `helix.biometric` in an async block with no `catch`;
-  iOS seals app storage under `NSFileProtectionComplete`, so that read can
-  reject around a resume, `locked` stayed `null`, and the root renders a bare
-  background for exactly that state — with nothing to retry it. *An earlier
-  delivery blamed `KeyboardAvoidingView` for this and was wrong. That was a real
-  defect and worth removing, but it was not this one; three clues (all screens,
-  after returning from another app, cured by a restart) pointed at root state,
-  not at a form.* Now: the read cannot leave the value unresolved, a resume
-  retries it, and the bare background carries the delayed indicator so no future
-  stall is invisible.
-- Face ID is biometrics-only with one prompt at a time; the device fallback was
-  answering "Face ID ile Aç" with a passcode keypad.
-- The discard prompt fires before the screen moves: the swipe gesture is
-  disabled while a form is dirty, because native stack finishes that transition
-  natively and `preventDefault` cannot cancel it.
-- Analysis: the search period no longer requires a payment method, and all-time
-  disables the window controls above it. **Consequence to watch:** that slicer
-  also drives the charts and the matrix, so they cannot be re-scoped while
-  all-time is selected.
-- Installments are bounded by their own plans; budgets cannot be set in a past
-  month; a reconciled month is marked in Mali Tablo and its note records the
-  before and after rather than a bare delta.
-
-## What the delivery before that changed
-
-- **No screen uses `KeyboardAvoidingView` any more.** Its window-coordinate
-  padding over-padded every stack screen by the header height. The non-scroll
-  branch was fixed a week earlier; the scrolling branch was knowingly left as
-  "degrades rather than breaks" and then broke — reported as the whole screen
-  vanishing at the bottom of the subscription form and the import wizard, the
-  two longest forms in the app. **Not reproducible on web and not verified on a
-  device**: react-native-web's avoider is inert, so the mechanism cannot exist
-  there. Fixed on measured-wrong arithmetic, not on a repro. *The lesson is the
-  one worth keeping: a defect recorded as tolerable is still a defect, and it
-  came back as the most serious report of the week.*
-- Search results are bounded to five with a show-all toggle and four sort
-  modes. `sortTransactions` (domain, tested) compares magnitude for the amount
-  modes so a large refund ranks with the large sums.
-- The custom analysis range is two month dropdowns, not two stacked steppers.
-- The budget badge sits under the figures it qualifies.
-
-## What the delivery before that changed
-
-- **`Badge` carries no `alignSelf`.** It had `flex-start` (hung from the top of
-  a wrapped row), then `center` (overrode `alignItems: flex-end` on the stacked
-  budget rows). No single value is right for both axes, so the container states
-  its own and a column caller sets `alignItems` itself. Worth remembering as a
-  shape: a shared primitive that dictates its cross-axis position will be wrong
-  in half its call sites.
-- **`Select` has one `onCreate` slot**, used by every category and payment
-  source dropdown. The "manage payment sources" button beside the installment
-  form is gone.
-- **`ChipPicker` has a `compact` variant** for rows of one- and two-character
-  labels; the month-day row needed 380 pt where its narrowest caller has 326.
-- **`RuleRow` centres its columns** instead of hanging them from the top.
-- **Analysis gained a 1-month window and a custom start/end range**, built from
-  the existing `MonthStepper`. The period slicer moved to its own row because
-  six segments cannot share one with the year switcher.
-
-## What the delivery before that changed
-
-Read the commits; this is only the shape of it.
-
-- **The cell editor went blank** when its quick-entry field was tapped.
-  `Screen`'s `KeyboardAvoidingView` used `behavior="padding"`, which pads by the
-  keyboard height in WINDOW coordinates while a stack screen's frame starts
-  below the native header — it over-padded by the header height and the
-  `flex: 1` child collapsed. Non-scroll screens host their own list, so the list
-  takes the inset now and the avoider is gone. **iOS-only, and no device run has
-  happened** — the web suite cannot prove this one.
-- **Category and payment source became dropdowns.** Sixteen chips pushed date,
-  note and save below the fold. `Select` already had the rows, the tint and the
-  focus trap, so no new component. Option icons are a separate field rendered in
-  a fixed column — packed into the label string, differing emoji widths left
-  every name at a different x. Person stays chips: bounded by the household.
-- **`Badge` no longer pins itself to the top of a row** (`alignSelf` was
-  `flex-start`, overriding the row's centring).
-- **An E2E test that could not fail was replaced.** It asked whether a
-  `POISON_CATEGORY` radio existed on `/transaction`, but `/transaction` always
-  redirected to setup in that context, so the count was zero whatever the import
-  did. Worth remembering as a shape: an absence assertion on a screen you have
-  not proved is rendered asserts nothing.
-
-## What the delivery before that changed
-
-- **P3 withdrawn.** It had shipped as one third of its baseline — the manual
-  switch, without start-hidden or peek-while-held — and that third is the one a
-  user cannot benefit from. Removed whole, including a `<Private>` wrapper that
-  was defined and never once used.
-- **Unsaved-changes prompt fixed properly.** All seventeen `useDirtyExitGuard`
-  call sites were read. Two compared something a save would never write:
-  `showCurrency` (the *disclosure* state of the currency row) sat inside the
-  draft snapshot in two forms, and `incomes.tsx` compared a derived category
-  default against a stored null. `tests/dirty-exit.test.ts` pins the first.
-- **Waiting caption** moved to full `text` at heading size with a shared
-  `useWaitingPulse`; the 0.72 floor is measured (worst palette 5.2:1 at the
-  trough) and `theme-contrast.test.ts` reads the constant.
-- **Markets:** `TEK_YENI` (Tam Altın) added after confirming on the live feed
-  that it is a distinct quote from `ATA_YENI`. Columns went from `minWidth` to
-  fixed widths sized from measured Inter metrics.
-- **FX verified end to end** through the app's own parser: 21/21 currencies,
-  correct business date, USD/EUR within 0.06 % of the Harem socket.
+Completed: P0, P1, P4 and P2. P3 was withdrawn. Remaining owner order is
+**P7 → P6 → P9**; P5 and P8 are backlog. The canonical scope and open decisions
+are in [`PHASE2.md`](PHASE2.md).
 
 ## Next exact step
 
-`NEXT EXACT STEP = raise the P7 device-provability decision with the owner, then run PHASE2.md § How a package runs for P7.`
+Raise whether P7 may ship without a device run, then settle its file-size and
+total-storage limits. If P7 proceeds, run `PHASE2.md` § “How a package runs”.

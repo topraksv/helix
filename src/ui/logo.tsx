@@ -28,7 +28,7 @@ import {
 } from "lucide-react-native";
 import { InitialsBadge } from "./components";
 import { font } from "./theme";
-import { BRAND, brandPlate } from "../domain/brand-colors";
+import { BRAND, brandPlate } from "./brand-colors";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** One shared frameless tile: near-square, rounded, no border — every variant

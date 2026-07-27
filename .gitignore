@@ -17,18 +17,15 @@ node_modules/
 /android/
 /ios/
 .kotlin/
-dist/
-dist-*/
-web-build/
+/dist/
+/dist-e2e/
 expo-env.d.ts
 *.tsbuildinfo
 
 # Test and local analysis output
-coverage/
-playwright-report/
-test-results/
-/profile-*/
-/vshots/
+/coverage/
+/playwright-report/
+/test-results/
 .eslintcache
 
 # Local workbook scratch; committed fixtures under tests/ remain eligible
