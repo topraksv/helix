@@ -8,13 +8,13 @@ history log.
 ## Current state — 2026-07-28, Europe/Istanbul
 
 `main` is the only long-lived branch. The product UI/UX, accessibility and brand
-package is complete on `agent/ui-ux-brand-remediation` and is awaiting its
-required PR, quality check and squash merge.
+package was squash-merged through
+[PR #101](https://github.com/topraksv/helix/pull/101).
 
 | | |
 |---|---|
-| Last product release commit | `045c11479a811b084bfc812ff80c3a54896bfbe4` |
-| Web | Previous successful [GitHub Pages run 30303880841](https://github.com/topraksv/helix/actions/runs/30303880841); this package not deployed yet |
+| Last product release commit | `4d227aac863045581a4bfe43334344197abf2908` |
+| Web | [GitHub Pages run 30313476658](https://github.com/topraksv/helix/actions/runs/30313476658), successful |
 | Native | New binary required because `app.json` orientation and splash/adaptive colours changed; no OTA is valid for this package |
 | Gate | 71 Vitest files / 569 tests; 42 Playwright; Expo Doctor 18/18; release export and bundle budget clean |
 
@@ -46,6 +46,13 @@ production export is 4,742,231-byte entry JavaScript, 5,371,413-byte total
 JavaScript and 9,273,916-byte total export, with six fonts / 1,518,000 bytes,
 zero source maps and inlined Supabase configuration. Compared with the previous
 release, JavaScript and total export each grew by 2,540 bytes.
+
+The protected PR gate passed `quality`, CodeQL and dependency review. The
+resulting GitHub squash commit is verified. The `main` Pages run repeated the
+full quality job successfully, then deployed. Live smoke verified root,
+upcoming and settings as 200; the dynamic July 2026 cash-flow URL returns the
+expected 404 with a byte-identical root application shell and a loadable release
+entry asset.
 
 Existing non-blocking tool output remains: Node's experimental SQLite warning,
 the `NO_COLOR`/`FORCE_COLOR` warning and Expo Notifications' unsupported web
@@ -81,6 +88,6 @@ are in [`PHASE2.md`](PHASE2.md).
 
 ## Next exact step
 
-Open the package PR, wait for the protected `quality` check, squash-merge it,
-verify the resulting Pages deployment, then make a fresh local iOS/Android
-device build for the blocked native acceptance matrix.
+Make a fresh local iOS/Android device build for the blocked native acceptance
+matrix. Do not publish this release as an OTA because its orientation and
+splash/adaptive icon configuration require a new binary.
