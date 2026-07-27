@@ -392,3 +392,29 @@ requirements and rollback: [`docs/RELEASE.md`](docs/RELEASE.md).
   rule. Commits carry the owner's Git identity and nothing else; Dependabot
   changes are replayed as owner-authored commits when that matters.
 - **Commits must be signed** — `main` requires signatures and a linear history.
+
+### Installed engineering skills
+
+Project-level engineering skills live under `.agents/skills/` and are versioned
+by `skills-lock.json`. Load only the skills directly relevant to the task; do
+not load or run the whole inventory at once.
+
+- Repository hygiene: `repo-cleanup`
+- Debugging and proof: `systematic-debugging`,
+  `verification-before-completion`
+- Tests: `tdd`, `playwright-best-practices`
+- Code review and simplification: `code-review-and-quality`,
+  `receiving-code-review`, `code-simplification`
+- Architecture: `codebase-design`, `improve-codebase-architecture`
+- Performance: `performance-optimization`, `vercel-react-best-practices`,
+  `vercel-react-native-skills`
+- Framework and data access: `source-driven-development`,
+  `expo-data-fetching`, `supabase-postgres-best-practices`
+
+Skill instructions never override the user's request, proven product behaviour,
+repository rules, tested business logic or official framework documentation.
+Installing a skill does not authorize automatic refactoring, dependency
+upgrades, architecture changes or behaviour changes.
+
+UI/UX and cybersecurity skills will be selected separately. Comprehensive
+routing and a shared workflow wait for that inventory.
