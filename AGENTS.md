@@ -416,5 +416,29 @@ repository rules, tested business logic or official framework documentation.
 Installing a skill does not authorize automatic refactoring, dependency
 upgrades, architecture changes or behaviour changes.
 
-UI/UX and cybersecurity skills will be selected separately. Comprehensive
-routing and a shared workflow wait for that inventory.
+### UI/UX skills
+
+Project-level UI/UX skills cover visual direction (`frontend-design`),
+production UI (`frontend-ui-engineering`), web audit
+(`web-design-guidelines`), native Expo interaction (`expo-native-ui`),
+navigation and back behaviour (`expo-router`), temporary design options
+(`prototype`) and mobile accessibility (`mobile-accessibility`). Use only the
+skill directly relevant to the task; do not run the whole set by default.
+
+1. Installation does not authorize an automatic redesign or visual change.
+2. Helix's brand language, theme tokens, behaviour and owner habits are the
+   starting point.
+3. Reject generic AI patterns: gratuitous gradients, meaningless card stacks,
+   excessive rounding, decorative dashboard clutter and reduced information
+   density for fashion.
+4. Visual polish cannot compromise usability, hierarchy or financial-data
+   legibility.
+5. Web, iOS and future Android keep one product logic while allowing
+   platform-appropriate native interactions.
+6. Use `prototype` only for an explicit design question and remove throwaway
+   code before merge.
+7. Automated accessibility review does not replace VoiceOver/TalkBack,
+   keyboard, focus and Dynamic Type checks.
+8. Skill advice never outranks business logic, tested behaviour, the owner's
+   request or official framework documentation.
+9. Detailed shared routing waits until the cybersecurity skill set is complete.
