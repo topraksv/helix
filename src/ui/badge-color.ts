@@ -19,7 +19,7 @@ const LIGHTNESS = 0.46;
  * is 0.1833; the cap keeps a margin so rounding to 8-bit channels cannot cross
  * the threshold. At the cap the ratio is ~4.67:1.
  */
-const MAX_LUMINANCE = 0.175;
+const MAX_LUMINANCE = 0.162;
 
 function toLinear(channel: number): number {
   return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;

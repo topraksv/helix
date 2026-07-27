@@ -26,7 +26,7 @@ import { kv } from "../services/kv";
 import {
   controlSize,
   darkPalette,
-  isPaletteId,
+  resolvePaletteId,
   lightPalette,
   PALETTES,
   ThemeContext,
@@ -212,7 +212,7 @@ function RootLayoutInner() {
     void loadDevicePreferences();
     void Promise.all([kv.get("helix.theme"), kv.get("helix.palette")]).then(([themeValue, paletteValue]) => {
       if (themeValue === "light" || themeValue === "dark" || themeValue === "system") setThemePref(themeValue);
-      if (isPaletteId(paletteValue)) setPalettePref(paletteValue);
+      setPalettePref(resolvePaletteId(paletteValue));
     });
     themePrefListeners.add(setThemePref);
     palettePrefListeners.add(setPalettePref);

@@ -6,7 +6,7 @@ import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react
 import type { Distribution } from "../domain/analytics";
 import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
-import { spacing, type, useTheme } from "./theme";
+import { radius, spacing, type, useTheme } from "./theme";
 
 export type SeriesColors = readonly [string, string, string, string, string, string, string, string];
 
@@ -188,11 +188,70 @@ interface LineSeries {
   points: (number | null)[];
 }
 
-/** Multi-series line chart: 2px strokes, recessive grid, direct end labels. */
+/**
+ * Turn a run of points into a smooth path.
+ *
+ * A polyline of monthly figures is a zig-zag, and the eye spends its effort on
+ * the corners instead of the trend. This is Catmull-Rom converted to cubic
+ * Bézier: each segment's control points come from its neighbours, so the curve
+ * passes through every real value — it smooths the join, never the number.
+ *
+ * The control points are then clamped into their own segment's range. Without
+ * that the curve overshoots after a flat run: a category with nothing until
+ * June and a spike in July was drawn dipping BELOW ZERO in May, inventing a
+ * month of income out of the interpolation. A chart of money may round a
+ * corner; it may not draw a value that never existed.
+ */
+function smoothPath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M${points[0]!.x},${points[0]!.y}`;
+  let d = `M${points[0]!.x},${points[0]!.y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i]!;
+    const p1 = points[i]!;
+    const p2 = points[i + 1]!;
+    const p3 = points[i + 2] ?? p2;
+    const lo = Math.min(p1.y, p2.y);
+    const hi = Math.max(p1.y, p2.y);
+    const clamp = (value: number) => Math.min(hi, Math.max(lo, value));
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = clamp(p1.y + (p2.y - p0.y) / 6);
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = clamp(p2.y - (p3.y - p1.y) / 6);
+    d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2.x},${p2.y}`;
+  }
+  return d;
+}
+
+/** Contiguous runs of real values; a null breaks the line rather than bridging it. */
+function segmentsOf(points: (number | null)[]): number[][] {
+  const runs: number[][] = [];
+  let run: number[] = [];
+  points.forEach((value, index) => {
+    if (value == null) {
+      if (run.length) runs.push(run);
+      run = [];
+    } else {
+      run.push(index);
+    }
+  });
+  if (run.length) runs.push(run);
+  return runs;
+}
+
+/**
+ * Multi-series line chart on a ruled field.
+ *
+ * The line used to float on the card's own surface with a single rule under it,
+ * which made a value impossible to place: there was nothing to read a height
+ * against. The plot is now its own tinted panel ruled both ways — squared
+ * paper — with the value axis labelled down the left and the zero line the one
+ * rule drawn at full strength.
+ */
 export function Lines({
   series,
   xLabels,
-  height = 180,
+  height = 200,
   width = 320,
 }: {
   series: LineSeries[];
@@ -201,7 +260,9 @@ export function Lines({
   width?: number;
 }) {
   const { palette } = useTheme();
-  const padding = { left: 8, right: 56, top: 12, bottom: 22 };
+  // No right gutter: the only caller draws one series whose name is already the
+  // card's heading, so an end label repeated it and cost a sixth of the plot.
+  const padding = { left: 54, right: 12, top: 12, bottom: 24 };
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
   const values = series.flatMap((s) => s.points.filter((p): p is number => p != null));
@@ -218,39 +279,83 @@ export function Lines({
     return `${item.label}: ${itemValues}`;
   }).join(". "));
 
+  // Five rules divide the range into quarters — enough to judge a height
+  // against, few enough that the labels never touch at this size.
+  const TICKS = 5;
+  const ticks = Array.from({ length: TICKS }, (_, i) => max - ((max - min) / (TICKS - 1)) * i);
+
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
       <Svg accessible={false} width={width} height={height}>
-        {/* recessive grid: zero line + top */}
-        <SvgLine x1={padding.left} y1={y(0)} x2={padding.left + plotW} y2={y(0)} stroke={palette.border} strokeWidth={1} />
+        <Rect
+          x={padding.left}
+          y={padding.top}
+          width={plotW}
+          height={plotH}
+          rx={radius.sm}
+          fill={palette.surfaceAlt}
+        />
+        {ticks.map((value) => (
+          <React.Fragment key={`h${value}`}>
+            <SvgLine
+              x1={padding.left}
+              y1={y(value)}
+              x2={padding.left + plotW}
+              y2={y(value)}
+              stroke={palette.border}
+              strokeWidth={1}
+              opacity={Math.abs(value) < 1 ? 0.55 : 0.18}
+            />
+            <SvgText
+              x={padding.left - 8}
+              y={y(value) + 3}
+              fontSize={9}
+              fill={palette.textSecondary}
+              textAnchor="end"
+            >
+              {formatMinorCompact(Math.round(value))}
+            </SvgText>
+          </React.Fragment>
+        ))}
+        {xLabels.map((_, i) => (
+          <SvgLine
+            key={`v${i}`}
+            x1={x(i)}
+            y1={padding.top}
+            x2={x(i)}
+            y2={padding.top + plotH}
+            stroke={palette.border}
+            strokeWidth={1}
+            opacity={0.12}
+          />
+        ))}
         {series.map((s) => {
-          const d = s.points
-            .map((p, i) => (p == null ? null : `${i === 0 || s.points[i - 1] == null ? "M" : "L"}${x(i)},${y(p)}`))
-            .filter(Boolean)
-            .join(" ");
+          const runs = segmentsOf(s.points);
           const lastIdx = s.points.reduce<number>((acc, p, i) => (p != null ? i : acc), -1);
           return (
             <React.Fragment key={s.label}>
-              <Path d={d} stroke={s.color} strokeWidth={2} fill="none" />
+              {runs.map((run) => {
+                const pts = run.map((i) => ({ x: x(i), y: y(s.points[i]!) }));
+                const line = smoothPath(pts);
+                // The fill closes the same curve down to the zero rule, so the
+                // area and the line can never disagree about where a month sat.
+                const area = `${line} L${pts.at(-1)!.x},${y(0)} L${pts[0]!.x},${y(0)} Z`;
+                return (
+                  <React.Fragment key={run[0]}>
+                    <Path d={area} fill={s.color} opacity={0.12} />
+                    <Path d={line} stroke={s.color} strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  </React.Fragment>
+                );
+              })}
               {lastIdx >= 0 ? (
-                <>
-                  <Circle cx={x(lastIdx)} cy={y(s.points[lastIdx]!)} r={4} fill={s.color} stroke={palette.surface} strokeWidth={2} />
-                  <SvgText
-                    x={x(lastIdx) + 6}
-                    y={y(s.points[lastIdx]!) + 4}
-                    fontSize={10}
-                    fill={palette.textSecondary}
-                  >
-                    {s.label}
-                  </SvgText>
-                </>
+                <Circle cx={x(lastIdx)} cy={y(s.points[lastIdx]!)} r={4} fill={s.color} stroke={palette.surface} strokeWidth={2} />
               ) : null}
             </React.Fragment>
           );
         })}
         {xLabels.map((l, i) =>
           xLabels.length <= 6 || i % Math.ceil(xLabels.length / 6) === 0 ? (
-            <SvgText key={i} x={x(i)} y={height - 6} fontSize={9} fill={palette.textSecondary} textAnchor="middle">
+            <SvgText key={`x${i}`} x={x(i)} y={height - 6} fontSize={9} fill={palette.textSecondary} textAnchor="middle">
               {l}
             </SvgText>
           ) : null,

@@ -20,7 +20,7 @@
  */
 
 import React, { useMemo, useRef } from "react";
-import { PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { PanResponder, Platform, Pressable, Text, View } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReduceTransparency } from "./motion";
@@ -101,8 +101,9 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         flexDirection: "row",
         alignItems: "center",
         borderRadius: radius.xl,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: palette.controlBorder,
+        // No outline. The bar reads as a floating object from its own fill and
+        // shadow, and the surface ramp now steps far enough from the page that
+        // a hairline only added a hard edge across the bottom of every screen.
         backgroundColor: glass ? palette.surfaceTranslucent : palette.surface,
         ...overlayShadow,
       }}

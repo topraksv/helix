@@ -3,45 +3,56 @@
 import { createContext, useContext } from "react";
 
 export interface Palette {
+  // Yapısal nötrler: tema karakterini taşır ama ekranı tek renge boyamaz.
   background: string;
   surface: string;
-  /**
-   * `surface` with alpha, for the floating tab bar that content scrolls under.
-   * The opaque prefix must stay identical to `surface` so every contrast pair
-   * already proved against `surface` still holds once it composites; the alpha
-   * is high enough that what shows through reads as texture, not as a second
-   * background. Reduce Transparency swaps it for `surface` itself.
-   */
+  /** `surface` renginin `EB` alpha eklenmiş hali. */
   surfaceTranslucent: string;
   surfaceAlt: string;
   surfaceHover: string;
   surfaceStrong: string;
   border: string;
-  /**
-   * Boundary for interactive controls (toggles, inputs). Separate from `border`
-   * because a decorative divider only has to be visible, while a control has to
-   * satisfy WCAG 1.4.11 (3:1) against every surface it can sit on — including
-   * `primarySoft`, where the toggle track and its row background were the same
-   * colour and the control vanished completely.
-   */
   controlBorder: string;
+
+  // Metin hiyerarşisi.
   textStrong: string;
   text: string;
   textSecondary: string;
   textMuted: string;
+
+  // Birincil marka rengi: ana CTA, seçili navigasyon ve ana grafik serisi.
   primary: string;
   primaryStrong: string;
   primarySoft: string;
   accentText: string;
   primaryText: string;
   onPrimary: string;
+
+  // İkincil ve üçüncül vurgu aileleri. Genel yüzeylerde kullanılmazlar.
+  secondary: string;
+  secondaryStrong: string;
+  secondarySoft: string;
+  secondaryText: string;
+  onSecondary: string;
+  tertiary: string;
+  tertiaryStrong: string;
+  tertiarySoft: string;
+  tertiaryText: string;
+  onTertiary: string;
+
+  // Temaya bağlı derinlik. Sabit sıcak gölge bütün temaları Clay'e çekmemeli.
+  shadow: string;
+  shadowStrong: string;
+  scrim: string;
+
+  // Semantik roller: anlamları tema değişse de sabit kalır.
   destructive: string;
   onDestructive: string;
   error: string;
   errorText: string;
   success: string;
   successText: string;
-  /** Financial direction roles. Do not reuse them for generic status UI. */
+  /** Finansal yön rolleri; genel durum UI'ında kullanılmamalı. */
   positive: string;
   positiveText: string;
   negative: string;
@@ -51,194 +62,303 @@ export interface Palette {
   focus: string;
 }
 
-const lightSemanticColors = {
-  destructive: "#A72519",
-  onDestructive: "#FFFFFF",
-  error: "#A72519",
-  errorText: "#A72519",
-  success: "#2E8B47",
-  successText: "#1F6B33",
-  positive: "#2E8B47",
-  positiveText: "#1F6B33",
-  negative: "#A72519",
-  negativeText: "#A72519",
-  warning: "#A87B17",
-  warningText: "#7A5A10",
-  focus: "#207FDE",
-} satisfies Pick<Palette,
+type SemanticPalette = Pick<Palette,
   | "destructive" | "onDestructive" | "error" | "errorText"
   | "success" | "successText" | "positive" | "positiveText"
   | "negative" | "negativeText" | "warning" | "warningText" | "focus"
 >;
+
+/**
+ * Semantik renkler tema kimliğinden bağımsızdır. Tema değiştiğinde gelir hâlâ
+ * yeşil, gider hâlâ kırmızı, uyarı hâlâ amber kalır. Böylece kullanıcı renk
+ * anlamlarını her palette yeniden öğrenmek zorunda kalmaz.
+ */
+const lightSemanticColors = {
+  destructive: "#A94F48",
+  onDestructive: "#FBF4F1",
+  error: "#A94F48",
+  errorText: "#833832",
+  success: "#4D775B",
+  successText: "#365D43",
+  positive: "#4D775B",
+  positiveText: "#365D43",
+  negative: "#A94F48",
+  negativeText: "#833832",
+  warning: "#9A703A",
+  warningText: "#745126",
+  focus: "#3C6F96",
+} satisfies SemanticPalette;
 
 const darkSemanticColors = {
-  destructive: "#DD493C",
-  onDestructive: "#0F0F0D",
-  error: "#DD493C",
-  errorText: "#FF8277",
-  success: "#57B76B",
-  successText: "#7CC98F",
-  positive: "#57B76B",
-  positiveText: "#7CC98F",
-  negative: "#DD493C",
-  negativeText: "#FF8277",
-  warning: "#E0A83C",
-  warningText: "#E3B978",
-  focus: "#4594E3",
-} satisfies Pick<Palette,
-  | "destructive" | "onDestructive" | "error" | "errorText"
-  | "success" | "successText" | "positive" | "positiveText"
-  | "negative" | "negativeText" | "warning" | "warningText" | "focus"
->;
+  destructive: "#D77C74",
+  onDestructive: "#3A2726",
+  error: "#D77C74",
+  errorText: "#F0A49E",
+  success: "#82A68A",
+  successText: "#B0CFB5",
+  positive: "#82A68A",
+  positiveText: "#B0CFB5",
+  negative: "#D77C74",
+  negativeText: "#F0A49E",
+  warning: "#CFA667",
+  warningText: "#E6C78F",
+  focus: "#7EADD0",
+} satisfies SemanticPalette;
 
-// Warm neutral/clay ramp with semantic accents tuned to the paper palette:
-// income/positive is a garden green, expense/negative a brick red, warning a
-// warm ochre. Purple and blue accents are banned (the sole blue is the focus
-// ring, an a11y convention). `*Text` variants are the AA-safe foregrounds for
-// body-size text; the base tokens are fills/chart marks (3:1 contract).
-const clayLight: Palette = {
-  background: "#F8F8F7",
-  surface: "#F5F4EF",
-  surfaceTranslucent: "#F5F4EFEB",
-  surfaceAlt: "#F0EEE5",
-  surfaceHover: "#E8E5D8",
-  surfaceStrong: "#DED8C4",
-  border: "#706B57",
-  controlBorder: "#706B57",
-  textStrong: "#0F0F0D",
-  text: "#29261B",
-  textSecondary: "#535146",
-  textMuted: "#737163",
-  primary: "#BA5B38",
-  primaryStrong: "#C96442",
-  primarySoft: "#F2E0DA",
-  accentText: "#AB5235",
-  primaryText: "#0F0F0D",
-  onPrimary: "#FFFFFF",
+/**
+ * Tema mimarisi:
+ * - Yüzeylerin büyük bölümü düşük doygunluklu nötrlerden oluşur.
+ * - Tema kimliği primary + secondary + tertiary aileleriyle verilir.
+ * - Bir tema "yeşil" diye bütün kartlar yeşile boyanmaz.
+ * - Dark mod, nötr kömür tabanlıdır; tema tonu yüzeylerde yalnızca mikro miktarda hissedilir.
+ */
+
+// ---------------------------------------------------------------------------
+// Amber — reçine sıcaklığı: keten taban, pişmiş toprak, zeytin ve eskitilmiş pirinç.
+// ---------------------------------------------------------------------------
+const amberLight: Palette = {
+  background: "#ECE5DC",
+  surface: "#FBF8F4",
+  surfaceTranslucent: "#FBF8F4EB",
+  surfaceAlt: "#E9E1D8",
+  surfaceHover: "#DDD0C2",
+  surfaceStrong: "#CDBCAA",
+  border: "#8B796A",
+  controlBorder: "#6D5B4D",
+  textStrong: "#2A211B",
+  text: "#3A3028",
+  textSecondary: "#62564C",
+  textMuted: "#6D6157",
+  primary: "#A55335",
+  primaryStrong: "#88432D",
+  primarySoft: "#EED8CC",
+  accentText: "#7B3A28",
+  primaryText: "#2A211B",
+  onPrimary: "#FBF4EF",
+  secondary: "#6C7047",
+  secondaryStrong: "#585C39",
+  secondarySoft: "#E2E1C9",
+  secondaryText: "#555937",
+  onSecondary: "#FAF8F0",
+  tertiary: "#91672F",
+  tertiaryStrong: "#765226",
+  tertiarySoft: "#EDDFC5",
+  tertiaryText: "#775624",
+  onTertiary: "#FBF7EE",
+  shadow: "rgba(63, 45, 34, 0.10)",
+  shadowStrong: "rgba(63, 45, 34, 0.22)",
+  scrim: "rgba(39, 29, 23, 0.52)",
   ...lightSemanticColors,
 };
 
-const clayDark: Palette = {
-  background: "#1A1A19",
-  surface: "#222220",
-  surfaceTranslucent: "#222220EB",
-  surfaceAlt: "#2D2D2A",
-  surfaceHover: "#393937",
-  surfaceStrong: "#494946",
-  border: "#514F48",
-  controlBorder: "#908C80",
-  textStrong: "#FAF9F5",
-  text: "#EFEEEC",
-  textSecondary: "#B6B5AF",
-  textMuted: "#989790",
-  primary: "#D56E48",
-  primaryStrong: "#CC5933",
-  primarySoft: "#493027",
-  accentText: "#D97959",
-  primaryText: "#FAF9F5",
-  onPrimary: "#1A1A19",
+const amberDark: Palette = {
+  background: "#121110",
+  surface: "#1E1B19",
+  surfaceTranslucent: "#1E1B19EB",
+  surfaceAlt: "#282421",
+  surfaceHover: "#342F2B",
+  surfaceStrong: "#443E38",
+  border: "#62574E",
+  controlBorder: "#8F8176",
+  textStrong: "#F2ECE6",
+  text: "#E5DDD6",
+  textSecondary: "#BEB2A8",
+  textMuted: "#9D9289",
+  primary: "#D88967",
+  primaryStrong: "#BE6B4A",
+  primarySoft: "#3C2A22",
+  accentText: "#E7A68B",
+  primaryText: "#F2ECE6",
+  onPrimary: "#2C1D17",
+  secondary: "#A3A774",
+  secondaryStrong: "#898E5E",
+  secondarySoft: "#3A3B2B",
+  secondaryText: "#CED1A5",
+  onSecondary: "#25261B",
+  tertiary: "#CAA05F",
+  tertiaryStrong: "#AD8549",
+  tertiarySoft: "#443824",
+  tertiaryText: "#E3C187",
+  onTertiary: "#2D2416",
+  shadow: "rgba(9, 7, 6, 0.30)",
+  shadowStrong: "rgba(9, 7, 6, 0.50)",
+  scrim: "rgba(10, 8, 7, 0.68)",
   ...darkSemanticColors,
 };
 
-const sandLight: Palette = {
-  background: "#FBF5E8",
-  surface: "#F7EEDC",
-  surfaceTranslucent: "#F7EEDCEB",
-  surfaceAlt: "#EFE3CC",
-  surfaceHover: "#E7D6B8",
-  surfaceStrong: "#D8C29D",
-  border: "#776244",
-  controlBorder: "#776244",
-  textStrong: "#1C140A",
-  text: "#352816",
-  textSecondary: "#5C4B34",
-  textMuted: "#75664F",
-  primary: "#A95A24",
-  primaryStrong: "#B9642B",
-  primarySoft: "#F2DCC8",
-  accentText: "#884318",
-  primaryText: "#1C140A",
-  onPrimary: "#FFFFFF",
+// ---------------------------------------------------------------------------
+// Çelik — inci ve ıslak taş taban, tavlanmış çelik mavisi, deniz köpüğü ve mercan.
+// ---------------------------------------------------------------------------
+const celikLight: Palette = {
+  background: "#E7ECEB",
+  surface: "#FAFBF9",
+  surfaceTranslucent: "#FAFBF9EB",
+  surfaceAlt: "#E2EAE9",
+  surfaceHover: "#CEDBDB",
+  surfaceStrong: "#B7CACB",
+  border: "#71858B",
+  controlBorder: "#566B72",
+  textStrong: "#223138",
+  text: "#2A3A40",
+  textSecondary: "#586A70",
+  textMuted: "#586A70",
+  primary: "#356B7F",
+  primaryStrong: "#285469",
+  primarySoft: "#D3E5EA",
+  accentText: "#285669",
+  primaryText: "#223138",
+  onPrimary: "#F4F8F7",
+  secondary: "#6F988F",
+  secondaryStrong: "#587E76",
+  secondarySoft: "#DCEAE3",
+  secondaryText: "#496C64",
+  onSecondary: "#1F2A26",
+  tertiary: "#B67661",
+  tertiaryStrong: "#985E4D",
+  tertiarySoft: "#EEDDD7",
+  tertiaryText: "#875345",
+  onTertiary: "#211A17",
+  shadow: "rgba(42, 66, 76, 0.10)",
+  shadowStrong: "rgba(42, 66, 76, 0.22)",
+  scrim: "rgba(28, 47, 55, 0.50)",
   ...lightSemanticColors,
 };
 
-const sandDark: Palette = {
-  background: "#1C1812",
-  surface: "#252019",
-  surfaceTranslucent: "#252019EB",
-  surfaceAlt: "#332A20",
-  surfaceHover: "#403428",
-  surfaceStrong: "#534434",
-  border: "#645442",
-  controlBorder: "#A38F73",
-  textStrong: "#FFF9ED",
-  text: "#F3EBDD",
-  textSecondary: "#C0B29F",
-  textMuted: "#9F927F",
-  primary: "#D98545",
-  primaryStrong: "#CF7436",
-  primarySoft: "#513621",
-  accentText: "#F0A064",
-  primaryText: "#FFF9ED",
-  onPrimary: "#1C1812",
+const celikDark: Palette = {
+  background: "#101315",
+  surface: "#1A1E20",
+  surfaceTranslucent: "#1A1E20EB",
+  surfaceAlt: "#242A2C",
+  surfaceHover: "#2F3639",
+  surfaceStrong: "#3F4649",
+  border: "#58666C",
+  controlBorder: "#8C9DA3",
+  textStrong: "#EFF2F2",
+  text: "#E1E6E6",
+  textSecondary: "#BAC5C7",
+  textMuted: "#99A6A9",
+  primary: "#86B4C3",
+  primaryStrong: "#6D9CAB",
+  primarySoft: "#2A3A40",
+  accentText: "#B9D7DF",
+  primaryText: "#EFF2F2",
+  onPrimary: "#203037",
+  secondary: "#9ABDAE",
+  secondaryStrong: "#7FA393",
+  secondarySoft: "#31433C",
+  secondaryText: "#C8DDD3",
+  onSecondary: "#202D27",
+  tertiary: "#CF9582",
+  tertiaryStrong: "#B57A68",
+  tertiarySoft: "#493633",
+  tertiaryText: "#EAC0B3",
+  onTertiary: "#2F211E",
+  shadow: "rgba(7, 10, 12, 0.30)",
+  shadowStrong: "rgba(7, 10, 12, 0.50)",
+  scrim: "rgba(8, 12, 14, 0.68)",
   ...darkSemanticColors,
 };
 
-const cinnamonLight: Palette = {
-  background: "#FAF5F2",
-  surface: "#F6EEE9",
-  surfaceTranslucent: "#F6EEE9EB",
-  surfaceAlt: "#EEE1D9",
-  surfaceHover: "#E5D4CA",
-  surfaceStrong: "#D5BCAE",
-  border: "#745B4E",
-  controlBorder: "#745B4E",
-  textStrong: "#1A110D",
-  text: "#35251E",
-  textSecondary: "#5C4A41",
-  textMuted: "#76655C",
-  primary: "#A84F30",
-  primaryStrong: "#B95B39",
-  primarySoft: "#F0D9D0",
-  accentText: "#8E3D24",
-  primaryText: "#1A110D",
-  onPrimary: "#FFFFFF",
+// ---------------------------------------------------------------------------
+// Orman — mantar taşı taban, servi, liken ve yabani meyve tonları.
+// ---------------------------------------------------------------------------
+const serviLight: Palette = {
+  background: "#E9E9E1",
+  surface: "#FAF9F4",
+  surfaceTranslucent: "#FAF9F4EB",
+  surfaceAlt: "#E4E3DB",
+  surfaceHover: "#D2D1C7",
+  surfaceStrong: "#BEBDB1",
+  border: "#7A7E70",
+  controlBorder: "#5D6256",
+  textStrong: "#293028",
+  text: "#2E362D",
+  textSecondary: "#5C665B",
+  textMuted: "#5F6A5F",
+  primary: "#42654B",
+  primaryStrong: "#304D38",
+  primarySoft: "#D7E2D5",
+  accentText: "#35543D",
+  primaryText: "#293028",
+  onPrimary: "#F4F7F1",
+  secondary: "#8B8456",
+  secondaryStrong: "#706A45",
+  secondarySoft: "#E6E2CB",
+  secondaryText: "#66613E",
+  onSecondary: "#1A1A12",
+  tertiary: "#8C5F64",
+  tertiaryStrong: "#71494E",
+  tertiarySoft: "#E7D8DA",
+  tertiaryText: "#694349",
+  onTertiary: "#F9F3F4",
+  shadow: "rgba(48, 58, 49, 0.10)",
+  shadowStrong: "rgba(48, 58, 49, 0.22)",
+  scrim: "rgba(32, 41, 34, 0.50)",
   ...lightSemanticColors,
 };
 
-const cinnamonDark: Palette = {
-  background: "#1D1715",
-  surface: "#281F1C",
-  surfaceTranslucent: "#281F1CEB",
-  surfaceAlt: "#352925",
-  surfaceHover: "#43322D",
-  surfaceStrong: "#554039",
-  border: "#634C44",
-  controlBorder: "#A28579",
-  textStrong: "#FFF8F4",
-  text: "#F4EAE5",
-  textSecondary: "#C2B0A8",
-  textMuted: "#A08E86",
-  primary: "#D77753",
-  primaryStrong: "#CB6541",
-  primarySoft: "#533126",
-  accentText: "#ED9271",
-  primaryText: "#FFF8F4",
-  onPrimary: "#1D1715",
+const serviDark: Palette = {
+  background: "#121413",
+  surface: "#1C201C",
+  surfaceTranslucent: "#1C201CEB",
+  surfaceAlt: "#262B26",
+  surfaceHover: "#323833",
+  surfaceStrong: "#424944",
+  border: "#5B665C",
+  controlBorder: "#89948A",
+  textStrong: "#F0F2ED",
+  text: "#E2E7E1",
+  textSecondary: "#BBC5BA",
+  textMuted: "#9AA69A",
+  primary: "#8FAB94",
+  primaryStrong: "#739078",
+  primarySoft: "#2C3A30",
+  accentText: "#BED1C0",
+  primaryText: "#F0F2ED",
+  onPrimary: "#263128",
+  secondary: "#B1AA76",
+  secondaryStrong: "#96905F",
+  secondarySoft: "#403D2C",
+  secondaryText: "#D9D4A6",
+  onSecondary: "#29271B",
+  tertiary: "#BE8E95",
+  tertiaryStrong: "#A4747C",
+  tertiarySoft: "#443335",
+  tertiaryText: "#DFC0C4",
+  onTertiary: "#2D2123",
+  shadow: "rgba(7, 10, 8, 0.30)",
+  shadowStrong: "rgba(7, 10, 8, 0.50)",
+  scrim: "rgba(8, 11, 9, 0.68)",
   ...darkSemanticColors,
 };
 
-export type PaletteId = "clay" | "sand" | "cinnamon";
+export type PaletteId = "clay" | "ocean" | "forest";
 
 export const DEFAULT_PALETTE_ID: PaletteId = "clay";
-export const PALETTE_IDS = ["clay", "sand", "cinnamon"] as const satisfies readonly PaletteId[];
+export const PALETTE_IDS = ["clay", "ocean", "forest"] as const satisfies readonly PaletteId[];
+
+export const PALETTE_META = {
+  clay: {
+    label: "Sonbahar",
+    description: "Keten, pişmiş toprak, zeytin ve eskitilmiş pirinç.",
+  },
+  ocean: {
+    label: "Gelgit",
+    description: "İnci, derin akıntı, deniz köpüğü ve soluk mercan.",
+  },
+  forest: {
+    label: "Orman",
+    description: "Mantar taşı, servi, liken ve yabani meyve.",
+  },
+} as const satisfies Record<PaletteId, { label: string; description: string }>;
+
 export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
-  clay: { light: clayLight, dark: clayDark },
-  sand: { light: sandLight, dark: sandDark },
-  cinnamon: { light: cinnamonLight, dark: cinnamonDark },
+  clay: { light: amberLight, dark: amberDark },
+  ocean: { light: celikLight, dark: celikDark },
+  forest: { light: serviLight, dark: serviDark },
 };
 
-/** Backwards-compatible aliases for code that needs the default brand palette. */
+/** Varsayılan marka paletini kullanan eski kodlar için geriye uyumlu alias'lar. */
 export const lightPalette = PALETTES.clay.light;
 export const darkPalette = PALETTES.clay.dark;
 
@@ -246,8 +366,17 @@ export function isPaletteId(value: string | null): value is PaletteId {
   return value != null && PALETTE_IDS.some((id) => id === value);
 }
 
-/** Shared modal scrim — warm ink, matching `textStrong`'s hue. */
-export const scrim = "rgba(15, 15, 13, 0.55)";
+/** Eski veya bozuk tercihler güvenli biçimde varsayılan palete döner. */
+export function resolvePaletteId(value: string | null): PaletteId {
+  return isPaletteId(value) ? value : DEFAULT_PALETTE_ID;
+}
+
+export function resolvePalette(paletteId: PaletteId, scheme: "light" | "dark"): Palette {
+  return PALETTES[paletteId][scheme];
+}
+
+/** @deprecated Yeni kodda `palette.scrim` kullan. */
+export const scrim = lightPalette.scrim;
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 // Ultra-soft organic corners in the 12–16px editorial range.
@@ -339,12 +468,51 @@ export const type = {
   amountSm: { fontSize: 12, fontFamily: font.medium, fontVariant: ["tabular-nums" as const] },
 };
 
-export const cardShadow = { boxShadow: "0 2px 8px rgba(15, 15, 13, 0.05)" } as const;
-export const overlayShadow = { boxShadow: "0 4px 16px rgba(15, 15, 13, 0.18)" } as const;
-export const toggleThumbShadow = { boxShadow: "0 1px 3px rgba(15, 15, 13, 0.22)" } as const;
+export const themeShadow = {
+  card: (palette: Palette) => ({ boxShadow: `0 2px 10px ${palette.shadow}` } as const),
+  overlay: (palette: Palette) => ({ boxShadow: `0 6px 20px ${palette.shadowStrong}` } as const),
+  toggleThumb: (palette: Palette) => ({ boxShadow: `0 1px 3px ${palette.shadowStrong}` } as const),
+} as const;
 
-/** Stable foreground for deterministic, name-derived badge colours. */
-export const generatedBadgeForeground = "#FFFFFF";
+/** @deprecated Yeni kodda `themeShadow.card(palette)` kullan. */
+export const cardShadow = themeShadow.card(lightPalette);
+/** @deprecated Yeni kodda `themeShadow.overlay(palette)` kullan. */
+export const overlayShadow = themeShadow.overlay(lightPalette);
+/** @deprecated Yeni kodda `themeShadow.toggleThumb(palette)` kullan. */
+export const toggleThumbShadow = themeShadow.toggleThumb(lightPalette);
+
+/** Deterministik rozet renkleri için saf beyaz olmayan sabit foreground. */
+/**
+ * The dashboard's balance slab: fill and ink, chosen per scheme.
+ *
+ * Both schemes want the same thing — the DEEP end of the accent with cream type
+ * on it — but they keep it in different tokens. `primary` is deep in light and
+ * deliberately light in dark, where it has to stay legible as small text and
+ * marks; filling a whole card with the dark `primary` turned the top of the
+ * screen into glare. `primarySoft` is the deep one there.
+ *
+ * `tests/theme-contrast.test.ts` measures this pair for every palette, so the
+ * slab can never be assembled from two tokens that were never checked together.
+ */
+export function heroSurface(
+  palette: Palette,
+  scheme: "light" | "dark",
+): { fill: string; ink: string; inset: string } {
+  return scheme === "light"
+    // `inset` goes DEEPER, not lighter. Lightening the slab for the nested
+    // control pulled the cream label down to 4.0:1 on it — axe caught it — and
+    // the accent already has a darker step for exactly this.
+    ? { fill: palette.primary, ink: palette.onPrimary, inset: palette.primaryStrong }
+    // Dark keeps the slab NEUTRAL. Filled with the accent's soft tint it was the
+    // largest coloured area on screen and turned each dark theme into a wash of
+    // one hue — "ekran komple masmavi, yemyeşil". An elevated charcoal anchors
+    // the balance just as well, and the theme is carried by the accent on small
+    // elements, where a strong colour reads as deliberate instead of as a filter
+    // laid over the whole app.
+    : { fill: palette.surfaceStrong, ink: palette.textStrong, inset: palette.textStrong + "14" };
+}
+
+export const generatedBadgeForeground = "#FBF6F1";
 
 /** Tab bar metrics — the single source for the bar itself AND for overlays
  *  that must clear it (undo snackbar). Web gets extra height so Turkish

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { hexToRgb } from "../src/ui/badge-color";
 import { BRAND, brandPlate } from "../src/domain/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
-import { darkPalette, generatedBadgeForeground, lightPalette, PALETTES, type Palette } from "../src/ui/theme";
+import { darkPalette, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../src/ui/theme";
 
 const shippedPalettes = Object.values(PALETTES).flatMap(({ light, dark }) => [light, dark]);
 
@@ -65,8 +65,19 @@ function channels(hex: string): [number, number, number] {
   return [Number.parseInt(parts[0]!, 16), Number.parseInt(parts[1]!, 16), Number.parseInt(parts[2]!, 16)];
 }
 
-/** Income reads green, expense reads red, warning reads warm amber — and no
- *  semantic accent may drift purple/blue again (the sole blue is `focus`). */
+/** Flatten a translucent colour over what sits behind it. */
+function blend(over: string, under: string, alpha: number): string {
+  const [ur, ug, ub] = channels(under);
+  return `#${channels(over)
+    .map((value, index) => Math.round(alpha * value + (1 - alpha) * [ur, ug, ub][index]!)
+      .toString(16)
+      .padStart(2, "0"))
+    .join("")}`;
+}
+
+
+/** Income reads green, expense reads red, warning reads warm amber — in every
+ *  theme, whatever temperature that theme tunes them to. */
 function expectSemanticHues(palette: Palette): void {
   for (const green of [palette.success, palette.successText, palette.positive, palette.positiveText]) {
     const [r, g, b] = channels(green);
@@ -78,7 +89,11 @@ function expectSemanticHues(palette: Palette): void {
     expect(r, `${red} should be red-dominant`).toBeGreaterThan(g);
     expect(r, `${red} should be red-dominant`).toBeGreaterThan(b);
   }
-  for (const accent of [palette.primary, palette.warning, palette.warningText, palette.success, palette.error, palette.destructive, palette.positive, palette.negative]) {
+  // The ban is on SEMANTIC accents, not on a theme's brand colour. Its purpose
+  // is that a status never reads as blue or purple and that the chart series
+  // never form a status ramp — Liman's harbour blue is a brand identity and
+  // means nothing about money, so it is deliberately outside this.
+  for (const accent of [palette.warning, palette.warningText, palette.success, palette.error, palette.destructive, palette.positive, palette.negative]) {
     const [r, g, b] = channels(accent);
     expect(b, `${accent} must not be blue/purple-dominant`).toBeLessThanOrEqual(Math.max(r, g));
   }
@@ -90,8 +105,24 @@ function expectSemanticHues(palette: Palette): void {
 }
 
 describe("semantic theme contrast", () => {
-  it("ships exactly the approved warm palette set", () => {
-    expect(Object.keys(PALETTES)).toEqual(["clay", "sand", "cinnamon"]);
+  it("ships exactly the approved palette set", () => {
+    expect(Object.keys(PALETTES)).toEqual(["clay", "ocean", "forest"]);
+  });
+
+  /**
+   * A retired palette must resolve, not merely fail validation.
+   *
+   * `sand` and `cinnamon` are still written on devices that chose them. Left to
+   * `isPaletteId` alone the caller gets "not a palette" and has to decide what
+   * that means, which is how a stale preference becomes a blank theme.
+   */
+  it("resolves a retired, unknown or missing preference to the default", () => {
+    for (const stored of ["sand", "cinnamon", "violet", "", null]) {
+      expect(resolvePaletteId(stored), `stored: ${String(stored)}`).toBe("clay");
+    }
+    for (const id of Object.keys(PALETTES)) {
+      expect(resolvePaletteId(id)).toBe(id);
+    }
   });
 
   // The floating tab bar paints `surfaceTranslucent` over whatever scrolls
@@ -108,21 +139,70 @@ describe("semantic theme contrast", () => {
     }
   });
 
-  it("keeps the warm neutral ramp exact", () => {
+  /**
+   * Sonbahar is the default and therefore the one users see without choosing.
+   * Pinning it stops a "small tidy-up" of the shared tokens from quietly
+   * restyling the app for everyone who never opened the theme picker.
+   */
+  it("keeps the default ramp exact", () => {
     expect(lightPalette).toMatchObject({
-      background: "#F8F8F7", surface: "#F5F4EF", surfaceAlt: "#F0EEE5",
-      surfaceHover: "#E8E5D8", surfaceStrong: "#DED8C4", textStrong: "#0F0F0D",
-      text: "#29261B", textSecondary: "#535146", textMuted: "#737163",
-      primary: "#BA5B38", accentText: "#AB5235", primaryStrong: "#C96442",
-      primarySoft: "#F2E0DA", border: "#706B57",
+      background: "#ECE5DC", surface: "#FBF8F4", surfaceAlt: "#E9E1D8",
+      surfaceHover: "#DDD0C2", surfaceStrong: "#CDBCAA", textStrong: "#2A211B",
+      text: "#3A3028", textSecondary: "#62564C", textMuted: "#6D6157",
+      primary: "#A55335", accentText: "#7B3A28", primaryStrong: "#88432D",
+      primarySoft: "#EED8CC", border: "#8B796A",
     });
     expect(darkPalette).toMatchObject({
-      background: "#1A1A19", surface: "#222220", surfaceAlt: "#2D2D2A",
-      surfaceHover: "#393937", surfaceStrong: "#494946", textStrong: "#FAF9F5",
-      text: "#EFEEEC", textSecondary: "#B6B5AF", textMuted: "#989790",
-      primary: "#D56E48", accentText: "#D97959", primaryStrong: "#CC5933",
-      primarySoft: "#493027", border: "#514F48",
+      background: "#121110", surface: "#1E1B19", surfaceAlt: "#282421",
+      surfaceHover: "#342F2B", surfaceStrong: "#443E38", textStrong: "#F2ECE6",
+      text: "#E5DDD6", textSecondary: "#BEB2A8", textMuted: "#9D9289",
+      primary: "#D88967", accentText: "#E7A68B", primaryStrong: "#BE6B4A",
+      primarySoft: "#3C2A22", border: "#62574E",
     });
+  });
+
+  /**
+   * Layers have to be readable as layers.
+   *
+   * A card used to be a per-cent lighter than the page behind it and leaned on
+   * its shadow to exist at all — the "everything looks flat" the owner kept
+   * reporting. Note the light ramp is not monotonic by design: the page is a
+   * toned paper and the card is brighter than it, so the card lifts. What is
+   * required is SEPARATION at every join, not a direction.
+   *
+   * The floor is per scheme because contrast ratios compress at the bottom of
+   * the scale: two charcoals nine RGB points apart are plainly different to the
+   * eye and only 1.10:1 apart on paper. Holding dark to the light floor would
+   * force the whole dark ramp pale to satisfy arithmetic that does not describe
+   * what a person sees there.
+   */
+  it("keeps each surface layer distinguishable from the one under it", () => {
+    const ramp = ["background", "surface", "surfaceAlt", "surfaceHover", "surfaceStrong"] as const;
+    for (const { light, dark } of Object.values(PALETTES)) {
+      for (const [palette, floor] of [[light, 1.14], [dark, 1.1]] as const) {
+        for (let i = 0; i < ramp.length - 1; i++) {
+          const [under, over] = [palette[ramp[i]!], palette[ramp[i + 1]!]];
+          expect(contrastRatio(under, over), `${ramp[i]} → ${ramp[i + 1]} (${under} → ${over})`)
+            .toBeGreaterThanOrEqual(floor);
+        }
+      }
+    }
+  });
+
+  /**
+   * Nothing in the app is a colour that belongs to no theme.
+   *
+   * Pure white and pure black are the two colours with no temperature at all;
+   * every token here carries a trace of its own palette instead, which is what
+   * keeps a dark background a warm charcoal rather than a void.
+   */
+  it("uses no pure white or pure black", () => {
+    for (const palette of shippedPalettes) {
+      for (const [role, value] of Object.entries(palette)) {
+        expect(value.slice(0, 7).toUpperCase(), `${role}`).not.toBe("#FFFFFF");
+        expect(value.slice(0, 7).toUpperCase(), `${role}`).not.toBe("#000000");
+      }
+    }
   });
 
   it("keeps light semantic accents on the green/red/amber contract", () => {
@@ -144,18 +224,45 @@ describe("semantic theme contrast", () => {
     }
   });
 
-  it("keeps financial and status colours independent of palette preference", () => {
-    const semanticRoles = [
-      "success", "successText", "positive", "positiveText",
-      "error", "errorText", "negative", "negativeText",
-      "destructive", "onDestructive", "warning", "warningText", "focus",
-    ] as const;
-    for (const scheme of ["light", "dark"] as const) {
-      const reference = PALETTES.clay[scheme];
-      for (const palette of Object.values(PALETTES)) {
-        for (const role of semanticRoles) {
-          expect(palette[scheme][role], `${scheme}.${role}`).toBe(reference[role]);
-        }
+  /**
+   * Semantics are per theme now, so the guarantee moves from "the same colour"
+   * to "the same meaning": whatever green a palette tunes, it stays decisively
+   * green, and its red decisively red. A theme may change their temperature and
+   * may not weaken which way they point.
+   *
+   * Deliberately no luminance test between them. A first draft demanded the two
+   * differ in brightness and failed at 1.27:1 — a green and a red of similar
+   * lightness is normal, they are told apart by hue and by the sign in front of
+   * the figure, and the rule would have forced one of them off its own palette
+   * to satisfy a requirement the design never had.
+   */
+  it("keeps income and expense unmistakable in every theme", () => {
+    for (const palette of shippedPalettes) {
+      const [pr, pg] = channels(palette.positive);
+      const [nr, ng] = channels(palette.negative);
+      expect(pg - pr, `positive ${palette.positive} must lean green`).toBeGreaterThan(20);
+      expect(nr - ng, `negative ${palette.negative} must lean red`).toBeGreaterThan(20);
+    }
+  });
+
+  /**
+   * The balance slab is assembled from two tokens picked per scheme, so it is
+   * the one pairing that no other assertion here covers: `primary`/`onPrimary`
+   * in light, `primarySoft`/`textStrong` in dark. Measured as the component
+   * actually builds it.
+   */
+  it("keeps the balance slab readable in both schemes", () => {
+    for (const { light, dark } of Object.values(PALETTES)) {
+      for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
+        const { fill, ink, inset } = heroSurface(palette, scheme);
+        expect(contrastRatio(ink, fill), `${scheme}: ${ink} on ${fill}`).toBeGreaterThanOrEqual(4.5);
+        // The nested control is the pair axe actually caught: an opaque inset
+        // is measured directly, a translucent one composites over the slab.
+        const composited = inset.length === 9
+          ? blend(inset.slice(0, 7), fill, Number.parseInt(inset.slice(7), 16) / 255)
+          : inset;
+        expect(contrastRatio(ink, composited), `${scheme}: ${ink} on inset ${composited}`)
+          .toBeGreaterThanOrEqual(4.5);
       }
     }
   });

@@ -26,12 +26,13 @@ import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
 import { devError } from "../services/logger";
-import { spacing } from "./theme";
+import { spacing, useTheme } from "./theme";
 import { useUndo } from "./undo";
 import { navigateBack } from "./navigation";
 import { useDirtyExitGuard } from "./dirty-exit";
 
 export function OpeningBalanceEditor() {
+  const { palette } = useTheme();
   const userId = useUserId();
   const settingsState = useSettingsMapState();
   const settings = settingsState.data;
@@ -175,6 +176,12 @@ export function OpeningBalanceEditor() {
           <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.balanceMatches}</Body>
         ) : null}
         <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.balanceScopeHint}</Body>
+        {/* Said before the save, not only after it: a mark appearing in the
+            table is a consequence worth knowing about while deciding. */}
+        <Row gap={spacing.sm} style={{ marginBottom: spacing.md, alignItems: "flex-start" }}>
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.primary, marginTop: 6 }} />
+          <Body muted style={{ fontSize: 12, flex: 1 }}>{tr.settings.balanceWillMark}</Body>
+        </Row>
         <Button label={tr.common.save} onPress={() => void saveCurrent()} disabled={!balanceDirty} loading={savingBalance} haptic="none" />
       </Card>
 
@@ -185,6 +192,12 @@ export function OpeningBalanceEditor() {
           <View style={{ marginBottom: spacing.sm }}>
             <Heading style={{ marginTop: 0 }}>{tr.settings.balanceAdjustmentsTitle}</Heading>
             <Body muted style={{ fontSize: 12 }}>{tr.settings.balanceAdjustmentsHint}</Body>
+            {/* The marker is only meaningful if its meaning is stated somewhere,
+                and this screen is where someone arrives after tapping it. */}
+            <Row gap={spacing.sm} style={{ marginTop: spacing.sm, alignItems: "flex-start" }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.primary, marginTop: 6 }} />
+              <Body muted style={{ fontSize: 12, flex: 1 }}>{tr.settings.balanceAdjustmentMarkerHint}</Body>
+            </Row>
           </View>
         }
         renderItem={(adjustment) => (
