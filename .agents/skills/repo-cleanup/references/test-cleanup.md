@@ -338,7 +338,7 @@ npm run test:watch
 
 ## Writing Tests
 
-See [Testing Guide](../docs/development/testing-guide.md)
+Use the repository's canonical `docs/TESTING.md` contract.
 
 ## Test Naming
 

@@ -9,6 +9,14 @@ description: Optimizes application performance across frontend, backend, queries
 
 Measure before optimizing. Performance work without measurement is guessing — and guessing leads to premature optimization that adds complexity without improving what matters. Profile first, identify the actual bottleneck, fix it, measure again. Optimize only what measurements prove matters.
 
+## Helix Boundary
+
+Use the existing bundle budget, Playwright timing, React/ browser profiling,
+SQLite query evidence, and release-build device measurement. Helix deliberately
+has no analytics, RUM, APM, crash service, or production console diagnostics;
+generic examples below do not authorize adding them. Current budgets and
+acceptance live in `docs/TESTING.md`.
+
 ## When to Use
 
 - Performance requirements exist in the spec (load time budgets, response time SLAs)
@@ -349,7 +357,8 @@ npx lhci autorun
 
 ## See Also
 
-For detailed performance checklists, optimization commands, and anti-pattern reference, see `references/performance-checklist.md`.
+Apply the measurement workflow above and use the repository's canonical
+budgets and commands in `docs/TESTING.md`.
 
 
 ## Common Rationalizations

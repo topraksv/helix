@@ -195,6 +195,12 @@ Pages veya test artefact'ına eklenmez.
 - Dependency Review her `main` PR'ında runtime, development ve unknown scope'ları
   moderate ve üstü severity'de bloklar. Secret kullanan bağımsız keepalive işi
   `GITHUB_TOKEN` için açıkça sıfır yetki alır.
+- Agent skill'leri de executable tedarik zinciri girdisidir. GitHub kaynakları
+  full commit SHA'ya, bütün yerel snapshot'lar içerik hash'ine pinlenir;
+  symlink, eksik referans, fiziksel envanter/lock farkı ve hash drift'i
+  `npm run verify:skills` ile local ve required `quality` job'ında bloklanır.
+  Skill güncellemesi otomatik değildir; instruction, script, hook, tool,
+  credential ve dış yazma yüzeyi dependency review gibi incelenir.
 - Değerlendirilmiş advisory kararları [RELEASE.md](RELEASE.md) "Dependabot
   bulguları" tablosundadır.
 
@@ -291,7 +297,7 @@ Actions `quality` job’undadır.
 | A05 Security Misconfiguration | APPLICABLE | `src/app/+html.tsx` CSP; `dist/404.html` = root shell; sabit function `search_path`; açık table grant’ları; workflow token yetkileri | `tests/release-config.test.ts`; `actionlint`; Trivy config/secret taraması; linked migration list + public-schema lint | **Bilinen:** `script-src 'unsafe-inline'` — statik export inline bootstrap üretiyor, `connect-src` daraltmasıyla telafi |
 | A06 Vulnerable Components | APPLICABLE | `package-lock.json`; SheetJS CDN pin; Dependabot guard'ları; PR Dependency Review | clean `npm ci`; geçerli `npm ls --all`; OSV + npm audit + Trivy'nin ortak advisory dispozisyonu | Kalan tek advisory zinciri dev-only Drizzle transpiler'ında ve vulnerable `esbuild serve` API'si kullanılmıyor; ayrıntı [RELEASE.md](RELEASE.md#5b--dependabot-bulguları) içinde |
 | A07 Identification & Auth Failures | APPLICABLE | Supabase Auth; exact-target PKCE recovery; remote `SIGNED_OUT` cleanup; `src/auth/verification-brake.ts`; `src/auth/session.ts` epoch'ları | `tests/auth.test.ts` (expired/reused/malformed/hostile-target link), `tests/privacy.test.ts`, `tests/verification-brake.test.ts` (18 vaka), `tests/session-task.test.ts` | E-posta enumeration sıfırlama akışında açığa çıkmıyor |
-| A08 Software & Data Integrity | APPLICABLE | Bütün Action referansları full-SHA pinli; PR Dependency Review; OTA runtime `appVersion` + channel ayrımı; lockfile integrity; imzalı commit + korumalı `main` | `tests/release-config.test.ts`; clean `npm ci`; lockfile bütünlük taraması; GitHub verified signature/check | **Bilinen:** ek OTA code-signing anahtarı yapılandırılmadı; güven sınırı EAS hesabı |
+| A08 Software & Data Integrity | APPLICABLE | Bütün Action ve dış skill kaynakları full-SHA pinli; skill snapshot hash'leri; PR Dependency Review; OTA runtime `appVersion` + channel ayrımı; lockfile integrity; imzalı commit + korumalı `main` | `npm run verify:skills`; `tests/release-config.test.ts`; clean `npm ci`; lockfile bütünlük taraması; GitHub verified signature/check | **Bilinen:** ek OTA code-signing anahtarı yapılandırılmadı; güven sınırı EAS hesabı |
 | A09 Logging & Monitoring Failures | APPLICABLE | `src/services/logger.ts`, `src/services/diagnostics.ts` (12 kayıtlık bounded ring) | `tests/diagnostics.test.ts` (tam anahtar kümesi + negatif PII regex), `tests/privacy.test.ts` | **Bilinen:** merkezi crash/telemetry alerting yok — sessiz hata maintainer'a otomatik ulaşmıyor |
 | A10 SSRF | APPLICABLE | `src/domain/logo-domain.ts` public-host doğrulaması; sabit FX/market endpoint listesi; CSP `connect-src` | `tests/external-services.test.ts` (credential/port/localhost/IP reddi), `e2e/helpers.ts` host-eşleşmesi (substring değil) | Kullanıcı serbest URL giremiyor; yalnız domain adı |
 
@@ -346,7 +352,7 @@ doğrulandığı veya L1 uyumluluğu sağlandığı iddiası değildir.
 | MASVS-AUTH | APPLICABLE + DEVICE/BINARY ONLY | `expo-local-authentication` biyometrik app lock; oturum yaşam döngüsü test edilmiş. Biyometrik akışın kendisi cihazda kabul edilecek |
 | MASVS-NETWORK | APPLICABLE + kısmen DEVICE/BINARY ONLY | Yalnız TLS/WSS; sabit endpoint listesi; `app.json` içinde `usesCleartextTraffic`/ATS istisnası yok. `MASTG-TEST-0236` canlı trafik gözlemi cihaz ister; çalıştırılmış sayılmaz |
 | MASVS-PLATFORM | APPLICABLE + DEVICE/BINARY ONLY | `PrivacyCover` (`tests/privacy.test.ts`), bildirim izni boot'ta istenmiyor, deep link şeması `helix://`. Güncel app-switcher snapshot kontrolleri `MASTG-TEST-0289` (Android) ve `MASTG-TEST-0290` (iOS) OS zamanlaması gerektirdiği için cihazda |
-| MASVS-CODE | APPLICABLE | Bağımlılık envanteri/SBOM; advisory dispozisyonları; SHA-pinli Action'lar; `npm ci` reproduktibl |
+| MASVS-CODE | APPLICABLE | Bağımlılık envanteri/SBOM; advisory dispozisyonları; SHA-pinli Action ve skill kaynakları; skill snapshot hash'leri; `npm ci` reproduktibl |
 | MASVS-PRIVACY | APPLICABLE | Veri akışları ve üçüncü taraflar `docs/PRIVACY.md` içinde; notification/detail opt-in, diagnostics redaction ve account cleanup `tests/privacy.test.ts` ile korunuyor |
 | MASVS-RESILIENCE | **N/A — gerekçeli** | Anti-tamper, obfuscation, root/jailbreak tespiti ve emülatör tespiti bilinçli olarak yok. Helix tek kullanıcılık kendi finansal verisini tutar; koruduğu sır cihaz sahibinin kendi verisidir, o yüzden cihaz sahibine karşı bir savunma modeli anlamsızdır. DRM/lisans zorlaması da yoktur |
 

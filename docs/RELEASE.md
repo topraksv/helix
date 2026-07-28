@@ -30,9 +30,10 @@ geçmez.
    Ayrıca **imzalı commit**, lineer geçmiş ve çözülmüş konuşma zorunludur;
    admin bypass, force-push ve delete kapalıdır. İmzasız commit reddedilir —
    commit atmadan önce yerel imza yapılandırmasını doğrula.
-4. `quality` tek release kapısıdır: `npm ci` → typecheck → Vitest → lint →
-   production export → bundle budget → Playwright Chromium/E2E. Workflow bu
-   adımları tek tek çalıştırır; `verify:release` aynı sırayı yerelde tekrarlar.
+4. `quality` tek release kapısıdır: `npm ci` → skill bütünlüğü → typecheck →
+   Vitest → lint → production export → bundle budget → Playwright
+   Chromium/E2E. Workflow bu adımları tek tek çalıştırır; `verify:release` aynı
+   sırayı yerelde tekrarlar.
 5. Check geçmeden merge/deploy/OTA yoktur.
 
 Playwright local-only `dist-e2e/` üretir. Workflow production `dist/` export ve

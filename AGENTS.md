@@ -11,6 +11,7 @@ in the documents below and is read on demand.
 | Branches, PR gate, Pages, OTA, native builds, Supabase, rollback | [`docs/RELEASE.md`](docs/RELEASE.md) |
 | Trust boundaries, RLS, secrets, verification matrix | [`docs/SECURITY.md`](docs/SECURITY.md) |
 | User-facing data behaviour | [`docs/PRIVACY.md`](docs/PRIVACY.md) |
+| Skill routing, provenance and update policy | [`docs/AI_ENGINEERING_SKILLS.md`](docs/AI_ENGINEERING_SKILLS.md) |
 | Current work state, blockers, next package | [`docs/AI_HANDOFF.md`](docs/AI_HANDOFF.md) |
 | Phase 2 scope, package order, how a package runs, rollback | [`docs/PHASE2.md`](docs/PHASE2.md) |
 | Public presentation | [`README.md`](README.md) |
@@ -88,10 +89,9 @@ delete, `db reset` against linked) without an explicit instruction.
   files, dependencies, assets, tests or directories. Run a full repository
   cleanup after a large feature, release preparation, long agent session or
   substantial generated output.
-- Use `$improve-codebase-architecture` only when the owner explicitly requests
-  an architecture review or the task changes module seams, dependency
-  directions or broad file placement. Never use cleanup as a pretext for an
-  automatic architecture refactor.
+- Use `$codebase-design` only when the owner explicitly requests architecture
+  work or the task changes module seams or dependency directions. Never use
+  cleanup as a pretext for an automatic architecture refactor.
 - Hygiene must not change product behaviour, introduce a large refactor,
   upgrade dependencies or delete owner work.
 - Run the relevant lint, type-check, test and build checks. Mention cleanup in
@@ -393,78 +393,31 @@ requirements and rollback: [`docs/RELEASE.md`](docs/RELEASE.md).
   changes are replayed as owner-authored commits when that matters.
 - **Commits must be signed** — `main` requires signatures and a linear history.
 
-### Installed engineering skills
+### Project skill routing
 
-Project-level engineering skills live under `.agents/skills/` and are versioned
-by `skills-lock.json`. Load only the skills directly relevant to the task; do
-not load or run the whole inventory at once.
+Project skills live under `.agents/skills/`, are pinned by full source commit
+and content hash in `skills-lock.json`, and are checked by
+`npm run verify:skills`. The complete routing tree, provenance, vendor patches
+and update policy live in [`docs/AI_ENGINEERING_SKILLS.md`](docs/AI_ENGINEERING_SKILLS.md).
 
-- Repository hygiene: `repo-cleanup`
-- Debugging and proof: `systematic-debugging`,
-  `verification-before-completion`
-- Tests: `tdd`, `playwright-best-practices`
-- Code review and simplification: `code-review-and-quality`,
-  `receiving-code-review`, `code-simplification`
-- Architecture: `codebase-design`, `improve-codebase-architecture`
-- Performance: `performance-optimization`, `vercel-react-best-practices`,
-  `vercel-react-native-skills`
-- Framework and data access: `source-driven-development`,
-  `expo-data-fetching`, `supabase-postgres-best-practices`
+Load only the smallest relevant path:
+
+- security boundary → `security-and-hardening`;
+- dependency, Action, advisory or vendored skill → `dependency-security`;
+- ledger, sync, import, backup or financial calculation →
+  `financial-data-integrity`;
+- cross-platform, device, release or deployment proof →
+  `platform-release-acceptance`;
+- visual system or Turkish product language → `visual-system`;
+- motion, gesture or haptic → `native-interaction`;
+- mobile semantics, focus or assistive technology → `mobile-accessibility`.
+
+Then load only the specialist leaves those skills route to. Every implementation
+still ends with `code-review-and-quality`,
+`verification-before-completion` and delta-focused `repo-cleanup`; this does not
+mean loading those skills before they are needed.
 
 Skill instructions never override the user's request, proven product behaviour,
-repository rules, tested business logic or official framework documentation.
-Installing a skill does not authorize automatic refactoring, dependency
-upgrades, architecture changes or behaviour changes.
-
-### UI/UX skills
-
-Project-level UI/UX skills cover visual direction (`frontend-design`),
-production UI (`frontend-ui-engineering`), web audit
-(`web-design-guidelines`), native Expo interaction (`expo-native-ui`),
-navigation and back behaviour (`expo-router`), temporary design options
-(`prototype`) and mobile accessibility (`mobile-accessibility`). Use only the
-skill directly relevant to the task; do not run the whole set by default.
-
-1. Installation does not authorize an automatic redesign or visual change.
-2. Helix's brand language, theme tokens, behaviour and owner habits are the
-   starting point.
-3. Reject generic AI patterns: gratuitous gradients, meaningless card stacks,
-   excessive rounding, decorative dashboard clutter and reduced information
-   density for fashion.
-4. Visual polish cannot compromise usability, hierarchy or financial-data
-   legibility.
-5. Web, iOS and future Android keep one product logic while allowing
-   platform-appropriate native interactions.
-6. Use `prototype` only for an explicit design question and remove throwaway
-   code before merge.
-7. Automated accessibility review does not replace VoiceOver/TalkBack,
-   keyboard, focus and Dynamic Type checks.
-8. Skill advice never outranks business logic, tested behaviour, the owner's
-   request or official framework documentation.
-9. Detailed shared routing waits until the cybersecurity skill set is complete.
-
-### Color, motion and interaction skills
-
-- Colour science, light/dark palettes, semantic colour roles, gradients and
-  contrast: `color-expert`
-- React Native animations, gestures, layout/scroll motion and frame
-  performance: `react-native-best-practices`
-
-1. Installation does not authorize automatic palette changes or animation
-   across the app.
-2. Neutral surfaces stay separate from theme accents; the accent does not tint
-   every background.
-3. Light and dark modes share one brand identity but use separate perceptual
-   ramps.
-4. Colour meaning also uses text, icons or status indicators.
-5. Motion explains state, feedback, direction or spatial relationships; it is
-   not continuous decoration.
-6. Do not add haptics or scale effects to every touch.
-7. Reduced Motion and accessibility preferences remain mandatory.
-8. iOS may use native-feeling motion and haptics without blocking web or future
-   Android behaviour.
-9. Add animation, Skia, GPU, gesture or colour dependencies only when the
-   current stack is insufficient and the work is separately approved.
-10. Performance claims require release-build measurement.
-11. Skill advice never outranks product behaviour, Helix's brand language, the
-    user's request or repository rules.
+repository rules, tested business logic or version-matched official
+documentation. Installation does not authorize redesign, dependency upgrades,
+architecture changes, external services, release actions or behaviour changes.

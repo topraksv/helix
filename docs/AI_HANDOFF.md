@@ -7,87 +7,86 @@ history log.
 
 ## Current state — 2026-07-28, Europe/Istanbul
 
-`main` is the only long-lived branch. The product UI/UX, accessibility and brand
-package was squash-merged through
-[PR #101](https://github.com/topraksv/helix/pull/101).
+`main` remains the only long-lived branch. The current
+`agent/color-motion-skills` branch contains an unmerged project-skill package;
+it changes agent instructions, skill snapshots, documentation, CI/test
+contracts and the skill integrity script. Product UI, runtime behavior, data,
+migrations and app dependencies are unchanged.
 
 | | |
 |---|---|
 | Last product release commit | `4d227aac863045581a4bfe43334344197abf2908` |
 | Web | [GitHub Pages run 30313476658](https://github.com/topraksv/helix/actions/runs/30313476658), successful |
-| Native | New binary required because `app.json` orientation and splash/adaptive colours changed; no OTA is valid for this package |
-| Gate | 71 Vitest files / 569 tests; 42 Playwright; Expo Doctor 18/18; release export and bundle budget clean |
+| Native | The released UI/UX package still needs a new binary; no OTA is valid for its native config changes |
+| Skill inventory | 26 directories / 183 files / 1.6 MB; 19 full-SHA-pinned vendor specialists + 7 hash-pinned Helix adapters |
+| Commit gate | `npm run verify` passed: 26 skill snapshots, 72 Vitest files / 571 tests, typecheck and lint |
 
-The package establishes the Connected Financial Ledger design direction:
-Çelik is the default palette, desktop dashboard information is arranged as an
-asymmetric ledger while phone density is preserved, palette names match their
-visible identity, and cash-flow horizontal continuation is explicit. The design
-language and rejected generic dashboard treatments are recorded in
-[`ARCHITECTURE.md`](ARCHITECTURE.md).
+## Skill tree package
 
-Draft protection now covers browser unload and same-screen context changes,
-including budgets, categories, people, payment sources, incomes, computed
-columns, reconciliation, bulk entry and import replacement. Atomic bulk/import
-commits cannot be cancelled after their write boundary. Modal motion follows
-Reduce Motion, modal wrappers are removed from the keyboard tab order, and the
-calculator fits all controls and its result in 844×390 landscape without an
-initial scroll.
+The canonical routing and provenance are in
+[`AI_ENGINEERING_SKILLS.md`](AI_ENGINEERING_SKILLS.md). The package removes the
+Next.js/RSC skill, duplicate generic React Native performance skill, unused
+Software Mansion domains, color-history archive, web/Tailwind implementation
+skill and incomplete architecture-report skill. The previous broad mobile
+accessibility package is replaced by a bounded Helix adapter.
 
-The responsive smoke matrix covers 320×568, 375×667, 390×844, 430×932,
-768×1024, 820×1180, 1024×768, 1280×800, 1440×900 and 1920×1080 across the
-dashboard, cash flow, transaction and settings routes. Darwin and Linux visual
-baselines were rendered independently; the suite includes a dedicated
-844×390 calculator baseline. Account security is included in the real-data axe
-route set.
+New Helix entry points cover security/hardening, dependency security,
+financial-data integrity, platform/release acceptance, native interaction,
+visual system/Turkish copy and mobile accessibility. Trail of Bits'
+property-based testing skill is added for high-dimensional transformations.
 
-Fresh `npm run verify:release` completed with typecheck and lint clean,
-569/569 Vitest tests, 42/42 Playwright tests and 56 exported routes. The
-production export is 4,742,231-byte entry JavaScript, 5,371,413-byte total
-JavaScript and 9,273,916-byte total export, with six fonts / 1,518,000 bytes,
-zero source maps and inlined Supabase configuration. Compared with the previous
-release, JavaScript and total export each grew by 2,540 bytes.
+Anthropic's `defending-code-reference-harness` was reviewed but not installed:
+the repository says it is unmaintained and its autonomous C/C++ runner assumes
+Docker/gVisor and restricted egress. Its useful method—threat model, skeptical
+verification, severity by preconditions/impact, variant search, regression
+before patch and independent re-check—is adapted into
+`security-and-hardening`. Anthropic's security-review Action was also not added
+because its own documentation says it is not prompt-injection hardened and it
+would introduce an API secret.
 
-The protected PR gate passed `quality`, CodeQL and dependency review. The
-resulting GitHub squash commit is verified. The `main` Pages run repeated the
-full quality job successfully, then deployed. Live smoke verified root,
-upcoming and settings as 200; the dynamic July 2026 cash-flow URL returns the
-expected 404 with a byte-identical root application shell and a loadable release
-entry asset.
+`npm run verify:skills` now blocks directory/lock drift, mutable GitHub refs,
+hash changes, symlinks, incomplete frontmatter, TODO templates, escaping links
+and missing local Markdown references. It uses the same folder-hash algorithm
+as the skills CLI, runs inside `npm run verify` and the required `quality` job,
+and has positive plus tamper/missing-link regression tests. Expanding it to the
+whole Markdown tree exposed eight real broken vendor links; all were repaired
+and recorded with the other vendor patches.
 
-Existing non-blocking tool output remains: Node's experimental SQLite warning,
-the `NO_COLOR`/`FORCE_COLOR` warning and Expo Notifications' unsupported web
-listener notice. Dependency policy and the Expo-managed matrix were not changed.
+## Verification and open finding
 
-## Open product backlog
+`npm run verify` is green: 26/26 skill snapshots, 72/72 Vitest files, 571/571
+tests, typecheck and lint.
 
-- Weekly / biweekly subscription cycles remain requested but unbuilt.
-  `subscriptions.cycle` is still `monthly | yearly | custom`; adding shorter
-  cadences needs an ISO anchor, a Supabase migration, generated-type refresh and
-  expected-payment lifecycle tests. Keep it as its own package.
+`npm run verify:release` passed the skill gate, typecheck, 571 Vitest tests,
+lint, 56-route production export and bundle budgets
+(`4,742,231`-byte entry JS, `5,371,413`-byte total JS, `9,273,916`-byte export,
+six fonts / `1,518,000` bytes, zero source maps, Supabase config inlined).
+Playwright finished **41/42**, so the release gate is not green.
 
-## Open structural and acceptance findings
+The failure is a pre-existing race in the real-data axe sweep, not a skill-tree
+regression. The test waits only for `#root`, not the async cash-flow table. When
+the table is present, axe reports eight column-pin buttons whose DOM target is
+the 12 px icon; React Native `hitSlop` does not make their web CSS target 24×24.
+When the table is not ready, the same audit skips those controls. Evidence: the
+full run failed on `Kredi Kartı kolonunu sabitle`; the unchanged focused test
+immediately passed. Do not call the release gate green or suppress the rule.
+Fix the pin control and add a deterministic table-ready assertion in a separate
+product/test package, then rerun the full release gate.
 
-- Installed iOS and Android acceptance is `BLOCKED`: Xcode is installed, but no
-  iOS simulator/device is available and `adb` reports no Android device.
-  Validate rotation, keyboard avoidance, VoiceOver/TalkBack, Dynamic Type,
-  native focus return, safe areas and the new splash colours on a fresh local
-  device build before claiming native acceptance.
-- The documented `src/ui/components.tsx` ↔ `src/ui/calculator.tsx` cycle remains
-  a P3 structural preference. It has no measured runtime or bundle cost and was
-  outside this product audit.
-- Desktop empty-fixture whitespace and the existing global radius scale were
-  reviewed and left unchanged: filling the empty state would add decorative
-  dashboard content, while a global radius rewrite would create broad geometry
-  churn without a demonstrated usability gain.
+Generated `dist/`, `dist-e2e/`, Playwright results and report were moved to the
+system Trash after inspection. No task-only artefacts remain in the repository.
 
-## Phase 2
+## Existing acceptance blockers
 
-Completed: P0, P1, P4 and P2. P3 was withdrawn. Remaining owner order is
-**P7 → P6 → P9**; P5 and P8 are backlog. The canonical scope and open decisions
-are in [`PHASE2.md`](PHASE2.md).
+- Installed iOS and Android acceptance remains `BLOCKED`: no simulator/device
+  evidence exists for rotation, keyboard avoidance, VoiceOver/TalkBack, Dynamic
+  Type, native focus return, safe areas or the released splash colors.
+- Weekly/biweekly subscription cycles remain requested but unbuilt and require
+  their own migration/domain package.
 
 ## Next exact step
 
-Make a fresh local iOS/Android device build for the blocked native acceptance
-matrix. Do not publish this release as an OTA because its orientation and
-splash/adaptive icon configuration require a new binary.
+Commit the skill-tree package after the final staged-diff audit. Treat the
+sticky-table 24×24 target plus deterministic axe readiness as a separate,
+focused product/test fix before claiming the next release gate or merging a
+release candidate.

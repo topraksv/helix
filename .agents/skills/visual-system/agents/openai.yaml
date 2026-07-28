@@ -1,0 +1,4 @@
+interface:
+  display_name: "Visual System"
+  short_description: "Protect Helix visual language and copy"
+  default_prompt: "Use $visual-system to design or review this Helix interface."
