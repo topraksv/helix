@@ -44,8 +44,15 @@ describe("change classification", () => {
     expect(classify(["some/new/thing.ts"])).toMatchObject({ run_ci: true, full_e2e: true });
   });
 
-  it("treats an empty diff as high risk, never as nothing to do", () => {
-    expect(classify([])).toMatchObject({ run_ci: true, full_e2e: true });
+  it("runs and ships everything when no diff is available", () => {
+    // An unresolvable base — manual dispatch, first push, shallow clone — is
+    // not an empty change set, and must never be read as one.
+    expect(classify([])).toMatchObject({
+      run_ci: true,
+      full_e2e: true,
+      deploy_web: true,
+      deploy_mobile: true,
+    });
   });
 
   it("verifies test-only and delivery changes without republishing anything", () => {

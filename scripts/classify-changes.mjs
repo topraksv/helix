@@ -102,10 +102,13 @@ const KNOWN_NORMAL = [
 const matches = (path, patterns) => patterns.some((pattern) => pattern.test(path));
 
 export function classify(files) {
-  // An empty diff still runs the gate: an empty result must never be read as
-  // "nothing to check", which is exactly how a broken diff command would look.
+  // No file list is not "nothing changed" — it is "the diff could not be
+  // taken", which is what a broken command, a shallow clone and a manual
+  // dispatch all look like. Run everything and ship everything: republishing
+  // an identical bundle costs a few minutes, and skipping a real one because a
+  // diff failed silently is the expensive mistake.
   if (files.length === 0) {
-    return { run_ci: true, full_e2e: true, deploy_web: false, deploy_mobile: false, reason: "empty diff" };
+    return { run_ci: true, full_e2e: true, deploy_web: true, deploy_mobile: true, reason: "no diff available" };
   }
 
   const relevant = files.filter((file) => !matches(file, NO_APP_IMPACT));
@@ -127,13 +130,23 @@ export function classify(files) {
   };
 }
 
+const UNRESOLVABLE_BASE = "0000000000000000000000000000000000000000";
+
+/**
+ * Whether a base commit to diff against exists at all.
+ *
+ * A manual `workflow_dispatch`, a first push and a shallow clone all arrive
+ * without one. Falling back to the single head commit looks reasonable and is
+ * the worst option available: it answers confidently about one commit when the
+ * question was about an unknown range. There is no honest classification
+ * without a base, so there is no classification — everything runs and
+ * everything ships, which is also what someone pressing "Run workflow"
+ * is asking for.
+ */
+const hasBase = (base) => Boolean(base) && base !== UNRESOLVABLE_BASE;
+
 function changedFiles(base, head) {
-  // A first push, a force-pushed base or a shallow clone all leave the base
-  // commit unresolvable. Treat that as high risk rather than as no changes.
-  const args = base && base !== "0000000000000000000000000000000000000000"
-    ? ["diff", "--name-only", `${base}..${head}`]
-    : ["show", "--name-only", "--pretty=format:", head];
-  return execFileSync("git", args, { encoding: "utf8" })
+  return execFileSync("git", ["diff", "--name-only", `${base}..${head}`], { encoding: "utf8" })
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -144,6 +157,9 @@ if (first !== undefined) {
   let files;
   if (first === "--files") {
     files = rest;
+  } else if (!hasBase(first)) {
+    // No base, no classification. `classify([])` is the high-risk answer.
+    files = [];
   } else {
     try {
       files = changedFiles(first, rest[0] ?? "HEAD");
