@@ -10,6 +10,8 @@ history log.
 `main` is the only long-lived branch. The completed ledger UI package shipped
 through [PR #104](https://github.com/topraksv/helix/pull/104); its protected
 merge, required `quality` check and GitHub Pages deployment are complete.
+The OTA release record and a web-only modal-focus race correction are in
+[PR #106](https://github.com/topraksv/helix/pull/106).
 
 | | |
 |---|---|
@@ -31,10 +33,12 @@ desktop widths without page overflow, hidden actions or ellipsized labels.
 
 Custom selectors, radio groups, switches, expandable sections, images, quote
 groups and modal flows expose their actual state to assistive technology.
-Keyboard focus returns only after a picker modal has closed, form Enter handling
-stays with the focused control, and mobile disclosures publish their expanded
-state on web and native. Long Mali Tablo labels wrap and increase row height
-instead of truncating.
+Web modal headings receive focus without a delayed timer that can steal focus
+after a fast Tab; native accessibility focus keeps its existing post-mount
+delay. Keyboard focus returns only after a picker modal has closed, form Enter
+handling stays with the focused control, and mobile disclosures publish their
+expanded state on web and native. Long Mali Tablo labels wrap and increase row
+height instead of truncating.
 
 The final browser regressions were stale test assumptions after the redesign:
 the refund switch and analytics filters now open through their visible
@@ -85,6 +89,12 @@ the unchanged batched path at 3.14× faster than the per-month path, below its 4
 guard. The unchanged benchmark then passed 5/5 isolated runs and the clean full
 gate without weakening the threshold.
 
+PR #106's first CI run exposed a real web focus race twice: React Native Web
+temporarily focused the alert action, the test accepted any focus inside the
+modal, and the shared 40 ms timer then pulled focus back to the heading after
+Tab. The web path now focuses synchronously when its effect runs; the regression
+waits for the heading specifically. The corrected test passed 10/10 locally.
+
 ## Acceptance boundary
 
 - GitHub Pages is released and live smoke-verified from the product release
@@ -109,4 +119,6 @@ gate without weakening the threshold.
 On a compatible preview client, perform two complete cold starts and verify the
 target UI plus Supabase sign-in. If the update is not received, build and install
 a fresh preview binary. Then execute the physical-device matrix in
-[`TESTING.md`](TESTING.md) to establish the current native boundary.
+[`TESTING.md`](TESTING.md) to establish the current native boundary. After PR
+#106 closes, implement the measured CI/release optimization package without
+weakening the protected-branch or environment-isolation boundaries.

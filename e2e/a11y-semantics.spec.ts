@@ -146,12 +146,14 @@ test("an open dialog is a real modal that owns focus", async ({ page }, testInfo
   await expect(page.getByText(/İşlem tamamlanamadı/)).toBeVisible();
   await expect(page.getByText(/E2E dialog semantics/)).toHaveCount(0);
 
-  // `useModalAccessibility` moves focus on a 40 ms timer, so poll rather than
-  // sampling once — a single immediate read races the hook, not the app.
+  // Wait for the shared modal owner to focus the heading itself. Merely
+  // observing focus somewhere inside the modal can sample the browser's
+  // temporary autofocus and let a delayed heading focus steal the next Tab.
   await expect
     .poll(() => page.evaluate(() => {
       const el = document.querySelector('[aria-modal="true"]');
-      return el != null && el.contains(document.activeElement);
+      const heading = el?.querySelector('[role="heading"], h1, h2, h3');
+      return heading != null && document.activeElement === heading;
     }), { timeout: 5_000 })
     .toBe(true);
 
