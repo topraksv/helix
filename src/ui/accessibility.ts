@@ -46,7 +46,13 @@ export function useModalAccessibility(
       ? document.activeElement as HTMLElement | null
       : null;
     const returnTarget = returnFocusRef?.current;
-    const timer = focusHeading ? setTimeout(() => moveAccessibilityFocus(titleRef.current), 40) : undefined;
+    // The web modal already exists by the time this effect runs. Delaying its
+    // focus lets the browser's own modal autofocus win briefly, so a quick Tab
+    // can be followed by the timer stealing focus back to the heading.
+    if (focusHeading && Platform.OS === "web") moveAccessibilityFocus(titleRef.current);
+    const timer = focusHeading && Platform.OS !== "web"
+      ? setTimeout(() => moveAccessibilityFocus(titleRef.current), 40)
+      : undefined;
     const trapFocus = Platform.OS === "web" && typeof document !== "undefined"
       ? (event: KeyboardEvent) => {
           if (event.key !== "Tab") return;
