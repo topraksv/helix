@@ -61,7 +61,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # High and critical only. `xlsx` comes from the SheetJS CDN tarball and is
-      # invisible to the registry audit either way, so a moderate-severity gate
-      # here would mostly report noise it cannot see the whole picture of.
-      - run: npm audit --audit-level=high
+      # No `npm ci`: the audit resolves from package-lock.json alone.
+      # High and critical only, and every accepted advisory is named with its
+      # evidence in the script. A bare `npm audit --audit-level=high` went
+      # permanently red on one advisory with no compatible fix, and the two
+      # usual escapes — lowering the level, or `--omit=dev` — would each have
+      # hidden real findings instead of explaining this one. (`xlsx` comes from
+      # the SheetJS CDN tarball and is invisible to the registry audit either
+      # way, which is why a moderate gate here would mostly report noise.)
+      - run: node scripts/check-advisories.mjs

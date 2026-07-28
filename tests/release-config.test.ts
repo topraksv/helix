@@ -80,6 +80,27 @@ describe("release contract", () => {
     expect(ci).not.toContain("needs.gate.outputs");
   });
 
+  it("builds the E2E export once and shares it with both shards", () => {
+    // Each shard used to run its own `test:e2e:export`: a second full Metro
+    // bundle, and two shards testing two separately-produced artifacts.
+    expect(ci.split("npm run test:e2e:export").length - 1, "one E2E export per run").toBe(1);
+    const build = ci.slice(ci.indexOf("  e2e-build:"), ci.indexOf("  e2e-full:"));
+    expect(build).toContain("npm run test:e2e:export");
+    expect(build).toContain("actions/upload-artifact");
+    expect(build).toContain("if-no-files-found: error");
+    const full = ci.slice(ci.indexOf("  e2e-full:"), ci.indexOf("  gate:"));
+    expect(full).toContain("needs: [classify, e2e-build]");
+    expect(full).toContain("actions/download-artifact");
+    expect(full).toContain("path: dist-e2e");
+    // Both shards must consume the same named artifact.
+    const artifact = "dist-e2e-${{ github.run_id }}";
+    expect(build).toContain(artifact);
+    expect(full).toContain(artifact);
+    // …and must not rebuild it, which `npm run test:e2e` would.
+    expect(full).not.toContain("npm run test:e2e");
+    expect(full).toContain("npx playwright test --shard=");
+  });
+
   it("splits the browser suite by risk and shards the full run", () => {
     expect(ci).toContain("npm run test:e2e:smoke");
     expect(ci).toContain("--shard=${{ matrix.shard }}/2");
@@ -108,7 +129,14 @@ describe("release contract", () => {
 
   it("keeps advisory scanners off the delivery path", () => {
     expect(security).toContain("github/codeql-action/init");
-    expect(security).toContain("npm audit --audit-level=high");
+    // The gate names each accepted advisory instead of relaxing the threshold.
+    // Assert against the executed lines: the surrounding comments legitimately
+    // discuss the escapes this job refuses to take.
+    const commands = security.split("\n").filter((line) => /^\s*(-\s*)?(run|uses|continue-on-error):/.test(line));
+    expect(commands.join("\n")).toContain("node scripts/check-advisories.mjs");
+    for (const line of commands) {
+      expect(line, line).not.toMatch(/--audit-level=(moderate|low|info)|--omit=dev|continue-on-error/);
+    }
     expect(security).toContain("cron:");
     expect(security).toContain("package-lock.json");
     // A README or Markdown edit must not wake a scanner: the push trigger is

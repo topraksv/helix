@@ -120,8 +120,32 @@ jobs:
             playwright-report
           retention-days: 7
 
-  e2e-full:
+  # One export for the whole sharded run. Each shard used to build its own
+  # `dist-e2e`, which cost a second full Metro bundle and — worse — let the two
+  # shards test two separately-produced artifacts. They now share these bytes.
+  e2e-build:
     needs: classify
+    if: needs.classify.outputs.full_e2e == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e:export
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-e2e-${{ github.run_id }}
+          path: dist-e2e
+          retention-days: 1
+          # The export contains symlink-free static output; failing loudly on an
+          # empty upload beats a shard starting against a missing app.
+          if-no-files-found: error
+
+  e2e-full:
+    needs: [classify, e2e-build]
     if: needs.classify.outputs.full_e2e == 'true'
     runs-on: ubuntu-latest
     strategy:
@@ -136,10 +160,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install chromium --with-deps
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: dist-e2e-${{ github.run_id }}
+          path: dist-e2e
       # Two runners, one worker each. Parallelism comes from sharding, not from
       # raising `workers` — this suite drives one browser against one static
-      # server and got flaky the moment two workers shared it.
-      - run: npm run test:e2e:export
+      # server and got flaky the moment two workers shared it. Playwright is
+      # invoked directly so the shared artifact is not overwritten by a rebuild.
       - run: npx playwright test --shard=${{ matrix.shard }}/2
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -154,7 +182,7 @@ jobs:
   # classification, so only `failure` and `cancelled` block the deploy.
   gate:
     if: always()
-    needs: [classify, quality, web-build, e2e-smoke, e2e-full]
+    needs: [classify, quality, web-build, e2e-smoke, e2e-build, e2e-full]
     runs-on: ubuntu-latest
     steps:
       - name: Fail on any real job failure
