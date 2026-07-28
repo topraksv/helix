@@ -11,7 +11,7 @@ import {
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("offline relaunch keeps the SQLite ledger and avoids duplicate writes", async ({ page, context }, testInfo) => {
+test("offline relaunch keeps the SQLite ledger and avoids duplicate writes @smoke", async ({ page, context }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Çevrimdışı kalıcılık", "210,50");
@@ -78,7 +78,7 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("protected and modal deep links keep deterministic navigation", async ({ page }, testInfo) => {
+test("protected and modal deep links keep deterministic navigation @smoke", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const routes: [string, string][] = [

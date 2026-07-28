@@ -1,4 +1,0 @@
-interface:
-  display_name: "Dependency Security"
-  short_description: "Audit dependencies and supply-chain changes"
-  default_prompt: "Use $dependency-security to audit this dependency or workflow change."

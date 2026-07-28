@@ -33,7 +33,7 @@ function sourceFiles(directory: string, extensions: string[]): string[] {
 }
 
 describe("truncation is never used to hide text", () => {
-  // AGENTS.md non-negotiable: wrap, shorten or change the layout — never clip.
+  // Non-negotiable: wrap, shorten or change the layout — never clip.
   // `e2e/visual-a11y.spec.ts` measures RENDERED overflow across 26 routes at two
   // widths; this catches the prop at author time, before a baseline is rendered.
   it("no component truncates user-facing text", () => {
@@ -50,7 +50,7 @@ describe("Dynamic Type is never opted out of", () => {
    * TextInput already follows the OS font-size setting. The failure mode is a
    * component that opts OUT to protect a layout — which is exactly the tradeoff
    * WCAG 1.4.4 forbids. Physical iOS/Android acceptance at XL/AX sizes stays a
-   * device check (see docs/TESTING.md); this guards the code-level regression.
+   * manual device check; this guards the code-level regression.
    */
   it("no component disables font scaling or caps the multiplier", () => {
     const offenders = sourceFiles("src", [".tsx", ".ts"]).filter((file) =>

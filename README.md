@@ -15,7 +15,7 @@ subscriptions and budgets — with a spreadsheet mind and a mobile heart.*
 
 [![Helix'i aç](https://img.shields.io/badge/Helix'i_aç-BA5B38?style=for-the-badge&logo=expo&logoColor=white)](https://topraksv.github.io/helix/)
 
-[![deploy-web](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/deploy-web.yml)
+[![ci](https://github.com/topraksv/helix/actions/workflows/ci.yml/badge.svg)](https://github.com/topraksv/helix/actions/workflows/ci.yml)
 [![Expo SDK 54](https://img.shields.io/badge/Expo-SDK%2054-0F0F0D?logo=expo&logoColor=white)](https://docs.expo.dev/versions/v54.0.0/)
 [![Node 22](https://img.shields.io/badge/Node-22-0F0F0D?logo=nodedotjs&logoColor=5FA04E)](#kurulum)
 [![Proprietary](https://img.shields.io/badge/license-proprietary-BA5B38)](LICENSE)
@@ -98,8 +98,6 @@ yeniden cihaz build'i gerektirir.
 | Para/tarih | Integer kuruş; `YYYY-MM-DD` tarih, `YYYY-MM` ay anahtarları |
 | Arayüz | Ortak primitive'ler + tek tema kaynağı ([`src/ui/theme.ts`](src/ui/theme.ts)) |
 
-Ayrıntı: [Mimari](docs/ARCHITECTURE.md).
-
 ## Tasarım
 
 Sıcak kâğıt tonları üzerinde kil vurgusu: **Warm Organic Editorial**. Fraunces
@@ -121,9 +119,6 @@ uyar, grafikler ekran okuyucu için tam değerli özet taşır.
   tarih ve host doğrulamasından geçer.
 - **Loglama:** Production'da token, tutar, not veya e-posta persist edilmez.
 
-Kullanıcı tarafı: [Gizlilik ve Veri Kullanımı](docs/PRIVACY.md).
-Mühendislik tarafı: [Güvenlik Modeli](docs/SECURITY.md).
-
 ## Kurulum
 
 > **Node 22 zorunlu.** Expo SDK 54 araç zinciri Node 24+ ile uyumlu değildir.
@@ -142,31 +137,19 @@ Kalite kapısı tek komuttur:
 
 ```bash
 npm run verify           # typecheck + Vitest + lint
-npm run verify:release   # + production export, bundle bütçesi, Playwright
+npm run test:e2e:smoke   # kritik tarayıcı senaryoları
+npm run verify:full      # + production export, bundle bütçesi, tüm Playwright
 ```
 
-Aynı adımlar her PR'da GitHub Actions'ın `quality` job'unda koşar; `main`'e
-ancak hepsi geçtiğinde web yayımlanır. Katman katman senaryo matrisi ve cihaz
-kabul listesi [Test Sözleşmesi](docs/TESTING.md)ndedir.
+GitHub Actions aynı adımları `main` push'unda değişikliğin riskine göre koşar:
+düşük riskli değişiklikte smoke E2E, yüksek riskli değişiklikte iki shard'a
+bölünmüş tam E2E paketi. Web ancak hepsi geçtiğinde yayımlanır.
 
 ## Teslim modeli
 
 `main`'e push **yalnızca web'i** yayımlar. Kurulu mobil uygulama ayrı bir EAS
 Update ile güncellenir; native değişiklikler ise yeniden cihaz build'i ister.
-Kanıt gereksinimleri, Supabase migration sırası ve rollback prosedürü
-[Release Sözleşmesi](docs/RELEASE.md)ndedir.
-
-## Belgeler
-
-| Belge | İçerik |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Yapı, veri akışı, sınırlar, tasarım dili, reddedilen yaklaşımlar |
-| [docs/TESTING.md](docs/TESTING.md) | Kalite komutları, test katmanları, cihaz kabul matrisi |
-| [docs/RELEASE.md](docs/RELEASE.md) | Branch, PR kapısı, Pages, OTA, native build, Supabase, rollback |
-| [docs/SECURITY.md](docs/SECURITY.md) | Güven sınırları, RLS, secret yönetimi, doğrulama matrisi |
-| [docs/PRIVACY.md](docs/PRIVACY.md) | Hangi veri nerede, üçüncü taraf istekleri, saklama ve silme |
-| [docs/PHASE2.md](docs/PHASE2.md) | Faz 2 kapsamı, paket sırası, bir paketin nasıl koşturulduğu |
-| [AGENTS.md](AGENTS.md) | Kodlama ajanları için kalıcı kurallar |
+Geri alma `git revert` iledir; force push ve history rewrite kullanılmaz.
 
 ## Lisans / License
 

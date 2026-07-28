@@ -1,0 +1,58 @@
+# Get the current commit onto the phone by the cheapest route that is correct.
+#
+# An OTA update can only be installed by a binary whose native side matches it.
+# Under the old `appVersion` runtime policy that match was a promise the version
+# string made and nothing checked — bumping a native module without bumping the
+# version shipped an update the app could not run. The policy is `fingerprint`
+# now, so the runtime version IS a hash of the native project, and this workflow
+# can ask the real question: does a preview build with this exact fingerprint
+# exist? If yes, publish an update to it. If no, build the binary that update
+# will need. Never both, and never a store submission.
+#
+# iOS only: Android has a package configuration and an OTA bundle, but no
+# signed distribution and no physical-device acceptance, so building it here
+# would burn a runner on an artifact nobody installs. Add an `android` pair of
+# jobs when that changes.
+#
+# Dispatched by the GitHub `deploy-mobile` job after `gate` passes — never by a
+# push of its own, so an OTA cannot outrun the checks that justify it.
+name: deploy-preview
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  fingerprint:
+    name: Fingerprint the native project
+    type: fingerprint
+
+  get_ios_build:
+    name: Find a compatible preview build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      profile: preview
+
+  build_ios:
+    name: Build a preview binary for this fingerprint
+    needs: [get_ios_build]
+    # Only when nothing installable matches. The first run after the switch to
+    # the fingerprint policy takes this path by definition: no existing build
+    # carries a fingerprint-derived runtime version yet.
+    if: ${{ !needs.get_ios_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview
+
+  publish_update:
+    name: Publish the preview OTA
+    needs: [get_ios_build]
+    after: [build_ios]
+    # A fresh binary already contains this commit; updating on top of it would
+    # publish the same JavaScript twice.
+    if: ${{ needs.get_ios_build.outputs.build_id }}
+    type: update
+    params:
+      branch: preview

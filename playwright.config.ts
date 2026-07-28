@@ -10,7 +10,6 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "list",
   expect: { timeout: 15_000 },
-  snapshotPathTemplate: "{testDir}/__screenshots__/{arg}-{platform}{ext}",
   use: {
     ...devices["Desktop Chrome"],
     baseURL: "http://127.0.0.1:4173/helix",
@@ -18,9 +17,12 @@ export default defineConfig({
     timezoneId: "Europe/Istanbul",
     colorScheme: "light",
     contextOptions: { reducedMotion: "reduce" },
+    // Evidence on failure only. There are no committed baselines to compare
+    // against any more, so a passing run produces nothing to store; a failing
+    // one still yields the screenshot and trace needed to read it.
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: "off",
   },
   webServer: {
     command: "node scripts/serve-static.mjs dist-e2e 4173 helix",

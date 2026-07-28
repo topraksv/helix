@@ -98,7 +98,7 @@ test("the transfer classification appears once, in the row being edited", async 
   await expect(page.getByRole("switch", { name: "Market · Yatırım kategorisi" })).toHaveAttribute("aria-checked", "true");
 });
 
-test("Analysis returns to Summary even after a detour through Budgets", async ({ page }) => {
+test("Analysis returns to Summary even after a detour through Budgets @smoke", async ({ page }) => {
   await onboard(page);
   // Opened from another tab, so it is the ROOT route: what sits under it is
   // Summary itself. Nothing records an origin any more, and there is no query

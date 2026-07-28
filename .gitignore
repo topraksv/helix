@@ -38,7 +38,6 @@ supabase/.temp/
 # Editor and OS debris
 .DS_Store
 .idea/
-.claude/settings.local.json
 .vscode/*.local.json
 *.orig
 *.orig.*
@@ -46,5 +45,20 @@ supabase/.temp/
 *.swp
 
 # Temporary agent workspace (probes, screenshots, intermediate reviews).
-# Durable facts belong in docs/; nothing here is an input to a build or test.
+# Nothing here is an input to a build or test.
 .codex/
+
+# Local AI working set. The skills, the per-tool instruction files and the
+# handoff note are real inputs to a local Claude/Codex session, but they are
+# not inputs to a build, a test or a deploy — keeping them out of Git stops CI
+# from reacting to them and stops the history from carrying vendored prose.
+/.agents/
+/.claude/
+/.ai/
+/AGENTS.md
+/CLAUDE.md
+
+# README is the only tracked Markdown. Every other note is either local agent
+# state (above) or belonged to a docs set that went stale faster than the code.
+*.md
+!README.md

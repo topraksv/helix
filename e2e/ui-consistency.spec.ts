@@ -349,7 +349,7 @@ test("disabled primary actions remain readable in every theme", async ({ page })
   }
 });
 
-test("primary work surfaces reflow without page overflow across the target viewport matrix", async ({ page }) => {
+test("primary work surfaces reflow without page overflow across the target viewport matrix @smoke", async ({ page }) => {
   await onboard(page);
   const viewports = [
     { width: 320, height: 568 },

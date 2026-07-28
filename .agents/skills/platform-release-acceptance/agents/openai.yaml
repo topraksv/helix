@@ -1,4 +1,0 @@
-interface:
-  display_name: "Platform Release Acceptance"
-  short_description: "Prove web and native release behavior"
-  default_prompt: "Use $platform-release-acceptance to define acceptance evidence for this change."

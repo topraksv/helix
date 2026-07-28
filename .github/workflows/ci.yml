@@ -1,0 +1,232 @@
+# The whole gate for a push to main, branched on what actually changed.
+#
+# This replaced one serial `quality` job that ran typecheck, unit tests, lint,
+# a production export, a budget check and the entire browser suite for every
+# commit — a README typo included. `classify` reads the diff and the jobs below
+# opt in from it; `gate` is the single required check so branch protection has
+# one name to point at no matter which jobs ran.
+#
+# The EXPO_PUBLIC_* values are client-side keys: they ship inside the JS bundle
+# by design (same values as .env), so they are safe here. The service role key
+# is NOT used in this workflow — it lives only in the keepalive secret.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# A newer push makes an older run's answer worthless: it can only certify a
+# commit that is no longer the head of main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_PUBLIC_SUPABASE_URL: https://nwenaeyimbqxyhhsfrsi.supabase.co
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_NvhpZdHfjtL1zRBLQp60gQ_FS90zaj3
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      run_ci: ${{ steps.diff.outputs.run_ci }}
+      full_e2e: ${{ steps.diff.outputs.full_e2e }}
+      deploy_web: ${{ steps.diff.outputs.deploy_web }}
+      deploy_mobile: ${{ steps.diff.outputs.deploy_mobile }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The classifier diffs against the previous head, which a shallow
+          # clone does not contain.
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - id: diff
+        run: node scripts/classify-changes.mjs "${{ github.event.before }}" "${{ github.sha }}"
+
+  quality:
+    needs: classify
+    if: needs.classify.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Expo SDK 54 tooling is incompatible with Node 24/26 native TypeScript
+      # stripping (it chokes on expo-modules-core's src/index.ts). Node 22 is
+      # the newest LTS the SDK 54 build supports.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx expo lint
+      - run: npm test
+
+  web-build:
+    needs: classify
+    if: needs.classify.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # `--clear` is mandatory on every production bundle: Metro's transform
+      # cache is shared by `expo export` and `eas update` and its key does NOT
+      # include EXPO_PUBLIC_* values, so a cache left behind by the local-only
+      # E2E export produces a bundle with no Supabase configuration at all.
+      - run: npx expo export -p web --clear
+      - run: npm run bundle:check
+      # GitHub Pages serves 404.html for unknown paths (e.g. deep links to
+      # dynamic routes like /cash-flow/2026-05). Use the root shell: copying
+      # +not-found hydrates the wrong server route before the client resolves
+      # the real URL and emits React hydration error #418.
+      - run: cp dist/index.html dist/404.html
+      # Uploaded here and only here. `deploy-web` consumes this exact artifact,
+      # so the bytes that were budget-checked are the bytes that get served.
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: dist
+
+  e2e-smoke:
+    needs: classify
+    if: needs.classify.outputs.run_ci == 'true' && needs.classify.outputs.full_e2e != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+      # The E2E export is local-only by construction (blank Supabase env), which
+      # is why it never becomes the Pages artifact and why the suite can never
+      # write to real data.
+      - run: npm run test:e2e:smoke
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-smoke-failure-${{ github.run_id }}
+          path: |
+            test-results
+            playwright-report
+          retention-days: 7
+
+  e2e-full:
+    needs: classify
+    if: needs.classify.outputs.full_e2e == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+      # Two runners, one worker each. Parallelism comes from sharding, not from
+      # raising `workers` — this suite drives one browser against one static
+      # server and got flaky the moment two workers shared it.
+      - run: npm run test:e2e:export
+      - run: npx playwright test --shard=${{ matrix.shard }}/2
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-full-failure-${{ github.run_id }}-shard${{ matrix.shard }}
+          path: |
+            test-results
+            playwright-report
+          retention-days: 7
+
+  # The one required check. A skipped job is a correct outcome of
+  # classification, so only `failure` and `cancelled` block the deploy.
+  gate:
+    if: always()
+    needs: [classify, quality, web-build, e2e-smoke, e2e-full]
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_web: ${{ needs.classify.outputs.deploy_web }}
+      deploy_mobile: ${{ needs.classify.outputs.deploy_mobile }}
+    steps:
+      - name: Fail on any real job failure
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "blocking deploy: a required job reported '$result'"; exit 1 ;;
+            esac
+          done
+
+  deploy-web:
+    needs: gate
+    if: needs.gate.outputs.deploy_web == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Publishes the artifact `web-build` produced. No second export: a
+      # rebuild here could serve bytes nothing in this run ever checked.
+      - id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+      - name: Smoke the live deployment
+        env:
+          BASE: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          base="${BASE%/}"
+          echo "checking $base"
+          root=$(curl -sS -L -o /tmp/root.html -w "%{http_code}" "$base/")
+          echo "root: $root"; [ "$root" = "200" ]
+          sub=$(curl -sS -L -o /dev/null -w "%{http_code}" "$base/upcoming")
+          echo "sub-route: $sub"; [ "$sub" = "200" ]
+          # The shell is useless without the bundle it references, and a 404
+          # here is exactly what a half-published artifact looks like.
+          bundle=$(grep -o '/_expo/static/js/web/[^"]*\.js' /tmp/root.html | head -1)
+          [ -n "$bundle" ] || { echo "no entry bundle referenced in the served shell"; exit 1; }
+          js=$(curl -sS -L -o /dev/null -w "%{http_code}" "$base$bundle")
+          echo "bundle $bundle: $js"; [ "$js" = "200" ]
+
+  deploy-mobile:
+    needs: gate
+    if: needs.gate.outputs.deploy_mobile == 'true'
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Dispatched from here rather than triggered by the push itself, so an
+      # OTA can only ever follow a green gate. `--wait` makes an EAS failure a
+      # failure of this deployment instead of a silent one on another dashboard.
+      - name: Publish preview OTA or build a compatible binary
+        if: ${{ env.EXPO_TOKEN != '' }}
+        run: npx eas-cli@latest workflow:run .eas/workflows/deploy-preview.yml --wait --non-interactive
+      - name: Report a missing EAS credential
+        if: ${{ env.EXPO_TOKEN == '' }}
+        run: |
+          echo "::error::EXPO_TOKEN is not configured; the preview OTA was not published."
+          exit 1

@@ -8,8 +8,7 @@ await rm(output, { recursive: true, force: true });
 // include EXPO_PUBLIC_* values, so without it this export reuses the previous
 // production transforms and ships the real Supabase URL and anon key inside the
 // local-only artifact. Measured both ways. The same cache is why every
-// production bundle (`expo export`, `eas update`) must clear it too — see
-// docs/TESTING.md.
+// production bundle (`expo export`, `eas update`) must clear it too.
 const command = process.platform === "win32" ? "npx.cmd" : "npx";
 const child = spawn(command, ["expo", "export", "-p", "web", "--clear", "--output-dir", output], {
   stdio: "inherit",

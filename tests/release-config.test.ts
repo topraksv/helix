@@ -1,14 +1,18 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const app = JSON.parse(readFileSync(resolve(process.cwd(), "app.json"), "utf8"));
-const eas = JSON.parse(readFileSync(resolve(process.cwd(), "eas.json"), "utf8"));
-const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy-web.yml"), "utf8");
-const codeqlWorkflow = readFileSync(resolve(process.cwd(), ".github/workflows/codeql.yml"), "utf8");
-const keepaliveWorkflow = readFileSync(resolve(process.cwd(), ".github/workflows/keepalive.yml"), "utf8");
-const dependabot = readFileSync(resolve(process.cwd(), ".github/dependabot.yml"), "utf8");
-const dependencyReviewPath = resolve(process.cwd(), ".github/workflows/dependency-review.yml");
+const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
+
+const app = JSON.parse(read("app.json"));
+const eas = JSON.parse(read("eas.json"));
+const ci = read(".github/workflows/ci.yml");
+const security = read(".github/workflows/security.yml");
+const nightly = read(".github/workflows/nightly.yml");
+const keepalive = read(".github/workflows/keepalive.yml");
+const easPreview = read(".eas/workflows/deploy-preview.yml");
+const dependabot = read(".github/dependabot.yml");
+const packageJson = JSON.parse(read("package.json"));
 
 function dependabotRule(dependency: string) {
   const marker = `      - dependency-name: "${dependency}"`;
@@ -19,54 +23,101 @@ function dependabotRule(dependency: string) {
 }
 
 describe("release contract", () => {
-  it("embeds the preview channel for local CNG builds", () => {
+  it("ties OTA compatibility to the native fingerprint, not a version string", () => {
+    // `appVersion` let an update reach a binary whose native side no longer
+    // matched it. The EAS workflow's build-or-update decision is only sound
+    // while the runtime version is derived from the native project itself.
+    expect(app.expo.runtimeVersion).toEqual({ policy: "fingerprint" });
     expect(app.expo.updates.requestHeaders["expo-channel-name"]).toBe("preview");
-    expect(app.expo.runtimeVersion).toEqual({ policy: "appVersion" });
     expect(app.expo.ios.bundleIdentifier).toBe("com.toprak.helix");
     expect(app.expo.android.package).toBe("com.toprak.helix");
     expect(eas.build.preview).toMatchObject({ channel: "preview", distribution: "internal" });
     expect(eas.build.production).toMatchObject({ channel: "production" });
   });
 
-  it("gates Pages deploys on every local release check", () => {
+  it("builds a binary or publishes an update, never both, and never submits", () => {
+    expect(easPreview).toContain("type: fingerprint");
+    expect(easPreview).toContain("type: get-build");
+    expect(easPreview).toMatch(/if: \$\{\{ !needs\.get_ios_build\.outputs\.build_id \}\}\n\s+type: build/);
+    expect(easPreview).toMatch(/if: \$\{\{ needs\.get_ios_build\.outputs\.build_id \}\}\n\s+type: update/);
+    expect(easPreview).not.toContain("type: submit");
+    // Dispatch-only: an OTA must follow the GitHub gate, never race it.
+    expect(easPreview).toMatch(/on:\n\s+workflow_dispatch/);
+    expect(easPreview).not.toContain("push:");
+  });
+
+  it("runs every release check somewhere in CI, and each of them once", () => {
     for (const command of [
-      "npm run verify:skills",
       "npm run typecheck",
-      "npm test",
       "npx expo lint",
-      "npx expo export -p web",
+      "npm test",
+      "npx expo export -p web --clear",
+      "npm run bundle:check",
     ]) {
-      expect(workflow).toContain(command);
+      expect(ci.split(command).length - 1, command).toBe(1);
     }
-    expect(workflow).toMatch(/deploy:\n[\s\S]*needs: quality/);
+    // One export per run. The deploy consumes the artifact the budget check
+    // ran against; a second export there could serve unchecked bytes.
+    expect(ci.split("npx expo export").length - 1).toBe(1);
+    expect(ci).toMatch(/deploy-web:\n\s+needs: gate/);
+    expect(ci).not.toContain("verify:release");
+  });
+
+  it("splits the browser suite by risk and shards the full run", () => {
+    expect(ci).toContain("npm run test:e2e:smoke");
+    expect(ci).toContain("--shard=${{ matrix.shard }}/2");
+    expect(ci).toContain("npx playwright install chromium --with-deps");
+    // Sharding across runners is the only parallelism: this suite drives one
+    // browser against one static server and goes flaky with two workers.
+    expect(ci).not.toMatch(/workers:\s*[2-9]/);
+    expect(nightly).toContain("--shard=${{ matrix.shard }}/2");
+    // The nightly run reports; it never publishes. No deploy job, no Pages
+    // artifact, no EAS dispatch and no write permission to reach them with.
+    expect(nightly).not.toMatch(/^\s+deploy[\w-]*:$/m);
+    expect(nightly).not.toMatch(/deploy-pages|upload-pages-artifact|eas-cli/);
+    expect(nightly).toMatch(/permissions:\n\s+contents: read/);
+  });
+
+  it("cancels a superseded run rather than certifying a stale commit", () => {
+    expect(ci).toMatch(
+      /concurrency:\n\s+group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\n\s+cancel-in-progress: true/,
+    );
+  });
+
+  it("lets the gate accept a skipped job but never a failed one", () => {
+    expect(ci).toMatch(/gate:\n\s+if: always\(\)/);
+    expect(ci).toContain("success|skipped) ;;");
+  });
+
+  it("keeps advisory scanners off the delivery path", () => {
+    expect(security).toContain("github/codeql-action/init");
+    expect(security).toContain("npm audit --audit-level=high");
+    expect(security).toContain("cron:");
+    expect(security).toContain("package-lock.json");
+    // A README or Markdown edit must not wake a scanner: the push trigger is
+    // an allowlist of paths, and none of them is documentation.
+    const paths = security.slice(security.indexOf("paths:")).split("\n").slice(1);
+    const listed = paths.filter((line) => line.trim().startsWith("- ")).map((line) => line.trim());
+    expect(listed.length).toBeGreaterThan(0);
+    for (const entry of listed) expect(entry, entry).not.toMatch(/\.md|README/);
+    // And no scanner sits on the delivery path.
+    expect(ci).not.toContain("codeql");
   });
 
   it("pins every third-party action to a full commit SHA", () => {
-    const actionRefs = [...workflow.matchAll(/uses:\s*([^\s#]+)/g)].map((match) => match[1]);
-    expect(actionRefs.length).toBeGreaterThan(0);
-    for (const ref of actionRefs) expect(ref).toMatch(/@[0-9a-f]{40}$/);
+    for (const [name, workflow] of Object.entries({ ci, security, nightly, keepalive })) {
+      const refs = [...workflow.matchAll(/uses:\s*([^\s#]+)/g)].map((match) => match[1]);
+      for (const ref of refs) expect(ref, `${name}: ${ref}`).toMatch(/@[0-9a-f]{40}$/);
+    }
   });
 
   it("denies the repository token to the standalone keepalive job", () => {
-    expect(keepaliveWorkflow).toMatch(/\npermissions: \{\}\n\njobs:/);
+    expect(keepalive).toMatch(/\npermissions: \{\}\n\njobs:/);
   });
 
-  it("runs CodeQL v4 from one immutable action revision", () => {
-    const codeqlPins = [
-      ...codeqlWorkflow.matchAll(/uses:\s*github\/codeql-action\/(?:init|analyze)@([0-9a-f]{40})\s+#\s+v4\./g),
-    ].map((match) => match[1]);
-    expect(codeqlPins).toHaveLength(2);
-    expect(new Set(codeqlPins).size).toBe(1);
-  });
-
-  it("reviews every pull-request dependency scope at moderate severity", () => {
-    expect(existsSync(dependencyReviewPath)).toBe(true);
-    const dependencyReview = readFileSync(dependencyReviewPath, "utf8");
-    expect(dependencyReview).toContain("pull_request:");
-    expect(dependencyReview).toMatch(/permissions:\n\s+contents: read/);
-    expect(dependencyReview).toMatch(/actions\/dependency-review-action@[0-9a-f]{40}\s+# v5\./);
-    expect(dependencyReview).toContain("fail-on-severity: moderate");
-    expect(dependencyReview).toContain("fail-on-scopes: runtime, development, unknown");
+  it("no longer carries the removed skill-verification gate", () => {
+    expect(Object.keys(packageJson.scripts)).not.toContain("verify:skills");
+    expect(ci).not.toContain("verify:skills");
   });
 
   it("keeps SDK-managed version updates in the coordinated Expo backlog", () => {

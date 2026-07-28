@@ -8,26 +8,52 @@ import {
   isolateExternalData,
   onboard,
   renderedBoundaryContrast,
+  renderedContrastRatio,
 } from "./helpers";
 
-// Baselines are platform-specific because Chromium's glyph rasterization
-// differs between macOS and Linux. Comparing each platform to its own committed
-// image lets the test reject even a small content change instead of hiding it
-// inside a whole-page percentage budget. Five isolated pixels cover the
-// measured Linux rasterizer noise; hiding one tab already changes 142 pixels.
-const maxVisualDiffPixels = 5;
-
 /**
- * The screen header carries the dashboard's greeting and today's date, both
- * read from the clock. They are content, not layout, and baking them into a
- * baseline makes the suite pass or fail by the hour it happens to run in.
- * Masked everywhere a dashboard screenshot is taken; nothing else is hidden.
+ * What the committed pixel baselines used to do, stated as measurements.
+ *
+ * A whole-page image caught real regressions, but it could only say "something
+ * moved": every glyph rasterizer difference, every rotating placeholder and
+ * every clock reading had to be masked or budgeted away before it agreed with
+ * itself across two platforms. The risks it actually stood for are each
+ * checkable directly — the page must not scroll sideways, a control must not
+ * leave the viewport, a figure must stay on one line, a surface must keep its
+ * contrast — so they are checked directly here instead.
  */
-const clockMask = (page: Page) => [page.locator('[data-testid="screen-header"]')];
+async function assertNoSidewaysScroll(page: Page, tag: string): Promise<void> {
+  const sideways = await page.evaluate(
+    () => document.body.scrollWidth > document.body.clientWidth + 1,
+  );
+  expect(sideways, `${tag} scrolls horizontally`).toBe(false);
+}
+
+/** Every interactive control's box lies inside the viewport it was laid out in. */
+async function offscreenControls(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    const width = document.documentElement.clientWidth;
+    for (const el of Array.from(
+      document.querySelectorAll<HTMLElement>('[role="button"],[role="tab"],[role="switch"],[role="link"]'),
+    )) {
+      const style = getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      const box = el.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      if (box.left < -1 || box.right > width + 1) {
+        found.push(
+          `${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 30)} @${Math.round(box.left)}..${Math.round(box.right)} of ${width}`,
+        );
+      }
+    }
+    return [...new Set(found)];
+  });
+}
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("main routes have no WCAG A/AA violations", async ({ page }, testInfo) => {
+test("main routes have no WCAG A/AA violations @smoke", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const routes = ["/helix/", "/helix/cash-flow", "/helix/subscriptions", "/helix/calculator", "/helix/settings", "/helix/transaction"];
@@ -119,7 +145,7 @@ test("every local-mode reachable route stays accessible with real data", async (
 });
 
 /**
- * The layout rules AGENTS.md calls non-negotiable, checked from computed style
+ * The layout rules this project calls non-negotiable, checked from computed style
  * rather than by eye: text is never truncated, toggles share one size, and the
  * page never scrolls sideways. (Status chip width is fixed by `STATUS_W` in the
  * component itself, so it needs no runtime check.)
@@ -232,43 +258,32 @@ test("large exact negative amounts keep their sign and digits on one visual line
     Math.min(...nodes.map((node) => Number.parseFloat(getComputedStyle(node).fontSize))),
   );
 
-  await page.setViewportSize({ width: 320, height: 720 });
-  await page.goto("/helix/");
-  await expect.poll(() => maxVisualLines(formatted)).toBe(1);
-  await page.evaluate(() => {
-    window.scrollTo(0, 0);
-    for (const node of Array.from(document.querySelectorAll<HTMLElement>("*"))) node.scrollTop = 0;
-  });
-  await expect(page).toHaveScreenshot("dashboard-large-negative-phone-320-light.png", {
-    animations: "disabled",
-    caret: "hide",
-    mask: clockMask(page),
-    maxDiffPixels: maxVisualDiffPixels,
-  });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
-  await expect.poll(() => maxVisualLines(formatted)).toBe(1);
-  await expect(page).toHaveScreenshot("month-large-negative-phone-390-light.png", {
-    animations: "disabled",
-    caret: "hide",
-    maxDiffPixels: maxVisualDiffPixels,
-  });
-
-  await page.setViewportSize({ width: 320, height: 720 });
-  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
-  await page.goto("/helix/");
-  await expect.poll(() => maxVisualLines(formatted)).toBe(1);
-  await page.evaluate(() => {
-    window.scrollTo(0, 0);
-    for (const node of Array.from(document.querySelectorAll<HTMLElement>("*"))) node.scrollTop = 0;
-  });
-  await expect(page).toHaveScreenshot("dashboard-large-negative-phone-320-dark.png", {
-    animations: "disabled",
-    caret: "hide",
-    mask: clockMask(page),
-    maxDiffPixels: maxVisualDiffPixels,
-  });
+  // A wide exact figure is the layout's worst case: it is the string most
+  // likely to push a row past its cell, wrap mid-number or drag the page
+  // sideways. Assert those three outcomes on the two surfaces that render it.
+  for (const surface of [
+    { tag: "dashboard 320 light", width: 320, height: 720, route: "/helix/", scheme: "light" },
+    { tag: `month 390 light`, width: 390, height: 844, route: `/helix/cash-flow/${currentMonthKey()}`, scheme: "light" },
+    { tag: "dashboard 320 dark", width: 320, height: 720, route: "/helix/", scheme: "dark" },
+  ] as const) {
+    await page.emulateMedia({ colorScheme: surface.scheme, reducedMotion: "reduce" });
+    await page.setViewportSize({ width: surface.width, height: surface.height });
+    await page.goto(surface.route);
+    await expect(page.locator("#root")).toBeVisible();
+    await expect.poll(() => maxVisualLines(formatted)).toBe(1);
+    // The sign is part of the number: an amount clipped to "₺9.876.543,21"
+    // reads as income on a screen that is about to owe money. The exact string
+    // has to be painted somewhere — these surfaces also hold it in scrolled-out
+    // matrix cells, so it is "at least one laid-out node", not "the first one".
+    const painted = await page
+      .getByText(formatted, { exact: true })
+      .evaluateAll((nodes) => nodes.filter((node) => node.getClientRects().length > 0).length);
+    expect(painted, `${surface.tag} paints the signed amount`).toBeGreaterThan(0);
+    expect(await minRenderedFontSize(formatted), `${surface.tag} font size`).toBeGreaterThanOrEqual(12);
+    await assertNoSidewaysScroll(page, surface.tag);
+    expect(await offscreenControls(page), `${surface.tag} controls outside viewport`).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
 
   // The largest accepted single entry can produce an even wider aggregate;
   // exact detail surfaces must still fit it without changing the input cap.
@@ -280,7 +295,7 @@ test("large exact negative amounts keep their sign and digits on one visual line
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("dashboard remains visually stable across viewport and theme matrix", async ({ page }, testInfo) => {
+test("dashboard reflows intact across the viewport and theme matrix", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const viewports = [
@@ -295,23 +310,24 @@ test("dashboard remains visually stable across viewport and theme matrix", async
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto("/helix/");
       await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
-      if (viewport.width === 320) {
-        const visibleLabels = await page.getByRole("tab").allTextContents();
-        expect(visibleLabels).toEqual(["Durum", "Tablo", "Abonelikler", "Araçlar", "Ayarlar"]);
-        expect(visibleLabels.join("")).not.toContain("…");
-      }
-      await expect(page).toHaveScreenshot(`dashboard-${viewport.name}-${scheme}.png`, {
-        animations: "disabled",
-        caret: "hide",
-        mask: clockMask(page),
-        maxDiffPixels: maxVisualDiffPixels,
-      });
+      const tag = `dashboard ${viewport.name} ${scheme}`;
+      // Every tab keeps its full label at the narrowest supported width: the
+      // 320px bar is where a fifth destination first tries to buy room with an
+      // ellipsis, which this project does not allow anywhere.
+      const visibleLabels = await page.getByRole("tab").allTextContents();
+      expect(visibleLabels, tag).toEqual(["Durum", "Tablo", "Abonelikler", "Araçlar", "Ayarlar"]);
+      expect(visibleLabels.join(""), tag).not.toContain("…");
+      // The dashboard's reason to exist is the balance block; a reflow that
+      // drops it off the layout is the regression the baseline really guarded.
+      await expect(page.getByText("Güncel Bakiye", { exact: true }).first(), tag).toBeVisible();
+      await assertNoSidewaysScroll(page, tag);
+      expect(await offscreenControls(page), `${tag} controls outside viewport`).toEqual([]);
     }
   }
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("every primary tab has a permanent mobile visual baseline", async ({ page }, testInfo) => {
+test("every primary tab lands on its own screen and fits the phone width @smoke", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
@@ -324,15 +340,19 @@ test("every primary tab has a permanent mobile visual baseline", async ({ page }
   ] as const;
   for (const { name, route, heading } of tabs) {
     await page.goto(route);
+    // The route resolves to its own screen — not a shared shell, not the
+    // dashboard fallback — and the tab bar it was reached through stays put.
     await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
-    // Keep collecting after a mismatch so a platform-specific CI artefact
-    // contains every changed tab rather than only the first item in this loop.
-    // Soft assertions still fail the test after the complete evidence sweep.
-    await expect.soft(page).toHaveScreenshot(`tab-${name}-phone-390-light.png`, {
-      animations: "disabled",
-      caret: "hide",
-      maxDiffPixels: maxVisualDiffPixels,
-    });
+    await expect(page.getByRole("tab", { name: "Durum" })).toBeVisible();
+    // Soft, so one failing tab still reports the state of the other three.
+    await expect
+      .soft(page.locator("#root"), `tab ${name}`)
+      .toBeVisible();
+    const sideways = await page.evaluate(
+      () => document.body.scrollWidth > document.body.clientWidth + 1,
+    );
+    expect.soft(sideways, `tab ${name} scrolls horizontally`).toBe(false);
+    expect.soft(await offscreenControls(page), `tab ${name} controls outside viewport`).toEqual([]);
   }
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -382,19 +402,9 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
     for (const { name, route, heading } of routes) {
       await page.goto(route);
       await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
-      // The transaction form carries two values that change without the UI
-      // changing: the amount placeholder rotates through a pool on every mount,
-      // and the payment day defaults to TODAY. Comparing them made this baseline
-      // decay a little further every day — it drifted to ~2% while the local cap
-      // is 1% and CI's glyph budget is 4%, so it failed here and stayed green
-      // there. Hide exactly those two boxes; the control fills, borders, chips
-      // and spacing this test exists for are still compared pixel for pixel.
-      const volatile = name === "transaction"
-        ? [
-            page.getByRole("textbox", { name: "Tutar · TRY" }),
-            page.getByRole("button", { name: "Ödeme Günü", exact: true }),
-          ]
-        : [];
+      const tag = `follow-up ${name} ${scheme}`;
+      // Type real content first: an empty field paints placeholder ink, and the
+      // colour that has to survive a theme change is the value's.
       if (name === "transaction") {
         const note = page.getByRole("textbox", { name: "Not", exact: true });
         await note.fill("Görsel kontrol");
@@ -404,20 +414,29 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
         await sourceName.fill("Görsel yöntem");
         await sourceName.evaluate((element) => (element as HTMLElement).blur());
       }
-      // A deliberate shared-control change can affect every form and theme.
-      // Capture them all in one failed run so baseline review is evidence-led.
-      await expect.soft(page).toHaveScreenshot(`follow-up-${name}-phone-390-${scheme}.png`, {
-        animations: "disabled",
-        caret: "hide",
-        mask: volatile,
-        maxDiffPixels: maxVisualDiffPixels,
-      });
+      // What the baseline stood for on these four forms was the quiet control
+      // system staying legible when the palette flips: heading ink against the
+      // surface behind it, and the control boundary that is the only thing
+      // making a low-contrast neutral field visible at all. Both are measured
+      // from what the browser actually painted, in both schemes. Soft, so one
+      // failing form still reports the other seven combinations.
+      const title = page.getByRole("heading", { name: heading, exact: true }).first();
+      expect.soft(await renderedContrastRatio(title), `${tag} heading contrast`).toBeGreaterThanOrEqual(4.5);
+      const field = page.getByRole("textbox").first();
+      if (await field.count()) {
+        expect.soft(await renderedBoundaryContrast(field), `${tag} field boundary`).toBeGreaterThanOrEqual(3);
+      }
+      const sideways = await page.evaluate(
+        () => document.body.scrollWidth > document.body.clientWidth + 1,
+      );
+      expect.soft(sideways, `${tag} scrolls horizontally`).toBe(false);
+      expect.soft(await offscreenControls(page), `${tag} controls outside viewport`).toEqual([]);
     }
   }
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("modal actions stay reachable in a short landscape viewport", async ({ page }, testInfo) => {
+test("modal actions stay reachable in a short landscape viewport @smoke", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.setViewportSize({ width: 844, height: 390 });
@@ -434,10 +453,6 @@ test("modal actions stay reachable in a short landscape viewport", async ({ page
   await expect(tourModal).toHaveCount(0);
 
   await page.goto("/helix/transaction");
-  const amount = page.getByRole("textbox", { name: "Tutar · TRY" });
-  // The example rotates by design. Freeze only that volatile copy so this
-  // baseline measures the modal layout rather than a random placeholder.
-  await amount.evaluate((field) => field.setAttribute("placeholder", "Ör. 12.400"));
   const calculatorTrigger = page.getByRole("button", { name: "Hesap makinesini aç", exact: true });
   await calculatorTrigger.click();
   const calculatorModal = page.locator('[aria-modal="true"]');
@@ -445,11 +460,24 @@ test("modal actions stay reachable in a short landscape viewport", async ({ page
   const result = page.getByRole("button", { name: /Sonucu Kullan/ });
   const resultBox = await result.boundingBox();
   expect(resultBox && resultBox.y >= 0 && resultBox.y + resultBox.height <= 390).toBe(true);
-  await expect(page).toHaveScreenshot("calculator-modal-landscape-844-light.png", {
-    animations: "disabled",
-    caret: "hide",
-    maxDiffPixels: maxVisualDiffPixels,
-  });
+  // 390px of height is where a modal stops fitting and starts hiding its own
+  // controls. Every keypad key must be inside the viewport and reachable, not
+  // just the confirm button — a digit pushed below the fold is a dead calculator.
+  const keys = page.locator('[aria-modal="true"] [role="button"]');
+  const keyCount = await keys.count();
+  expect(keyCount).toBeGreaterThan(10);
+  const clipped: string[] = [];
+  for (let index = 0; index < keyCount; index += 1) {
+    const key = keys.nth(index);
+    if (!(await key.isVisible())) continue;
+    const box = await key.boundingBox();
+    if (!box) continue;
+    if (box.y < 0 || box.y + box.height > 390 || box.x < 0 || box.x + box.width > 844) {
+      clipped.push(`${(await key.getAttribute("aria-label")) ?? (await key.textContent())?.trim()}`);
+    }
+  }
+  expect(clipped, `calculator keys outside the landscape viewport: ${clipped.join(", ")}`).toEqual([]);
+  await assertNoSidewaysScroll(page, "calculator modal landscape");
 
   await page.keyboard.press("Escape");
   await expect(calculatorModal).toHaveCount(0);
