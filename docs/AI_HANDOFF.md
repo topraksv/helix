@@ -7,15 +7,15 @@ history log.
 
 ## Current state — 2026-07-28, Europe/Istanbul
 
-`main` is the only long-lived branch. The completed ledger UI package is in
-[PR #104](https://github.com/topraksv/helix/pull/104); its required `quality`
-check, protected merge and Pages deployment are the remaining web release work.
+`main` is the only long-lived branch. The completed ledger UI package shipped
+through [PR #104](https://github.com/topraksv/helix/pull/104); its protected
+merge, required `quality` check and GitHub Pages deployment are complete.
 
 | | |
 |---|---|
-| Current `main` baseline | `e77c0f26eebc0a07d0e4d8aa6363e48d839cc778` |
-| Previous web baseline | [GitHub Pages run 30313476658](https://github.com/topraksv/helix/actions/runs/30313476658), successful |
-| Pending release | [PR #104](https://github.com/topraksv/helix/pull/104) |
+| Product release commit | `75c645c7aa50cf6bdb8402281ec9d000c5abba2d`, GitHub signature verified |
+| Web release | [GitHub Pages run 30372978979](https://github.com/topraksv/helix/actions/runs/30372978979), successful |
+| Release record | [PR #104](https://github.com/topraksv/helix/pull/104) |
 | Native | A new installed binary is still required for the released native-config boundary; do not publish an OTA across it |
 | Local quality | `npm run verify:release` green: 26 skills, 72 Vitest files / 579 tests, typecheck, lint, export budgets and 51 Playwright tests |
 
@@ -61,6 +61,13 @@ The fresh release gate passed:
 - `npx expo-doctor`: 18/18 checks passed.
 - `git diff --check` passed and generated export, Playwright result and Expo
   cache directories were moved to the system Trash.
+- PR #104's dependency review, CodeQL and required `quality` check passed. The
+  protected `main` run repeated the complete gate and deployed Pages.
+- Live Pages smoke: `/helix/` and `/helix/upcoming` returned 200;
+  `/helix/settings` used GitHub Pages' canonical 301 to `/helix/settings/`, which
+  returned 200. `/helix/cash-flow/2099-12` returned the expected 404 with a body
+  byte-identical to the root shell, whose referenced entry JavaScript returned
+  200.
 
 An earlier release-gate attempt correctly failed two outdated browser
 expectations; both were updated to the reachable UI and passed 15/15 repeated
@@ -71,9 +78,8 @@ gate without weakening the threshold.
 
 ## Acceptance boundary
 
-- GitHub Pages is not released until PR #104's required `quality` check passes,
-  the PR merges through protected `main`, and the resulting Pages run plus live
-  static/dynamic route smoke checks pass.
+- GitHub Pages is released and live smoke-verified from the product release
+  commit above.
 - Installed iOS and Android acceptance remains `BLOCKED`: no current
   simulator/device evidence exists for rotation, keyboard avoidance,
   VoiceOver/TalkBack, Dynamic Type, native focus return, safe areas, haptics or
@@ -87,7 +93,6 @@ gate without weakening the threshold.
 
 ## Next exact step
 
-Finish PR #104's protected web release and record its resulting commit and Pages
-run here. Then build and install a fresh preview binary and execute the physical
-device matrix in [`TESTING.md`](TESTING.md); only that binary can establish the
-current native boundary for a later OTA.
+Build and install a fresh preview binary and execute the physical-device matrix
+in [`TESTING.md`](TESTING.md); only that binary can establish the current native
+boundary for a later OTA.
