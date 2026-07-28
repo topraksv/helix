@@ -14,9 +14,11 @@ merge, required `quality` check and GitHub Pages deployment are complete.
 | | |
 |---|---|
 | Product release commit | `75c645c7aa50cf6bdb8402281ec9d000c5abba2d`, GitHub signature verified |
-| Web release | [GitHub Pages run 30372978979](https://github.com/topraksv/helix/actions/runs/30372978979), successful |
+| Repository head | `84e7e41e8ad486c163ce9648e3a28d99cc7e800a`, GitHub signature verified; only the release handoff changed after the product commit |
+| Web release | Product [Pages run 30372978979](https://github.com/topraksv/helix/actions/runs/30372978979) and final [run 30374858746](https://github.com/topraksv/helix/actions/runs/30374858746), successful |
 | Release record | [PR #104](https://github.com/topraksv/helix/pull/104) |
-| Native | A new installed binary is still required for the released native-config boundary; do not publish an OTA across it |
+| Preview OTA | [Group `e79b0ed2-9ad0-46eb-bea9-7e6624d0329c`](https://expo.dev/accounts/topraksv/projects/helix/updates/e79b0ed2-9ad0-46eb-bea9-7e6624d0329c), runtime `1.0.0`, branch/channel `preview`, commit `84e7e41e8ad486c163ce9648e3a28d99cc7e800a` |
+| Native | OTA publish is complete; installed delivery and the released native-config boundary still require a current binary plus physical-device acceptance |
 | Local quality | `npm run verify:release` green: 26 skills, 72 Vitest files / 579 tests, typecheck, lint, export budgets and 51 Playwright tests |
 
 ## Product result
@@ -68,6 +70,13 @@ The fresh release gate passed:
   returned 200. `/helix/cash-flow/2099-12` returned the expected 404 with a body
   byte-identical to the root shell, whose referenced entry JavaScript returned
   200.
+- EAS Update published with the mandatory clean Metro cache. The group contains
+  iOS update `019fa976-524f-706e-a312-d738860d2abf` and Android update
+  `019fa976-524f-7f74-9232-bfeeb150ece0`; both report runtime `1.0.0`, branch
+  `preview` and the repository head above. The channel remains active with one
+  unconditional mapping to `preview`. Initial insights are zero installs,
+  failures and users on both platforms, which is expected before a device
+  checks for the new update.
 
 An earlier release-gate attempt correctly failed two outdated browser
 expectations; both were updated to the reachable UI and passed 15/15 repeated
@@ -85,14 +94,19 @@ gate without weakening the threshold.
   VoiceOver/TalkBack, Dynamic Type, native focus return, safe areas, haptics or
   the released native configuration.
 - Although this package is JavaScript and existing assets only, the currently
-  installed build predates the released native-config boundary. An OTA cannot
-  make that binary representative; build and install a fresh native client
-  first.
+  installed build predates the released native-config boundary. The preview OTA
+  is available to compatible runtime `1.0.0` clients, but receiving it does not
+  make an old binary representative of the current native configuration.
+- Installed delivery remains `BLOCKED` until a compatible client performs two
+  complete cold starts and the owner verifies that the target UI opens and
+  Supabase sign-in succeeds. If the existing client does not request the
+  `preview` channel, install a fresh native preview build first.
 - Weekly/biweekly subscription cycles remain requested but unbuilt and require
   their own migration/domain package.
 
 ## Next exact step
 
-Build and install a fresh preview binary and execute the physical-device matrix
-in [`TESTING.md`](TESTING.md); only that binary can establish the current native
-boundary for a later OTA.
+On a compatible preview client, perform two complete cold starts and verify the
+target UI plus Supabase sign-in. If the update is not received, build and install
+a fresh preview binary. Then execute the physical-device matrix in
+[`TESTING.md`](TESTING.md) to establish the current native boundary.
