@@ -163,6 +163,26 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
         if (el.children.length === 0 && !scrollable && el.scrollWidth > el.clientWidth + 1) {
           truncated.push(`${style.textOverflow === "ellipsis" ? "ellipsis" : "clip"} ${el.scrollWidth}>${el.clientWidth}: ${text}`);
         }
+        if (
+          el.children.length === 0 &&
+          style.overflowY !== "visible" &&
+          style.overflowY !== "auto" &&
+          style.overflowY !== "scroll" &&
+          el.scrollHeight > el.clientHeight + 1
+        ) {
+          truncated.push(`vertical-clip ${el.scrollHeight}>${el.clientHeight}: ${text}`);
+        }
+        // Financial figures are atomic scan targets. Ordinary prose should
+        // wrap, but splitting the final digit of ₺12.500,00 onto another line
+        // changes the number's visual meaning and made the matrix unreadable.
+        if (/^-?[₺$€£¥][\d.,]+$/.test(text)) {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const visualLines = new Set(
+            Array.from(range.getClientRects()).map((rect) => Math.round(rect.top)),
+          );
+          if (visualLines.size > 1) truncated.push(`money-wrap(${visualLines.size}): ${text}`);
+        }
         if (style.webkitLineClamp !== "none" && el.scrollHeight > el.clientHeight + 1) {
           truncated.push(`line-clamp(${style.webkitLineClamp}): ${text}`);
         }
@@ -329,6 +349,7 @@ test("switches stay visible in both states and both themes", async ({ page }, te
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     await page.goto("/helix/transaction");
+    await page.getByRole("button", { name: /İade ve döviz seçenekleri/ }).click();
     const refund = page.getByRole("switch", { name: "İade" });
     await expect(refund).toBeVisible();
     const track = refund.locator("div").first();
@@ -413,6 +434,10 @@ test("modal actions stay reachable in a short landscape viewport", async ({ page
   await expect(tourModal).toHaveCount(0);
 
   await page.goto("/helix/transaction");
+  const amount = page.getByRole("textbox", { name: "Tutar · TRY" });
+  // The example rotates by design. Freeze only that volatile copy so this
+  // baseline measures the modal layout rather than a random placeholder.
+  await amount.evaluate((field) => field.setAttribute("placeholder", "Ör. 12.400"));
   const calculatorTrigger = page.getByRole("button", { name: "Hesap makinesini aç", exact: true });
   await calculatorTrigger.click();
   const calculatorModal = page.locator('[aria-modal="true"]');

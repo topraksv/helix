@@ -1,7 +1,7 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
 import React, { useState } from "react";
-import { Platform, View } from "react-native";
+import { Platform, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
@@ -11,6 +11,7 @@ import {
   BookOpen,
   CalendarClock,
   Calculator,
+  Check,
   CloudUpload,
   Columns3,
   FileDown,
@@ -19,10 +20,13 @@ import {
   Eye,
   KeyRound,
   LogOut,
+  Monitor,
+  Moon,
   PiggyBank,
   Target,
   ScanFace,
   Trash2,
+  Sun,
   Users,
   Wallet,
 } from "lucide-react-native";
@@ -43,15 +47,187 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { dateLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Segmented, Toggle, WaitingText } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle, WaitingText } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
-import { font, radius, spacing, useTheme } from "../../../ui/theme";
+import { font, PALETTES, radius, spacing, type, useTheme, type Palette, type ThemePreference } from "../../../ui/theme";
+import { selectionTapIfChanged } from "../../../ui/haptics";
 import { todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
-import type { PaletteId, ThemePreference } from "../../../ui/theme";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
+
+function ThemeChoice({
+  value,
+  label,
+  selected,
+  disabled,
+  chrome,
+  light,
+  dark,
+  onPress,
+}: {
+  value: ThemePreference;
+  label: string;
+  selected: boolean;
+  disabled: boolean;
+  chrome: Palette;
+  light: Palette;
+  dark: Palette;
+  onPress: () => void;
+}) {
+  const Icon = value === "light" ? Sun : value === "dark" ? Moon : Monitor;
+  const iconColor = value === "dark" ? dark.textStrong : light.textStrong;
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      aria-checked={selected}
+      accessibilityState={{ checked: selected, selected, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minWidth: 0,
+        minHeight: 82,
+        padding: spacing.sm,
+        gap: spacing.sm,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: radius.md,
+        borderWidth: selected ? 2 : 1,
+        borderColor: selected ? chrome.primary : chrome.border + "80",
+        backgroundColor: chrome.surface,
+        opacity: disabled ? 0.56 : pressed ? 0.78 : 1,
+        transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
+      })}
+    >
+      <View
+        accessible={false}
+        style={{
+          width: 58,
+          height: 34,
+          overflow: "hidden",
+          flexDirection: "row",
+          borderRadius: radius.sm,
+          borderWidth: 1,
+          borderColor: selected ? light.primary : light.border + "70",
+        }}
+      >
+        <View style={{ flex: 1, backgroundColor: value === "dark" ? dark.background : light.background }} />
+        {value === "system" ? <View style={{ flex: 1, backgroundColor: dark.background }} /> : null}
+        <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center" }}>
+          <Icon accessible={false} size={16} color={iconColor} strokeWidth={2} />
+        </View>
+      </View>
+      <Text style={[type.small, { color: chrome.text, fontFamily: selected ? font.semibold : font.medium, textAlign: "center" }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function PaletteChoice({
+  label,
+  description,
+  swatch,
+  selected,
+  disabled,
+  stacked,
+  onPress,
+}: {
+  label: string;
+  description: string;
+  swatch: Palette;
+  selected: boolean;
+  disabled: boolean;
+  stacked: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      aria-checked={selected}
+      accessibilityState={{ checked: selected, selected, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexGrow: 1,
+        flexBasis: stacked ? "100%" : 0,
+        minWidth: 0,
+        minHeight: stacked ? 92 : 150,
+        padding: spacing.sm,
+        flexDirection: stacked ? "row" : "column",
+        alignItems: stacked ? "center" : "stretch",
+        gap: spacing.md,
+        borderRadius: radius.lg,
+        borderWidth: selected ? 2 : 1,
+        borderColor: selected ? swatch.primary : swatch.border + "80",
+        backgroundColor: swatch.background,
+        opacity: disabled ? 0.56 : pressed ? 0.8 : 1,
+        transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
+      })}
+    >
+      <View
+        accessible={false}
+        style={{
+          width: stacked ? 92 : "100%",
+          height: stacked ? 68 : 78,
+          flexShrink: 0,
+          overflow: "hidden",
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: swatch.border + "70",
+          backgroundColor: swatch.background,
+        }}
+      >
+        <View
+          style={{
+            position: "absolute",
+            left: spacing.sm,
+            top: spacing.sm,
+            right: stacked ? 32 : 42,
+            bottom: spacing.sm,
+            padding: spacing.sm,
+            gap: 5,
+            borderRadius: radius.sm,
+            backgroundColor: swatch.surface,
+          }}
+        >
+          <View style={{ width: "62%", height: 5, borderRadius: 3, backgroundColor: swatch.textStrong }} />
+          <View style={{ width: "84%", height: 3, borderRadius: 2, backgroundColor: swatch.border }} />
+          <View style={{ width: "70%", height: 3, borderRadius: 2, backgroundColor: swatch.surfaceStrong }} />
+        </View>
+        <View style={{ position: "absolute", right: spacing.sm, top: spacing.sm, width: 24, height: 24, borderRadius: 12, backgroundColor: swatch.primary }} />
+        <View style={{ position: "absolute", right: spacing.sm, bottom: spacing.sm, flexDirection: "row", gap: 3 }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: swatch.positive }} />
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: swatch.negative }} />
+        </View>
+        {selected ? (
+          <View
+            style={{
+              position: "absolute",
+              right: spacing.sm + 3,
+              top: spacing.sm + 3,
+              width: 18,
+              height: 18,
+              borderRadius: 9,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: swatch.primary,
+            }}
+          >
+            <Check accessible={false} size={12} color={swatch.onPrimary} strokeWidth={3} />
+          </View>
+        ) : null}
+      </View>
+      <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
+        <Text style={[type.body, { color: swatch.textStrong, fontFamily: font.semibold }]}>{label}</Text>
+        <Text style={[type.small, { color: swatch.textSecondary, marginTop: 3, flexShrink: 1 }]}>{description}</Text>
+      </View>
+    </Pressable>
+  );
+}
 
 export default function SettingsScreen() {
   const userId = useUserId();
@@ -60,7 +236,8 @@ export default function SettingsScreen() {
   const settings = settingsState.data;
   const sync = useSyncStatus();
   const router = useRouter();
-  const { palette, paletteId } = useTheme();
+  const { width } = useWindowDimensions();
+  const { palette, paletteId, scheme } = useTheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
   const [localPreferencesLoaded, setLocalPreferencesLoaded] = useState(false);
@@ -252,7 +429,7 @@ export default function SettingsScreen() {
     sync.state === "idle" ? palette.success : sync.state === "error" ? palette.error : palette.warning;
 
   return (
-    <Screen title={tr.settings.title}>
+    <Screen title={tr.settings.title} maxWidth={920}>
       <DataStateNotice status={combineLiveQueryStatus([settingsState])} retry={settingsState.retry} />
       <SectionHeader>{tr.settings.balanceSection}</SectionHeader>
       <Card>
@@ -272,30 +449,59 @@ export default function SettingsScreen() {
       <SectionHeader>{tr.settings.appSection}</SectionHeader>
       <Card>
         <Body style={{ marginBottom: spacing.sm }}>{tr.settings.theme}</Body>
-        <Segmented
-          options={[
-            { value: "system", label: tr.settings.themeSystem },
-            { value: "light", label: tr.settings.themeLight },
-            { value: "dark", label: tr.settings.themeDark },
-          ]}
-          value={themePref}
-          disabled={!localPreferencesLoaded}
-          onChange={(v) => {
-            setThemePref(v);
-            setGlobalThemePreference(v);
-          }}
-        />
+        <View
+          role="radiogroup"
+          accessibilityLabel={tr.settings.theme}
+          style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}
+        >
+          {([
+            ["system", tr.settings.themeSystem],
+            ["light", tr.settings.themeLight],
+            ["dark", tr.settings.themeDark],
+          ] as const).map(([value, label]) => (
+            <ThemeChoice
+              key={value}
+              value={value}
+              label={label}
+              selected={themePref === value}
+              disabled={!localPreferencesLoaded}
+              chrome={palette}
+              light={PALETTES[paletteId].light}
+              dark={PALETTES[paletteId].dark}
+              onPress={() => {
+                selectionTapIfChanged(themePref, value);
+                setThemePref(value);
+                setGlobalThemePreference(value);
+              }}
+            />
+          ))}
+        </View>
         <Body style={{ marginBottom: spacing.sm }}>{tr.settings.palette}</Body>
-        <Segmented<PaletteId>
-          options={[
-            { value: "clay", label: tr.settings.paletteClay },
-            { value: "ocean", label: tr.settings.paletteOcean },
-            { value: "forest", label: tr.settings.paletteForest },
-          ]}
-          value={paletteId}
-          disabled={!localPreferencesLoaded}
-          onChange={setGlobalPalettePreference}
-        />
+        <View
+          role="radiogroup"
+          accessibilityLabel={tr.settings.palette}
+          style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.lg }}
+        >
+          {([
+            ["clay", tr.settings.paletteClay, tr.settings.paletteClayDesc],
+            ["ocean", tr.settings.paletteOcean, tr.settings.paletteOceanDesc],
+            ["forest", tr.settings.paletteForest, tr.settings.paletteForestDesc],
+          ] as const).map(([id, label, description]) => (
+            <PaletteChoice
+              key={id}
+              label={label}
+              description={description}
+              swatch={PALETTES[id][scheme]}
+              selected={paletteId === id}
+              disabled={!localPreferencesLoaded}
+              stacked={width < 700}
+              onPress={() => {
+                selectionTapIfChanged(paletteId, id);
+                setGlobalPalettePreference(id);
+              }}
+            />
+          ))}
+        </View>
         {/* The field holds a one- or two-digit number, so a full-width save
             button under it left a wide empty band and read as a second, larger
             action. Beside the input it stays the smaller of the two and the row

@@ -11,7 +11,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import { CheckCircle2, FileSpreadsheet, Upload } from "lucide-react-native";
+import { ArrowRight, CheckCircle2, FileCheck2, FileSpreadsheet, ScanLine, TableProperties, Upload, type LucideIcon } from "lucide-react-native";
 import { ImportBatchUnreadableError, importSheets, importedYears } from "../data/repo";
 import { usePersonsState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
@@ -32,6 +32,122 @@ import { MonthDayField } from "../ui/month-day-field";
 import { devError } from "../services/logger";
 
 // --- visual format guide ---------------------------------------------------
+function ImportJourney({ stage }: { stage: 0 | 1 | 2 }) {
+  const { palette } = useTheme();
+  const steps: { label: string; icon: LucideIcon }[] = [
+    { label: tr.importer.stepFile, icon: FileSpreadsheet },
+    { label: tr.importer.stepReview, icon: ScanLine },
+    { label: tr.importer.stepImport, icon: TableProperties },
+  ];
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={steps.map((step) => step.label).join(", ")}
+      style={{ flexDirection: "row", alignItems: "center", marginVertical: spacing.md }}
+    >
+      {steps.map((item, index) => {
+        const Icon = item.icon;
+        const active = index <= stage;
+        return (
+          <React.Fragment key={item.label}>
+            <View style={{ flex: 1, minWidth: 0, alignItems: "center", gap: 5 }}>
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: active ? palette.primary : palette.border,
+                  backgroundColor: active ? palette.primarySoft : palette.surface,
+                }}
+              >
+                <Icon accessible={false} size={18} color={active ? palette.primaryText : palette.textSecondary} />
+              </View>
+              <Text style={[type.small, { color: active ? palette.text : palette.textSecondary, fontFamily: active ? font.semibold : font.regular, textAlign: "center" }]}>
+                {item.label}
+              </Text>
+            </View>
+            {index < steps.length - 1 ? (
+              <View style={{ width: 34, alignItems: "center", marginTop: -18 }}>
+                <ArrowRight accessible={false} size={16} color={index < stage ? palette.primary : palette.border} />
+              </View>
+            ) : null}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
+function WorkbookArtwork({ ready }: { ready: boolean }) {
+  const { palette } = useTheme();
+  return (
+    <View accessible={false} style={{ width: 172, height: 112, alignItems: "center", justifyContent: "center" }}>
+      <View
+        style={{
+          position: "absolute",
+          left: 2,
+          top: 8,
+          width: 88,
+          height: 96,
+          padding: spacing.sm,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: palette.border,
+          backgroundColor: palette.surface,
+        }}
+      >
+        <View style={{ flexDirection: "row", gap: 3, marginBottom: 4 }}>
+          {[palette.positive, palette.warning, palette.negative].map((color) => (
+            <View key={color} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
+          ))}
+        </View>
+        {Array.from({ length: 4 }).map((_, row) => (
+          <View key={row} style={{ flexDirection: "row" }}>
+            {Array.from({ length: 3 }).map((__, column) => (
+              <View
+                key={column}
+                style={{
+                  width: 22,
+                  height: 14,
+                  borderRightWidth: 1,
+                  borderBottomWidth: 1,
+                  borderColor: palette.border + "90",
+                  backgroundColor: row === 0 || column === 0 ? palette.surfaceAlt : "transparent",
+                }}
+              />
+            ))}
+          </View>
+        ))}
+      </View>
+      <View style={{ position: "absolute", left: 78, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: ready ? palette.positive : palette.primary }}>
+        {ready ? <FileCheck2 accessible={false} size={17} color={palette.onPrimary} /> : <ArrowRight accessible={false} size={17} color={palette.onPrimary} />}
+      </View>
+      <View
+        style={{
+          position: "absolute",
+          right: 0,
+          bottom: 14,
+          width: 78,
+          height: 70,
+          padding: spacing.sm,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: ready ? palette.positive : palette.border,
+          backgroundColor: palette.primarySoft,
+        }}
+      >
+        <TableProperties accessible={false} size={20} color={palette.primaryText} />
+        <View style={{ width: 51, height: 5, borderRadius: 3, backgroundColor: palette.primary, marginTop: spacing.sm }} />
+        <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: palette.border, marginTop: 5 }} />
+      </View>
+    </View>
+  );
+}
+
 function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" | "head" | "data"; palette: Palette; big: boolean }) {
   const bg = tone === "month" ? palette.primarySoft : tone === "head" ? palette.surfaceAlt : palette.surface;
   const color = tone === "month" ? palette.primaryText : palette.textSecondary;
@@ -72,7 +188,19 @@ function SheetLayoutDiagram({ orientation, caption, big }: { orientation: "verti
           [H(tr.importer.diagram.salary), D, D],
         ];
   return (
-    <View style={{ alignItems: "center", gap: spacing.sm }}>
+    <View
+      style={{
+        flex: big ? 1 : undefined,
+        width: big ? undefined : "100%",
+        alignItems: "center",
+        gap: spacing.sm,
+        padding: spacing.md,
+        borderRadius: radius.md,
+        backgroundColor: palette.surfaceAlt,
+        borderWidth: 1,
+        borderColor: palette.border + "70",
+      }}
+    >
       <View style={{ borderRadius: radius.sm, overflow: "hidden" }}>
         {grid.map((r, ri) => (
           <View key={ri} style={{ flexDirection: "row" }}>
@@ -304,7 +432,7 @@ export default function ImportWizardModal() {
 
   if (!dataReady) {
     return (
-      <Screen scrollRef={scrollRef}>
+      <Screen scrollRef={scrollRef} maxWidth={1040}>
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
@@ -312,7 +440,8 @@ export default function ImportWizardModal() {
 
   if (doneCount != null) {
     return (
-      <Screen scrollRef={scrollRef}>
+      <Screen scrollRef={scrollRef} maxWidth={1040}>
+        <ImportJourney stage={2} />
         <Card tone="success">
           <Row gap={spacing.md} style={{ alignItems: "center" }}>
             <CheckCircle2 accessible={false} size={26} color={palette.success} />
@@ -342,17 +471,28 @@ export default function ImportWizardModal() {
   const preview: ParsedSheet | undefined = activeSheets[0];
 
   return (
-    <Screen scrollRef={scrollRef}>
+    <Screen scrollRef={scrollRef} maxWidth={1040}>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.importer.intro}</Body>
-      <Button
-        icon={Upload}
-        label={workbook ? tr.importer.pickAgain : tr.importer.pick}
-        variant={workbook ? "secondary" : "primary"}
-        onPress={() => confirmDiscard(() => void pick())}
-        disabled={busy}
-        loading={busy && workbook == null}
-      />
+      <Card style={{ backgroundColor: palette.surfaceAlt }}>
+        <View style={{ flexDirection: wide ? "row" : "column", alignItems: "center", gap: spacing.lg }}>
+          <WorkbookArtwork ready={workbook != null} />
+          <View style={{ flex: 1, minWidth: 0, alignSelf: "stretch", justifyContent: "center" }}>
+            <Text style={[type.heading, { color: palette.textStrong }]}>{tr.importer.heroTitle}</Text>
+            <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>
+              {workbook ? tr.importer.heroReady(workbook.sheets.length) : tr.importer.intro}
+            </Body>
+            <Button
+              icon={Upload}
+              label={workbook ? tr.importer.pickAgain : tr.importer.pick}
+              variant={workbook ? "secondary" : "primary"}
+              onPress={() => confirmDiscard(() => void pick())}
+              disabled={busy}
+              loading={busy && workbook == null}
+            />
+          </View>
+        </View>
+      </Card>
+      <ImportJourney stage={workbook ? 1 : 0} />
       <OperationStatusNotice
         state={operation.state}
         label={workbook ? tr.operation.importing : tr.dataState.loading}

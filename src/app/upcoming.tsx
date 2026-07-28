@@ -1,7 +1,7 @@
 import React from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowDownLeft, CalendarClock, CreditCard, PartyPopper } from "lucide-react-native";
+import { PartyPopper } from "lucide-react-native";
 import {
   toTxLike,
   useAllTransactionsState,
@@ -17,10 +17,10 @@ import { combineLiveQueryStatus } from "../data/live-state";
 import { monthKeyOf, todayISO } from "../domain/dates";
 import { buildUpcomingTimeline, type UpcomingTimelineItem } from "../domain/upcoming";
 import { formatMinor } from "../domain/money";
-import { dateLabel, monthLabel, tr } from "../i18n/tr";
+import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
 import { useSyncStatus } from "../sync/status";
 import { Body, Card, DataStateNotice, EmptyState, ListRow, Screen, SectionHeader, StatusPill } from "../ui/components";
-import { spacing, useTheme } from "../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../ui/theme";
 
 export default function UpcomingScreen() {
   const router = useRouter();
@@ -84,7 +84,7 @@ export default function UpcomingScreen() {
   })[item.sourceType];
 
   return (
-    <Screen>
+    <Screen maxWidth={900}>
       <Body muted style={{ marginBottom: spacing.md }}>{tr.upcoming.intro}</Body>
       <DataStateNotice status={status} retry={retry} />
       {sync.state === "error" ? (
@@ -101,8 +101,29 @@ export default function UpcomingScreen() {
             {items.map((item) => (
               <ListRow
                 key={item.key}
-                icon={item.direction === "in" ? ArrowDownLeft : item.kind === "card_statement" ? CreditCard : CalendarClock}
-                iconColor={item.direction === "in" ? palette.positive : item.status === "late" ? palette.error : undefined}
+                leading={
+                  <View
+                    accessible={false}
+                    style={{
+                      width: 48,
+                      height: 48,
+                      flexShrink: 0,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: radius.md,
+                      borderWidth: 1,
+                      borderColor: item.status === "late" ? palette.error + "70" : palette.border + "70",
+                      backgroundColor: item.direction === "in" ? palette.positive + "16" : palette.surfaceAlt,
+                    }}
+                  >
+                    <Text style={[type.heading, { color: item.status === "late" ? palette.errorText : palette.textStrong, fontSize: 18 }]}>
+                      {Number(item.date.slice(8, 10))}
+                    </Text>
+                    <Text style={[type.small, { color: palette.textSecondary, fontFamily: font.semibold, fontSize: 10, textTransform: "uppercase" }]}>
+                      {shortMonthLabel(monthKeyOf(item.date))}
+                    </Text>
+                  </View>
+                }
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}
                 subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)} · ${formatMinor(item.amountMinor, item.currency)}`}
                 chevron

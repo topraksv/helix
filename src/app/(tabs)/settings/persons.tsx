@@ -1,7 +1,7 @@
 /** Person management (§2.8): named people; non-self people are watch-only. */
 
 import React, { useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { usePersonsState, useUserId } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import {
@@ -16,20 +16,105 @@ import {
 } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Pencil, Trash2 } from "lucide-react-native";
+import { Eye, Pencil, Plus, Trash2, UserRound } from "lucide-react-native";
 import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
-import { spacing } from "../../../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
+
+function initialOf(name: string): string {
+  return Array.from(name.trim())[0]?.toLocaleUpperCase("tr-TR") ?? "•";
+}
+
+function PeopleOverview({ people }: { people: { id: string; name: string; isSelf: boolean }[] }) {
+  const { palette } = useTheme();
+  const self = people.find((person) => person.isSelf);
+  const watched = people.filter((person) => !person.isSelf);
+  return (
+    <Card>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
+        <View
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel={tr.persons.overviewA11y(people.length, watched.length)}
+          style={{
+            width: 96,
+            height: 96,
+            borderRadius: radius.lg,
+            backgroundColor: palette.surfaceAlt,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.border,
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          <View style={{ position: "absolute", width: 78, height: 78, borderRadius: 39, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.secondary + "80" }} />
+          <View style={{ width: 42, height: 42, borderRadius: 16, backgroundColor: palette.primary, alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+            <Text style={[type.heading, { color: palette.onPrimary, fontFamily: font.bold }]}>
+              {initialOf(self?.name ?? tr.onboarding.me)}
+            </Text>
+          </View>
+          <View style={{ position: "absolute", bottom: 6, borderRadius: 999, backgroundColor: palette.surface, paddingHorizontal: 7, paddingVertical: 2, zIndex: 2 }}>
+            <Text style={[type.small, { color: palette.primaryText, fontFamily: font.bold, fontSize: 9 }]}>
+              {tr.persons.selfBadge}
+            </Text>
+          </View>
+          {watched.slice(0, 3).map((person, index) => {
+            const positions = [
+              { top: 8, right: 12 },
+              { top: 8, left: 12 },
+              { bottom: 8, right: 10 },
+            ];
+            return (
+              <View
+                key={person.id}
+                style={[
+                  {
+                    position: "absolute",
+                    width: 25,
+                    height: 25,
+                    borderRadius: 10,
+                    backgroundColor: palette.secondarySoft,
+                    borderWidth: 2,
+                    borderColor: palette.surfaceAlt,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  },
+                  positions[index],
+                ]}
+              >
+                <Text style={[type.small, { color: palette.secondaryText, fontFamily: font.bold, fontSize: 10 }]}>
+                  {initialOf(person.name)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>
+            {tr.persons.overviewTitle}
+          </Text>
+          <Body muted>{tr.persons.overviewHint}</Body>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm }}>
+            <Badge text={tr.persons.totalCount(people.length)} tone="primary" />
+            <Badge text={tr.persons.watchedCount(watched.length)} />
+          </View>
+        </View>
+      </View>
+    </Card>
+  );
+}
 
 export default function PersonsScreen() {
   const userId = useUserId();
   const personsState = usePersonsState();
   const persons = personsState.data;
   const undo = useUndo();
+  const { palette } = useTheme();
   const operationGuard = useOperationGuard();
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
@@ -145,9 +230,17 @@ export default function PersonsScreen() {
   return (
     <Screen>
       <DataStateNotice status={dataStatus} retry={personsState.retry} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.onboarding.personsHint}</Body>
+      <PeopleOverview people={persons} />
       <Card>
-        <Row>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
+          <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" }}>
+            <Plus accessible={false} size={17} color={palette.primary} />
+          </View>
+          <Text accessibilityRole="header" style={[type.label, { color: palette.text, fontFamily: font.semibold }]}>
+            {tr.persons.addTitle}
+          </Text>
+        </View>
+        <Row style={{ alignItems: "center" }}>
           <View style={{ flex: 1 }}>
             <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={name} onChangeText={setName} placeholder={personPlaceholder} />
           </View>
@@ -191,10 +284,38 @@ export default function PersonsScreen() {
               <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
             </Row>
           ) : (
-            <Spread style={{ paddingVertical: spacing.sm }}>
+            <Spread
+              style={{
+                paddingVertical: spacing.sm,
+                paddingLeft: spacing.sm,
+                borderLeftWidth: 2,
+                borderLeftColor: p.isSelf ? palette.primary : palette.secondary,
+              }}
+            >
               <Row gap={spacing.sm} style={{ flex: 1, paddingRight: spacing.sm }}>
-                <Body style={{ flexShrink: 1 }}>{p.name}</Body>
-                {p.isSelf ? <Badge text={tr.persons.selfBadge} tone="primary" /> : <Badge text={tr.installments.watchOnly} />}
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    flexShrink: 0,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: p.isSelf ? palette.primarySoft : palette.secondarySoft,
+                  }}
+                >
+                  {p.isSelf ? (
+                    <UserRound accessible={false} size={18} color={palette.primary} />
+                  ) : (
+                    <Eye accessible={false} size={18} color={palette.secondary} />
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Body style={{ fontFamily: font.semibold }}>{p.name}</Body>
+                  <Text style={[type.small, { color: p.isSelf ? palette.primaryText : palette.textSecondary, marginTop: 2 }]}>
+                    {p.isSelf ? tr.persons.ownerHint : tr.persons.watchedHint}
+                  </Text>
+                </View>
               </Row>
               <Row gap={spacing.sm}>
                 <IconButton

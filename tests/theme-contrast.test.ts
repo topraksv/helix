@@ -142,24 +142,24 @@ describe("semantic theme contrast", () => {
   });
 
   /**
-   * Çelik is the default and therefore the one users see without choosing.
+   * Amber is the default and therefore the one users see without choosing.
    * Pinning it stops a "small tidy-up" of the shared tokens from quietly
    * restyling the app for everyone who never opened the theme picker.
    */
   it("keeps the default ramp exact", () => {
     expect(lightPalette).toMatchObject({
-      background: "#E7ECEB", surface: "#FAFBF9", surfaceAlt: "#E2EAE9",
-      surfaceHover: "#CEDBDB", surfaceStrong: "#B7CACB", textStrong: "#223138",
-      text: "#2A3A40", textSecondary: "#586A70", textMuted: "#586A70",
-      primary: "#356B7F", accentText: "#285669", primaryStrong: "#285469",
-      primarySoft: "#D3E5EA", border: "#71858B",
+      background: "#F1EDE8", surface: "#FFFDFB", surfaceAlt: "#E7DFD7",
+      surfaceHover: "#D7CCC1", surfaceStrong: "#C2B2A3", textStrong: "#2A211B",
+      text: "#3A3028", textSecondary: "#62564C", textMuted: "#6D6157",
+      primary: "#A55335", accentText: "#7B3A28", primaryStrong: "#88432D",
+      primarySoft: "#EED8CC", border: "#8B796A",
     });
     expect(darkPalette).toMatchObject({
-      background: "#101315", surface: "#1A1E20", surfaceAlt: "#242A2C",
-      surfaceHover: "#2F3639", surfaceStrong: "#3F4649", textStrong: "#EFF2F2",
-      text: "#E1E6E6", textSecondary: "#BAC5C7", textMuted: "#99A6A9",
-      primary: "#86B4C3", accentText: "#B9D7DF", primaryStrong: "#6D9CAB",
-      primarySoft: "#2A3A40", border: "#58666C",
+      background: "#090807", surface: "#191512", surfaceAlt: "#27211D",
+      surfaceHover: "#352D28", surfaceStrong: "#473D36", textStrong: "#F2ECE6",
+      text: "#E5DDD6", textSecondary: "#BEB2A8", textMuted: "#9D9289",
+      primary: "#D88967", accentText: "#E7A68B", primaryStrong: "#BE6B4A",
+      primarySoft: "#3C2A22", border: "#5F534A",
     });
   });
 
@@ -247,24 +247,12 @@ describe("semantic theme contrast", () => {
     }
   });
 
-  /**
-   * The balance slab is assembled from two tokens picked per scheme, so it is
-   * the one pairing that no other assertion here covers: `primary`/`onPrimary`
-   * in light, `primarySoft`/`textStrong` in dark. Measured as the component
-   * actually builds it.
-   */
-  it("keeps the balance slab readable in both schemes", () => {
+  /** The balance stays neutral and must remain readable on both layer depths. */
+  it("keeps the balance instrument readable in both schemes", () => {
     for (const { light, dark } of Object.values(PALETTES)) {
       for (const [palette, scheme] of [[light, "light"], [dark, "dark"]] as const) {
-        const { fill, ink, inset } = heroSurface(palette, scheme);
+        const { fill, ink } = heroSurface(palette, scheme);
         expect(contrastRatio(ink, fill), `${scheme}: ${ink} on ${fill}`).toBeGreaterThanOrEqual(4.5);
-        // The nested control is the pair axe actually caught: an opaque inset
-        // is measured directly, a translucent one composites over the slab.
-        const composited = inset.length === 9
-          ? blend(inset.slice(0, 7), fill, Number.parseInt(inset.slice(7), 16) / 255)
-          : inset;
-        expect(contrastRatio(ink, composited), `${scheme}: ${ink} on inset ${composited}`)
-          .toBeGreaterThanOrEqual(4.5);
       }
     }
   });

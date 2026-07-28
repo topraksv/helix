@@ -7,79 +7,87 @@ history log.
 
 ## Current state — 2026-07-28, Europe/Istanbul
 
-`main` is the only long-lived branch. The project-skill work and the product UI
-follow-up were consolidated in [PR #103](https://github.com/topraksv/helix/pull/103);
-that PR's final release comment is the authority for its resulting `main`
-commit and GitHub Pages run.
+`main` is the only long-lived branch. The completed ledger UI package is in
+[PR #104](https://github.com/topraksv/helix/pull/104); its required `quality`
+check, protected merge and Pages deployment are the remaining web release work.
 
 | | |
 |---|---|
-| Previous product baseline | `4d227aac863045581a4bfe43334344197abf2908` |
+| Current `main` baseline | `e77c0f26eebc0a07d0e4d8aa6363e48d839cc778` |
 | Previous web baseline | [GitHub Pages run 30313476658](https://github.com/topraksv/helix/actions/runs/30313476658), successful |
-| Current release record | [PR #103](https://github.com/topraksv/helix/pull/103), including exact merge and Pages evidence |
+| Pending release | [PR #104](https://github.com/topraksv/helix/pull/104) |
 | Native | A new installed binary is still required for the released native-config boundary; do not publish an OTA across it |
-| Quality | `npm run verify:release` green: 26 skills, 72 Vitest files / 578 tests, typecheck, lint, export budgets and 44 Playwright tests |
+| Local quality | `npm run verify:release` green: 26 skills, 72 Vitest files / 579 tests, typecheck, lint, export budgets and 51 Playwright tests |
 
 ## Product result
 
-The Mali Tablo accessibility race is closed at both levels: the real-data axe
-sweep waits for the populated async table, and every web column-pin target is a
-measured 24×24 CSS box rather than a 12 px icon with native-only `hitSlop`.
-Computed-column readiness is deterministic too.
+The dashboard, Mali Tablo, analytics, subscriptions, settings, authentication,
+onboarding, import and follow-up editors now share one connected ledger visual
+system. Amber is the default palette; Petrol and Servi remain user-selectable.
+The primary routes, dense tables and forms reflow across phone, tablet and
+desktop widths without page overflow, hidden actions or ellipsized labels.
 
-Shared disabled controls no longer reduce the opacity of their text. Buttons,
-icon buttons, fields, selectors, segmented controls, toggles and calendar dates
-use explicit neutral disabled colors; browser measurements keep disabled
-primary copy at or above 4.5:1 in Amber, Çelik and Servi, light and dark.
-Loading buttons remain visually active while blocking a second press. Semantic
-success, warning and error cards now carry a real shared tint and boundary.
+Custom selectors, radio groups, switches, expandable sections, images, quote
+groups and modal flows expose their actual state to assistive technology.
+Keyboard focus returns only after a picker modal has closed, form Enter handling
+stays with the focused control, and mobile disclosures publish their expanded
+state on web and native. Long Mali Tablo labels wrap and increase row height
+instead of truncating.
 
-Web theme preference updates both `color-scheme` and `theme-color`. Generic
-buttons, icon buttons, cards and list rows use quiet tonal press feedback rather
-than a universal spring scale and automatic haptic. Selection haptics are
-reserved for actual discrete state changes such as month/date/option/toggle and
-Mali Tablo pin changes. All feedback remains iOS-only through the shared helper.
+The final browser regressions were stale test assumptions after the redesign:
+the refund switch and analytics filters now open through their visible
+disclosures, future-month assertions use the current relative month, and modal
+helpers wait for delayed focus restoration. Screenshot baselines and README
+gallery images were regenerated from the reviewed final surfaces.
 
-The information architecture, Turkish copy, financial behavior, local-first
-storage, sync, routes, forms and web/native feature parity are unchanged. No
-migration, dependency, native config or financial-data boundary changed in this
-follow-up.
+Financial behavior, local-first storage, sync, routes, privacy and native/web
+feature parity are unchanged. This package has no migration, dependency,
+runtime, app-config or native-module change.
 
 ## Verification
 
 The fresh release gate passed:
 
 - `npm run verify`: 26/26 pinned skill snapshots, typecheck, 72/72 Vitest files,
-  578/578 tests and Expo lint.
-- Production export: 56 static routes; 9,274,624-byte total export against the
-  10,000,000-byte budget; six fonts / 1,518,000 bytes; zero source maps;
-  Supabase public config inlined as expected.
-- Playwright: 44/44, including the real-data route accessibility sweep, complete
-  two-width layout sweep, six-theme disabled-control contrast, browser chrome
-  scheme, navigation, resilience, import atomicity and visual baselines.
-- `npx expo config --type public --json` resolved SDK 54, `/helix`, runtime
-  `1.0.0`, preview channel and the expected platform settings.
+  579/579 tests and Expo lint.
+- Production export: 56 static routes; 4,823,383-byte entry JavaScript,
+  5,452,565-byte total JavaScript and 9,355,068-byte total export, all within
+  budget; six fonts / 1,518,000 bytes; zero source maps; Supabase public config
+  inlined as expected.
+- Playwright: 51/51, including all local-data routes, WCAG checks, the complete
+  two-width layout sweep, keyboard/modal semantics, navigation, resilience,
+  import atomicity and reviewed visual baselines.
+- `npx expo config --type public --json` resolved the expected public config.
 - `npx expo-doctor`: 18/18 checks passed.
+- `git diff --check` passed and generated export, Playwright result and Expo
+  cache directories were moved to the system Trash.
 
-The nine changed screenshot baselines were limited to controls whose disabled
-rendering changed and the widened Mali Tablo marker strip; their actual/diff
-images were inspected before acceptance. Generated exports, Playwright results
-and Expo cache were moved to the system Trash after verification.
+An earlier release-gate attempt correctly failed two outdated browser
+expectations; both were updated to the reachable UI and passed 15/15 repeated
+runs before the full green gate. A later full-suite performance sample measured
+the unchanged batched path at 3.14× faster than the per-month path, below its 4×
+guard. The unchanged benchmark then passed 5/5 isolated runs and the clean full
+gate without weakening the threshold.
 
 ## Acceptance boundary
 
-- Installed iOS and Android acceptance remains `BLOCKED`: no simulator/device
-  evidence exists for rotation, keyboard avoidance, VoiceOver/TalkBack, Dynamic
-  Type, native focus return, safe areas, haptics or the released splash colors.
-- Although this follow-up's runtime changes are JavaScript-only, the currently
-  installed build still predates a released native-config boundary. An OTA
-  cannot make that binary representative; build and install a fresh native
-  client first.
+- GitHub Pages is not released until PR #104's required `quality` check passes,
+  the PR merges through protected `main`, and the resulting Pages run plus live
+  static/dynamic route smoke checks pass.
+- Installed iOS and Android acceptance remains `BLOCKED`: no current
+  simulator/device evidence exists for rotation, keyboard avoidance,
+  VoiceOver/TalkBack, Dynamic Type, native focus return, safe areas, haptics or
+  the released native configuration.
+- Although this package is JavaScript and existing assets only, the currently
+  installed build predates the released native-config boundary. An OTA cannot
+  make that binary representative; build and install a fresh native client
+  first.
 - Weekly/biweekly subscription cycles remain requested but unbuilt and require
   their own migration/domain package.
 
 ## Next exact step
 
-Build and install a fresh preview binary, then run the physical-device matrix in
-[`TESTING.md`](TESTING.md). Only after that binary establishes the current
-native boundary should a later JavaScript-only package use EAS Update.
+Finish PR #104's protected web release and record its resulting commit and Pages
+run here. Then build and install a fresh preview binary and execute the physical
+device matrix in [`TESTING.md`](TESTING.md); only that binary can establish the
+current native boundary for a later OTA.

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import { CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Pencil, Trash2 } from "lucide-react-native";
+import { CalendarPlus, ChartNoAxesCombined, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Pencil, Trash2, WalletCards } from "lucide-react-native";
 import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/export-import";
 import { useSession } from "../../auth/session";
@@ -16,7 +16,7 @@ import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Heading, IconBu
 import { appAlert } from "../../ui/dialog";
 import { BrandMark } from "../../ui/brand";
 import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
-import { spacing, type, useTheme } from "../../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { readPickedText } from "../../services/picked-file";
 import { MonthDayField, monthDayLabel } from "../../ui/month-day-field";
@@ -37,6 +37,52 @@ interface DraftSource {
 }
 
 type HistoryChoice = "manual" | "excel" | "json";
+
+function OnboardingJourney() {
+  const { palette } = useTheme();
+  const steps = [
+    { icon: WalletCards, label: tr.onboarding.journeySetup, color: palette.primary, soft: palette.primarySoft },
+    { icon: FileSpreadsheet, label: tr.onboarding.journeyImport, color: palette.secondary, soft: palette.secondarySoft },
+    { icon: ChartNoAxesCombined, label: tr.onboarding.journeyFollow, color: palette.tertiary, soft: palette.tertiarySoft },
+  ];
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={steps.map((step) => step.label).join(", ")}
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        borderRadius: radius.lg,
+        backgroundColor: palette.surfaceAlt,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: palette.border + "80",
+        padding: spacing.md,
+        marginBottom: spacing.md,
+        overflow: "hidden",
+      }}
+    >
+      {steps.map((step, index) => {
+        const Icon = step.icon;
+        return (
+          <React.Fragment key={step.label}>
+            <View style={{ flex: 1, minWidth: 0, alignItems: "center" }}>
+              <View style={{ width: 42, height: 42, borderRadius: 15, backgroundColor: step.soft, alignItems: "center", justifyContent: "center" }}>
+                <Icon accessible={false} size={20} color={step.color} strokeWidth={1.9} />
+              </View>
+              <Text style={[type.small, { color: palette.text, fontFamily: font.semibold, textAlign: "center", marginTop: spacing.xs }]}>
+                {step.label}
+              </Text>
+            </View>
+            {index < steps.length - 1 ? (
+              <View style={{ width: spacing.lg, height: 1, marginTop: 21, backgroundColor: palette.border }} />
+            ) : null}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
 
 export default function SetupScreen() {
   const { userId } = useSession();
@@ -287,11 +333,12 @@ export default function SetupScreen() {
         <DataStateNotice status={dataStatus} retry={settingsState.retry} />
         <Row gap={spacing.md} style={{ marginBottom: spacing.lg }}>
           <BrandMark size={44} />
-          <View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text accessibilityRole="header" style={[type.title, { color: palette.text }]}>{tr.onboarding.welcome}</Text>
             <Body muted>{tr.onboarding.intro}</Body>
           </View>
         </Row>
+        <OnboardingJourney />
 
         {hasImport ? (
           <Card tone="success">

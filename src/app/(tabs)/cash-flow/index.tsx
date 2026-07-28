@@ -3,11 +3,11 @@
  * and iOS), a pivot toggle (months as rows / columns) available on every
  * width, full Jan–Dec rows with the current month highlighted, and an
  * optional user-pinned extra column. Cells open the editor; notes show a dot.
- * Phones can also switch to a compact month-card list.
+ * Phones can also switch to a no-horizontal-scroll, month-focused table.
  */
 
 import React, { useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
 import { monthFlowTotals } from "../../../domain/balance";
@@ -15,7 +15,7 @@ import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../do
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinor, formatMinorCompact } from "../../../domain/money";
-import { monthLabel, monthName, tr } from "../../../i18n/tr";
+import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import {
   settingValue,
   toTxLike,
@@ -36,12 +36,12 @@ import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
+import { categoryIcon } from "../../../data/category-icons";
 
 type MatrixMode = "cards" | "rows" | "columns";
 
-/** Phone toolbar item: icon + always-visible mini caption. The stack fits the
- *  same 44px band the old icon-only row used, so the table area is unchanged
- *  while every tool's purpose stays readable without a long-press. */
+/** Phone toolbar item: icon + always-visible mini caption. Five equal tools
+ *  share one 44px band so the matrix, not its chrome, owns the screen. */
 function MatrixTool({
   icon: IconCmp,
   caption,
@@ -60,23 +60,23 @@ function MatrixTool({
       accessibilityLabel={label}
       onPress={onPress}
       hitSlop={6}
-      style={{ flex: 1, minHeight: controlSize.minimumTarget, alignItems: "center", justifyContent: "center", gap: 2 }}
+      style={{ flex: 1, flexBasis: 0, minWidth: 0, minHeight: controlSize.minimumTarget, alignItems: "center", justifyContent: "center", gap: 1 }}
     >
       {({ pressed }) => (
         <>
           <View
             style={{
-              width: 28,
+              width: 30,
               height: 28,
-              borderRadius: 14,
-              backgroundColor: pressed ? palette.surfaceHover : palette.surfaceAlt,
+              borderRadius: radius.sm,
+              backgroundColor: pressed ? palette.surfaceHover : "transparent",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
             <IconCmp accessible={false} size={15} color={palette.textSecondary} strokeWidth={2} />
           </View>
-          <Text style={[type.small, { fontSize: 10, color: palette.textSecondary, textAlign: "center" }]}>{caption}</Text>
+          <Text style={[type.small, { fontSize: 9, lineHeight: 11, color: palette.textSecondary, textAlign: "center" }]}>{caption}</Text>
         </>
       )}
     </Pressable>
@@ -98,20 +98,11 @@ function FlowStat({
 }) {
   return (
     <View style={{ flex: 1, minWidth: 0, alignItems: "center", paddingHorizontal: 2 }}>
-      <View
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: 15,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: color + "1A",
-        }}
-      >
-        <Icon accessible={false} size={15} color={color} />
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs }}>
+        <Icon accessible={false} size={13} color={color} />
+        <Text style={[type.small, { color: foreground, textAlign: "center", fontSize: 11 }]}>{label}</Text>
       </View>
-      <Text style={[type.small, { color: foreground, textAlign: "center", marginTop: spacing.xs, minHeight: 32 }]}>{label}</Text>
-      <Text style={[type.amountSm, { color: foreground, textAlign: "center", fontSize: 12 }]}>{formatMinorCompact(amountMinor)}</Text>
+      <Text style={[type.amountSm, { color: foreground, textAlign: "center", fontSize: 12, marginTop: 2 }]}>{formatMinorCompact(amountMinor)}</Text>
     </View>
   );
 }
@@ -152,18 +143,15 @@ export default function CashflowScreen() {
   const wide = shouldUseWideWorkspace(width);
   const router = useRouter();
   const { palette } = useTheme();
-  const [mode, setMode] = useState<MatrixMode>("rows");
+  // A new phone session opens in the reflowed month summary; both matrix
+  // orientations stay one tap away and an existing preference still wins.
+  const [mode, setMode] = useState<MatrixMode>(wide ? "columns" : "cards");
+  const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [tableAreaH, setTableAreaH] = useState(0);
-  // Card view: scroll the current month into view on open (mirrors the table's
-  // current-month centering). Reset the one-shot flag whenever view/year flips.
-  const cardsScrollRef = React.useRef<ScrollView>(null);
+  // The tab's repeat-press behavior needs the active month-focused scroller.
+  const monthFocusScrollRef = React.useRef<ScrollView>(null);
   const tableRef = useRef<ScrollView>(null);
-  const didFocusCards = React.useRef(false);
-  React.useEffect(() => {
-    didFocusCards.current = false;
-  }, [mode, year]);
-
   React.useEffect(() => {
     void kv.get("helix.matrix.mode").then((v) => {
       if (v === "cards" || v === "rows" || v === "columns") setMode(v);
@@ -181,6 +169,7 @@ export default function CashflowScreen() {
     setPinnedKey(next);
     void kv.set("helix.matrix.pinned", next ?? "");
   };
+  const focusMonth = `${year}-${String(focusMonthNumber).padStart(2, "0")}` as MonthKey;
 
   const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
   const txLike = toTxLike(allTx, persons, categories);
@@ -214,7 +203,7 @@ export default function CashflowScreen() {
   // This tab hosts its own scroller instead of `Screen`'s, and swaps between
   // two, so the tab-press-returns-to-top hook is pointed at whichever view is
   // mounted. The hook re-subscribes when the ref identity changes.
-  useScrollToTop(showTable ? tableRef : cardsScrollRef);
+  useScrollToTop(showTable ? tableRef : monthFocusScrollRef);
   // In column-focused view the categories are rows, so the editor label flips.
   const editLabel = orientation === "monthsAsColumns" ? tr.cashflow.editRows : tr.cashflow.editColumns;
   // Open the column/row editor as a modal so closing returns to Mali Tablo
@@ -223,25 +212,35 @@ export default function CashflowScreen() {
 
   return (
     <Screen title={tr.cashflow.title} right={yearSwitcher} maxWidth={wide ? 1200 : 760} scroll={false} padded>
-      {/* On phones keep the primary action full-width, then expose every
-          secondary tool in one balanced icon row. This remains overflow-free
-          at 320px without hiding features behind an undiscoverable menu. */}
+      {/* On phones keep the primary action full-width and every secondary tool
+          in one compact row. The matrix remains the dominant work surface. */}
+      <View
+        style={{
+          backgroundColor: palette.surface,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: palette.border + "70",
+          paddingHorizontal: wide ? spacing.md : spacing.sm,
+          paddingVertical: wide ? spacing.md : spacing.sm,
+          marginBottom: spacing.sm,
+        }}
+      >
       {wide ? (
-        <Row gap={spacing.sm} style={{ marginBottom: spacing.md, flexWrap: "wrap" }}>
+        <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
           <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
           <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
           <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
           <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
-          {showTable ? <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} /> : null}
+          <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} />
           <Button icon={PiggyBank} size="sm" label={tr.cashflow.openingLink} variant="ghost" onPress={() => router.push("/opening-balance")} />
         </Row>
       ) : (
-        <View style={{ marginBottom: spacing.sm, gap: spacing.sm }}>
+        <View style={{ gap: spacing.xs }}>
           <View>
             <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
           </View>
-          <Row gap={spacing.xs} style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            {showTable ? <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} /> : null}
+          <Row gap={2} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap" }}>
+            <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} />
             <MatrixTool icon={CreditCard} caption={tr.cashflow.toolInstallments} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
             <MatrixTool icon={ChartNoAxesColumn} caption={tr.cashflow.toolAnalysis} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
             <MatrixTool icon={CalendarPlus} caption={tr.cashflow.toolBulk} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
@@ -249,6 +248,7 @@ export default function CashflowScreen() {
           </Row>
         </View>
       )}
+      </View>
 
       <DataStateNotice status={dataStatus} retry={retryData} />
 
@@ -294,48 +294,254 @@ export default function CashflowScreen() {
               ) : null}
             </View>
           ) : (
-            <ScrollView ref={cardsScrollRef} showsVerticalScrollIndicator={false}>
-              {bundle.yearMonths.map((m) => {
-                const isCurrent = m.month === monthKeyOf(todayISO());
-                // Total and breakdown come from one source: a future month's
-                // planned rows are already in its category cells, so the card
-                // must not show them as three zeros under a carried balance.
-                const flows = monthFlowTotals(m);
-                return (
-                  <Card
-                    key={m.month}
-                    onPress={() => router.push(`/cash-flow/${m.month}`)}
-                    style={isCurrent ? { backgroundColor: palette.primarySoft } : undefined}
-                    onLayout={
-                      isCurrent
-                        ? (e) => {
-                            if (didFocusCards.current) return;
-                            didFocusCards.current = true;
-                            const y = e.nativeEvent.layout.y;
-                            requestAnimationFrame(() =>
-                              cardsScrollRef.current?.scrollTo({ y: Math.max(0, y - spacing.lg), animated: false }),
-                            );
-                          }
-                        : undefined
-                    }
-                  >
-                    <Spread>
-                      <Text style={[type.heading, { color: isCurrent ? palette.primaryText : palette.text }]}>{monthLabel(m.month)}</Text>
-                      <Amount minor={flows.closingMinor} />
-                    </Spread>
-                    <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.md, alignItems: "stretch" }}>
-                      <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={flows.incomeMinor} color={palette.positive} foreground={palette.positiveText} />
-                      <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={flows.expenseMinor} color={palette.negative} foreground={palette.negativeText} />
-                      <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={flows.transferMinor} color={palette.textSecondary} />
-                    </View>
-                  </Card>
-                );
-              })}
+            <ScrollView ref={monthFocusScrollRef} showsVerticalScrollIndicator={false}>
+              <MonthFocusTable
+                year={year}
+                month={focusMonth}
+                onMonthChange={setFocusMonthNumber}
+                bundle={bundle}
+                columnCategories={columnCategories}
+                computedColumns={visibleComputed}
+                creditCardIds={creditCardIds}
+                liveCategoryIds={liveCategoryIds}
+                txLike={txLike}
+                cellNotes={cellNotesState.data}
+              />
             </ScrollView>
           )}
         </View>
       )}
     </Screen>
+  );
+}
+
+function MonthFocusTable({
+  year,
+  month,
+  onMonthChange,
+  bundle,
+  columnCategories,
+  computedColumns,
+  creditCardIds,
+  liveCategoryIds,
+  txLike,
+  cellNotes,
+}: {
+  year: number;
+  month: MonthKey;
+  onMonthChange: (monthNumber: number) => void;
+  bundle: LedgerBundle;
+  columnCategories: ReturnType<typeof useCategoriesState>["data"];
+  computedColumns: ReturnType<typeof useComputedColumnsState>["data"];
+  creditCardIds: Set<string>;
+  liveCategoryIds: Set<string>;
+  txLike: ReturnType<typeof toTxLike>;
+  cellNotes: ReturnType<typeof useCellNotesState>["data"];
+}) {
+  const { palette } = useTheme();
+  const router = useRouter();
+  const today = todayISO();
+  const monthNumber = Number(month.slice(5, 7));
+  const matrix = buildCashFlowMatrixModel({
+    year,
+    yearMonths: bundle.yearMonths,
+    categories: columnCategories,
+    computedColumns,
+    transactions: txLike,
+    creditCardIds,
+    liveCategoryIds,
+    today,
+    openingLabel: tr.cashflow.opening,
+    closingLabel: tr.cashflow.closing,
+  });
+  const monthData = bundle.yearMonths.find((item) => item.month === month);
+  const flows = monthData ? monthFlowTotals(monthData) : null;
+  const noteByCategory = new Map(
+    cellNotes.filter((note) => note.month === month).map((note) => [note.categoryId, note.body]),
+  );
+  const adjustmentNote = monthData?.adjustmentMinor
+    ? tr.cashflow.adjustedCell(formatMinor(monthData.adjustmentMinor))
+    : undefined;
+
+  const actionFor = (column: CashFlowMatrixColumn): (() => void) | undefined => {
+    if (column.categoryId) {
+      return () => router.push({ pathname: "/cell-editor", params: { month, categoryId: column.categoryId! } });
+    }
+    if (column.key === "closing" && adjustmentNote) return () => router.push("/opening-balance" as Href);
+    if (column.system) return undefined;
+    return () => router.push({
+      pathname: "/cash-flow/item",
+      params: {
+        col: column.key,
+        label: column.label,
+        year: String(year),
+        kind: "computed",
+      },
+    });
+  };
+
+  return (
+    <View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          backgroundColor: palette.surface,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border,
+          borderRadius: radius.md,
+          padding: spacing.xs,
+          marginBottom: spacing.sm,
+        }}
+      >
+        <IconButton
+          icon={ChevronLeft}
+          size={36}
+          label={monthLabel(`${year}-${String(Math.max(1, monthNumber - 1)).padStart(2, "0")}`)}
+          disabled={monthNumber <= 1}
+          onPress={() => onMonthChange(monthNumber - 1)}
+        />
+        <Text accessibilityRole="header" style={[type.heading, { color: month === monthKeyOf(today) ? palette.primaryText : palette.text }]}>
+          {monthLabel(month)}
+        </Text>
+        <IconButton
+          icon={ChevronRight}
+          size={36}
+          label={monthLabel(`${year}-${String(Math.min(12, monthNumber + 1)).padStart(2, "0")}`)}
+          disabled={monthNumber >= 12}
+          onPress={() => onMonthChange(monthNumber + 1)}
+        />
+      </View>
+
+      {flows ? (
+        <Card style={{ padding: spacing.md }}>
+          <Spread style={{ alignItems: "center" }}>
+            <View>
+              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.closing}</Text>
+              <Amount minor={flows.closingMinor} large />
+            </View>
+            <IconButton icon={ChevronRight} size={36} label={tr.cashflow.openMonth} onPress={() => router.push(`/cash-flow/${month}`)} />
+          </Spread>
+          <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.sm }}>
+            <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={flows.incomeMinor} color={palette.positive} foreground={palette.positiveText} />
+            <FlowStat icon={ArrowDownRight} label={tr.cashflow.expense} amountMinor={flows.expenseMinor} color={palette.negative} foreground={palette.negativeText} />
+            <FlowStat icon={ArrowLeftRight} label={tr.cashflow.transfer} amountMinor={flows.transferMinor} color={palette.textSecondary} />
+          </View>
+        </Card>
+      ) : null}
+
+      <Card padded={false}>
+        <View
+          style={{
+            minHeight: 42,
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: spacing.md,
+            backgroundColor: palette.surfaceAlt,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.border,
+          }}
+        >
+          <Text style={[type.label, { color: palette.textSecondary, flex: 1 }]}>{tr.cashflow.itemHeader}</Text>
+          <Text style={[type.label, { color: palette.textSecondary, width: 108, textAlign: "right" }]}>{tr.tx.amount}</Text>
+        </View>
+        {matrix.columns.map((column, index) => {
+          const category = column.categoryId
+            ? columnCategories.find((item) => item.id === column.categoryId)
+            : undefined;
+          const value = column.values.get(month) ?? 0;
+          const note = column.key === "closing"
+            ? adjustmentNote
+            : column.categoryId
+              ? noteByCategory.get(column.categoryId)
+              : undefined;
+          const onPress = actionFor(column);
+          const iconText = category ? categoryIcon(category) : null;
+          return (
+            <Pressable
+              key={column.key}
+              disabled={!onPress}
+              onPress={onPress}
+              role={onPress ? "button" : "group"}
+              accessibilityLabel={tr.a11y.matrixCell(monthLabel(month), column.label, formatMinor(value), Boolean(note))}
+              accessibilityHint={note}
+              style={({ pressed }) => ({
+                minHeight: 48,
+                flexDirection: "row",
+                alignItems: "center",
+                paddingLeft: spacing.sm,
+                paddingRight: spacing.md,
+                borderBottomWidth: index < matrix.columns.length - 1 ? StyleSheet.hairlineWidth : 0,
+                borderColor: palette.border,
+                backgroundColor: pressed ? palette.surfaceHover : "transparent",
+              })}
+            >
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  flexShrink: 0,
+                  borderRadius: 10,
+                  backgroundColor: column.computed ? palette.tertiarySoft : palette.surfaceAlt,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: spacing.sm,
+                }}
+              >
+                {column.computed ? (
+                  <Sigma accessible={false} size={15} color={palette.tertiaryText} />
+                ) : iconText ? (
+                  <Text style={{ fontSize: 14 }}>{iconText}</Text>
+                ) : (
+                  <PiggyBank accessible={false} size={15} color={palette.textSecondary} />
+                )}
+              </View>
+              <View style={{ flex: 1, minWidth: 0, paddingVertical: spacing.sm }}>
+                <Text testID="table-row-label" style={[type.label, { color: onPress ? palette.text : palette.textSecondary }]}>
+                  {column.label}
+                </Text>
+                {note ? (
+                  <Text style={[type.small, { color: column.key === "closing" ? palette.primaryText : palette.warningText, marginTop: 2 }]}>
+                    {note}
+                  </Text>
+                ) : null}
+              </View>
+              <Text
+                testID="matrix-value"
+                style={[
+                  type.amountSm,
+                  {
+                    width: 108,
+                    textAlign: "right",
+                    color: value < 0 ? palette.negativeText : value === 0 ? palette.textSecondary : palette.text,
+                    fontSize: 12,
+                  },
+                ]}
+              >
+                {formatMinorCompact(value)}
+              </Text>
+            </Pressable>
+          );
+        })}
+        {matrix.hasUncategorized ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push({
+              pathname: "/cash-flow/item",
+              params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
+            })}
+            style={{ padding: spacing.md, backgroundColor: palette.warning + "12" }}
+          >
+            <Spread>
+              <Text style={[type.label, { color: palette.warningText, flex: 1 }]}>{tr.cashflow.uncategorizedLegacy}</Text>
+              <Text style={[type.amountSm, { color: palette.warningText }]}>{formatMinorCompact(matrix.uncategorizedTotal)}</Text>
+            </Spread>
+            <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
+          </Pressable>
+        ) : null}
+      </Card>
+    </View>
   );
 }
 
@@ -371,6 +577,7 @@ function MatrixTable({
   scrollRef: React.RefObject<ScrollView | null>;
 }) {
   const { palette } = useTheme();
+  const { width: viewportWidth } = useWindowDimensions();
   const router = useRouter();
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
@@ -405,9 +612,78 @@ function MatrixTable({
   });
   const { months, columns, hasUncategorized, uncategorizedTotal } = matrix;
 
-  const CELL_W = compact ? 104 : 128;
-  const HEAD_W = compact ? 80 : 132;
-  const fontSize = compact ? 12 : 13;
+  /**
+   * The two pivots do not share a useful first-column shape.
+   *
+   * - Row-focused: the fixed column contains month names, so keeping it narrow
+   *   buys another complete financial column on a phone.
+   * - Column-focused: the fixed column contains user-authored category names,
+   *   so it gets prose width and may grow vertically instead of crushing text
+   *   into the same month-sized box.
+   */
+  // The compact month rail follows the longest translated month instead of a
+  // category-derived fixed width. The measured 13px semibold glyph ceiling is
+  // 7.7px; two `md` insets keep every month on one line with real breathing
+  // room. The other pivot keeps its wider prose rail.
+  const compactMonthHeadWidth = Math.ceil(
+    months.reduce((longest, month) => Math.max(longest, monthName(month.month).length), 0) * 7.7
+      + spacing.md * 2,
+  );
+  const HEAD_W = orientation === "monthsAsRows"
+    ? (compact ? compactMonthHeadWidth : 96)
+    : (compact ? 112 : 168);
+  const HEAD_HORIZONTAL_PADDING = orientation === "monthsAsRows" && compact ? spacing.md : spacing.sm;
+  const visibleColumnCount = orientation === "monthsAsRows" ? columns.length : months.length;
+  // `Screen`'s max width includes its horizontal padding. Size against the
+  // actual inner surface so the last fitted column ends on the card edge
+  // instead of leaving a gap or creating a hidden 32px overflow.
+  const availableTableWidth = Math.min(viewportWidth, 1200) - spacing.lg * 2;
+  const longestValueChars = columns.reduce(
+    (longest, column) => Math.max(
+      longest,
+      ...months.map((month) => {
+        const value = column.values.get(month.month) ?? 0;
+        return value === 0 ? 0 : formatMinorCompact(value).length;
+      }),
+    ),
+    0,
+  );
+  // Compact cells render tabular figures at 11px. Their widest measured glyph
+  // is ~6.2px; the 4px edge insets below make a ten-character TRY amount fit a
+  // 70px cell without wrapping. Wider real values still grow the cell rather
+  // than squeezing or clipping the amount.
+  const valueSafeCellWidth = compact
+    ? Math.ceil(longestValueChars * 6.2 + spacing.xs * 2)
+    : Math.ceil(longestValueChars * 7.2 + spacing.sm * 2);
+  const longestHeaderChars = orientation === "monthsAsRows"
+    ? columns.reduce((longest, column) => Math.max(longest, Math.min(column.label.length, 24)), 0)
+    : months.reduce((longest, month) => Math.max(longest, (compact ? shortMonthLabel(month.month) : monthName(month.month)).length), 0);
+  // Header markers reserve 48px at both sides together. Give ordinary names
+  // enough room for one or two balanced lines. Longer user-authored names keep
+  // wrapping and grow the shared header height.
+  const headerSafeCellWidth = Math.min(168, Math.max(112, Math.ceil(longestHeaderChars * 5.8 + 48)));
+  // Fit an integer number of complete columns in the desktop viewport. A
+  // clipped half-header at the right edge technically signalled scrolling but
+  // looked broken; the next column now starts beyond the edge as one unit.
+  const bodyTableWidth = Math.max(1, availableTableWidth - HEAD_W);
+  const naturalCellWidth = Math.max(112, valueSafeCellWidth, headerSafeCellWidth);
+  const wholeColumnCount = visibleColumnCount > 0
+    ? Math.min(visibleColumnCount, Math.max(1, Math.floor(bodyTableWidth / naturalCellWidth)))
+    : 1;
+  const wholeColumnCellWidth = Math.floor(bodyTableWidth / wholeColumnCount);
+  // Phones/tablets favor complete columns too, but let ordinary headers wrap.
+  // The orientation-specific pinned column determines how many complete data
+  // cells fit. The measured value floor remains authoritative, so an unusually
+  // long amount widens the cells instead of wrapping a financial figure.
+  const compactNaturalCellWidth = Math.max(70, valueSafeCellWidth);
+  const compactWholeColumnCount = visibleColumnCount > 0
+    ? Math.min(visibleColumnCount, Math.max(1, Math.floor(bodyTableWidth / compactNaturalCellWidth)))
+    : 1;
+  const compactWholeColumnCellWidth = Math.floor(bodyTableWidth / compactWholeColumnCount);
+  const CELL_W = compact
+    ? Math.max(compactNaturalCellWidth, Math.min(144, compactWholeColumnCellWidth))
+    : Math.max(naturalCellWidth, Math.min(320, wholeColumnCellWidth));
+  const fontSize = compact ? 11 : 13;
   // Reserve enough for the two-line hint below the table; the card clips
   // (overflow:hidden), so an under-estimate cut the hint in half on phones.
   const HINT_H = 30;
@@ -422,6 +698,9 @@ function MatrixTable({
   // instead of stretching to a fixed height with dead space; with many rows it
   // caps at the available height and scrolls inside.
   const rowCount = orientation === "monthsAsRows" ? months.length : columns.length;
+  // StickyTable measures the actual header copy and adds only its shared small
+  // inset. This is the minimum used for initial content sizing; category
+  // headers grow from their text while short month headers stay at this floor.
   const naturalTableH = STICKY_HEADER_HEIGHT + rowCount * STICKY_ROW_HEIGHT + spacing.sm;
   const availTableH = Math.max(160, measuredHeight - HINT_H - FOOTER_GAP);
   const tableHeight = Math.min(naturalTableH, availTableH);
@@ -511,7 +790,11 @@ function MatrixTable({
     }));
   } else {
     cornerLabel = tr.cashflow.itemHeader;
-    stickyColumns = months.map((slot) => ({ key: slot.month, label: monthName(slot.month) }));
+    stickyColumns = months.map((slot) => ({
+      key: slot.month,
+      label: compact ? shortMonthLabel(slot.month) : monthName(slot.month),
+      accessibilityLabel: monthName(slot.month),
+    }));
     currentColumnKey = currentMonth;
     stickyRows = columns.map((c) => ({
       key: c.key,
@@ -545,6 +828,7 @@ function MatrixTable({
         columns={stickyColumns}
         rows={stickyRows}
         headWidth={HEAD_W}
+        headHorizontalPadding={HEAD_HORIZONTAL_PADDING}
         cellWidth={CELL_W}
         currentColumnKey={currentColumnKey}
         focusColumnKey={isColumns ? focusMonth : undefined}
@@ -614,25 +898,19 @@ function MatrixCell({
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       // A cell that cannot be opened (a system column, or one with nothing to
-      // edit) still has to announce its month/column/value, but an aria-label
-      // on a roleless element is discarded by assistive tech and fails axe's
-      // `aria-prohibited-attr`. `text` is the role that carries a name without
-      // implying an action.
-      // A cell that cannot be opened still has to announce its month/column and
-      // value, but an aria-label on a ROLELESS element is discarded by assistive
-      // tech and fails axe `aria-prohibited-attr`. RN Web maps `text` to no role
-      // at all, so the passthrough `group` role is what actually carries a name
-      // here without implying an action.
+      // edit) still has to announce its month/column/value. A labelled group
+      // keeps that context without implying an action.
       role={onPress ? "button" : "group"}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={note}
       style={[
-        { flex: 1, justifyContent: "center", paddingHorizontal: spacing.sm },
+        { flex: 1, justifyContent: "center", paddingHorizontal: fontSize <= 11 ? 2 : spacing.sm },
         highlighted && { backgroundColor: palette.primarySoft + "55" },
         hovered && onPress && { backgroundColor: palette.primarySoft },
       ]}
     >
       <Text
+        testID="matrix-value"
         style={[
           type.amountSm,
           { fontSize, color: value == null || value === 0 ? palette.textSecondary : value < 0 ? palette.negativeText : palette.text, textAlign: "right" },

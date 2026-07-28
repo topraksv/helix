@@ -2,7 +2,7 @@
  *  groups, trial badges, next due dates; tap to edit, swipe-free management. */
 
 import React from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Plus, RefreshCw, Repeat } from "lucide-react-native";
 import { normalizedMonthlyLoadMinor, subscriptionLoadTry } from "../../domain/analytics";
@@ -18,8 +18,50 @@ import { Amount, Body, Button, Card, CardList, DataStateNotice, EmptyState, Scre
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
-import { spacing } from "../../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { appAlert } from "../../ui/dialog";
+
+function SubscriptionOrbit({ count }: { count: number }) {
+  const { palette } = useTheme();
+  return (
+    <View
+      accessible={false}
+      style={{
+        width: 82,
+        height: 82,
+        flexShrink: 0,
+        borderRadius: radius.lg,
+        backgroundColor: palette.surfaceAlt,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: palette.border,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <View style={{ position: "absolute", width: 60, height: 60, borderRadius: 30, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.tertiary + "90" }} />
+      {Array.from({ length: 12 }, (_, index) => {
+        const angle = (index / 12) * Math.PI * 2 - Math.PI / 2;
+        return (
+          <View
+            key={index}
+            style={{
+              position: "absolute",
+              width: index < Math.min(count, 12) ? 5 : 3,
+              height: index < Math.min(count, 12) ? 5 : 3,
+              borderRadius: 3,
+              backgroundColor: index < Math.min(count, 12) ? palette.primary : palette.border,
+              left: 39 + Math.cos(angle) * 29,
+              top: 39 + Math.sin(angle) * 29,
+            }}
+          />
+        );
+      })}
+      <View style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" }}>
+        <Repeat accessible={false} size={19} color={palette.primary} />
+      </View>
+    </View>
+  );
+}
 
 export default function SubscriptionsScreen() {
   const userId = useUserId();
@@ -29,6 +71,7 @@ export default function SubscriptionsScreen() {
   const persons = personsState.data;
   const router = useRouter();
   const undo = useUndo();
+  const { palette } = useTheme();
   const today = todayISO();
   // Re-render when FX rates land after a cold start so foreign-currency totals
   // settle on the real TRY value instead of the raw amount.
@@ -109,16 +152,20 @@ export default function SubscriptionsScreen() {
     <Screen title={tr.subs.title}>
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Card>
-        <Spread>
-          <View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <SubscriptionOrbit count={active.length} />
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Body muted>{personalLoad.missingRates > 0 ? tr.subs.knownMonthlyLoad : tr.subs.monthlyLoad}</Body>
             <Amount minor={personalLoad.totalMinor} large colorized={false} />
+            <Text style={[type.small, { color: palette.primaryText, fontFamily: font.semibold, marginTop: spacing.xs }]}>
+              {tr.subs.activeCount(active.length)}
+            </Text>
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Body muted>{tr.subs.yearlyTotal}</Body>
             <Amount minor={personalLoad.totalMinor * 12} colorized={false} />
           </View>
-        </Spread>
+        </View>
       </Card>
       {personalLoad.missingRates > 0 ? <Body muted>{tr.subs.fxExcluded(personalLoad.missingRates)}</Body> : null}
 

@@ -223,6 +223,10 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   // Choosing WHEN to search never depended on choosing a payment method: the
   // period field is usable from the start, and picking a source or clearing it
   // back to "Tümü" leaves it alone.
+  const searchFilters = page.getByRole("button", { name: "Arama filtreleri", exact: true });
+  await expect(searchFilters).toHaveAttribute("aria-expanded", "false");
+  await searchFilters.click();
+  await expect(page.getByRole("button", { name: "Filtreleri gizle", exact: true })).toHaveAttribute("aria-expanded", "true");
   const period = page.getByRole("button", { name: "Arama dönemi", exact: true });
   await expect(period).toBeEnabled();
   await page.getByRole("button", { name: "Ödeme yöntemi", exact: true }).click();

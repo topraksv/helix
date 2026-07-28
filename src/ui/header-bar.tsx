@@ -20,7 +20,7 @@
  */
 
 import React, { type ReactNode } from "react";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controlSize, font, spacing, type, useTheme, type Palette } from "./theme";
 
@@ -31,7 +31,14 @@ export function HeaderBar({ title, left }: { title?: string; left?: ReactNode })
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   return (
-    <View style={{ backgroundColor: palette.surface, paddingTop: insets.top }}>
+    <View
+      style={{
+        backgroundColor: palette.background,
+        paddingTop: insets.top,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: palette.border + "70",
+      }}
+    >
       <View style={{ minHeight: HEADER_ROW_HEIGHT, flexDirection: "row", alignItems: "center" }}>
         {left}
         {title ? (
@@ -49,7 +56,7 @@ export function HeaderBar({ title, left }: { title?: string; left?: ReactNode })
                 // The title sits against the back control when there is one,
                 // and on the screen gutter when there is not. Either way it
                 // shares the row's vertical centre with the chevron.
-                paddingLeft: left ? 0 : spacing.lg,
+                paddingLeft: spacing.md,
                 paddingRight: spacing.lg,
               },
             ]}
@@ -67,7 +74,7 @@ export function HeaderBar({ title, left }: { title?: string; left?: ReactNode })
 
 export function stackScreenOptions(palette: Palette) {
   return {
-    headerStyle: { backgroundColor: palette.surface },
+    headerStyle: { backgroundColor: palette.background },
     headerTintColor: palette.accentText,
     headerTitleStyle: { color: palette.textStrong, fontFamily: font.semibold },
     headerBackButtonDisplayMode: "minimal" as const,

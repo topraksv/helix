@@ -1,7 +1,7 @@
 /**
  * Three regressions that only a real render proves:
  *
- * - a future month's card showed a carried balance above three zeros while the
+ * - a future month's summary showed a carried balance above three zeros while the
  *   table cell beside it already listed the planned amount;
  * - the transfer classification was repeated as a live switch under every
  *   single expense column;
@@ -12,6 +12,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addMonthsToKey } from "../src/domain/dates";
 import { currentMonthKey, isolateExternalData, onboard, pickOption } from "./helpers";
+import { monthLabel } from "../src/i18n/tr";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -30,7 +31,7 @@ async function addPlannedExpense(page: Page, months: number, amount: string): Pr
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeHidden();
 }
 
-test("a future month card states the planned flows behind its own total", async ({ page }) => {
+test("a future month focus states the planned flows behind its own total", async ({ page }) => {
   await onboard(page);
   await addPlannedExpense(page, 2, "5.000,00");
   const planned = addMonthsToKey(currentMonthKey(), 2);
@@ -42,11 +43,17 @@ test("a future month card states the planned flows behind its own total", async 
   await expect(expenseRow).not.toContainText("-₺0,00");
   await expect(page.getByRole("button", { name: /Market.*5\.000,00/ })).toBeVisible();
 
-  // …and so is the "Ay odaklı" card for the same month.
+  // …and so is the month-focused statement for the same month.
   await page.getByRole("tab", { name: "Mali Tablo" }).click();
   await page.getByRole("radio", { name: "Ay odaklı" }).click();
-  const card = page.getByRole("button").filter({ hasText: /5\.000,00/ }).first();
-  await expect(card).toBeVisible();
+  for (let step = 1; step <= 2; step++) {
+    await page.getByRole("button", { name: monthLabel(addMonthsToKey(currentMonthKey(), step)), exact: true }).click();
+  }
+  await expect(page.getByRole("heading", { name: monthLabel(planned), exact: true })).toBeVisible();
+  await expect(page.getByText("Gider", { exact: true })).toBeVisible();
+  await expect(page.getByText("₺5.000,00", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("-₺5.000,00", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Market.*5\.000,00/ })).toBeVisible();
 });
 
 test("an untouched month still reads zero rather than a borrowed number", async ({ page }) => {

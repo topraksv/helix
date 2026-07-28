@@ -1,7 +1,8 @@
 /** Undo snackbar (approved feature): shown after deletes, restores tombstoned rows. */
 
 import React from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Check, RotateCcw, TriangleAlert } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { FadeIn } from "./components";
@@ -17,6 +18,7 @@ type UndoTone = Extract<HapticKind, "success" | "warning">;
 interface UndoState {
   message: string | null;
   onUndo: (() => Promise<unknown> | unknown) | null;
+  tone: UndoTone;
   /** `onUndo` is optional: the same bar also confirms an action that has
    *  nothing to take back, and then renders without the action label. */
   show: (message: string, onUndo?: (() => Promise<unknown> | unknown) | null, tone?: UndoTone) => void;
@@ -28,21 +30,25 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 export const useUndo = create<UndoState>((set) => ({
   message: null,
   onUndo: null,
+  tone: "success",
   show: (message, onUndo = null, tone = "success") => {
     if (hideTimer) clearTimeout(hideTimer);
     haptic(tone);
-    set({ message, onUndo: onUndo ?? null });
-    hideTimer = setTimeout(() => set({ message: null, onUndo: null }), 6000);
+    set({ message, onUndo: onUndo ?? null, tone });
+    // Pure confirmations leave quickly; an undo action or warning stays long
+    // enough to be read and acted on without becoming permanent chrome.
+    const duration = onUndo || tone === "warning" ? 6000 : 3600;
+    hideTimer = setTimeout(() => set({ message: null, onUndo: null, tone: "success" }), duration);
   },
   clear: () => {
     if (hideTimer) clearTimeout(hideTimer);
-    set({ message: null, onUndo: null });
+    set({ message: null, onUndo: null, tone: "success" });
   },
 }));
 
 export function UndoSnackbar() {
   const { palette } = useTheme();
-  const { message, onUndo, clear } = useUndo();
+  const { message, onUndo, tone, clear } = useUndo();
   const insets = useSafeAreaInsets();
   const [undoing, setUndoing] = React.useState(false);
   if (!message) return null;
@@ -64,7 +70,7 @@ export function UndoSnackbar() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: spacing.lg,
+          gap: spacing.sm,
           backgroundColor: palette.text,
           borderRadius: radius.md,
           paddingVertical: spacing.md,
@@ -72,7 +78,27 @@ export function UndoSnackbar() {
           ...overlayShadow,
         }}
       >
-        <Text style={[type.body, { color: palette.background }]}>{message}</Text>
+        <View
+          accessible={false}
+          style={{
+            width: 26,
+            height: 26,
+            flexShrink: 0,
+            borderRadius: 10,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.background + "70",
+            backgroundColor: palette.background + "18",
+          }}
+        >
+          {tone === "warning" ? (
+            <TriangleAlert size={14} color={palette.background} />
+          ) : (
+            <Check size={15} color={palette.background} strokeWidth={2.5} />
+          )}
+        </View>
+        <Text style={[type.body, { color: palette.background, flexShrink: 1 }]}>{message}</Text>
         {onUndo ? (
           <Pressable
             accessibilityRole="button"
@@ -99,9 +125,12 @@ export function UndoSnackbar() {
             {/* Inverted surface: the action shares the message's ink (an accent
                 role would land near-invisible on `palette.text`) and is set
                 apart by weight instead of colour. */}
-            <Text style={[type.label, { color: palette.background, fontFamily: font.bold, fontSize: 15 }]}>
-              {tr.common.undo}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <RotateCcw accessible={false} size={14} color={palette.background} />
+              <Text style={[type.label, { color: palette.background, fontFamily: font.bold, fontSize: 15 }]}>
+                {tr.common.undo}
+              </Text>
+            </View>
           </Pressable>
         ) : null}
       </View>

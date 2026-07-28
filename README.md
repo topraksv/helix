@@ -23,7 +23,7 @@ subscriptions and budgets — with a spreadsheet mind and a mobile heart.*
 </div>
 
 <p align="center">
-  <img src="assets/screenshots/dashboard-dark.png" alt="Özet ekranı: güncel bakiye ₺287.719,01, ay sonu tahmini ve yaklaşan abonelik ödemeleri listesi" width="300">
+  <img src="assets/screenshots/dashboard-dark.png" alt="Özet ekranı: güncel bakiye, ay sonu tahmini, bu ayın akış özeti ve canlı piyasalar" width="300">
 </p>
 
 ## Neden Helix?
@@ -45,7 +45,7 @@ hesaplamayı, tekrarları ve veri güvenliğini senin yerine üstlenir.
 
 | Mali Tablo | Abonelikler | Analiz |
 |:---:|:---:|:---:|
-| <img src="assets/screenshots/cash-flow-dark.png" alt="Mali Tablo: 2026 yılının ay × kategori matrisi, sabitlenmiş Ay sütunu ve içinde bulunulan ay vurgulanmış" width="240"> | <img src="assets/screenshots/subscriptions-dark.png" alt="Abonelikler: aylık ₺1.538,86 ve yıllık ₺18.466,32 toplam maliyet, marka logolu Netflix, Spotify, YouTube Premium ve iCloud kartları" width="240"> | <img src="assets/screenshots/analytics-dark.png" alt="Analiz: dönem ve tür filtreleri, işlem arama alanı ve kalan tutarı gösteren Temmuz kategori bütçeleri" width="240"> |
+| <img src="assets/screenshots/cash-flow-dark.png" alt="Mali Tablo: 2026 Temmuz ayı bakiyesi, akış özeti ve düzenlenebilir kalem listesi" width="240"> | <img src="assets/screenshots/subscriptions-dark.png" alt="Abonelikler: aylık ve yıllık maliyet özeti, yeni abonelik eylemi ve boş durum" width="240"> | <img src="assets/screenshots/analytics-dark.png" alt="Analiz: dönem ve kategori seçimi, işlem arama alanı ve açılabilir arama filtreleri" width="240"> |
 | Her ay × kalem hücresi düzenlenebilir; mevcut ay otomatik odaklanır. | Aylık/yıllık toplam maliyet, sonraki ödeme tarihi ve otomatik ödeme bir arada. | Dönem bazlı grafikler, kategori bütçe durumu ve tüm geçmişte işlem arama. |
 
 ## Neler yapabilirsin?

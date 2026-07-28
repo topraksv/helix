@@ -4,7 +4,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, PartyPopper, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
@@ -30,7 +30,7 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, Heading, HeroCard, ListRow, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, HeroCard, ListRow, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
 import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
@@ -42,20 +42,90 @@ import { font, heroSurface, radius, spacing, type, useTheme } from "../../ui/the
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
-// Genuinely fixed, not a floor: as `minWidth` these grew with whatever that one
-// row happened to hold, so a five-digit coin sat a few pixels left of a
-// four-digit one and the "Alış"/"Satış" captions stopped sitting over their own
-// columns. Measured in Inter at the sizes actually used: these hold `99.999,99`
-// (62pt) and `99.999,99 ₺` (91pt), which is past double the dearest quote the
-// feed carries. Every pixel here comes out of the label, whose longest value
-// (`Cumhuriyet Altını`, 121pt) has to stay on one line down to a 375pt phone.
-const MARKET_BUY_W = 66;
-const MARKET_SELL_W = 94;
-const MARKET_TREND_W = 15;
-const MARKET_COL_GAP = spacing.xs;
-
-function MarketsCard() {
+function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number }) {
   const { palette } = useTheme();
+  const currency = code === "USDTRY" ? "$" : code === "EURTRY" ? "€" : null;
+  const frame = {
+    width: size,
+    height: size,
+    flexShrink: 0,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+  };
+  if (currency) {
+    return (
+      <View accessible={false} style={frame}>
+        <View
+          style={{
+            width: 30,
+            height: 22,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: palette.primary + "90",
+            backgroundColor: palette.primarySoft,
+          }}
+        >
+          <View style={{ position: "absolute", left: 3, top: 3, bottom: 3, width: 3, borderRadius: 2, backgroundColor: palette.primary + "90" }} />
+          <View style={{ position: "absolute", right: 3, top: 3, bottom: 3, width: 3, borderRadius: 2, backgroundColor: palette.primary + "90" }} />
+          <Text style={[type.heading, { color: palette.primaryText, fontFamily: font.bold, fontSize: 15 }]}>{currency}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (code === "ALTIN") {
+    return (
+      <View accessible={false} style={frame}>
+        <View
+          style={{
+            width: 30,
+            height: 23,
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: palette.tertiary + "90",
+            backgroundColor: palette.tertiarySoft,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <View style={{ position: "absolute", left: 4, right: 4, top: 4, height: 3, borderRadius: 2, backgroundColor: palette.tertiary + "A0" }} />
+          <Text style={[type.small, { color: palette.tertiaryText, fontFamily: font.bold, fontSize: 9, marginTop: 5 }]}>Au</Text>
+        </View>
+      </View>
+    );
+  }
+
+  const coinMark = code === "CEYREK_YENI" ? "¼" : code === "TEK_YENI" ? "1" : "C";
+  return (
+    <View accessible={false} style={frame}>
+      <View
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 15,
+          alignItems: "center",
+          justifyContent: "center",
+          borderWidth: 1.5,
+          borderColor: palette.tertiary,
+          backgroundColor: palette.tertiarySoft,
+        }}
+      >
+        <View style={{ position: "absolute", inset: 3, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.tertiary + "80" }} />
+        <Text style={[type.small, { color: palette.tertiaryText, fontFamily: font.bold, fontSize: 11 }]}>{coinMark}</Text>
+      </View>
+    </View>
+  );
+}
+
+function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; desktopColumns?: 2 | 3 }) {
+  const { palette } = useTheme();
+  const { width } = useWindowDimensions();
   const userId = useUserId();
   const { prices, status, lastEventAt } = useMarkets();
   useFxRates();
@@ -80,101 +150,118 @@ function MarketsCard() {
       : status === "connecting"
         ? tr.markets.connecting
         : tr.markets.offline;
+  const marketColumns = width >= 960 ? desktopColumns : width >= 360 ? 2 : 1;
 
   return (
-    <Card>
-      <Spread style={{ marginBottom: spacing.xs, alignItems: "flex-start" }}>
-        <Heading style={{ marginVertical: 0, flexShrink: 1 }}>{tr.markets.title}</Heading>
-        <Row gap={spacing.xs} accessible accessibilityLiveRegion="polite" accessibilityLabel={statusLabel}>
+    <>
+      <SectionHeader>{tr.markets.title}</SectionHeader>
+      <Card style={fill ? { flex: 1 } : undefined}>
+        <Row
+          gap={spacing.xs}
+          style={{ justifyContent: "flex-end", marginBottom: spacing.xs }}
+          accessible
+          role="group"
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={statusLabel}
+        >
           {/* The dot claims liveness only once real quotes are flowing. */}
           <View accessible={false} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: status === "live" ? palette.success : palette.textSecondary }} />
           <Text style={[type.small, { color: palette.textSecondary, textAlign: "right", flexShrink: 1 }]}>{statusLabel}</Text>
         </Row>
-      </Spread>
-      {quoted.length > 0 ? (
-        <>
-          {/* column headers over the price columns */}
-          <Spread style={{ marginBottom: spacing.xs }}>
-            <View />
-            <Row gap={MARKET_COL_GAP}>
-              <Text style={[type.small, { color: palette.textSecondary, width: MARKET_BUY_W, textAlign: "right" }]}>{tr.markets.buy}</Text>
-              <Text style={[type.small, { color: palette.textSecondary, width: MARKET_SELL_W, textAlign: "right" }]}>{tr.markets.sell}</Text>
-              <View style={{ width: MARKET_TREND_W }} />
-            </Row>
-          </Spread>
-          {/* Six near-identical number rows read as one block. The rule and the
-              alternating tint are the financial table's own device, and the
-              negative inset lets the band reach the card's edges instead of
-              floating inside its padding — including the bottom one, so the
-              last band ends where the card ends rather than sitting on a strip
-              of untinted surface. */}
-          {quoted.map(({ code, label }, index) => {
-            const p = prices[code]!;
-            const direction = p.direction === "up"
-              ? tr.markets.rising
-              : p.direction === "down"
-                ? tr.markets.falling
-                : tr.markets.unchanged;
-            return (
-              <Spread
-                key={code}
-                accessible
-                accessibilityLabel={tr.markets.quote(label, priceText(p.buyTry), `${priceText(p.sellTry)} ₺`, direction)}
-                style={{
-                  paddingVertical: spacing.sm,
-                  paddingHorizontal: spacing.lg,
-                  marginHorizontal: -spacing.lg,
-                  marginBottom: index === quoted.length - 1 ? -spacing.lg : 0,
-                  borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
-                  borderTopColor: palette.border,
-                  backgroundColor: index % 2 === 1 ? palette.surfaceAlt : "transparent",
-                }}
-              >
-                {/* The label yields the width, never the figures: a number that
-                    wrapped would break the columns it shares with five other
-                    rows. */}
-                <Body style={{ flex: 1, minWidth: 0 }}>{label}</Body>
-                <Row gap={MARKET_COL_GAP} style={{ flexShrink: 0 }}>
-                  <Text style={[type.amountSm, { color: palette.textSecondary, width: MARKET_BUY_W, textAlign: "right" }]}>{priceText(p.buyTry)}</Text>
-                  <Text style={[type.amount, { color: palette.text, width: MARKET_SELL_W, textAlign: "right" }]}>
-                    {`${priceText(p.sellTry)} ₺`}
-                  </Text>
-                  {/* One slot whether or not it holds an arrow, so a flat quote
-                      does not shift the two number columns beside it. */}
-                  <View style={{ width: MARKET_TREND_W, alignItems: "center" }}>
-                    {p.direction === "up" ? (
-                      <TrendingUp accessible={false} size={MARKET_TREND_W} color={palette.positive} />
-                    ) : p.direction === "down" ? (
-                      <TrendingDown accessible={false} size={MARKET_TREND_W} color={palette.negative} />
-                    ) : null}
+        {quoted.length > 0 ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+            {quoted.map(({ code, label }) => {
+              const p = prices[code]!;
+              const direction = p.direction === "up"
+                ? tr.markets.rising
+                : p.direction === "down"
+                  ? tr.markets.falling
+                  : tr.markets.unchanged;
+              return (
+                <View
+                  key={code}
+                  accessible
+                  role="group"
+                  accessibilityLabel={tr.markets.quote(label, priceText(p.buyTry), `${priceText(p.sellTry)}\u00A0₺`, direction)}
+                  style={{
+                    flexGrow: 1,
+                    flexBasis: marketColumns === 3 ? "29%" : marketColumns === 2 ? "46%" : "100%",
+                    minWidth: 0,
+                    minHeight: marketColumns === 3 ? 102 : 112,
+                    justifyContent: "space-between",
+                    padding: spacing.md,
+                    borderRadius: radius.md,
+                    backgroundColor: palette.surfaceAlt,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: palette.border + "70",
+                  }}
+                >
+                  <Row gap={spacing.xs} style={{ alignItems: "center" }}>
+                    <View style={{ width: width < 430 ? 40 : 44, height: width < 430 ? 40 : 44, flexShrink: 0 }}>
+                      <MarketInstrumentArt code={code} size={width < 430 ? 40 : 44} />
+                      {p.direction === "up" ? (
+                        <View style={{ position: "absolute", right: -2, top: -2, borderRadius: 8, padding: 2, backgroundColor: palette.surface }}>
+                          <TrendingUp accessible={false} size={12} color={palette.positive} />
+                        </View>
+                      ) : p.direction === "down" ? (
+                        <View style={{ position: "absolute", right: -2, top: -2, borderRadius: 8, padding: 2, backgroundColor: palette.surface }}>
+                          <TrendingDown accessible={false} size={12} color={palette.negative} />
+                        </View>
+                      ) : null}
+                    </View>
+                    <Body
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontFamily: font.semibold,
+                        fontSize: width < 430 ? 13 : undefined,
+                        lineHeight: width < 430 ? 16 : undefined,
+                        textAlignVertical: "center",
+                      }}
+                    >
+                      {label}
+                    </Body>
+                  </Row>
+                  <View style={{ marginTop: spacing.sm, gap: 3 }}>
+                    <Spread>
+                      <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.buy}</Text>
+                      <Text style={[type.amountSm, { color: palette.textSecondary, textAlign: "right" }]}>{priceText(p.buyTry)}</Text>
+                    </Spread>
+                    <Spread>
+                      <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.sell}</Text>
+                      <Text style={[type.amount, { color: palette.text, textAlign: "right" }]}>
+                        {`${priceText(p.sellTry)}\u00A0₺`}
+                      </Text>
+                    </Spread>
                   </View>
-                </Row>
+                </View>
+              );
+            })}
+          </View>
+        ) : referenceRows.length > 0 ? (
+          <>
+            {referenceRows.map(({ label, rate }) => (
+              <Spread
+                key={label}
+                accessible
+                role="group"
+                accessibilityLabel={`${label}. ${tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}. ${priceText(rate.rate.rateTry)} ₺`}
+                style={{ paddingVertical: spacing.sm - 2 }}
+              >
+                <View style={{ flexShrink: 1 }}>
+                  <Body>{label}</Body>
+                  <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}</Text>
+                </View>
+                <Text style={[type.amount, { color: palette.text }]}>{`${priceText(rate.rate.rateTry)} ₺`}</Text>
               </Spread>
-            );
-          })}
-        </>
-      ) : referenceRows.length > 0 ? (
-        <>
-          {referenceRows.map(({ label, rate }) => (
-            <Spread
-              key={label}
-              accessible
-              accessibilityLabel={`${label}. ${tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}. ${priceText(rate.rate.rateTry)} ₺`}
-              style={{ paddingVertical: spacing.sm - 2 }}
-            >
-              <View style={{ flexShrink: 1 }}>
-                <Body>{label}</Body>
-                <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.referenceRate(dateLabel(rate.rate.rateDate))}</Text>
-              </View>
-              <Text style={[type.amount, { color: palette.text }]}>{`${priceText(rate.rate.rateTry)} ₺`}</Text>
-            </Spread>
-          ))}
-          <Body muted style={{ marginTop: spacing.sm, fontSize: 12 }}>{tr.markets.offlineHint}</Body>
-        </>
-      ) : (
-        <Body muted>{tr.markets.noData}</Body>
-      )}
-    </Card>
+            ))}
+            <Body muted style={{ marginTop: spacing.sm, fontSize: 12 }}>{tr.markets.offlineHint}</Body>
+          </>
+        ) : (
+          <Body muted>{tr.markets.noData}</Body>
+        )}
+      </Card>
+    </>
   );
 }
 
@@ -235,6 +322,7 @@ export default function DashboardScreen() {
   const hero = heroSurface(palette, scheme);
   const heroInk = hero.ink;
   const { width } = useWindowDimensions();
+  const compactDashboardStats = width < 360;
   const chartColors = useSeriesColors();
   // Re-render when FX rates land so foreign-currency projections settle.
   useFxRates();
@@ -313,9 +401,9 @@ export default function DashboardScreen() {
     values: [monthIncomeMinor, model.distribution.expenseTotalMinor, model.distribution.transferTotalMinor],
   }];
   const monthBarSeries = [
-    { label: tr.cashflow.income, color: chartColors[1] },
-    { label: tr.cashflow.expense, color: chartColors[5] },
-    { label: tr.cashflow.transfer, color: chartColors[4] },
+    { label: tr.cashflow.income, color: palette.positive },
+    { label: tr.cashflow.expense, color: palette.negative },
+    { label: tr.cashflow.transfer, color: palette.secondary },
   ];
 
   // A paid item realizes on its actual payment day, not its planned due day.
@@ -354,6 +442,60 @@ export default function DashboardScreen() {
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
   const wideDashboard = width >= 960;
+  const pairedDashboard = wideDashboard;
+  const dashboardUpcomingCount = late.length + upcoming.length;
+  const marketDesktopColumns: 2 | 3 = dashboardUpcomingCount <= 3 ? 3 : 2;
+  const analysisSection = (
+    <>
+      <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
+      <Card>
+        <ListRow
+          icon={ChartNoAxesColumn}
+          title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
+          subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
+          chevron
+          // Root-level route, not the tab's own. Pushing into the Cash Flow
+          // stack from here would mount that tab's index underneath, and the
+          // iOS edge swipe pops to whatever is underneath — the Financial
+          // Table, not this screen. At the root, what is underneath IS this
+          // screen, so the gesture and the back button agree.
+          onPress={() => router.push("/analytics")}
+        />
+        <Divider />
+        {hasMonthFlow ? (
+          <>
+            <Segmented
+              noMargin
+              options={[
+                { value: "pie", label: tr.analysis.chartPie },
+                { value: "bars", label: tr.analysis.chartBars },
+              ]}
+              value={chartType}
+              onChange={setChartType}
+            />
+            <View style={{ marginTop: spacing.lg, alignItems: "center" }}>
+              {chartType === "pie" ? (
+                <Donut
+                  slices={monthDonut.slices}
+                  supplementalSlices={monthDonut.supplementalSlices}
+                  totalMinor={monthDonut.totalMinor}
+                  size={shouldUseCompactChart(width) ? 152 : 236}
+                />
+              ) : (
+                <Bars
+                  width={Math.max(240, Math.min(width - spacing.xxl * 2, 1040))}
+                  groups={monthBars}
+                  series={monthBarSeries}
+                />
+              )}
+            </View>
+          </>
+        ) : (
+          <Body muted style={{ marginTop: spacing.md }}>{tr.analysis.noResults}</Body>
+        )}
+      </Card>
+    </>
+  );
   return (
     <Screen
       title={greeting()}
@@ -397,49 +539,95 @@ export default function DashboardScreen() {
 
       {bundle ? (
         <HeroCard>
-          <Text style={[type.label, { color: heroInk, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
-            {tr.dashboard.actualBalance}
-          </Text>
-          {/* The balance was drawn in `textSecondary` — the app's single most
-              important figure rendered in the role reserved for supporting
-              text. On the slab it takes the full foreground. */}
-          <Amount
-            minor={bundle.actualBalanceMinor}
-            hero
-            colorized={false}
-            color={heroInk}
-            style={{ marginTop: spacing.xs, textAlign: "left" }}
-          />
-          {projected != null ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ expanded: showForecast }}
-              onPress={() => setShowForecast((v) => !v)}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.sm,
-                marginTop: spacing.md,
-                // Lifted out of the slab rather than dropped on top of it: a
-                // pale card here would have re-introduced the flat stack the
-                // slab exists to break.
-                backgroundColor: pressed ? heroInk + "33" : hero.inset,
-                borderRadius: radius.md,
-                padding: spacing.md,
-              })}
-            >
-              {projectedDelta != null && projectedDelta >= 0 ? (
-                <TrendingUp size={18} color={heroInk} />
-              ) : (
-                <TrendingDown size={18} color={heroInk} />
-              )}
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={[type.label, { color: heroInk }]}>{tr.dashboard.forecastToggle}</Text>
-                <Amount minor={projected} colorized={false} color={heroInk} style={{ textAlign: "left" }} />
+          <View style={wideDashboard ? { flexDirection: "row", alignItems: "stretch" } : undefined}>
+            <View style={wideDashboard ? { flex: 1, paddingRight: spacing.xl, justifyContent: "center" } : undefined}>
+              <Text style={[type.label, { color: heroInk, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
+                {tr.dashboard.actualBalance}
+              </Text>
+              <Amount
+                minor={bundle.actualBalanceMinor}
+                hero
+                colorized={false}
+                color={heroInk}
+                style={{ marginTop: spacing.xs, textAlign: "left" }}
+              />
+              {projected != null ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showForecast }}
+                  onPress={() => setShowForecast((v) => !v)}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.sm,
+                    marginTop: spacing.md,
+                    paddingTop: spacing.md,
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: palette.border,
+                    opacity: pressed ? 0.72 : 1,
+                  })}
+                >
+                  {projectedDelta != null && projectedDelta >= 0 ? (
+                    <TrendingUp size={18} color={palette.positiveText} />
+                  ) : (
+                    <TrendingDown size={18} color={palette.negativeText} />
+                  )}
+                  <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+                    <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
+                    <Amount minor={projected} colorized={false} color={palette.textStrong} style={{ textAlign: "left" }} />
+                  </View>
+                  {showForecast ? <ChevronUp size={18} color={palette.accentText} /> : <ChevronDown size={18} color={palette.accentText} />}
+                </Pressable>
+              ) : null}
+            </View>
+
+            <View
+              accessible={false}
+              style={wideDashboard
+                ? { width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.xl }
+                : { height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.lg }}
+            />
+
+            <View style={wideDashboard ? { flex: 1, paddingLeft: spacing.xl, justifyContent: "space-between" } : undefined}>
+              <View>
+                <Text style={[type.label, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 1.1, fontSize: 11 }]}>
+                  {monthName(month)}
+                </Text>
+                <View style={{ flexDirection: compactDashboardStats ? "column" : "row", gap: compactDashboardStats ? spacing.xs : spacing.lg, marginTop: spacing.md }}>
+                  {[
+                    { label: tr.cashflow.income, minor: monthIncomeMinor, color: palette.positiveText },
+                    { label: tr.dashboard.outflow, minor: -monthOutflowMinor, color: palette.negativeText },
+                    { label: tr.dashboard.netChange, minor: monthNetMinor, color: palette.textStrong },
+                  ].map((stat) => (
+                    <View
+                      key={stat.label}
+                      style={compactDashboardStats
+                        ? { minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }
+                        : { flex: 1, minWidth: 0 }}
+                    >
+                      <Text style={[type.small, { color: palette.textSecondary, flexShrink: 0 }]}>{stat.label}</Text>
+                      <Amount
+                        minor={stat.minor}
+                        colorized={false}
+                        color={stat.color}
+                        style={{ textAlign: compactDashboardStats ? "right" : "left", marginTop: compactDashboardStats ? 0 : 2 }}
+                      />
+                    </View>
+                  ))}
+                </View>
               </View>
-              {showForecast ? <ChevronUp size={18} color={heroInk} /> : <ChevronDown size={18} color={heroInk} />}
-            </Pressable>
-          ) : null}
+              <Row style={{ marginTop: spacing.lg }}>
+                <View style={{ flex: 1 }}>
+                  <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+                </View>
+                {late.length > 0 ? (
+                  <View style={{ flex: 1 }}>
+                    <Button icon={History} label={tr.dashboard.catchupShort} variant="secondary" onPress={() => router.push("/reconciliation")} />
+                  </View>
+                ) : null}
+              </Row>
+            </View>
+          </View>
         </HeroCard>
       ) : (
         <HeroCard>
@@ -476,75 +664,67 @@ export default function DashboardScreen() {
         </Card>
       ) : null}
 
-      {/* The add action wears the same colour here as it does on every other
-          screen. It was briefly quiet, to stop two saturated blocks stacking
-          under the balance slab — but a person learns one button by its colour,
-          and having it change appearance with the screen it is launched from
-          costs more than the stacking does. */}
-      <Row style={{ marginBottom: spacing.lg }}>
-        <View style={{ flex: 1 }}>
-          <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-        </View>
-        {late.length > 0 ? (
-          <View style={{ flex: 1 }}>
-            <Button icon={History} label={tr.dashboard.catchupShort} variant="secondary" onPress={() => router.push("/reconciliation")} />
-          </View>
-        ) : null}
-      </Row>
+      {analysisSection}
 
-      <View style={wideDashboard ? { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg } : undefined}>
-        <View style={wideDashboard ? { flex: 1.12 } : undefined}>
+      <View style={pairedDashboard ? { flexDirection: "row", alignItems: "stretch", gap: spacing.lg } : undefined}>
+        <View style={pairedDashboard ? { flex: 1 } : undefined}>
+          <MarketsCard fill={pairedDashboard} desktopColumns={marketDesktopColumns} />
+        </View>
+
+        <View style={pairedDashboard ? { flex: 1 } : undefined}>
           {/* Upcoming payments */}
           <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
       {dataStatus === "loading" || dataStatus === "error" ? null : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
-        <Card>
-          {late.map((e) => (
-            <ListRow
-              key={e.id}
-              icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
-              iconColor={palette.error}
-              title={nameOf(e)}
-              subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
-              right={
-                <View style={{ width: STATUS_W }}>
-                  <Button
-                    size="sm"
-                    label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
-                    variant="secondary"
-                    loading={confirmingId === e.id}
-                    disabled={confirmingId != null}
-                    onPress={() => setPaying(e)}
-                  />
-                </View>
-              }
-            />
-          ))}
-          {upcoming.map((u) => (
-            <ListRow
-              key={u.key}
-              icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
-              iconColor={u.direction === "in" ? palette.positive : undefined}
-              title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
-              subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
-              right={
-                u.kind === "expected" && u.expectedId ? (
+        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
+          <View style={pairedDashboard ? { flexGrow: 1 } : undefined}>
+            {late.map((e) => (
+              <ListRow
+                key={e.id}
+                icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
+                iconColor={palette.error}
+                title={nameOf(e)}
+                subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
+                right={
                   <View style={{ width: STATUS_W }}>
                     <Button
                       size="sm"
-                      label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                      label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                       variant="secondary"
-                      loading={confirmingId === u.expectedId}
+                      loading={confirmingId === e.id}
                       disabled={confirmingId != null}
-                      onPress={() => {
-                        const e = expected.find((x) => x.id === u.expectedId);
-                        if (e) setPaying(e);
-                      }}
+                      onPress={() => setPaying(e)}
                     />
                   </View>
-                ) : undefined
-              }
-            />
-          ))}
+                }
+              />
+            ))}
+            {upcoming.map((u) => (
+              <ListRow
+                key={u.key}
+                icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
+                iconColor={u.direction === "in" ? palette.positive : undefined}
+                title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
+                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
+                right={
+                  u.kind === "expected" && u.expectedId ? (
+                    <View style={{ width: STATUS_W }}>
+                      <Button
+                        size="sm"
+                        label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                        variant="secondary"
+                        loading={confirmingId === u.expectedId}
+                        disabled={confirmingId != null}
+                        onPress={() => {
+                          const e = expected.find((x) => x.id === u.expectedId);
+                          if (e) setPaying(e);
+                        }}
+                      />
+                    </View>
+                  ) : undefined
+                }
+              />
+            ))}
+          </View>
           {/* A card's trailing link action is `sm`, like every other one in the
               app. A regular button's 48pt minimum height centres its label
               14.5pt from the card's padding while a ListRow insets its text by
@@ -552,75 +732,79 @@ export default function DashboardScreen() {
           <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
         </Card>
       ) : (
-        /* A quiet line, not a monument. The full empty state — big mark, serif
-           headline, four lines of explanation — was the largest thing on the
-           dashboard, and what it announced was that there was nothing to do.
-           `EmptyState` still earns its size on a screen that IS the empty list;
-           inside a card beside real figures it outranked them. */
-        <Card>
-          <Row gap={spacing.sm}>
-            <PartyPopper accessible={false} size={18} color={palette.textMuted} />
-            <Body muted style={{ flex: 1 }}>{tr.dashboard.noUpcoming}</Body>
-          </Row>
-        </Card>
-      )}
-
-        </View>
-        <View style={wideDashboard ? { flex: 0.88 } : undefined}>
-          <SectionHeader>{tr.dashboard.monthInsight}</SectionHeader>
-          <Card>
-        <ListRow
-          icon={ChartNoAxesColumn}
-          title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
-          subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
-          chevron
-          // Root-level route, not the tab's own. Pushing into the Cash Flow
-          // stack from here would mount that tab's index underneath, and the
-          // iOS edge swipe pops to whatever is underneath — the Financial
-          // Table, not this screen. At the root, what is underneath IS this
-          // screen, so the gesture and the back button agree without anything
-          // having to correct them.
-          onPress={() => router.push("/analytics")}
-        />
-        <Divider />
-        {hasMonthFlow ? (
-          <>
-            <Segmented
-              noMargin
-              options={[
-                { value: "pie", label: tr.analysis.chartPie },
-                { value: "bars", label: tr.analysis.chartBars },
-              ]}
-              value={chartType}
-              onChange={setChartType}
-            />
-            <View style={{ marginTop: spacing.lg, alignItems: "center" }}>
-              {chartType === "pie" ? (
-                <Donut
-                  slices={monthDonut.slices}
-                  supplementalSlices={monthDonut.supplementalSlices}
-                  totalMinor={monthDonut.totalMinor}
-                  size={shouldUseCompactChart(width) ? 144 : 168}
-                />
+        /* A compact calendar picture gives an otherwise empty equal-height
+           desktop panel visual weight without inventing any future payment. */
+        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
+          <View style={pairedDashboard ? { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.sm } : { alignItems: "center", gap: spacing.sm }}>
+            <View
+              accessible={false}
+              style={{
+                width: pairedDashboard ? "76%" : 84,
+                maxWidth: 300,
+                height: pairedDashboard ? 170 : 68,
+                overflow: "hidden",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: radius.md,
+                borderWidth: 1,
+                borderColor: palette.border + "70",
+                backgroundColor: palette.surfaceAlt,
+              }}
+            >
+              <View style={{ position: "absolute", left: 0, right: 0, top: 0, height: pairedDashboard ? 8 : 6, backgroundColor: palette.primary }} />
+              {pairedDashboard ? (
+                <View style={{ alignSelf: "stretch", flex: 1, padding: spacing.lg, paddingTop: spacing.xl }}>
+                  <Spread style={{ marginBottom: spacing.md }}>
+                    <CalendarClock size={22} color={palette.accentText} strokeWidth={1.8} />
+                    <View style={{ flexDirection: "row", gap: 4 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.surfaceStrong }} />
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.surfaceStrong }} />
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.primary }} />
+                    </View>
+                  </Spread>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                    {Array.from({ length: 20 }, (_, index) => (
+                      <View
+                        key={index}
+                        style={{
+                          flexBasis: "16%",
+                          flexGrow: 1,
+                          height: 15,
+                          borderRadius: 3,
+                          backgroundColor: index === 17 ? palette.primarySoft : palette.surface,
+                          borderWidth: StyleSheet.hairlineWidth,
+                          borderColor: index === 17 ? palette.primary + "70" : palette.border + "50",
+                        }}
+                      />
+                    ))}
+                  </View>
+                </View>
               ) : (
-                <Bars
-                  width={Math.max(240, Math.min(width - spacing.xxl * 2, 640))}
-                  groups={monthBars}
-                  series={monthBarSeries}
-                />
+                <>
+                  <CalendarClock size={25} color={palette.accentText} strokeWidth={1.8} />
+                  <View style={{ position: "absolute", bottom: spacing.sm, flexDirection: "row", gap: 4 }}>
+                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: palette.surfaceStrong }} />
+                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: palette.surfaceStrong }} />
+                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: palette.primary }} />
+                  </View>
+                </>
               )}
             </View>
-          </>
-        ) : (
-          <Body muted style={{ marginTop: spacing.md }}>{tr.analysis.noResults}</Body>
-        )}
-          </Card>
-
-          {/* Last on purpose: gold and FX are the world's numbers, and they sit
-              after everything that is actually the owner's. */}
-          <MarketsCard />
+            <Body muted style={{ textAlign: "center" }}>{tr.dashboard.noUpcoming}</Body>
+          </View>
+          <View style={{ marginTop: spacing.xs }}>
+            <Button
+              label={tr.dashboard.allUpcoming}
+              variant="ghost"
+              size="sm"
+              onPress={() => router.push("/upcoming" as Href)}
+            />
+          </View>
+        </Card>
+      )}
         </View>
       </View>
+
     </Screen>
   );
 }

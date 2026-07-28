@@ -24,7 +24,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
 import { useScrollToTop } from "@react-navigation/native";
-import { Calculator as CalculatorIcon, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, Plus, type LucideIcon } from "lucide-react-native";
+import { AlertCircle, Calculator as CalculatorIcon, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, Minus, Plus, TriangleAlert, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { initialsBadgeColor } from "./badge-color";
@@ -36,19 +36,18 @@ import type { LiveQueryStatus } from "../data/live-state";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
 import {
   borderWidth,
-  cardShadow,
   controlSize,
   font,
   generatedBadgeForeground,
   heroSurface,
   iconSize,
   radius,
-  scrim,
   spacing,
   stateOpacity,
   tabBarClearance,
   toggleSize,
   toggleThumbShadow,
+  themeShadow,
   type,
   useTheme,
   type Palette,
@@ -61,9 +60,9 @@ import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./a
 
 function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
-    backgroundColor: palette.surfaceAlt,
-    borderWidth: borderWidth.control,
-    borderColor: error ? palette.error : active ? palette.focus : "transparent",
+    backgroundColor: palette.surface,
+    borderWidth: active || error ? borderWidth.control : StyleSheet.hairlineWidth,
+    borderColor: error ? palette.error : active ? palette.focus : palette.controlBorder,
   };
 }
 
@@ -73,11 +72,15 @@ export function FadeIn({
   delay = 0,
   style,
   accessibilityViewIsModal,
+  accessibilityRole,
+  accessibilityLiveRegion,
 }: {
   children: ReactNode;
   delay?: number;
   style?: StyleProp<ViewStyle>;
   accessibilityViewIsModal?: boolean;
+  accessibilityRole?: ViewProps["accessibilityRole"];
+  accessibilityLiveRegion?: ViewProps["accessibilityLiveRegion"];
 }) {
   const [progress] = useState(() => new Animated.Value(0));
   const reducedMotion = useReducedMotion();
@@ -100,6 +103,8 @@ export function FadeIn({
   return (
     <Animated.View
       accessibilityViewIsModal={accessibilityViewIsModal}
+      accessibilityRole={accessibilityRole}
+      accessibilityLiveRegion={accessibilityLiveRegion}
       style={[
         {
           opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }),
@@ -177,10 +182,8 @@ export function Screen({
       <View testID="screen-header" style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
         {leading}
         <View style={{ flex: 1 }}>
-          <Text accessibilityRole="header" style={[type.title, { color: palette.text }]}>{title}</Text>
-          {subtitle ? (
-            <Text style={[type.body, { color: palette.textSecondary, marginTop: 2 }]}>{subtitle}</Text>
-          ) : null}
+          <Text accessibilityRole="header" style={[type.title, { color: palette.textStrong }]}>{title}</Text>
+          {subtitle ? <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{subtitle}</Text> : null}
         </View>
         {right}
       </View>
@@ -252,19 +255,18 @@ export function Card({
   padded?: boolean;
   tone?: "success" | "warning" | "error";
 }) {
-  const { palette, scheme } = useTheme();
+  const { palette } = useTheme();
   const toneColor = tone ? palette[tone] : null;
   const base: StyleProp<ViewStyle> = [
     {
       backgroundColor: toneColor ? toneColor + "14" : palette.surface,
-      borderWidth: tone ? StyleSheet.hairlineWidth : 0,
-      borderColor: toneColor ? toneColor + "55" : "transparent",
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: toneColor ? toneColor + "66" : palette.border + "70",
       borderRadius: radius.lg,
       padding: padded ? spacing.lg : 0,
       marginBottom: spacing.md,
       overflow: "hidden",
     },
-    scheme === "light" && cardShadow,
   ];
   if (onPress) {
     return (
@@ -281,24 +283,7 @@ export function Card({
   return <View style={[base, style]} onLayout={onLayout}>{children}</View>;
 }
 
-/** Quiet tonal hero container for the dashboard balance. */
-/**
- * The one saturated slab in the app.
- *
- * It used to be `primarySoft`, a tint meant for chips, stretched over a whole
- * card — which put the app's most important figure on the palest thing on the
- * screen. With page, cards and hero all inside a few points of lightness there
- * was nothing to anchor the eye, and every theme looked the same from here
- * because the theme's own colour appeared nowhere.
- *
- * Filled with `primary` it does three jobs at once: the balance becomes
- * unmistakably the most important thing, the page gains a real tonal range, and
- * choosing a theme visibly changes the screen you look at most. `onPrimary` on
- * `primary` is already held to 4.5:1 by `theme-contrast.test.ts`, so the type
- * on it is proved rather than assumed.
- *
- * It is also the whole accent budget. Anything directly beneath it is quiet.
- */
+/** Quiet balance instrument. The value, not decoration, carries the hierarchy. */
 export function HeroCard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const { palette, scheme } = useTheme();
   return (
@@ -310,6 +295,8 @@ export function HeroCard({ children, style }: { children: ReactNode; style?: Sty
           padding: spacing.xl,
           marginBottom: spacing.md,
           overflow: "hidden",
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border + "70",
         },
         style,
       ]}
@@ -363,22 +350,22 @@ export function Label({
 export function SectionHeader({ children }: { children: ReactNode }) {
   const { palette } = useTheme();
   return (
-    <Text
-      accessibilityRole="header"
-      style={[
-        type.label,
-        {
-          color: palette.textSecondary,
-          textTransform: "uppercase",
-          letterSpacing: 0.8,
-          fontSize: 12,
-          marginBottom: spacing.sm,
-          marginTop: spacing.sm,
-        },
-      ]}
-    >
-      {children}
-    </Text>
+    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm, marginTop: spacing.md }}>
+      <Text
+        accessibilityRole="header"
+        style={[
+          type.heading,
+          {
+            color: palette.textStrong,
+            fontSize: 16,
+            flex: 1,
+            minWidth: 0,
+          },
+        ]}
+      >
+        {children}
+      </Text>
+    </View>
   );
 }
 
@@ -466,6 +453,7 @@ export function Button({
   size = "md",
   haptic: hapticKind = "none",
   accessibilityHint,
+  expanded,
 }: {
   label: string;
   onPress: () => void;
@@ -476,6 +464,7 @@ export function Button({
   size?: "md" | "sm";
   haptic?: HapticKind;
   accessibilityHint?: string;
+  expanded?: boolean;
 }) {
   const { palette } = useTheme();
   const enabledColors = {
@@ -503,7 +492,8 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
+      aria-expanded={expanded}
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading), expanded }}
       disabled={disabled || loading}
       // A small button's visual height stays compact (36) to fit inline rows,
       // but hitSlop lifts its effective touch target to the ~44pt minimum.
@@ -523,9 +513,10 @@ export function Button({
           gap: spacing.sm,
           alignItems: "center",
           justifyContent: "center",
-          borderWidth: visuallyDisabled ? StyleSheet.hairlineWidth : 0,
+          borderWidth: variant === "secondary" || visuallyDisabled ? StyleSheet.hairlineWidth : 0,
           borderColor: palette.border,
           opacity: pressed && variant === "danger" ? stateOpacity.pressed : 1,
+          transform: [{ translateY: pressed && !visuallyDisabled ? 1 : 0 }],
         },
       ]}
     >
@@ -586,12 +577,12 @@ export function IconButton({
         {
           width: size,
           height: size,
-          borderRadius: size / 2,
-          backgroundColor: pressed ? palette.surfaceHover : palette.surfaceAlt,
+          borderRadius: radius.sm,
+          backgroundColor: pressed ? palette.surfaceHover : palette.surface,
           alignItems: "center",
           justifyContent: "center",
-          borderWidth: disabled ? StyleSheet.hairlineWidth : 0,
-          borderColor: palette.border,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border + "90",
         },
       ]}
     >
@@ -638,13 +629,14 @@ function FieldError({ message }: { message?: string | null }) {
   const { palette } = useTheme();
   if (!message) return null;
   return (
-    <Text
+    <FadeIn
       accessibilityRole="alert"
       accessibilityLiveRegion="assertive"
-      style={[type.small, { color: palette.errorText, marginTop: spacing.xs }]}
+      style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.xs, marginTop: spacing.xs }}
     >
-      {message}
-    </Text>
+      <AlertCircle accessible={false} size={14} color={palette.error} style={{ marginTop: 1 }} />
+      <Text style={[type.small, { color: palette.errorText, flex: 1 }]}>{message}</Text>
+    </FadeIn>
   );
 }
 
@@ -897,6 +889,8 @@ export function Select<T extends string>({
   trigger?: (open: () => void, selected: string | null) => ReactNode;
 }) {
   const { palette, scheme } = useTheme();
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<View>(null);
@@ -907,26 +901,49 @@ export function Select<T extends string>({
             <Pressable
               accessible={false}
               tabIndex={-1}
-              style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
+              style={{
+                flex: 1,
+                backgroundColor: palette.scrim,
+                justifyContent: width < 640 ? "flex-end" : "center",
+                paddingHorizontal: width < 640 ? spacing.sm : spacing.lg,
+                paddingTop: spacing.lg,
+              }}
               onPress={() => setOpen(false)}
             >
-              <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 380 }}>
+              <Pressable
+                accessible={false}
+                tabIndex={-1}
+                accessibilityViewIsModal
+                onPress={() => {}}
+                style={{ alignSelf: "center", width: "100%", maxWidth: width < 640 ? 520 : 400 }}
+              >
                 <FadeIn
                   style={[
-                    // No vertical padding: the rows are tinted bands and they
-                    // have to reach the card's edges, or the last one sits on a
-                    // strip of bare surface. `overflow: hidden` is what lets a
-                    // full-bleed band keep the card's rounded corners.
-                    { backgroundColor: palette.surface, borderRadius: radius.lg, maxHeight: 420, overflow: "hidden" },
-                    scheme === "light" && cardShadow,
+                    {
+                      backgroundColor: palette.surface,
+                      borderTopLeftRadius: radius.xl,
+                      borderTopRightRadius: radius.xl,
+                      borderBottomLeftRadius: width < 640 ? 0 : radius.xl,
+                      borderBottomRightRadius: width < 640 ? 0 : radius.xl,
+                      maxHeight: width < 640 ? 560 : 460,
+                      overflow: "hidden",
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: palette.border + "90",
+                    },
+                    scheme === "light" && themeShadow.overlay(palette),
                   ]}
                 >
+                  {width < 640 ? (
+                    <View accessible={false} style={{ alignItems: "center", paddingTop: spacing.sm }}>
+                      <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: palette.surfaceStrong }} />
+                    </View>
+                  ) : null}
                   <View ref={modalTitleRef} accessible accessibilityRole="header" tabIndex={-1}>
-                    <Text style={[type.heading, { color: palette.text, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}>
+                    <Text style={[type.heading, { color: palette.textStrong, paddingHorizontal: spacing.lg, paddingVertical: spacing.md }]}>
                       {label ?? tr.a11y.selectOption}
                     </Text>
                   </View>
-                  <ScrollView>
+                  <ScrollView role="radiogroup" accessibilityLabel={label ?? tr.a11y.selectOption}>
                     {options.map((option, index) => {
                       const selected = option.value === value;
                       return (
@@ -944,20 +961,13 @@ export function Select<T extends string>({
                             {
                               paddingHorizontal: spacing.lg,
                               paddingVertical: spacing.md,
-                              // A fourteen-row sheet read as one flat surface.
-                              // The rule between rows is the device the
-                              // financial table already uses, and the
-                              // alternating tint gives the eye something to
-                              // track across a wide row.
                               borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
-                              borderTopColor: palette.border,
+                              borderTopColor: palette.border + "70",
                               backgroundColor: selected
                                 ? palette.primarySoft
                                 : pressed
                                   ? palette.surfaceHover
-                                  : index % 2 === 1
-                                    ? palette.surfaceAlt
-                                    : "transparent",
+                                  : "transparent",
                             },
                           ]}
                         >
@@ -1005,6 +1015,9 @@ export function Select<T extends string>({
                         </Text>
                       </Row>
                     </Pressable>
+                  ) : null}
+                  {width < 640 && insets.bottom > 0 ? (
+                    <View accessible={false} style={{ height: insets.bottom, backgroundColor: palette.surface }} />
                   ) : null}
                 </FadeIn>
               </Pressable>
@@ -1074,12 +1087,15 @@ export function Segmented<T extends string>({
   const { palette } = useTheme();
   return (
     <View
+      role="radiogroup"
       style={{
         flexDirection: "row",
-        backgroundColor: palette.surfaceAlt,
-        borderRadius: radius.md,
-        padding: 3,
+        backgroundColor: palette.surface,
+        borderRadius: radius.sm,
+        padding: 0,
         marginBottom: noMargin ? 0 : spacing.md,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: palette.border,
       }}
     >
       {options.map((option) => {
@@ -1101,12 +1117,16 @@ export function Segmented<T extends string>({
                 minHeight: controlSize.minimumTarget,
                 paddingVertical: spacing.sm,
                 paddingHorizontal: 2,
-                borderRadius: radius.sm - 1,
+                borderRadius: 0,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: selected && !disabled ? palette.surfaceStrong : "transparent",
-                borderWidth: selected && disabled ? StyleSheet.hairlineWidth : 0,
-                borderColor: palette.border,
+                backgroundColor: selected && disabled ? palette.surfaceAlt : "transparent",
+                borderBottomWidth: 3,
+                borderBottomColor: selected
+                  ? disabled
+                    ? palette.controlBorder
+                    : palette.primary
+                  : "transparent",
               },
             ]}
           >
@@ -1114,7 +1134,7 @@ export function Segmented<T extends string>({
               style={[
                 type.label,
                 {
-                  color: disabled ? palette.textSecondary : selected ? palette.primaryText : palette.textSecondary,
+                  color: disabled ? palette.textSecondary : selected ? palette.textStrong : palette.textSecondary,
                   fontFamily: font.semibold,
                   textAlign: "center",
                   width: "100%",
@@ -1322,10 +1342,12 @@ export function DataStateNotice({
   }
   const stale = status === "stale";
   return (
-    <View
+    <FadeIn
       accessibilityLiveRegion="assertive"
       accessibilityRole="alert"
       style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
         backgroundColor: (stale ? palette.warning : palette.error) + "14",
         borderColor: (stale ? palette.warning : palette.error) + "55",
         borderWidth: StyleSheet.hairlineWidth,
@@ -1335,11 +1357,14 @@ export function DataStateNotice({
         gap: spacing.sm,
       }}
     >
-      <Body>{stale ? tr.dataState.stale : tr.dataState.error}</Body>
-      <View style={{ alignSelf: "flex-start" }}>
-        <Button size="sm" variant="secondary" label={tr.common.retry} onPress={retry} />
+      <TriangleAlert accessible={false} size={18} color={stale ? palette.warning : palette.error} style={{ marginTop: 2 }} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Body>{stale ? tr.dataState.stale : tr.dataState.error}</Body>
+        <View style={{ alignSelf: "flex-start", marginTop: spacing.sm }}>
+          <Button size="sm" variant="secondary" label={tr.common.retry} onPress={retry} />
+        </View>
       </View>
-    </View>
+    </FadeIn>
   );
 }
 
@@ -1503,17 +1528,8 @@ export function ListRow({
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
       {leading}
       {IconCmp ? (
-        <View
-          style={{
-            width: controlSize.compact,
-            height: controlSize.compact,
-            borderRadius: 11,
-            backgroundColor: iconColor ? iconColor + "1F" : palette.primarySoft,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <IconCmp accessible={false} size={18} color={iconColor ?? palette.primary} strokeWidth={2} />
+        <View style={{ width: 24, height: controlSize.compact, alignItems: "flex-start", justifyContent: "center" }}>
+          <IconCmp accessible={false} size={17} color={iconColor ?? palette.accentText} strokeWidth={2} />
         </View>
       ) : null}
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -1532,7 +1548,7 @@ export function ListRow({
       {chevron ? <ChevronRight accessible={false} size={17} color={palette.textSecondary} /> : null}
       </View>
       {stackRight ? (
-        <View style={{ marginTop: spacing.sm, marginLeft: IconCmp || leading ? controlSize.compact + spacing.md : 0, alignItems: "flex-end" }}>
+        <View style={{ marginTop: spacing.sm, marginLeft: IconCmp || leading ? 28 + spacing.md : 0, alignItems: "flex-end" }}>
           {right}
         </View>
       ) : null}
@@ -1552,6 +1568,7 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
       style={({ pressed }) => ({
         backgroundColor: pressed ? palette.surfaceHover : "transparent",
         borderRadius: radius.sm,
+        transform: [{ translateY: pressed ? 1 : 0 }],
       })}
     >
       {children}
@@ -1620,6 +1637,23 @@ export function Toggle({
           justifyContent: "center",
         }}
       >
+        <View
+          pointerEvents="none"
+          accessible={false}
+          style={{
+            position: "absolute",
+            left: 7,
+            right: 7,
+            top: 0,
+            bottom: 0,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Check size={11} color={value && !disabled ? palette.primaryText : "transparent"} strokeWidth={3} />
+          <Minus size={11} color={!value && !disabled ? palette.textStrong : "transparent"} strokeWidth={3} />
+        </View>
         {/* The thumb carries the tab bar's material language — a crisp hairline
             edge over the shadow, so it reads as a lens sitting on the track
             rather than a flat dot. The TRACK deliberately stays opaque: its two

@@ -1,7 +1,7 @@
 /** Payment source management: cards / cash / bank, per-person, card cycle. */
 
 import React, { useState } from "react";
-import { View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useAllTransactionsState, useCreditCardStatementsState, usePersonsState, useSourcesState, useUserId } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import {
@@ -18,19 +18,102 @@ import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../../domain/ty
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
-import { Pencil, Trash2 } from "lucide-react-native";
-import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, Field, IconButton, InitialsBadge, Label, Row, Screen, Spread } from "../../../ui/components";
+import { Banknote, CreditCard, Landmark, Pencil, ReceiptText, Trash2, WalletCards, type LucideIcon } from "lucide-react-native";
+import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, Field, IconButton, Label, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
-import { spacing } from "../../../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { isMonthDay } from "../../../domain/dates";
 import { MonthDayField, monthDayLabel } from "../../../ui/month-day-field";
+import { selectionTapIfChanged } from "../../../ui/haptics";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const NO_SOURCE = "__none__";
+
+const sourceIcon = (value: PaymentSourceType): LucideIcon =>
+  value === "cash"
+    ? Banknote
+    : value === "e_wallet"
+      ? WalletCards
+      : value === "bank_transfer"
+        ? Landmark
+        : value === "direct_debit"
+          ? ReceiptText
+          : CreditCard;
+
+function SourceGlyph({ sourceType, size = 44 }: { sourceType: PaymentSourceType; size?: number }) {
+  const { palette } = useTheme();
+  const Icon = sourceIcon(sourceType);
+  return (
+    <View
+      accessible={false}
+      style={{
+        width: size,
+        height: size,
+        flexShrink: 0,
+        borderRadius: Math.round(size * 0.34),
+        backgroundColor: palette.primarySoft,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: palette.primary + "70",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Icon size={Math.round(size * 0.44)} color={palette.primary} strokeWidth={1.8} />
+    </View>
+  );
+}
+
+function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onChange: (value: PaymentSourceType) => void }) {
+  const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  return (
+    <View
+      role="radiogroup"
+      accessibilityLabel={tr.tx.type}
+      style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}
+    >
+      {TYPES.map((option) => {
+        const selected = option.value === value;
+        const Icon = sourceIcon(option.value);
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="radio"
+            aria-checked={selected}
+            accessibilityState={{ selected, checked: selected }}
+            onPress={() => {
+              selectionTapIfChanged(value, option.value);
+              onChange(option.value);
+            }}
+            style={({ pressed }) => ({
+              flexBasis: width >= 720 ? "23%" : "47%",
+              flexGrow: 1,
+              minWidth: 0,
+              minHeight: 52,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.sm,
+              padding: spacing.sm,
+              borderRadius: radius.md,
+              borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
+              borderColor: selected ? palette.primary : palette.border,
+              backgroundColor: pressed ? palette.surfaceHover : selected ? palette.primarySoft : palette.surfaceAlt,
+            })}
+          >
+            <Icon accessible={false} size={18} color={selected ? palette.primary : palette.textSecondary} />
+            <Text style={[type.small, { color: selected ? palette.primaryText : palette.text, fontFamily: font.semibold, flex: 1 }]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 export default function SourcesScreen() {
   const userId = useUserId();
@@ -43,6 +126,7 @@ export default function SourcesScreen() {
   const transactions = transactionsState.data;
   const persons = personsState.data;
   const undo = useUndo();
+  const { palette } = useTheme();
   const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -240,9 +324,18 @@ export default function SourcesScreen() {
     <Screen>
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Card>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.md }}>
+          <SourceGlyph sourceType={sourceType} size={54} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>
+              {editingId ? name || tr.common.edit : tr.sources.walletTitle}
+            </Text>
+            <Body muted>{editingId ? TYPES.find((item) => item.value === sourceType)?.label : tr.sources.walletHint}</Body>
+          </View>
+        </View>
         {editingId ? <Label>{tr.common.edit}</Label> : null}
         <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={sourcePlaceholder} />
-        <ChipPicker options={TYPES.map((t) => ({ value: t.value, label: t.label }))} value={sourceType} onChange={setSourceType} />
+        <SourceTypePicker value={sourceType} onChange={setSourceType} />
         {persons.length > 1 ? (
           <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         ) : null}
@@ -329,7 +422,7 @@ export default function SourcesScreen() {
         renderItem={(s) => (
           <Spread style={{ paddingVertical: spacing.sm, alignItems: "center" }}>
             <Row style={{ flex: 1, alignItems: "center" }}>
-              <InitialsBadge name={s.name} size={32} />
+              <SourceGlyph sourceType={s.type} />
               <View style={{ flex: 1 }}>
                 <Body>{s.name}</Body>
                 <Body muted style={{ marginTop: 1 }}>{TYPES.find((t) => t.value === s.type)?.label}</Body>
