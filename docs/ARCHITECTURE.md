@@ -209,9 +209,9 @@ columns, repeated alignment and connected sequences—not literal spirals or
 decorative DNA on every screen.
 
 - **Palette:** `src/ui/theme.ts` owns three complete light/dark systems:
-  Çelik is the neutral pearl/steel default, with Amber and Servi retained as
-  user choices. Accent colour marks hierarchy and interaction; it never washes
-  a whole dark screen. Income/positive green, expense/negative red and warning
+  Amber is the warm linen/clay default, with Petrol and Servi retained as user
+  choices. Accent colour marks hierarchy and interaction; it never washes a
+  whole dark screen. Income/positive green, expense/negative red and warning
   amber keep the same meaning in every palette. `tests/theme-contrast.test.ts`
   enforces WCAG AA for every `*Text` role. Charts derive series from semantic
   roles and modal scrims use `scrim`.

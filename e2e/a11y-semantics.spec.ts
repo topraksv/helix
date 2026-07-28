@@ -45,7 +45,13 @@ test("canonical interactive primitives retain visible keyboard focus", async ({ 
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await expectKeyboardFocusVisible(page, page.getByRole("textbox", { name: "Tutar · TRY" }));
   await expectKeyboardFocusVisible(page, page.getByRole("radio", { name: "Gider", exact: true }));
-  await expectKeyboardFocusVisible(page, page.getByRole("switch", { name: "İade" }));
+  const amountOptions = page.getByRole("button", { name: "İade ve döviz seçenekleri · TRY", exact: true });
+  await expect(amountOptions).toHaveAttribute("aria-expanded", "false");
+  await expectKeyboardFocusVisible(page, amountOptions);
+  await page.keyboard.press("Enter");
+  const refund = page.getByRole("switch", { name: "İade" });
+  await expect(refund).toBeVisible();
+  await expectKeyboardFocusVisible(page, refund);
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -297,6 +303,7 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   // 2 · A switch flips instead of committing the entry.
   await amount.fill("120,00");
+  await page.getByRole("button", { name: "İade ve döviz seçenekleri · TRY", exact: true }).click();
   const refund = page.getByRole("switch", { name: "İade" }).first();
   const before = await refund.getAttribute("aria-checked");
   await refund.focus();

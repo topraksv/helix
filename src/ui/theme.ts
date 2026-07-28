@@ -117,12 +117,12 @@ const darkSemanticColors = {
 // Amber — reçine sıcaklığı: keten taban, pişmiş toprak, zeytin ve eskitilmiş pirinç.
 // ---------------------------------------------------------------------------
 const amberLight: Palette = {
-  background: "#ECE5DC",
-  surface: "#FBF8F4",
-  surfaceTranslucent: "#FBF8F4EB",
-  surfaceAlt: "#E9E1D8",
-  surfaceHover: "#DDD0C2",
-  surfaceStrong: "#CDBCAA",
+  background: "#F1EDE8",
+  surface: "#FFFDFB",
+  surfaceTranslucent: "#FFFDFBEB",
+  surfaceAlt: "#E7DFD7",
+  surfaceHover: "#D7CCC1",
+  surfaceStrong: "#C2B2A3",
   border: "#8B796A",
   controlBorder: "#6D5B4D",
   textStrong: "#2A211B",
@@ -145,20 +145,20 @@ const amberLight: Palette = {
   tertiarySoft: "#EDDFC5",
   tertiaryText: "#775624",
   onTertiary: "#FBF7EE",
-  shadow: "rgba(63, 45, 34, 0.10)",
-  shadowStrong: "rgba(63, 45, 34, 0.22)",
+  shadow: "rgba(63, 45, 34, 0.08)",
+  shadowStrong: "rgba(63, 45, 34, 0.20)",
   scrim: "rgba(39, 29, 23, 0.52)",
   ...lightSemanticColors,
 };
 
 const amberDark: Palette = {
-  background: "#121110",
-  surface: "#1E1B19",
-  surfaceTranslucent: "#1E1B19EB",
-  surfaceAlt: "#282421",
-  surfaceHover: "#342F2B",
-  surfaceStrong: "#443E38",
-  border: "#62574E",
+  background: "#090807",
+  surface: "#191512",
+  surfaceTranslucent: "#191512EB",
+  surfaceAlt: "#27211D",
+  surfaceHover: "#352D28",
+  surfaceStrong: "#473D36",
+  border: "#5F534A",
   controlBorder: "#8F8176",
   textStrong: "#F2ECE6",
   text: "#E5DDD6",
@@ -187,132 +187,132 @@ const amberDark: Palette = {
 };
 
 // ---------------------------------------------------------------------------
-// Çelik — inci ve ıslak taş taban, tavlanmış çelik mavisi, deniz köpüğü ve mercan.
+// Petrol — nötr mineral taban, petrol mavisi ve küçük mercan karşılığı.
 // ---------------------------------------------------------------------------
-const celikLight: Palette = {
-  background: "#E7ECEB",
-  surface: "#FAFBF9",
-  surfaceTranslucent: "#FAFBF9EB",
-  surfaceAlt: "#E2EAE9",
-  surfaceHover: "#CEDBDB",
-  surfaceStrong: "#B7CACB",
-  border: "#71858B",
-  controlBorder: "#566B72",
-  textStrong: "#223138",
-  text: "#2A3A40",
-  textSecondary: "#586A70",
-  textMuted: "#586A70",
-  primary: "#356B7F",
-  primaryStrong: "#285469",
-  primarySoft: "#D3E5EA",
-  accentText: "#285669",
-  primaryText: "#223138",
-  onPrimary: "#F4F8F7",
-  secondary: "#6F988F",
-  secondaryStrong: "#587E76",
-  secondarySoft: "#DCEAE3",
-  secondaryText: "#496C64",
-  onSecondary: "#1F2A26",
-  tertiary: "#B67661",
-  tertiaryStrong: "#985E4D",
-  tertiarySoft: "#EEDDD7",
-  tertiaryText: "#875345",
-  onTertiary: "#211A17",
-  shadow: "rgba(42, 66, 76, 0.10)",
-  shadowStrong: "rgba(42, 66, 76, 0.22)",
-  scrim: "rgba(28, 47, 55, 0.50)",
+const petrolLight: Palette = {
+  background: "#ECEEEE",
+  surface: "#FEFEFD",
+  surfaceTranslucent: "#FEFEFDEB",
+  surfaceAlt: "#E6E9EA",
+  surfaceHover: "#D4D9DB",
+  surfaceStrong: "#C1C8CB",
+  border: "#808B91",
+  controlBorder: "#5E6B72",
+  textStrong: "#20292E",
+  text: "#2B353A",
+  textSecondary: "#566268",
+  textMuted: "#626D72",
+  primary: "#315F78",
+  primaryStrong: "#244C63",
+  primarySoft: "#DCE8EE",
+  accentText: "#284F65",
+  primaryText: "#20292E",
+  onPrimary: "#F7FAFB",
+  secondary: "#63847D",
+  secondaryStrong: "#4E6C66",
+  secondarySoft: "#DFE9E6",
+  secondaryText: "#44645D",
+  onSecondary: "#F6FAF8",
+  tertiary: "#A8604C",
+  tertiaryStrong: "#874937",
+  tertiarySoft: "#F0E0DA",
+  tertiaryText: "#7E4434",
+  onTertiary: "#FFF9F6",
+  shadow: "rgba(28, 37, 42, 0.06)",
+  shadowStrong: "rgba(28, 37, 42, 0.18)",
+  scrim: "rgba(24, 29, 32, 0.50)",
   ...lightSemanticColors,
 };
 
-const celikDark: Palette = {
-  background: "#101315",
-  surface: "#1A1E20",
-  surfaceTranslucent: "#1A1E20EB",
-  surfaceAlt: "#242A2C",
-  surfaceHover: "#2F3639",
-  surfaceStrong: "#3F4649",
-  border: "#58666C",
-  controlBorder: "#8C9DA3",
-  textStrong: "#EFF2F2",
-  text: "#E1E6E6",
-  textSecondary: "#BAC5C7",
-  textMuted: "#99A6A9",
-  primary: "#86B4C3",
-  primaryStrong: "#6D9CAB",
-  primarySoft: "#2A3A40",
-  accentText: "#B9D7DF",
-  primaryText: "#EFF2F2",
-  onPrimary: "#203037",
-  secondary: "#9ABDAE",
-  secondaryStrong: "#7FA393",
-  secondarySoft: "#31433C",
-  secondaryText: "#C8DDD3",
-  onSecondary: "#202D27",
-  tertiary: "#CF9582",
-  tertiaryStrong: "#B57A68",
-  tertiarySoft: "#493633",
-  tertiaryText: "#EAC0B3",
-  onTertiary: "#2F211E",
-  shadow: "rgba(7, 10, 12, 0.30)",
-  shadowStrong: "rgba(7, 10, 12, 0.50)",
-  scrim: "rgba(8, 12, 14, 0.68)",
+const petrolDark: Palette = {
+  background: "#0B0D0F",
+  surface: "#15191C",
+  surfaceTranslucent: "#15191CEB",
+  surfaceAlt: "#20262A",
+  surfaceHover: "#2B3338",
+  surfaceStrong: "#3A444A",
+  border: "#536068",
+  controlBorder: "#89969D",
+  textStrong: "#F1F3F3",
+  text: "#E2E6E7",
+  textSecondary: "#B8C0C4",
+  textMuted: "#98A3A8",
+  primary: "#7FAAC2",
+  primaryStrong: "#628FA8",
+  primarySoft: "#263842",
+  accentText: "#AFCCE0",
+  primaryText: "#F1F3F3",
+  onPrimary: "#1B2A32",
+  secondary: "#91B1A9",
+  secondaryStrong: "#75978F",
+  secondarySoft: "#2D3D39",
+  secondaryText: "#C2D7D1",
+  onSecondary: "#202C29",
+  tertiary: "#D08C79",
+  tertiaryStrong: "#B4715F",
+  tertiarySoft: "#44312D",
+  tertiaryText: "#EDB9AA",
+  onTertiary: "#2D201D",
+  shadow: "rgba(0, 0, 0, 0.30)",
+  shadowStrong: "rgba(0, 0, 0, 0.52)",
+  scrim: "rgba(4, 5, 6, 0.70)",
   ...darkSemanticColors,
 };
 
 // ---------------------------------------------------------------------------
-// Orman — mantar taşı taban, servi, liken ve yabani meyve tonları.
+// Servi — sıcak nötr taban, koyu servi ve ölçülü pirinç/yaban eriği.
 // ---------------------------------------------------------------------------
 const serviLight: Palette = {
-  background: "#E9E9E1",
-  surface: "#FAF9F4",
-  surfaceTranslucent: "#FAF9F4EB",
-  surfaceAlt: "#E4E3DB",
-  surfaceHover: "#D2D1C7",
-  surfaceStrong: "#BEBDB1",
-  border: "#7A7E70",
-  controlBorder: "#5D6256",
-  textStrong: "#293028",
-  text: "#2E362D",
-  textSecondary: "#5C665B",
-  textMuted: "#5F6A5F",
-  primary: "#42654B",
-  primaryStrong: "#304D38",
-  primarySoft: "#D7E2D5",
-  accentText: "#35543D",
-  primaryText: "#293028",
+  background: "#ECEBE7",
+  surface: "#FFFDF9",
+  surfaceTranslucent: "#FFFDF9EB",
+  surfaceAlt: "#E8E6DF",
+  surfaceHover: "#D5D3CB",
+  surfaceStrong: "#C5C2B8",
+  border: "#817E74",
+  controlBorder: "#625F56",
+  textStrong: "#292C29",
+  text: "#343734",
+  textSecondary: "#60645F",
+  textMuted: "#60645F",
+  primary: "#3D5D49",
+  primaryStrong: "#2E4938",
+  primarySoft: "#DFE7E1",
+  accentText: "#35513F",
+  primaryText: "#292C29",
   onPrimary: "#F4F7F1",
-  secondary: "#8B8456",
-  secondaryStrong: "#706A45",
-  secondarySoft: "#E6E2CB",
-  secondaryText: "#66613E",
+  secondary: "#8A7346",
+  secondaryStrong: "#6E5A35",
+  secondarySoft: "#ECE5D5",
+  secondaryText: "#66532F",
   onSecondary: "#1A1A12",
-  tertiary: "#8C5F64",
-  tertiaryStrong: "#71494E",
-  tertiarySoft: "#E7D8DA",
-  tertiaryText: "#694349",
+  tertiary: "#885966",
+  tertiaryStrong: "#704551",
+  tertiarySoft: "#EADDE0",
+  tertiaryText: "#69414C",
   onTertiary: "#F9F3F4",
-  shadow: "rgba(48, 58, 49, 0.10)",
-  shadowStrong: "rgba(48, 58, 49, 0.22)",
-  scrim: "rgba(32, 41, 34, 0.50)",
+  shadow: "rgba(39, 42, 39, 0.06)",
+  shadowStrong: "rgba(39, 42, 39, 0.18)",
+  scrim: "rgba(29, 31, 29, 0.50)",
   ...lightSemanticColors,
 };
 
 const serviDark: Palette = {
-  background: "#121413",
-  surface: "#1C201C",
-  surfaceTranslucent: "#1C201CEB",
-  surfaceAlt: "#262B26",
-  surfaceHover: "#323833",
-  surfaceStrong: "#424944",
-  border: "#5B665C",
-  controlBorder: "#89948A",
+  background: "#0C0D0C",
+  surface: "#171917",
+  surfaceTranslucent: "#171917EB",
+  surfaceAlt: "#232623",
+  surfaceHover: "#303430",
+  surfaceStrong: "#414641",
+  border: "#596059",
+  controlBorder: "#8B938C",
   textStrong: "#F0F2ED",
   text: "#E2E7E1",
   textSecondary: "#BBC5BA",
   textMuted: "#9AA69A",
   primary: "#8FAB94",
   primaryStrong: "#739078",
-  primarySoft: "#2C3A30",
+  primarySoft: "#2B3830",
   accentText: "#BED1C0",
   primaryText: "#F0F2ED",
   onPrimary: "#263128",
@@ -326,15 +326,15 @@ const serviDark: Palette = {
   tertiarySoft: "#443335",
   tertiaryText: "#DFC0C4",
   onTertiary: "#2D2123",
-  shadow: "rgba(7, 10, 8, 0.30)",
-  shadowStrong: "rgba(7, 10, 8, 0.50)",
-  scrim: "rgba(8, 11, 9, 0.68)",
+  shadow: "rgba(0, 0, 0, 0.30)",
+  shadowStrong: "rgba(0, 0, 0, 0.52)",
+  scrim: "rgba(5, 6, 5, 0.70)",
   ...darkSemanticColors,
 };
 
 export type PaletteId = "clay" | "ocean" | "forest";
 
-export const DEFAULT_PALETTE_ID: PaletteId = "ocean";
+export const DEFAULT_PALETTE_ID: PaletteId = "clay";
 export const PALETTE_IDS = ["clay", "ocean", "forest"] as const satisfies readonly PaletteId[];
 
 export const PALETTE_META = {
@@ -343,18 +343,18 @@ export const PALETTE_META = {
     description: "Keten, pişmiş toprak, zeytin ve eskitilmiş pirinç.",
   },
   ocean: {
-    label: "Çelik",
-    description: "İnci, derin akıntı, deniz köpüğü ve soluk mercan.",
+    label: "Petrol",
+    description: "Mineral nötrleri, petrol mavisi ve soluk mercan.",
   },
   forest: {
     label: "Servi",
-    description: "Mantar taşı, servi, liken ve yabani meyve.",
+    description: "Sıcak nötrler, koyu servi, pirinç ve yaban eriği.",
   },
 } as const satisfies Record<PaletteId, { label: string; description: string }>;
 
 export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
   clay: { light: amberLight, dark: amberDark },
-  ocean: { light: celikLight, dark: celikDark },
+  ocean: { light: petrolLight, dark: petrolDark },
   forest: { light: serviLight, dark: serviDark },
 };
 
@@ -379,8 +379,8 @@ export function resolvePalette(paletteId: PaletteId, scheme: "light" | "dark"): 
 export const scrim = lightPalette.scrim;
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
-// Ultra-soft organic corners in the 12–16px editorial range.
-export const radius = { sm: 12, md: 14, lg: 16, xl: 22, full: 999 } as const;
+// Crisp ledger geometry: enough softness for touch, never a stack of bubbles.
+export const radius = { sm: 8, md: 10, lg: 14, xl: 18, full: 999 } as const;
 
 /** Shared control geometry. Keep compact visual controls distinct from the
  *  minimum interactive target: compact buttons use hitSlop to reach 44pt. */
@@ -432,20 +432,21 @@ export const font = {
   medium: "Inter_500Medium",
   semibold: "Inter_600SemiBold",
   bold: "Inter_700Bold",
-  // Editorial serif for headings + hero figures (Warm Organic aesthetic).
+  // Editorial serif is reserved for the one figure that benefits from it.
   serif: "Fraunces_600SemiBold",
   serifBold: "Fraunces_700Bold",
 } as const;
 
 /**
  * Static font files carry one weight each, so tokens set fontFamily only —
- * never fontWeight (iOS would try to synthesize a second face). Headings and
- * the hero balance use the serif; body, labels and table figures stay Inter.
+ * never fontWeight (iOS would try to synthesize a second face). Fraunces is
+ * reserved for the hero figures; navigation, headings, labels and tables stay
+ * in Inter so dense financial surfaces scan consistently.
  */
 export const type = {
-  display: { fontSize: 34, fontFamily: font.serifBold, letterSpacing: -0.4 },
-  title: { fontSize: 25, fontFamily: font.serifBold, letterSpacing: -0.3 },
-  heading: { fontSize: 18, fontFamily: font.serif, letterSpacing: -0.1 },
+  display: { fontSize: 40, fontFamily: font.serifBold, letterSpacing: -0.8 },
+  title: { fontSize: 26, fontFamily: font.semibold, letterSpacing: -0.45 },
+  heading: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.2 },
   body: { fontSize: 15, fontFamily: font.regular },
   label: { fontSize: 13, fontFamily: font.medium },
   small: { fontSize: 12, fontFamily: font.regular },
@@ -454,7 +455,7 @@ export const type = {
   field: { fontSize: 15, fontFamily: font.regular },
   moneyInput: { fontSize: 17, fontFamily: font.semibold, fontVariant: ["tabular-nums" as const] },
   amountLg: {
-    fontSize: 33,
+    fontSize: 38,
     fontFamily: font.serifBold,
     letterSpacing: -0.4,
     fontVariant: ["tabular-nums" as const],
@@ -464,8 +465,8 @@ export const type = {
 };
 
 export const themeShadow = {
-  card: (palette: Palette) => ({ boxShadow: `0 2px 10px ${palette.shadow}` } as const),
-  overlay: (palette: Palette) => ({ boxShadow: `0 6px 20px ${palette.shadowStrong}` } as const),
+  card: (palette: Palette) => ({ boxShadow: `0 8px 24px ${palette.shadow}` } as const),
+  overlay: (palette: Palette) => ({ boxShadow: `0 16px 40px ${palette.shadowStrong}` } as const),
   toggleThumb: (palette: Palette) => ({ boxShadow: `0 1px 3px ${palette.shadowStrong}` } as const),
 } as const;
 
@@ -477,34 +478,15 @@ export const overlayShadow = themeShadow.overlay(lightPalette);
 export const toggleThumbShadow = themeShadow.toggleThumb(lightPalette);
 
 /** Deterministik rozet renkleri için saf beyaz olmayan sabit foreground. */
-/**
- * The dashboard's balance slab: fill and ink, chosen per scheme.
- *
- * Both schemes want the same thing — the DEEP end of the accent with cream type
- * on it — but they keep it in different tokens. `primary` is deep in light and
- * deliberately light in dark, where it has to stay legible as small text and
- * marks; filling a whole card with the dark `primary` turned the top of the
- * screen into glare. `primarySoft` is the deep one there.
- *
- * `tests/theme-contrast.test.ts` measures this pair for every palette, so the
- * slab can never be assembled from two tokens that were never checked together.
- */
+/** The balance instrument stays neutral so the money outranks the theme. */
 export function heroSurface(
   palette: Palette,
   scheme: "light" | "dark",
-): { fill: string; ink: string; inset: string } {
-  return scheme === "light"
-    // `inset` goes DEEPER, not lighter. Lightening the slab for the nested
-    // control pulled the cream label down to 4.0:1 on it — axe caught it — and
-    // the accent already has a darker step for exactly this.
-    ? { fill: palette.primary, ink: palette.onPrimary, inset: palette.primaryStrong }
-    // Dark keeps the slab NEUTRAL. Filled with the accent's soft tint it was the
-    // largest coloured area on screen and turned each dark theme into a wash of
-    // one hue — "ekran komple masmavi, yemyeşil". An elevated charcoal anchors
-    // the balance just as well, and the theme is carried by the accent on small
-    // elements, where a strong colour reads as deliberate instead of as a filter
-    // laid over the whole app.
-    : { fill: palette.surfaceStrong, ink: palette.textStrong, inset: palette.textStrong + "14" };
+): { fill: string; ink: string } {
+  return {
+    fill: scheme === "light" ? palette.surface : palette.surfaceAlt,
+    ink: palette.textStrong,
+  };
 }
 
 export const generatedBadgeForeground = "#FBF6F1";

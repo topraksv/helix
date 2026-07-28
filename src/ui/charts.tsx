@@ -6,7 +6,7 @@ import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react
 import type { Distribution } from "../domain/analytics";
 import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
-import { radius, spacing, type, useTheme } from "./theme";
+import { font, radius, spacing, type, useTheme } from "./theme";
 
 export type SeriesColors = readonly [string, string, string, string, string, string, string, string];
 
@@ -14,29 +14,21 @@ export type SeriesColors = readonly [string, string, string, string, string, str
  * Ordered fills for CATEGORICAL series (distribution slices, stacked bars),
  * where a colour identifies a category and carries no judgement about it.
  *
- * The order is the contract, not decoration. The palette bans purple and every
- * blue but the focus ring, which leaves clay, green, amber, red and two
- * neutrals — so the semantic accents have to appear here, and the risk is that
- * neighbouring slices read as a status scale instead of as categories. Green,
- * amber and red are therefore never adjacent to each other, and no two
- * neighbours come from the same hue family, counting the wrap from the last
- * entry back to the first. Red and amber side by side were the worst case: a
- * warning-then-danger ramp for two categories that mean nothing of the kind,
- * and the pair hardest to separate with a red-green colour vision deficiency.
- *
- * `tests/theme-contrast.test.ts` enforces both rules.
+ * Category colours come only from the brand families and neutral ramp.
+ * Financial green/red remain reserved for direction and state, so a grocery
+ * slice can never accidentally look like success or danger.
  */
 export function useSeriesColors(): SeriesColors {
   const { palette } = useTheme();
   return [
     palette.primary,
-    palette.positive,
+    palette.secondary,
     palette.surfaceStrong,
+    palette.tertiary,
     palette.primaryStrong,
-    palette.warning,
+    palette.secondaryStrong,
+    palette.tertiaryStrong,
     palette.textSecondary,
-    palette.accentText,
-    palette.negative,
   ];
 }
 
@@ -106,6 +98,11 @@ export function Donut({
   const { palette } = useTheme();
   const arcTotal = slices.reduce((sum, s) => sum + Math.max(s.valueMinor, 0), 0);
   const displayTotal = totalMinor ?? arcTotal;
+  const largest = slices.reduce<DonutSlice | null>(
+    (current, slice) => slice.valueMinor > 0 && (!current || slice.valueMinor > current.valueMinor) ? slice : current,
+    null,
+  );
+  const largestPercent = largest && arcTotal > 0 ? Math.round((largest.valueMinor / arcTotal) * 100) : 0;
   const r = size / 2 - 14;
   const cx = size / 2;
   const cy = size / 2;
@@ -128,9 +125,17 @@ export function Donut({
   );
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg, flexWrap: "wrap" }}>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.lg, flexWrap: "wrap" }}>
       <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
         <Svg accessible={false} width={size} height={size}>
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            stroke={palette.surfaceAlt}
+            strokeWidth={strokeWidth}
+            fill="none"
+          />
           {arcs.map((a, i) =>
             a.sweep >= 359.9 ? (
               <Circle key={i} cx={cx} cy={cy} r={r} stroke={a.color} strokeWidth={strokeWidth} fill="none" />
@@ -153,26 +158,55 @@ export function Donut({
                 return <SvgLine key={`gap-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={palette.surface} strokeWidth={2} />;
               })
             : null}
-          <SvgText x={cx} y={cy + 5} textAnchor="middle" fontSize={13} fontWeight="600" fill={palette.text}>
+          <SvgText x={cx} y={cy - 7} textAnchor="middle" fontFamily={font.semibold} fontSize={9} fontWeight="600" fill={palette.textSecondary}>
+            {tr.analysis.chartTotal.toLocaleUpperCase("tr-TR")}
+          </SvgText>
+          <SvgText x={cx} y={cy + 10} textAnchor="middle" fontSize={13} fontWeight="600" fill={palette.text}>
             {formatMinorCompact(displayTotal)}
           </SvgText>
         </Svg>
       </View>
       {/* Paired legend list: identity never color-alone (relief rule) */}
-      <View style={{ flex: 1, minWidth: 160, gap: 6 }}>
+      <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 160, maxWidth: 420, gap: 6 }}>
+        {largest ? (
+          <View
+            style={{
+              alignSelf: "stretch",
+              paddingHorizontal: spacing.sm,
+              paddingVertical: 7,
+              borderRadius: radius.sm,
+              backgroundColor: palette.surfaceAlt,
+              borderWidth: 1,
+              borderColor: palette.border + "70",
+              marginBottom: 2,
+            }}
+          >
+            <Text style={[type.small, { color: palette.text, fontFamily: font.semibold }]}>
+              {tr.analysis.chartLargestShare(largest.label, largestPercent)}
+            </Text>
+          </View>
+        ) : null}
         {[...slices, ...supplementalSlices].map((s, i) => {
           const supplemental = i >= slices.length;
+          const share = !supplemental && arcTotal > 0 ? Math.round((s.valueMinor / arcTotal) * 100) : 0;
           return (
-            <View key={`${s.label}-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: s.color }} />
-              <Text style={[type.small, { color: palette.text, flex: 1 }]}>{s.label}</Text>
-              <Text
-                style={[type.small, { color: palette.textSecondary, fontVariant: ["tabular-nums"] }]}
-              >
-                {supplemental
-                  ? formatMinorCompact(s.valueMinor)
-                  : `${arcTotal > 0 ? `%${Math.round((s.valueMinor / arcTotal) * 100)}` : ""} · ${formatMinorCompact(s.valueMinor)}`}
-              </Text>
+            <View key={`${s.label}-${i}`} style={{ gap: 3 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <View style={{ width: 9, height: 9, borderRadius: 3, backgroundColor: s.color }} />
+                <Text style={[type.small, { color: palette.text, flex: 1 }]}>{s.label}</Text>
+                <Text
+                  style={[type.small, { color: palette.textSecondary, fontVariant: ["tabular-nums"] }]}
+                >
+                  {supplemental
+                    ? formatMinorCompact(s.valueMinor)
+                    : `${arcTotal > 0 ? `%${share}` : ""} · ${formatMinorCompact(s.valueMinor)}`}
+                </Text>
+              </View>
+              {!supplemental ? (
+                <View style={{ marginLeft: 17, height: 3, borderRadius: 2, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
+                  <View style={{ width: `${share}%`, height: "100%", borderRadius: 2, backgroundColor: s.color }} />
+                </View>
+              ) : null}
             </View>
           );
         })}
@@ -372,8 +406,71 @@ interface BarGroup {
 }
 
 /**
+ * A financial axis should land on values a person can estimate between.
+ * Dividing the largest amount into arbitrary thirds produced labels such as
+ * ₺19.583,33 — technically accurate, visually noisy and useless as a ruler.
+ * The familiar 1 / 2 / 5 sequence keeps every step round at any magnitude.
+ */
+function niceChartStep(range: number, targetIntervals = 4): number {
+  const roughStep = Math.max(1, range / targetIntervals);
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const normalized = roughStep / magnitude;
+  const niceMultiplier = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return niceMultiplier * magnitude;
+}
+
+/** Axis labels communicate scale, not ledger precision. Keep the exact amount
+ * in the value strip and use Turkish compact notation where a full TRY figure
+ * would be clipped into a row of zeroes. */
+function formatChartAxis(valueMinor: number): string {
+  const major = valueMinor / 100;
+  const compact = Math.abs(major) >= 1_000;
+  return new Intl.NumberFormat("tr-TR", {
+    style: "currency",
+    currency: "TRY",
+    notation: compact ? "compact" : "standard",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: compact ? 1 : Math.abs(major) < 10 ? 2 : 0,
+  }).format(major);
+}
+
+/** Bar geometry with square baseline corners and rounded data-end corners. */
+function barShape(x: number, top: number, width: number, height: number, positive: boolean): string {
+  const bottom = top + height;
+  const curve = Math.min(4, width / 2, height / 2);
+  if (positive) {
+    return [
+      `M${x},${bottom}`,
+      `L${x},${top + curve}`,
+      `Q${x},${top} ${x + curve},${top}`,
+      `H${x + width - curve}`,
+      `Q${x + width},${top} ${x + width},${top + curve}`,
+      `V${bottom}`,
+      "Z",
+    ].join(" ");
+  }
+  return [
+    `M${x},${top}`,
+    `H${x + width}`,
+    `V${bottom - curve}`,
+    `Q${x + width},${bottom} ${x + width - curve},${bottom}`,
+    `H${x + curve}`,
+    `Q${x},${bottom} ${x},${bottom - curve}`,
+    `V${top}`,
+    "Z",
+  ].join(" ");
+}
+
+/**
  * Grouped vertical bars — one cluster per x slot, one bar per series. Signed
- * values dip below a shared zero line. Paired with a legend (relief rule).
+ * values dip below a shared zero line.
+ *
+ * Exact amounts do not sit inside the SVG. Those labels used to hang above
+ * each bar on leader lines: passable for one month, but cramped at three and
+ * unreadable under Dynamic Type. The plot now uses a rounded monetary ruler
+ * for comparison, while short ranges get a real-text ledger directly below
+ * it. The colour rule and series name bind each figure to its bar without
+ * relying on colour alone.
  */
 export function Bars({
   groups,
@@ -387,21 +484,37 @@ export function Bars({
   width?: number;
 }) {
   const { palette } = useTheme();
-  const pad = { left: 8, right: 8, top: 14, bottom: 22 };
-  const plotW = width - pad.left - pad.right;
-  const plotH = height - pad.top - pad.bottom;
   const all = groups.flatMap((g) => g.values.filter((v): v is number => v != null));
   if (all.length === 0 || groups.length === 0) return null;
-  const max = Math.max(...all, 1);
-  const min = Math.min(0, ...all);
-  const span = max - min || 1;
+  const dataMax = Math.max(...all, 1);
+  const dataMin = Math.min(0, ...all);
+  const step = niceChartStep(dataMax - dataMin);
+  const max = Math.ceil(dataMax / step) * step;
+  const min = Math.floor(dataMin / step) * step;
+  const span = Math.max(step, max - min);
+  const ticks = Array.from(
+    { length: Math.round(span / step) + 1 },
+    (_, index) => max - index * step,
+  );
+  const axisFontSize = width >= 480 ? 11 : 10;
+  const pad = { left: width >= 480 ? 64 : 58, right: 10, top: 14, bottom: 28 };
+  const plotW = Math.max(1, width - pad.left - pad.right);
+  const plotH = height - pad.top - pad.bottom;
   const groupW = plotW / groups.length;
   const barGap = 2;
   const nSeries = Math.max(series.length, 1);
-  const barW = Math.max(3, (groupW * 0.68 - barGap * (nSeries - 1)) / nSeries);
+  // A one-month chart can be 1000px wide on desktop. Let the ruled plot use
+  // that space, but do not turn three data marks into billboard-sized blocks.
+  const clusterW = Math.min(groupW * 0.68, nSeries * 108 + barGap * (nSeries - 1));
+  const barW = Math.max(3, (clusterW - barGap * (nSeries - 1)) / nSeries);
   const y = (v: number) => pad.top + plotH - ((v - min) / span) * plotH;
   const zeroY = y(0);
   const everyN = groups.length <= 6 ? 1 : Math.ceil(groups.length / 6);
+  const visibleValueCount = groups.reduce(
+    (count, group) => count + group.values.filter((value) => value != null && value !== 0).length,
+    0,
+  );
+  const showValueLedger = groups.length <= 3 && visibleValueCount <= 9;
   const chartSummary = tr.a11y.barChart(groups.map((group) => {
     const groupValues = group.values.map((value, index) =>
       `${series[index]?.label ?? index + 1}: ${formatMinorCompact(value ?? 0)}`,
@@ -413,27 +526,156 @@ export function Bars({
     <View>
       <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
         <Svg accessible={false} width={width} height={height}>
-          <SvgLine x1={pad.left} y1={zeroY} x2={pad.left + plotW} y2={zeroY} stroke={palette.border} strokeWidth={1} />
+          <Rect
+            x={pad.left}
+            y={pad.top}
+            width={plotW}
+            height={plotH}
+            rx={radius.sm}
+            fill={palette.surfaceAlt}
+          />
+          {ticks.map((value) => (
+            <React.Fragment key={`tick-${value}`}>
+              <SvgLine
+                x1={pad.left}
+                y1={y(value)}
+                x2={pad.left + plotW}
+                y2={y(value)}
+                stroke={palette.border}
+                strokeWidth={Math.abs(value) < 1 ? 1.5 : 1}
+                opacity={Math.abs(value) < 1 ? 0.58 : 0.22}
+                strokeDasharray={Math.abs(value) < 1 ? undefined : "3 5"}
+              />
+              <SvgText
+                testID="bar-axis-label"
+                x={pad.left - 8}
+                y={y(value) + axisFontSize * 0.36}
+                fontFamily={font.semibold}
+                fontSize={axisFontSize}
+                fill={palette.textSecondary}
+                textAnchor="end"
+              >
+                {formatChartAxis(value)}
+              </SvgText>
+            </React.Fragment>
+          ))}
           {groups.map((g, gi) => {
-            const gx = pad.left + gi * groupW + groupW * 0.16;
+            const gx = pad.left + gi * groupW + (groupW - clusterW) / 2;
             return g.values.map((v, si) => {
               if (v == null || v === 0) return null;
               const top = v > 0 ? y(v) : zeroY;
               const h = Math.abs(y(v) - zeroY);
               const bx = gx + si * (barW + barGap);
-              return <Rect key={`${gi}-${si}`} x={bx} y={top} width={barW} height={Math.max(1, h)} rx={2} fill={series[si]?.color ?? palette.primary} />;
+              const color = series[si]?.color ?? palette.primary;
+              return (
+                <React.Fragment key={`${gi}-${si}`}>
+                  <Path d={barShape(bx, top, barW, Math.max(1, h), v > 0)} fill={color} />
+                </React.Fragment>
+              );
             });
           })}
           {groups.map((g, gi) =>
             gi % everyN === 0 ? (
-              <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 6} fontSize={9} fill={palette.textSecondary} textAnchor="middle">
+              <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 7} fontSize={11} fontWeight="600" fill={palette.textSecondary} textAnchor="middle">
                 {g.label}
               </SvgText>
             ) : null,
           )}
         </Svg>
       </View>
-      {series.length > 1 ? (
+      {showValueLedger ? (
+        <View
+          style={{
+            width,
+            flexDirection: "row",
+            borderTopWidth: 1,
+            borderColor: palette.border,
+            marginTop: spacing.sm,
+          }}
+        >
+          {groups.map((group, groupIndex) => (
+            <View
+              key={`values-${group.label}`}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                gap: spacing.sm,
+                paddingTop: spacing.sm,
+                paddingHorizontal: spacing.sm,
+                borderLeftWidth: groupIndex === 0 ? 0 : 1,
+                borderColor: palette.border,
+              }}
+            >
+              <Text
+                style={[
+                  type.small,
+                  {
+                    color: palette.textSecondary,
+                    fontFamily: font.semibold,
+                    textAlign: groups.length === 1 ? "left" : "center",
+                  },
+                ]}
+              >
+                {group.label}
+              </Text>
+              <View
+                style={{
+                  flexDirection: groups.length === 1 ? "row" : "column",
+                  flexWrap: "wrap",
+                  gap: spacing.sm,
+                }}
+              >
+                {group.values.map((value, seriesIndex) => {
+                  if (value == null) return null;
+                  const item = series[seriesIndex];
+                  return (
+                    <View
+                      key={`${group.label}-${item?.label ?? seriesIndex}`}
+                      style={{
+                        flexGrow: groups.length === 1 ? 1 : 0,
+                        flexBasis: groups.length === 1 ? 120 : "auto",
+                        minWidth: 0,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 7,
+                      }}
+                    >
+                      <View
+                        accessible={false}
+                        style={{
+                          width: 3,
+                          alignSelf: "stretch",
+                          minHeight: 30,
+                          borderRadius: 2,
+                          backgroundColor: item?.color ?? palette.primary,
+                        }}
+                      />
+                      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                        <Text style={[type.small, { color: palette.textSecondary }]}>
+                          {item?.label ?? seriesIndex + 1}
+                        </Text>
+                        <Text
+                          selectable
+                          testID="bar-value-label"
+                          style={[
+                            type.amount,
+                            {
+                              color: palette.text,
+                              fontSize: width >= 480 ? 15 : 14,
+                            },
+                          ]}
+                        >
+                          {formatMinorCompact(value)}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : series.length > 1 ? (
         <View style={{ flexDirection: "row", gap: spacing.md, justifyContent: "center", marginTop: 2 }}>
           {series.map((s) => (
             <View key={s.label} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

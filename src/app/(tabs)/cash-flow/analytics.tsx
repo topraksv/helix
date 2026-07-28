@@ -2,10 +2,10 @@
  *  or a calendar year), a category filter, per-category cumulative trend and
  *  transaction search. */
 
-import React, { useDeferredValue, useState } from "react";
+import React, { useDeferredValue, useEffect, useState } from "react";
 import { FlatList, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, Inbox, Target } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Inbox, SlidersHorizontal, Target } from "lucide-react-native";
 import { categoryRangeMatrix, distributionForRange, monthlySeries } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
@@ -24,7 +24,7 @@ import {
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { categoryIcon } from "../../../data/category-icons";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
@@ -39,7 +39,12 @@ export default function AnalysisScreen() {
   const today = todayISO();
   const currentYear = yearOf(today);
   const currentMonth = monthKeyOf(today);
-  const [period, setPeriod] = useState<Period>("year");
+  const { width } = useWindowDimensions();
+  const compact = !shouldUseWideWorkspace(width);
+  const narrow = shouldUseNarrowAnalytics(width);
+  // Phone starts with a useful comparison that fits the table in fewer
+  // horizontal gestures; year and custom windows remain explicit choices.
+  const [period, setPeriod] = useState<Period>(narrow ? "3m" : "year");
   const [year, setYear] = useState(currentYear);
   // A custom window is two months the user names outright. Seeded to the last
   // six so switching to it shows a real range instead of an empty one.
@@ -47,13 +52,14 @@ export default function AnalysisScreen() {
   const [customEnd, setCustomEnd] = useState<MonthKey>(currentMonth);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [chartType, setChartType] = useState<"pie" | "bars">("pie");
+  const [chartType, setChartType] = useState<"pie" | "bars" | "trend">("pie");
   const [query, setQuery] = useState("");
   const [transactionType, setTransactionType] = useState<"expense" | "income" | "transfer" | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [searchScope, setSearchScope] = useState<"period" | "all">("period");
   const [sortMode, setSortMode] = useState<TransactionSortMode>("recent");
   const [showAllResults, setShowAllResults] = useState(false);
+  const [showSearchDetails, setShowSearchDetails] = useState(false);
   const categoriesState = useCategoriesState();
   const personsState = usePersonsState();
   const sourcesState = useSourcesState();
@@ -74,9 +80,6 @@ export default function AnalysisScreen() {
   // the anchor put the wrong screen underneath in the first place.
   const openBudgets = () => router.push("/budgets");
   const colors = useSeriesColors();
-  const { width } = useWindowDimensions();
-  const compact = !shouldUseWideWorkspace(width);
-  const narrow = shouldUseNarrowAnalytics(width);
   const liveStates = [categoriesState, personsState, sourcesState, budgetsState, transactionsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -174,6 +177,10 @@ export default function AnalysisScreen() {
   const trendEndMonth = monthKeys.at(-1);
 
   const periodDistribution = distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today);
+  const supportsTrend = width >= 720 && monthKeys.length >= 2 && !categoryFilter;
+  useEffect(() => {
+    if (!supportsTrend && chartType === "trend") setChartType("bars");
+  }, [supportsTrend, chartType]);
   const {
     slices: pieSlices,
     supplementalSlices: pieSupplemental,
@@ -188,10 +195,13 @@ export default function AnalysisScreen() {
   const barSeries = categoryFilter
     ? [{ label: catName(categoryFilter) || tr.tx.category, color: colors[0] }]
     : [
-        { label: tr.cashflow.income, color: colors[1] },
-        { label: tr.cashflow.expense, color: colors[5] },
-        { label: tr.cashflow.transfer, color: colors[4] },
+        { label: tr.cashflow.income, color: palette.positive },
+        { label: tr.cashflow.expense, color: palette.negative },
+        { label: tr.cashflow.transfer, color: palette.secondary },
       ];
+  const netTrendPoints = barGroups.map((group) =>
+    (group.values[0] ?? 0) - (group.values[1] ?? 0) - (group.values[2] ?? 0),
+  );
   const maxAmountChars = rows.reduce((longest, { data }) => {
     const values = [...monthKeys.map((month) => data.monthly.get(month) ?? 0), data.ytdMinor];
     return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinorCompact(value).length));
@@ -206,6 +216,9 @@ export default function AnalysisScreen() {
   const searchHeader = (
     <View>
       <DataStateNotice status={dataStatus} retry={retryData} />
+      <View style={{ flexDirection: compact ? "column" : "row", alignItems: "stretch", gap: compact ? 0 : spacing.lg }}>
+      <Card style={compact ? undefined : { flex: 1 }}>
+      <SectionHeader>{tr.analysis.viewWindow}</SectionHeader>
       {/* The slicer owns its own row. It used to share one with the year
           switcher, which was affordable at four segments and is not at six —
           the switcher took a third of the width and left "12 Ay" wrapping.
@@ -267,8 +280,10 @@ export default function AnalysisScreen() {
           setSelected(null);
         }}
       />
+      </Card>
 
-      <Heading>{tr.analysis.findTransaction}</Heading>
+      <Card style={compact ? undefined : { flex: 1 }}>
+      <SectionHeader>{tr.analysis.findTransaction}</SectionHeader>
       <Field accessibilityLabel={tr.common.search} placeholder={tr.analysis.searchPlaceholder} value={query} onChangeText={setQuery} autoCapitalize="none" />
       <Segmented
         options={[
@@ -280,11 +295,25 @@ export default function AnalysisScreen() {
         value={transactionType ?? "all"}
         onChange={(value) => setTransactionType(value === "all" ? null : value)}
       />
+      {compact ? (
+        <View style={{ alignItems: "flex-start", marginBottom: showSearchDetails ? spacing.md : 0 }}>
+          <Button
+            icon={SlidersHorizontal}
+            size="sm"
+            variant="ghost"
+            label={showSearchDetails ? tr.analysis.hideSearchFilters : tr.analysis.showSearchFilters}
+            expanded={showSearchDetails}
+            onPress={() => setShowSearchDetails(!showSearchDetails)}
+          />
+        </View>
+      ) : null}
       {/* Both fields keep one line: the selected range used to be spelled out
           inside this control's own trigger, which wrapped to three lines in a
           half-width column and left it taller than the field beside it. The
           range is the same for the whole search, so it belongs in the hint
           below rather than inside a collapsed dropdown. */}
+      {!compact || showSearchDetails ? (
+      <>
       <Row style={{ alignItems: "flex-start" }}>
         <View style={{ flex: 1 }}>
           <Select
@@ -309,6 +338,8 @@ export default function AnalysisScreen() {
       <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
         {searchScope === "period" ? tr.analysis.selectedPeriodRange(searchPeriodLabel) : tr.analysis.allTimeHint}
       </Body>
+      </>
+      ) : null}
       {searchActive && sortedResults.length > 1 ? (
         <Select
           label={tr.analysis.sortLabel}
@@ -323,8 +354,7 @@ export default function AnalysisScreen() {
         />
       ) : null}
       {searchActive && searchResults.length === 0 ? (
-        <Card>
-          <View style={{ gap: spacing.sm }}>
+          <View style={{ gap: spacing.sm, paddingTop: spacing.sm }}>
             <Body muted>{tr.analysis.noResults}</Body>
             <Button
               label={tr.analysis.clearSearch}
@@ -340,8 +370,9 @@ export default function AnalysisScreen() {
               }}
             />
           </View>
-        </Card>
       ) : null}
+      </Card>
+      </View>
     </View>
   );
 
@@ -471,7 +502,9 @@ export default function AnalysisScreen() {
             <Heading style={{ marginTop: 0, marginBottom: 0, flex: narrow ? undefined : 1 }}>
               {chartType === "pie"
                 ? tr.analysis.chartExpenseDist
-                : categoryFilter ? catName(categoryFilter) : tr.analysis.monthlyFlows}
+                : chartType === "trend"
+                  ? tr.analysis.chartNetTrendTitle
+                  : categoryFilter ? catName(categoryFilter) : tr.analysis.monthlyFlows}
             </Heading>
             <View style={{ width: narrow ? "100%" : 168 }}>
               <Segmented
@@ -479,6 +512,7 @@ export default function AnalysisScreen() {
                 options={[
                   { value: "pie", label: tr.analysis.chartPie },
                   { value: "bars", label: tr.analysis.chartBars },
+                  ...(supportsTrend ? [{ value: "trend" as const, label: tr.analysis.chartTrend }] : []),
                 ]}
                 value={chartType}
                 onChange={setChartType}
@@ -491,12 +525,24 @@ export default function AnalysisScreen() {
                 slices={pieSlices}
                 supplementalSlices={pieSupplemental}
                 totalMinor={pieTotalMinor}
+                size={narrow ? 168 : 220}
               />
             ) : (
               <Body muted>{tr.analysis.noResults}</Body>
             )
+          ) : chartType === "bars" ? (
+            <Bars width={Math.min(width - spacing.lg * 4, 1040)} groups={barGroups} series={barSeries} />
           ) : (
-            <Bars width={Math.min(width - spacing.lg * 4, 640)} groups={barGroups} series={barSeries} />
+            <Lines
+              width={Math.min(width - spacing.lg * 4, 1040)}
+              height={220}
+              xLabels={monthKeys.map(shortMonthLabel)}
+              series={[{
+                label: tr.dashboard.netChange,
+                color: colors[0],
+                points: netTrendPoints,
+              }]}
+            />
           )}
         </Card>
       ) : null}
@@ -544,7 +590,7 @@ export default function AnalysisScreen() {
         <Card>
           <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(trendRow.category.name, monthKeys.length)}</Heading>
           <Lines
-            width={Math.min(width - spacing.lg * 4, 640)}
+            width={Math.min(width - spacing.lg * 4, 1040)}
             xLabels={monthKeys.map(shortMonthLabel)}
             series={[
               {
@@ -563,14 +609,14 @@ export default function AnalysisScreen() {
 
   if (!dataReady) {
     return (
-      <Screen>
+      <Screen maxWidth={1120}>
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} maxWidth={1120}>
       <FlatList
         data={searchActive ? visibleResults : []}
         keyExtractor={(t: (typeof visibleResults)[number]) => t.id}

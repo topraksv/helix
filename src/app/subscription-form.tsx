@@ -1,7 +1,8 @@
 /** Subscription add/edit modal. Price edits append to price_history (spec §3.1). */
 
 import React, { useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { BellRing, CalendarClock, Repeat2, type LucideIcon } from "lucide-react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
 import { useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
@@ -9,9 +10,9 @@ import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
-import { isMonthDay, monthKeyOf, todayISO } from "../domain/dates";
+import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";
 import { formatMinor } from "../domain/money";
-import { tr } from "../i18n/tr";
+import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Label, MoneyField, Row, Screen, Segmented, Select, Spread, Toggle } from "../ui/components";
@@ -20,15 +21,67 @@ import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { devError } from "../services/logger";
-import { spacing, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { MonthDayField } from "../ui/month-day-field";
+import { Logo } from "../ui/logo";
+import { font, radius, spacing, type, useTheme } from "../ui/theme";
 
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
 const QUICK_DAYS = [1, 5, 10, 15, 25, 28] as const;
+
+function FormSectionTitle({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
+  const { palette } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
+      <View style={{ width: 36, height: 36, borderRadius: 13, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" }}>
+        <Icon accessible={false} size={18} color={palette.primary} />
+      </View>
+      <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>{title}</Text>
+    </View>
+  );
+}
+
+function SubscriptionFormArtwork({ name, cycle, schedule }: { name: string; cycle: "monthly" | "yearly" | "custom"; schedule: string }) {
+  const { palette } = useTheme();
+  const cycleLabel = cycle === "monthly" ? tr.subs.monthly : cycle === "yearly" ? tr.subs.yearly : tr.subs.custom;
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`${name || tr.subs.formIdentity}. ${cycleLabel}. ${schedule || tr.common.none}`}
+      style={{
+        minHeight: 104,
+        borderRadius: radius.lg,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: palette.border,
+        backgroundColor: palette.surfaceAlt,
+        padding: spacing.md,
+        marginBottom: spacing.md,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        overflow: "hidden",
+      }}
+    >
+      <Logo name={name || tr.subs.title} domain="" size={52} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[type.heading, { color: palette.text, fontFamily: font.semibold }]}>{name || tr.subs.formIdentity}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.sm }}>
+          <Repeat2 accessible={false} size={14} color={palette.primary} />
+          <Text style={[type.small, { color: palette.textSecondary }]}>{cycleLabel}</Text>
+          <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: palette.border }} />
+          <CalendarClock accessible={false} size={14} color={palette.tertiary} />
+          <Text style={[type.small, { color: palette.textSecondary, flexShrink: 1 }]}>
+            {schedule || (cycle === "yearly" ? tr.subs.yearlyRenewalDate : tr.subs.billingDay)}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function SubscriptionFormModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -71,6 +124,9 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const [cycle, setCycle] = useState<"monthly" | "yearly" | "custom">(existing?.cycle ?? "monthly");
   const [intervalStr, setIntervalStr] = useState(String(existing?.intervalMonths ?? 1));
   const [billingDayStr, setBillingDayStr] = useState(String(existing?.billingDay ?? 1));
+  const [yearlyRenewalDate, setYearlyRenewalDate] = useState<ISODate | null>(
+    existing?.cycle === "yearly" ? existing.nextDueDate : null,
+  );
   const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
   const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? null);
   // persons load async (live query) — derive the default instead of freezing
@@ -104,6 +160,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     cycle,
     intervalStr,
     billingDayStr,
+    yearlyRenewalDate,
     categoryId,
     sourceId,
     personChoice,
@@ -116,7 +173,9 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const initialDraftSnapshot = React.useRef(draftSnapshot).current;
   const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
 
-  const billingDay = Number(billingDayStr);
+  const billingDay = cycle === "yearly" && yearlyRenewalDate
+    ? Number(yearlyRenewalDate.slice(8, 10))
+    : Number(billingDayStr);
   const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);
   const trialValid = !isTrial || trialDate != null;
   const selectedSource = sources.find((source) => source.id === sourceId);
@@ -130,6 +189,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     amountMinor != null &&
     amountMinor > 0 &&
     isMonthDay(billingDay) &&
+    (cycle !== "yearly" || yearlyRenewalDate != null) &&
     Number.isInteger(intervalMonths) &&
     intervalMonths >= 1 &&
     trialValid &&
@@ -141,13 +201,15 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const persist = async (resolvedCategoryId: string) => {
     if (!personId) return;
     const today = todayISO();
-    const nextDueDate = existing
-      ? existing.billingDay === billingDay && existing.intervalMonths === intervalMonths
-        ? existing.nextDueDate
-        : nextDueAfter(today, today, intervalMonths, billingDay)
-      : dueDateInMonth(monthKeyOf(today), billingDay) >= today
-        ? dueDateInMonth(monthKeyOf(today), billingDay)
-        : nextDueAfter(today, today, intervalMonths, billingDay);
+    const nextDueDate = cycle === "yearly" && yearlyRenewalDate
+      ? yearlyRenewalDate
+      : existing
+        ? existing.billingDay === billingDay && existing.intervalMonths === intervalMonths
+          ? existing.nextDueDate
+          : nextDueAfter(today, today, intervalMonths, billingDay)
+        : dueDateInMonth(monthKeyOf(today), billingDay) >= today
+          ? dueDateInMonth(monthKeyOf(today), billingDay)
+          : nextDueAfter(today, today, intervalMonths, billingDay);
     await upsertSubscription(userId, {
       id: draftId,
       name: name.trim(),
@@ -221,134 +283,171 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   return (
     <Screen>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
-      <MoneyField
-        label={`${tr.tx.amount} · ${currency}`}
-        value={amountRaw}
-        onChangeMinor={(raw, minor) => {
-          setAmountRaw(raw);
-          setAmountMinor(minor);
-        }}
+      <SubscriptionFormArtwork
+        name={name}
+        cycle={cycle}
+        schedule={cycle === "yearly"
+          ? (yearlyRenewalDate ? dateLabel(yearlyRenewalDate) : "")
+          : (billingDayStr ? tr.subs.daySchedule(billingDayStr) : "")}
       />
-      {showCurrency ? (
-        <>
-          <Label>{tr.tx.currency}</Label>
-          <CurrencyPicker value={currency} onChange={setCurrency} />
-        </>
-      ) : (
-        <View style={{ alignSelf: "flex-start", marginBottom: spacing.md }}>
-          <Button size="sm" variant="ghost" label={tr.tx.changeCurrency} onPress={() => setShowCurrency(true)} />
-        </View>
-      )}
-
-      <Label>{tr.subs.cycle}</Label>
-      <Segmented
-        options={[
-          { value: "monthly", label: tr.subs.monthly },
-          { value: "yearly", label: tr.subs.yearly },
-          { value: "custom", label: tr.subs.custom },
-        ]}
-        value={cycle}
-        onChange={setCycle}
-      />
-      {cycle === "custom" ? (
-        <>
-          <Field label={tr.subs.intervalLabel} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
-          <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.intervalHint}</Body>
-        </>
-      ) : null}
-
-      <MonthDayField
-        label={tr.subs.billingDay}
-        value={billingDayStr}
-        onChange={setBillingDayStr}
-        quickDays={QUICK_DAYS}
-        error={billingDayStr !== "" && !isMonthDay(billingDayStr) ? tr.incomes.dayError : null}
-      />
-      <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.billingDayHint}</Body>
-
-      {expenseCategories.length > 0 ? (
-        <Select
-          label={tr.tx.category}
-          placeholder={tr.tx.categoryPlaceholder}
-          options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
-          value={selectedCategoryId}
-          onChange={(value) => {
-            setCategoryId(value);
-            setShowCategoryOffer(false);
+      <Card>
+        <FormSectionTitle icon={Repeat2} title={tr.subs.formIdentity} />
+        <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
+        <MoneyField
+          label={`${tr.tx.amount} · ${currency}`}
+          value={amountRaw}
+          onChangeMinor={(raw, minor) => {
+            setAmountRaw(raw);
+            setAmountMinor(minor);
           }}
-          onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
         />
-      ) : null}
-      {showCategoryOffer && !selectedCategoryId ? (
-        <Card style={{ backgroundColor: palette.primarySoft }}>
-          <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
-          <Row gap={spacing.sm} style={{ alignItems: "center", flexWrap: "wrap" }}>
-            <Button
-              size="sm"
-              label={tr.subs.categoryOfferAccept}
-              onPress={() => void acceptCategoryOffer()}
-              loading={busy}
+        {showCurrency ? (
+          <>
+            <Label>{tr.tx.currency}</Label>
+            <CurrencyPicker value={currency} onChange={setCurrency} />
+          </>
+        ) : (
+          <View style={{ alignSelf: "flex-start" }}>
+            <Button size="sm" variant="ghost" label={tr.tx.changeCurrency} onPress={() => setShowCurrency(true)} />
+          </View>
+        )}
+      </Card>
+
+      <Card>
+        <FormSectionTitle icon={CalendarClock} title={tr.subs.formSchedule} />
+        <Label>{tr.subs.cycle}</Label>
+        <Segmented
+          options={[
+            { value: "monthly", label: tr.subs.monthly },
+            { value: "yearly", label: tr.subs.yearly },
+            { value: "custom", label: tr.subs.custom },
+          ]}
+          value={cycle}
+          onChange={setCycle}
+        />
+        {cycle === "custom" ? (
+          <>
+            <Field label={tr.subs.intervalLabel} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
+            <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.intervalHint}</Body>
+          </>
+        ) : null}
+
+        {cycle === "yearly" ? (
+          <>
+            <DateField
+              label={tr.subs.yearlyRenewalDate}
+              value={yearlyRenewalDate}
+              min={todayISO()}
+              onChange={(date) => {
+                setYearlyRenewalDate(date);
+                setBillingDayStr(String(Number(date.slice(8, 10))));
+              }}
             />
-            <Button
-              size="sm"
-              variant="ghost"
-              label={tr.subs.categoryOfferDecline}
-              onPress={() => setShowCategoryOffer(false)}
-              disabled={busy}
+            <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
+              {tr.subs.yearlyRenewalHint}
+            </Body>
+          </>
+        ) : (
+          <>
+            <MonthDayField
+              label={tr.subs.billingDay}
+              value={billingDayStr}
+              onChange={setBillingDayStr}
+              quickDays={QUICK_DAYS}
+              error={billingDayStr !== "" && !isMonthDay(billingDayStr) ? tr.incomes.dayError : null}
             />
-          </Row>
-        </Card>
-      ) : null}
-      {sources.length > 0 ? (
-        <>
+            <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
+              {tr.subs.billingDayHint}
+            </Body>
+          </>
+        )}
+
+        {expenseCategories.length > 0 ? (
           <Select
-            label={tr.tx.source}
-            placeholder={tr.tx.sourcePlaceholder}
-            options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
-            value={sourceId}
-            onChange={setSourceId}
-            onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
+            label={tr.tx.category}
+            placeholder={tr.tx.categoryPlaceholder}
+            options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
+            value={selectedCategoryId}
+            onChange={(value) => {
+              setCategoryId(value);
+              setShowCategoryOffer(false);
+            }}
+            onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
           />
-          {!sourceValid ? (
-            <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-          ) : null}
-        </>
-      ) : null}
-      {persons.length > 1 ? (
-        <>
-          <Label>{tr.tx.person}</Label>
-          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
-        </>
-      ) : null}
+        ) : null}
+        {showCategoryOffer && !selectedCategoryId ? (
+          <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md }}>
+            <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
+            <Row gap={spacing.sm} style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <Button
+                size="sm"
+                label={tr.subs.categoryOfferAccept}
+                onPress={() => void acceptCategoryOffer()}
+                loading={busy}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                label={tr.subs.categoryOfferDecline}
+                onPress={() => setShowCategoryOffer(false)}
+                disabled={busy}
+              />
+            </Row>
+          </View>
+        ) : null}
+        {sources.length > 0 ? (
+          <>
+            <Select
+              label={tr.tx.source}
+              placeholder={tr.tx.sourcePlaceholder}
+              options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
+              value={sourceId}
+              onChange={setSourceId}
+              onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
+            />
+            {!sourceValid ? (
+              <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
+            ) : null}
+          </>
+        ) : null}
+        {persons.length > 1 ? (
+          <>
+            <Label>{tr.tx.person}</Label>
+            <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
+          </>
+        ) : null}
+      </Card>
 
-      <Spread style={{ marginBottom: spacing.md }}>
-        <View style={{ flex: 1, paddingRight: spacing.md }}>
-          <Body>{tr.subs.trialToggle}</Body>
-          <Body muted style={{ fontSize: 12 }}>{tr.subs.trialToggleHint}</Body>
-        </View>
-        <Toggle label={tr.subs.trialToggle} value={isTrial} onValueChange={setIsTrial} />
-      </Spread>
-      {isTrial ? <DateField label={tr.subs.trialDate} value={trialDate} onChange={setTrialDate} /> : null}
-      <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={tr.common.optionalHint} />
+      <Card>
+        <FormSectionTitle icon={BellRing} title={tr.subs.formBehavior} />
+        <Spread style={{ marginBottom: spacing.md }}>
+          <View style={{ flex: 1, paddingRight: spacing.md }}>
+            <Body>{tr.subs.trialToggle}</Body>
+            <Body muted style={{ fontSize: 12 }}>{tr.subs.trialToggleHint}</Body>
+          </View>
+          <Toggle label={tr.subs.trialToggle} value={isTrial} onValueChange={setIsTrial} />
+        </Spread>
+        {isTrial ? <DateField label={tr.subs.trialDate} value={trialDate} onChange={setTrialDate} /> : null}
+        <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={tr.common.optionalHint} />
 
-      <Spread style={{ marginBottom: spacing.md }}>
-        <View style={{ flex: 1 }}>
-          <Body>{tr.subs.autoPay}</Body>
-          <Body muted>{tr.subs.autoPayHint}</Body>
-        </View>
-        <Toggle label={tr.subs.autoPay} value={autoPay} onValueChange={setAutoPay} />
-      </Spread>
-      <Spread style={{ marginBottom: spacing.lg }}>
-        <Body>{tr.common.active}</Body>
-        <Toggle label={tr.common.active} value={isActive} onValueChange={setIsActive} />
-      </Spread>
+        <Spread style={{ marginBottom: spacing.md }}>
+          <View style={{ flex: 1 }}>
+            <Body>{tr.subs.autoPay}</Body>
+            <Body muted>{tr.subs.autoPayHint}</Body>
+          </View>
+          <Toggle label={tr.subs.autoPay} value={autoPay} onValueChange={setAutoPay} />
+        </Spread>
+        <Spread style={{ marginBottom: spacing.lg }}>
+          <Body>{tr.common.active}</Body>
+          <Toggle label={tr.common.active} value={isActive} onValueChange={setIsActive} />
+        </Spread>
 
-      {existing && amountMinor != null && amountMinor !== existing.amountMinor ? (
-        <Body muted style={{ marginBottom: spacing.md }}>
-          {tr.subs.priceHistory}: {formatMinor(existing.amountMinor, existing.currency)} → {formatMinor(amountMinor, currency)}
-        </Body>
-      ) : null}
+        {existing && amountMinor != null && amountMinor !== existing.amountMinor ? (
+          <Body muted style={{ marginBottom: spacing.md }}>
+            {tr.subs.priceHistory}: {formatMinor(existing.amountMinor, existing.currency)} → {formatMinor(amountMinor, currency)}
+          </Body>
+        ) : null}
+      </Card>
 
       <Button label={tr.common.save} onPress={() => void save()} disabled={!baseValid} loading={busy} />
     </Screen>

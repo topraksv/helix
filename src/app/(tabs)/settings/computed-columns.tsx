@@ -6,8 +6,8 @@
  */
 
 import React, { useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Calculator, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Calculator, Check, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import {
   settingValue,
   toTxLike,
@@ -35,6 +35,7 @@ import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
+import { selectionTap, selectionTapIfChanged } from "../../../ui/haptics";
 import { appAlert } from "../../../ui/dialog";
 
 const HIDDEN_KEY = "computed_columns_hidden";
@@ -47,6 +48,90 @@ const OP_META: { op: Op; icon: LucideIcon }[] = [
   { op: "income_minus_expense", icon: Scale },
   { op: "cc_split", icon: CreditCard },
 ];
+
+function CategoryBucketPicker({
+  options,
+  values,
+  onToggle,
+  tone,
+}: {
+  options: { value: string; label: string; icon?: string | null }[];
+  values: string[];
+  onToggle: (value: string) => void;
+  tone: "plus" | "minus";
+}) {
+  const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const selectedColor = tone === "plus" ? palette.primary : palette.negative;
+  const selectedSoft = tone === "plus" ? palette.primarySoft : palette.negative + "18";
+  return (
+    <View>
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: spacing.xs }}>
+        <View style={{ borderRadius: 999, backgroundColor: selectedSoft, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
+          <Text style={[type.small, { color: tone === "plus" ? palette.primaryText : palette.negativeText, fontFamily: font.semibold }]}>
+            {tr.computed.selectedCount(values.length)}
+          </Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+        {options.map((option) => {
+          const selected = values.includes(option.value);
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="checkbox"
+              aria-checked={selected}
+              accessibilityState={{ checked: selected }}
+              onPress={() => {
+                selectionTap();
+                onToggle(option.value);
+              }}
+              style={({ pressed }) => ({
+                flexBasis: width >= 720 ? "31%" : "47%",
+                flexGrow: 1,
+                minWidth: 0,
+                minHeight: 48,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.sm,
+                paddingHorizontal: spacing.sm,
+                paddingVertical: spacing.sm,
+                borderRadius: radius.md,
+                borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
+                borderColor: selected ? selectedColor : palette.border,
+                backgroundColor: pressed ? palette.surfaceHover : selected ? selectedSoft : palette.surfaceAlt,
+              })}
+            >
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: selected ? selectedColor : palette.surface,
+                }}
+              >
+                {selected ? (
+                  <Check accessible={false} size={15} color={tone === "plus" ? palette.onPrimary : palette.onDestructive} strokeWidth={2.4} />
+                ) : option.icon ? (
+                  <Text style={{ fontSize: 14 }}>{option.icon}</Text>
+                ) : tone === "plus" ? (
+                  <Plus accessible={false} size={14} color={palette.textSecondary} />
+                ) : (
+                  <Minus accessible={false} size={14} color={palette.textSecondary} />
+                )}
+              </View>
+              <Text style={[type.small, { flex: 1, minWidth: 0, color: selected ? (tone === "plus" ? palette.primaryText : palette.negativeText) : palette.text, fontFamily: font.semibold }]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
 export default function ComputedColumnsScreen({ header }: { header?: ReactNode } = {}) {
   /**
@@ -220,7 +305,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     }
   };
 
-  const categoryChips = categories.map((c) => ({ value: c.id, label: c.name }));
+  const categoryChips = categories.map((c) => ({ value: c.id, label: c.name, icon: c.icon }));
 
   if (!dataReady) {
     return (
@@ -244,6 +329,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
 
       {/* 1) Calculation type */}
       <Label>{tr.computed.stepType}</Label>
+      <View role="radiogroup" accessibilityLabel={tr.computed.stepType}>
       {OP_META.map(({ op: value, icon: IconCmp }) => {
         const selected = op === value;
         return (
@@ -252,7 +338,10 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
             accessibilityRole="radio"
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected }}
-            onPress={() => setOp(value)}
+            onPress={() => {
+              selectionTapIfChanged(op, value);
+              setOp(value);
+            }}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -277,24 +366,30 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
           </Pressable>
         );
       })}
+      </View>
 
       {/* 2) Inputs for the chosen type */}
       <Card style={{ marginTop: spacing.md }}>
         {op === "sum" || op === "difference" ? (
           <>
             <Label>{op === "difference" ? tr.computed.plusGroup : tr.computed.pickCategories}</Label>
-            <ChipPicker
-              multi
+            <CategoryBucketPicker
               options={categoryChips}
               values={plus}
               onToggle={(id) => toggle(plus, setPlus, id)}
+              tone="plus"
             />
           </>
         ) : null}
         {op === "difference" ? (
           <>
             <Label>{tr.computed.minusGroup}</Label>
-            <ChipPicker multi options={categoryChips} values={minus} onToggle={(id) => toggle(minus, setMinus, id)} />
+            <CategoryBucketPicker
+              options={categoryChips}
+              values={minus}
+              onToggle={(id) => toggle(minus, setMinus, id)}
+              tone="minus"
+            />
           </>
         ) : null}
         {op === "cc_split" ? (

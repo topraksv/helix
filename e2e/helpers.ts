@@ -91,8 +91,12 @@ export async function openCashFlow(page: Page): Promise<void> {
  * the control is one edit here rather than six across the suite.
  */
 export async function pickOption(page: Page, field: string, option: string | RegExp): Promise<void> {
-  await page.getByRole("button", { name: field, exact: true }).click();
-  await page.getByRole("radio", { name: option }).click();
+  const trigger = page.getByRole("button", { name: field, exact: true });
+  await trigger.click();
+  const modal = page.locator('[aria-modal="true"]');
+  await modal.getByRole("radio", { name: option }).click();
+  await expect(modal).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 }
 
 export async function addMarketExpense(page: Page, note: string, amount = "1.234,56"): Promise<void> {
@@ -192,4 +196,3 @@ export async function assertNoRuntimeErrors(errors: string[], testInfo: TestInfo
   }
   expect(errors).toEqual([]);
 }
-

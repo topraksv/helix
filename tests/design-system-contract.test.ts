@@ -85,6 +85,7 @@ describe("interaction feedback contracts", () => {
   const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
   const calendar = readFileSync(join(root, "src/ui/calendar.tsx"), "utf8");
   const stickyTable = readFileSync(join(root, "src/ui/sticky-table.tsx"), "utf8");
+  const tabBar = readFileSync(join(root, "src/ui/tab-bar.tsx"), "utf8");
   const cashFlow = readFileSync(join(root, "src/app/(tabs)/cash-flow/index.tsx"), "utf8");
   const button = components.slice(
     components.indexOf("export function Button("),
@@ -140,9 +141,17 @@ describe("interaction feedback contracts", () => {
     expect(stickyTable).toContain("selectionTap(); onUnpin()");
   });
 
+  it("keeps the owner's drag-across footer navigation on every viewport", () => {
+    expect(tabBar).toContain("PanResponder.create");
+    expect(tabBar).toContain("onPanResponderMove");
+    expect(tabBar).toContain("{...pan.panHandlers}");
+    expect(tabBar).not.toContain("desktopRail");
+  });
+
   it("renders semantic card states from the shared primitive instead of invisible border colours", () => {
     expect(card).toContain('tone?: "success" | "warning" | "error"');
-    expect(card).toContain("borderWidth: tone ? StyleSheet.hairlineWidth : 0");
+    expect(card).toContain("borderWidth: StyleSheet.hairlineWidth");
+    expect(card).toContain('borderColor: toneColor ? toneColor + "66" : palette.border + "70"');
     for (const path of sourceFiles("src/app")) {
       const source = readFileSync(join(root, path), "utf8");
       expect(source, path).not.toMatch(/<Card[^>]*borderColor: palette\.(?:success|warning|error)/);

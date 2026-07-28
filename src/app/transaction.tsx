@@ -2,9 +2,9 @@
  *  future-dated payments (§2.7) and inline installment plan creation. */
 
 import React, { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Undo2 } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, SlidersHorizontal, TrendingUp, Undo2, type LucideIcon } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
 import { useAllTransactionsState, useCategoriesState, usePersonsState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
@@ -19,13 +19,14 @@ import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, ChipPicker, DataStateNotice, Field, Label, MonthStepper, MoneyField, Row, Screen, Segmented, Select, Toggle } from "../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, Label, MonthStepper, MoneyField, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { kv } from "../services/kv";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
-import { radius, spacing, useTheme } from "../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../ui/theme";
+import { selectionTapIfChanged } from "../ui/haptics";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -35,6 +36,53 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 type EntryType = "expense" | "income" | "transfer";
 
 type ExistingTx = ReturnType<typeof useAllTransactionsState>["data"][number];
+
+function EntryTypeChoice({
+  label,
+  icon: Icon,
+  tone,
+  selected,
+  onPress,
+}: {
+  label: string;
+  icon: LucideIcon;
+  tone: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { palette } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      aria-checked={selected}
+      accessibilityState={{ checked: selected, selected }}
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minWidth: 0,
+        minHeight: 78,
+        padding: spacing.sm,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: spacing.xs,
+        borderRadius: radius.md,
+        borderWidth: selected ? 2 : 1,
+        borderColor: selected ? tone : palette.border + "80",
+        backgroundColor: selected ? tone + "14" : palette.surface,
+        opacity: pressed ? 0.78 : 1,
+        transform: [{ translateY: pressed ? 1 : 0 }],
+      })}
+    >
+      <View style={{ width: 30, height: 30, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: tone + "1A" }}>
+        <Icon accessible={false} size={17} color={tone} strokeWidth={2.2} />
+      </View>
+      <Text style={[type.small, { color: selected ? palette.textStrong : palette.textSecondary, fontFamily: selected ? font.semibold : font.medium, textAlign: "center" }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
 export default function TransactionModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -73,6 +121,8 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const persons = personsState.data;
   const router = useRouter();
   const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const wideForm = width >= 920;
   const operationGuard = useOperationGuard();
   const undo = useUndo();
   const liveStates = [categoriesState, sourcesState, personsState];
@@ -94,6 +144,9 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const [isReversal, setIsReversal] = useState((existing?.amountMinor ?? 0) < 0);
   const [currency, setCurrency] = useState<string>(existing?.currency ?? "TRY");
   const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
+  const [showAmountOptions, setShowAmountOptions] = useState(
+    (existing?.amountMinor ?? 0) < 0 || (existing?.currency ?? "TRY") !== "TRY",
+  );
   const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
   const [sourceId, setSourceId] = useState<string | null>(existing?.paymentSourceId ?? null);
   // persons load async (live query) — deriving keeps "self" as the default
@@ -304,28 +357,53 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     );
   }
 
+  const chooseEntryType = (next: EntryType) => {
+    selectionTapIfChanged(entryType, next);
+    setEntryType(next);
+    setIsReversal(false);
+    setCategoryId((current) => {
+      if (!current || next === "transfer") return current;
+      const expectedKind = next === "income" ? "income" : "expense";
+      return categories.some((category) => category.id === current && category.kind === expectedKind) ? current : null;
+    });
+    if (next !== "expense") setInstallment(false);
+  };
+
   return (
-    <Screen>
+    <Screen maxWidth={980}>
       <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Segmented
-        options={[
-          { value: "expense", label: tr.tx.expense },
-          { value: "income", label: tr.tx.income },
-          { value: "transfer", label: tr.tx.transferInvest },
-        ]}
-        value={entryType}
-        onChange={(v) => {
-          setEntryType(v);
-          setIsReversal(false);
-          setCategoryId((current) => {
-            if (!current || v === "transfer") return current;
-            const expectedKind = v === "income" ? "income" : "expense";
-            return categories.some((category) => category.id === current && category.kind === expectedKind) ? current : null;
-          });
-          if (v !== "expense") setInstallment(false);
-        }}
-      />
+      <View style={wideForm ? { flexDirection: "row", alignItems: "stretch", gap: spacing.xl } : undefined}>
+      <View style={wideForm ? { flex: 1 } : undefined}>
+      <Card style={wideForm ? { flex: 1 } : undefined}>
+      <SectionHeader>{tr.tx.amountDetails}</SectionHeader>
+      <View
+        role="radiogroup"
+        accessibilityLabel={tr.tx.type}
+        style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}
+      >
+        <EntryTypeChoice
+          label={tr.tx.expense}
+          icon={ArrowUpRight}
+          tone={palette.negative}
+          selected={entryType === "expense"}
+          onPress={() => chooseEntryType("expense")}
+        />
+        <EntryTypeChoice
+          label={tr.tx.income}
+          icon={ArrowDownLeft}
+          tone={palette.positive}
+          selected={entryType === "income"}
+          onPress={() => chooseEntryType("income")}
+        />
+        <EntryTypeChoice
+          label={tr.tx.transferInvest}
+          icon={TrendingUp}
+          tone={palette.primary}
+          selected={entryType === "transfer"}
+          onPress={() => chooseEntryType("transfer")}
+        />
+      </View>
 
       <MoneyField
         label={`${tr.tx.amount} · ${currency}`}
@@ -338,6 +416,19 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           setAmountMinor(minor == null ? null : Math.abs(minor));
         }}
       />
+      {!showAmountOptions ? (
+        <View style={{ alignSelf: "flex-start", marginBottom: spacing.md }}>
+          <Button
+            icon={SlidersHorizontal}
+            size="sm"
+            variant="ghost"
+            label={tr.tx.amountOptions(currency)}
+            expanded={showAmountOptions}
+            onPress={() => setShowAmountOptions(true)}
+          />
+        </View>
+      ) : (
+      <>
       {/* Refund/return toggle: off = an ordinary entry (no confusing "normal"
           label), on = a reversal that flips the amount's sign. The description
           explains the balance effect in the same card, so the meaning is clear
@@ -390,11 +481,14 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           {!historicalRateTry && rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
         </View>
       ) : null}
-
+      </>
+      )}
       {/* Category and payment source are open-ended lists — a household can
           carry forty categories — so they read as one dropdown row rather than
           a chip block that dwarfs the rest of the form. Person stays chips: it
           is bounded by the household and usually two. */}
+      <Divider />
+      <SectionHeader>{tr.tx.assignment}</SectionHeader>
       {categoryOptions.length > 0 ? (
         <Select
           label={tr.tx.category}
@@ -429,11 +523,16 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
         </>
       ) : null}
+      </Card>
+      </View>
+      <View style={wideForm ? { flex: 1 } : undefined}>
 
       {/* This label heads the month/day switch. A credit-card expense has no
           switch — its date is always the purchase day — and the `DateField`
           below already carries that name, so heading nothing here printed
           "Harcama Günü" twice, once above the other. */}
+      <Card style={wideForm ? { flex: 1 } : undefined}>
+      <SectionHeader>{tr.tx.timing}</SectionHeader>
       {!isCreditCardExpense ? (
         <>
           <Label>{tr.tx.whenLabel}</Label>
@@ -494,14 +593,17 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
           ) : null}
         </View>
       ) : null}
-
+      <Divider />
+      <SectionHeader>{tr.tx.completion}</SectionHeader>
       <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
-
-      <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+      <View style={{ gap: spacing.sm }}>
         <Button label={tr.common.save} onPress={() => void save(false)} disabled={!canSave} loading={busy} />
         {!isEdit ? (
           <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void save(true)} disabled={!canSave || busy} />
         ) : null}
+      </View>
+      </Card>
+      </View>
       </View>
     </Screen>
   );

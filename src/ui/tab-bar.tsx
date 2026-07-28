@@ -1,11 +1,9 @@
 /**
- * The app's tab bar: a bounded, centred surface floating over the scene.
+ * The app's navigation surface: one bounded bottom bar on every viewport.
  *
- * The **shape** is the same everywhere; the **material** is not. Only iOS gets
- * the translucent one, because only there does it read as the system's own
- * glass — Android and web get the identical bar in solid `surface` rather than
- * an imitation of a look neither platform has. Reduce Transparency turns it
- * solid on iOS too.
+ * Only iOS gets the translucent material, because only there does it read as
+ * the system's own glass. Android and web use the solid `surface`; Reduce
+ * Transparency turns iOS solid too.
  *
  * It is translucency, not blur: `expo-blur` and the glass-tab packages built on
  * it are native modules that cannot ship over OTA, so the background layer here
@@ -24,7 +22,7 @@ import { PanResponder, Platform, Pressable, Text, View } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReduceTransparency } from "./motion";
-import { font, overlayShadow, radius, spacing, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, useTheme } from "./theme";
+import { font, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, useTheme } from "./theme";
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { palette } = useTheme();
@@ -97,15 +95,17 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         width: "100%",
         maxWidth: TAB_BAR.maxWidth,
         height: tabBarHeight(isWeb),
-        paddingHorizontal: spacing.xs,
+        padding: 2,
         flexDirection: "row",
         alignItems: "center",
-        borderRadius: radius.xl,
+        borderRadius: radius.lg,
         // No outline. The bar reads as a floating object from its own fill and
         // shadow, and the surface ramp now steps far enough from the page that
         // a hairline only added a hard edge across the bottom of every screen.
         backgroundColor: glass ? palette.surfaceTranslucent : palette.surface,
-        ...overlayShadow,
+        borderWidth: 1,
+        borderColor: palette.border + "70",
+        ...themeShadow.overlay(palette),
       }}
     >
       {state.routes.map((route, index) => {
@@ -115,7 +115,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         // for an 11px label. `primaryText` is the ink that role exists for and
         // is already proved against `primarySoft` for every palette, so the
         // selected tab reads by weight and fill rather than by hue alone.
-        const color = focused ? palette.primaryText : palette.textSecondary;
+        const color = focused ? palette.onPrimary : palette.textSecondary;
         const label = options.tabBarLabel ?? options.title ?? route.name;
 
         return (
@@ -141,17 +141,31 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             style={({ pressed }) => ({
               flex: 1,
               alignSelf: "stretch",
-              marginVertical: spacing.xs,
+              marginVertical: 0,
               alignItems: "center",
               justifyContent: "center",
-              gap: 2,
-              borderRadius: radius.lg,
-              backgroundColor: focused ? palette.primarySoft : "transparent",
+              gap: 1,
+              borderRadius: radius.sm,
+              borderWidth: focused ? 1 : 0,
+              borderColor: focused ? palette.primary + "70" : "transparent",
+              backgroundColor: focused ? palette.surfaceAlt : "transparent",
               opacity: pressed ? stateOpacity.pressed : 1,
             })}
           >
-            {options.tabBarIcon?.({ focused, color, size: 24 })}
-            <Text style={{ fontFamily: font.medium, fontSize: 11, lineHeight: 15, color }}>
+            <View
+              accessible={false}
+              style={{
+                width: 30,
+                height: 28,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: radius.sm,
+                backgroundColor: focused ? palette.primary : "transparent",
+              }}
+            >
+              {options.tabBarIcon?.({ focused, color, size: 22 })}
+            </View>
+            <Text style={{ fontFamily: focused ? font.semibold : font.medium, fontSize: 11, lineHeight: 14, color: focused ? palette.textStrong : palette.textSecondary }}>
               {typeof label === "string" ? label : route.name}
             </Text>
           </Pressable>

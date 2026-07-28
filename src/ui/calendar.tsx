@@ -28,12 +28,15 @@ export function CalendarSheet({
   value,
   onSelect,
   onClose,
+  min,
   max,
   returnFocusRef,
 }: {
   value: ISODate | null;
   onSelect: (iso: ISODate) => void;
   onClose: () => void;
+  /** Earliest selectable day (inclusive). Days before it render disabled. */
+  min?: ISODate;
   /** Latest selectable day (inclusive). Days after it render disabled. */
   max?: ISODate;
   returnFocusRef?: React.RefObject<View | null>;
@@ -77,7 +80,7 @@ export function CalendarSheet({
                 const iso: ISODate = `${month}-${String(day).padStart(2, "0")}`;
                 const selected = iso === value;
                 const isToday = iso === today;
-                const disabled = max != null && iso > max;
+                const disabled = (min != null && iso < min) || (max != null && iso > max);
                 return (
                   <Pressable
                     key={iso}
@@ -136,11 +139,15 @@ export function DateField({
   value,
   onChange,
   placeholder,
+  min,
+  max,
 }: {
   label?: string;
   value: ISODate | null;
   onChange: (iso: ISODate) => void;
   placeholder?: string;
+  min?: ISODate;
+  max?: ISODate;
 }) {
   const { palette } = useTheme();
   const [open, setOpen] = useState(false);
@@ -175,7 +182,16 @@ export function DateField({
         </Text>
         <CalendarDays accessible={false} size={17} color={palette.textSecondary} />
       </Pressable>
-      {open ? <CalendarSheet value={value} onSelect={onChange} onClose={() => setOpen(false)} returnFocusRef={triggerRef} /> : null}
+      {open ? (
+        <CalendarSheet
+          value={value}
+          min={min}
+          max={max}
+          onSelect={onChange}
+          onClose={() => setOpen(false)}
+          returnFocusRef={triggerRef}
+        />
+      ) : null}
     </View>
   );
 }
