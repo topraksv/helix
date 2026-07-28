@@ -13,6 +13,7 @@ import { Button, FadeIn, IconButton, Label } from "./components";
 import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
+import { selectionTapIfChanged } from "./haptics";
 
 function daysInMonth(month: MonthKey): number {
   return new Date(yearOf(month), monthOf(month), 0).getDate();
@@ -57,11 +58,11 @@ export function CalendarSheet({
         <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 360 }}>
           <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md }}>
-              <IconButton icon={ChevronLeft} label={tr.common.previous} onPress={() => setMonth(addMonthsToKey(month, -1))} />
+              <IconButton icon={ChevronLeft} label={tr.common.previous} haptic="selection" onPress={() => setMonth(addMonthsToKey(month, -1))} />
               <View ref={titleRef} accessible accessibilityRole="header" accessibilityLiveRegion="polite" tabIndex={-1}>
                 <Text style={[type.heading, { color: palette.text }]}>{monthLabel(month)}</Text>
               </View>
-              <IconButton icon={ChevronRight} label={tr.common.next} onPress={() => setMonth(addMonthsToKey(month, 1))} />
+              <IconButton icon={ChevronRight} label={tr.common.next} haptic="selection" onPress={() => setMonth(addMonthsToKey(month, 1))} />
             </View>
             <View style={{ flexDirection: "row" }}>
               {tr.common.weekdays.map((d) => (
@@ -85,6 +86,7 @@ export function CalendarSheet({
                     accessibilityState={{ disabled, selected }}
                     disabled={disabled}
                     onPress={() => {
+                      selectionTapIfChanged(value, iso);
                       onSelect(iso);
                       onClose();
                     }}
@@ -100,13 +102,15 @@ export function CalendarSheet({
                         backgroundColor: selected ? palette.primarySoft : "transparent",
                         borderWidth: isToday && !selected ? StyleSheet.hairlineWidth : 0,
                         borderColor: palette.primaryText,
-                        opacity: disabled ? stateOpacity.calendarDisabled : 1,
                       }}
                     >
                       <Text
                         style={[
                           type.label,
-                          { color: selected ? palette.primaryText : palette.text, fontVariant: ["tabular-nums"] },
+                          {
+                            color: disabled ? palette.textMuted : selected ? palette.primaryText : palette.text,
+                            fontVariant: ["tabular-nums"],
+                          },
                         ]}
                       >
                         {day}

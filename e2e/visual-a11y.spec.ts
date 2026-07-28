@@ -83,6 +83,15 @@ test("every local-mode reachable route stays accessible with real data", async (
   for (const route of routes) {
     await page.goto(route);
     await expect(page.locator("#root")).toBeVisible();
+    if (route === "/helix/cash-flow") {
+      // The app shell is visible before the async ledger bundle and measured
+      // matrix viewport are ready. Audit the real populated table, not whichever
+      // loading frame happened to win the race.
+      await expect(page.getByRole("button", { name: /kolonunu sabitle/ }).first()).toBeVisible();
+    }
+    if (route === "/helix/settings/computed-columns") {
+      await expect(page.getByRole("radio", { name: /^Toplam/ })).toBeVisible();
+    }
     const undersized = await page.evaluate(() => {
       const found: string[] = [];
       for (const element of Array.from(document.querySelectorAll<HTMLElement>("[role]"))) {
@@ -296,7 +305,10 @@ test("every primary tab has a permanent mobile visual baseline", async ({ page }
   for (const { name, route, heading } of tabs) {
     await page.goto(route);
     await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
-    await expect(page).toHaveScreenshot(`tab-${name}-phone-390-light.png`, {
+    // Keep collecting after a mismatch so a platform-specific CI artefact
+    // contains every changed tab rather than only the first item in this loop.
+    // Soft assertions still fail the test after the complete evidence sweep.
+    await expect.soft(page).toHaveScreenshot(`tab-${name}-phone-390-light.png`, {
       animations: "disabled",
       caret: "hide",
       maxDiffPixels: maxVisualDiffPixels,
@@ -371,7 +383,9 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
         await sourceName.fill("Görsel yöntem");
         await sourceName.evaluate((element) => (element as HTMLElement).blur());
       }
-      await expect(page).toHaveScreenshot(`follow-up-${name}-phone-390-${scheme}.png`, {
+      // A deliberate shared-control change can affect every form and theme.
+      // Capture them all in one failed run so baseline review is evidence-led.
+      await expect.soft(page).toHaveScreenshot(`follow-up-${name}-phone-390-${scheme}.png`, {
         animations: "disabled",
         caret: "hide",
         mask: volatile,

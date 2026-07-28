@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mobile Accessibility"
+  short_description: "Audit Helix mobile accessibility behavior"
+  default_prompt: "Use $mobile-accessibility to audit this Helix mobile change."

@@ -209,6 +209,14 @@ function RootLayoutInner() {
   );
 
   useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    document.documentElement.style.colorScheme = scheme;
+    return () => {
+      document.documentElement.style.removeProperty("color-scheme");
+    };
+  }, [scheme]);
+
+  useEffect(() => {
     void loadDevicePreferences();
     void Promise.all([kv.get("helix.theme"), kv.get("helix.palette")]).then(([themeValue, paletteValue]) => {
       if (themeValue === "light" || themeValue === "dark" || themeValue === "system") setThemePref(themeValue);
@@ -344,6 +352,11 @@ function RootLayoutInner() {
 
   return (
     <ThemeContext.Provider value={theme}>
+      {Platform.OS === "web" ? (
+        <Head>
+          <meta name="theme-color" content={theme.palette.background} />
+        </Head>
+      ) : null}
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <View style={{ flex: 1, backgroundColor: theme.palette.background }}>
         <ErrorBoundary>

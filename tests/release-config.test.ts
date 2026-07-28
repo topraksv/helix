@@ -29,7 +29,13 @@ describe("release contract", () => {
   });
 
   it("gates Pages deploys on every local release check", () => {
-    for (const command of ["npm run typecheck", "npm test", "npx expo lint", "npx expo export -p web"]) {
+    for (const command of [
+      "npm run verify:skills",
+      "npm run typecheck",
+      "npm test",
+      "npx expo lint",
+      "npx expo export -p web",
+    ]) {
       expect(workflow).toContain(command);
     }
     expect(workflow).toMatch(/deploy:\n[\s\S]*needs: quality/);

@@ -123,13 +123,12 @@ Surface the conflict. Don't silently pick one.
 
 Every framework-specific pattern gets a citation. The user must be able to verify every decision.
 
-**In code comments:**
+**In the delivery note or canonical documentation:**
 
-```typescript
-// React 19 form handling with useActionState
-// Source: https://react.dev/reference/react/useActionState#usage
-const [state, formAction, isPending] = useActionState(submitOrder, initialState);
-```
+Record the source for a non-obvious framework decision where the repository
+keeps that decision. Do not add a URL comment beside routine implementation
+code; Helix comments explain durable constraints, not the documentation a line
+was copied from.
 
 **In conversation:**
 
@@ -188,7 +187,8 @@ After implementing with source-driven development:
 - [ ] Official documentation was fetched for framework-specific patterns
 - [ ] All sources are official documentation, not blog posts or training data
 - [ ] Code follows the patterns shown in the current version's documentation
-- [ ] Non-trivial decisions include source citations with full URLs
+- [ ] Non-trivial decisions include source citations in the delivery note or
+      canonical documentation when they remain useful
 - [ ] No deprecated APIs are used (checked against migration guides)
 - [ ] Conflicts between docs and existing code were surfaced to the user
 - [ ] Anything that could not be verified is explicitly flagged as unverified

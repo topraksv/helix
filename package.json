@@ -70,7 +70,8 @@
     "test:e2e": "npm run test:e2e:export && playwright test",
     "test:e2e:update": "npm run test:e2e:export && playwright test --update-snapshots",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run typecheck && npm test && npx expo lint",
+    "verify:skills": "node scripts/check-skills.mjs",
+    "verify": "npm run verify:skills && npm run typecheck && npm test && npx expo lint",
     "verify:release": "npm run verify && npx expo export -p web --clear && npm run bundle:check && npm run test:e2e",
     "bundle:check": "node scripts/check-web-budget.mjs dist --require-supabase-config"
   },

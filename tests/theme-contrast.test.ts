@@ -30,7 +30,9 @@ function expectBodyTextContrast(palette: Palette): void {
     [palette.text, palette.surface],
     [palette.textStrong, palette.background],
     [palette.textSecondary, palette.surface],
+    [palette.textSecondary, palette.surfaceAlt],
     [palette.textMuted, palette.background],
+    [palette.textMuted, palette.surface],
     [palette.primaryText, palette.surface],
     [palette.primaryText, palette.primarySoft],
     [palette.successText, palette.surface],
@@ -269,6 +271,23 @@ describe("semantic theme contrast", () => {
 
   it("keeps every shipped foreground at WCAG AA", () => {
     for (const palette of shippedPalettes) expectBodyTextContrast(palette);
+  });
+
+  it("keeps semantic card copy readable on its tinted surface", () => {
+    const tones = [
+      ["success", "successText"],
+      ["warning", "warningText"],
+      ["error", "errorText"],
+    ] as const;
+    for (const palette of shippedPalettes) {
+      for (const [tone, foreground] of tones) {
+        const fill = blend(palette[tone], palette.surface, 0x14 / 255);
+        expect(
+          contrastRatio(palette[foreground], fill),
+          `${foreground} (${palette[foreground]}) on ${tone} card (${fill})`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
   });
 
   /**

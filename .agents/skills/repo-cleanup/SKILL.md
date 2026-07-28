@@ -38,11 +38,11 @@ Avoid when:
 
 | Task | Load reference |
 | --- | --- |
-| Code cleanup | `skills/repo-cleanup/references/code-cleanup.md` |
-| Dependency cleanup | `skills/repo-cleanup/references/deps-cleanup.md` |
-| Docs cleanup | `skills/repo-cleanup/references/docs-cleanup.md` |
-| Test cleanup | `skills/repo-cleanup/references/test-cleanup.md` |
-| Sprint archive | `skills/repo-cleanup/references/archive-sprint.md` |
+| Code cleanup | `references/code-cleanup.md` |
+| Dependency cleanup | `references/deps-cleanup.md` |
+| Docs cleanup | `references/docs-cleanup.md` |
+| Test cleanup | `references/test-cleanup.md` |
+| Sprint archive | `references/archive-sprint.md` |
 
 ## Workflow
 1. Define scope and safety mode (safe vs aggressive).

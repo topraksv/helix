@@ -59,28 +59,12 @@ import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
 function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
     backgroundColor: palette.surfaceAlt,
     borderWidth: borderWidth.control,
     borderColor: error ? palette.error : active ? palette.focus : "transparent",
   };
-}
-
-/** Interruptible shared press feedback. */
-function useSpringPress(pressedScale = 0.96) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const reducedMotion = useReducedMotion();
-  useEffect(() => () => scale.stopAnimation(), [scale]);
-  const onPressIn = () => reducedMotion
-    ? scale.setValue(1)
-    : Animated.spring(scale, { toValue: pressedScale, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
-  const onPressOut = () => reducedMotion
-    ? scale.setValue(1)
-    : Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 36, bounciness: 9 }).start();
-  return { scale, onPressIn, onPressOut };
 }
 
 /** Shared reduced-motion-aware entrance. */
@@ -259,18 +243,22 @@ export function Card({
   onPress,
   onLayout,
   padded = true,
+  tone,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   onLayout?: (e: LayoutChangeEvent) => void;
   padded?: boolean;
+  tone?: "success" | "warning" | "error";
 }) {
   const { palette, scheme } = useTheme();
-  const press = useSpringPress(0.985);
+  const toneColor = tone ? palette[tone] : null;
   const base: StyleProp<ViewStyle> = [
     {
-      backgroundColor: palette.surface,
+      backgroundColor: toneColor ? toneColor + "14" : palette.surface,
+      borderWidth: tone ? StyleSheet.hairlineWidth : 0,
+      borderColor: toneColor ? toneColor + "55" : "transparent",
       borderRadius: radius.lg,
       padding: padded ? spacing.lg : 0,
       marginBottom: spacing.md,
@@ -280,16 +268,14 @@ export function Card({
   ];
   if (onPress) {
     return (
-      <AnimatedPressable
-        onPress={onPress}
-        onPressIn={press.onPressIn}
-        onPressOut={press.onPressOut}
-        onLayout={onLayout}
-        style={[base, style, { transform: [{ scale: press.scale }] }]}
+      <Pressable
         accessibilityRole="button"
+        onPress={onPress}
+        onLayout={onLayout}
+        style={({ pressed }) => [base, style, pressed && { backgroundColor: palette.surfaceHover }]}
       >
         {children}
-      </AnimatedPressable>
+      </Pressable>
     );
   }
   return <View style={[base, style]} onLayout={onLayout}>{children}</View>;
@@ -478,7 +464,7 @@ export function Button({
   loading,
   icon: IconCmp,
   size = "md",
-  haptic: hapticKind = "light",
+  haptic: hapticKind = "none",
   accessibilityHint,
 }: {
   label: string;
@@ -492,16 +478,28 @@ export function Button({
   accessibilityHint?: string;
 }) {
   const { palette } = useTheme();
-  const colors = {
+  const enabledColors = {
     primary: { background: palette.primary, foreground: palette.onPrimary },
     secondary: { background: palette.surfaceAlt, foreground: palette.text },
     danger: { background: palette.destructive, foreground: palette.onDestructive },
     ghost: { background: "transparent", foreground: palette.accentText },
   }[variant];
+  const visuallyDisabled = Boolean(disabled && !loading);
+  const colors = visuallyDisabled
+    ? {
+        background: variant === "ghost" ? "transparent" : palette.surfaceAlt,
+        foreground: palette.textSecondary,
+      }
+    : enabledColors;
+  const pressedBackground = {
+    primary: palette.primaryStrong,
+    secondary: palette.surfaceHover,
+    danger: palette.destructive,
+    ghost: palette.surfaceHover,
+  }[variant];
   const small = size === "sm";
-  const press = useSpringPress(0.97);
   return (
-    <AnimatedPressable
+    <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
@@ -510,15 +508,13 @@ export function Button({
       // A small button's visual height stays compact (36) to fit inline rows,
       // but hitSlop lifts its effective touch target to the ~44pt minimum.
       hitSlop={small ? 8 : undefined}
-      onPressIn={press.onPressIn}
-      onPressOut={press.onPressOut}
       onPress={() => {
         haptic(hapticKind);
         onPress();
       }}
-      style={[
+      style={({ pressed }) => [
         {
-          backgroundColor: colors.background,
+          backgroundColor: pressed && !visuallyDisabled ? pressedBackground : colors.background,
           borderRadius: radius.md,
           paddingVertical: small ? spacing.sm : spacing.md + 1,
           paddingHorizontal: small ? spacing.md : spacing.lg,
@@ -527,8 +523,9 @@ export function Button({
           gap: spacing.sm,
           alignItems: "center",
           justifyContent: "center",
-          opacity: disabled ? stateOpacity.buttonDisabled : 1,
-          transform: [{ scale: press.scale }],
+          borderWidth: visuallyDisabled ? StyleSheet.hairlineWidth : 0,
+          borderColor: palette.border,
+          opacity: pressed && variant === "danger" ? stateOpacity.pressed : 1,
         },
       ]}
     >
@@ -544,7 +541,7 @@ export function Button({
           </Text>
         </>
       )}
-    </AnimatedPressable>
+    </Pressable>
   );
 }
 
@@ -556,7 +553,7 @@ export function IconButton({
   tone = "default",
   size = controlSize.compact,
   label,
-  haptic: hapticKind = "light",
+  haptic: hapticKind = "none",
 }: {
   icon: LucideIcon;
   onPress: () => void;
@@ -567,7 +564,13 @@ export function IconButton({
   haptic?: HapticKind;
 }) {
   const { palette } = useTheme();
-  const color = tone === "danger" ? palette.destructive : tone === "primary" ? palette.accentText : palette.textSecondary;
+  const color = disabled
+    ? palette.textSecondary
+    : tone === "danger"
+      ? palette.destructive
+      : tone === "primary"
+        ? palette.accentText
+        : palette.textSecondary;
   return (
     <Pressable
       accessibilityRole="button"
@@ -587,7 +590,8 @@ export function IconButton({
           backgroundColor: pressed ? palette.surfaceHover : palette.surfaceAlt,
           alignItems: "center",
           justifyContent: "center",
-          opacity: disabled ? stateOpacity.iconDisabled : 1,
+          borderWidth: disabled ? StyleSheet.hairlineWidth : 0,
+          borderColor: palette.border,
         },
       ]}
     >
@@ -612,9 +616,9 @@ export function MonthStepper({
   const canNext = !max || value < max;
   return (
     <Spread style={{ marginBottom: spacing.md }}>
-      <IconButton icon={ChevronLeft} label={tr.common.previous} disabled={!canPrev} onPress={() => onChange(addMonthsToKey(value, -1))} />
+      <IconButton icon={ChevronLeft} label={tr.common.previous} haptic="selection" disabled={!canPrev} onPress={() => onChange(addMonthsToKey(value, -1))} />
       <Heading style={{ marginVertical: 0 }}>{monthLabel(value)}</Heading>
-      <IconButton icon={ChevronRight} label={tr.common.next} disabled={!canNext} onPress={() => onChange(addMonthsToKey(value, 1))} />
+      <IconButton icon={ChevronRight} label={tr.common.next} haptic="selection" disabled={!canNext} onPress={() => onChange(addMonthsToKey(value, 1))} />
     </Spread>
   );
 }
@@ -692,7 +696,8 @@ export function Field({
           style={[
             {
               ...controlStateStyle(palette, focused, Boolean(error)),
-              color: palette.text,
+              color: props.editable === false ? palette.textSecondary : palette.text,
+              ...(props.editable === false ? { borderColor: palette.border } : null),
               borderRadius: radius.sm,
               paddingHorizontal: spacing.md,
               paddingRight: secure ? controlSize.inputAccessoryInset : spacing.md,
@@ -788,7 +793,7 @@ export function MoneyField({
             paddingRight: controlSize.inputAccessoryInset,
             minHeight: controlSize.regular,
             ...type.moneyInput,
-            opacity: disabled ? stateOpacity.fieldDisabled : 1,
+            ...(disabled ? { borderColor: palette.border } : null),
           }}
         />
         {disabled ? null : (
@@ -835,13 +840,11 @@ export function MoneyField({
  * neither order can observe a TDZ hole.
  *
  * The cycle is retained deliberately. Breaking it means moving
- * `AnimatedPressable`, `useSpringPress`, `FadeIn` and `Button` (~120 lines,
- * with `AnimatedPressable`/`useSpringPress` also used by `Card` and
- * `PressableRow` here) into a leaf module — a wide edit to a 1300-line shared
+ * `FadeIn` and `Button` into a leaf module — a wide edit to a 1300-line shared
  * file whose only gains are a clean `madge` run and one fewer eslint
- * suppression. Note also that `require()` is synchronous: Metro cannot split on
- * it, so `calculator.tsx` ships in the same bundle either way. This defers
- * module EVALUATION, not bundling.
+ * suppression. `require()` is synchronous: Metro cannot split on it, so
+ * `calculator.tsx` ships in the same bundle either way. This defers module
+ * EVALUATION, not bundling.
  */
 function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: number) => void; returnFocusRef?: React.RefObject<View | null> }) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -933,6 +936,7 @@ export function Select<T extends string>({
                           aria-checked={selected}
                           accessibilityState={{ checked: selected, selected }}
                           onPress={() => {
+                            selectionTapIfChanged(value, option.value);
                             onChange(option.value);
                             setOpen(false);
                           }}
@@ -1036,13 +1040,13 @@ export function Select<T extends string>({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            opacity: disabled ? stateOpacity.controlDisabled : 1,
+            ...(disabled ? { borderColor: palette.border } : null),
             ...(pressed && !disabled ? { backgroundColor: palette.surfaceHover } : null),
           },
         ]}
       >
         <Text
-          style={[type.body, { color: current ? palette.text : palette.textSecondary, flex: 1 }]}
+          style={[type.body, { color: disabled || !current ? palette.textSecondary : palette.text, flex: 1 }]}
         >
           {current?.label ?? placeholder ?? ""}
         </Text>
@@ -1100,15 +1104,21 @@ export function Segmented<T extends string>({
                 borderRadius: radius.sm - 1,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: selected ? palette.surfaceStrong : "transparent",
-                opacity: disabled ? stateOpacity.controlDisabled : 1,
+                backgroundColor: selected && !disabled ? palette.surfaceStrong : "transparent",
+                borderWidth: selected && disabled ? StyleSheet.hairlineWidth : 0,
+                borderColor: palette.border,
               },
             ]}
           >
             <Text
               style={[
                 type.label,
-                { color: selected ? palette.primaryText : palette.textSecondary, fontFamily: font.semibold, textAlign: "center", width: "100%" },
+                {
+                  color: disabled ? palette.textSecondary : selected ? palette.primaryText : palette.textSecondary,
+                  fontFamily: font.semibold,
+                  textAlign: "center",
+                  width: "100%",
+                },
               ]}
             >
               {option.label}
@@ -1532,19 +1542,20 @@ export function ListRow({
   return <PressableRow onPress={onPress}>{content}</PressableRow>;
 }
 
-/** List row wrapper with the shared springy press feedback. */
+/** List row wrapper with quiet, interruptible tonal press feedback. */
 function PressableRow({ children, onPress }: { children: ReactNode; onPress: () => void }) {
-  const press = useSpringPress(0.98);
+  const { palette } = useTheme();
   return (
-    <AnimatedPressable
+    <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      onPressIn={press.onPressIn}
-      onPressOut={press.onPressOut}
-      style={{ transform: [{ scale: press.scale }] }}
+      style={({ pressed }) => ({
+        backgroundColor: pressed ? palette.surfaceHover : "transparent",
+        borderRadius: radius.sm,
+      })}
     >
       {children}
-    </AnimatedPressable>
+    </Pressable>
   );
 }
 
@@ -1576,7 +1587,9 @@ export function Toggle({
     animation.start();
     return () => animation.stop();
   }, [value, progress, reducedMotion]);
-  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: [palette.surfaceStrong, palette.primarySoft] });
+  const trackColor = disabled
+    ? palette.surfaceAlt
+    : progress.interpolate({ inputRange: [0, 1], outputRange: [palette.surfaceStrong, palette.primarySoft] });
   const thumbX = progress.interpolate({ inputRange: [0, 1], outputRange: [TOGGLE_PAD, TOGGLE_W - TOGGLE_THUMB - TOGGLE_PAD] });
   return (
     <Pressable
@@ -1586,8 +1599,10 @@ export function Toggle({
       accessibilityState={{ checked: value, disabled }}
       hitSlop={10}
       disabled={disabled}
-      onPress={() => onValueChange(!value)}
-      style={{ opacity: disabled ? stateOpacity.controlDisabled : 1 }}
+      onPress={() => {
+        selectionTap();
+        onValueChange(!value);
+      }}
     >
       {/* The track carries its own boundary. Both fills are low-contrast warm
           neutrals (1.1–1.9:1 against the app's surfaces), so without it the
@@ -1616,7 +1631,7 @@ export function Toggle({
             width: TOGGLE_THUMB,
             height: TOGGLE_THUMB,
             borderRadius: TOGGLE_THUMB / 2,
-            backgroundColor: value ? palette.primary : palette.textSecondary,
+            backgroundColor: disabled ? palette.textSecondary : value ? palette.primary : palette.textSecondary,
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: palette.surfaceTranslucent,
             transform: [{ translateX: thumbX }],

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Financial Data Integrity"
+  short_description: "Protect Helix ledger and sync invariants"
+  default_prompt: "Use $financial-data-integrity to review this ledger, sync, or import change."

@@ -88,7 +88,7 @@ export default function UpcomingScreen() {
       <Body muted style={{ marginBottom: spacing.md }}>{tr.upcoming.intro}</Body>
       <DataStateNotice status={status} retry={retry} />
       {sync.state === "error" ? (
-        <Card style={{ borderColor: palette.warning }}>
+        <Card tone="warning">
           <Body accessibilityRole="alert" style={{ color: palette.warningText }}>{tr.upcoming.offline}</Body>
         </Card>
       ) : null}

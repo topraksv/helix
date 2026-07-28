@@ -1,0 +1,4 @@
+interface:
+  display_name: "Native Interaction"
+  short_description: "Build Helix motion, gestures, and haptics"
+  default_prompt: "Use $native-interaction to implement or review this interaction."

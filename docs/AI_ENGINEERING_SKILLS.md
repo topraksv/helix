@@ -1,97 +1,200 @@
-# Engineering Skills
+# Helix Engineering Skill Tree
 
-This file records the source, purpose and boundaries of the engineering skills
-installed for Helix. The canonical instructions live in
-`.agents/skills/<skill>/SKILL.md`.
+This is the canonical routing, provenance and update policy for project skills.
+Stable product rules remain in the documents linked from `AGENTS.md`; skills
+provide task workflows and must link to those rules instead of copying them.
 
-The project has 23 installed skills: 16 engineering skills and 7 UI/UX and
-accessibility skills.
+The inventory has 26 skills: 19 pinned specialist skills from established
+sources and 7 small Helix adapters. A task loads one relevant path, never the
+whole tree.
 
-| Skill | Source repository | Primary purpose | Typical trigger | Usage mode |
-|---|---|---|---|---|
-| `repo-cleanup` | `NickCrew/Claude-Cortex` | Repository hygiene | Broad or periodic cleanup | Periodic cleanup |
-| `improve-codebase-architecture` | `mattpocock/skills` | Architecture assessment | Explicit deep architecture review | Manual/deep audit |
-| `code-review-and-quality` | `addyosmani/agent-skills` | Multi-axis code review | Pre-merge review | Review gate |
-| `code-simplification` | `addyosmani/agent-skills` | Behaviour-preserving simplification | Focused clarity refactor | Task-specific |
-| `performance-optimization` | `addyosmani/agent-skills` | Measured performance work | Proven performance problem | Task-specific |
-| `source-driven-development` | `addyosmani/agent-skills` | Version-aware official guidance | Framework-specific implementation | Task-specific |
-| `receiving-code-review` | `obra/superpowers` | Review feedback evaluation | Actionable review feedback | Review gate |
-| `systematic-debugging` | `obra/superpowers` | Root-cause investigation | Bug, failure or unexpected behaviour | Task-specific |
-| `verification-before-completion` | `obra/superpowers` | Evidence before completion claims | Before commit or delivery | Review gate |
-| `tdd` | `mattpocock/skills` | Public-behaviour test-first work | Requested red-green development | Task-specific |
-| `codebase-design` | `mattpocock/skills` | Module and seam design | Explicit interface design work | Task-specific |
-| `vercel-react-best-practices` | `vercel-labs/agent-skills` | React performance guidance | Measured React performance work | Task-specific |
-| `vercel-react-native-skills` | `vercel-labs/agent-skills` | React Native and Expo guidance | Native performance or platform work | Task-specific |
-| `expo-data-fetching` | `expo/skills` | Expo networking guidance | Expo request or caching work | Task-specific |
-| `playwright-best-practices` | `currents-dev/playwright-best-practices-skill` | Playwright test guidance | E2E test work | Task-specific |
-| `supabase-postgres-best-practices` | `supabase/agent-skills` | Postgres and RLS guidance | Database query or schema work | Task-specific |
+## Routing tree
 
-## UI/UX and accessibility
+```text
+Task
+├─ bug or unexpected behavior
+│  └─ systematic-debugging
+├─ framework/API decision
+│  └─ source-driven-development
+├─ security boundary
+│  └─ security-and-hardening
+│     ├─ dependency-security
+│     ├─ supabase-postgres-best-practices
+│     └─ financial-data-integrity
+├─ ledger, sync, import, backup, recovery
+│  └─ financial-data-integrity
+│     ├─ property-based-testing
+│     ├─ supabase-postgres-best-practices
+│     └─ security-and-hardening
+├─ UI or product experience
+│  └─ visual-system
+│     ├─ frontend-design (meaningful new direction only)
+│     ├─ expo-native-ui
+│     ├─ expo-router
+│     ├─ native-interaction
+│     ├─ mobile-accessibility
+│     ├─ web-design-guidelines (explicit web audit only)
+│     ├─ playwright-best-practices
+│     └─ prototype (explicit throwaway question only)
+├─ performance claim
+│  └─ performance-optimization
+├─ module boundary or interface design
+│  └─ codebase-design
+├─ data fetching
+│  └─ expo-data-fetching
+└─ release or platform-specific proof
+   └─ platform-release-acceptance
+      ├─ expo-router / expo-native-ui
+      ├─ native-interaction / mobile-accessibility
+      └─ playwright-best-practices
 
-| Skill | Source and resolved commit | Primary purpose | Typical trigger | Usage mode | Helix boundary | Vendor patch |
-|---|---|---|---|---|---|---|
-| `frontend-design` | `anthropics/skills` at `b29e7cf65e5cb78a5ac33d582270551bc74a14eb` | Intentional visual direction | New screen or meaningful visual redesign | Task-specific | Starts from Helix's existing identity; cannot invent a replacement aesthetic | Unchanged |
-| `frontend-ui-engineering` | `addyosmani/agent-skills` at `7829ffd90d973b6325f5f12f1b1226dcace74443` | Responsive, state-aware production UI | Implementing a chosen UI direction | Task-specific | Its example folder structure cannot override Helix's structure | Unchanged |
-| `web-design-guidelines` | `vercel-labs/agent-skills` at `7c180d9044c9ae2b442b567aad4e42a28dd5ed62` | Web UI/UX review | Explicit broad web review | Manual/deep audit | Findings remain subordinate to Helix's tested UX and repository rules | Locally hardened to use a pinned reference |
-| `expo-native-ui` | `expo/skills` at `09eb052410e7f609624cb161ea4cd9576c69cd5d` | Native-feeling Expo UI and interaction | Expo screen or platform interaction work | Task-specific | Limited to the current Expo SDK and installed packages; cannot add packages on its own | Unchanged |
-| `expo-router` | `expo/skills` at `09eb052410e7f609624cb161ea4cd9576c69cd5d` | Navigation and back behaviour | Navigation or route behaviour change | Task-specific | Cannot restructure routes or alter behaviour without auditing all existing conventions | Unchanged |
-| `prototype` | `mattpocock/skills` at `ed37663cc5fbef691ddfecd080dff42f7e7e350d` | Temporary design or state options | Explicit design question | Manual/throwaway | Never promoted directly to production; all unused prototype code is removed | Unchanged |
-| `mobile-accessibility` | `Community-Access/accessibility-agents` at `0872b4a7763145fc0e5847d8357fb446a857c683` | React Native/Expo accessibility audit | Explicit deep mobile accessibility review | Manual/deep audit | Mobile only; cannot install or delegate to missing accessibility agents | Unchanged |
+Implementation loop
+├─ tdd when requested or required by the task
+├─ property-based-testing for high-dimensional transformations
+├─ receiving-code-review when addressing review feedback
+├─ code-simplification for an explicit behavior-preserving clarity pass
+├─ code-review-and-quality before merge
+├─ verification-before-completion before a completion claim
+└─ repo-cleanup on the task delta
+```
 
-`web-design-guidelines` reads
-`references/web-interface-guidelines.md`, pinned from
-`vercel-labs/web-interface-guidelines` commit
-`4e799d45c17aec1498c269287a83b9dba22b966b`. Its SHA-256 is
-`eea73cb6dd46fee9faec9973e8e7fe198b5f07ec326f14d276a56e50287e1cab`.
-The local patch removes the mutable runtime `main` fetch without changing the
-rules or output format; revalidate and reapply it after any vendor update.
+The same skill can appear on two paths because it is a leaf used by distinct
+orchestrators. That is routing, not duplicate ownership. For example,
+`security-and-hardening` owns threat-boundary reasoning while
+`supabase-postgres-best-practices` owns PostgreSQL/RLS implementation detail.
 
-- Use `frontend-design` for a new screen or meaningful redesign, not every
-  small UI bug.
-- Use `frontend-ui-engineering` to implement the selected design responsively,
-  with complete UI states and production quality.
-- `web-design-guidelines` uses the pinned local reference; it never reads
-  upstream `main` at runtime.
-- Limit `expo-native-ui` to Helix's current Expo SDK and installed packages.
-- Use `expo-router` when navigation or route behaviour changes.
-- `prototype` creates disposable options for a decision; delete every
-  unselected or unused prototype.
-- `mobile-accessibility` applies only to React Native/Expo mobile surfaces, and
-  automated review does not replace real assistive-technology testing.
-- Do not update skills automatically. Review source diffs, new scripts and
-  instruction changes in a separate PR.
-- Build a comprehensive shared workflow only after both UI/UX and cybersecurity
-  skill sets are complete.
+## Helix adapters
 
-Vendor audit notes:
+| Skill | Owns | Routes to |
+|---|---|---|
+| `security-and-hardening` | Threat modeling, exploitability, vulnerability verification, variant search, secure patch evidence | dependency, Supabase, financial, debugging and verification leaves |
+| `dependency-security` | npm/Expo graph, advisories, overrides, Actions, vendored skills, provenance and residual risk | source-driven development and verification |
+| `financial-data-integrity` | Money, ledger, sync, import/export, backup, recovery and atomicity | property testing, Supabase and security |
+| `platform-release-acceptance` | Web/native/database/release evidence and delivery-boundary classification | Expo, interaction, accessibility and browser leaves |
+| `visual-system` | Helix visual language, semantic color, density, responsive states and Turkish copy | design, Expo UI, accessibility and visual tests |
+| `native-interaction` | Current-stack motion, gestures, drag/reorder, press feedback and haptics | platform acceptance and performance |
+| `mobile-accessibility` | React Native semantics, focus, Dynamic Type, gesture alternatives and assistive-technology acceptance | visual system and platform acceptance |
 
-- All canonical names and descriptions are present. Vendor frontmatter supplies
-  both version and license only for the Expo skills; `frontend-design` supplies
-  a license, `web-design-guidelines` a version, and the other vendors omit
-  those optional fields.
-- No new skill contains scripts, assets or executables, automatic hook/agent
-  installation, credential access or automatic repository-external writes.
-  Expo references contain manual package/build/feedback commands, the
-  accessibility guide contains a manual `adb` setting command, and prototype
-  guidance can create temporary code; none runs automatically.
-- `frontend-ui-engineering` names a missing optional
-  `references/accessibility-checklist.md`. `mobile-accessibility` also names
-  uninstalled handoff agents. Do not follow either reference; only the isolated
-  `mobile-accessibility` skill was installed.
-- Vendor package, folder, copy and interaction preferences are advisory.
-  Conflicts—including the pinned web rules' truncation/copy preferences—resolve
-  in favour of `AGENTS.md`, tested Helix behaviour and official version-matched
-  documentation.
+These are intentionally small. They translate mature external methods into
+Helix's repository contracts without vendoring an unrelated framework.
 
-- Use only the skills needed at the same time.
-- Reducing line count is not quality by itself.
-- Performance changes require measurement.
-- Verify framework advice against the project's actual version and official
-  documentation.
-- Tests must preserve public behaviour, not merely produce a green result.
-- Do not update vendor skills automatically; updates require normal code review
-  and a PR.
-- Do not apply Next.js-specific React rules unless Helix adopts Next.js.
-- React Native, Expo and Supabase skills cannot redesign the existing
-  architecture merely to match their own preferences.
-- Cybersecurity skills will be added to this inventory later.
+## Pinned external specialists
+
+Every GitHub source below is locked to a full commit SHA in
+`skills-lock.json`; `computedHash` pins the exact local snapshot after the
+documented Helix patches.
+
+| Source | Installed specialists |
+|---|---|
+| `anthropics/skills` | `frontend-design` |
+| `trailofbits/skills` | `property-based-testing` |
+| `expo/skills` | `expo-data-fetching`, `expo-native-ui`, `expo-router` |
+| `supabase/agent-skills` | `supabase-postgres-best-practices` |
+| `obra/superpowers` | `systematic-debugging`, `receiving-code-review`, `verification-before-completion` |
+| `mattpocock/skills` | `tdd`, `codebase-design`, `prototype` |
+| `addyosmani/agent-skills` | `code-review-and-quality`, `code-simplification`, `performance-optimization`, `source-driven-development` |
+| `currents-dev/playwright-best-practices-skill` | `playwright-best-practices` |
+| `NickCrew/Claude-Cortex` | `repo-cleanup` |
+| `vercel-labs/agent-skills` | `web-design-guidelines` only |
+
+Popularity is a discovery signal, not a trust decision. Selection also required
+stack fit, readable instructions, bounded scope, no hidden runtime dependency,
+and a useful role not already owned by another skill.
+
+## Security research decision
+
+Anthropic's
+[`defending-code-reference-harness`](https://github.com/anthropics/defending-code-reference-harness)
+was reviewed at commit `6de8141b971d917a461bce4193c8b535a6b6cfc1`.
+Its strongest ideas are now in `security-and-hardening`: map the attack surface
+before scanning, separate noisy discovery from skeptical verification, rank by
+preconditions and impact, search variants, write a regression before patching,
+and re-check with evidence independent of the original finding.
+
+The harness itself is not installed because its repository states that it is
+not maintained, its autonomous runner is primarily configured for C/C++ memory
+vulnerabilities, and its isolation model requires Docker/gVisor and restricted
+egress. Prompt instructions alone are not a sandbox. Installing the runner in
+an Expo/TypeScript repository would add attack surface without improving the
+actual product gate.
+
+Anthropic's
+[`claude-code-security-review`](https://github.com/anthropics/claude-code-security-review)
+was also reviewed but not installed as a GitHub Action: its own documentation
+warns that it is not hardened against prompt injection, and it would add an API
+secret and advisory false-positive surface. Helix already has pinned CodeQL,
+dependency review, Dependabot and a repository-specific security matrix.
+
+Security guidance is grounded in
+[OWASP MASVS](https://mas.owasp.org/MASVS/),
+[OWASP MASTG](https://mas.owasp.org/MASTG/), Expo's version-matched
+documentation, Supabase's RLS guidance, and the controls in
+`docs/SECURITY.md`. Automated findings remain hypotheses until their reachable
+path is proven.
+
+## Deliberately removed
+
+| Removed skill | Reason |
+|---|---|
+| `vercel-react-best-practices` | Next.js, RSC and server guidance for a static Expo Router app |
+| `vercel-react-native-skills` | Overlapped Expo/native guidance and recommended uninstalled libraries and patterns |
+| `react-native-best-practices` | Broad bundle included Reanimated, Gesture Handler, Skia, WebGPU, JSI, audio, rich text and on-device AI that Helix does not use |
+| `color-expert` | A 2.3 MB color-history/research archive for a token-and-contrast workflow already defined by Helix |
+| `frontend-ui-engineering` | Tailwind/HTML/web implementation guidance plus a missing local reference; not Helix's RN-first implementation layer |
+| `improve-codebase-architecture` | Referenced missing skills and context files and required report/delegation machinery absent from this repository |
+| previous `mobile-accessibility` package | Overbroad trigger and missing handoff agents; replaced by the bounded Helix adapter |
+
+The retained `web-design-guidelines` has a real consumer: Helix ships a static
+web app and has Playwright browser/visual acceptance. It remains an explicit
+audit leaf, not a default implementation skill.
+
+## Local vendor patches
+
+- `repo-cleanup`: repaired its broken internal references and removed a link to
+  an absent vendor testing guide.
+- `code-review-and-quality`: replaced two missing checklist links with the
+  installed security and performance skills.
+- `performance-optimization`: removed a missing checklist link and points to
+  Helix's measured budgets.
+- `source-driven-development`: citations belong in delivery notes or canonical
+  documentation; routine source URLs are not added as code comments.
+- `property-based-testing`: pinned Trail of Bits snapshot, repaired portable
+  relative links, and narrowed the trigger text from smart contracts to Helix
+  transformations.
+- `playwright-best-practices`: repaired seven broken cross-directory reference
+  links discovered by the integrity gate.
+- `web-design-guidelines`: retains the existing pinned local rules instead of a
+  mutable runtime fetch.
+
+Reapply or retire these patches deliberately during an upstream update; never
+overwrite them with a blind `skills update`.
+
+## Integrity and update policy
+
+`npm run verify:skills` checks:
+
+- lock inventory equals the physical skill directories;
+- every `SKILL.md` has matching name and completed description;
+- local Markdown references resolve inside the skill;
+- GitHub sources use full commit SHAs and local adapters use exact local paths;
+- every directory hash matches `skills-lock.json`;
+- no skill is a symlink.
+
+The command is part of `npm run verify` and the required CI `quality` job.
+
+To update or add a skill:
+
+1. Review the upstream diff, resolved commit, `SKILL.md`, scripts, executables,
+   hooks, assets, tools, credential access and external-write instructions.
+2. Confirm the role is absent from this tree and fits the current stack.
+3. Install only the required skill at an immutable commit.
+4. Apply the smallest Helix compatibility patch and record it here.
+5. Update the lock entry, then run
+   `node scripts/check-skills.mjs --write`.
+6. Run `npm run verify:skills`, `npm run verify`, and the task-specific gate.
+7. Review the complete diff. Skill updates receive the same PR scrutiny as
+   executable dependencies.
+
+Do not auto-update skills, install them globally for this project, or add a
+security scanner that needs secrets or external writes without a separate
+owner decision.

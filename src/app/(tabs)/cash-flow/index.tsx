@@ -35,7 +35,6 @@ import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Scr
 import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
-import { lightTap } from "../../../ui/haptics";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
 
 type MatrixMode = "cards" | "rows" | "columns";
@@ -59,10 +58,7 @@ function MatrixTool({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      onPress={() => {
-        lightTap();
-        onPress();
-      }}
+      onPress={onPress}
       hitSlop={6}
       style={{ flex: 1, minHeight: controlSize.minimumTarget, alignItems: "center", justifyContent: "center", gap: 2 }}
     >
@@ -614,10 +610,7 @@ function MatrixCell({
   return (
     <Pressable
       disabled={!onPress}
-      onPress={onPress ? () => {
-        lightTap();
-        onPress();
-      } : undefined}
+      onPress={onPress}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       // A cell that cannot be opened (a system column, or one with nothing to

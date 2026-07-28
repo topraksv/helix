@@ -7,87 +7,79 @@ history log.
 
 ## Current state — 2026-07-28, Europe/Istanbul
 
-`main` is the only long-lived branch. The product UI/UX, accessibility and brand
-package was squash-merged through
-[PR #101](https://github.com/topraksv/helix/pull/101).
+`main` is the only long-lived branch. The project-skill work and the product UI
+follow-up were consolidated in [PR #103](https://github.com/topraksv/helix/pull/103);
+that PR's final release comment is the authority for its resulting `main`
+commit and GitHub Pages run.
 
 | | |
 |---|---|
-| Last product release commit | `4d227aac863045581a4bfe43334344197abf2908` |
-| Web | [GitHub Pages run 30313476658](https://github.com/topraksv/helix/actions/runs/30313476658), successful |
-| Native | New binary required because `app.json` orientation and splash/adaptive colours changed; no OTA is valid for this package |
-| Gate | 71 Vitest files / 569 tests; 42 Playwright; Expo Doctor 18/18; release export and bundle budget clean |
+| Previous product baseline | `4d227aac863045581a4bfe43334344197abf2908` |
+| Previous web baseline | [GitHub Pages run 30313476658](https://github.com/topraksv/helix/actions/runs/30313476658), successful |
+| Current release record | [PR #103](https://github.com/topraksv/helix/pull/103), including exact merge and Pages evidence |
+| Native | A new installed binary is still required for the released native-config boundary; do not publish an OTA across it |
+| Quality | `npm run verify:release` green: 26 skills, 72 Vitest files / 578 tests, typecheck, lint, export budgets and 44 Playwright tests |
 
-The package establishes the Connected Financial Ledger design direction:
-Çelik is the default palette, desktop dashboard information is arranged as an
-asymmetric ledger while phone density is preserved, palette names match their
-visible identity, and cash-flow horizontal continuation is explicit. The design
-language and rejected generic dashboard treatments are recorded in
-[`ARCHITECTURE.md`](ARCHITECTURE.md).
+## Product result
 
-Draft protection now covers browser unload and same-screen context changes,
-including budgets, categories, people, payment sources, incomes, computed
-columns, reconciliation, bulk entry and import replacement. Atomic bulk/import
-commits cannot be cancelled after their write boundary. Modal motion follows
-Reduce Motion, modal wrappers are removed from the keyboard tab order, and the
-calculator fits all controls and its result in 844×390 landscape without an
-initial scroll.
+The Mali Tablo accessibility race is closed at both levels: the real-data axe
+sweep waits for the populated async table, and every web column-pin target is a
+measured 24×24 CSS box rather than a 12 px icon with native-only `hitSlop`.
+Computed-column readiness is deterministic too.
 
-The responsive smoke matrix covers 320×568, 375×667, 390×844, 430×932,
-768×1024, 820×1180, 1024×768, 1280×800, 1440×900 and 1920×1080 across the
-dashboard, cash flow, transaction and settings routes. Darwin and Linux visual
-baselines were rendered independently; the suite includes a dedicated
-844×390 calculator baseline. Account security is included in the real-data axe
-route set.
+Shared disabled controls no longer reduce the opacity of their text. Buttons,
+icon buttons, fields, selectors, segmented controls, toggles and calendar dates
+use explicit neutral disabled colors; browser measurements keep disabled
+primary copy at or above 4.5:1 in Amber, Çelik and Servi, light and dark.
+Loading buttons remain visually active while blocking a second press. Semantic
+success, warning and error cards now carry a real shared tint and boundary.
 
-Fresh `npm run verify:release` completed with typecheck and lint clean,
-569/569 Vitest tests, 42/42 Playwright tests and 56 exported routes. The
-production export is 4,742,231-byte entry JavaScript, 5,371,413-byte total
-JavaScript and 9,273,916-byte total export, with six fonts / 1,518,000 bytes,
-zero source maps and inlined Supabase configuration. Compared with the previous
-release, JavaScript and total export each grew by 2,540 bytes.
+Web theme preference updates both `color-scheme` and `theme-color`. Generic
+buttons, icon buttons, cards and list rows use quiet tonal press feedback rather
+than a universal spring scale and automatic haptic. Selection haptics are
+reserved for actual discrete state changes such as month/date/option/toggle and
+Mali Tablo pin changes. All feedback remains iOS-only through the shared helper.
 
-The protected PR gate passed `quality`, CodeQL and dependency review. The
-resulting GitHub squash commit is verified. The `main` Pages run repeated the
-full quality job successfully, then deployed. Live smoke verified root,
-upcoming and settings as 200; the dynamic July 2026 cash-flow URL returns the
-expected 404 with a byte-identical root application shell and a loadable release
-entry asset.
+The information architecture, Turkish copy, financial behavior, local-first
+storage, sync, routes, forms and web/native feature parity are unchanged. No
+migration, dependency, native config or financial-data boundary changed in this
+follow-up.
 
-Existing non-blocking tool output remains: Node's experimental SQLite warning,
-the `NO_COLOR`/`FORCE_COLOR` warning and Expo Notifications' unsupported web
-listener notice. Dependency policy and the Expo-managed matrix were not changed.
+## Verification
 
-## Open product backlog
+The fresh release gate passed:
 
-- Weekly / biweekly subscription cycles remain requested but unbuilt.
-  `subscriptions.cycle` is still `monthly | yearly | custom`; adding shorter
-  cadences needs an ISO anchor, a Supabase migration, generated-type refresh and
-  expected-payment lifecycle tests. Keep it as its own package.
+- `npm run verify`: 26/26 pinned skill snapshots, typecheck, 72/72 Vitest files,
+  578/578 tests and Expo lint.
+- Production export: 56 static routes; 9,274,624-byte total export against the
+  10,000,000-byte budget; six fonts / 1,518,000 bytes; zero source maps;
+  Supabase public config inlined as expected.
+- Playwright: 44/44, including the real-data route accessibility sweep, complete
+  two-width layout sweep, six-theme disabled-control contrast, browser chrome
+  scheme, navigation, resilience, import atomicity and visual baselines.
+- `npx expo config --type public --json` resolved SDK 54, `/helix`, runtime
+  `1.0.0`, preview channel and the expected platform settings.
+- `npx expo-doctor`: 18/18 checks passed.
 
-## Open structural and acceptance findings
+The nine changed screenshot baselines were limited to controls whose disabled
+rendering changed and the widened Mali Tablo marker strip; their actual/diff
+images were inspected before acceptance. Generated exports, Playwright results
+and Expo cache were moved to the system Trash after verification.
 
-- Installed iOS and Android acceptance is `BLOCKED`: Xcode is installed, but no
-  iOS simulator/device is available and `adb` reports no Android device.
-  Validate rotation, keyboard avoidance, VoiceOver/TalkBack, Dynamic Type,
-  native focus return, safe areas and the new splash colours on a fresh local
-  device build before claiming native acceptance.
-- The documented `src/ui/components.tsx` ↔ `src/ui/calculator.tsx` cycle remains
-  a P3 structural preference. It has no measured runtime or bundle cost and was
-  outside this product audit.
-- Desktop empty-fixture whitespace and the existing global radius scale were
-  reviewed and left unchanged: filling the empty state would add decorative
-  dashboard content, while a global radius rewrite would create broad geometry
-  churn without a demonstrated usability gain.
+## Acceptance boundary
 
-## Phase 2
-
-Completed: P0, P1, P4 and P2. P3 was withdrawn. Remaining owner order is
-**P7 → P6 → P9**; P5 and P8 are backlog. The canonical scope and open decisions
-are in [`PHASE2.md`](PHASE2.md).
+- Installed iOS and Android acceptance remains `BLOCKED`: no simulator/device
+  evidence exists for rotation, keyboard avoidance, VoiceOver/TalkBack, Dynamic
+  Type, native focus return, safe areas, haptics or the released splash colors.
+- Although this follow-up's runtime changes are JavaScript-only, the currently
+  installed build still predates a released native-config boundary. An OTA
+  cannot make that binary representative; build and install a fresh native
+  client first.
+- Weekly/biweekly subscription cycles remain requested but unbuilt and require
+  their own migration/domain package.
 
 ## Next exact step
 
-Make a fresh local iOS/Android device build for the blocked native acceptance
-matrix. Do not publish this release as an OTA because its orientation and
-splash/adaptive icon configuration require a new binary.
+Build and install a fresh preview binary, then run the physical-device matrix in
+[`TESTING.md`](TESTING.md). Only after that binary establishes the current
+native boundary should a later JavaScript-only package use EAS Update.

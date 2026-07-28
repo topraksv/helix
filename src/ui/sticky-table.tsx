@@ -14,7 +14,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent, type TextLayoutEvent } from "react-native";
 import { Pin, type LucideIcon } from "lucide-react-native";
-import { lightTap } from "./haptics";
+import { selectionTap } from "./haptics";
 import { tr } from "../i18n/tr";
 import { font, spacing, type, useTheme } from "./theme";
 
@@ -22,7 +22,7 @@ import { font, spacing, type, useTheme } from "./theme";
 export const STICKY_ROW_HEIGHT = 52;
 export const STICKY_HEADER_HEIGHT = 56;
 /** Fixed right-hand strip holding a header's pin and computed-column mark. */
-const STICKY_MARKER_W = 16;
+const STICKY_MARKER_W = 24;
 
 export interface StickyColumn {
   key: string;
@@ -286,7 +286,10 @@ export function StickyTable({
       >
         <Pressable
           disabled={!labelAction}
-          onPress={labelAction ? () => { lightTap(); labelAction(c.key); } : undefined}
+          onPress={labelAction ? () => {
+            if (!onColumnPress && onTogglePin) selectionTap();
+            labelAction(c.key);
+          } : undefined}
           accessibilityRole={labelAction ? "button" : undefined}
           accessibilityLabel={labelAction ? c.label : undefined}
           // Fill the header band: wrapping only the label left a full-width but
@@ -315,10 +318,11 @@ export function StickyTable({
           >
             {both ? (
               <Pressable
-                onPress={() => { lightTap(); onTogglePin!(c.key); }}
+                onPress={() => { selectionTap(); onTogglePin!(c.key); }}
                 hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.label) : tr.a11y.pinColumn(c.label)}
+                style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}
               >
                 <Pin
                   accessible={false}
@@ -387,7 +391,7 @@ export function StickyTable({
               >
                 <Pressable
                   disabled={!r.onLabelPress}
-                  onPress={r.onLabelPress ? () => { lightTap(); r.onLabelPress!(); } : undefined}
+                  onPress={r.onLabelPress}
                   accessibilityRole={r.onLabelPress ? "link" : undefined}
                   accessibilityLabel={r.onLabelPress ? r.label : undefined}
                   style={[{ width: headWidth }, cellCenter]}
@@ -466,7 +470,7 @@ function PinnedHeader({
   return (
     <Pressable
       disabled={!onUnpin}
-      onPress={onUnpin ? () => { lightTap(); onUnpin(); } : undefined}
+      onPress={onUnpin ? () => { selectionTap(); onUnpin(); } : undefined}
       accessibilityRole={onUnpin ? "button" : undefined}
       accessibilityLabel={onUnpin ? tr.a11y.unpinColumn(label) : undefined}
       style={{ width, justifyContent: "center", paddingHorizontal: spacing.sm, flexDirection: "row", alignItems: "center", gap: 4 }}

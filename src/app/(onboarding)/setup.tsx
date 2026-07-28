@@ -294,7 +294,7 @@ export default function SetupScreen() {
         </Row>
 
         {hasImport ? (
-          <Card style={{ borderColor: palette.success, backgroundColor: palette.success + "14" }}>
+          <Card tone="success">
             <Body style={{ color: palette.successText }}>{tr.onboarding.importedBanner(importedYears.join(", "))}</Body>
           </Card>
         ) : null}

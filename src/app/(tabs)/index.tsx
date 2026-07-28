@@ -383,18 +383,16 @@ export default function DashboardScreen() {
           lingered even with nothing to do). Derived from live data, so it clears
           itself the moment the last item is confirmed. */}
       {late.length > 0 ? (
-        <Pressable onPress={() => router.push("/reconciliation")} accessibilityRole="button">
-          <Card style={{ backgroundColor: palette.warning + "14", borderWidth: 0 }}>
-            <Row>
-              <History accessible={false} size={20} color={palette.warning} />
-              <View style={{ flex: 1 }}>
-                <Body>{tr.dashboard.pendingConfirm(late.length)}</Body>
-                <Body muted>{tr.dashboard.catchUp}</Body>
-              </View>
-              <ChevronRight accessible={false} size={18} color={palette.textSecondary} />
-            </Row>
-          </Card>
-        </Pressable>
+        <Card tone="warning" onPress={() => router.push("/reconciliation")}>
+          <Row>
+            <History accessible={false} size={20} color={palette.warning} />
+            <View style={{ flex: 1 }}>
+              <Body>{tr.dashboard.pendingConfirm(late.length)}</Body>
+              <Body muted>{tr.dashboard.catchUp}</Body>
+            </View>
+            <ChevronRight accessible={false} size={18} color={palette.textSecondary} />
+          </Row>
+        </Card>
       ) : null}
 
       {bundle ? (

@@ -9,18 +9,20 @@ burasıdır; başka belge tekrar etmez, link verir.
 
 ```bash
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
-npm run verify           # typecheck + Vitest + expo lint — her commit öncesi
+npm run verify           # skill bütünlüğü + typecheck + Vitest + expo lint
 npm run verify:release   # + production export + bundle bütçesi + Playwright
 ```
 
-Tek tek koşturmak gerektiğinde: `npm run typecheck`, `npm test`,
-`npm run test:watch`, `npx expo lint`, `npx expo export -p web`,
-`npm run bundle:check`, `npm run test:e2e`, `npm run test:e2e:update`.
+Tek tek koşturmak gerektiğinde: `npm run verify:skills`,
+`npm run typecheck`, `npm test`, `npm run test:watch`, `npx expo lint`,
+`npx expo export -p web`, `npm run bundle:check`, `npm run test:e2e`,
+`npm run test:e2e:update`.
 
 ## Release kapısı
 
 | Katman | Komut | Çalışma yeri | Release durumu |
 |---|---|---|---|
+| Agent skill envanteri/ref/hash/link bütünlüğü | `npm run verify:skills` | local + CI | Bloklayan |
 | TypeScript sınırı | `npm run typecheck` | local + CI | Bloklayan |
 | Domain/data/sync regression | `npm test` | local + CI | Bloklayan |
 | Expo/React lint | `npx expo lint` | local + CI | Bloklayan |
