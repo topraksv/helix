@@ -270,7 +270,9 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               <Text style={[type.body, { color: palette.text, fontFamily: font.semibold }]}>
                 {tr.computed.ops[value].title}
               </Text>
-              <Text style={[type.small, { color: palette.textSecondary, marginTop: 1 }]}>{tr.computed.ops[value].description}</Text>
+              <Text style={[type.small, { color: selected ? palette.primaryText : palette.textSecondary, marginTop: 1 }]}>
+                {tr.computed.ops[value].description}
+              </Text>
             </View>
           </Pressable>
         );

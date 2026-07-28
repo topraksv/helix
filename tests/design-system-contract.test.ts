@@ -54,12 +54,7 @@ describe("design-system metric contracts", () => {
 
   it("keeps distinct disabled and transient-state weights intentional", () => {
     expect(stateOpacity).toEqual({
-      buttonDisabled: 0.45,
-      iconDisabled: 0.4,
-      controlDisabled: 0.5,
-      fieldDisabled: 0.6,
       pressed: 0.85,
-      calendarDisabled: 0.3,
       dragActive: 0.96,
     });
   });
@@ -83,6 +78,75 @@ describe("design-system typography contracts", () => {
       return /Inter_[4567]00/.test(readFileSync(join(root, path), "utf8"));
     });
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("interaction feedback contracts", () => {
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+  const calendar = readFileSync(join(root, "src/ui/calendar.tsx"), "utf8");
+  const stickyTable = readFileSync(join(root, "src/ui/sticky-table.tsx"), "utf8");
+  const cashFlow = readFileSync(join(root, "src/app/(tabs)/cash-flow/index.tsx"), "utf8");
+  const button = components.slice(
+    components.indexOf("export function Button("),
+    components.indexOf("/** Circular icon-only button"),
+  );
+  const card = components.slice(
+    components.indexOf("export function Card("),
+    components.indexOf("/** Quiet tonal hero container"),
+  );
+  const iconButton = components.slice(
+    components.indexOf("export function IconButton("),
+    components.indexOf("/** Bounded month navigator"),
+  );
+  const select = components.slice(
+    components.indexOf("export function Select<"),
+    components.indexOf("/** Horizontal segmented selector"),
+  );
+  const toggle = components.slice(
+    components.indexOf("export function Toggle("),
+    components.indexOf("/** Initials avatar"),
+  );
+
+  it("keeps generic actions quiet and uses a tonal pressed state instead of universal scale motion", () => {
+    expect(button).toContain('haptic: hapticKind = "none"');
+    expect(iconButton).toContain('haptic: hapticKind = "none"');
+    expect(components).not.toContain("useSpringPress");
+    expect(components).not.toContain("AnimatedPressable");
+    expect(button).toContain("pressed");
+    expect(components).toContain("backgroundColor: pressed ? palette.surfaceHover");
+  });
+
+  it("keeps loading actions visually active while preventing a second press", () => {
+    expect(button).toContain("const visuallyDisabled = Boolean(disabled && !loading)");
+    expect(button).toContain("disabled={disabled || loading}");
+    expect(button).toContain("busy: Boolean(loading)");
+  });
+
+  it("reserves selection haptics for controls that actually change a choice", () => {
+    expect(select).toContain("selectionTapIfChanged(value, option.value)");
+    expect(toggle).toContain("selectionTap()");
+    expect(calendar).toContain("selectionTapIfChanged(value, iso)");
+  });
+
+  it("keeps disabled control content readable instead of fading the whole control", () => {
+    expect(components).not.toMatch(/opacity: disabled \? stateOpacity\./);
+    expect(calendar).not.toMatch(/opacity: disabled \? stateOpacity\./);
+  });
+
+  it("keeps table editing and navigation quiet while pin changes use selection feedback", () => {
+    expect(stickyTable).not.toContain("lightTap");
+    expect(cashFlow).not.toContain("lightTap");
+    expect(stickyTable).toContain("selectionTap(); onTogglePin!");
+    expect(stickyTable).toContain("selectionTap(); onUnpin()");
+  });
+
+  it("renders semantic card states from the shared primitive instead of invisible border colours", () => {
+    expect(card).toContain('tone?: "success" | "warning" | "error"');
+    expect(card).toContain("borderWidth: tone ? StyleSheet.hairlineWidth : 0");
+    for (const path of sourceFiles("src/app")) {
+      const source = readFileSync(join(root, path), "utf8");
+      expect(source, path).not.toMatch(/<Card[^>]*borderColor: palette\.(?:success|warning|error)/);
+    }
   });
 });
 

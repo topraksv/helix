@@ -313,7 +313,7 @@ export default function ImportWizardModal() {
   if (doneCount != null) {
     return (
       <Screen scrollRef={scrollRef}>
-        <Card style={{ borderColor: palette.success }}>
+        <Card tone="success">
           <Row gap={spacing.md} style={{ alignItems: "center" }}>
             <CheckCircle2 accessible={false} size={26} color={palette.success} />
             <View style={{ flex: 1 }}>
@@ -360,7 +360,7 @@ export default function ImportWizardModal() {
       />
 
       {error ? (
-        <Card style={{ marginTop: spacing.md, borderColor: palette.error }}>
+        <Card tone="error" style={{ marginTop: spacing.md }}>
           <SectionHeader>{tr.importer.errorTitle}</SectionHeader>
           <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: palette.errorText, marginBottom: spacing.sm }}>{error}</Body>
         </Card>

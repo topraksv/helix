@@ -413,12 +413,7 @@ export const borderWidth = { control: 1.5, toggle: 1 } as const;
 /** State opacity roles stay separate because their current perceptual weight is
  *  intentional. Naming them prevents near-duplicate feature-local values. */
 export const stateOpacity = {
-  buttonDisabled: 0.45,
-  iconDisabled: 0.4,
-  controlDisabled: 0.5,
-  fieldDisabled: 0.6,
   pressed: 0.85,
-  calendarDisabled: 0.3,
   dragActive: 0.96,
 } as const;
 

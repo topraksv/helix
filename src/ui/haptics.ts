@@ -2,7 +2,7 @@
  * Haptic feedback helpers (iOS only — Android/web are no-ops). Thin wrappers
  * over expo-haptics so every call site picks the right feel from one place:
  *
- * - `lightTap`     a button / cell / key press (Light impact).
+ * - light impact   an explicit state-changing calculator clear/delete.
  * - `selectionTap` moving between discrete choices — tabs, chips, a reorder
  *   crossing a slot (selection feedback, the Apple-recommended pattern).
  * - `mediumTap`    picking something up (drag start), a heavier confirmation.
@@ -38,10 +38,6 @@ export function haptic(kind: HapticKind): void {
               ),
     )
     .catch(() => {});
-}
-
-export function lightTap(): void {
-  haptic("light");
 }
 
 export function selectionTap(): void {

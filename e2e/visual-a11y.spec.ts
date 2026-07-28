@@ -83,6 +83,15 @@ test("every local-mode reachable route stays accessible with real data", async (
   for (const route of routes) {
     await page.goto(route);
     await expect(page.locator("#root")).toBeVisible();
+    if (route === "/helix/cash-flow") {
+      // The app shell is visible before the async ledger bundle and measured
+      // matrix viewport are ready. Audit the real populated table, not whichever
+      // loading frame happened to win the race.
+      await expect(page.getByRole("button", { name: /kolonunu sabitle/ }).first()).toBeVisible();
+    }
+    if (route === "/helix/settings/computed-columns") {
+      await expect(page.getByRole("radio", { name: /^Toplam/ })).toBeVisible();
+    }
     const undersized = await page.evaluate(() => {
       const found: string[] = [];
       for (const element of Array.from(document.querySelectorAll<HTMLElement>("[role]"))) {

@@ -25,6 +25,38 @@ async function verticalInsets(page: Page, insideText: RegExp) {
   });
 }
 
+async function effectiveControlTextContrast(page: Page, label: string): Promise<number> {
+  return page.getByRole("button", { name: label, exact: true }).evaluate((button, expectedLabel) => {
+    const parse = (value: string): [number, number, number] => {
+      const parts = value.match(/[\d.]+/g);
+      if (!parts || parts.length < 3) throw new Error(`Unsupported color: ${value}`);
+      return [Number(parts[0]), Number(parts[1]), Number(parts[2])];
+    };
+    const blend = (over: [number, number, number], under: [number, number, number], alpha: number) =>
+      over.map((channel, index) => alpha * channel + (1 - alpha) * under[index]!) as [number, number, number];
+    const luminance = (rgb: [number, number, number]) =>
+      rgb
+        .map((channel) => channel / 255)
+        .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+        .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
+
+    const text = Array.from(button.querySelectorAll<HTMLElement>("*"))
+      .find((element) => element.children.length === 0 && element.textContent?.trim() === expectedLabel);
+    if (!text) throw new Error(`No text node for ${expectedLabel}`);
+    let surface = button.parentElement;
+    while (surface && getComputedStyle(surface).backgroundColor === "rgba(0, 0, 0, 0)") {
+      surface = surface.parentElement;
+    }
+    if (!surface) throw new Error(`No painted surface behind ${expectedLabel}`);
+    const under = parse(getComputedStyle(surface).backgroundColor);
+    const opacity = Number.parseFloat(getComputedStyle(button).opacity);
+    const foreground = blend(parse(getComputedStyle(text).color), under, opacity);
+    const background = blend(parse(getComputedStyle(button).backgroundColor), under, opacity);
+    const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+    return (lighter! + 0.05) / (darker! + 0.05);
+  }, label);
+}
+
 test("a card's trailing action leaves the same gap as its first row", async ({ page }) => {
   await onboard(page);
   // A future-dated expense gives the Upcoming card a row and its footer link.
@@ -70,6 +102,40 @@ test("palette preference repaints immediately and survives a reload", async ({ p
   await page.evaluate(() => localStorage.setItem("helix.palette", "sand"));
   await page.reload();
   await expect(page.getByRole("radio", { name: "Çelik", exact: true })).toHaveAttribute("aria-checked", "true");
+});
+
+test("theme preference keeps browser chrome and native controls in the active scheme", async ({ page }) => {
+  await onboard(page);
+  await page.goto("/helix/settings");
+
+  const light = page.getByRole("radio", { name: "Açık", exact: true });
+  const dark = page.getByRole("radio", { name: "Koyu", exact: true });
+  await light.click();
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("light");
+  const lightChrome = await page.locator('meta[name="theme-color"]').getAttribute("content");
+
+  await dark.click();
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
+  const darkChrome = await page.locator('meta[name="theme-color"]').getAttribute("content");
+
+  expect(lightChrome).toMatch(/^#[\dA-F]{6}$/i);
+  expect(darkChrome).toMatch(/^#[\dA-F]{6}$/i);
+  expect(darkChrome).not.toBe(lightChrome);
+});
+
+test("disabled primary actions remain readable in every theme", async ({ page }) => {
+  await onboard(page);
+  for (const palette of ["Amber", "Çelik", "Servi"]) {
+    for (const scheme of ["Açık", "Koyu"]) {
+      await page.goto("/helix/settings");
+      await page.getByRole("radio", { name: palette, exact: true }).click();
+      await page.getByRole("radio", { name: scheme, exact: true }).click();
+      await page.goto("/helix/transaction");
+      const save = page.getByRole("button", { name: "Kaydet", exact: true });
+      await expect(save).toBeDisabled();
+      expect(await effectiveControlTextContrast(page, "Kaydet"), `${palette} · ${scheme}`).toBeGreaterThanOrEqual(4.5);
+    }
+  }
 });
 
 test("primary work surfaces reflow without page overflow across the target viewport matrix", async ({ page }) => {

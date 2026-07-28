@@ -7,86 +7,79 @@ history log.
 
 ## Current state — 2026-07-28, Europe/Istanbul
 
-`main` remains the only long-lived branch. The current
-`agent/color-motion-skills` branch contains an unmerged project-skill package;
-it changes agent instructions, skill snapshots, documentation, CI/test
-contracts and the skill integrity script. Product UI, runtime behavior, data,
-migrations and app dependencies are unchanged.
+`main` is the only long-lived branch. The project-skill work and the product UI
+follow-up were consolidated in [PR #103](https://github.com/topraksv/helix/pull/103);
+that PR's final release comment is the authority for its resulting `main`
+commit and GitHub Pages run.
 
 | | |
 |---|---|
-| Last product release commit | `4d227aac863045581a4bfe43334344197abf2908` |
-| Web | [GitHub Pages run 30313476658](https://github.com/topraksv/helix/actions/runs/30313476658), successful |
-| Native | The released UI/UX package still needs a new binary; no OTA is valid for its native config changes |
-| Skill inventory | 26 directories / 183 files / 1.6 MB; 19 full-SHA-pinned vendor specialists + 7 hash-pinned Helix adapters |
-| Commit gate | `npm run verify` passed: 26 skill snapshots, 72 Vitest files / 571 tests, typecheck and lint |
+| Previous product baseline | `4d227aac863045581a4bfe43334344197abf2908` |
+| Previous web baseline | [GitHub Pages run 30313476658](https://github.com/topraksv/helix/actions/runs/30313476658), successful |
+| Current release record | [PR #103](https://github.com/topraksv/helix/pull/103), including exact merge and Pages evidence |
+| Native | A new installed binary is still required for the released native-config boundary; do not publish an OTA across it |
+| Quality | `npm run verify:release` green: 26 skills, 72 Vitest files / 578 tests, typecheck, lint, export budgets and 44 Playwright tests |
 
-## Skill tree package
+## Product result
 
-The canonical routing and provenance are in
-[`AI_ENGINEERING_SKILLS.md`](AI_ENGINEERING_SKILLS.md). The package removes the
-Next.js/RSC skill, duplicate generic React Native performance skill, unused
-Software Mansion domains, color-history archive, web/Tailwind implementation
-skill and incomplete architecture-report skill. The previous broad mobile
-accessibility package is replaced by a bounded Helix adapter.
+The Mali Tablo accessibility race is closed at both levels: the real-data axe
+sweep waits for the populated async table, and every web column-pin target is a
+measured 24×24 CSS box rather than a 12 px icon with native-only `hitSlop`.
+Computed-column readiness is deterministic too.
 
-New Helix entry points cover security/hardening, dependency security,
-financial-data integrity, platform/release acceptance, native interaction,
-visual system/Turkish copy and mobile accessibility. Trail of Bits'
-property-based testing skill is added for high-dimensional transformations.
+Shared disabled controls no longer reduce the opacity of their text. Buttons,
+icon buttons, fields, selectors, segmented controls, toggles and calendar dates
+use explicit neutral disabled colors; browser measurements keep disabled
+primary copy at or above 4.5:1 in Amber, Çelik and Servi, light and dark.
+Loading buttons remain visually active while blocking a second press. Semantic
+success, warning and error cards now carry a real shared tint and boundary.
 
-Anthropic's `defending-code-reference-harness` was reviewed but not installed:
-the repository says it is unmaintained and its autonomous C/C++ runner assumes
-Docker/gVisor and restricted egress. Its useful method—threat model, skeptical
-verification, severity by preconditions/impact, variant search, regression
-before patch and independent re-check—is adapted into
-`security-and-hardening`. Anthropic's security-review Action was also not added
-because its own documentation says it is not prompt-injection hardened and it
-would introduce an API secret.
+Web theme preference updates both `color-scheme` and `theme-color`. Generic
+buttons, icon buttons, cards and list rows use quiet tonal press feedback rather
+than a universal spring scale and automatic haptic. Selection haptics are
+reserved for actual discrete state changes such as month/date/option/toggle and
+Mali Tablo pin changes. All feedback remains iOS-only through the shared helper.
 
-`npm run verify:skills` now blocks directory/lock drift, mutable GitHub refs,
-hash changes, symlinks, incomplete frontmatter, TODO templates, escaping links
-and missing local Markdown references. It uses the same folder-hash algorithm
-as the skills CLI, runs inside `npm run verify` and the required `quality` job,
-and has positive plus tamper/missing-link regression tests. Expanding it to the
-whole Markdown tree exposed eight real broken vendor links; all were repaired
-and recorded with the other vendor patches.
+The information architecture, Turkish copy, financial behavior, local-first
+storage, sync, routes, forms and web/native feature parity are unchanged. No
+migration, dependency, native config or financial-data boundary changed in this
+follow-up.
 
-## Verification and open finding
+## Verification
 
-`npm run verify` is green: 26/26 skill snapshots, 72/72 Vitest files, 571/571
-tests, typecheck and lint.
+The fresh release gate passed:
 
-`npm run verify:release` passed the skill gate, typecheck, 571 Vitest tests,
-lint, 56-route production export and bundle budgets
-(`4,742,231`-byte entry JS, `5,371,413`-byte total JS, `9,273,916`-byte export,
-six fonts / `1,518,000` bytes, zero source maps, Supabase config inlined).
-Playwright finished **41/42**, so the release gate is not green.
+- `npm run verify`: 26/26 pinned skill snapshots, typecheck, 72/72 Vitest files,
+  578/578 tests and Expo lint.
+- Production export: 56 static routes; 9,274,624-byte total export against the
+  10,000,000-byte budget; six fonts / 1,518,000 bytes; zero source maps;
+  Supabase public config inlined as expected.
+- Playwright: 44/44, including the real-data route accessibility sweep, complete
+  two-width layout sweep, six-theme disabled-control contrast, browser chrome
+  scheme, navigation, resilience, import atomicity and visual baselines.
+- `npx expo config --type public --json` resolved SDK 54, `/helix`, runtime
+  `1.0.0`, preview channel and the expected platform settings.
+- `npx expo-doctor`: 18/18 checks passed.
 
-The failure is a pre-existing race in the real-data axe sweep, not a skill-tree
-regression. The test waits only for `#root`, not the async cash-flow table. When
-the table is present, axe reports eight column-pin buttons whose DOM target is
-the 12 px icon; React Native `hitSlop` does not make their web CSS target 24×24.
-When the table is not ready, the same audit skips those controls. Evidence: the
-full run failed on `Kredi Kartı kolonunu sabitle`; the unchanged focused test
-immediately passed. Do not call the release gate green or suppress the rule.
-Fix the pin control and add a deterministic table-ready assertion in a separate
-product/test package, then rerun the full release gate.
+The nine changed screenshot baselines were limited to controls whose disabled
+rendering changed and the widened Mali Tablo marker strip; their actual/diff
+images were inspected before acceptance. Generated exports, Playwright results
+and Expo cache were moved to the system Trash after verification.
 
-Generated `dist/`, `dist-e2e/`, Playwright results and report were moved to the
-system Trash after inspection. No task-only artefacts remain in the repository.
-
-## Existing acceptance blockers
+## Acceptance boundary
 
 - Installed iOS and Android acceptance remains `BLOCKED`: no simulator/device
   evidence exists for rotation, keyboard avoidance, VoiceOver/TalkBack, Dynamic
-  Type, native focus return, safe areas or the released splash colors.
+  Type, native focus return, safe areas, haptics or the released splash colors.
+- Although this follow-up's runtime changes are JavaScript-only, the currently
+  installed build still predates a released native-config boundary. An OTA
+  cannot make that binary representative; build and install a fresh native
+  client first.
 - Weekly/biweekly subscription cycles remain requested but unbuilt and require
   their own migration/domain package.
 
 ## Next exact step
 
-Commit the skill-tree package after the final staged-diff audit. Treat the
-sticky-table 24×24 target plus deterministic axe readiness as a separate,
-focused product/test fix before claiming the next release gate or merging a
-release candidate.
+Build and install a fresh preview binary, then run the physical-device matrix in
+[`TESTING.md`](TESTING.md). Only after that binary establishes the current
+native boundary should a later JavaScript-only package use EAS Update.
