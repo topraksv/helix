@@ -19,6 +19,13 @@
       "skillPath": "skills/engineering/codebase-design/SKILL.md",
       "computedHash": "6d9d51d8caa01633fd00cf87089c5618c982321f942ac69f62565dc001c6b22f"
     },
+    "color-expert": {
+      "source": "meodai/skill.color-expert",
+      "ref": "2e30f07874ec947f10f3e4803d7295055dec83bd",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "d8a5a6da49e0df2fe13665297895aa252f6d18918002aad275e4903ce95bd448"
+    },
     "expo-data-fetching": {
       "source": "expo/skills",
       "sourceType": "github",
@@ -79,6 +86,13 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/prototype/SKILL.md",
       "computedHash": "faba901c53a6ca245174c4ba5db3929d14253232b3050fdbd46539720adf1ab8"
+    },
+    "react-native-best-practices": {
+      "source": "software-mansion-labs/skills",
+      "ref": "45cb108672724ec8fd9d2210de6599b77f71ad76",
+      "sourceType": "github",
+      "skillPath": "skills/react-native-best-practices/SKILL.md",
+      "computedHash": "d86c2fa6f353b2b126d99351967427536765f8b6ee4d1de9ec13502c860df186"
     },
     "receiving-code-review": {
       "source": "obra/superpowers",

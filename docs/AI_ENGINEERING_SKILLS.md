@@ -4,8 +4,8 @@ This file records the source, purpose and boundaries of the engineering skills
 installed for Helix. The canonical instructions live in
 `.agents/skills/<skill>/SKILL.md`.
 
-The project has 23 installed skills: 16 engineering skills and 7 UI/UX and
-accessibility skills.
+The project has 25 installed skills: 16 engineering skills and 9 UI/UX,
+accessibility, colour and motion skills.
 
 | Skill | Source repository | Primary purpose | Typical trigger | Usage mode |
 |---|---|---|---|---|
@@ -37,6 +37,37 @@ accessibility skills.
 | `expo-router` | `expo/skills` at `09eb052410e7f609624cb161ea4cd9576c69cd5d` | Navigation and back behaviour | Navigation or route behaviour change | Task-specific | Cannot restructure routes or alter behaviour without auditing all existing conventions | Unchanged |
 | `prototype` | `mattpocock/skills` at `ed37663cc5fbef691ddfecd080dff42f7e7e350d` | Temporary design or state options | Explicit design question | Manual/throwaway | Never promoted directly to production; all unused prototype code is removed | Unchanged |
 | `mobile-accessibility` | `Community-Access/accessibility-agents` at `0872b4a7763145fc0e5847d8357fb446a857c683` | React Native/Expo accessibility audit | Explicit deep mobile accessibility review | Manual/deep audit | Mobile only; cannot install or delegate to missing accessibility agents | Unchanged |
+| `react-native-best-practices` | `software-mansion-labs/skills` at `45cb108672724ec8fd9d2210de6599b77f71ad76` | Production React Native animation, gesture, layout/scroll motion and performance guidance | Reanimated, Gesture Handler, press motion, haptic-paired motion, layout transition, scroll-driven animation or frame performance | Task-specific | Meaningful, measured motion only; no unnecessary GPU, Skia, WebGPU or heavy effects | Unchanged |
+| `color-expert` | `meodai/skill.color-expert` at `2e30f07874ec947f10f3e4803d7295055dec83bd` | Palettes, perceptual ramps, light/dark themes, semantic tokens, contrast and gradients | Palette, theme, light/dark, contrast, semantic status colour or colour accessibility work | Manual/deep audit or task-specific | Refine the existing brand; never impose a random identity or canned fintech palette | Unchanged |
+
+### `react-native-best-practices`
+
+- Source: `software-mansion-labs/skills`
+- Usage mode: Task-specific
+- Primary purpose: Production animation, gesture, layout/scroll motion and
+  performance guidance for React Native and Expo
+- Typical trigger: Reanimated, Gesture Handler, press interaction,
+  haptic-paired motion, layout transition, scroll-driven animation or frame
+  performance
+- Helix boundary: Only meaningful and measurable motion; no unnecessary GPU,
+  Skia, WebGPU or heavy effects
+- Accessibility boundary: Reduced Motion is preserved
+- Platform boundary: iOS polish cannot block web or future Android architecture
+
+### `color-expert`
+
+- Source: `meodai/skill.color-expert`
+- Usage mode: Manual/deep audit or task-specific colour work
+- Primary purpose: Palettes, perceptual colour ramps, light/dark themes,
+  semantic tokens, contrast and gradients
+- Typical trigger: Palette, theme, light/dark, contrast, semantic status colour
+  or colour accessibility work
+- Helix boundary: Refine the current brand; do not impose a random identity or
+  canned fintech palette
+- Loading boundary: Read the main skill and only the references relevant to the
+  task; never load the full reference archive into context
+- Validation boundary: Validate colours on real screens, semantic roles and
+  accessibility pairs
 
 `web-design-guidelines` reads
 `references/web-interface-guidelines.md`, pinned from
@@ -74,6 +105,16 @@ Vendor audit notes:
   Expo references contain manual package/build/feedback commands, the
   accessibility guide contains a manual `adb` setting command, and prototype
   guidance can create temporary code; none runs automatically.
+- `react-native-best-practices` has static sub-skill references for animation,
+  gesture, SVG, GPU and unrelated native domains. They are not independent
+  project skills. Some opt-in references contain manual package, patch and
+  network commands; do not load or apply them outside an explicitly approved,
+  relevant package.
+- `color-expert` is a static Markdown knowledge base. Load it progressively;
+  its source citations do not authorize runtime network access or dependency
+  installation. Its skill-routing links are complete; some deep source notes
+  cite PDFs that the vendor repository does not distribute locally, so follow
+  the cited upstream source only when that reference is explicitly needed.
 - `frontend-ui-engineering` names a missing optional
   `references/accessibility-checklist.md`. `mobile-accessibility` also names
   uninstalled handoff agents. Do not follow either reference; only the isolated

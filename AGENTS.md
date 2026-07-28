@@ -442,3 +442,29 @@ skill directly relevant to the task; do not run the whole set by default.
 8. Skill advice never outranks business logic, tested behaviour, the owner's
    request or official framework documentation.
 9. Detailed shared routing waits until the cybersecurity skill set is complete.
+
+### Color, motion and interaction skills
+
+- Colour science, light/dark palettes, semantic colour roles, gradients and
+  contrast: `color-expert`
+- React Native animations, gestures, layout/scroll motion and frame
+  performance: `react-native-best-practices`
+
+1. Installation does not authorize automatic palette changes or animation
+   across the app.
+2. Neutral surfaces stay separate from theme accents; the accent does not tint
+   every background.
+3. Light and dark modes share one brand identity but use separate perceptual
+   ramps.
+4. Colour meaning also uses text, icons or status indicators.
+5. Motion explains state, feedback, direction or spatial relationships; it is
+   not continuous decoration.
+6. Do not add haptics or scale effects to every touch.
+7. Reduced Motion and accessibility preferences remain mandatory.
+8. iOS may use native-feeling motion and haptics without blocking web or future
+   Android behaviour.
+9. Add animation, Skia, GPU, gesture or colour dependencies only when the
+   current stack is insufficient and the work is separately approved.
+10. Performance claims require release-build measurement.
+11. Skill advice never outranks product behaviour, Helix's brand language, the
+    user's request or repository rules.
