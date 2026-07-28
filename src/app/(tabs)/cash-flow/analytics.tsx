@@ -23,7 +23,7 @@ import {
   useSourcesState,
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
-import { categoryIcon } from "../../../data/category-icons";
+import { categoryIcon, paymentSourceIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
@@ -273,7 +273,7 @@ export default function AnalysisScreen() {
 
       <Select
         label={tr.tx.category}
-        options={[{ value: "", label: tr.analysis.allCategories }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+        options={[{ value: "", label: tr.analysis.allCategories }, ...categories.map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))]}
         value={categoryFilter ?? ""}
         onChange={(v) => {
           setCategoryFilter(v === "" ? null : v);
@@ -318,7 +318,7 @@ export default function AnalysisScreen() {
         <View style={{ flex: 1 }}>
           <Select
             label={tr.analysis.searchSource}
-            options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name }))]}
+            options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: paymentSourceIcon(source.type) }))]}
             value={sourceFilter ?? ""}
             onChange={(value) => setSourceFilter(value || null)}
           />

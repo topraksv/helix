@@ -15,7 +15,7 @@ import { useCategoriesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, ChipPicker, DataStateNotice, EmptyState, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, DataStateNotice, EmptyState, Screen, SectionHeader, ToggleGrid } from "../ui/components";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -24,8 +24,17 @@ import { appAlert } from "../ui/dialog";
 const ALL_TEMPLATES = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
 
 const norm = (s: string) => s.toLocaleLowerCase("tr-TR");
-const chip = (c: (typeof TEMPLATE_CATEGORIES)[number]) =>
-  `${c.icon ?? ""} ${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`.trim();
+/**
+ * One tile per template category. The icon is passed separately rather than
+ * packed into the label: `ToggleGrid` gives it a fixed column, so the names
+ * line up instead of starting wherever the previous emoji's advance width
+ * happened to end.
+ */
+const tile = (c: (typeof TEMPLATE_CATEGORIES)[number]) => ({
+  value: c.name,
+  label: `${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`,
+  icon: c.icon,
+});
 
 export default function WorkspaceTemplateModal() {
   const userId = useUserId();
@@ -76,11 +85,11 @@ export default function WorkspaceTemplateModal() {
       ) : (
         <>
           <SectionHeader>{tr.template.toAddTitle}</SectionHeader>
-          <ChipPicker
-            multi
-            options={missing.map((c) => ({ value: c.name, label: chip(c) }))}
+          <ToggleGrid
+            options={missing.map(tile)}
             values={selected.map((c) => c.name)}
             onToggle={(name) => setExcluded((xs) => (xs.includes(name) ? xs.filter((x) => x !== name) : [...xs, name]))}
+            countLabel={tr.computed.selectedCount(selected.length)}
           />
           <Button label={tr.template.addSelected(selected.length)} onPress={() => void add()} loading={busy} disabled={selected.length === 0} />
         </>
@@ -92,7 +101,7 @@ export default function WorkspaceTemplateModal() {
       {have.length > 0 ? (
         <View style={{ marginTop: spacing.lg }}>
           <SectionHeader>{tr.template.haveTitle}</SectionHeader>
-          <ChipPicker multi options={have.map((c) => ({ value: c.name, label: chip(c) }))} values={[]} onToggle={() => {}} />
+          <ToggleGrid options={have.map(tile)} values={[]} onToggle={() => {}} readOnly />
         </View>
       ) : null}
     </Screen>

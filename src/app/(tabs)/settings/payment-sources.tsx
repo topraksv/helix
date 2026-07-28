@@ -90,7 +90,13 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
               onChange(option.value);
             }}
             style={({ pressed }) => ({
-              flexBasis: width >= 720 ? "23%" : "47%",
+              // Seven tiles wrapped into two columns left the last one — EFT /
+              // Havale — alone on its row, where `flexGrow` stretched it to full
+              // width. The widest tile was therefore the least-used method, by
+              // accident of arithmetic. Giving the double width to the credit
+              // card instead makes the most-reached-for option the easiest to
+              // hit, and leaves an even six to fill the rows below it.
+              flexBasis: option.value === "credit_card" ? (width >= 720 ? "48%" : "100%") : width >= 720 ? "23%" : "47%",
               flexGrow: 1,
               minWidth: 0,
               minHeight: 52,

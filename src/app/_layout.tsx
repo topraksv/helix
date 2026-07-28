@@ -42,7 +42,7 @@ import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { HeaderBackButton } from "../ui/header-back";
-import { stackScreenOptions } from "../ui/header-bar";
+import { sheetScreenOptions, stackScreenOptions } from "../ui/header-bar";
 
 import { devError } from "../services/logger";
 import { PrivacyCover } from "../ui/privacy-cover";
@@ -369,14 +369,14 @@ function RootLayoutInner() {
           <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
-          <Stack.Screen name="transaction" options={{ presentation: Platform.OS === "ios" ? "modal" : "card", title: tr.tx.new, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="installment-new" options={{ presentation: Platform.OS === "ios" ? "modal" : "card", title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
-          <Stack.Screen name="subscription-form" options={{ presentation: Platform.OS === "ios" ? "modal" : "card", title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
-          <Stack.Screen name="bulk-entry" options={{ presentation: Platform.OS === "ios" ? "modal" : "card", title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="cell-editor" options={{ presentation: Platform.OS === "ios" ? "modal" : "card", title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="transaction" options={{ ...sheetScreenOptions(theme.palette), title: tr.tx.new, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="installment-new" options={{ ...sheetScreenOptions(theme.palette), title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
+          <Stack.Screen name="subscription-form" options={{ ...sheetScreenOptions(theme.palette), title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
+          <Stack.Screen name="bulk-entry" options={{ ...sheetScreenOptions(theme.palette), title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="cell-editor" options={{ ...sheetScreenOptions(theme.palette), title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="import-wizard" options={{ presentation: "card", title: tr.importer.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="workspace-template" options={{ presentation: "card", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
-          <Stack.Screen name="opening-balance" options={{ presentation: Platform.OS === "ios" ? "modal" : "card", title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="opening-balance" options={{ ...sheetScreenOptions(theme.palette), title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="account-security" options={{ presentation: "card", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           {/* Keep the shared column editor in a normal stack card. An iOS sheet
               owns the same vertical pan used by the reorder grip, even when

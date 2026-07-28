@@ -20,21 +20,33 @@
  */
 
 import React, { type ReactNode } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controlSize, font, spacing, type, useTheme, type Palette } from "./theme";
 
 /** Header row height, excluding the top safe-area inset. */
 export const HEADER_ROW_HEIGHT = 64;
 
-export function HeaderBar({ title, left }: { title?: string; left?: ReactNode }) {
+export function HeaderBar({
+  title,
+  left,
+  topInset = true,
+}: {
+  title?: string;
+  left?: ReactNode;
+  /**
+   * Clear the status bar. True for anything drawn against the top of the
+   * window; false for a sheet, which opens below it — see `sheetScreenOptions`.
+   */
+  topInset?: boolean;
+}) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   return (
     <View
       style={{
         backgroundColor: palette.background,
-        paddingTop: insets.top,
+        paddingTop: topInset ? insets.top : 0,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: palette.border + "70",
       }}
@@ -86,6 +98,32 @@ export function stackScreenOptions(palette: Palette) {
     // Screens still declare `headerLeft`; this renders whatever they declared.
     header: ({ options }: StackHeaderArgs) => (
       <HeaderBar title={options.title} left={options.headerLeft?.({ canGoBack: true, tintColor: palette.accentText })} />
+    ),
+  };
+}
+
+/**
+ * Options for the routes that slide up as a sheet on iOS: add a transaction,
+ * a past month's entries, an opening-balance correction, a subscription.
+ *
+ * A sheet starts below the status bar, so the window's top safe-area inset is
+ * not something its header has to clear. `useSafeAreaInsets` reports the
+ * window's inset regardless — the provider is mounted at the app root, outside
+ * the presented card — so the shared header was adding ~59pt of empty space to
+ * the top of every one of those flows. Full-screen presentations (Android, web,
+ * and every card route) still clear the bar, which is why this is a separate
+ * option set rather than a change to `stackScreenOptions`.
+ */
+export function sheetScreenOptions(palette: Palette) {
+  const presentsAsSheet = Platform.OS === "ios";
+  return {
+    presentation: (presentsAsSheet ? "modal" : "card") as "modal" | "card",
+    header: ({ options }: StackHeaderArgs) => (
+      <HeaderBar
+        title={options.title}
+        left={options.headerLeft?.({ canGoBack: true, tintColor: palette.accentText })}
+        topInset={!presentsAsSheet}
+      />
     ),
   };
 }

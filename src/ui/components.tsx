@@ -973,7 +973,13 @@ export function Select<T extends string>({
                         >
                           <Row gap={spacing.sm}>
                             {option.icon ? (
-                              <Text style={[type.body, { width: SELECT_ICON_W, textAlign: "center" }]}>{option.icon}</Text>
+                              // Decorative: the icon is a second encoding of the
+                              // name beside it, so joining the accessible name
+                              // would make the option announce as "💳 Günlük
+                              // Hesap" and break every exact-name query.
+                              <Text accessible={false} aria-hidden style={[type.body, { width: SELECT_ICON_W, textAlign: "center" }]}>
+                                {option.icon}
+                              </Text>
                             ) : null}
                             <Text
                               style={[
@@ -1151,6 +1157,107 @@ export function Segmented<T extends string>({
 }
 
 /** Simple chip-row picker (categories, sources, persons); `multi` toggles a set. */
+/**
+ * A wrapping grid of multi-select tiles: icon column, label, check when picked.
+ *
+ * Built for the computed-column buckets, then reused for the suggested-items
+ * template — the two screens ask the same question ("which of these do you
+ * want?") of the same kind of thing, so they read as one control instead of a
+ * grid on one screen and a chip row on the other. `tone` only chooses the accent
+ * pair; the geometry is identical in every use, which is the point.
+ */
+export function ToggleGrid({
+  options,
+  values,
+  onToggle,
+  tone = "plus",
+  countLabel,
+  readOnly = false,
+}: {
+  options: { value: string; label: string; icon?: string | null }[];
+  values: string[];
+  onToggle: (value: string) => void;
+  tone?: "plus" | "minus";
+  /** Optional pill above the grid, e.g. "3 selected". */
+  countLabel?: string;
+  /** Render the same tiles as a non-interactive summary. */
+  readOnly?: boolean;
+}) {
+  const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const selectedColor = tone === "plus" ? palette.primary : palette.negative;
+  const selectedSoft = tone === "plus" ? palette.primarySoft : palette.negative + "18";
+  const selectedInk = tone === "plus" ? palette.primaryText : palette.negativeText;
+  return (
+    <View>
+      {countLabel ? (
+        <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: spacing.xs }}>
+          <View style={{ borderRadius: 999, backgroundColor: selectedSoft, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
+            <Text style={[type.small, { color: selectedInk, fontFamily: font.semibold }]}>{countLabel}</Text>
+          </View>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+        {options.map((option) => {
+          const selected = values.includes(option.value);
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="checkbox"
+              aria-checked={selected}
+              accessibilityState={{ checked: selected, disabled: readOnly }}
+              disabled={readOnly}
+              onPress={() => {
+                selectionTap();
+                onToggle(option.value);
+              }}
+              style={({ pressed }) => ({
+                flexBasis: width >= 720 ? "31%" : "47%",
+                flexGrow: 1,
+                minWidth: 0,
+                minHeight: 48,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.sm,
+                paddingHorizontal: spacing.sm,
+                paddingVertical: spacing.sm,
+                borderRadius: radius.md,
+                borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
+                borderColor: selected ? selectedColor : palette.border,
+                backgroundColor: pressed ? palette.surfaceHover : selected ? selectedSoft : palette.surfaceAlt,
+              })}
+            >
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: selected ? selectedColor : palette.surface,
+                }}
+              >
+                {selected ? (
+                  <Check accessible={false} size={15} color={tone === "plus" ? palette.onPrimary : palette.onDestructive} strokeWidth={2.4} />
+                ) : option.icon ? (
+                  <Text accessible={false} aria-hidden style={{ fontSize: 14 }}>{option.icon}</Text>
+                ) : tone === "plus" ? (
+                  <Plus accessible={false} size={14} color={palette.textSecondary} />
+                ) : (
+                  <Minus accessible={false} size={14} color={palette.textSecondary} />
+                )}
+              </View>
+              <Text style={[type.small, { flex: 1, minWidth: 0, color: selected ? selectedInk : palette.text, fontFamily: font.semibold }]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export function ChipPicker<T extends string>({
   options,
   value,

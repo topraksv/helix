@@ -10,6 +10,7 @@ import { formatMinor } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { Body, Button, Card, CardList, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, Row, Screen, Select, Spread } from "../../../ui/components";
+import { categoryIcon } from "../../../data/category-icons";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { spacing, useTheme } from "../../../ui/theme";
@@ -131,7 +132,7 @@ export default function BudgetsScreen() {
       <Card>
         <Select
           label={tr.budgets.category}
-          options={expenseCategories.map((category) => ({ value: category.id, label: category.name }))}
+          options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
           value={categoryId}
           placeholder={tr.budgets.pickCategory}
           onChange={(value) => confirmDiscard(() => {

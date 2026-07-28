@@ -14,6 +14,7 @@ import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringI
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, Label, MoneyField, Row, Screen, Segmented, Select } from "../../../ui/components";
+import { categoryIcon } from "../../../data/category-icons";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
 import { spacing } from "../../../ui/theme";
@@ -243,7 +244,7 @@ export default function IncomeRulesScreen() {
         {incomeCategories.length > 1 ? (
           <Select
             label={tr.incomes.categoryLabel}
-            options={incomeCategories.map((c) => ({ value: c.id, label: c.name }))}
+            options={incomeCategories.map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))}
             value={categoryId}
             onChange={setCategoryChoice}
           />
