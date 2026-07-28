@@ -170,13 +170,25 @@ jobs:
             esac
           done
 
-  # `needs: gate` is the ordering edge — nothing deploys before the checks
-  # pass. The decision itself is read straight from `classify`: forwarding it
-  # through `gate`'s outputs silently produced an empty string and skipped both
-  # deploys on a fully green run.
+  # Two things this condition has to do, both learned the hard way on a green
+  # run that deployed nothing.
+  #
+  # `gate` is declared `if: always()` so a correctly skipped job cannot block
+  # it. GitHub then propagates that upstream "skipped" state down the needs
+  # chain, so a plain `needs: gate` leaves this job skipped even when `gate`
+  # itself succeeded. `!cancelled()` replaces that implicit rule, and the
+  # `result` check puts back the only part of it that was wanted: a failed or
+  # skipped gate must still stop the deploy.
+  #
+  # The decision is read from `classify` directly. Forwarding it through
+  # `gate`'s job outputs resolved to an empty string — a silent no-deploy that
+  # is indistinguishable from a healthy run.
   deploy-web:
     needs: [classify, gate]
-    if: needs.classify.outputs.deploy_web == 'true'
+    if: >-
+      ${{ !cancelled()
+      && needs.gate.result == 'success'
+      && needs.classify.outputs.deploy_web == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -209,7 +221,10 @@ jobs:
 
   deploy-mobile:
     needs: [classify, gate]
-    if: needs.classify.outputs.deploy_mobile == 'true'
+    if: >-
+      ${{ !cancelled()
+      && needs.gate.result == 'success'
+      && needs.classify.outputs.deploy_mobile == 'true' }}
     runs-on: ubuntu-latest
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

@@ -69,7 +69,13 @@ describe("release contract", () => {
     // skipped both deploys on a green run.
     for (const job of ["deploy-web", "deploy-mobile"] as const) {
       const decision = job === "deploy-web" ? "deploy_web" : "deploy_mobile";
-      expect(ci, job).toContain(`  ${job}:\n    needs: [classify, gate]\n    if: needs.classify.outputs.${decision} == 'true'`);
+      const condition = ci.slice(ci.indexOf(`  ${job}:\n`), ci.indexOf("steps:", ci.indexOf(`  ${job}:\n`)));
+      expect(condition, job).toContain("needs: [classify, gate]");
+      // `!cancelled()` is load-bearing: without it GitHub propagates the
+      // upstream skip through `gate`'s `always()` and this job never runs.
+      expect(condition, job).toContain("!cancelled()");
+      expect(condition, job).toContain("needs.gate.result == 'success'");
+      expect(condition, job).toContain(`needs.classify.outputs.${decision} == 'true'`);
     }
     expect(ci).not.toContain("needs.gate.outputs");
   });
