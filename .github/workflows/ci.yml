@@ -156,9 +156,6 @@ jobs:
     if: always()
     needs: [classify, quality, web-build, e2e-smoke, e2e-full]
     runs-on: ubuntu-latest
-    outputs:
-      deploy_web: ${{ needs.classify.outputs.deploy_web }}
-      deploy_mobile: ${{ needs.classify.outputs.deploy_mobile }}
     steps:
       - name: Fail on any real job failure
         env:
@@ -173,9 +170,13 @@ jobs:
             esac
           done
 
+  # `needs: gate` is the ordering edge — nothing deploys before the checks
+  # pass. The decision itself is read straight from `classify`: forwarding it
+  # through `gate`'s outputs silently produced an empty string and skipped both
+  # deploys on a fully green run.
   deploy-web:
-    needs: gate
-    if: needs.gate.outputs.deploy_web == 'true'
+    needs: [classify, gate]
+    if: needs.classify.outputs.deploy_web == 'true'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -207,8 +208,8 @@ jobs:
           echo "bundle $bundle: $js"; [ "$js" = "200" ]
 
   deploy-mobile:
-    needs: gate
-    if: needs.gate.outputs.deploy_mobile == 'true'
+    needs: [classify, gate]
+    if: needs.classify.outputs.deploy_mobile == 'true'
     runs-on: ubuntu-latest
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

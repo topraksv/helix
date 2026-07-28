@@ -59,8 +59,19 @@ describe("release contract", () => {
     // One export per run. The deploy consumes the artifact the budget check
     // ran against; a second export there could serve unchecked bytes.
     expect(ci.split("npx expo export").length - 1).toBe(1);
-    expect(ci).toMatch(/deploy-web:\n\s+needs: gate/);
     expect(ci).not.toContain("verify:release");
+  });
+
+  it("gates the deploys on the checks but decides them from the classifier", () => {
+    // Both edges matter. `needs: [classify, gate]` orders a deploy after the
+    // checks; the condition reads `classify` directly because forwarding the
+    // decision through `gate`'s outputs resolved to an empty string and
+    // skipped both deploys on a green run.
+    for (const job of ["deploy-web", "deploy-mobile"] as const) {
+      const decision = job === "deploy-web" ? "deploy_web" : "deploy_mobile";
+      expect(ci, job).toContain(`  ${job}:\n    needs: [classify, gate]\n    if: needs.classify.outputs.${decision} == 'true'`);
+    }
+    expect(ci).not.toContain("needs.gate.outputs");
   });
 
   it("splits the browser suite by risk and shards the full run", () => {
