@@ -20,7 +20,7 @@ import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
-import { UserFacingError, userMessage } from "../domain/user-error";
+import { userMessage } from "../domain/user-error";
 import { Body, Button, Card, ChipPicker, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader } from "../ui/components";
 import { font, radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -312,8 +312,7 @@ export default function ImportWizardModal() {
           copyToCacheDirectory: true,
         });
         if (picked.canceled || !picked.assets[0]) return;
-        if ((picked.assets[0].size ?? 0) > MAX_WORKBOOK_BYTES) throw new UserFacingError(tr.importer.fileTooLarge);
-        const bytes = await readPickedBytes(picked.assets[0]);
+        const bytes = await readPickedBytes(picked.assets[0], MAX_WORKBOOK_BYTES, tr.importer.fileTooLarge);
         if (signal.aborted) throw signal.reason;
         const parsed = await parseWorkbookBytes(bytes);
         if (signal.aborted) throw signal.reason;

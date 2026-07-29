@@ -19,3 +19,13 @@ export function isInputWithinLimit(value: string | null | undefined, kind: Input
 export function assertInputWithinLimit(value: string | null | undefined, kind: InputLimitKind): void {
   if (!isInputWithinLimit(value, kind)) throw new Error(`${kind} input exceeds its maximum length`);
 }
+
+/** Count UTF-8 bytes without allocating another encoded copy of a large input. */
+export function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}

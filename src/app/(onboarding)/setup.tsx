@@ -21,7 +21,7 @@ import { useOperationGuard } from "../../ui/operation-guard";
 import { readPickedText } from "../../services/picked-file";
 import { MonthDayField, monthDayLabel } from "../../ui/month-day-field";
 import { useDirtyExitGuard } from "../../ui/dirty-exit";
-import { UserFacingError, userMessage } from "../../domain/user-error";
+import { userMessage } from "../../domain/user-error";
 import { devError } from "../../services/logger";
 
 const SOURCE_TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
@@ -271,9 +271,8 @@ export default function SetupScreen() {
           // backup seeds the workspace and shows the "prepared" note (P1-2).
           const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
           if (picked.canceled || !picked.assets[0]) return;
-          if ((picked.assets[0].size ?? 0) > MAX_BACKUP_BYTES) throw new UserFacingError(tr.errors.backupTooLarge);
           setBusy(true);
-          const content = await readPickedText(picked.assets[0]);
+          const content = await readPickedText(picked.assets[0], MAX_BACKUP_BYTES, tr.errors.backupTooLarge);
           // Validate and restore the complete workspace atomically. Seeding first
           // would leave a partial starter workspace behind when a corrupt backup
           // is rejected or the restore write fails.

@@ -41,7 +41,7 @@ import { syncNow } from "../../../sync/engine";
 import { useSyncStatus } from "../../../sync/status";
 import { isSupabaseConfigured } from "../../../sync/supabase";
 import { setGlobalPalettePreference, setGlobalThemePreference } from "../../_layout";
-import { UserFacingError, userMessage } from "../../../domain/user-error";
+import { userMessage } from "../../../domain/user-error";
 import { devError } from "../../../services/logger";
 import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
@@ -371,8 +371,7 @@ export default function SettingsScreen() {
     if (picked.canceled || !picked.assets[0]) return;
     const asset = picked.assets[0];
     await runDataOperation("import", async ({ signal, report }) => {
-      if ((asset.size ?? 0) > MAX_BACKUP_BYTES) throw new UserFacingError(tr.errors.backupTooLarge);
-      const content = await readPickedText(asset);
+      const content = await readPickedText(asset, MAX_BACKUP_BYTES, tr.errors.backupTooLarge);
       if (signal.aborted) throw signal.reason;
       const result = await importBundle(userId, parseExportBundleText(content), {
         signal,

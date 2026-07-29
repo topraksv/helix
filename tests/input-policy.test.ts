@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INPUT_LIMITS, assertInputWithinLimit, isInputWithinLimit } from "../src/domain/input";
+import { INPUT_LIMITS, assertInputWithinLimit, isInputWithinLimit, utf8ByteLength } from "../src/domain/input";
 
 describe("shared input limits", () => {
   it.each(Object.entries(INPUT_LIMITS))("enforces the %s field boundary", (kind, limit) => {
@@ -11,5 +11,9 @@ describe("shared input limits", () => {
   it("accepts optional empty values without weakening non-empty limits", () => {
     expect(isInputWithinLimit(null, "note")).toBe(true);
     expect(isInputWithinLimit(undefined, "text")).toBe(true);
+  });
+
+  it("counts UTF-8 bytes without confusing code units and code points", () => {
+    expect(utf8ByteLength("Ağrı 🧭")).toBe(new TextEncoder().encode("Ağrı 🧭").byteLength);
   });
 });
