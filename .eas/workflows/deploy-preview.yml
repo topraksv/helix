@@ -18,12 +18,19 @@
 # push of its own, so an OTA cannot outrun the checks that justify it.
 name: deploy-preview
 
+defaults:
+  # Pre-packaged fingerprint/update jobs do not inherit a build profile's Node
+  # version. Keep their installer on the same engine as the preview build.
+  tools:
+    node: 22.23.1
+
 on:
   workflow_dispatch: {}
 
 jobs:
   fingerprint:
     name: Fingerprint the native project
+    environment: preview
     type: fingerprint
 
   get_ios_build:
@@ -50,6 +57,7 @@ jobs:
     name: Publish the preview OTA
     needs: [get_ios_build]
     after: [build_ios]
+    environment: preview
     # A fresh binary already contains this commit; updating on top of it would
     # publish the same JavaScript twice.
     if: ${{ needs.get_ios_build.outputs.build_id }}

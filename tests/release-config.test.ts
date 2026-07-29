@@ -35,11 +35,12 @@ describe("release contract", () => {
     expect(eas.build.production).toMatchObject({ channel: "production" });
     // EAS workers default to Node 20, which `engines.node: ^22` makes `npm ci`
     // refuse outright — the fingerprint job died before any build could start.
-    // `.nvmrc` is what the profile-less workflow jobs read; the build profiles
-    // pin the same version so a build and its fingerprint cannot drift apart.
+    // Workflow jobs do not inherit a build profile's tool versions, so the
+    // workflow default and build profiles must explicitly agree.
     const nvmrc = read(".nvmrc").trim();
     expect(nvmrc).toMatch(/^22\./);
     expect(eas.build.base.node).toBe(nvmrc);
+    expect(easPreview).toContain(`tools:\n    node: ${nvmrc}`);
     for (const profile of ["preview", "production"] as const) {
       expect(eas.build[profile].extends, profile).toBe("base");
     }
@@ -48,9 +49,11 @@ describe("release contract", () => {
 
   it("builds a binary or publishes an update, never both, and never submits", () => {
     expect(easPreview).toContain("type: fingerprint");
+    expect(easPreview).toMatch(/fingerprint:\n(?:.*\n)*?\s+environment: preview\n\s+type: fingerprint/);
     expect(easPreview).toContain("type: get-build");
     expect(easPreview).toMatch(/if: \$\{\{ !needs\.get_ios_build\.outputs\.build_id \}\}\n\s+type: build/);
     expect(easPreview).toMatch(/if: \$\{\{ needs\.get_ios_build\.outputs\.build_id \}\}\n\s+type: update/);
+    expect(easPreview).toMatch(/publish_update:\n(?:.*\n)*?\s+environment: preview/);
     expect(easPreview).not.toContain("type: submit");
     // Dispatch-only: an OTA must follow the GitHub gate, never race it.
     expect(easPreview).toMatch(/on:\n\s+workflow_dispatch/);
