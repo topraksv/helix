@@ -78,12 +78,13 @@ finansal veri dışarı çıkmaz.
 
 | Platform | Durum |
 |---|---|
-| Web | Her `main` push'unda GitHub Pages'e otomatik yayımlanır — [canlı sürüm](https://topraksv.github.io/helix/) |
-| iOS | Yerel cihaz build'i (`npx expo run:ios --device`, ücretsiz Apple ID); JS/asset değişiklikleri EAS Update ile gider |
+| Web | Uygulamayı etkileyen `main` değişiklikleri yeşil kapıdan sonra GitHub Pages'e otomatik yayımlanır — [canlı sürüm](https://topraksv.github.io/helix/) |
+| iOS | CI native fingerprint'i eşleştirir: uyumlu preview binary varsa OTA, yoksa yeni internal preview build üretir |
 | Android | Paket yapılandırması ve OTA bundle'ı var; imzalı production store build'i ve fiziksel kabul **henüz yapılmadı** |
 
 Native modül, ikon, SDK veya runtime değişiklikleri OTA ile teslim edilemez;
-yeniden cihaz build'i gerektirir.
+fingerprint'i değiştirir ve yeni binary gerektirir. Store submission otomatik
+değildir; fiziksel cihaz kabulü yapılmadan mobil teslim doğrulanmış sayılmaz.
 
 ## Mimari özet
 
@@ -147,9 +148,12 @@ bölünmüş tam E2E paketi. Web ancak hepsi geçtiğinde yayımlanır.
 
 ## Teslim modeli
 
-`main`'e push **yalnızca web'i** yayımlar. Kurulu mobil uygulama ayrı bir EAS
-Update ile güncellenir; native değişiklikler ise yeniden cihaz build'i ister.
-Geri alma `git revert` iledir; force push ve history rewrite kullanılmaz.
+`main`'e push değişiklikleri önce tek risk kapısından geçirir. Web, aynı koşuda
+export edilip bütçesi ölçülen immutable artefaktı yayımlar. Ortak uygulama kodu
+için EAS workflow iOS native fingerprint'ini kontrol eder; eşleşen preview
+binary varsa OTA yayımlar, yoksa yalnız yeni internal binary oluşturur. Native
+değişiklik hiçbir zaman eski binary'ye OTA olarak gönderilmez. Geri alma
+`git revert` iledir; force push ve history rewrite kullanılmaz.
 
 ## Lisans / License
 
