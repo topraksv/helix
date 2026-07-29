@@ -12,7 +12,7 @@ import { addMonthsToKey, isCurrentOrFutureMonth, isMonthDay, monthKeyOf, todayIS
 import { remapDraftOwnerIndex } from "../../domain/onboarding";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { monthLabel, tr } from "../../i18n/tr";
-import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "../../ui/components";
+import { Body, Button, Card, ChipPicker, DataStateNotice, Field, Heading, IconButton, ListRow, MoneyField, Row, Screen, SelectionGrid, Spread } from "../../ui/components";
 import { appAlert } from "../../ui/dialog";
 import { BrandMark } from "../../ui/brand";
 import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders";
@@ -397,11 +397,11 @@ export default function SetupScreen() {
               onPress={() => setSelectedTemplate([])}
             />
           </Row>
-          <ChipPicker
-            multi
+          <SelectionGrid
             options={ALL_TEMPLATES.map((c) => ({ value: c.name, label: templateLabel(c) }))}
             values={selectedTemplate}
             onToggle={toggleTemplate}
+            searchable
           />
           {selectedTemplate.length === 0 ? (
             <Body muted style={{ fontSize: 12 }}>{tr.onboarding.templateBlankNote}</Body>

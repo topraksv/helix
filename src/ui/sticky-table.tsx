@@ -51,6 +51,8 @@ export interface StickyColumn {
   /** Full spoken name when the compact visible label is abbreviated. */
   accessibilityLabel?: string;
   label: string;
+  /** Dense matrix item labels stay on one line; the spoken label stays full. */
+  truncateLabel?: boolean;
   /** Optional marker icon shown top-left of the header (e.g. a computed column). */
   icon?: LucideIcon;
 }
@@ -59,6 +61,10 @@ export interface StickyRow {
   key: string;
   /** Sticky first-column label. */
   label: string;
+  /** Full spoken name when the visible label omits context such as the year. */
+  accessibilityLabel?: string;
+  /** Dense matrix item labels stay on one line; the spoken label stays full. */
+  truncateLabel?: boolean;
   /** Optional marker icon shown top-left of the label (e.g. a computed row).
    *  Mirrors StickyColumn.icon so the two orientations look identical. */
   icon?: LucideIcon;
@@ -350,6 +356,9 @@ export function StickyTable({
         >
           <Text
             testID="table-column-label"
+            accessibilityLabel={c.accessibilityLabel ?? c.label}
+            numberOfLines={c.truncateLabel ? 1 : undefined}
+            ellipsizeMode={c.truncateLabel ? "tail" : undefined}
             style={[
               type.label,
               {
@@ -363,7 +372,7 @@ export function StickyTable({
             ]}
             onLayout={(event) => measureLabel(`header:${c.key}`, event.nativeEvent.layout.height)}
           >
-            {softWrapLabel(c.label, cellWidth < 80 ? 8 : cellWidth < 104 ? 10 : 12)}
+            {c.truncateLabel ? c.label : softWrapLabel(c.label, cellWidth < 80 ? 8 : cellWidth < 104 ? 10 : 12)}
           </Text>
         </Pressable>
         {hasMarker ? (
@@ -419,13 +428,21 @@ export function StickyTable({
             <PinnedHeader
               label={pinnedCol.label}
               accessibilityLabel={pinnedCol.accessibilityLabel}
+              truncateLabel={pinnedCol.truncateLabel}
               width={cellWidth}
               onUnpin={onTogglePin ? () => onTogglePin(pinnedCol.key) : undefined}
               onHeight={(textHeight) => measureLabel(`header:${pinnedCol.key}`, textHeight)}
             />
           ) : null}
         </View>
-        <ScrollView ref={headerHRef} horizontal scrollEnabled={false} showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+        <ScrollView
+          ref={headerHRef}
+          testID="table-horizontal-header"
+          horizontal
+          scrollEnabled={false}
+          showsHorizontalScrollIndicator={false}
+          style={{ flex: 1 }}
+        >
           <View style={{ flexDirection: "row" }}>{scrollCols.map(headerCell)}</View>
         </ScrollView>
       </View>
@@ -462,15 +479,19 @@ export function StickyTable({
                   disabled={!r.onLabelPress}
                   onPress={r.onLabelPress}
                   accessibilityRole={r.onLabelPress ? "link" : undefined}
-                  accessibilityLabel={r.onLabelPress ? r.label : undefined}
+                  accessibilityLabel={r.accessibilityLabel ?? r.label}
                   style={[{ width: headWidth, alignItems: "flex-start", paddingVertical: spacing.xs }, cellCenter]}
                 >
                   <Text
                     testID="table-row-label"
+                    accessible={!r.onLabelPress}
+                    accessibilityLabel={r.accessibilityLabel ?? r.label}
+                    numberOfLines={r.truncateLabel ? 1 : undefined}
+                    ellipsizeMode={r.truncateLabel ? "tail" : undefined}
                     style={[type.label, { color: r.onLabelPress ? palette.primaryText : palette.text, textAlign: "left", fontFamily: r.labelHighlight ? font.bold : font.semibold }]}
                     onLayout={(event) => measureLabel(`row:${r.key}`, event.nativeEvent.layout.height)}
                   >
-                    {softWrapLabel(r.label, headWidth < 80 ? 8 : 12)}
+                    {r.truncateLabel ? r.label : softWrapLabel(r.label, headWidth < 80 ? 8 : 12)}
                   </Text>
                   {r.icon ? (
                     <View style={{ position: "absolute", bottom: 4, right: 4 }}>
@@ -485,6 +506,7 @@ export function StickyTable({
 
           <ScrollView
             ref={bodyHRef}
+            testID="table-horizontal-body"
             horizontal
             showsHorizontalScrollIndicator
             scrollEventThrottle={16}
@@ -535,12 +557,14 @@ export function StickyTable({
 function PinnedHeader({
   label,
   accessibilityLabel,
+  truncateLabel,
   width,
   onUnpin,
   onHeight,
 }: {
   label: string;
   accessibilityLabel?: string;
+  truncateLabel?: boolean;
   width: number;
   onUnpin?: () => void;
   onHeight: (textHeight: number) => void;
@@ -564,6 +588,9 @@ function PinnedHeader({
     >
       <Text
         testID="table-column-label"
+        accessibilityLabel={accessibilityLabel ?? label}
+        numberOfLines={truncateLabel ? 1 : undefined}
+        ellipsizeMode={truncateLabel ? "tail" : undefined}
         style={[
           type.label,
           {
@@ -576,7 +603,7 @@ function PinnedHeader({
         ]}
         onLayout={(event) => onHeight(event.nativeEvent.layout.height)}
       >
-        {softWrapLabel(label, width < 80 ? 8 : width < 104 ? 10 : 12)}
+        {truncateLabel ? label : softWrapLabel(label, width < 80 ? 8 : width < 104 ? 10 : 12)}
       </Text>
       <View style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: STICKY_MARKER_W, alignItems: "center", justifyContent: "center" }}>
         <Pin accessible={false} size={11} color={palette.primary} fill={palette.primary} />

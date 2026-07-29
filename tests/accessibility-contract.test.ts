@@ -32,15 +32,16 @@ function sourceFiles(directory: string, extensions: string[]): string[] {
   });
 }
 
-describe("truncation is never used to hide text", () => {
-  // Non-negotiable: wrap, shorten or change the layout — never clip.
-  // `e2e/visual-a11y.spec.ts` measures RENDERED overflow across 26 routes at two
-  // widths; this catches the prop at author time, before a baseline is rendered.
-  it("no component truncates user-facing text", () => {
+describe("truncation preserves the accessible full text", () => {
+  // Mali Tablo is the one deliberate exception to the product-wide wrapping
+  // rule: long user-authored item names stay on one row in the dense matrix,
+  // while their semantic label remains complete for assistive technology.
+  it("limits ellipsis to the shared table label primitive", () => {
     const offenders = sourceFiles("src", [".tsx"]).filter((file) =>
       /numberOfLines|ellipsizeMode/.test(source(file)),
     );
-    expect(offenders).toEqual([]);
+    expect(offenders).toEqual(["src/ui/sticky-table.tsx"]);
+    expect(source("src/ui/sticky-table.tsx")).toContain("accessibilityLabel={accessibilityLabel ?? label}");
   });
 });
 

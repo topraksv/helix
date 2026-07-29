@@ -19,7 +19,7 @@ import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { Banknote, CreditCard, Landmark, Pencil, ReceiptText, Trash2, WalletCards, type LucideIcon } from "lucide-react-native";
-import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, Field, IconButton, Label, Row, Screen, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, IconButton, Label, ManagementHeader, Row, Screen, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
@@ -132,7 +132,6 @@ export default function SourcesScreen() {
   const transactions = transactionsState.data;
   const persons = personsState.data;
   const undo = useUndo();
-  const { palette } = useTheme();
   const operationGuard = useOperationGuard();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -330,15 +329,13 @@ export default function SourcesScreen() {
     <Screen>
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Card>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.md }}>
-          <SourceGlyph sourceType={sourceType} size={54} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text accessibilityRole="header" style={[type.heading, { color: palette.text }]}>
-              {editingId ? name || tr.common.edit : tr.sources.walletTitle}
-            </Text>
-            <Body muted>{editingId ? TYPES.find((item) => item.value === sourceType)?.label : tr.sources.walletHint}</Body>
-          </View>
-        </View>
+        <ManagementHeader
+          icon={sourceIcon(sourceType)}
+          title={editingId ? tr.sources.editTitle : tr.sources.walletTitle}
+          description={editingId ? tr.sources.editHint(name || tr.sources.newSource) : tr.sources.walletHint}
+          status={editingId ? tr.common.editing : tr.common.new}
+          statusTone={editingId ? "warning" : "primary"}
+        />
         {editingId ? <Label>{tr.common.edit}</Label> : null}
         <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={sourcePlaceholder} />
         <SourceTypePicker value={sourceType} onChange={setSourceType} />
@@ -420,6 +417,10 @@ export default function SourcesScreen() {
             <Button label={tr.common.cancel} variant="ghost" onPress={() => setResolving(null)} disabled={busy} />
           </Row>
         </Card>
+      ) : null}
+
+      {sources.length === 0 ? (
+        <EmptyState icon={WalletCards} title={tr.sources.emptyTitle} hint={tr.sources.emptyHint} />
       ) : null}
 
       <CardList

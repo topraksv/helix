@@ -15,7 +15,7 @@ import { useCategoriesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, DataStateNotice, EmptyState, Screen, SectionHeader, ToggleGrid } from "../ui/components";
+import { Body, Button, DataStateNotice, EmptyState, Screen, SectionHeader, SelectionGrid } from "../ui/components";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -85,10 +85,11 @@ export default function WorkspaceTemplateModal() {
       ) : (
         <>
           <SectionHeader>{tr.template.toAddTitle}</SectionHeader>
-          <ToggleGrid
+          <SelectionGrid
             options={missing.map(tile)}
             values={selected.map((c) => c.name)}
             onToggle={(name) => setExcluded((xs) => (xs.includes(name) ? xs.filter((x) => x !== name) : [...xs, name]))}
+            searchable
             countLabel={tr.computed.selectedCount(selected.length)}
           />
           <Button label={tr.template.addSelected(selected.length)} onPress={() => void add()} loading={busy} disabled={selected.length === 0} />
@@ -101,7 +102,7 @@ export default function WorkspaceTemplateModal() {
       {have.length > 0 ? (
         <View style={{ marginTop: spacing.lg }}>
           <SectionHeader>{tr.template.haveTitle}</SectionHeader>
-          <ToggleGrid options={have.map(tile)} values={[]} onToggle={() => {}} readOnly />
+          <SelectionGrid options={have.map(tile)} values={[]} onToggle={() => {}} searchable readOnly />
         </View>
       ) : null}
     </Screen>

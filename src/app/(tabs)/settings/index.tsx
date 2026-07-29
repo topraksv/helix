@@ -730,7 +730,7 @@ export default function SettingsScreen() {
             all of it and the wait read as a freeze. */}
         <ListRow
           icon={LogOut}
-          title={tr.auth.signOut}
+          title={signingOut ? tr.operation.signingOutTitle : tr.auth.signOut}
           // The wait is a real flush before a real wipe, and it is kept: a row
           // the user believes is saved must reach the server before the device
           // copy goes. Saying so is what turns it from a stall into a step.
@@ -741,8 +741,8 @@ export default function SettingsScreen() {
         <ListRow
           icon={Trash2}
           iconColor={palette.destructive}
-          title={tr.account.delete}
-          subtitle={tr.account.deleteDesc}
+          title={deleting ? tr.operation.deletingAccountTitle : tr.account.delete}
+          subtitle={deleting ? <WaitingText message={tr.operation.deletingAccount} /> : tr.account.deleteDesc}
           right={deleting ? <DelayedLoadingIndicator size={7} label={tr.account.delete} /> : undefined}
           onPress={() => void handleDeleteAccount()}
         />

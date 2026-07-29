@@ -14,6 +14,7 @@ import { monthFlowTotals } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
+import { resolveMatrixMode, type MatrixMode } from "../../../domain/matrix-preferences";
 import { formatMinor, formatMinorCompact } from "../../../domain/money";
 import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import {
@@ -37,8 +38,6 @@ import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn
 import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
 import { categoryIcon } from "../../../data/category-icons";
-
-type MatrixMode = "cards" | "rows" | "columns";
 
 /** Phone toolbar item: icon + always-visible mini caption. Five equal tools
  *  share one 44px band so the matrix, not its chrome, owns the screen. */
@@ -143,9 +142,9 @@ export default function CashflowScreen() {
   const wide = shouldUseWideWorkspace(width);
   const router = useRouter();
   const { palette } = useTheme();
-  // A new phone session opens in the reflowed month summary; both matrix
-  // orientations stay one tap away and an existing preference still wins.
-  const [mode, setMode] = useState<MatrixMode>(wide ? "columns" : "cards");
+  // Mali Tablo is row-focused by default at every width. A user's explicit
+  // choice still wins once device preferences finish loading.
+  const [mode, setMode] = useState<MatrixMode>("rows");
   const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [tableAreaH, setTableAreaH] = useState(0);
@@ -153,9 +152,7 @@ export default function CashflowScreen() {
   const monthFocusScrollRef = React.useRef<ScrollView>(null);
   const tableRef = useRef<ScrollView>(null);
   React.useEffect(() => {
-    void kv.get("helix.matrix.mode").then((v) => {
-      if (v === "cards" || v === "rows" || v === "columns") setMode(v);
-    });
+    void kv.get("helix.matrix.mode").then((v) => setMode(resolveMatrixMode(v)));
     void kv.get("helix.matrix.pinned").then((v) => {
       if (v) setPinnedKey(v);
     });
@@ -769,10 +766,16 @@ function MatrixTable({
 
   if (orientation === "monthsAsRows") {
     cornerLabel = tr.cashflow.monthHeader;
-    stickyColumns = columns.map((c) => ({ key: c.key, label: c.label, icon: c.computed ? Sigma : undefined }));
+    stickyColumns = columns.map((c) => ({
+      key: c.key,
+      label: c.label,
+      truncateLabel: true,
+      icon: c.computed ? Sigma : undefined,
+    }));
     stickyRows = months.map((slot) => ({
       key: slot.month,
-      label: compact ? monthName(slot.month) : monthLabel(slot.month),
+      label: monthName(slot.month),
+      accessibilityLabel: monthLabel(slot.month),
       onLabelPress: () => router.push(`/cash-flow/${slot.month}`),
       labelHighlight: slot.month === currentMonth,
       rowHighlight: slot.month === currentMonth,
@@ -799,6 +802,7 @@ function MatrixTable({
     stickyRows = columns.map((c) => ({
       key: c.key,
       label: c.label,
+      truncateLabel: true,
       icon: c.computed ? Sigma : undefined,
       onLabelPress: breakdownFor(c.key),
       cells: months.map((slot) =>

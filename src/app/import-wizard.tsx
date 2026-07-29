@@ -21,7 +21,7 @@ import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
-import { Body, Button, Card, ChipPicker, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader } from "../ui/components";
+import { Body, Button, Card, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader, SelectionGrid } from "../ui/components";
 import { font, radius, spacing, type, useTheme, type Palette } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../ui/operation-guard";
@@ -513,8 +513,7 @@ export default function ImportWizardModal() {
         <>
           {/* which years to import */}
           <SectionHeader>{tr.importer.yearSelectTitle}</SectionHeader>
-          <ChipPicker
-            multi
+          <SelectionGrid
             options={years.map((y) => ({
               value: String(y),
               label: tr.importer.yearChip(y, monthCount(workbook, y)),
@@ -546,11 +545,11 @@ export default function ImportWizardModal() {
                   onPress={() => setExcluded(unionColumns.map((c) => c.label))}
                 />
               </Row>
-              <ChipPicker
-                multi
+              <SelectionGrid
                 options={unionColumns.map((c) => ({ value: c.label, label: `${c.label}${c.income ? " ↑" : ""}` }))}
                 values={unionColumns.map((c) => c.label).filter((l) => !excluded.includes(l))}
                 onToggle={(label) => setExcluded((xs) => (xs.includes(label) ? xs.filter((x) => x !== label) : [...xs, label]))}
+                searchable
               />
 
               {installmentCards.length > 0 ? (

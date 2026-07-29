@@ -6,7 +6,6 @@
  */
 
 import { create } from "zustand";
-import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import {
   clearPasswordRecoveryDetected,
@@ -24,9 +23,10 @@ import { clearAccountNotifications, rescheduleAll } from "../services/notificati
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { friendlyAuthError } from "./auth-errors";
+import { requestPasswordRecoveryEmail } from "./email-flows";
 import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "./sign-out";
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
-import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "./recovery";
+import { parsePasswordRecoveryUrl, passwordRecoveryRequestRedirect } from "./recovery";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 import {
   IDLE_BRAKE,
@@ -317,14 +317,13 @@ export const useSession = create<SessionStore>((set, get) => ({
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
     const redirectTo = Platform.OS === "web" && globalThis.location
-      ? webPasswordRecoveryRedirectUrl(globalThis.location.origin, process.env.EXPO_BASE_URL ?? "/")
-      : Linking.createURL("/reset-password");
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
-    if (!error) return null;
-    // Supabase normally returns the same success for unknown addresses. Keep
-    // that guarantee even if a project policy returns an account lookup error.
-    if (/user.*not found|email.*not found/i.test(error.message)) return null;
-    return friendlyAuthError(error.message);
+      ? passwordRecoveryRequestRedirect({
+          platform: "web",
+          origin: globalThis.location.origin,
+          baseUrl: process.env.EXPO_BASE_URL ?? "/",
+        })
+      : passwordRecoveryRequestRedirect({ platform: "native" });
+    return requestPasswordRecoveryEmail(supabase.auth, email, redirectTo);
   },
 
   preparePasswordRecovery: async (url) => {

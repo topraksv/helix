@@ -5,7 +5,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { addMarketExpense, isolateExternalData, onboard, pickOption } from "./helpers";
+import { addMarketExpense, currentMonthKey, isolateExternalData, onboard, pickOption } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -188,7 +188,8 @@ test("pivoting the financial table resets unrelated offsets and keeps complete c
   await onboard(page);
   await page.goto("/helix/cash-flow");
 
-  await page.getByRole("radio", { name: "Sütun odaklı" }).click();
+  await expect(page.getByRole("radio", { name: "Satır odaklı" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Kolon odaklı" }).click();
   await expect(page.getByRole("button", { name: "Temmuz", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Kredi Kartı", exact: true })).toBeVisible();
   for (const month of ["Temmuz", "Ağustos"]) {
@@ -238,24 +239,128 @@ test("compact financial-table pins stay beside headers and month labels keep bre
   const billsHeader = await page.getByTestId("table-column-label").filter({ hasText: "Faturalar" }).first().boundingBox();
   expect(billsHeader).not.toBeNull();
   expect(billsHeader!.height).toBeLessThanOrEqual(30);
+  const year = currentMonthKey().slice(0, 4);
   for (const month of ["Temmuz", "Ağustos"]) {
-    const metrics = await page.getByRole("link", { name: month, exact: true }).evaluate((row) => {
+    const metrics = await page.getByRole("link", { name: `${month} ${year}`, exact: true }).evaluate((row) => {
       const text = row.querySelector<HTMLElement>('[data-testid="table-row-label"]')!;
       const rowBox = row.getBoundingClientRect();
       const textBox = text.getBoundingClientRect();
       return {
+        visibleLabel: text.textContent?.replace(/\u200B/g, ""),
         left: textBox.left - rowBox.left,
         right: rowBox.right - textBox.right,
         height: textBox.height,
       };
     });
+    expect(metrics.visibleLabel).toBe(month);
     expect(metrics.left).toBeGreaterThanOrEqual(11);
     expect(metrics.right).toBeGreaterThanOrEqual(11);
     expect(metrics.height).toBeLessThanOrEqual(18);
   }
 
-  await page.getByRole("radio", { name: "Sütun odaklı" }).click();
+  await page.getByRole("radio", { name: "Kolon odaklı" }).click();
   await assertPinBesideLabel("Temmuz kolonunu sabitle", "Tem");
+});
+
+test("shared selection tiles search, toggle and reflow long labels consistently", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto("/helix/");
+  await page.getByRole("button", { name: "Kurulumu Özelleştir", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: /Kredi Kartı/ })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Seçeneklerde ara", exact: true })).toBeVisible();
+
+  await onboard(page);
+  await page.goto("/helix/settings/categories");
+
+  const longName = "Kredi kartı tek çekim ödeme planı ve yıllık aidatlar";
+  await page.getByRole("button", { name: "Düzenle · Kredi Kartı", exact: true }).click();
+  await page.getByRole("textbox", { name: "Düzenle · Kredi Kartı", exact: true }).fill(longName);
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("button", { name: `Düzenle · ${longName}`, exact: true })).toBeVisible();
+
+  await page.goto("/helix/settings/computed-columns");
+  const option = page.getByRole("checkbox", { name: longName, exact: true });
+  await expect(option).toHaveAttribute("aria-checked", "false");
+  const optionMetrics = await option.evaluate((element, expectedLabel) => {
+    const box = element.getBoundingClientRect();
+    const label = Array.from(element.querySelectorAll<HTMLElement>("*"))
+      .find((child) => child.children.length === 0 && child.textContent?.trim() === expectedLabel);
+    return {
+      height: box.height,
+      contained: label ? label.scrollWidth <= label.clientWidth + 1 : false,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  }, longName);
+  expect(optionMetrics.height).toBeGreaterThan(48);
+  expect(optionMetrics.contained).toBe(true);
+  expect(optionMetrics.pageOverflow).toBeLessThanOrEqual(1);
+
+  await option.click();
+  await expect(option).toHaveAttribute("aria-checked", "true");
+  const search = page.getByRole("textbox", { name: "Seçeneklerde ara", exact: true });
+  await search.fill("aidatlar");
+  await expect(option).toBeVisible();
+  await search.fill("bulunmayan seçenek");
+  await expect(page.getByText("Aramana uyan seçenek yok.", { exact: true })).toBeVisible();
+
+  await page.goto("/helix/workspace-template");
+  await expect(page.getByRole("heading", { name: "Önerilen Kalemler", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Zaten sende olanlar", exact: true })).toBeVisible();
+  const states = await page.getByRole("checkbox").evaluateAll((elements) =>
+    elements.map((element) => ({
+      disabled: element.getAttribute("aria-disabled") === "true" || (element as HTMLButtonElement).disabled,
+      checked: element.getAttribute("aria-checked"),
+    })),
+  );
+  expect(states.some(({ disabled }) => disabled)).toBe(true);
+  expect(states.some(({ disabled }) => !disabled)).toBe(true);
+  expect(states.every(({ checked }) => checked === "true" || checked === "false")).toBe(true);
+});
+
+test("management forms keep their purpose, status and controls visible across themes and target viewports", async ({ page }) => {
+  test.setTimeout(180_000);
+  await onboard(page);
+  const routes = [
+    { path: "/helix/settings/payment-sources", heading: "Cüzdanını oluştur", status: "Yeni" },
+    { path: "/helix/settings/incomes", heading: "Düzenli gelir ekle", status: "Yeni" },
+    { path: "/helix/opening-balance", heading: "Güncel Bakiyeyi Ayarla", status: "Bakiye eşleşiyor" },
+  ];
+  const viewports = [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 },
+    { width: 844, height: 390 },
+  ];
+
+  for (const scheme of ["Açık", "Koyu"]) {
+    await page.goto("/helix/settings");
+    await page.getByRole("radio", { name: scheme, exact: true }).click();
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe(
+      scheme === "Açık" ? "light" : "dark",
+    );
+
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      for (const route of routes) {
+        await page.goto(route.path);
+        await expect(page.getByRole("heading", { name: route.heading, exact: true })).toBeVisible();
+        await expect(page.getByText(route.status, { exact: true })).toBeVisible();
+        const layout = await page.evaluate(() => ({
+          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          offscreen: Array.from(document.querySelectorAll<HTMLElement>('[role="button"],[role="radio"],[role="textbox"]'))
+            .filter((element) => {
+              const box = element.getBoundingClientRect();
+              const style = getComputedStyle(element);
+              return style.display !== "none" && box.width > 0 && (box.left < -1 || box.right > window.innerWidth + 1);
+            })
+            .map((element) => element.getAttribute("aria-label") ?? element.textContent?.trim() ?? ""),
+        }));
+        expect(layout.pageOverflow, `${scheme} ${viewport.width} ${route.path}`).toBeLessThanOrEqual(1);
+        expect(layout.offscreen, `${scheme} ${viewport.width} ${route.path}`).toEqual([]);
+      }
+    }
+  }
 });
 
 test("financial-table labels and amounts stay inside their cells across widths and realistic names", async ({ page }) => {
@@ -283,12 +388,19 @@ test("financial-table labels and amounts stay inside their cells across widths a
           const box = element.getBoundingClientRect();
           const parent = element.parentElement?.getBoundingClientRect();
           if (!parent) continue;
+          const style = getComputedStyle(element);
+          const deliberateEllipsis =
+            element.dataset.testid !== "matrix-value" &&
+            style.overflow === "hidden" &&
+            style.whiteSpace === "nowrap" &&
+            style.textOverflow === "ellipsis" &&
+            Boolean(element.getAttribute("aria-label"));
           const contained =
             box.left >= parent.left - 1 &&
             box.right <= parent.right + 1 &&
             box.top >= parent.top - 1 &&
             box.bottom <= parent.bottom + 1 &&
-            element.scrollWidth <= element.clientWidth + 1;
+            (element.scrollWidth <= element.clientWidth + 1 || deliberateEllipsis);
           if (!contained) overflows.push({ text, kind: element.dataset.testid ?? "" });
           if (element.dataset.testid === "matrix-value") amountMaxHeight = Math.max(amountMaxHeight, box.height);
         }
@@ -308,7 +420,7 @@ test("financial-table labels and amounts stay inside their cells across widths a
     await page.setViewportSize({ width, height: width < 600 ? 844 : 900 });
     await page.getByRole("radio", { name: "Satır odaklı" }).click();
     await assertCellContainment();
-    await page.getByRole("radio", { name: "Sütun odaklı" }).click();
+    await page.getByRole("radio", { name: "Kolon odaklı" }).click();
     await assertCellContainment();
     await page.getByRole("radio", { name: "Ay odaklı" }).click();
     await assertCellContainment();

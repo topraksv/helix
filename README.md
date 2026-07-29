@@ -23,7 +23,8 @@ subscriptions and budgets — with a spreadsheet mind and a mobile heart.*
 </div>
 
 <p align="center">
-  <img src="assets/screenshots/dashboard-dark.png" alt="Özet ekranı: güncel bakiye, ay sonu tahmini, bu ayın akış özeti ve canlı piyasalar" width="300">
+  <img src="assets/screenshots/dashboard-dark.png" alt="Helix Durum ekranı: güncel bakiye, ay sonu tahmini ve kategori dağılımı" width="680">
+  <img src="assets/screenshots/dashboard-mobile-dark.png" alt="Helix mobil Durum ekranı: aynı finans özeti küçük ekranda" width="190">
 </p>
 
 ## Neden Helix?
@@ -41,24 +42,27 @@ hesaplamayı, tekrarları ve veri güvenliğini senin yerine üstlenir.
   çalışır. Bağlantı gelince yalnızca senin hesabına eşitlenir, silinenler tek
   dokunuşla geri alınır.
 
-## Ekranlar
+## Helix iş başında
 
-| Mali Tablo | Abonelikler | Analiz |
+| Mali Tablo | Analiz | İşlem yönetimi |
 |:---:|:---:|:---:|
-| <img src="assets/screenshots/cash-flow-dark.png" alt="Mali Tablo: 2026 Temmuz ayı bakiyesi, akış özeti ve düzenlenebilir kalem listesi" width="240"> | <img src="assets/screenshots/subscriptions-dark.png" alt="Abonelikler: aylık ve yıllık maliyet özeti, yeni abonelik eylemi ve boş durum" width="240"> | <img src="assets/screenshots/analytics-dark.png" alt="Analiz: dönem ve kategori seçimi, işlem arama alanı ve açılabilir arama filtreleri" width="240"> |
-| Her ay × kalem hücresi düzenlenebilir; mevcut ay otomatik odaklanır. | Aylık/yıllık toplam maliyet, sonraki ödeme tarihi ve otomatik ödeme bir arada. | Dönem bazlı grafikler, kategori bütçe durumu ve tüm geçmişte işlem arama. |
+| <img src="assets/screenshots/cash-flow-dark.png" alt="Mali Tablo: 2026 yılı satır odaklı görünümünde Temmuz gelir ve gider kalemleri" width="280"> | <img src="assets/screenshots/analytics-dark.png" alt="Analiz: dönem, kategori ve işlem filtreleriyle harcama dağılımı" width="280"> | <img src="assets/screenshots/transactions-dark.png" alt="Temmuz 2026 işlem yönetimi: gelir, gider ve güncel bakiye özeti" width="280"> |
+| Satır, kolon veya ay odağında incele; hücreden ayrıntıya in. | Dönem, kategori ve ödeme yöntemiyle karşılaştır veya işlem ara. | Ayın gelir-gider hareketlerini toplu gör; kaleme dokunup düzenle. |
+
+> Görseller, 15 Temmuz 2026'ya sabitlenmiş ve yalnızca sentetik veriler kullanan
+> deterministik demo senaryosundan üretildi. Gerçek kullanıcı verisi içermez.
 
 ## Neler yapabilirsin?
 
 | İhtiyacın | Gideceğin yer | Yapabileceklerin |
 |---|---|---|
-| **Şu anki durumum ne?** | **Özet** | Güncel bakiye, ay sonu tahmini, yaklaşan ödemeler, aylık grafikler ve canlı altın–döviz fiyatları |
-| **Ay ay ayrıntı** | **Mali Tablo** | Satır/sütun/ay odaklı matris, hücre detayı ve notları, toplu geçmiş girişi |
+| **Şu anki durumum ne?** | **Durum** | Güncel bakiye, ay sonu tahmini, yaklaşan ödemeler, aylık grafikler ve canlı altın–döviz fiyatları |
+| **Ay ay ayrıntı** | **Mali Tablo** | Satır/kolon/ay odaklı matris, hücre detayı ve notları, toplu geçmiş girişi |
 | **Tekrarlayan ödemeler** | **Abonelikler** | Aylık/yıllık maliyet, ödeme günü, deneme dönemi, otomatik ödeme |
 | **Maaş ve düzenli gelirler** | **Ayarlar → Düzenli Gelirler** | Aylık, haftalık veya iki haftalık gelir kuralları; günü gelince onayla, gerçek tutarıyla işlensin |
 | **Taksit ve kredi kartı** | **Mali Tablo → Taksitler** | Gerçek satın alma günü + ekstre dönemi; nakit etkisi son ödeme tarihinde |
 | **Bütçe hedefleri** | **Ayarlar → Bütçeler** | Kategori başına aylık hedef, kalan tutar ve aşım uyarısı |
-| **Hızlı hesap ve kur** | **Hesap** | Hesap makinesi + canlı kurla TRY/USD/EUR/GBP dönüşümü |
+| **Hızlı hesap ve kur** | **Araçlar** | Hesap makinesi + canlı kurla TRY/USD/EUR/GBP dönüşümü |
 | **Bir işlemi bulmak** | **Mali Tablo → Analiz** | Metin, tutar, tür, kategori ve ödeme yöntemiyle arama |
 | **Verini taşımak** | **Ayarlar** | JSON yedek/geri yükleme, CSV dışa aktarma, sihirbazlı Excel içe aktarma |
 
@@ -105,8 +109,9 @@ sayılmaz.
 Sıcak kâğıt tonları üzerinde kil vurgusu: **Warm Organic Editorial**. Fraunces
 başlıklar, Inter gövde, botanik çift sarmal logosu. Gelirler yeşil, giderler
 kırmızı; light/dark tüm rol çiftleri otomatik kontrast sözleşmesinden geçer.
-Metinler asla üç noktayla kırpılmaz, hareket sistemi Reduced Motion tercihine
-uyar, grafikler ekran okuyucu için tam değerli özet taşır.
+Uzun Mali Tablo kalemleri yalnız dar hücrede tek satır kısalır ve erişilebilir
+etikette tam adı korur. Hareket sistemi Reduced Motion tercihine uyar; grafikler
+ekran okuyucu için tam değerli özet taşır.
 
 ## Gizlilik ve güvenlik
 

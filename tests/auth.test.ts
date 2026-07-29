@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { friendlyAuthError } from "../src/auth/auth-errors";
+import { requestPasswordRecoveryEmail } from "../src/auth/email-flows";
 import {
   loadPreviousLogin,
   recordSuccessfulLogin,
@@ -7,7 +8,12 @@ import {
   startLoginHistory,
   type LoginHistoryStorage,
 } from "../src/auth/login-history";
-import { parsePasswordRecoveryUrl, webPasswordRecoveryRedirectUrl } from "../src/auth/recovery";
+import {
+  expoGoPreviewUrl,
+  parsePasswordRecoveryUrl,
+  passwordRecoveryRequestRedirect,
+  webPasswordRecoveryRedirectUrl,
+} from "../src/auth/recovery";
 import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "../src/auth/sign-out";
 import { tr } from "../src/i18n/tr";
 
@@ -75,6 +81,18 @@ describe("password recovery links", () => {
     );
   });
 
+  it("uses the stable HTTPS recovery screen for Expo Go requests", () => {
+    expect(passwordRecoveryRequestRedirect({ platform: "native" })).toBe(
+      "https://topraksv.github.io/helix/reset-password",
+    );
+  });
+
+  it("returns to the latest compatible Expo Go preview channel after recovery", () => {
+    expect(expoGoPreviewUrl()).toBe(
+      "exp://u.expo.dev/f71b0477-c800-45cc-903a-9b4d32a9c6b4?runtime-version=exposdk%3A54.0.0&channel-name=preview",
+    );
+  });
+
   it("parses web PKCE codes and native token deep links", () => {
     expect(parsePasswordRecoveryUrl("https://topraksv.github.io/helix/reset-password?code=one-time-code", webTarget)).toEqual({
       kind: "code",
@@ -115,6 +133,62 @@ describe("password recovery links", () => {
       "helix://reset-password#access_token=access&refresh_token=refresh&type=signup",
       nativeTarget,
     )).toEqual({ kind: "invalid" });
+  });
+});
+
+describe("password recovery e-mail request", () => {
+  it("sends the normalized address with the explicit recovery callback", async () => {
+    const calls: Array<{ email: string; redirectTo: string }> = [];
+    const error = await requestPasswordRecoveryEmail(
+      {
+        resetPasswordForEmail: async (email, options) => {
+          calls.push({ email, redirectTo: options.redirectTo });
+          return { error: null };
+        },
+      },
+      "  kisi@example.com ",
+      "https://topraksv.github.io/helix/reset-password",
+    );
+
+    expect(error).toBeNull();
+    expect(calls).toEqual([{
+      email: "kisi@example.com",
+      redirectTo: "https://topraksv.github.io/helix/reset-password",
+    }]);
+  });
+
+  it("keeps unknown addresses indistinguishable from successful delivery", async () => {
+    for (const message of ["User not found", "Email address not found"]) {
+      const error = await requestPasswordRecoveryEmail(
+        {
+          resetPasswordForEmail: async () => ({ error: { message } }),
+        },
+        "unknown@example.com",
+        "https://topraksv.github.io/helix/reset-password",
+      );
+
+      expect(error, message).toBeNull();
+    }
+  });
+
+  it("still surfaces actionable network and rate-limit failures", async () => {
+    const networkError = await requestPasswordRecoveryEmail(
+      {
+        resetPasswordForEmail: async () => ({ error: { message: "Failed to fetch" } }),
+      },
+      "kisi@example.com",
+      "https://topraksv.github.io/helix/reset-password",
+    );
+    const rateLimitError = await requestPasswordRecoveryEmail(
+      {
+        resetPasswordForEmail: async () => ({ error: { message: "Request rate limit reached" } }),
+      },
+      "kisi@example.com",
+      "https://topraksv.github.io/helix/reset-password",
+    );
+
+    expect(networkError).toBe(tr.auth.errNetwork);
+    expect(rateLimitError).toBe(tr.auth.errRateLimit);
   });
 });
 

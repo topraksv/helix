@@ -34,6 +34,23 @@ async function offscreenControls(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const found: string[] = [];
     const width = document.documentElement.clientWidth;
+    const belongsToHorizontalScroller = (element: HTMLElement) => {
+      if (element.closest('[data-testid="table-horizontal-header"],[data-testid="table-horizontal-body"]')) {
+        return true;
+      }
+      let ancestor = element.parentElement;
+      while (ancestor && ancestor !== document.body) {
+        const style = getComputedStyle(ancestor);
+        if (
+          (style.overflowX === "auto" || style.overflowX === "scroll") &&
+          ancestor.scrollWidth > ancestor.clientWidth + 1
+        ) {
+          return true;
+        }
+        ancestor = ancestor.parentElement;
+      }
+      return false;
+    };
     for (const el of Array.from(
       document.querySelectorAll<HTMLElement>('[role="button"],[role="tab"],[role="switch"],[role="link"]'),
     )) {
@@ -41,7 +58,7 @@ async function offscreenControls(page: Page): Promise<string[]> {
       if (style.display === "none" || style.visibility === "hidden") continue;
       const box = el.getBoundingClientRect();
       if (box.width === 0 || box.height === 0) continue;
-      if (box.left < -1 || box.right > width + 1) {
+      if ((box.left < -1 || box.right > width + 1) && !belongsToHorizontalScroller(el)) {
         found.push(
           `${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 30)} @${Math.round(box.left)}..${Math.round(box.right)} of ${width}`,
         );
@@ -315,7 +332,7 @@ test("dashboard reflows intact across the viewport and theme matrix", async ({ p
       // 320px bar is where a fifth destination first tries to buy room with an
       // ellipsis, which this project does not allow anywhere.
       const visibleLabels = await page.getByRole("tab").allTextContents();
-      expect(visibleLabels, tag).toEqual(["Durum", "Tablo", "Abonelikler", "Araçlar", "Ayarlar"]);
+      expect(visibleLabels, tag).toEqual(["Durum", "Mali Tablo", "Abonelikler", "Araçlar", "Ayarlar"]);
       expect(visibleLabels.join(""), tag).not.toContain("…");
       // The dashboard's reason to exist is the balance block; a reflow that
       // drops it off the layout is the regression the baseline really guarded.

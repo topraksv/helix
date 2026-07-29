@@ -13,7 +13,7 @@ import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, Label, MoneyField, Row, Screen, Segmented, Select } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, Label, ManagementHeader, MoneyField, Row, Screen, Segmented, Select } from "../../../ui/components";
 import { categoryIcon } from "../../../data/category-icons";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
@@ -193,8 +193,14 @@ export default function IncomeRulesScreen() {
   return (
     <Screen>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.incomes.intro}</Body>
       <Card>
+        <ManagementHeader
+          icon={Banknote}
+          title={editingId ? tr.incomes.editTitle : tr.incomes.formTitle}
+          description={tr.incomes.intro}
+          status={editingId ? tr.common.editing : tr.common.new}
+          statusTone={editingId ? "warning" : "primary"}
+        />
         <Label>{tr.incomes.kindLabel}</Label>
         <Segmented options={KINDS.map((k) => ({ value: k, label: tr.incomeKinds[k] }))} value={kind} onChange={setKind} />
         <Field

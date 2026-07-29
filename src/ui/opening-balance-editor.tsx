@@ -13,7 +13,7 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, History, Trash2 } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, History, Scale, Trash2 } from "lucide-react-native";
 import { deleteBalanceAdjustment, restoreBalanceAdjustment, setCurrentBalance, setOpeningBalance } from "../data/repo";
 import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
@@ -21,7 +21,7 @@ import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Body, Button, Card, CardList, DataStateNotice, Heading, IconButton, ListRow, MoneyField, Row, Screen, Spread } from "./components";
+import { Amount, Body, Button, Card, CardList, DataStateNotice, EmptyState, Heading, IconButton, ListRow, ManagementHeader, MoneyField, Row, Screen, Spread } from "./components";
 import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
@@ -156,10 +156,15 @@ export function OpeningBalanceEditor() {
   return (
     <Screen>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.openingScreenHint}</Body>
 
       <Card>
-        <Heading style={{ marginTop: 0 }}>{tr.settings.setCurrentTitle}</Heading>
+        <ManagementHeader
+          icon={Scale}
+          title={tr.settings.setCurrentTitle}
+          description={tr.settings.openingScreenHint}
+          status={balanceDirty ? tr.settings.balanceChangeReady : tr.settings.balanceMatchesShort}
+          statusTone={balanceDirty ? "warning" : "success"}
+        />
         <Spread style={{ marginBottom: spacing.md }}>
           <Body muted>{tr.settings.computedBalance}</Body>
           <Amount minor={computed} />
@@ -220,6 +225,13 @@ export function OpeningBalanceEditor() {
           </Spread>
         )}
       />
+      {visibleAdjustments.length === 0 ? (
+        <EmptyState
+          icon={History}
+          title={tr.settings.noBalanceAdjustments}
+          hint={tr.settings.noBalanceAdjustmentsHint}
+        />
+      ) : null}
 
       {showHistory ? (
         <Card>

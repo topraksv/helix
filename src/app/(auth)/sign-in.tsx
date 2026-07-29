@@ -132,6 +132,19 @@ export default function SignInScreen() {
 
   const emailValid = /.+@.+\..+/.test(email.trim());
   const canSubmit = emailValid && (mode === "forgot" || password.length >= 6) && !busy;
+  const primaryLabel = busy
+    ? mode === "signIn"
+      ? tr.operation.signingIn
+      : mode === "signUp"
+        ? tr.operation.creatingAccount
+        : tr.operation.requestingReset
+    : mode === "signIn"
+      ? tr.auth.signIn
+      : mode === "signUp"
+        ? tr.auth.signUpTitle
+        : resetSent
+          ? tr.auth.resendResetLink
+          : tr.auth.sendResetLink;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -260,11 +273,16 @@ export default function SignInScreen() {
           ) : null}
 
           <Button
-            label={resetSent ? tr.auth.backToSignIn : mode === "signIn" ? tr.auth.signIn : mode === "signUp" ? tr.auth.signUpTitle : tr.auth.sendResetLink}
-            onPress={resetSent ? switchMode : () => void submit()}
+            label={primaryLabel}
+            onPress={() => void submit()}
             loading={busy}
-            disabled={!resetSent && !canSubmit}
+            disabled={!canSubmit}
           />
+          {resetSent ? (
+            <View style={{ marginTop: spacing.sm }}>
+              <Button label={tr.auth.backToSignIn} variant="ghost" onPress={switchMode} disabled={busy} />
+            </View>
+          ) : null}
           {mode === "signIn" ? (
             <View style={{ marginTop: spacing.sm }}>
               <Button label={tr.auth.forgotPassword} variant="ghost" onPress={showForgot} />

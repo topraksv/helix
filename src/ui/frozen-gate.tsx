@@ -16,7 +16,7 @@ import { useSession } from "../auth/session";
 import { useUserId } from "../data/hooks";
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
-import { Body, Button, Screen, Title } from "./components";
+import { Body, Button, Screen, Title, WaitingText } from "./components";
 import { appAlert } from "./dialog";
 import { spacing, useTheme } from "./theme";
 import { useOperationGuard } from "./operation-guard";
@@ -26,7 +26,7 @@ export function FrozenGate() {
   const { palette } = useTheme();
   const { signOut } = useSession();
   const [biometricEnabled, setBiometricEnabled] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<"idle" | "reactivating" | "signing-out">("idle");
   const operationGuard = useOperationGuard();
   const useBiometric = Platform.OS !== "web" && biometricEnabled;
 
@@ -42,8 +42,13 @@ export function FrozenGate() {
   const unlockBiometric = async () => {
     try {
       await operationGuard.run(async () => {
-        const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.account.reactivate });
-        if (result.success) await unlock();
+        setOperation("reactivating");
+        try {
+          const result = await LocalAuthentication.authenticateAsync({ promptMessage: tr.account.reactivate });
+          if (result.success) await unlock();
+        } finally {
+          setOperation("idle");
+        }
       });
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);
@@ -52,7 +57,14 @@ export function FrozenGate() {
 
   const unlockDirectly = async () => {
     try {
-      await operationGuard.run(unlock);
+      await operationGuard.run(async () => {
+        setOperation("reactivating");
+        try {
+          await unlock();
+        } finally {
+          setOperation("idle");
+        }
+      });
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
@@ -69,31 +81,47 @@ export function FrozenGate() {
       <View style={{ flex: 1, justifyContent: "center", gap: spacing.lg }}>
         <View style={{ alignItems: "center", gap: spacing.md }}>
           <ShieldCheck accessible={false} size={48} color={palette.primary} />
-          <Title>{tr.account.frozenTitle}</Title>
-          <Body muted style={{ textAlign: "center" }}>{tr.account.frozenBody}</Body>
+          <Title>{operation === "reactivating" ? tr.account.reactivatingTitle : operation === "signing-out" ? tr.operation.signingOutTitle : tr.account.frozenTitle}</Title>
+          {operation === "reactivating" ? (
+            <WaitingText message={tr.account.reactivatingBody} heading />
+          ) : operation === "signing-out" ? (
+            <WaitingText message={tr.operation.signingOut} heading />
+          ) : (
+            <Body muted style={{ textAlign: "center" }}>{tr.account.frozenBody}</Body>
+          )}
         </View>
         {useBiometric ? (
-          <Button label={tr.account.reactivate} onPress={() => void unlockBiometric()} />
+          <Button
+            label={operation === "reactivating" ? tr.account.reactivatingTitle : tr.account.reactivate}
+            loading={operation === "reactivating"}
+            disabled={operation === "signing-out"}
+            onPress={() => void unlockBiometric()}
+          />
         ) : null}
         {isSupabaseConfigured ? (
           <Button
             label={tr.account.frozenSignOut}
             variant={useBiometric ? "secondary" : "primary"}
-            loading={busy}
+            loading={operation === "signing-out"}
+            disabled={operation === "reactivating"}
             onPress={async () => {
               await operationGuard.run(async () => {
-                setBusy(true);
+                setOperation("signing-out");
                 try {
                   const error = await signOut();
                   if (error) void appAlert(error, tr.errors.title);
                 } finally {
-                  setBusy(false);
+                  setOperation("idle");
                 }
               });
             }}
           />
         ) : (
-          <Button label={tr.account.reactivate} onPress={() => void unlockDirectly()} />
+          <Button
+            label={operation === "reactivating" ? tr.account.reactivatingTitle : tr.account.reactivate}
+            loading={operation === "reactivating"}
+            onPress={() => void unlockDirectly()}
+          />
         )}
       </View>
     </Screen>

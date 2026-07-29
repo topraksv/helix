@@ -8,11 +8,11 @@ import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { Snowflake } from "lucide-react-native";
 import { useSession } from "../auth/session";
-import { performAccountFreeze } from "../auth/freeze";
+import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
-import { Body, Button, Card, Field, Heading, Screen } from "../ui/components";
+import { Body, Button, Card, Field, Heading, Row, Screen, WaitingText } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -20,6 +20,7 @@ import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
+import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 
 export default function AccountSecurityScreen() {
   // Account freeze promises a cloud-confirmed write followed by sign-out. A
@@ -44,6 +45,7 @@ function CloudAccountSecurityScreen() {
   const [pwBusy, setPwBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [freezing, setFreezing] = useState(false);
+  const [freezePhase, setFreezePhase] = useState<AccountFreezePhase | null>(null);
   const { allowExit } = useDirtyExitGuard(Boolean(newEmail || emailPassword || currentPassword || newPassword));
 
   const emailValid = /.+@.+\..+/.test(newEmail.trim());
@@ -154,6 +156,7 @@ function CloudAccountSecurityScreen() {
           pendingOutboxCount: pendingSyncChangeCount,
           signOut,
           scheduleSync: () => scheduleSync(userId),
+          onPhase: setFreezePhase,
         });
         if (outcome.status === "failed") {
           // A failure that could not even be rolled back leaves the account
@@ -172,6 +175,7 @@ function CloudAccountSecurityScreen() {
         // could explain the state. A successful freeze has already signed out.
         useSession.setState({ isFreezing: false });
         setFreezing(false);
+        setFreezePhase(null);
       }
     }).catch(() => {
       void appAlert(tr.errors.requestFailed, tr.errors.title);
@@ -257,11 +261,17 @@ function CloudAccountSecurityScreen() {
         <Body muted style={{ marginBottom: spacing.md }}>{tr.account.freezeDesc}</Body>
         <Button
           icon={Snowflake}
-          label={tr.account.freeze}
+          label={freezePhase ? tr.operation.freezePhase[freezePhase] : tr.account.freeze}
           variant="danger"
           onPress={() => void freezeAccount()}
           loading={freezing}
         />
+        {freezePhase ? (
+          <Row accessibilityLiveRegion="polite" gap={spacing.sm} style={{ marginTop: spacing.sm, alignItems: "flex-start" }}>
+            <DelayedLoadingIndicator size={6} label={tr.operation.freezePhase[freezePhase]} />
+            <WaitingText message={tr.operation.freezePhase[freezePhase]} />
+          </Row>
+        ) : null}
       </Card>
     </Screen>
   );

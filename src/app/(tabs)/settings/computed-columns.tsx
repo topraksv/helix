@@ -29,7 +29,7 @@ import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, IconButton, Label, Row, Screen, Spread, Toggle, ToggleGrid } from "../../../ui/components";
+import { Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, IconButton, Label, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
@@ -290,24 +290,28 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
         {op === "sum" || op === "difference" ? (
           <>
             <Label>{op === "difference" ? tr.computed.plusGroup : tr.computed.pickCategories}</Label>
-            <ToggleGrid
+            <SelectionGrid
               options={categoryChips}
               values={plus}
               onToggle={(id) => toggle(plus, setPlus, id)}
+              searchable
               tone="plus"
               countLabel={tr.computed.selectedCount(plus.length)}
+              emptyMessage={tr.computed.noCategories}
             />
           </>
         ) : null}
         {op === "difference" ? (
           <>
             <Label>{tr.computed.minusGroup}</Label>
-            <ToggleGrid
+            <SelectionGrid
               options={categoryChips}
               values={minus}
               onToggle={(id) => toggle(minus, setMinus, id)}
+              searchable
               tone="minus"
               countLabel={tr.computed.selectedCount(minus.length)}
+              emptyMessage={tr.computed.noCategories}
             />
           </>
         ) : null}

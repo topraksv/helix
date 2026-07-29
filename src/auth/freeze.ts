@@ -24,7 +24,15 @@ export interface AccountFreezeEffects {
   /** Returns an error message, or null when the session ended. */
   signOut: () => Promise<string | null>;
   scheduleSync: () => void;
+  onPhase?: (phase: AccountFreezePhase) => void;
 }
+
+export type AccountFreezePhase =
+  | "marking"
+  | "syncing"
+  | "signing-out"
+  | "rolling-back"
+  | "complete";
 
 export type AccountFreezeOutcome =
   /** Frozen and signed out; every device will show the reactivation gate. */
@@ -45,6 +53,7 @@ async function abandonFreeze(
   // failure, so it may fail too. Report the ORIGINAL reason either way; a
   // rollback error must never replace the explanation the user needs.
   try {
+    effects.onPhase?.("rolling-back");
     await effects.setFrozen(false);
     effects.scheduleSync();
     return { status: "failed", reason, message, rolledBack: true };
@@ -55,19 +64,23 @@ async function abandonFreeze(
 
 export async function performAccountFreeze(effects: AccountFreezeEffects): Promise<AccountFreezeOutcome> {
   try {
+    effects.onPhase?.("marking");
     await effects.setFrozen(true);
 
     // Freezing is only meaningful once the flag — and every unsynced row it is
     // supposed to protect — is on the server. A push that "succeeded" while
     // rows remain queued has not achieved that.
+    effects.onPhase?.("syncing");
     const synced = await effects.syncNow();
     if (!synced || (await effects.pendingOutboxCount()) > 0) {
       return await abandonFreeze(effects, "sync", null);
     }
 
+    effects.onPhase?.("signing-out");
     const signOutError = await effects.signOut();
     if (signOutError) return await abandonFreeze(effects, "sign-out", signOutError);
 
+    effects.onPhase?.("complete");
     return { status: "frozen" };
   } catch (error) {
     return await abandonFreeze(effects, "unexpected", error instanceof Error ? error.message : String(error));

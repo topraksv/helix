@@ -22,6 +22,13 @@ describe("account freeze lifecycle", () => {
     expect(deps.signOut).toHaveBeenCalledTimes(1);
   });
 
+  it("reports only the phases that have actually started", async () => {
+    const phases: string[] = [];
+    const { deps } = effects({ onPhase: (phase) => void phases.push(phase) });
+    await performAccountFreeze(deps);
+    expect(phases).toEqual(["marking", "syncing", "signing-out", "complete"]);
+  });
+
   it("rolls the flag back when the push fails", async () => {
     const { deps, frozenWrites } = effects({ syncNow: vi.fn(async () => false) });
     await expect(performAccountFreeze(deps)).resolves.toEqual({

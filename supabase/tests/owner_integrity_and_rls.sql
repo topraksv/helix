@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(59);
+select extensions.plan(63);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -204,12 +204,84 @@ select ok(
   'keepalive remains service-role only at the privilege layer'
 );
 
+select is(
+  (
+    select count(*)
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'keep_alive'
+      and cmd = 'ALL'
+      and roles = array['service_role']::name[]
+      and qual = 'true'
+      and with_check = 'true'
+  ),
+  1::bigint,
+  'keepalive declares its service-role-only RLS contract'
+);
+
 select ok(
   pg_catalog.to_regclass('public.idx_card_statement_user_source_period') is null
     and pg_catalog.to_regclass(
       'public.credit_card_statements_user_id_payment_source_id_period_mon_key'
     ) is not null,
   'the statement natural key has one covering index, not a duplicate copy'
+);
+
+select is(
+  (
+    with expected(table_name, index_name, column_names) as (
+      values
+        ('category_budgets', 'category_budgets_user_category', array['user_id', 'category_id']),
+        ('cell_notes', 'cell_notes_user_category', array['user_id', 'category_id']),
+        ('expected_payments', 'expected_payments_user_transaction', array['user_id', 'transaction_id']),
+        ('installment_plans', 'installment_plans_user_category', array['user_id', 'category_id']),
+        ('installment_plans', 'installment_plans_user_person', array['user_id', 'person_id']),
+        ('installment_plans', 'installment_plans_user_source', array['user_id', 'payment_source_id']),
+        ('payment_sources', 'payment_sources_user_person', array['user_id', 'person_id']),
+        ('price_history', 'price_history_user_subscription', array['user_id', 'subscription_id']),
+        ('recurring_incomes', 'recurring_incomes_user_category', array['user_id', 'category_id']),
+        ('recurring_incomes', 'recurring_incomes_user_person', array['user_id', 'person_id']),
+        ('subscriptions', 'subscriptions_user_category', array['user_id', 'category_id']),
+        ('subscriptions', 'subscriptions_user_person', array['user_id', 'person_id']),
+        ('subscriptions', 'subscriptions_user_source', array['user_id', 'payment_source_id']),
+        ('transactions', 'transactions_user_category', array['user_id', 'category_id']),
+        ('transactions', 'transactions_user_person', array['user_id', 'person_id']),
+        ('transactions', 'transactions_user_plan', array['user_id', 'installment_plan_id']),
+        ('transactions', 'transactions_user_source', array['user_id', 'payment_source_id']),
+        ('transactions', 'transactions_user_subscription', array['user_id', 'subscription_id'])
+    ),
+    actual as (
+      select
+        table_class.relname::text as table_name,
+        index_class.relname::text as index_name,
+        array_agg(attribute.attname::text order by key.ordinality) as column_names
+      from pg_index index_definition
+      join pg_class table_class
+        on table_class.oid = index_definition.indrelid
+      join pg_class index_class
+        on index_class.oid = index_definition.indexrelid
+      join pg_namespace namespace
+        on namespace.oid = table_class.relnamespace
+      cross join lateral unnest(index_definition.indkey)
+        with ordinality as key(attribute_number, ordinality)
+      join pg_attribute attribute
+        on attribute.attrelid = table_class.oid
+       and attribute.attnum = key.attribute_number
+      where namespace.nspname = 'public'
+        and key.ordinality <= index_definition.indnkeyatts
+      group by table_class.relname, index_class.relname
+    )
+    select count(*)
+    from expected
+    join actual using (table_name, index_name, column_names)
+  ),
+  18::bigint,
+  'every owner-aware foreign key has the expected composite referencing index'
+);
+
+select ok(
+  pg_catalog.to_regclass('public.idx_tx_user_effective') is null,
+  'the measured-unused server effective-date index is removed'
 );
 
 select is(
@@ -235,6 +307,16 @@ select ok(
 );
 
 select is(
+  (
+    select pg_get_userbyid(proowner)
+    from pg_proc
+    where oid = 'public.delete_own_account()'::regprocedure
+  ),
+  'postgres',
+  'account deletion is owned by the trusted postgres role'
+);
+
+select is(
   (select proconfig from pg_proc
     where oid = 'public.delete_own_account()'::regprocedure),
   array['search_path=""']::text[],
@@ -247,8 +329,9 @@ select ok(
 );
 
 select ok(
-  not has_function_privilege('anon', 'public.delete_own_account()', 'EXECUTE'),
-  'anon cannot execute account deletion'
+  not has_function_privilege('anon', 'public.delete_own_account()', 'EXECUTE')
+    and not has_function_privilege('service_role', 'public.delete_own_account()', 'EXECUTE'),
+  'account deletion has no anonymous or service-role RPC surface'
 );
 
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);

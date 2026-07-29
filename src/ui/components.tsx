@@ -57,6 +57,7 @@ import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
+import { filterSelectionOptions, type SelectionOption } from "./selection";
 
 function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
@@ -365,6 +366,67 @@ export function SectionHeader({ children }: { children: ReactNode }) {
       >
         {children}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * Management forms share one ledger-like entry rail: the icon names the
+ * object being managed, the copy explains the consequence, and the status
+ * distinguishes creating, editing and already-matched states without relying
+ * on color alone.
+ */
+export function ManagementHeader({
+  icon: IconCmp,
+  title,
+  description,
+  status,
+  statusTone = "muted",
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  status?: string;
+  statusTone?: "muted" | "success" | "warning" | "primary";
+}) {
+  const { palette } = useTheme();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: spacing.md,
+        borderLeftWidth: 3,
+        borderLeftColor: palette.primary,
+        paddingLeft: spacing.md,
+        paddingVertical: spacing.xs,
+        marginBottom: spacing.lg,
+      }}
+    >
+      <View
+        accessible={false}
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: radius.md,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: palette.primarySoft,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.primary + "55",
+        }}
+      >
+        <IconCmp accessible={false} size={20} color={palette.primary} strokeWidth={1.9} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm }}>
+          <Text accessibilityRole="header" style={[type.heading, { color: palette.text, flexShrink: 1 }]}>
+            {title}
+          </Text>
+          {status ? <Badge text={status} tone={statusTone} /> : null}
+        </View>
+        <Body muted style={{ marginTop: spacing.xs }}>{description}</Body>
+      </View>
     </View>
   );
 }
@@ -1173,15 +1235,20 @@ export function Segmented<T extends string>({
  * grid on one screen and a chip row on the other. `tone` only chooses the accent
  * pair; the geometry is identical in every use, which is the point.
  */
-export function ToggleGrid({
+export function SelectionGrid({
   options,
   values,
   onToggle,
   tone = "plus",
   countLabel,
   readOnly = false,
+  disabled = false,
+  searchable = false,
+  status = "ready",
+  errorMessage,
+  emptyMessage,
 }: {
-  options: { value: string; label: string; icon?: string | null }[];
+  options: SelectionOption[];
   values: string[];
   onToggle: (value: string) => void;
   tone?: "plus" | "minus";
@@ -1189,14 +1256,50 @@ export function ToggleGrid({
   countLabel?: string;
   /** Render the same tiles as a non-interactive summary. */
   readOnly?: boolean;
+  disabled?: boolean;
+  searchable?: boolean;
+  status?: "ready" | "loading" | "error";
+  errorMessage?: string;
+  emptyMessage?: string;
 }) {
   const { palette } = useTheme();
   const { width } = useWindowDimensions();
+  const [query, setQuery] = useState("");
   const selectedColor = tone === "plus" ? palette.primary : palette.negative;
   const selectedSoft = tone === "plus" ? palette.primarySoft : palette.negative + "18";
   const selectedInk = tone === "plus" ? palette.primaryText : palette.negativeText;
+  const inactive = readOnly || disabled || status !== "ready";
+  const filtered = filterSelectionOptions(options, query);
+
+  if (status === "loading") {
+    return (
+      <View accessibilityLiveRegion="polite" style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md }}>
+        <DelayedLoadingIndicator size={6} label={tr.selection.loading} />
+        <Body muted>{tr.selection.loading}</Body>
+      </View>
+    );
+  }
+  if (status === "error") {
+    return (
+      <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ backgroundColor: palette.error + "14", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
+        <Body style={{ color: palette.errorText }}>{errorMessage ?? tr.selection.error}</Body>
+      </View>
+    );
+  }
+
   return (
     <View>
+      {searchable && options.length > 0 ? (
+        <Field
+          label={tr.selection.searchLabel}
+          value={query}
+          onChangeText={setQuery}
+          placeholder={tr.selection.searchPlaceholder}
+          autoCapitalize="none"
+          returnKeyType="search"
+          editable={!inactive}
+        />
+      ) : null}
       {countLabel ? (
         <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: spacing.xs }}>
           <View style={{ borderRadius: 999, backgroundColor: selectedSoft, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
@@ -1204,63 +1307,72 @@ export function ToggleGrid({
           </View>
         </View>
       ) : null}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
-        {options.map((option) => {
-          const selected = values.includes(option.value);
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityRole="checkbox"
-              aria-checked={selected}
-              accessibilityState={{ checked: selected, disabled: readOnly }}
-              disabled={readOnly}
-              onPress={() => {
-                selectionTap();
-                onToggle(option.value);
-              }}
-              style={({ pressed }) => ({
-                flexBasis: width >= 720 ? "31%" : "47%",
-                flexGrow: 1,
-                minWidth: 0,
-                minHeight: 48,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.sm,
-                paddingHorizontal: spacing.sm,
-                paddingVertical: spacing.sm,
-                borderRadius: radius.md,
-                borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
-                borderColor: selected ? selectedColor : palette.border,
-                backgroundColor: pressed ? palette.surfaceHover : selected ? selectedSoft : palette.surfaceAlt,
-              })}
-            >
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: selected ? selectedColor : palette.surface,
+      {options.length === 0 || filtered.length === 0 ? (
+        <View accessibilityLiveRegion="polite" style={{ backgroundColor: palette.surfaceAlt, borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
+          <Body muted>{options.length === 0 ? (emptyMessage ?? tr.selection.empty) : tr.selection.noResults}</Body>
+        </View>
+      ) : (
+        <View
+          role="group"
+          style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}
+        >
+          {filtered.map((option) => {
+            const selected = values.includes(option.value);
+            return (
+              <Pressable
+                key={option.value}
+                accessibilityRole="checkbox"
+                aria-checked={selected}
+                accessibilityState={{ checked: selected, selected, disabled: inactive }}
+                disabled={inactive}
+                onPress={() => {
+                  selectionTap();
+                  onToggle(option.value);
                 }}
+                style={({ pressed }) => ({
+                  flexBasis: width >= 720 ? "31%" : "47%",
+                  flexGrow: 1,
+                  minWidth: 0,
+                  minHeight: 48,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
+                  paddingHorizontal: spacing.sm,
+                  paddingVertical: spacing.sm,
+                  borderRadius: radius.md,
+                  borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
+                  borderColor: selected ? selectedColor : palette.border,
+                  backgroundColor: pressed ? palette.surfaceHover : selected ? selectedSoft : palette.surfaceAlt,
+                })}
               >
-                {selected ? (
-                  <Check accessible={false} size={15} color={tone === "plus" ? palette.onPrimary : palette.onDestructive} strokeWidth={2.4} />
-                ) : option.icon ? (
-                  <Text accessible={false} aria-hidden style={{ fontSize: 14 }}>{option.icon}</Text>
-                ) : tone === "plus" ? (
-                  <Plus accessible={false} size={14} color={palette.textSecondary} />
-                ) : (
-                  <Minus accessible={false} size={14} color={palette.textSecondary} />
-                )}
-              </View>
-              <Text style={[type.small, { flex: 1, minWidth: 0, color: selected ? selectedInk : palette.text, fontFamily: font.semibold }]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: selected ? selectedColor : palette.surface,
+                  }}
+                >
+                  {selected ? (
+                    <Check accessible={false} size={15} color={tone === "plus" ? palette.onPrimary : palette.onDestructive} strokeWidth={2.4} />
+                  ) : option.icon ? (
+                    <Text accessible={false} aria-hidden style={{ fontSize: 14 }}>{option.icon}</Text>
+                  ) : tone === "plus" ? (
+                    <Plus accessible={false} size={14} color={palette.textSecondary} />
+                  ) : (
+                    <Minus accessible={false} size={14} color={palette.textSecondary} />
+                  )}
+                </View>
+                <Text style={[type.small, { flex: 1, minWidth: 0, color: selected ? selectedInk : palette.text, fontFamily: font.semibold }]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
