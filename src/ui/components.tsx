@@ -889,13 +889,15 @@ export function Select<T extends string>({
   trigger?: (open: () => void, selected: string | null) => ReactNode;
 }) {
   const { palette, scheme } = useTheme();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<View>(null);
   const modalTitleRef = useModalAccessibility(open, triggerRef);
   const current = options.find((o) => o.value === value);
+  const modalVerticalInset = width < 640 ? spacing.lg : spacing.lg * 2;
+  const modalMaxHeight = Math.max(0, Math.min(width < 640 ? 560 : 460, height - modalVerticalInset));
   const optionsModal = (
           <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={() => setOpen(false)}>
             <Pressable
@@ -907,6 +909,7 @@ export function Select<T extends string>({
                 justifyContent: width < 640 ? "flex-end" : "center",
                 paddingHorizontal: width < 640 ? spacing.sm : spacing.lg,
                 paddingTop: spacing.lg,
+                paddingBottom: width < 640 ? 0 : spacing.lg,
               }}
               onPress={() => setOpen(false)}
             >
@@ -925,7 +928,7 @@ export function Select<T extends string>({
                       borderTopRightRadius: radius.xl,
                       borderBottomLeftRadius: width < 640 ? 0 : radius.xl,
                       borderBottomRightRadius: width < 640 ? 0 : radius.xl,
-                      maxHeight: width < 640 ? 560 : 460,
+                      maxHeight: modalMaxHeight,
                       overflow: "hidden",
                       borderWidth: StyleSheet.hairlineWidth,
                       borderColor: palette.border + "90",
@@ -943,7 +946,11 @@ export function Select<T extends string>({
                       {label ?? tr.a11y.selectOption}
                     </Text>
                   </View>
-                  <ScrollView role="radiogroup" accessibilityLabel={label ?? tr.a11y.selectOption}>
+                  <ScrollView
+                    role="radiogroup"
+                    accessibilityLabel={label ?? tr.a11y.selectOption}
+                    style={{ flexShrink: 1 }}
+                  >
                     {options.map((option, index) => {
                       const selected = option.value === value;
                       return (

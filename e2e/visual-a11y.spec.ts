@@ -482,6 +482,55 @@ test("modal actions stay reachable in a short landscape viewport @smoke", async 
   await page.keyboard.press("Escape");
   await expect(calculatorModal).toHaveCount(0);
   await expect(calculatorTrigger).toBeFocused();
+
+  await page.goto("/helix/transaction");
+  const categoryTrigger = page.getByRole("button", { name: "Kategori", exact: true });
+  await categoryTrigger.scrollIntoViewIfNeeded();
+  await categoryTrigger.click();
+  const selectModal = page.locator('[aria-modal="true"]');
+  await expect(selectModal).toBeVisible();
+  const selectBox = await selectModal.boundingBox();
+  expect(
+    selectBox && selectBox.y >= 0 && selectBox.y + selectBox.height <= 390,
+    `select modal outside the landscape viewport: ${JSON.stringify(selectBox)}`,
+  ).toBe(true);
+  const selectHeading = selectModal.getByRole("heading", { name: "Kategori", exact: true });
+  const selectHeadingBox = await selectHeading.boundingBox();
+  expect(
+    selectHeadingBox && selectHeadingBox.y >= 0 && selectHeadingBox.y + selectHeadingBox.height <= 390,
+    `select heading outside the landscape viewport: ${JSON.stringify(selectHeadingBox)}`,
+  ).toBe(true);
+  const options = selectModal.getByRole("radiogroup");
+  await expect(options).toBeInViewport();
+  const lastOption = options.getByRole("radio").last();
+  await lastOption.scrollIntoViewIfNeeded();
+  await expect(lastOption).toBeInViewport();
+  const createOption = selectModal.getByRole("button", { name: "Yeni kalem ekle", exact: true });
+  await createOption.scrollIntoViewIfNeeded();
+  await expect(createOption).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(selectModal).toHaveCount(0);
+  await expect(categoryTrigger).toBeFocused();
+
+  await page.getByRole("radio", { name: "Belirli gün", exact: true }).click();
+  const dateTrigger = page.getByRole("button", { name: "Ödeme Günü", exact: true });
+  await dateTrigger.scrollIntoViewIfNeeded();
+  await dateTrigger.click();
+  const calendarModal = page.locator('[aria-modal="true"]');
+  await expect(calendarModal).toBeVisible();
+  await calendarModal.getByRole("button", { name: "Sonraki", exact: true }).click();
+  const calendarHeading = calendarModal.getByRole("heading");
+  const calendarHeadingBox = await calendarHeading.boundingBox();
+  expect(
+    calendarHeadingBox && calendarHeadingBox.y >= 0 && calendarHeadingBox.y + calendarHeadingBox.height <= 390,
+    `calendar heading outside the landscape viewport: ${JSON.stringify(calendarHeadingBox)}`,
+  ).toBe(true);
+  const calendarCancel = calendarModal.getByRole("button", { name: "Vazgeç", exact: true });
+  await calendarCancel.scrollIntoViewIfNeeded();
+  await expect(calendarCancel).toBeInViewport();
+  await calendarCancel.click();
+  await expect(calendarModal).toHaveCount(0);
+  await expect(dateTrigger).toBeFocused();
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
