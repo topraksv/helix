@@ -79,12 +79,13 @@ finansal veri dışarı çıkmaz.
 | Platform | Durum |
 |---|---|
 | Web | Uygulamayı etkileyen `main` değişiklikleri yeşil kapıdan sonra GitHub Pages'e otomatik yayımlanır — [canlı sürüm](https://topraksv.github.io/helix/) |
-| iOS | CI native fingerprint'i eşleştirir: uyumlu preview binary varsa OTA, yoksa yeni internal preview build üretir |
-| Android | Paket yapılandırması ve OTA bundle'ı var; imzalı production store build'i ve fiziksel kabul **henüz yapılmadı** |
+| iOS | Uygulama değişiklikleri yeşil kapıdan sonra EAS `preview` branch'ine yayımlanır ve Expo Go'dan açılır |
+| Android | Aynı `preview` update Expo Go için yayımlanır; fiziksel cihaz kabulü **henüz yapılmadı** |
 
-Native modül, ikon, SDK veya runtime değişiklikleri OTA ile teslim edilemez;
-fingerprint'i değiştirir ve yeni binary gerektirir. Store submission otomatik
-değildir; fiziksel cihaz kabulü yapılmadan mobil teslim doğrulanmış sayılmaz.
+Mobil kullanım Expo Go'nun SDK 54 içinde sunduğu native kütüphanelerle sınırlıdır.
+EAS Build, development client, TestFlight ve store submission bu teslim yolunun
+parçası değildir; fiziksel cihazda açılış yapılmadan cihaz kabulü doğrulanmış
+sayılmaz.
 
 ## Mimari özet
 
@@ -131,7 +132,7 @@ npm ci
 cp .env.example .env     # boş bırakılırsa uygulama local-only açılır
 
 npm run web              # web development
-npm run ios              # iOS development build
+npx expo start --tunnel --clear  # Expo Go QR
 ```
 
 Kalite kapısı tek komuttur:
@@ -149,11 +150,11 @@ bölünmüş tam E2E paketi. Web ancak hepsi geçtiğinde yayımlanır.
 ## Teslim modeli
 
 `main`'e push değişiklikleri önce tek risk kapısından geçirir. Web, aynı koşuda
-export edilip bütçesi ölçülen immutable artefaktı yayımlar. Ortak uygulama kodu
-için EAS workflow iOS native fingerprint'ini kontrol eder; eşleşen preview
-binary varsa OTA yayımlar, yoksa yalnız yeni internal binary oluşturur. Native
-değişiklik hiçbir zaman eski binary'ye OTA olarak gönderilmez. Geri alma
-`git revert` iledir; force push ve history rewrite kullanılmaz.
+export edilip bütçesi ölçülen immutable artefaktı yayımlar. Uygulama kodu,
+shipped asset veya bundle yapılandırması değiştiğinde aynı commit sabitlenmiş
+EAS CLI ile iOS ve Android için `preview` branch'ine yayımlanır; Expo Go SDK 54
+runtime'ı kullanılır ve hiçbir binary oluşturulmaz. Geri alma `git revert`
+iledir; force push ve history rewrite kullanılmaz.
 
 ## Lisans / License
 

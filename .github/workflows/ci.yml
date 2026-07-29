@@ -267,14 +267,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Dispatched from here rather than triggered by the push itself, so an
-      # OTA can only ever follow a green gate. `--wait` makes an EAS failure a
-      # failure of this deployment instead of a silent one on another dashboard.
-      # Keep the audited CLI exact: `@latest` let an npm release change the
-      # deploy path after this commit's gate had already certified it.
-      - name: Publish preview OTA or build a compatible binary
+      # Publish directly from this checked-out commit, after the gate. Expo Go
+      # uses the SDK runtime, so there is no binary lookup, build or Apple
+      # credential path. Keep the CLI exact and clear Metro's shared cache so
+      # the update cannot inherit the local-only E2E environment.
+      - name: Publish Expo Go preview update
         if: ${{ env.EXPO_TOKEN != '' }}
-        run: npx eas-cli@21.4.0 workflow:run .eas/workflows/deploy-preview.yml --wait --non-interactive
+        run: npx eas-cli@21.4.0 update --branch preview --platform all --message "main $GITHUB_SHA" --clear-cache --non-interactive
       - name: Report a missing EAS credential
         if: ${{ env.EXPO_TOKEN == '' }}
         run: |

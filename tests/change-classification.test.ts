@@ -111,11 +111,23 @@ describe("web build gating", () => {
     }
   });
 
-  it("sends an EAS or native config change to the phone but not to the web build", () => {
-    // `.nvmrc` and `eas.json` decide how the binary is produced; they change
-    // nothing the browser downloads.
+  it("does not publish an unchanged app for delivery-tool-only changes", () => {
     for (const file of ["eas.json", ".nvmrc"]) {
-      expect(classify([file]), file).toMatchObject({ deploy_mobile: true, run_web_build: false, deploy_web: false });
+      expect(classify([file]), file).toMatchObject({ deploy_mobile: false, run_web_build: false, deploy_web: false });
+    }
+  });
+
+  it("publishes mobile code, shipped assets, and bundle configuration", () => {
+    for (const file of [
+      "src/app/upcoming.tsx",
+      "assets/images/icon.png",
+      "app.json",
+      "package.json",
+      "metro.config.js",
+      "babel.config.js",
+      "tsconfig.json",
+    ]) {
+      expect(classify([file]).deploy_mobile, file).toBe(true);
     }
   });
 });

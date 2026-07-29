@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -10,9 +10,9 @@ const ci = read(".github/workflows/ci.yml");
 const security = read(".github/workflows/security.yml");
 const nightly = read(".github/workflows/nightly.yml");
 const keepalive = read(".github/workflows/keepalive.yml");
-const easPreview = read(".eas/workflows/deploy-preview.yml");
 const dependabot = read(".github/dependabot.yml");
 const packageJson = JSON.parse(read("package.json"));
+const easPreviewPath = resolve(process.cwd(), ".eas/workflows/deploy-preview.yml");
 
 function dependabotRule(dependency: string) {
   const marker = `      - dependency-name: "${dependency}"`;
@@ -23,41 +23,33 @@ function dependabotRule(dependency: string) {
 }
 
 describe("release contract", () => {
-  it("ties OTA compatibility to the native fingerprint, not a version string", () => {
-    // `appVersion` let an update reach a binary whose native side no longer
-    // matched it. The EAS workflow's build-or-update decision is only sound
-    // while the runtime version is derived from the native project itself.
-    expect(app.expo.runtimeVersion).toEqual({ policy: "fingerprint" });
-    expect(app.expo.updates.requestHeaders["expo-channel-name"]).toBe("preview");
+  it("targets the Expo Go runtime without standalone-build configuration", () => {
+    expect(app.expo.runtimeVersion).toEqual({ policy: "sdkVersion" });
+    expect(app.expo.updates).toBeUndefined();
+    expect(app.expo.extra.eas.projectId).toBe("f71b0477-c800-45cc-903a-9b4d32a9c6b4");
     expect(app.expo.ios.bundleIdentifier).toBe("com.toprak.helix");
     expect(app.expo.android.package).toBe("com.toprak.helix");
-    expect(eas.build.preview).toMatchObject({ channel: "preview", distribution: "internal" });
-    expect(eas.build.production).toMatchObject({ channel: "production" });
-    // EAS workers default to Node 20, which `engines.node: ^22` makes `npm ci`
-    // refuse outright — the fingerprint job died before any build could start.
-    // Workflow jobs do not inherit a build profile's tool versions, so the
-    // workflow default and build profiles must explicitly agree.
-    const nvmrc = read(".nvmrc").trim();
-    expect(nvmrc).toMatch(/^22\./);
-    expect(eas.build.base.node).toBe(nvmrc);
-    expect(easPreview).toContain(`tools:\n    node: ${nvmrc}`);
-    for (const profile of ["preview", "production"] as const) {
-      expect(eas.build[profile].extends, profile).toBe("base");
-    }
+    expect(packageJson.dependencies.expo).toMatch(/^~54\./);
+    expect(eas.cli.version).toBe("21.4.0");
+    expect(eas.build).toBeUndefined();
+    expect(eas.submit).toBeUndefined();
     expect(packageJson.engines.node).toBe("^22");
   });
 
-  it("builds a binary or publishes an update, never both, and never submits", () => {
-    expect(easPreview).toContain("type: fingerprint");
-    expect(easPreview).toMatch(/fingerprint:\n(?:.*\n)*?\s+environment: preview\n\s+type: fingerprint/);
-    expect(easPreview).toContain("type: get-build");
-    expect(easPreview).toMatch(/if: \$\{\{ !needs\.get_ios_build\.outputs\.build_id \}\}\n\s+type: build/);
-    expect(easPreview).toMatch(/if: \$\{\{ needs\.get_ios_build\.outputs\.build_id \}\}\n\s+type: update/);
-    expect(easPreview).toMatch(/publish_update:\n(?:.*\n)*?\s+environment: preview/);
-    expect(easPreview).not.toContain("type: submit");
-    // Dispatch-only: an OTA must follow the GitHub gate, never race it.
-    expect(easPreview).toMatch(/on:\n\s+workflow_dispatch/);
-    expect(easPreview).not.toContain("push:");
+  it("publishes one Expo Go preview update and never searches for or creates a binary", () => {
+    expect(existsSync(easPreviewPath)).toBe(false);
+    const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
+    const commands = mobile.split("\n").filter((line) => /^\s*(-\s*)?run:/.test(line));
+    const deploy = commands.find((line) => line.includes("eas-cli"));
+    expect(deploy).toBeDefined();
+    expect(deploy).toMatch(/npx eas-cli@21\.4\.0 update /);
+    expect(deploy).toContain("--branch preview");
+    expect(deploy).toContain("--platform all");
+    expect(deploy).toContain("--clear-cache");
+    expect(deploy).toContain("--non-interactive");
+    expect(deploy).not.toContain("@latest");
+    expect(mobile).not.toMatch(/workflow:run|fingerprint|get-build|eas\s+build|eas\s+submit|type:\s*(build|submit)/);
+    expect(mobile).not.toMatch(/APPLE_|ASC_|provision/i);
   });
 
   it("runs every release check somewhere in CI, and each of them once", () => {
@@ -176,11 +168,11 @@ describe("release contract", () => {
     }
   });
 
-  it("pins the EAS CLI that can publish or build after the gate", () => {
+  it("pins the EAS CLI that publishes after the gate", () => {
     const commands = ci.split("\n").filter((line) => /^\s*(-\s*)?run:/.test(line));
     const deploy = commands.find((line) => line.includes("eas-cli"));
     expect(deploy).toBeDefined();
-    expect(deploy).toMatch(/npx eas-cli@\d+\.\d+\.\d+ workflow:run/);
+    expect(deploy).toMatch(/npx eas-cli@\d+\.\d+\.\d+ update/);
     expect(deploy).not.toContain("@latest");
   });
 

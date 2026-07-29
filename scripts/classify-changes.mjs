@@ -135,6 +135,16 @@ const NEVER_WEB_BUILD = [
   /^scripts\/(classify-changes|check-advisories|check-skills)\.mjs$/,
 ];
 
+/** Paths whose produced JavaScript or shipped assets can change in Expo Go. */
+const AFFECTS_MOBILE_UPDATE = [
+  /^src\//,
+  /^assets\/images\//,
+  /^app\.json$/,
+  /^package(-lock)?\.json$/,
+  /^(babel|metro)\.config\.js$/,
+  /^tsconfig\.json$/,
+];
+
 const matches = (path, patterns) => patterns.some((pattern) => pattern.test(path));
 
 export function classify(files) {
@@ -184,9 +194,7 @@ export function classify(files) {
     // Deploying without building would publish the previous run's bytes, so
     // `deploy_web` can never outrun `run_web_build`.
     deploy_web: deployWeb,
-    deploy_mobile: shipping.some((file) =>
-      /^(src\/|assets\/|app\.json$|eas\.json$|\.nvmrc$|package(-lock)?\.json$)/.test(file),
-    ),
+    deploy_mobile: shipping.some((file) => matches(file, AFFECTS_MOBILE_UPDATE)),
     reason: highRisk.length > 0 ? `high risk: ${highRisk.slice(0, 5).join(", ")}` : "normal change",
   };
 }
