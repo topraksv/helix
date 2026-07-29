@@ -270,9 +270,11 @@ jobs:
       # Dispatched from here rather than triggered by the push itself, so an
       # OTA can only ever follow a green gate. `--wait` makes an EAS failure a
       # failure of this deployment instead of a silent one on another dashboard.
+      # Keep the audited CLI exact: `@latest` let an npm release change the
+      # deploy path after this commit's gate had already certified it.
       - name: Publish preview OTA or build a compatible binary
         if: ${{ env.EXPO_TOKEN != '' }}
-        run: npx eas-cli@latest workflow:run .eas/workflows/deploy-preview.yml --wait --non-interactive
+        run: npx eas-cli@21.4.0 workflow:run .eas/workflows/deploy-preview.yml --wait --non-interactive
       - name: Report a missing EAS credential
         if: ${{ env.EXPO_TOKEN == '' }}
         run: |

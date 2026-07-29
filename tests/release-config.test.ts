@@ -120,6 +120,12 @@ describe("release contract", () => {
     // browser against one static server and goes flaky with two workers.
     expect(ci).not.toMatch(/workers:\s*[2-9]/);
     expect(nightly).toContain("--shard=${{ matrix.shard }}/2");
+    expect(nightly.split("npm run test:e2e:export").length - 1).toBe(1);
+    expect(nightly).toContain("nightly-dist-e2e-${{ github.run_id }}");
+    expect(nightly).toContain("actions/upload-artifact");
+    expect(nightly).toContain("actions/download-artifact");
+    const nightlySuite = nightly.slice(nightly.indexOf("  full-suite:"));
+    expect(nightlySuite).not.toContain("npm run test:e2e");
     // The nightly run reports; it never publishes. No deploy job, no Pages
     // artifact, no EAS dispatch and no write permission to reach them with.
     expect(nightly).not.toMatch(/^\s+deploy[\w-]*:$/m);
@@ -165,6 +171,14 @@ describe("release contract", () => {
       const refs = [...workflow.matchAll(/uses:\s*([^\s#]+)/g)].map((match) => match[1]);
       for (const ref of refs) expect(ref, `${name}: ${ref}`).toMatch(/@[0-9a-f]{40}$/);
     }
+  });
+
+  it("pins the EAS CLI that can publish or build after the gate", () => {
+    const commands = ci.split("\n").filter((line) => /^\s*(-\s*)?run:/.test(line));
+    const deploy = commands.find((line) => line.includes("eas-cli"));
+    expect(deploy).toBeDefined();
+    expect(deploy).toMatch(/npx eas-cli@\d+\.\d+\.\d+ workflow:run/);
+    expect(deploy).not.toContain("@latest");
   });
 
   it("denies the repository token to the standalone keepalive job", () => {
