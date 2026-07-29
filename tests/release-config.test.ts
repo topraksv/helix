@@ -33,6 +33,17 @@ describe("release contract", () => {
     expect(app.expo.android.package).toBe("com.toprak.helix");
     expect(eas.build.preview).toMatchObject({ channel: "preview", distribution: "internal" });
     expect(eas.build.production).toMatchObject({ channel: "production" });
+    // EAS workers default to Node 20, which `engines.node: ^22` makes `npm ci`
+    // refuse outright — the fingerprint job died before any build could start.
+    // `.nvmrc` is what the profile-less workflow jobs read; the build profiles
+    // pin the same version so a build and its fingerprint cannot drift apart.
+    const nvmrc = read(".nvmrc").trim();
+    expect(nvmrc).toMatch(/^22\./);
+    expect(eas.build.base.node).toBe(nvmrc);
+    for (const profile of ["preview", "production"] as const) {
+      expect(eas.build[profile].extends, profile).toBe("base");
+    }
+    expect(packageJson.engines.node).toBe("^22");
   });
 
   it("builds a binary or publishes an update, never both, and never submits", () => {
