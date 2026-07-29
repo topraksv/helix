@@ -321,16 +321,31 @@ test("theme preference keeps browser chrome and native controls in the active sc
 
   const light = page.getByRole("radio", { name: "Açık", exact: true });
   const dark = page.getByRole("radio", { name: "Koyu", exact: true });
+  const hex = /^#[\dA-F]{6}$/i;
+  const chrome = () => page.locator('meta[name="theme-color"]').getAttribute("content");
+  const rootScheme = () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
+
+  // Two different things settle here, at their own pace: the root's
+  // `color-scheme` and the `theme-color` meta the browser paints its chrome
+  // from. Waiting on the first and then reading the second once is a race by
+  // construction — it asserts a value it never waited for, and that read
+  // failed intermittently on macOS while passing on Linux CI. Each signal now
+  // waits for itself, so the test measures settled state on every platform
+  // without loosening what it demands: two valid, different colours.
   await light.click();
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("light");
-  const lightChrome = await page.locator('meta[name="theme-color"]').getAttribute("content");
+  await expect.poll(rootScheme).toBe("light");
+  await expect.poll(chrome).toMatch(hex);
+  const lightChrome = await chrome();
 
   await dark.click();
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
-  const darkChrome = await page.locator('meta[name="theme-color"]').getAttribute("content");
+  await expect.poll(rootScheme).toBe("dark");
+  // The chrome must end up on a different colour than light left it on —
+  // polled, so a slow update is waited for and a stuck one still fails.
+  await expect.poll(chrome).not.toBe(lightChrome);
+  const darkChrome = await chrome();
 
-  expect(lightChrome).toMatch(/^#[\dA-F]{6}$/i);
-  expect(darkChrome).toMatch(/^#[\dA-F]{6}$/i);
+  expect(lightChrome).toMatch(hex);
+  expect(darkChrome).toMatch(hex);
   expect(darkChrome).not.toBe(lightChrome);
 });
 

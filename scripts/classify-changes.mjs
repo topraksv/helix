@@ -8,8 +8,13 @@
  *
  *   run_ci        any application check is worth running at all
  *   full_e2e      the complete Playwright suite, sharded — not just smoke
+ *   run_web_build a production Expo export is worth producing
  *   deploy_web    the web app can have changed, so Pages must be republished
  *   deploy_mobile shared React Native code changed, so preview needs an OTA
+ *
+ * `run_web_build` is separate from `run_ci` because a CI-only or test-only
+ * commit still has to be verified but cannot change a single byte of the
+ * bundle. Exporting it anyway cost minutes per run to prove nothing.
  *
  * The one rule that matters: a path this file does not recognise is HIGH RISK.
  * Being wrong in that direction costs a slower run; being wrong in the other
@@ -99,6 +104,37 @@ const KNOWN_NORMAL = [
   /^assets\/images\//,
 ];
 
+/**
+ * Paths that can change the produced bundle: application code and assets, plus
+ * anything Metro, Babel, Expo, the budget check or Pages reads while producing
+ * or serving it. Deliberately wider than "what ships" — a config that only
+ * *might* alter the export still earns one.
+ */
+const AFFECTS_WEB_BUILD = [
+  /^src\//,
+  /^assets\//,
+  /^public\//,
+  /^app\.json$/,
+  /^package(-lock)?\.json$/,
+  /^(babel|metro)\.config\.js$/,
+  /^tsconfig\.json$/,
+  /^\.npmrc$/,
+  /^scripts\/(check-web-budget|export-e2e-web|serve-static)\.mjs$/,
+];
+
+/** Paths that provably cannot: verification machinery and release plumbing. */
+const NEVER_WEB_BUILD = [
+  /^tests\//,
+  /^e2e\//,
+  /^playwright\.config\.ts$/,
+  /^vitest\.config\.ts$/,
+  /^\.github\//,
+  /^\.eas\//,
+  /^eas\.json$/,
+  /^\.nvmrc$/,
+  /^scripts\/(classify-changes|check-advisories|check-skills)\.mjs$/,
+];
+
 const matches = (path, patterns) => patterns.some((pattern) => pattern.test(path));
 
 export function classify(files) {
@@ -108,24 +144,49 @@ export function classify(files) {
   // an identical bundle costs a few minutes, and skipping a real one because a
   // diff failed silently is the expensive mistake.
   if (files.length === 0) {
-    return { run_ci: true, full_e2e: true, deploy_web: true, deploy_mobile: true, reason: "no diff available" };
+    return {
+      run_ci: true,
+      full_e2e: true,
+      run_web_build: true,
+      deploy_web: true,
+      deploy_mobile: true,
+      reason: "no diff available",
+    };
   }
 
   const relevant = files.filter((file) => !matches(file, NO_APP_IMPACT));
   if (relevant.length === 0) {
-    return { run_ci: false, full_e2e: false, deploy_web: false, deploy_mobile: false, reason: "no application impact" };
+    return {
+      run_ci: false,
+      full_e2e: false,
+      run_web_build: false,
+      deploy_web: false,
+      deploy_mobile: false,
+      reason: "no application impact",
+    };
   }
 
   const highRisk = relevant.filter(
     (file) => matches(file, HIGH_RISK) || !matches(file, KNOWN_NORMAL),
   );
   const shipping = relevant.filter((file) => !matches(file, NOT_SHIPPED));
+  // An unrecognised path builds, for the same reason it runs the full suite:
+  // the safe side of a guess about the bundle is producing one.
+  const buildsWeb = relevant.filter(
+    (file) => !matches(file, NEVER_WEB_BUILD) && (matches(file, AFFECTS_WEB_BUILD) || !matches(file, KNOWN_NORMAL)),
+  );
+  const deployWeb = shipping.length > 0 && buildsWeb.length > 0;
 
   return {
     run_ci: true,
     full_e2e: highRisk.length > 0,
-    deploy_web: shipping.length > 0,
-    deploy_mobile: shipping.some((file) => /^(src\/|assets\/images\/|app\.json$|package(-lock)?\.json$)/.test(file)),
+    run_web_build: buildsWeb.length > 0,
+    // Deploying without building would publish the previous run's bytes, so
+    // `deploy_web` can never outrun `run_web_build`.
+    deploy_web: deployWeb,
+    deploy_mobile: shipping.some((file) =>
+      /^(src\/|assets\/|app\.json$|eas\.json$|\.nvmrc$|package(-lock)?\.json$)/.test(file),
+    ),
     reason: highRisk.length > 0 ? `high risk: ${highRisk.slice(0, 5).join(", ")}` : "normal change",
   };
 }

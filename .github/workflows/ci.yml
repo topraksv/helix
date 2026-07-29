@@ -35,6 +35,7 @@ jobs:
     outputs:
       run_ci: ${{ steps.diff.outputs.run_ci }}
       full_e2e: ${{ steps.diff.outputs.full_e2e }}
+      run_web_build: ${{ steps.diff.outputs.run_web_build }}
       deploy_web: ${{ steps.diff.outputs.deploy_web }}
       deploy_mobile: ${{ steps.diff.outputs.deploy_mobile }}
     steps:
@@ -67,9 +68,12 @@ jobs:
       - run: npx expo lint
       - run: npm test
 
+  # Gated on `run_web_build`, not `run_ci`: a test-only or CI-only commit still
+  # has to be verified but cannot move a byte of the bundle, and exporting it
+  # anyway spent minutes per run proving nothing.
   web-build:
     needs: classify
-    if: needs.classify.outputs.run_ci == 'true'
+    if: needs.classify.outputs.run_web_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

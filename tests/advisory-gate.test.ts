@@ -13,7 +13,12 @@ const advisory = (id: string, severity: string, name = "pkg") => ({
 });
 
 const report = (vulnerabilities: Record<string, unknown>) => ({ vulnerabilities });
-const ack = (id: string) => [{ id, package: "pkg", checkedOn: "2026-07-28", reason: "proven unreachable" }];
+const ack = (id: string, extra: Record<string, unknown> = {}) => [
+  { id, package: "pkg", checkedOn: "2026-07-28", reason: "proven unreachable", ...extra },
+];
+/** A direct dependency that depends on the vulnerable package. */
+const root = (dep: string) => ({ isDirect: true, via: [dep] });
+const TODAY = "2026-07-29";
 
 describe("advisory gate", () => {
   it("collects one entry per advisory, not per affected package", () => {
@@ -81,5 +86,93 @@ describe("advisory gate", () => {
     for (const id of ids) expect(source).toMatch(new RegExp(`${id}[\\s\\S]{0,400}checkedOn: "\\d{4}-\\d{2}-\\d{2}"`));
     // The threshold itself must never be quietly relaxed.
     expect(source).toContain('new Set(["high", "critical"])');
+  });
+});
+
+describe("advisory gate: dependency paths and expiry", () => {
+  const tree = (roots: string[]) => {
+    const v: Record<string, unknown> = { pkg: { via: [advisory("GHSA-x", "high")] } };
+    for (const r of roots) v[r] = root("pkg");
+    return report(v);
+  };
+
+  it("reports the direct dependencies an advisory reaches through", () => {
+    const found = blockingAdvisories(tree(["eslint", "expo"]));
+    expect([...found.get("GHSA-x")!.roots].sort()).toEqual(["eslint", "expo"]);
+  });
+
+  it("follows a chain of transitive edges up to the direct dependency", () => {
+    // The real tree is eslint -> minimatch -> brace-expansion, and only the
+    // last one carries the advisory object.
+    const found = blockingAdvisories(
+      report({
+        "brace-expansion": { via: [advisory("GHSA-x", "high")] },
+        minimatch: { via: ["brace-expansion"] },
+        eslint: { isDirect: true, via: ["minimatch"] },
+      }),
+    );
+    expect([...found.get("GHSA-x")!.roots]).toEqual(["eslint"]);
+  });
+
+  it("terminates on a cyclic dependency graph", () => {
+    const found = blockingAdvisories(
+      report({
+        pkg: { via: [advisory("GHSA-x", "high")] },
+        a: { via: ["b"] },
+        b: { via: ["a", "pkg"] },
+        eslint: { isDirect: true, via: ["a"] },
+      }),
+    );
+    expect([...found.get("GHSA-x")!.roots]).toEqual(["eslint"]);
+  });
+
+  it("fails when the advisory appears through an unexamined consumer", () => {
+    const { problems } = evaluate(tree(["eslint", "some-new-runtime-dep"]), ack("GHSA-x", { expectedPaths: ["eslint"] }), TODAY);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("UNEXPECTED PATH");
+    expect(problems[0]).toContain("some-new-runtime-dep");
+  });
+
+  it("fails when an examined consumer disappears from the tree", () => {
+    const { problems } = evaluate(tree(["eslint"]), ack("GHSA-x", { expectedPaths: ["eslint", "expo"] }), TODAY);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("TREE CHANGED");
+    expect(problems[0]).toContain("expo");
+  });
+
+  it("passes while the tree matches exactly and the acceptance is current", () => {
+    const { problems } = evaluate(
+      tree(["eslint", "expo"]),
+      ack("GHSA-x", { expectedPaths: ["eslint", "expo"], recheckAfter: "2026-12-31" }),
+      TODAY,
+    );
+    expect(problems).toEqual([]);
+  });
+
+  it("fails once the re-examination date has passed", () => {
+    const { problems } = evaluate(
+      tree(["eslint"]),
+      ack("GHSA-x", { expectedPaths: ["eslint"], recheckAfter: "2026-07-29" }),
+      TODAY,
+    );
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("EXPIRED");
+  });
+
+  it("keeps failing on the day after expiry, not just on the day itself", () => {
+    const { problems } = evaluate(
+      tree(["eslint"]),
+      ack("GHSA-x", { expectedPaths: ["eslint"], recheckAfter: "2026-01-01" }),
+      TODAY,
+    );
+    expect(problems[0]).toContain("EXPIRED");
+  });
+
+  it("requires the real acknowledgement to carry paths and an expiry", () => {
+    const source = readFileSync(resolve(process.cwd(), "scripts/check-advisories.mjs"), "utf8");
+    for (const field of ["expectedPaths", "recheckAfter", "checkedOn"]) {
+      expect(source, field).toContain(`${field}:`);
+    }
+    expect(source).toMatch(/recheckAfter: "\d{4}-\d{2}-\d{2}"/);
   });
 });

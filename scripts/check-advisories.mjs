@@ -26,7 +26,17 @@ const ACKNOWLEDGED = [
   {
     id: "GHSA-mh99-v99m-4gvg",
     package: "brace-expansion",
-    checkedOn: "2026-07-28",
+    checkedOn: "2026-07-29",
+    // An acceptance is a decision about a shape of the dependency tree, not a
+    // permanent pass for a package name. These are the only consumers proven
+    // to be build-time; if the advisory turns up under anything else, that
+    // path has not been examined and the gate must stop.
+    expectedPaths: ["babel-preset-expo", "eslint", "eslint-config-expo", "expo", "react-native"],
+    // Re-examine on this date whether upstream now has a compatible fix.
+    // Reachability cannot be re-proven automatically here — that needs a
+    // production export — so expiry is a deliberate, controlled failure that
+    // asks a human to look again rather than a silent renewal.
+    recheckAfter: "2026-10-29",
     reason: [
       "DoS via unbounded brace expansion. The advisory covers <=5.0.7 with no",
       "backport: 5.0.8 is the only patched release, and it is not a drop-in.",
@@ -34,11 +44,14 @@ const ACKNOWLEDGED = [
       "({ expand, EXPANSION_MAX, EXPANSION_MAX_LENGTH }), so forcing it into the",
       "two consumers below makes `expand(pattern)` throw and breaks both.",
       "",
-      "Both consumers are build-time only and neither has a fixed release:",
-      "  eslint@9.39.5 > minimatch@3.1.5   — eslint is already the newest 9.x,",
-      "    and @eslint/eslintrc@3.3.6 (latest) still requires minimatch@^3.1.5.",
-      "  expo@54.0.36 > @expo/cli > minimatch@9.0.9 — pinned by the SDK 54",
-      "    matrix; bumping it belongs to the coordinated BACKLOG-SDK-01 upgrade.",
+      "Every root is build-time tooling and none has a fixed release:",
+      "  eslint / eslint-config-expo > minimatch@3.1.5 — eslint is already the",
+      "    newest 9.x, and @eslint/eslintrc@3.3.6 (latest) still pins",
+      "    minimatch@^3.1.5. Lint only; never bundled.",
+      "  expo / react-native / babel-preset-expo > @expo/cli, @react-native/*",
+      "    > minimatch@9.0.9 — pinned by the SDK 54 matrix; bumping it belongs",
+      "    to the coordinated BACKLOG-SDK-01 upgrade. Metro and the CLI run at",
+      "    build time; the transform output contains none of it.",
       "",
       "Not reachable at runtime: a search of the production web export (4 JS",
       "files, 5.4 MB) returns zero occurrences of brace-expansion, minimatch,",
@@ -62,27 +75,72 @@ function audit() {
   }
 }
 
-/** Every distinct advisory id reported at a blocking severity, with its packages. */
+/**
+ * Every distinct advisory reported at a blocking severity, with the packages it
+ * affects and the DIRECT dependencies it reaches them through.
+ *
+ * The roots are what an acceptance is really about. `npm audit` reports an
+ * advisory once against the vulnerable package and then a chain of "depends on
+ * a vulnerable X" edges; the question that matters is which of this project's
+ * own dependencies sit at the top of those chains, because that is what decides
+ * whether the code can run at all.
+ */
 export function blockingAdvisories(report) {
+  const entries = report.vulnerabilities ?? {};
   const found = new Map();
-  for (const [name, entry] of Object.entries(report.vulnerabilities ?? {})) {
+  const carriers = new Map(); // advisory id -> Set of package names carrying it
+
+  for (const [name, entry] of Object.entries(entries)) {
     for (const via of entry.via ?? []) {
-      // A string `via` is a transitive edge ("depends on a vulnerable X"), not
-      // an advisory of its own. Only object entries carry a real advisory.
+      // A string `via` is a transitive edge, not an advisory of its own.
       if (typeof via !== "object" || !BLOCKING.has(via.severity)) continue;
       const id = via.url?.split("/").pop() ?? String(via.source);
-      if (!found.has(id)) found.set(id, { id, title: via.title, package: via.name, affected: new Set() });
+      if (!found.has(id)) found.set(id, { id, title: via.title, package: via.name, affected: new Set(), roots: new Set() });
       found.get(id).affected.add(name);
+      if (!carriers.has(id)) carriers.set(id, new Set());
+      carriers.get(id).add(name);
+    }
+  }
+
+  // Walk each direct dependency's `via` edges down to the packages that carry
+  // the advisory. Depth is bounded by the visited set, so a cycle terminates.
+  const reaches = (start, targets) => {
+    const seen = new Set();
+    const stack = [start];
+    while (stack.length > 0) {
+      const name = stack.pop();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      if (targets.has(name)) return true;
+      for (const via of entries[name]?.via ?? []) {
+        if (typeof via === "string") stack.push(via);
+        else if (via?.name) stack.push(via.name);
+      }
+    }
+    return false;
+  };
+
+  for (const [name, entry] of Object.entries(entries)) {
+    if (!entry.isDirect) continue;
+    for (const [id, targets] of carriers) {
+      if (reaches(name, targets)) found.get(id).roots.add(name);
     }
   }
   return found;
 }
 
 /**
- * The two failure modes, as data: an advisory nobody has looked at, and an
- * acknowledgement that has outlived the advisory it describes.
+ * The failure modes, as data: an advisory nobody has looked at, one that has
+ * appeared through a consumer nobody examined, a tree that moved under an
+ * acceptance, an acceptance past its re-examination date, and one that has
+ * outlived the advisory it describes.
+ *
+ * @param {{ vulnerabilities?: Record<string, any> }} report
+ * @param {{ id: string, package: string, checkedOn: string, reason: string,
+ *           expectedPaths?: string[], recheckAfter?: string }[]} [acknowledgements]
+ * @param {string} [today] ISO date; injected so expiry is testable.
  */
-export function evaluate(report, acknowledgements = ACKNOWLEDGED) {
+export function evaluate(report, acknowledgements = ACKNOWLEDGED, today = new Date().toISOString().slice(0, 10)) {
   const advisories = blockingAdvisories(report);
   const acknowledged = new Map(acknowledgements.map((entry) => [entry.id, entry]));
   const problems = [];
@@ -91,6 +149,30 @@ export function evaluate(report, acknowledgements = ACKNOWLEDGED) {
   for (const [id, advisory] of advisories) {
     const entry = acknowledged.get(id);
     if (entry) {
+      // The acceptance covers a known tree. A root outside it is a consumer
+      // nobody examined, and it may well be one that reaches runtime.
+      const unexpected = [...advisory.roots].filter((root) => !(entry.expectedPaths ?? []).includes(root));
+      if (unexpected.length > 0) {
+        problems.push(
+          `UNEXPECTED PATH ${id} (${entry.package}) now reaches through: ${unexpected.sort().join(", ")}\n` +
+            `  Examined roots: ${(entry.expectedPaths ?? []).join(", ") || "(none)"}.\n` +
+            `  Prove this consumer cannot reach runtime, or fix the advisory.`,
+        );
+      }
+      const missing = (entry.expectedPaths ?? []).filter((root) => !advisory.roots.has(root));
+      if (missing.length > 0) {
+        problems.push(
+          `TREE CHANGED ${id} (${entry.package}) no longer reaches through: ${missing.sort().join(", ")}\n` +
+            `  The dependency tree moved under the acceptance. Re-examine and update expectedPaths.`,
+        );
+      }
+      if (entry.recheckAfter && today >= entry.recheckAfter) {
+        problems.push(
+          `EXPIRED ${id} (${entry.package}) was due for re-examination on ${entry.recheckAfter}.\n` +
+            `  Check upstream for a compatible fix and re-prove it cannot reach runtime,\n` +
+            `  then move checkedOn and recheckAfter forward.`,
+        );
+      }
       accepted.push(entry);
       continue;
     }

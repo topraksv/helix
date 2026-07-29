@@ -55,10 +55,6 @@ supabase/.temp/
 /.agents/
 /.claude/
 /.ai/
+/docs/
 /AGENTS.md
 /CLAUDE.md
-
-# README is the only tracked Markdown. Every other note is either local agent
-# state (above) or belonged to a docs set that went stale faster than the code.
-*.md
-!README.md

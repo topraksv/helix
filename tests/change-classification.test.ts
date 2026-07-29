@@ -71,3 +71,51 @@ describe("change classification", () => {
     expect(classify(["src/i18n/tr.ts", "src/domain/money.ts"]).full_e2e).toBe(true);
   });
 });
+
+describe("web build gating", () => {
+  const cases: [string, string[], Partial<Record<string, boolean>>][] = [
+    ["README or local AI file", ["README.md", "AGENTS.md"], { run_ci: false, run_web_build: false, deploy_web: false, deploy_mobile: false }],
+    ["unit test only", ["tests/balance.test.ts"], { run_ci: true, run_web_build: false, deploy_web: false, deploy_mobile: false }],
+    ["E2E test only", ["e2e/core-flow.spec.ts"], { run_ci: true, run_web_build: false, deploy_web: false, deploy_mobile: false }],
+    ["advisory script", ["scripts/check-advisories.mjs"], { run_ci: true, full_e2e: true, run_web_build: false, deploy_web: false, deploy_mobile: false }],
+    ["classifier test", ["tests/change-classification.test.ts"], { run_ci: true, run_web_build: false, deploy_web: false }],
+    ["release-config test", ["tests/release-config.test.ts"], { run_ci: true, run_web_build: false, deploy_web: false }],
+    ["workflow contract", [".github/workflows/ci.yml"], { run_ci: true, full_e2e: true, run_web_build: false, deploy_web: false, deploy_mobile: false }],
+    ["leaf screen UI", ["src/app/upcoming.tsx"], { run_ci: true, full_e2e: false, run_web_build: true, deploy_web: true, deploy_mobile: true }],
+    ["shared UI primitive", ["src/ui/components.tsx"], { run_ci: true, full_e2e: true, run_web_build: true, deploy_web: true, deploy_mobile: true }],
+    ["metro config", ["metro.config.js"], { run_ci: true, full_e2e: true, run_web_build: true, deploy_web: true }],
+    ["babel config", ["babel.config.js"], { run_ci: true, full_e2e: true, run_web_build: true }],
+    ["app.json", ["app.json"], { run_ci: true, full_e2e: true, run_web_build: true, deploy_web: true, deploy_mobile: true }],
+    ["bundle budget script", ["scripts/check-web-budget.mjs"], { run_ci: true, full_e2e: true, run_web_build: true }],
+    ["unknown file", ["some/new/thing.ts"], { run_ci: true, full_e2e: true, run_web_build: true, deploy_web: true }],
+  ];
+
+  for (const [name, files, expected] of cases) {
+    it(`classifies ${name}`, () => {
+      expect(classify(files), files.join(", ")).toMatchObject(expected);
+    });
+  }
+
+  it("never deploys the web app without building it first", () => {
+    // Deploying without a build in the same run would publish whatever the
+    // previous run left in the Pages artifact.
+    const samples = [
+      [], ["README.md"], ["tests/a.test.ts"], ["e2e/a.spec.ts"], [".github/workflows/ci.yml"],
+      ["src/app/upcoming.tsx"], ["src/ui/components.tsx"], ["metro.config.js"], ["eas.json"],
+      [".nvmrc"], ["package-lock.json"], ["some/new/thing.ts"], ["src/domain/money.ts"],
+      ["assets/screenshots/a.png"], ["public/manifest.json"], ["supabase/migrations/x.sql"],
+    ];
+    for (const files of samples) {
+      const result = classify(files);
+      if (result.deploy_web) expect(result.run_web_build, files.join(", ") || "empty").toBe(true);
+    }
+  });
+
+  it("sends an EAS or native config change to the phone but not to the web build", () => {
+    // `.nvmrc` and `eas.json` decide how the binary is produced; they change
+    // nothing the browser downloads.
+    for (const file of ["eas.json", ".nvmrc"]) {
+      expect(classify([file]), file).toMatchObject({ deploy_mobile: true, run_web_build: false, deploy_web: false });
+    }
+  });
+});
