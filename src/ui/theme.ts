@@ -337,21 +337,6 @@ export type PaletteId = "clay" | "ocean" | "forest";
 export const DEFAULT_PALETTE_ID: PaletteId = "clay";
 export const PALETTE_IDS = ["clay", "ocean", "forest"] as const satisfies readonly PaletteId[];
 
-export const PALETTE_META = {
-  clay: {
-    label: "Amber",
-    description: "Keten, pişmiş toprak, zeytin ve eskitilmiş pirinç.",
-  },
-  ocean: {
-    label: "Petrol",
-    description: "Mineral nötrleri, petrol mavisi ve soluk mercan.",
-  },
-  forest: {
-    label: "Servi",
-    description: "Sıcak nötrler, koyu servi, pirinç ve yaban eriği.",
-  },
-} as const satisfies Record<PaletteId, { label: string; description: string }>;
-
 export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
   clay: { light: amberLight, dark: amberDark },
   ocean: { light: petrolLight, dark: petrolDark },
@@ -369,10 +354,6 @@ export function isPaletteId(value: string | null): value is PaletteId {
 /** Eski veya bozuk tercihler güvenli biçimde varsayılan palete döner. */
 export function resolvePaletteId(value: string | null): PaletteId {
   return isPaletteId(value) ? value : DEFAULT_PALETTE_ID;
-}
-
-export function resolvePalette(paletteId: PaletteId, scheme: "light" | "dark"): Palette {
-  return PALETTES[paletteId][scheme];
 }
 
 /** @deprecated Yeni kodda `palette.scrim` kullan. */

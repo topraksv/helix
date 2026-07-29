@@ -411,8 +411,10 @@ describe("semantic theme contrast", () => {
   });
 
   it("keeps the badge colour deterministic per name", () => {
-    expect(initialsBadgeColor("Netflix")).toBe(initialsBadgeColor("Netflix"));
-    expect(initialsBadgeColor("Netflix")).not.toBe(initialsBadgeColor("Spotify"));
+    expect(badgeHue("Netflix")).toBe(10);
+    expect(initialsBadgeColor("Netflix")).toBe("#a75444");
+    expect(badgeHue("Spotify")).toBe(90);
+    expect(initialsBadgeColor("Spotify")).toBe("#557b30");
   });
 });
 
