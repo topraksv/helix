@@ -4,15 +4,14 @@
  */
 
 import React, { useState } from "react";
-import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
-import { Snowflake } from "lucide-react-native";
+import { KeyRound, Mail, RotateCcw, Snowflake } from "lucide-react-native";
 import { useSession } from "../auth/session";
 import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
-import { Body, Button, Card, Field, Heading, Row, Screen, WaitingText } from "../ui/components";
+import { Body, Button, Card, Field, PanelHeader, Row, Screen, WaitingText } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -21,6 +20,7 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
+import { WorkspaceGrid } from "../ui/workspace-layout";
 
 export default function AccountSecurityScreen() {
   // Account freeze promises a cloud-confirmed write followed by sign-out. A
@@ -182,9 +182,10 @@ function CloudAccountSecurityScreen() {
     });
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
+      <WorkspaceGrid testID="account-security-grid">
       <Card>
-        <Heading style={{ marginTop: 0 }}>{tr.account.changeEmail}</Heading>
+        <PanelHeader icon={Mail} title={tr.account.changeEmail} description={tr.account.changeEmailSectionHint} />
         {email ? <Body muted style={{ marginBottom: spacing.md }}>{tr.account.currentEmail(email)}</Body> : null}
         <Field
           label={tr.account.newEmail}
@@ -209,10 +210,8 @@ function CloudAccountSecurityScreen() {
         <Body muted style={{ fontSize: 12, marginTop: spacing.sm }}>{tr.account.emailChangeHint}</Body>
       </Card>
 
-      <View style={{ height: spacing.md }} />
-
       <Card>
-        <Heading style={{ marginTop: 0 }}>{tr.account.changePassword}</Heading>
+        <PanelHeader icon={KeyRound} title={tr.account.changePassword} description={tr.account.changePasswordSectionHint} />
         <Field
           label={tr.account.currentPassword}
           value={currentPassword}
@@ -240,11 +239,8 @@ function CloudAccountSecurityScreen() {
         />
       </Card>
 
-      <View style={{ height: spacing.md }} />
-
       <Card>
-        <Heading style={{ marginTop: 0 }}>{tr.auth.forgotPassword}</Heading>
-        <Body muted style={{ marginBottom: spacing.md }}>{tr.account.resetLinkHint}</Body>
+        <PanelHeader icon={RotateCcw} title={tr.auth.forgotPassword} description={tr.account.resetLinkHint} />
         <Button
           label={tr.auth.sendResetLink}
           variant="secondary"
@@ -254,11 +250,8 @@ function CloudAccountSecurityScreen() {
         />
       </Card>
 
-      <View style={{ height: spacing.md }} />
-
       <Card>
-        <Heading style={{ marginTop: 0 }}>{tr.account.freeze}</Heading>
-        <Body muted style={{ marginBottom: spacing.md }}>{tr.account.freezeDesc}</Body>
+        <PanelHeader icon={Snowflake} title={tr.account.freeze} description={tr.account.freezeDesc} />
         <Button
           icon={Snowflake}
           label={freezePhase ? tr.operation.freezePhase[freezePhase] : tr.account.freeze}
@@ -273,6 +266,7 @@ function CloudAccountSecurityScreen() {
           </Row>
         ) : null}
       </Card>
+      </WorkspaceGrid>
     </Screen>
   );
 }

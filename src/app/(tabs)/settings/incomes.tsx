@@ -6,21 +6,22 @@
  */
 
 import React, { useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Banknote } from "lucide-react-native";
 import { useCategoriesState, usePersonsState, useRecurringIncomesState, useUserId } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
-import { tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, Label, ManagementHeader, MoneyField, Row, Screen, Segmented, Select } from "../../../ui/components";
+import { shortDateLabel, tr } from "../../../i18n/tr";
+import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select } from "../../../ui/components";
 import { categoryIcon } from "../../../data/category-icons";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
-import { spacing } from "../../../ui/theme";
+import { font, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
-import { isMonthDay, todayISO } from "../../../domain/dates";
+import { WorkspaceSplit } from "../../../ui/workspace-layout";
+import { addDaysISO, addMonthsToKey, clampDayToMonth, isISODate, isMonthDay, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../../domain/dates";
 import { DateField } from "../../../ui/calendar";
 import { MonthDayField } from "../../../ui/month-day-field";
 import { appAlert } from "../../../ui/dialog";
@@ -29,6 +30,80 @@ type IncomeKind = "salary" | "rent" | "allowance" | "other";
 type IncomeRecurrence = "monthly" | "weekly" | "biweekly";
 const KINDS: IncomeKind[] = ["salary", "rent", "allowance", "other"];
 const QUICK_DAYS = [1, 5, 10, 15, 25, 28] as const;
+
+function firstIntervalDate(anchorDate: ISODate, intervalDays: number, today: ISODate): ISODate {
+  const safeAnchor = isISODate(anchorDate) ? anchorDate : today;
+  if (safeAnchor >= today) return safeAnchor;
+  const elapsedDays = Math.floor(
+    (Date.parse(`${today}T12:00:00Z`) - Date.parse(`${safeAnchor}T12:00:00Z`)) / 86_400_000,
+  );
+  return addDaysISO(safeAnchor, Math.ceil(elapsedDays / intervalDays) * intervalDays);
+}
+
+function IncomeCadence({
+  recurrence,
+  payDay,
+  anchorDate,
+}: {
+  recurrence: IncomeRecurrence;
+  payDay: number;
+  anchorDate: ISODate;
+}) {
+  const { palette } = useTheme();
+  const today = todayISO();
+  const description = recurrence === "monthly"
+    ? tr.incomes.everyMonth(payDay)
+    : tr.incomes.everyInterval(recurrence);
+  const dates = recurrence === "monthly"
+    ? (() => {
+        const thisMonth = monthKeyOf(today);
+        const thisMonthDate = clampDayToMonth(yearOf(thisMonth), monthOf(thisMonth), payDay);
+        const firstMonth = thisMonthDate >= today ? thisMonth : addMonthsToKey(thisMonth, 1);
+        return Array.from({ length: 4 }, (_, index) => {
+          const month = addMonthsToKey(firstMonth, index);
+          return clampDayToMonth(yearOf(month), monthOf(month), payDay);
+        });
+      })()
+    : (() => {
+        const intervalDays = recurrence === "weekly" ? 7 : 14;
+        const first = firstIntervalDate(anchorDate, intervalDays, today);
+        return Array.from({ length: 4 }, (_, index) => addDaysISO(first, index * intervalDays));
+      })();
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={tr.incomes.cadenceA11y(`${description}: ${dates.map(shortDateLabel).join(", ")}`)}
+      style={{ marginBottom: spacing.lg }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        {dates.map((date, index) => (
+          <React.Fragment key={`${recurrence}-${date}`}>
+            {index > 0 ? (
+              <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border }} />
+            ) : null}
+            <FadeIn
+              delay={index * 38}
+              style={{
+                width: 48,
+                height: 32,
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: index === 0 ? palette.positive + "14" : palette.surfaceAlt,
+              }}
+            >
+              <Text style={[type.small, { color: index === 0 ? palette.positiveText : palette.text, fontFamily: font.bold, fontSize: 10 }]}>
+                {shortDateLabel(date).replace(/ \d{4}$/, "")}
+              </Text>
+            </FadeIn>
+          </React.Fragment>
+        ))}
+      </View>
+      <Body muted style={{ fontSize: 11, textAlign: "center", marginTop: spacing.sm }}>{description}</Body>
+    </View>
+  );
+}
 
 export default function IncomeRulesScreen() {
   const userId = useUserId();
@@ -191,15 +266,21 @@ export default function IncomeRulesScreen() {
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Card>
-        <ManagementHeader
+      <WorkspaceSplit
+        testID="incomes-workspace"
+        primary={(
+          <Card>
+        <PanelHeader
           icon={Banknote}
           title={editingId ? tr.incomes.editTitle : tr.incomes.formTitle}
-          description={tr.incomes.intro}
-          status={editingId ? tr.common.editing : tr.common.new}
-          statusTone={editingId ? "warning" : "primary"}
+          description={tr.incomes.formHint}
+        />
+        <IncomeCadence
+          recurrence={recurrence}
+          payDay={dayValid ? payDay : 15}
+          anchorDate={anchorDate}
         />
         <Label>{tr.incomes.kindLabel}</Label>
         <Segmented options={KINDS.map((k) => ({ value: k, label: tr.incomeKinds[k] }))} value={kind} onChange={setKind} />
@@ -255,9 +336,6 @@ export default function IncomeRulesScreen() {
             onChange={setCategoryChoice}
           />
         ) : null}
-        <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>
-          {recurrence === "monthly" ? tr.incomes.behaviorHint(dayValid ? payDay : 15) : tr.incomes.intervalHint(recurrence)}
-        </Body>
         {editingId ? (
           <Row>
             <View style={{ flex: 1 }}>
@@ -268,30 +346,36 @@ export default function IncomeRulesScreen() {
         ) : (
           <Button label={tr.settings.addIncomeRule} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
         )}
-      </Card>
-
-      {incomes.length === 0 ? (
-        <EmptyState icon={Banknote} title={tr.incomes.emptyTitle} hint={tr.incomes.emptyHint} />
-      ) : (
-        <CardList
-          items={incomes}
-          keyExtractor={(r) => r.id}
-          renderItem={(r) => (
-            <RuleRow
-              title={r.name}
-              meta={tr.incomeKinds[r.kind]}
-              badges={[
-                { text: r.recurrence === "monthly" ? tr.incomes.everyMonth(r.payDay) : tr.incomes.everyInterval(r.recurrence) },
-              ]}
-              amountMinor={r.defaultAmountMinor}
-              currency={r.currency}
-              onPress={() => startEdit(r)}
-              onEdit={() => startEdit(r)}
-              onDelete={() => void remove(r)}
-            />
-          )}
-        />
-      )}
+          </Card>
+        )}
+        secondary={(
+          <View>
+            <SectionHeader description={tr.incomes.listHint}>{tr.incomes.listTitle}</SectionHeader>
+            {incomes.length === 0 ? (
+              <EmptyState icon={Banknote} title={tr.incomes.emptyTitle} hint={tr.incomes.emptyHint} />
+            ) : (
+              <CardList
+              items={incomes}
+              keyExtractor={(r) => r.id}
+              renderItem={(r) => (
+                <RuleRow
+                  title={r.name}
+                  meta={tr.incomeKinds[r.kind]}
+                  badges={[
+                    { text: r.recurrence === "monthly" ? tr.incomes.everyMonth(r.payDay) : tr.incomes.everyInterval(r.recurrence) },
+                  ]}
+                  amountMinor={r.defaultAmountMinor}
+                  currency={r.currency}
+                  onPress={() => startEdit(r)}
+                  onEdit={() => startEdit(r)}
+                  onDelete={() => void remove(r)}
+                />
+              )}
+              />
+            )}
+          </View>
+        )}
+      />
     </Screen>
   );
 }

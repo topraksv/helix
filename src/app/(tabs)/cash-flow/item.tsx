@@ -28,6 +28,41 @@ import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Card, DataStateNotice, EmptyState, Screen } from "../../../ui/components";
 import { font, spacing, type, useTheme } from "../../../ui/theme";
 
+function MonthValueBar({
+  value,
+  maxMagnitude,
+}: {
+  value: number | null;
+  maxMagnitude: number;
+}) {
+  const { palette } = useTheme();
+  const ratio = value == null ? 0 : Math.min(1, Math.abs(value) / maxMagnitude);
+  return (
+    <View
+      accessible={false}
+      style={{
+        flex: 1,
+        minWidth: 32,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: palette.surfaceAlt,
+        overflow: "hidden",
+      }}
+    >
+      {ratio > 0 ? (
+        <View
+          style={{
+            width: `${ratio * 100}%` as `${number}%`,
+            height: "100%",
+            borderRadius: 3,
+            backgroundColor: value! < 0 ? palette.negative : palette.primary,
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
 /**
  * `col`, `year` and `kind` are hostile input — the route is directly
  * addressable and Expo Router yields `string[]` for a repeated query key.
@@ -128,6 +163,7 @@ function ItemBreakdown({
   });
 
   const total = rows.reduce((sum, r) => sum + (r.value ?? 0), 0);
+  const maxMagnitude = Math.max(1, ...rows.map((row) => Math.abs(row.value ?? 0)));
 
   if (!dataReady) {
     return (
@@ -139,7 +175,7 @@ function ItemBreakdown({
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={900}>
       <Stack.Screen options={{ title: label ?? tr.cashflow.monthDetail }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       {!bundle ? (
@@ -156,6 +192,7 @@ function ItemBreakdown({
               <Pressable
                 key={r.month}
                 accessibilityRole="button"
+                accessibilityLabel={`${monthLabel(r.month)} · ${r.value == null ? tr.common.none : formatMinor(r.value)}`}
                 onPress={() => router.push(`/cash-flow/${r.month}`)}
                 style={({ pressed }) => ({
                   flexDirection: "row",
@@ -168,15 +205,18 @@ function ItemBreakdown({
                   backgroundColor: isCurrent ? palette.primarySoft + "55" : pressed ? palette.surfaceAlt : "transparent",
                 })}
               >
-                <Text style={[type.body, { color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? font.bold : font.medium }]}>
+                <Text style={[type.body, { width: 88, flexShrink: 0, color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? font.bold : font.medium }]}>
                   {monthLabel(r.month)}
                 </Text>
+                <View style={{ flex: 1, minWidth: 32, marginHorizontal: spacing.sm }}>
+                  <MonthValueBar value={r.value} maxMagnitude={maxMagnitude} />
+                </View>
                 {r.value == null ? (
                   <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
+                ) : r.value === 0 ? (
+                  <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
                 ) : (
-                  <Text style={[type.amountSm, { color: r.value < 0 ? palette.negativeText : r.value === 0 ? palette.textSecondary : palette.text }]}>
-                    {r.value === 0 ? "—" : formatMinor(r.value)}
-                  </Text>
+                  <Amount minor={r.value} colorized={false} color={r.value < 0 ? palette.negativeText : palette.text} style={{ fontSize: 14 }} />
                 )}
               </Pressable>
             );

@@ -8,6 +8,7 @@
 import React, { useState } from "react";
 import { FlatList, ScrollView, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { MessageSquareText, PlusCircle } from "lucide-react-native";
 import { addTransaction, deleteTransaction, restoreTransaction, saveCellNote } from "../data/repo";
 import {
   useCategoriesState,
@@ -26,7 +27,7 @@ import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transac
 import { transactionDateText } from "../ui/transaction-date";
 import { monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Amount, Body, Button, DataStateNotice, EmptyState, Field, MoneyField, Row, Screen, SectionHeader, Spread } from "../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "../ui/components";
 import { TransactionRow } from "../ui/transaction-row";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
@@ -34,6 +35,7 @@ import { spacing, type, useTheme } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { appAlert } from "../ui/dialog";
+import { WorkspaceGrid } from "../ui/workspace-layout";
 
 /**
  * Both params are hostile input: the route is directly addressable (bookmark,
@@ -184,61 +186,62 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
         </ScrollView>
       </Spread>
 
-      {/* Quick entry */}
-      <SectionHeader>{tr.cell.quickEntry}</SectionHeader>
-      <Body muted style={{ marginBottom: spacing.sm, fontSize: 12 }}>
-        {tr.cell.quickEntryHint}
-      </Body>
-      <MoneyField
-        accessibilityLabel={tr.cell.quickEntry}
-        value={entryRaw}
-        onChangeMinor={(raw) => setEntryRaw(raw)}
-        placeholder={useRotatingPlaceholder(placeholderPools.amount)}
-        expression
-      />
-      {entryMinor != null && (entryRaw.includes("+") || entryRaw.includes("-")) ? (
-        <Body muted style={{ marginBottom: spacing.sm }}>
-          = {formatMinor(entryMinor)}
-        </Body>
-      ) : null}
-      <Button
-        label={tr.common.add}
-        onPress={() => void addEntry()}
-        disabled={entryMinor == null || entryMinor === 0}
-        loading={busy}
-      />
-
-      {/* Cell note */}
-      <SectionHeader>{tr.cashflow.cellNote}</SectionHeader>
-      {noteDraft === null ? (
-        <View style={{ marginBottom: spacing.md }}>
-          {note?.body ? (
-            <Text style={[type.body, { color: palette.text, marginBottom: spacing.sm }]}>{note.body}</Text>
-          ) : (
-            <Body muted style={{ marginBottom: spacing.sm }}>
-              {tr.cell.noNote}
-            </Body>
-          )}
-          <Button
-            label={note?.body ? tr.common.edit : tr.cell.addNote}
-            variant="secondary"
-            size="sm"
-            onPress={() => setNoteDraft(note?.body ?? "")}
+      <WorkspaceGrid testID="cell-editor-tools">
+        <Card>
+          <PanelHeader icon={PlusCircle} title={tr.cell.quickEntry} description={tr.cell.quickEntryHint} />
+          <MoneyField
+            accessibilityLabel={tr.cell.quickEntry}
+            value={entryRaw}
+            onChangeMinor={(raw) => setEntryRaw(raw)}
+            placeholder={useRotatingPlaceholder(placeholderPools.amount)}
+            expression
           />
-        </View>
-      ) : (
-        <View style={{ marginBottom: spacing.md }}>
-          <Field accessibilityLabel={tr.common.note} value={noteDraft} onChangeText={setNoteDraft} multiline placeholder={tr.cell.notePlaceholder} />
-          <Row gap={spacing.sm}>
-            <View style={{ flex: 1 }}>
-              <Button label={tr.common.save} size="sm" onPress={() => void saveNote(noteDraft)} loading={busy} disabled={busy} />
-            </View>
-            <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setNoteDraft(null)} />
-          </Row>
-        </View>
-      )}
+          {entryMinor != null && (entryRaw.includes("+") || entryRaw.includes("-")) ? (
+            <Body muted style={{ marginBottom: spacing.sm }}>
+              = {formatMinor(entryMinor)}
+            </Body>
+          ) : null}
+          <Button
+            label={tr.common.add}
+            onPress={() => void addEntry()}
+            disabled={entryMinor == null || entryMinor === 0}
+            loading={busy}
+          />
+        </Card>
 
-      <SectionHeader>{tr.cashflow.cellTransactions}</SectionHeader>
+        <Card>
+          <PanelHeader icon={MessageSquareText} title={tr.cashflow.cellNote} description={tr.cell.noteHint} />
+          {noteDraft === null ? (
+            <View>
+              {note?.body ? (
+                <Text style={[type.body, { color: palette.text, marginBottom: spacing.sm }]}>{note.body}</Text>
+              ) : (
+                <Body muted style={{ marginBottom: spacing.sm }}>
+                  {tr.cell.noNote}
+                </Body>
+              )}
+              <Button
+                label={note?.body ? tr.common.edit : tr.cell.addNote}
+                variant="secondary"
+                size="sm"
+                onPress={() => setNoteDraft(note?.body ?? "")}
+              />
+            </View>
+          ) : (
+            <View>
+              <Field accessibilityLabel={tr.common.note} value={noteDraft} onChangeText={setNoteDraft} multiline placeholder={tr.cell.notePlaceholder} />
+              <Row gap={spacing.sm}>
+                <View style={{ flex: 1 }}>
+                  <Button label={tr.common.save} size="sm" onPress={() => void saveNote(noteDraft)} loading={busy} disabled={busy} />
+                </View>
+                <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => setNoteDraft(null)} />
+              </Row>
+            </View>
+          )}
+        </Card>
+      </WorkspaceGrid>
+
+      <SectionHeader description={tr.cell.transactionsHint}>{tr.cashflow.cellTransactions}</SectionHeader>
     </View>
   );
 
@@ -252,7 +255,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} maxWidth={1100}>
       <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(rangeMonth)}` }} />
       <FlatList
         data={cellTx}

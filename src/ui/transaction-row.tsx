@@ -51,8 +51,8 @@ export function TransactionRow({
         </View>
         <Row gap={spacing.sm}>
           <Amount minor={amountMinor} />
-          <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={onEdit} />
-          <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={onDelete} />
+          <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${dateText}`} onPress={onEdit} />
+          <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${dateText}`} haptic="none" onPress={onDelete} />
         </Row>
       </Spread>
       {divider ? <Divider /> : null}

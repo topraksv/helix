@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ChevronDown, ChevronUp, Inbox } from "lucide-react-native";
+import { ArrowRight, ChevronDown, ChevronUp, Inbox } from "lucide-react-native";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
 import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
@@ -28,7 +28,7 @@ import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Body, Button, Card, DataStateNotice, Divider, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
@@ -46,6 +46,102 @@ type MonthListItem =
   | { kind: "group-header"; categoryId: string; category: Categories[number] | undefined; txs: MonthTransactions; open: boolean }
   | { kind: "tx"; categoryId: string; category: Categories[number] | undefined; tx: MonthTransactions[number]; last: boolean }
   | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
+
+function MonthFlowSummary({
+  flows,
+}: {
+  flows: ReturnType<typeof monthFlowTotals>;
+}) {
+  const { palette } = useTheme();
+  const deltas = [
+    {
+      key: "income",
+      label: tr.cashflow.income,
+      minor: flows.incomeMinor,
+      color: palette.positiveText,
+      backgroundColor: palette.positive + "14",
+    },
+    {
+      key: "expense",
+      label: tr.cashflow.expense,
+      minor: -flows.expenseMinor,
+      color: palette.negativeText,
+      backgroundColor: palette.negative + "14",
+    },
+    ...(flows.transferMinor !== 0
+      ? [{
+          key: "transfer",
+          label: tr.cashflow.transfer,
+          minor: -flows.transferMinor,
+          color: palette.text,
+          backgroundColor: palette.surfaceAlt,
+        }]
+      : []),
+    ...(flows.adjustmentMinor !== 0
+      ? [{
+          key: "adjustment",
+          label: tr.cashflow.adjustment,
+          minor: flows.adjustmentMinor,
+          color: flows.adjustmentMinor < 0 ? palette.negativeText : palette.positiveText,
+          backgroundColor: palette.surfaceAlt,
+        }]
+      : []),
+  ];
+  return (
+    <Card>
+      <View
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={[
+          `${tr.cashflow.opening}: ${formatMinor(flows.openingMinor)}`,
+          ...deltas.map((delta) => `${delta.label}: ${formatMinor(delta.minor)}`),
+          `${tr.cashflow.closing}: ${formatMinor(flows.closingMinor)}`,
+        ].join(". ")}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Body muted style={{ fontSize: 11, marginBottom: spacing.xs }}>{tr.cashflow.opening}</Body>
+            <Amount minor={flows.openingMinor} colorized={false} style={{ textAlign: "left" }} />
+          </View>
+          <View style={{ width: 52, alignItems: "center" }}>
+            <View style={{ position: "absolute", left: 0, right: 0, top: 8, height: 1, backgroundColor: palette.border }} />
+            <ArrowRight accessible={false} size={17} color={palette.primary} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
+            <Body muted style={{ fontSize: 11, marginBottom: spacing.xs, textAlign: "right" }}>{tr.cashflow.closing}</Body>
+            <Amount minor={flows.closingMinor} large style={{ textAlign: "right" }} />
+          </View>
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: spacing.sm,
+            marginTop: spacing.lg,
+          }}
+        >
+          {deltas.map((delta) => (
+            <View
+              key={delta.key}
+              style={{
+                flexBasis: "42%",
+                flexGrow: 1,
+                minWidth: 120,
+                borderRadius: radius.md,
+                backgroundColor: delta.backgroundColor,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+              }}
+            >
+              <Body muted style={{ fontSize: 10, marginBottom: 2 }}>{delta.label}</Body>
+              <Amount minor={delta.minor} colorized={false} color={delta.color} style={{ fontSize: 13, textAlign: "left" }} />
+            </View>
+          ))}
+        </View>
+      </View>
+    </Card>
+  );
+}
 
 export default function MonthDetailScreen() {
   /**
@@ -152,39 +248,7 @@ export default function MonthDetailScreen() {
         // so the card is built from the same set — a future month showed a
         // carried balance above three zeros while its own list had entries.
         const flows = monthFlowTotals(ledgerMonth);
-        return (
-          <Card>
-            <Spread>
-              <Body muted>{tr.cashflow.opening}</Body>
-              <Amount minor={flows.openingMinor} />
-            </Spread>
-            <Spread style={{ marginTop: spacing.xs }}>
-              <Body muted>{tr.cashflow.income}</Body>
-              <Amount minor={flows.incomeMinor} colorized={false} color={palette.positiveText} />
-            </Spread>
-            <Spread style={{ marginTop: spacing.xs }}>
-              <Body muted>{tr.cashflow.expense}</Body>
-              <Amount minor={-flows.expenseMinor} />
-            </Spread>
-            {flows.transferMinor !== 0 ? (
-              <Spread style={{ marginTop: spacing.xs }}>
-                <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.transfer}</Body>
-                <Amount minor={-flows.transferMinor} />
-              </Spread>
-            ) : null}
-            {flows.adjustmentMinor !== 0 ? (
-              <Spread style={{ marginTop: spacing.xs }}>
-                <Body muted style={{ flex: 1, paddingRight: spacing.sm }}>{tr.cashflow.adjustment}</Body>
-                <Amount minor={flows.adjustmentMinor} />
-              </Spread>
-            ) : null}
-            <Divider />
-            <Spread>
-              <Heading style={{ marginVertical: 0 }}>{tr.cashflow.closing}</Heading>
-              <Amount minor={flows.closingMinor} large />
-            </Spread>
-          </Card>
-        );
+        return <MonthFlowSummary flows={flows} />;
       }
       case "empty":
         return <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />;
@@ -305,11 +369,15 @@ export default function MonthDetailScreen() {
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} maxWidth={900}>
       <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
       <FlatList
         data={items}
-        ListHeaderComponent={<DataStateNotice status={dataStatus} retry={retryData} />}
+        ListHeaderComponent={(
+          <View>
+            <DataStateNotice status={dataStatus} retry={retryData} />
+          </View>
+        )}
         keyExtractor={(item) =>
           item.kind === "summary" || item.kind === "empty"
             ? item.kind

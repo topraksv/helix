@@ -1,6 +1,6 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
-import React, { useState } from "react";
+import React, { useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
@@ -29,6 +29,7 @@ import {
   Sun,
   Users,
   Wallet,
+  type LucideIcon,
 } from "lucide-react-native";
 import { SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
 import { useSettingsMapState, settingValue, useUserId } from "../../../data/hooks";
@@ -229,6 +230,53 @@ function PaletteChoice({
   );
 }
 
+type SettingsDestination = {
+  icon: LucideIcon;
+  title: string;
+  subtitle: ReactNode;
+  onPress: () => void;
+};
+
+function SettingsDestinationGrid({
+  items,
+  twoColumns,
+  testID,
+}: {
+  items: SettingsDestination[];
+  twoColumns: boolean;
+  testID: string;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+        columnGap: spacing.xl,
+      }}
+    >
+      {items.map(({ icon, title, subtitle, onPress }) => (
+        <View
+          key={title}
+          testID={testID}
+          style={{
+            flexBasis: twoColumns ? "45%" : "100%",
+            flexGrow: 1,
+            minWidth: 0,
+          }}
+        >
+          <ListRow
+            icon={icon}
+            title={title}
+            subtitle={subtitle}
+            chevron
+            onPress={onPress}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const userId = useUserId();
   const { signOut, deleteAccount, verifyPassword } = useSession();
@@ -426,6 +474,14 @@ export default function SettingsScreen() {
 
   const syncStateColor =
     sync.state === "idle" ? palette.success : sync.state === "error" ? palette.error : palette.warning;
+  const workspaceDestinations: SettingsDestination[] = [
+    { icon: Columns3, title: tr.settings.categories, subtitle: tr.settings.categoriesDesc, onPress: () => router.push("/settings/categories") },
+    { icon: Calculator, title: tr.settings.computed, subtitle: tr.settings.computedDesc, onPress: () => router.push("/settings/computed-columns") },
+    { icon: Wallet, title: tr.settings.sources, subtitle: tr.settings.sourcesDesc, onPress: () => router.push("/settings/payment-sources") },
+    { icon: Users, title: tr.settings.persons, subtitle: tr.settings.personsDesc, onPress: () => router.push("/settings/persons") },
+    { icon: Banknote, title: tr.settings.incomeRules, subtitle: tr.settings.incomeRulesDesc, onPress: () => router.push("/settings/incomes") },
+    { icon: Target, title: tr.budgets.title, subtitle: tr.budgets.settingsDesc, onPress: () => router.push("/settings/budgets" as Href) },
+  ];
 
   return (
     <Screen title={tr.settings.title} maxWidth={920}>
@@ -437,12 +493,11 @@ export default function SettingsScreen() {
 
       <SectionHeader>{tr.settings.workspaceSection}</SectionHeader>
       <Card>
-        <ListRow icon={Columns3} title={tr.settings.categories} subtitle={tr.settings.categoriesDesc} chevron onPress={() => router.push("/settings/categories")} />
-        <ListRow icon={Calculator} title={tr.settings.computed} subtitle={tr.settings.computedDesc} chevron onPress={() => router.push("/settings/computed-columns")} />
-        <ListRow icon={Wallet} title={tr.settings.sources} subtitle={tr.settings.sourcesDesc} chevron onPress={() => router.push("/settings/payment-sources")} />
-        <ListRow icon={Users} title={tr.settings.persons} subtitle={tr.settings.personsDesc} chevron onPress={() => router.push("/settings/persons")} />
-        <ListRow icon={Banknote} title={tr.settings.incomeRules} subtitle={tr.settings.incomeRulesDesc} chevron onPress={() => router.push("/settings/incomes")} />
-        <ListRow icon={Target} title={tr.budgets.title} subtitle={tr.budgets.settingsDesc} chevron onPress={() => router.push("/settings/budgets" as Href)} />
+        <SettingsDestinationGrid
+          items={workspaceDestinations}
+          twoColumns={width >= 700}
+          testID="settings-workspace-link"
+        />
       </Card>
 
       <SectionHeader>{tr.settings.appSection}</SectionHeader>

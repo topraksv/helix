@@ -1,28 +1,80 @@
 /** New / edit installment plan or loan (also supports mid-progress "4/6 paid" entry). */
 
 import React, { useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
 import { useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
-import { addMonthsToKey, monthKeyOf, todayISO } from "../domain/dates";
+import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
-import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react-native";
-import { Body, Button, ChipPicker, DataStateNotice, Field, Heading, IconButton, Label, MoneyField, Row, Screen, Segmented, Select, Spread } from "../ui/components";
+import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Trash2 } from "lucide-react-native";
+import { Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MoneyField, PanelHeader, Row, Screen, Segmented, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { scheduleSync } from "../sync/engine";
-import { spacing } from "../ui/theme";
+import { font, spacing, type, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { WorkspaceSplit } from "../ui/workspace-layout";
+
+function InstallmentTimeline({ count, startMonth }: { count: number; startMonth: MonthKey }) {
+  const { palette } = useTheme();
+  const safeCount = Number.isInteger(count) && count > 0 ? count : 1;
+  const visibleCount = Math.min(safeCount, 6);
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={tr.installments.timelineA11y(safeCount, monthLabel(startMonth))}
+      style={{ marginBottom: spacing.lg }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+        {Array.from({ length: visibleCount }, (_, index) => {
+          const month = addMonthsToKey(startMonth, index);
+          return (
+            <React.Fragment key={`${month}-${safeCount}`}>
+              {index > 0 ? (
+                <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginTop: 16 }} />
+              ) : null}
+              <FadeIn delay={index * 45} style={{ alignItems: "center", width: 38 }}>
+                <View
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: index === 0 ? palette.primary : palette.surfaceAlt,
+                  }}
+                >
+                  <Text style={[type.small, { color: index === 0 ? palette.onPrimary : palette.text, fontFamily: font.bold, fontSize: 10 }]}>
+                    {index + 1}
+                  </Text>
+                </View>
+                <Text style={[type.small, { color: palette.textSecondary, fontSize: 9, marginTop: 3 }]}>
+                  {monthLabel(month).slice(0, 3)}
+                </Text>
+              </FadeIn>
+            </React.Fragment>
+          );
+        })}
+      </View>
+      {safeCount > visibleCount ? (
+        <Body muted style={{ fontSize: 11, marginTop: spacing.xs, textAlign: "right" }}>
+          {tr.installments.timelineMore(safeCount - visibleCount)}
+        </Body>
+      ) : null}
+    </View>
+  );
+}
 
 export default function PlanModal() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -192,97 +244,112 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <Stack.Screen options={{ title: isEdit ? tr.installments.editTitle : tr.installments.newTitle }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
-      {isEdit ? <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.installments.editHint}</Body> : null}
-      <Segmented
-        options={[
-          { value: "card_installment", label: tr.installments.plan },
-          { value: "loan", label: tr.installments.loan },
-        ]}
-        value={kind}
-        onChange={setKind}
+      <WorkspaceSplit
+        testID="installment-form-workspace"
+        primary={(
+          <Card>
+            <PanelHeader
+              icon={CreditCard}
+              title={tr.installments.planDetails}
+              description={isEdit ? tr.installments.editHint : tr.installments.planDetailsHint}
+            />
+            <InstallmentTimeline count={count} startMonth={resolvedStart} />
+            <Segmented
+              options={[
+                { value: "card_installment", label: tr.installments.plan },
+                { value: "loan", label: tr.installments.loan },
+              ]}
+              value={kind}
+              onChange={setKind}
+            />
+            <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={titlePlaceholder} />
+            <MoneyField
+              label={kind === "card_installment" ? tr.installments.totalAmount : tr.installments.monthlyAmount}
+              value={amountRaw}
+              onChangeMinor={(raw, minor) => {
+                setAmountRaw(raw);
+                setAmountMinor(minor);
+              }}
+            />
+            <Row>
+              <View style={{ flex: 1 }}>
+                <Field label={tr.installments.count} value={countStr} onChangeText={setCountStr} keyboardType="number-pad" />
+              </View>
+              {!isEdit ? (
+                <View style={{ flex: 1 }}>
+                  <Field label={tr.tx.alreadyPaid} value={paidStr} onChangeText={setPaidStr} keyboardType="number-pad" />
+                </View>
+              ) : null}
+            </Row>
+            {valid && amountMinor ? (
+              <Body muted>
+                {kind === "card_installment"
+                  ? tr.tx.installmentInfo(formatMinor(Math.trunc(amountMinor / count)), count)
+                  : tr.tx.installmentInfo(formatMinor(amountMinor), count)}
+              </Body>
+            ) : null}
+          </Card>
+        )}
+        secondary={(
+          <Card>
+            <PanelHeader icon={CalendarRange} title={tr.installments.scheduleAndAssignment} description={tr.installments.scheduleAndAssignmentHint} />
+            {!isEdit && paid > 0 ? (
+              <Body muted style={{ marginBottom: spacing.md }}>
+                {tr.installments.progress(paid, count)} → {tr.installments.startMonth}: {monthLabel(resolvedStart)}
+              </Body>
+            ) : (
+              <>
+                <Label>{tr.installments.startMonth}</Label>
+                <Spread style={{ marginBottom: spacing.md }}>
+                  <IconButton icon={ChevronLeft} label={tr.installments.startMonth} onPress={() => { setUsePaidDerive(false); setStartMonth(addMonthsToKey(startMonth, -1)); }} />
+                  <Heading>{monthLabel(startMonth)}</Heading>
+                  <IconButton icon={ChevronRight} label={tr.installments.startMonth} onPress={() => { setUsePaidDerive(false); setStartMonth(addMonthsToKey(startMonth, 1)); }} />
+                </Spread>
+              </>
+            )}
+
+            {sources.length > 0 ? (
+              <>
+                <Select
+                  label={tr.tx.source}
+                  placeholder={tr.tx.sourcePlaceholder}
+                  options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
+                  value={sourceId}
+                  onChange={setSourceId}
+                  onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
+                />
+                {kind === "card_installment" && !cardSourceValid ? (
+                  <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
+                ) : null}
+              </>
+            ) : null}
+            {persons.length > 1 ? (
+              <>
+                <Label>{tr.tx.person}</Label>
+                <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
+              </>
+            ) : null}
+            <Select
+              label={tr.tx.category}
+              placeholder={tr.tx.categoryPlaceholder}
+              options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))}
+              value={categoryId}
+              onChange={setCategoryId}
+              onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
+            />
+
+            <Button label={tr.common.save} onPress={() => void save()} disabled={!valid} loading={busy} />
+            {isEdit ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Button icon={Trash2} label={tr.installments.delete} variant="danger" onPress={confirmDelete} />
+              </View>
+            ) : null}
+          </Card>
+        )}
       />
-      <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={titlePlaceholder} />
-      <MoneyField
-        label={kind === "card_installment" ? tr.installments.totalAmount : tr.installments.monthlyAmount}
-        value={amountRaw}
-        onChangeMinor={(raw, minor) => {
-          setAmountRaw(raw);
-          setAmountMinor(minor);
-        }}
-      />
-      <Row>
-        <View style={{ flex: 1 }}>
-          <Field label={tr.installments.count} value={countStr} onChangeText={setCountStr} keyboardType="number-pad" />
-        </View>
-        {!isEdit ? (
-          <View style={{ flex: 1 }}>
-            <Field label={tr.tx.alreadyPaid} value={paidStr} onChangeText={setPaidStr} keyboardType="number-pad" />
-          </View>
-        ) : null}
-      </Row>
-
-      {!isEdit && paid > 0 ? (
-        <Body muted style={{ marginBottom: spacing.md }}>
-          {tr.installments.progress(paid, count)} → {tr.installments.startMonth}: {monthLabel(resolvedStart)}
-        </Body>
-      ) : (
-        <>
-          <Label>{tr.installments.startMonth}</Label>
-          <Spread style={{ marginBottom: spacing.md }}>
-            <IconButton icon={ChevronLeft} label={tr.installments.startMonth} onPress={() => { setUsePaidDerive(false); setStartMonth(addMonthsToKey(startMonth, -1)); }} />
-            <Heading>{monthLabel(startMonth)}</Heading>
-            <IconButton icon={ChevronRight} label={tr.installments.startMonth} onPress={() => { setUsePaidDerive(false); setStartMonth(addMonthsToKey(startMonth, 1)); }} />
-          </Spread>
-        </>
-      )}
-
-      {sources.length > 0 ? (
-        <>
-          <Select
-            label={tr.tx.source}
-            placeholder={tr.tx.sourcePlaceholder}
-            options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
-            value={sourceId}
-            onChange={setSourceId}
-            onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
-          />
-          {kind === "card_installment" && !cardSourceValid ? (
-            <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-          ) : null}
-        </>
-      ) : null}
-      {persons.length > 1 ? (
-        <>
-          <Label>{tr.tx.person}</Label>
-          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
-        </>
-      ) : null}
-      <Select
-        label={tr.tx.category}
-        placeholder={tr.tx.categoryPlaceholder}
-        options={categories.filter((c) => c.kind === "expense").map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }))}
-        value={categoryId}
-        onChange={setCategoryId}
-        onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
-      />
-
-      {valid && amountMinor ? (
-        <Body muted style={{ marginBottom: spacing.md }}>
-          {kind === "card_installment"
-            ? tr.tx.installmentInfo(formatMinor(Math.trunc(amountMinor / count)), count)
-            : tr.tx.installmentInfo(formatMinor(amountMinor), count)}
-        </Body>
-      ) : null}
-
-      <Button label={tr.common.save} onPress={() => void save()} disabled={!valid} loading={busy} />
-      {isEdit ? (
-        <View style={{ marginTop: spacing.md }}>
-          <Button icon={Trash2} label={tr.installments.delete} variant="danger" onPress={confirmDelete} />
-        </View>
-      ) : null}
     </Screen>
   );
 }

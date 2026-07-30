@@ -34,14 +34,19 @@ function sourceFiles(directory: string, extensions: string[]): string[] {
 
 describe("truncation preserves the accessible full text", () => {
   // Mali Tablo is the one deliberate exception to the product-wide wrapping
-  // rule: long user-authored item names stay on one row in the dense matrix,
-  // while their semantic label remains complete for assistive technology.
-  it("limits ellipsis to the shared table label primitive", () => {
+  // rule: item names wrap naturally for up to two lines in the dense matrix;
+  // only text that still does not fit is shortened, while its semantic label
+  // remains complete for assistive technology.
+  it("limits two-line ellipsis to the shared table label primitive", () => {
     const offenders = sourceFiles("src", [".tsx"]).filter((file) =>
       /numberOfLines|ellipsizeMode/.test(source(file)),
     );
     expect(offenders).toEqual(["src/ui/sticky-table.tsx"]);
-    expect(source("src/ui/sticky-table.tsx")).toContain("accessibilityLabel={accessibilityLabel ?? label}");
+    const table = source("src/ui/sticky-table.tsx");
+    expect(table).toContain("accessibilityLabel={accessibilityLabel ?? label}");
+    expect(table).toContain("numberOfLines={c.truncateLabel ? 2 : undefined}");
+    expect(table).toContain("numberOfLines={r.truncateLabel ? 2 : undefined}");
+    expect(table).toContain("numberOfLines={truncateLabel ? 2 : undefined}");
   });
 });
 

@@ -27,6 +27,7 @@ import { errorNotice } from "../ui/haptics";
 import { spacing } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { WorkspaceGrid } from "../ui/workspace-layout";
 
 export default function CatchUpScreen() {
   const userId = useUserId();
@@ -159,16 +160,16 @@ export default function CatchUpScreen() {
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <Stack.Screen options={{ title: tr.catchup.title }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.intro}</Body>
       {lastEntry.at ? <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.subtitle(dateLabel(lastEntry.at))}</Body> : null}
 
       {items.length === 0 ? (
         <EmptyState icon={CheckCircle2} title={tr.catchup.nothing} />
       ) : (
-        items.map((e) => (
+        <WorkspaceGrid testID="reconciliation-grid">
+        {items.map((e) => (
           <Card key={e.id}>
             <Spread>
               <View style={{ flex: 1 }}>
@@ -242,7 +243,8 @@ export default function CatchUpScreen() {
               </View>
             )}
           </Card>
-        ))
+        ))}
+        </WorkspaceGrid>
       )}
 
       <Button icon={Plus} label={tr.cashflow.addTransaction} variant="secondary" onPress={() => router.push("/transaction")} />

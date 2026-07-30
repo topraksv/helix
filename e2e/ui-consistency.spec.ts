@@ -321,9 +321,9 @@ test("management forms keep their purpose, status and controls visible across th
   test.setTimeout(180_000);
   await onboard(page);
   const routes = [
-    { path: "/helix/settings/payment-sources", heading: "Cüzdanını oluştur", status: "Yeni" },
-    { path: "/helix/settings/incomes", heading: "Düzenli gelir ekle", status: "Yeni" },
-    { path: "/helix/opening-balance", heading: "Güncel Bakiyeyi Ayarla", status: "Bakiye eşleşiyor" },
+    { path: "/helix/settings/payment-sources", heading: "Yöntem bilgileri", control: "Yöntem Ekle" },
+    { path: "/helix/settings/incomes", heading: "Düzenli gelir ekle", control: "Başlık" },
+    { path: "/helix/opening-balance", heading: "Gerçek güncel bakiyen", control: "Gerçek güncel bakiyen", status: "Bakiye eşleşiyor" },
   ];
   const viewports = [
     { width: 320, height: 568 },
@@ -345,7 +345,9 @@ test("management forms keep their purpose, status and controls visible across th
       for (const route of routes) {
         await page.goto(route.path);
         await expect(page.getByRole("heading", { name: route.heading, exact: true })).toBeVisible();
-        await expect(page.getByText(route.status, { exact: true })).toBeVisible();
+        await expect(page.getByRole("textbox", { name: route.control, exact: true })).toBeVisible();
+        if (route.status) await expect(page.getByText(route.status, { exact: true })).toBeVisible();
+        await expect(page.getByText("Yeni", { exact: true })).toHaveCount(0);
         const layout = await page.evaluate(() => ({
           pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           offscreen: Array.from(document.querySelectorAll<HTMLElement>('[role="button"],[role="radio"],[role="textbox"]'))
@@ -389,18 +391,22 @@ test("financial-table labels and amounts stay inside their cells across widths a
           const parent = element.parentElement?.getBoundingClientRect();
           if (!parent) continue;
           const style = getComputedStyle(element);
-          const deliberateEllipsis =
+          const deliberateTableClamp =
             element.dataset.testid !== "matrix-value" &&
-            style.overflow === "hidden" &&
-            style.whiteSpace === "nowrap" &&
-            style.textOverflow === "ellipsis" &&
+            style.webkitLineClamp === "2" &&
             Boolean(element.getAttribute("aria-label"));
           const contained =
             box.left >= parent.left - 1 &&
             box.right <= parent.right + 1 &&
             box.top >= parent.top - 1 &&
             box.bottom <= parent.bottom + 1 &&
-            (element.scrollWidth <= element.clientWidth + 1 || deliberateEllipsis);
+            (
+              (
+                element.scrollWidth <= element.clientWidth + 1 &&
+                element.scrollHeight <= element.clientHeight + 1
+              ) ||
+              deliberateTableClamp
+            );
           if (!contained) overflows.push({ text, kind: element.dataset.testid ?? "" });
           if (element.dataset.testid === "matrix-value") amountMaxHeight = Math.max(amountMaxHeight, box.height);
         }
@@ -425,6 +431,66 @@ test("financial-table labels and amounts stay inside their cells across widths a
     await page.getByRole("radio", { name: "Ay odaklı" }).click();
     await assertCellContainment();
   }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("radio", { name: "Kolon odaklı" }).click();
+  const shortLabel = page.getByTestId("table-row-label").filter({ hasText: "Market" }).first();
+  const longLabel = page.getByTestId("table-row-label").filter({ hasText: "Kredi Kartı ve Aidat Ödemeleri" }).first();
+  await expect(shortLabel).toHaveAttribute("aria-label", "Market");
+  await expect(longLabel).toHaveAttribute("aria-label", "Kredi Kartı ve Aidat Ödemeleri");
+  const labelFlow = await Promise.all([
+    shortLabel.evaluate((element) => ({
+      clamp: getComputedStyle(element).webkitLineClamp,
+      overflows: element.scrollHeight > element.clientHeight + 1,
+    })),
+    longLabel.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const box = element.getBoundingClientRect();
+      return {
+        clamp: getComputedStyle(element).webkitLineClamp,
+        lines: new Set(
+          Array.from(range.getClientRects())
+            .filter((rect) => rect.top < box.bottom - 1)
+            .map((rect) => Math.round(rect.top)),
+        ).size,
+      };
+    }),
+  ]);
+  expect(labelFlow[0].overflows).toBe(false);
+  expect(labelFlow[1].clamp).toBe("2");
+  expect(labelFlow[1].lines).toBeGreaterThan(1);
+  expect(labelFlow[1].lines).toBeLessThanOrEqual(2);
+});
+
+test("settings workspace navigation reflows from one to two columns", async ({ page }) => {
+  await onboard(page);
+  await page.goto("/helix/settings");
+  const links = page.getByTestId("settings-workspace-link");
+  await expect(links).toHaveCount(6);
+
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect.poll(async () => {
+    const phone = await links.evaluateAll((elements) =>
+      elements.map((element) => Math.round(element.getBoundingClientRect().left)),
+    );
+    return new Set(phone).size;
+  }).toBe(1);
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await expect.poll(async () => {
+    const left = await links.evaluateAll((elements) =>
+      elements.map((element) => Math.round(element.getBoundingClientRect().left)),
+    );
+    return new Set(left).size;
+  }).toBe(2);
+  const tablet = await links.evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect();
+    return { left: Math.round(box.left), top: Math.round(box.top) };
+  }));
+  expect(new Set(tablet.map(({ left }) => left)).size).toBe(2);
+  expect(tablet[0]!.top).toBe(tablet[1]!.top);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 test("theme preference keeps browser chrome and native controls in the active scheme", async ({ page }) => {

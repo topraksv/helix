@@ -103,8 +103,8 @@ export function RuleRow({
           </Body>
         ) : null}
         <Row gap={spacing.sm} style={{ marginTop: 2 }}>
-          <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={onEdit} />
-          <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={onDelete} />
+          <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${title}`} onPress={onEdit} />
+          <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${title}`} haptic="none" onPress={onDelete} />
         </Row>
       </View>
     </View>

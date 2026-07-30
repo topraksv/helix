@@ -457,12 +457,12 @@ export default function SetupScreen() {
               <Spread key={`${name}-${i}`} style={{ marginBottom: spacing.sm, alignItems: "center" }}>
                 <Body style={{ flex: 1, paddingRight: spacing.sm }}>{name}{i === 0 ? ` · ${tr.persons.selfBadge}` : ""}</Body>
                 <Row gap={spacing.sm} style={{ alignItems: "center" }}>
-                  <IconButton icon={Pencil} label={tr.common.edit} onPress={() => { setEditingPerson(i); setEditPersonName(name); }} />
+                  <IconButton icon={Pencil} label={`${tr.common.edit} · ${name}`} onPress={() => { setEditingPerson(i); setEditPersonName(name); }} />
                   {i > 0 ? (
                     <IconButton
                       icon={Trash2}
                       tone="danger"
-                      label={tr.common.delete}
+                      label={`${tr.common.delete} · ${name}`}
                       onPress={() => removePerson(i)}
                     />
                   ) : null}
@@ -501,11 +501,11 @@ export default function SetupScreen() {
                 </Body>
               </View>
               <Row gap={spacing.sm} style={{ alignItems: "center" }}>
-                <IconButton icon={Pencil} label={tr.common.edit} onPress={() => editSource(i)} />
+                <IconButton icon={Pencil} label={`${tr.common.edit} · ${src.name}`} onPress={() => editSource(i)} />
                 <IconButton
                   icon={Trash2}
                   tone="danger"
-                  label={tr.common.delete}
+                  label={`${tr.common.delete} · ${src.name}`}
                   onPress={() => {
                     setSources(sources.filter((_, j) => j !== i));
                     if (editingSource === i) resetSourceForm();

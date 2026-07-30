@@ -9,17 +9,17 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { CheckCircle2 } from "lucide-react-native";
+import { CheckCircle2, LayoutGrid } from "lucide-react-native";
 import { addTemplateCategories, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES } from "../data/repo";
 import { useCategoriesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Body, Button, DataStateNotice, EmptyState, Screen, SectionHeader, SelectionGrid } from "../ui/components";
-import { spacing } from "../ui/theme";
+import { Button, DataStateNotice, EmptyState, Screen, SectionHeader, SelectionGrid } from "../ui/components";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { appAlert } from "../ui/dialog";
+import { WorkspaceSplit } from "../ui/workspace-layout";
 
 const ALL_TEMPLATES = [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES];
 
@@ -76,35 +76,42 @@ export default function WorkspaceTemplateModal() {
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <DataStateNotice status={combineLiveQueryStatus([categoriesState])} retry={categoriesState.retry} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.template.intro}</Body>
-
-      {missing.length === 0 ? (
-        <EmptyState icon={CheckCircle2} title={tr.template.allPresent} />
-      ) : (
-        <>
-          <SectionHeader>{tr.template.toAddTitle}</SectionHeader>
-          <SelectionGrid
-            options={missing.map(tile)}
-            values={selected.map((c) => c.name)}
-            onToggle={(name) => setExcluded((xs) => (xs.includes(name) ? xs.filter((x) => x !== name) : [...xs, name]))}
-            searchable
-            countLabel={tr.computed.selectedCount(selected.length)}
-          />
-          <Button label={tr.template.addSelected(selected.length)} onPress={() => void add()} loading={busy} disabled={selected.length === 0} />
-        </>
-      )}
-
-      {/* No container opacity on the section below: fading a whole subtree also
-          fades its text below AA (its heading measured 2.86:1). The section is
-          already set apart by its heading and position. */}
-      {have.length > 0 ? (
-        <View style={{ marginTop: spacing.lg }}>
-          <SectionHeader>{tr.template.haveTitle}</SectionHeader>
-          <SelectionGrid options={have.map(tile)} values={[]} onToggle={() => {}} searchable readOnly />
-        </View>
-      ) : null}
+      <WorkspaceSplit
+        testID="workspace-template-layout"
+        primary={(
+          <View>
+            <SectionHeader description={tr.template.toAddHint}>{tr.template.toAddTitle}</SectionHeader>
+            {missing.length === 0 ? (
+              <EmptyState icon={CheckCircle2} title={tr.template.allPresent} />
+            ) : (
+              <>
+                <SelectionGrid
+                  options={missing.map(tile)}
+                  values={selected.map((c) => c.name)}
+                  onToggle={(name) => setExcluded((xs) => (xs.includes(name) ? xs.filter((x) => x !== name) : [...xs, name]))}
+                  searchable
+                  countLabel={tr.computed.selectedCount(selected.length)}
+                />
+                <Button label={tr.template.addSelected(selected.length)} onPress={() => void add()} loading={busy} disabled={selected.length === 0} />
+              </>
+            )}
+          </View>
+        )}
+        secondary={(
+          <View>
+            {/* No container opacity here: fading the subtree also fades its
+                text below AA. Position and read-only controls carry state. */}
+            <SectionHeader description={tr.template.haveHint}>{tr.template.haveTitle}</SectionHeader>
+            {have.length > 0 ? (
+              <SelectionGrid options={have.map(tile)} values={[]} onToggle={() => {}} searchable readOnly />
+            ) : (
+              <EmptyState icon={LayoutGrid} title={tr.template.nonePresent} />
+            )}
+          </View>
+        )}
+      />
     </Screen>
   );
 }

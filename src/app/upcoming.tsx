@@ -20,7 +20,7 @@ import { formatMinor } from "../domain/money";
 import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
 import { useSyncStatus } from "../sync/status";
 import { Body, Card, DataStateNotice, EmptyState, ListRow, Screen, SectionHeader, StatusPill } from "../ui/components";
-import { font, radius, spacing, type, useTheme } from "../ui/theme";
+import { font, radius, type, useTheme } from "../ui/theme";
 
 export default function UpcomingScreen() {
   const router = useRouter();
@@ -85,7 +85,6 @@ export default function UpcomingScreen() {
 
   return (
     <Screen maxWidth={900}>
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.upcoming.intro}</Body>
       <DataStateNotice status={status} retry={retry} />
       {sync.state === "error" ? (
         <Card tone="warning">

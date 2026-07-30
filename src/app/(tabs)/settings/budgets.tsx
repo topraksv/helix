@@ -9,13 +9,62 @@ import { monthKeyOf, todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
-import { Body, Button, Card, CardList, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, Row, Screen, Select, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Spread } from "../../../ui/components";
 import { categoryIcon } from "../../../data/category-icons";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
+import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { spacing, useTheme } from "../../../ui/theme";
 import { useUndo } from "../../../ui/undo";
 import { appAlert } from "../../../ui/dialog";
+
+function BudgetMeter({ spentMinor, limitMinor }: { spentMinor: number; limitMinor: number }) {
+  const { palette } = useTheme();
+  const ratio = Math.max(0, limitMinor > 0 ? spentMinor / limitMinor : 0);
+  const over = spentMinor > limitMinor;
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={tr.budgets.progress(formatMinor(spentMinor), formatMinor(limitMinor))}
+      style={{ marginBottom: spacing.lg }}
+    >
+      <View style={{ flexDirection: "row", gap: spacing.xs }}>
+        {Array.from({ length: 10 }, (_, index) => {
+          const segmentRatio = Math.max(0, Math.min(1, ratio * 10 - index));
+          return (
+            <View
+              key={index}
+              style={{
+                flex: 1,
+                height: 12,
+                borderRadius: 4,
+                backgroundColor: palette.surfaceAlt,
+                overflow: "hidden",
+              }}
+            >
+              {segmentRatio > 0 ? (
+                <FadeIn
+                  delay={index * 32}
+                  style={{
+                    width: `${segmentRatio * 100}%` as `${number}%`,
+                    height: "100%",
+                    backgroundColor: over ? palette.negative : palette.positive,
+                  }}
+                >
+                  <View />
+                </FadeIn>
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+      <Body muted style={{ fontSize: 11, textAlign: "center", marginTop: spacing.sm }}>
+        {tr.budgets.progress(formatMinor(spentMinor), formatMinor(limitMinor))}
+      </Body>
+    </View>
+  );
+}
 
 export default function BudgetsScreen() {
   /**
@@ -53,6 +102,7 @@ export default function BudgetsScreen() {
   const editing = categoryChoice ? monthBudgets.find((budget) => budget.categoryId === categoryChoice) : null;
   const progress = budgetProgress(monthBudgets, toTxLike(transactions, persons, categories), month, todayISO());
   const progressById = new Map(progress.map((row) => [row.id, row]));
+  const editingProgress = editing ? progressById.get(editing.id) : null;
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   const { confirmDiscard } = useDirtyExitGuard(amountRaw !== loadedAmountRaw && !busy);
   const liveStates = [categoriesState, budgetsState, transactionsState, personsState];
@@ -122,14 +172,21 @@ export default function BudgetsScreen() {
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.budgets.intro}</Body>
-      {/* Forward only. A limit is something to steer by, and a month that has
-          already happened cannot be steered — setting one there would only
-          rewrite how a closed month scores itself. */}
-      <MonthStepper value={month} onChange={changeMonth} min={currentMonth} />
-      <Card>
+      <WorkspaceSplit
+        testID="budgets-workspace"
+        primary={(
+          <View>
+          {/* Forward only. A limit is something to steer by, and a month that
+              has already happened cannot be steered — setting one there would
+              only rewrite how a closed month scores itself. */}
+          <MonthStepper value={month} onChange={changeMonth} min={currentMonth} />
+          <Card>
+        <PanelHeader icon={PiggyBank} title={editing ? tr.budgets.editTitle : tr.budgets.add} description={tr.budgets.formHint} />
+        {editingProgress ? (
+          <BudgetMeter spentMinor={editingProgress.spentMinor} limitMinor={editingProgress.amountMinor} />
+        ) : null}
         <Select
           label={tr.budgets.category}
           options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
@@ -158,15 +215,19 @@ export default function BudgetsScreen() {
           </View>
           {editing ? <Button label={tr.common.cancel} variant="ghost" onPress={reset} /> : null}
         </Row>
-      </Card>
-
-      {monthBudgets.length === 0 ? (
-        <EmptyState icon={PiggyBank} title={tr.budgets.emptyTitle} hint={tr.budgets.emptyHint} />
-      ) : (
-        <CardList
-          items={monthBudgets}
-          keyExtractor={(budget) => budget.id}
-          renderItem={(budget) => {
+          </Card>
+          </View>
+        )}
+        secondary={(
+          <View>
+            <SectionHeader description={tr.budgets.limitsHint}>{tr.budgets.limitsTitle}</SectionHeader>
+            {monthBudgets.length === 0 ? (
+              <EmptyState icon={PiggyBank} title={tr.budgets.emptyTitle} hint={tr.budgets.emptyHint} />
+            ) : (
+              <CardList
+              items={monthBudgets}
+              keyExtractor={(budget) => budget.id}
+              renderItem={(budget) => {
             const category = categoryById.get(budget.categoryId);
             const state = progressById.get(budget.id);
             const ratio = Math.max(0, Math.min(state?.ratio ?? 0, 1));
@@ -180,8 +241,8 @@ export default function BudgetsScreen() {
                     </Body>
                   </View>
                   <Row gap={spacing.sm}>
-                    <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(budget)} />
-                    <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(budget)} />
+                    <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${category?.name ?? tr.common.none}`} onPress={() => startEdit(budget)} />
+                    <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${category?.name ?? tr.common.none}`} haptic="none" onPress={() => void remove(budget)} />
                   </Row>
                 </Spread>
                 <View style={{ height: 7, borderRadius: 4, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
@@ -190,9 +251,12 @@ export default function BudgetsScreen() {
                 {state && state.remainingMinor < 0 ? <Body style={{ fontSize: 12, color: palette.negativeText, marginTop: spacing.xs }}>{tr.budgets.over(formatMinor(-state.remainingMinor))}</Body> : null}
               </View>
             );
-          }}
-        />
-      )}
+              }}
+              />
+            )}
+          </View>
+        )}
+      />
     </Screen>
   );
 }

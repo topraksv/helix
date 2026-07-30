@@ -226,7 +226,15 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
           );
           if (visualLines.size > 1) truncated.push(`money-wrap(${visualLines.size}): ${text}`);
         }
-        if (style.webkitLineClamp !== "none" && el.scrollHeight > el.clientHeight + 1) {
+        const deliberateTableClamp =
+          (el.dataset.testid === "table-column-label" || el.dataset.testid === "table-row-label") &&
+          style.webkitLineClamp === "2" &&
+          Boolean(el.getAttribute("aria-label"));
+        if (
+          style.webkitLineClamp !== "none" &&
+          el.scrollHeight > el.clientHeight + 1 &&
+          !deliberateTableClamp
+        ) {
           truncated.push(`line-clamp(${style.webkitLineClamp}): ${text}`);
         }
         const box = el.getBoundingClientRect();
@@ -582,8 +590,8 @@ test("RuleRow exposes three sibling controls, not nested interactives", async ({
   expect(result.violations.map((v) => v.id)).toEqual([]);
 
   // 2. Label, edit and delete are three separate controls with their own names.
-  const edit = page.getByRole("button", { name: "Düzenle", exact: true });
-  const remove = page.getByRole("button", { name: "Sil", exact: true });
+  const edit = page.getByRole("button", { name: "Düzenle · Maaş", exact: true });
+  const remove = page.getByRole("button", { name: "Sil · Maaş", exact: true });
   for (const control of [label, edit, remove]) await expect(control).toBeVisible();
 
   // 3. None of them contains another: a control's box must not enclose a sibling.
@@ -606,7 +614,7 @@ test("RuleRow exposes three sibling controls, not nested interactives", async ({
 
   // 5. Every control is keyboard reachable and separately focusable.
   const focusables = await page.evaluate(() => {
-    const names = ["Maaş", "Düzenle", "Sil"];
+    const names = ["Maaş", "Düzenle · Maaş", "Sil · Maaş"];
     return names.map((name) => {
       const el = Array.from(document.querySelectorAll('[role="button"]')).find(
         (node) => (node.getAttribute("aria-label") ?? node.textContent ?? "").trim() === name,

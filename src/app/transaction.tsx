@@ -2,9 +2,9 @@
  *  future-dated payments (§2.7) and inline installment plan creation. */
 
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, SlidersHorizontal, TrendingUp, Undo2, type LucideIcon } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, SlidersHorizontal, TrendingUp, Undo2, WalletCards, type LucideIcon } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
 import { useAllTransactionsState, useCategoriesState, usePersonsState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
@@ -19,7 +19,7 @@ import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, Label, MonthStepper, MoneyField, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, Label, MonthStepper, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -32,6 +32,7 @@ import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useUndo } from "../ui/undo";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { WorkspaceSplit } from "../ui/workspace-layout";
 
 type EntryType = "expense" | "income" | "transfer";
 
@@ -121,8 +122,6 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const persons = personsState.data;
   const router = useRouter();
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
-  const wideForm = width >= 920;
   const operationGuard = useOperationGuard();
   const undo = useUndo();
   const liveStates = [categoriesState, sourcesState, personsState];
@@ -370,13 +369,14 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   };
 
   return (
-    <Screen maxWidth={980}>
+    <Screen maxWidth={1100}>
       <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <View style={wideForm ? { flexDirection: "row", alignItems: "stretch", gap: spacing.xl } : undefined}>
-      <View style={wideForm ? { flex: 1 } : undefined}>
-      <Card style={wideForm ? { flex: 1 } : undefined}>
-      <SectionHeader>{tr.tx.amountDetails}</SectionHeader>
+      <WorkspaceSplit
+        testID="transaction-workspace"
+        primary={(
+      <Card>
+      <PanelHeader icon={WalletCards} title={tr.tx.amountDetails} description={tr.tx.amountDetailsHint} />
       <View
         role="radiogroup"
         accessibilityLabel={tr.tx.type}
@@ -524,15 +524,14 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         </>
       ) : null}
       </Card>
-      </View>
-      <View style={wideForm ? { flex: 1 } : undefined}>
-
+        )}
+        secondary={(
+      <Card>
       {/* This label heads the month/day switch. A credit-card expense has no
           switch — its date is always the purchase day — and the `DateField`
           below already carries that name, so heading nothing here printed
           "Harcama Günü" twice, once above the other. */}
-      <Card style={wideForm ? { flex: 1 } : undefined}>
-      <SectionHeader>{tr.tx.timing}</SectionHeader>
+      <PanelHeader icon={CalendarClock} title={tr.tx.timing} description={tr.tx.timingHint} />
       {!isCreditCardExpense ? (
         <>
           <Label>{tr.tx.whenLabel}</Label>
@@ -603,8 +602,8 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         ) : null}
       </View>
       </Card>
-      </View>
-      </View>
+        )}
+      />
     </Screen>
   );
 }

@@ -17,13 +17,14 @@ import {
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Eye, Pencil, Plus, Trash2, UserRound } from "lucide-react-native";
-import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, Field, IconButton, Row, Screen, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, FadeIn, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
+import { WorkspaceSplit } from "../../../ui/workspace-layout";
 
 function initialOf(name: string): string {
   return Array.from(name.trim())[0]?.toLocaleUpperCase("tr-TR") ?? "•";
@@ -70,8 +71,9 @@ function PeopleOverview({ people }: { people: { id: string; name: string; isSelf
               { bottom: 8, right: 10 },
             ];
             return (
-              <View
+              <FadeIn
                 key={person.id}
+                delay={index * 70}
                 style={[
                   {
                     position: "absolute",
@@ -90,7 +92,7 @@ function PeopleOverview({ people }: { people: { id: string; name: string; isSelf
                 <Text style={[type.small, { color: palette.secondaryText, fontFamily: font.bold, fontSize: 10 }]}>
                   {initialOf(person.name)}
                 </Text>
-              </View>
+              </FadeIn>
             );
           })}
         </View>
@@ -228,29 +230,29 @@ export default function PersonsScreen() {
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <DataStateNotice status={dataStatus} retry={personsState.retry} />
       <PeopleOverview people={persons} />
-      <Card>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
-          <View style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: palette.primarySoft, alignItems: "center", justifyContent: "center" }}>
-            <Plus accessible={false} size={17} color={palette.primary} />
-          </View>
-          <Text accessibilityRole="header" style={[type.label, { color: palette.text, fontFamily: font.semibold }]}>
-            {tr.persons.addTitle}
-          </Text>
-        </View>
+      <WorkspaceSplit
+        testID="persons-workspace"
+        primary={(
+          <View>
+          <Card>
+        <PanelHeader icon={Plus} title={tr.persons.addTitle} description={tr.persons.addHint} />
         <Row style={{ alignItems: "center" }}>
           <View style={{ flex: 1 }}>
             <Field accessibilityLabel={tr.onboarding.addPerson} noMargin value={name} onChangeText={setName} placeholder={personPlaceholder} />
           </View>
           <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
         </Row>
-      </Card>
-      {resolving ? (
-        <Card>
-          <Body style={{ marginBottom: spacing.xs }}>{tr.references.personInUse(resolving.person.name)}</Body>
-          <Body muted style={{ marginBottom: spacing.md }}>{tr.references.resolveBeforeDelete}</Body>
+          </Card>
+          {resolving ? (
+            <Card>
+          <PanelHeader
+            icon={Trash2}
+            title={tr.references.personInUse(resolving.person.name)}
+            description={tr.references.resolveBeforeDelete}
+          />
           {usageRows.map(([label, count]) => (
             <Spread key={String(label)} style={{ marginBottom: spacing.xs }}>
               <Body muted>{label}</Body>
@@ -269,12 +271,17 @@ export default function PersonsScreen() {
             </View>
             <Button label={tr.common.cancel} variant="ghost" onPress={() => setResolving(null)} disabled={deleting} />
           </Row>
-        </Card>
-      ) : null}
-      <CardList
-        items={[...persons].sort((a, b) => Number(b.isSelf) - Number(a.isSelf))}
-        keyExtractor={(p) => p.id}
-        renderItem={(p) =>
+            </Card>
+          ) : null}
+          </View>
+        )}
+        secondary={(
+          <View>
+          <SectionHeader description={tr.persons.listHint}>{tr.persons.listTitle}</SectionHeader>
+          <CardList
+            items={[...persons].sort((a, b) => Number(b.isSelf) - Number(a.isSelf))}
+            keyExtractor={(p) => p.id}
+            renderItem={(p) =>
           editingId === p.id ? (
             <Row style={{ paddingVertical: spacing.sm }}>
               <View style={{ flex: 1 }}>
@@ -321,17 +328,20 @@ export default function PersonsScreen() {
                 <IconButton
                   icon={Pencil}
                   size={32}
-                  label={tr.common.edit}
+                  label={`${tr.common.edit} · ${p.name}`}
                   onPress={() => confirmDiscard(() => {
                     setEditingId(p.id);
                     setEditName(p.name);
                   }, editDraftDirty)}
                 />
-                {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(p)} /> : null}
+                {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${p.name}`} haptic="none" onPress={() => void remove(p)} /> : null}
               </Row>
             </Spread>
           )
-        }
+            }
+          />
+          </View>
+        )}
       />
     </Screen>
   );

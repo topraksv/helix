@@ -51,7 +51,7 @@ export interface StickyColumn {
   /** Full spoken name when the compact visible label is abbreviated. */
   accessibilityLabel?: string;
   label: string;
-  /** Dense matrix item labels stay on one line; the spoken label stays full. */
+  /** Dense matrix item labels wrap twice, then shorten; spoken text stays full. */
   truncateLabel?: boolean;
   /** Optional marker icon shown top-left of the header (e.g. a computed column). */
   icon?: LucideIcon;
@@ -63,7 +63,7 @@ export interface StickyRow {
   label: string;
   /** Full spoken name when the visible label omits context such as the year. */
   accessibilityLabel?: string;
-  /** Dense matrix item labels stay on one line; the spoken label stays full. */
+  /** Dense matrix item labels wrap twice, then shorten; spoken text stays full. */
   truncateLabel?: boolean;
   /** Optional marker icon shown top-left of the label (e.g. a computed row).
    *  Mirrors StickyColumn.icon so the two orientations look identical. */
@@ -357,7 +357,7 @@ export function StickyTable({
           <Text
             testID="table-column-label"
             accessibilityLabel={c.accessibilityLabel ?? c.label}
-            numberOfLines={c.truncateLabel ? 1 : undefined}
+            numberOfLines={c.truncateLabel ? 2 : undefined}
             ellipsizeMode={c.truncateLabel ? "tail" : undefined}
             style={[
               type.label,
@@ -486,7 +486,7 @@ export function StickyTable({
                     testID="table-row-label"
                     accessible={!r.onLabelPress}
                     accessibilityLabel={r.accessibilityLabel ?? r.label}
-                    numberOfLines={r.truncateLabel ? 1 : undefined}
+                    numberOfLines={r.truncateLabel ? 2 : undefined}
                     ellipsizeMode={r.truncateLabel ? "tail" : undefined}
                     style={[type.label, { color: r.onLabelPress ? palette.primaryText : palette.text, textAlign: "left", fontFamily: r.labelHighlight ? font.bold : font.semibold }]}
                     onLayout={(event) => measureLabel(`row:${r.key}`, event.nativeEvent.layout.height)}
@@ -589,7 +589,7 @@ function PinnedHeader({
       <Text
         testID="table-column-label"
         accessibilityLabel={accessibilityLabel ?? label}
-        numberOfLines={truncateLabel ? 1 : undefined}
+        numberOfLines={truncateLabel ? 2 : undefined}
         ellipsizeMode={truncateLabel ? "tail" : undefined}
         style={[
           type.label,

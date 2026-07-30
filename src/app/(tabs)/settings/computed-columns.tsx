@@ -7,7 +7,7 @@
 
 import React, { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Calculator, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
+import { Calculator, Columns3, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
 import {
   settingValue,
   toTxLike,
@@ -28,13 +28,14 @@ import { evaluateComputedColumn, parseDefinition, type ComputedColumnDefinition 
 import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
-import { monthLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, IconButton, Label, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
+import { tr } from "../../../i18n/tr";
+import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
+import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { appAlert } from "../../../ui/dialog";
 
@@ -48,6 +49,53 @@ const OP_META: { op: Op; icon: LucideIcon }[] = [
   { op: "income_minus_expense", icon: Scale },
   { op: "cc_split", icon: CreditCard },
 ];
+
+function CalculationFlow({
+  op,
+  inputCount,
+  preview,
+}: {
+  op: Op;
+  inputCount: number;
+  preview: number | null;
+}) {
+  const { palette } = useTheme();
+  const Icon = OP_META.find((item) => item.op === op)?.icon ?? Calculator;
+  const result = preview ?? 0;
+  const node = {
+    height: 52,
+    borderRadius: 18,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  };
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={tr.computed.flowA11y(inputCount, tr.computed.ops[op].title, formatMinor(result))}
+      style={{ marginBottom: spacing.lg }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <FadeIn key={`inputs-${inputCount}`} style={[node, { width: 52, backgroundColor: palette.surfaceAlt }]}>
+          <Text style={[type.heading, { color: palette.textStrong, fontFamily: font.bold }]}>{inputCount}</Text>
+        </FadeIn>
+        <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
+        <FadeIn key={op} delay={60} style={[node, { width: 52, backgroundColor: palette.primarySoft }]}>
+          <Icon accessible={false} size={21} color={palette.primary} />
+        </FadeIn>
+        <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
+        <FadeIn key={`result-${result}`} delay={120} style={[node, { width: 112, backgroundColor: palette.surfaceAlt, paddingHorizontal: spacing.xs }]}>
+          <Amount minor={result} colorized={false} style={{ fontSize: 13 }} />
+        </FadeIn>
+      </View>
+      <View style={{ flexDirection: "row", marginTop: spacing.xs }}>
+        <Body muted style={{ width: 52, fontSize: 11, textAlign: "center" }}>{tr.computed.flowInput}</Body>
+        <Body muted style={{ flex: 1, fontSize: 11, textAlign: "center" }}>{tr.computed.flowOperation}</Body>
+        <Body muted style={{ width: 112, fontSize: 11, textAlign: "center" }}>{tr.computed.flowResult}</Body>
+      </View>
+    </View>
+  );
+}
 
 
 export default function ComputedColumnsScreen({ header }: { header?: ReactNode } = {}) {
@@ -234,25 +282,49 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   }
 
   return (
-    <Screen scrollEnabled={!dragging}>
+    <Screen scrollEnabled={!dragging} maxWidth={1100}>
       {header}
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.computed.intro}</Body>
+      <WorkspaceSplit
+        testID="computed-columns-workspace"
+        primary={(
+          <View>
       {editingId ? (
         <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.md }}>
           <Body style={{ color: palette.primaryText, fontSize: 13 }}>{tr.computed.editing(name || tr.computed.nameLabel)}</Body>
         </View>
       ) : null}
 
+      <Card>
+      <PanelHeader icon={Calculator} title={tr.computed.builderTitle} description={tr.computed.builderHint} />
+      <CalculationFlow
+        op={op}
+        inputCount={
+          op === "difference"
+            ? plus.length + minus.length
+            : op === "sum"
+              ? plus.length
+              : op === "income_minus_expense"
+                ? categories.length
+                : 1
+        }
+        preview={preview}
+      />
+
       {/* 1) Calculation type */}
       <Label>{tr.computed.stepType}</Label>
-      <View role="radiogroup" accessibilityLabel={tr.computed.stepType}>
+      <View
+        role="radiogroup"
+        accessibilityLabel={tr.computed.stepType}
+        style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}
+      >
       {OP_META.map(({ op: value, icon: IconCmp }) => {
         const selected = op === value;
         return (
           <Pressable
             key={value}
             accessibilityRole="radio"
+            accessibilityLabel={`${tr.computed.ops[value].title}. ${tr.computed.ops[value].description}`}
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected }}
             onPress={() => {
@@ -260,33 +332,36 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               setOp(value);
             }}
             style={{
+              flexBasis: "47%",
+              flexGrow: 1,
+              minWidth: 0,
+              minHeight: 64,
               flexDirection: "row",
               alignItems: "center",
-              gap: spacing.md,
-              padding: spacing.md,
+              gap: spacing.sm,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
               borderRadius: radius.md,
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: palette.border,
               backgroundColor: selected ? palette.primarySoft : palette.surface,
-              marginBottom: spacing.sm,
             }}
           >
-            <IconCmp size={20} color={selected ? palette.primary : palette.textSecondary} />
-            <View style={{ flex: 1 }}>
+            <IconCmp accessible={false} size={20} color={selected ? palette.primary : palette.textSecondary} />
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[type.body, { color: palette.text, fontFamily: font.semibold }]}>
                 {tr.computed.ops[value].title}
-              </Text>
-              <Text style={[type.small, { color: selected ? palette.primaryText : palette.textSecondary, marginTop: 1 }]}>
-                {tr.computed.ops[value].description}
               </Text>
             </View>
           </Pressable>
         );
       })}
       </View>
+      <Body muted style={{ fontSize: 12, marginTop: spacing.xs, marginBottom: spacing.md }}>
+        {tr.computed.ops[op].description}
+      </Body>
 
       {/* 2) Inputs for the chosen type */}
-      <Card style={{ marginTop: spacing.md }}>
         {op === "sum" || op === "difference" ? (
           <>
             <Label>{op === "difference" ? tr.computed.plusGroup : tr.computed.pickCategories}</Label>
@@ -328,22 +403,6 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
 
         <Field label={tr.computed.nameLabel} value={name} onChangeText={setName} placeholder={tr.placeholders.computedColumnName} />
 
-        {definition && preview != null ? (
-          <View
-            style={{
-              backgroundColor: palette.surfaceAlt,
-              borderRadius: radius.sm,
-              padding: spacing.md,
-              marginBottom: spacing.md,
-            }}
-          >
-            <Text style={[type.small, { color: palette.textSecondary }]}>
-              {tr.computed.previewLabel(monthLabel(monthKeyOf(today)))}
-            </Text>
-            <Text style={[type.amount, { color: palette.text, fontSize: 18, marginTop: 2 }]}>{formatMinor(preview)}</Text>
-          </View>
-        ) : null}
-
         {editingId ? (
           <Row>
             <View style={{ flex: 1 }}>
@@ -355,46 +414,51 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
           <Button icon={Plus} label={tr.computed.addAction} onPress={() => void save()} disabled={!valid || busy} loading={busy} />
         )}
       </Card>
-
-      {/* Existing columns */}
-      {columns.length > 0 ? (
-        <Card>
-          <Label>{tr.computed.existingTitle}</Label>
-          <Body muted style={{ fontSize: 12, marginBottom: spacing.xs }}>{tr.settings.reorderHint}</Body>
-          <DraggableList
-            items={columns}
-            keyExtractor={(column) => column.id}
-            onReorder={applyOrder}
-            onDragStateChange={setDragging}
-            disabled={editingId != null}
-            renderRow={(column, handle, index) => {
-              const visible = !hidden.includes(column.id);
-              return (
-                <View>
-                  <View style={{ paddingVertical: spacing.sm, backgroundColor: handle.active ? palette.surfaceAlt : palette.surface }}>
-                    <Spread>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1, paddingRight: spacing.sm }}>
-                        <ReorderGrip handle={handle} position={index + 1} count={columns.length} />
-                        <Calculator size={16} color={palette.textSecondary} />
-                        <Body style={{ flex: 1 }}>{column.name}</Body>
+          </View>
+        )}
+        secondary={(
+          columns.length > 0 ? (
+            <Card>
+              <PanelHeader icon={Columns3} title={tr.computed.existingTitle} description={tr.settings.reorderHint} />
+              <DraggableList
+                items={columns}
+                keyExtractor={(column) => column.id}
+                onReorder={applyOrder}
+                onDragStateChange={setDragging}
+                disabled={editingId != null}
+                renderRow={(column, handle, index) => {
+                  const visible = !hidden.includes(column.id);
+                  return (
+                    <View>
+                      <View style={{ paddingVertical: spacing.sm, backgroundColor: handle.active ? palette.surfaceAlt : palette.surface }}>
+                        <Spread>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1, paddingRight: spacing.sm }}>
+                            <ReorderGrip handle={handle} position={index + 1} count={columns.length} />
+                            <Calculator size={16} color={palette.textSecondary} />
+                            <Body style={{ flex: 1 }}>{column.name}</Body>
+                          </View>
+                          <Row gap={spacing.sm}>
+                            <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${column.name}`} onPress={() => startEdit(column)} />
+                            <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${column.name}`} haptic="none" onPress={() => void remove(column)} />
+                          </Row>
+                        </Spread>
+                        <Spread style={{ marginTop: spacing.xs }}>
+                          <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.computed.showInTable}</Body>
+                          <Toggle label={`${column.name} · ${tr.computed.showInTable}`} value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
+                        </Spread>
                       </View>
-                      <Row gap={spacing.sm}>
-                        <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(column)} />
-                        <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(column)} />
-                      </Row>
-                    </Spread>
-                    <Spread style={{ marginTop: spacing.xs }}>
-                      <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.computed.showInTable}</Body>
-                      <Toggle label={`${column.name} · ${tr.computed.showInTable}`} value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
-                    </Spread>
-                  </View>
-                  {index < columns.length - 1 ? <Divider /> : null}
-                </View>
-              );
-            }}
-          />
-        </Card>
-      ) : null}
+                      {index < columns.length - 1 ? <Divider /> : null}
+                    </View>
+                  );
+                }}
+              />
+            </Card>
+          ) : (
+            <EmptyState icon={Calculator} title={tr.computed.emptyTitle} hint={tr.computed.emptyHint} />
+          )
+        )}
+      />
+
     </Screen>
   );
 }

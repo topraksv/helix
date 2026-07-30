@@ -19,13 +19,14 @@ import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { Banknote, CreditCard, Landmark, Pencil, ReceiptText, Trash2, WalletCards, type LucideIcon } from "lucide-react-native";
-import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, IconButton, Label, ManagementHeader, Row, Screen, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
+import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { isMonthDay } from "../../../domain/dates";
 import { MonthDayField, monthDayLabel } from "../../../ui/month-day-field";
 import { selectionTapIfChanged } from "../../../ui/haptics";
@@ -326,17 +327,18 @@ export default function SourcesScreen() {
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Card>
-        <ManagementHeader
+      <WorkspaceSplit
+        testID="payment-sources-workspace"
+        primary={(
+          <View>
+          <Card>
+        <PanelHeader
           icon={sourceIcon(sourceType)}
-          title={editingId ? tr.sources.editTitle : tr.sources.walletTitle}
-          description={editingId ? tr.sources.editHint(name || tr.sources.newSource) : tr.sources.walletHint}
-          status={editingId ? tr.common.editing : tr.common.new}
-          statusTone={editingId ? "warning" : "primary"}
+          title={editingId ? tr.sources.editTitle : tr.sources.formTitle}
+          description={editingId ? tr.sources.editHint(name || tr.sources.formTitle) : tr.sources.formHint}
         />
-        {editingId ? <Label>{tr.common.edit}</Label> : null}
         <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={sourcePlaceholder} />
         <SourceTypePicker value={sourceType} onChange={setSourceType} />
         {persons.length > 1 ? (
@@ -365,11 +367,11 @@ export default function SourcesScreen() {
         ) : (
           <Button label={tr.common.add} onPress={() => void save()} disabled={!formValid || busy} loading={busy} />
         )}
-      </Card>
+          </Card>
 
-      {editingId && sourceType === "credit_card" && editingStatements.length > 0 ? (
-        <Card>
-          <Label>{tr.sources.statementHistory}</Label>
+          {editingId && sourceType === "credit_card" && editingStatements.length > 0 ? (
+            <Card>
+          <PanelHeader icon={ReceiptText} title={tr.sources.statementHistory} description={tr.sources.statementHistoryHint} />
           {editingStatements.map((statement) => {
             const amount = statementAmountById.get(statement.id) ?? 0;
             return (
@@ -382,13 +384,19 @@ export default function SourcesScreen() {
               </Spread>
             );
           })}
-        </Card>
-      ) : null}
-
-      {resolving ? (
-        <Card>
-          <Body style={{ marginBottom: spacing.xs }}>{tr.references.sourceInUse(resolving.source.name)}</Body>
-          <Body muted style={{ marginBottom: spacing.md }}>{tr.references.resolveBeforeDelete}</Body>
+            </Card>
+          ) : null}
+          </View>
+        )}
+        secondary={(
+          <View>
+          {resolving ? (
+            <Card>
+          <PanelHeader
+            icon={Trash2}
+            title={tr.references.sourceInUse(resolving.source.name)}
+            description={tr.references.resolveBeforeDelete}
+          />
           {usageRows.map(([label, count]) => (
             <Spread key={String(label)} style={{ marginBottom: spacing.xs }}>
               <Body muted>{label}</Body>
@@ -416,17 +424,18 @@ export default function SourcesScreen() {
             </View>
             <Button label={tr.common.cancel} variant="ghost" onPress={() => setResolving(null)} disabled={busy} />
           </Row>
-        </Card>
-      ) : null}
+            </Card>
+          ) : null}
 
-      {sources.length === 0 ? (
-        <EmptyState icon={WalletCards} title={tr.sources.emptyTitle} hint={tr.sources.emptyHint} />
-      ) : null}
-
-      <CardList
-        items={sources}
-        keyExtractor={(s) => s.id}
-        renderItem={(s) => (
+          {sources.length === 0 ? (
+            <EmptyState icon={WalletCards} title={tr.sources.emptyTitle} hint={tr.sources.emptyHint} />
+          ) : (
+            <>
+              <SectionHeader description={tr.sources.listHint}>{tr.sources.listTitle}</SectionHeader>
+              <CardList
+                items={sources}
+                keyExtractor={(s) => s.id}
+                renderItem={(s) => (
           <Spread style={{ paddingVertical: spacing.sm, alignItems: "center" }}>
             <Row style={{ flex: 1, alignItems: "center" }}>
               <SourceGlyph sourceType={s.type} />
@@ -453,10 +462,15 @@ export default function SourcesScreen() {
               </View>
             </Row>
             <Row gap={spacing.sm}>
-              <IconButton icon={Pencil} size={32} label={tr.common.edit} onPress={() => startEdit(s)} />
-              <IconButton icon={Trash2} size={32} tone="danger" label={tr.common.delete} haptic="none" onPress={() => void remove(s)} />
+              <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${s.name}`} onPress={() => startEdit(s)} />
+              <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${s.name}`} haptic="none" onPress={() => void remove(s)} />
             </Row>
           </Spread>
+                )}
+              />
+            </>
+          )}
+          </View>
         )}
       />
     </Screen>

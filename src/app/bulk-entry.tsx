@@ -11,8 +11,8 @@ import { categoryIcon } from "../data/category-icons";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../domain/dates";
 import { categoryTableEntryType } from "../domain/transactions";
 import { monthLabel, tr } from "../i18n/tr";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import { Body, Button, DataStateNotice, Heading, IconButton, MoneyField, OperationStatusNotice, Screen, Spread } from "../ui/components";
+import { CalendarRange, ChevronLeft, ChevronRight, ListPlus } from "lucide-react-native";
+import { Badge, Body, Button, Card, DataStateNotice, EmptyState, Heading, IconButton, MoneyField, OperationStatusNotice, PanelHeader, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
@@ -21,6 +21,7 @@ import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { WorkspaceGrid } from "../ui/workspace-layout";
 
 export default function BulkEntryModal() {
   const userId = useUserId();
@@ -101,40 +102,68 @@ export default function BulkEntryModal() {
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.bulk.subtitle}</Body>
-      <Spread style={{ marginBottom: spacing.lg }}>
-        <IconButton icon={ChevronLeft} label={tr.bulk.month} onPress={() => changeMonth(addMonthsToKey(month, -1))} />
-        <Heading>{monthLabel(month)}</Heading>
-        <IconButton
-          icon={ChevronRight}
-          label={tr.bulk.month}
-          onPress={() => changeMonth(addMonthsToKey(month, 1))}
-          disabled={isCurrentOrFutureMonth(addMonthsToKey(month, 1))}
+      <Card>
+        <PanelHeader
+          icon={ListPlus}
+          title={tr.bulk.amountsTitle}
+          description={tr.bulk.amountsHint}
+          right={<Badge text={tr.bulk.filledCount(entries.length)} tone="muted" />}
         />
-      </Spread>
-
-      {rows.map((c) => (
-        <MoneyField
-          key={c.id}
-          label={`${categoryIcon(c)} ${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
-          value={values[c.id]?.raw ?? ""}
-          onChangeMinor={(raw, minor) => setValues((v) => ({ ...v, [c.id]: { raw, minor } }))}
-        />
-      ))}
-
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.bulk.hint}</Body>
-      {savedMsg ? <Body style={{ marginBottom: spacing.md }}>✅ {savedMsg}</Body> : null}
-      <OperationStatusNotice
-        state={operation.state}
-        label={tr.operation.saving}
-        onCancel={committing ? undefined : operation.cancel}
-      />
-      <View style={{ gap: spacing.sm }}>
-        <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
-        <Button label={tr.common.done} variant="secondary" onPress={() => confirmDiscard(() => navigateBack(router, "/(tabs)/cash-flow"))} />
-      </View>
+        <Spread style={{ marginBottom: spacing.md }}>
+          <IconButton icon={ChevronLeft} label={tr.bulk.month} onPress={() => changeMonth(addMonthsToKey(month, -1))} />
+          <Heading style={{ marginVertical: 0 }}>{monthLabel(month)}</Heading>
+          <IconButton
+            icon={ChevronRight}
+            label={tr.bulk.month}
+            onPress={() => changeMonth(addMonthsToKey(month, 1))}
+            disabled={isCurrentOrFutureMonth(addMonthsToKey(month, 1))}
+          />
+        </Spread>
+        {rows.length === 0 ? (
+          <>
+            <EmptyState
+              icon={CalendarRange}
+              title={tr.bulk.emptyCategoriesTitle}
+              hint={tr.bulk.emptyCategoriesHint}
+            />
+            <Button
+              label={tr.settings.categories}
+              variant="secondary"
+              onPress={() => router.push("/columns-editor")}
+            />
+          </>
+        ) : (
+          <>
+            <WorkspaceGrid
+        testID="bulk-entry-workspace"
+            >
+              {rows.map((c) => (
+                <View key={c.id}>
+                  <MoneyField
+                    label={`${categoryIcon(c)} ${c.name} · ${c.kind === "income" ? tr.settings.kindIncome : tr.settings.kindExpense}`}
+                    value={values[c.id]?.raw ?? ""}
+                    onChangeMinor={(raw, minor) => setValues((v) => ({ ...v, [c.id]: { raw, minor } }))}
+                    inline
+                  />
+                </View>
+              ))}
+            </WorkspaceGrid>
+            <Body muted style={{ marginBottom: spacing.md }}>{tr.bulk.hint}</Body>
+            {savedMsg ? <Body style={{ marginBottom: spacing.md }}>✅ {savedMsg}</Body> : null}
+            <OperationStatusNotice
+              state={operation.state}
+              label={tr.operation.saving}
+              onCancel={committing ? undefined : operation.cancel}
+            />
+            <View style={{ gap: spacing.sm }}>
+              <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
+              <Button label={tr.common.done} variant="secondary" onPress={() => confirmDiscard(() => navigateBack(router, "/(tabs)/cash-flow"))} />
+            </View>
+          </>
+        )}
+      </Card>
     </Screen>
   );
 }

@@ -11,14 +11,57 @@ import { categoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
-import { LayoutTemplate, Pencil, Trash2 } from "lucide-react-native";
-import { Badge, Body, Button, Card, DataStateNotice, Divider, Field, Heading, IconButton, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
+import { ArrowDownLeft, ArrowUpRight, Columns3, LayoutTemplate, Pencil, Plus, Trash2 } from "lucide-react-native";
+import { Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
+import { WorkspaceSplit } from "../../../ui/workspace-layout";
+
+function CategoryLedgerMap({ expenseCount, incomeCount }: { expenseCount: number; incomeCount: number }) {
+  const { palette } = useTheme();
+  const node = {
+    width: 52,
+    height: 52,
+    borderRadius: 19,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  };
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={tr.settings.categoryMapA11y(expenseCount, incomeCount)}
+      style={{ marginBottom: spacing.lg }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <FadeIn style={{ alignItems: "center", gap: spacing.xs }}>
+          <View style={[node, { backgroundColor: palette.negative + "14" }]}>
+            <ArrowUpRight accessible={false} size={20} color={palette.negative} />
+          </View>
+          <Body muted style={{ fontSize: 12 }}>{tr.settings.expenseCount(expenseCount)}</Body>
+        </FadeIn>
+        <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
+        <FadeIn delay={70} style={{ alignItems: "center", gap: spacing.xs }}>
+          <View style={[node, { backgroundColor: palette.primarySoft }]}>
+            <Columns3 accessible={false} size={21} color={palette.primary} />
+          </View>
+          <Body muted style={{ fontSize: 12 }}>{tr.cashflow.title}</Body>
+        </FadeIn>
+        <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
+        <FadeIn delay={140} style={{ alignItems: "center", gap: spacing.xs }}>
+          <View style={[node, { backgroundColor: palette.positive + "14" }]}>
+            <ArrowDownLeft accessible={false} size={20} color={palette.positive} />
+          </View>
+          <Body muted style={{ fontSize: 12 }}>{tr.settings.incomeCountShort(incomeCount)}</Body>
+        </FadeIn>
+      </View>
+    </View>
+  );
+}
 
 export default function CategoriesScreen({ header }: { header?: ReactNode } = {}) {
   const userId = useUserId();
@@ -138,49 +181,67 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   }
 
   return (
-    <Screen scrollEnabled={!dragging}>
+    <Screen scrollEnabled={!dragging} maxWidth={1100}>
       {header}
       <DataStateNotice status={dataStatus} retry={categoriesState.retry} />
-      <Body muted style={{ marginBottom: spacing.md }}>{tr.settings.categoriesDesc}</Body>
-      <Card>
-        <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={categoryPlaceholder} />
-        <Segmented
-          options={[
-            { value: "expense", label: tr.settings.kindExpense },
-            { value: "income", label: tr.settings.kindIncome },
-          ]}
-          value={kind}
-          onChange={(value) => {
-            setKind(value);
-            if (value === "income") setIsInvestment(false);
-          }}
-        />
-        {kind === "expense" ? (
-          <Spread style={{ marginBottom: spacing.md }}>
-            <View style={{ flex: 1, paddingRight: spacing.md }}>
-              <Body>{tr.settings.investmentCategory}</Body>
-              <Body muted style={{ fontSize: 12 }}>{tr.settings.investmentCategoryDesc}</Body>
-            </View>
-            <Toggle label={tr.settings.investmentCategory} value={isInvestment} onValueChange={setIsInvestment} />
-          </Spread>
-        ) : null}
-        <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
-        <Button
-          icon={LayoutTemplate}
-          variant="ghost"
-          size="sm"
-          label={tr.settings.addSuggested}
-          onPress={() => router.push("/workspace-template")}
-        />
-      </Card>
-
-      {(["expense", "income"] as const).map((k) => {
-        const group = categories.filter((c) => c.kind === k);
-        if (group.length === 0) return null;
-        return (
-          <Card key={k}>
-            <Heading style={{ marginTop: 0 }}>{k === "expense" ? tr.settings.kindExpense : tr.settings.kindIncome}</Heading>
-            <Body muted style={{ fontSize: 12, marginBottom: spacing.xs }}>{tr.settings.reorderHint}</Body>
+      <CategoryLedgerMap
+        expenseCount={categories.filter((category) => category.kind === "expense").length}
+        incomeCount={categories.filter((category) => category.kind === "income").length}
+      />
+      <WorkspaceSplit
+        testID="categories-workspace"
+        primary={(
+          <Card>
+            <PanelHeader icon={Plus} title={tr.settings.createItemTitle} description={tr.settings.createItemHint} />
+            <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={categoryPlaceholder} />
+            <Segmented
+              options={[
+                { value: "expense", label: tr.settings.kindExpense },
+                { value: "income", label: tr.settings.kindIncome },
+              ]}
+              value={kind}
+              onChange={(value) => {
+                setKind(value);
+                if (value === "income") setIsInvestment(false);
+              }}
+            />
+            {kind === "expense" ? (
+              <Spread style={{ marginBottom: spacing.md }}>
+                <View style={{ flex: 1, paddingRight: spacing.md }}>
+                  <Body>{tr.settings.investmentCategory}</Body>
+                  <Body muted style={{ fontSize: 12 }}>{tr.settings.investmentCategoryDesc}</Body>
+                </View>
+                <Toggle label={tr.settings.investmentCategory} value={isInvestment} onValueChange={setIsInvestment} />
+              </Spread>
+            ) : null}
+            <Button label={tr.common.add} onPress={() => void add()} disabled={!name.trim() || adding} loading={adding} />
+            <Button
+              icon={LayoutTemplate}
+              variant="ghost"
+              size="sm"
+              label={tr.settings.addSuggested}
+              onPress={() => router.push("/workspace-template")}
+            />
+          </Card>
+        )}
+        secondary={(
+          <View>
+            {categories.length === 0 ? (
+              <EmptyState
+                icon={Columns3}
+                title={tr.settings.categoriesEmptyTitle}
+                hint={tr.settings.categoriesEmptyHint}
+              />
+            ) : (["expense", "income"] as const).map((k) => {
+              const group = categories.filter((c) => c.kind === k);
+              if (group.length === 0) return null;
+              return (
+                <Card key={k}>
+            <PanelHeader
+              icon={k === "expense" ? ArrowUpRight : ArrowDownLeft}
+              title={k === "expense" ? tr.settings.kindExpense : tr.settings.kindIncome}
+              description={tr.settings.reorderHint}
+            />
             <DraggableList
               items={group}
               keyExtractor={(c) => c.id}
@@ -264,9 +325,12 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                 )
               }
             />
-          </Card>
-        );
-      })}
+                </Card>
+              );
+            })}
+          </View>
+        )}
+      />
     </Screen>
   );
 }

@@ -13,7 +13,7 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, History, Scale, Trash2 } from "lucide-react-native";
+import { ArrowRight, ChevronLeft, ChevronRight, History, Info, Scale, Trash2 } from "lucide-react-native";
 import { deleteBalanceAdjustment, restoreBalanceAdjustment, setCurrentBalance, setOpeningBalance } from "../data/repo";
 import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
@@ -21,15 +21,69 @@ import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Body, Button, Card, CardList, DataStateNotice, EmptyState, Heading, IconButton, ListRow, ManagementHeader, MoneyField, Row, Screen, Spread } from "./components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
 import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
 import { devError } from "../services/logger";
-import { spacing, useTheme } from "./theme";
+import { radius, spacing, useTheme } from "./theme";
 import { useUndo } from "./undo";
 import { navigateBack } from "./navigation";
 import { useDirtyExitGuard } from "./dirty-exit";
+import { WorkspaceSplit } from "./workspace-layout";
+
+function BalanceBridge({
+  computedMinor,
+  targetMinor,
+}: {
+  computedMinor: number;
+  targetMinor: number;
+}) {
+  const { palette } = useTheme();
+  const differenceMinor = targetMinor - computedMinor;
+  const changed = differenceMinor !== 0;
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`${tr.settings.computedBalance}: ${formatMinor(computedMinor)}. ${tr.settings.balanceDifference}: ${formatMinor(differenceMinor)}. ${tr.settings.realBalance}: ${formatMinor(targetMinor)}.`}
+      style={{
+        flexDirection: "row",
+        alignItems: "stretch",
+        gap: spacing.sm,
+        marginBottom: spacing.lg,
+      }}
+    >
+      <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
+        <Body muted style={{ fontSize: 10, marginBottom: spacing.xs }}>{tr.settings.computedBalance}</Body>
+        <Amount minor={computedMinor} colorized={false} style={{ fontSize: 13, textAlign: "left" }} />
+      </View>
+      <View
+        style={{
+          width: 82,
+          flexShrink: 0,
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: radius.md,
+          backgroundColor: changed ? palette.warning + "14" : palette.surfaceAlt,
+          paddingHorizontal: spacing.xs,
+          paddingVertical: spacing.sm,
+        }}
+      >
+        <ArrowRight accessible={false} size={15} color={changed ? palette.warningText : palette.textSecondary} />
+        <Amount
+          minor={differenceMinor}
+          color={differenceMinor > 0 ? palette.positiveText : differenceMinor < 0 ? palette.negativeText : palette.text}
+          style={{ fontSize: 11, marginTop: 2 }}
+        />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, justifyContent: "center", alignItems: "flex-end" }}>
+        <Body muted style={{ fontSize: 10, marginBottom: spacing.xs, textAlign: "right" }}>{tr.settings.realBalance}</Body>
+        <Amount minor={targetMinor} colorized={false} style={{ fontSize: 13 }} />
+      </View>
+    </View>
+  );
+}
 
 export function OpeningBalanceEditor() {
   const { palette } = useTheme();
@@ -152,23 +206,24 @@ export function OpeningBalanceEditor() {
     );
   }
   const visibleAdjustments = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
-
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <DataStateNotice status={dataStatus} retry={retryData} />
-
-      <Card>
-        <ManagementHeader
+      <WorkspaceSplit
+        testID="balance-workspace"
+        primary={(
+          <Card>
+        <PanelHeader
           icon={Scale}
-          title={tr.settings.setCurrentTitle}
-          description={tr.settings.openingScreenHint}
-          status={balanceDirty ? tr.settings.balanceChangeReady : tr.settings.balanceMatchesShort}
-          statusTone={balanceDirty ? "warning" : "success"}
+          title={tr.settings.realBalance}
+          description={tr.settings.currentBalanceFormHint}
+          right={(
+            <Badge
+              text={balanceDirty ? tr.settings.balanceChangeReady : tr.settings.balanceMatchesShort}
+              tone={balanceDirty ? "warning" : "success"}
+            />
+          )}
         />
-        <Spread style={{ marginBottom: spacing.md }}>
-          <Body muted>{tr.settings.computedBalance}</Body>
-          <Amount minor={computed} />
-        </Spread>
         <MoneyField
           label={tr.settings.realBalance}
           value={targetValue}
@@ -177,101 +232,112 @@ export function OpeningBalanceEditor() {
             setTargetMinor(minor);
           }}
         />
-        {!balanceDirty ? (
-          <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.balanceMatches}</Body>
-        ) : null}
-        <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.balanceScopeHint}</Body>
-        {/* Said before the save, not only after it: a mark appearing in the
-            table is a consequence worth knowing about while deciding. */}
-        <Row gap={spacing.sm} style={{ marginBottom: spacing.md, alignItems: "flex-start" }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.primary, marginTop: 6 }} />
-          <Body muted style={{ fontSize: 12, flex: 1 }}>{tr.settings.balanceWillMark}</Body>
+        <BalanceBridge computedMinor={computed} targetMinor={effectiveTarget ?? computed} />
+        <Row
+          gap={spacing.sm}
+          style={{
+            alignItems: "flex-start",
+            padding: spacing.md,
+            borderRadius: radius.md,
+            backgroundColor: palette.surfaceAlt,
+            marginBottom: spacing.md,
+          }}
+        >
+          <Info accessible={false} size={17} color={palette.primaryText} style={{ marginTop: 2 }} />
+          <View style={{ flex: 1, gap: spacing.xs }}>
+            <Body muted style={{ fontSize: 12 }}>{tr.settings.balanceScopeHint}</Body>
+            <Body muted style={{ fontSize: 12 }}>{tr.settings.balanceWillMark}</Body>
+          </View>
         </Row>
         <Button label={tr.common.save} onPress={() => void saveCurrent()} disabled={!balanceDirty} loading={savingBalance} haptic="none" />
-      </Card>
-
-      <CardList
-        items={visibleAdjustments}
-        keyExtractor={(adjustment) => adjustment.id}
-        header={
-          <View style={{ marginBottom: spacing.sm }}>
-            <Heading style={{ marginTop: 0 }}>{tr.settings.balanceAdjustmentsTitle}</Heading>
-            <Body muted style={{ fontSize: 12 }}>{tr.settings.balanceAdjustmentsHint}</Body>
-            {/* The marker is only meaningful if its meaning is stated somewhere,
-                and this screen is where someone arrives after tapping it. */}
-            <Row gap={spacing.sm} style={{ marginTop: spacing.sm, alignItems: "flex-start" }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.primary, marginTop: 6 }} />
-              <Body muted style={{ fontSize: 12, flex: 1 }}>{tr.settings.balanceAdjustmentMarkerHint}</Body>
-            </Row>
-          </View>
-        }
-        renderItem={(adjustment) => (
-          <Spread>
-            <View style={{ flex: 1, paddingRight: spacing.md }}>
-              <Body>{dateLabel(adjustment.date)}</Body>
-              <Body muted style={{ fontSize: 12 }}>{adjustment.note ?? tr.settings.balanceAdjustmentFallback}</Body>
-            </View>
-            <Row gap={spacing.sm}>
-              <Amount minor={adjustment.amountMinor} />
-              <IconButton
-                icon={Trash2}
-                size={32}
-                tone="danger"
-                label={tr.common.delete}
-                haptic="none"
-                onPress={() => void removeAdjustment(adjustment.id)}
+          </Card>
+        )}
+        secondary={(
+          <View>
+            <SectionHeader>{tr.settings.balanceAdjustmentsTitle}</SectionHeader>
+            <Body muted style={{ fontSize: 12, marginBottom: spacing.md }}>
+              {tr.settings.balanceAdjustmentsHint}
+            </Body>
+            <CardList
+              items={visibleAdjustments}
+              keyExtractor={(adjustment) => adjustment.id}
+              renderItem={(adjustment) => (
+                <Spread>
+                  <View style={{ flex: 1, paddingRight: spacing.md }}>
+                    <Body>{dateLabel(adjustment.date)}</Body>
+                    <Body muted style={{ fontSize: 12 }}>{adjustment.note ?? tr.settings.balanceAdjustmentFallback}</Body>
+                  </View>
+                  <Row gap={spacing.sm}>
+                    <Amount minor={adjustment.amountMinor} />
+                    <IconButton
+                      icon={Trash2}
+                      size={32}
+                      tone="danger"
+                      label={`${tr.common.delete} · ${dateLabel(adjustment.date)}`}
+                      haptic="none"
+                      onPress={() => void removeAdjustment(adjustment.id)}
+                    />
+                  </Row>
+                </Spread>
+              )}
+            />
+            {visibleAdjustments.length === 0 ? (
+              <EmptyState
+                icon={History}
+                title={tr.settings.noBalanceAdjustments}
+                hint={tr.settings.noBalanceAdjustmentsHint}
               />
-            </Row>
-          </Spread>
+            ) : null}
+
+            <SectionHeader>{tr.settings.historyOpeningTitle}</SectionHeader>
+            <Card>
+        <Row gap={spacing.md} style={{ alignItems: "flex-start", marginBottom: showHistory ? spacing.lg : spacing.md }}>
+          <View
+            accessible={false}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: palette.surfaceAlt,
+            }}
+          >
+            <History accessible={false} size={18} color={palette.textSecondary} />
+          </View>
+          <Body muted style={{ flex: 1 }}>{showHistory ? tr.settings.historyOpeningHint : tr.settings.historyOpeningSummary}</Body>
+          {showHistory ? <Button label={tr.common.close} variant="ghost" size="sm" onPress={() => setShowHistory(false)} /> : null}
+        </Row>
+        {showHistory ? (
+          <FadeIn>
+            <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.startMonth}</Body>
+            <Spread style={{ marginBottom: spacing.lg }}>
+              <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setDraftStart(addMonthsToKey(startMonth, -1))} />
+              <Body style={{ fontSize: 18 }}>{monthLabel(startMonth)}</Body>
+              <IconButton
+                icon={ChevronRight}
+                label={tr.onboarding.startMonth}
+                disabled={isCurrentOrFutureMonth(startMonth)}
+                onPress={() => setDraftStart(addMonthsToKey(startMonth, 1))}
+              />
+            </Spread>
+            <MoneyField
+              label={tr.onboarding.openingBalance}
+              value={openingRaw}
+              onChangeMinor={(raw, minor) => {
+                setDraftRaw(raw);
+                setDraftMinor(minor);
+              }}
+            />
+            <Button label={tr.common.save} onPress={() => void saveOpening()} disabled={!openingDirty || openingMinor == null} loading={savingOpening} />
+          </FadeIn>
+        ) : (
+          <Button label={tr.settings.historyOpeningAction} variant="secondary" onPress={() => setShowHistory(true)} />
+        )}
+            </Card>
+          </View>
         )}
       />
-      {visibleAdjustments.length === 0 ? (
-        <EmptyState
-          icon={History}
-          title={tr.settings.noBalanceAdjustments}
-          hint={tr.settings.noBalanceAdjustmentsHint}
-        />
-      ) : null}
-
-      {showHistory ? (
-        <Card>
-          <Spread style={{ marginBottom: spacing.sm }}>
-            <Heading style={{ marginTop: 0, marginBottom: 0, flex: 1 }}>{tr.settings.historyOpeningTitle}</Heading>
-            <Button label={tr.common.close} variant="ghost" size="sm" onPress={() => setShowHistory(false)} />
-          </Spread>
-          <Body muted style={{ marginBottom: spacing.md, fontSize: 12 }}>{tr.settings.historyOpeningHint}</Body>
-          <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.startMonth}</Body>
-          <Spread style={{ marginBottom: spacing.lg }}>
-            <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setDraftStart(addMonthsToKey(startMonth, -1))} />
-            <Heading style={{ marginVertical: 0 }}>{monthLabel(startMonth)}</Heading>
-            <IconButton
-              icon={ChevronRight}
-              label={tr.onboarding.startMonth}
-              disabled={isCurrentOrFutureMonth(startMonth)}
-              onPress={() => setDraftStart(addMonthsToKey(startMonth, 1))}
-            />
-          </Spread>
-          <MoneyField
-            label={tr.onboarding.openingBalance}
-            value={openingRaw}
-            onChangeMinor={(raw, minor) => {
-              setDraftRaw(raw);
-              setDraftMinor(minor);
-            }}
-          />
-          <Button label={tr.common.save} onPress={() => void saveOpening()} disabled={!openingDirty || openingMinor == null} loading={savingOpening} />
-        </Card>
-      ) : (
-        <Card>
-          <ListRow
-            icon={History}
-            title={tr.settings.historyOpeningTitle}
-            subtitle={tr.settings.historyOpeningSummary}
-            chevron
-            onPress={() => setShowHistory(true)}
-          />
-        </Card>
-      )}
 
       <View style={{ height: spacing.xl }} />
     </Screen>

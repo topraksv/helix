@@ -348,85 +348,79 @@ export function Label({
 }
 
 /** Section title used between card groups. */
-export function SectionHeader({ children }: { children: ReactNode }) {
+export function SectionHeader({
+  children,
+  description,
+  right,
+}: {
+  children: ReactNode;
+  description?: string;
+  right?: ReactNode;
+}) {
   const { palette } = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm, marginTop: spacing.md }}>
-      <Text
-        accessibilityRole="header"
-        style={[
-          type.heading,
-          {
-            color: palette.textStrong,
-            fontSize: 16,
-            flex: 1,
-            minWidth: 0,
-          },
-        ]}
-      >
-        {children}
-      </Text>
+    <View style={{ marginBottom: spacing.sm, marginTop: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+        <Text
+          accessibilityRole="header"
+          style={[
+            type.heading,
+            {
+              color: palette.textStrong,
+              fontSize: 16,
+              flex: 1,
+              minWidth: 0,
+            },
+          ]}
+        >
+          {children}
+        </Text>
+        {right}
+      </View>
+      {description ? (
+        <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{description}</Text>
+      ) : null}
     </View>
   );
 }
 
-/**
- * Management forms share one ledger-like entry rail: the icon names the
- * object being managed, the copy explains the consequence, and the status
- * distinguishes creating, editing and already-matched states without relying
- * on color alone.
- */
-export function ManagementHeader({
+/** Compact title and explanation inside a functional card or pane. */
+export function PanelHeader({
   icon: IconCmp,
   title,
   description,
-  status,
-  statusTone = "muted",
+  right,
 }: {
   icon: LucideIcon;
   title: string;
-  description: string;
-  status?: string;
-  statusTone?: "muted" | "success" | "warning" | "primary";
+  description?: string;
+  right?: ReactNode;
 }) {
   const { palette } = useTheme();
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "flex-start",
-        gap: spacing.md,
-        borderLeftWidth: 3,
-        borderLeftColor: palette.primary,
-        paddingLeft: spacing.md,
-        paddingVertical: spacing.xs,
-        marginBottom: spacing.lg,
-      }}
-    >
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md, marginBottom: spacing.md }}>
       <View
         accessible={false}
         style={{
-          width: 42,
-          height: 42,
-          borderRadius: radius.md,
+          width: 36,
+          height: 36,
+          borderRadius: 12,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: palette.primarySoft,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: palette.primary + "55",
+          backgroundColor: palette.surfaceAlt,
         }}
       >
-        <IconCmp accessible={false} size={20} color={palette.primary} strokeWidth={1.9} />
+        <IconCmp accessible={false} size={17} color={palette.accentText} strokeWidth={2} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm }}>
-          <Text accessibilityRole="header" style={[type.heading, { color: palette.text, flexShrink: 1 }]}>
-            {title}
-          </Text>
-          {status ? <Badge text={status} tone={statusTone} /> : null}
-        </View>
-        <Body muted style={{ marginTop: spacing.xs }}>{description}</Body>
+        <Text accessibilityRole="header" style={[type.body, { color: palette.textStrong, fontFamily: font.semibold }]}>
+          {title}
+        </Text>
+        {description ? (
+          <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{description}</Text>
+        ) : null}
       </View>
+      {right}
     </View>
   );
 }
@@ -798,6 +792,7 @@ export function MoneyField({
   expression = false,
   disabled = false,
   accessibilityLabel,
+  inline = false,
 }: {
   label?: string;
   value: string;
@@ -807,6 +802,8 @@ export function MoneyField({
   disabled?: boolean;
   /** Screen-reader label when a nearby visible section heading labels the field. */
   accessibilityLabel?: string;
+  /** Keeps repeated amount rows compact without reducing the input target. */
+  inline?: boolean;
 }) {
   const { palette } = useTheme();
   const fieldId = useId();
@@ -818,55 +815,61 @@ export function MoneyField({
   const minor = value.trim() === "" ? null : parseAmountExpression(display);
   const invalid = value.trim() !== "" && minor === null;
   return (
-    <View style={{ marginBottom: spacing.md }}>
-      {label ? <Label nativeID={labelId}>{label}</Label> : null}
-      <View>
-        <TextInput
-          value={display}
-          accessibilityLabel={accessibilityLabel ?? label}
-          accessibilityLabelledBy={label ? labelId : undefined}
-          accessibilityHint={invalid ? tr.a11y.fieldError(tr.common.amountLimit) : undefined}
-          accessibilityState={{ disabled }}
-          maxLength={INPUT_LIMITS.money}
-          editable={!disabled}
-          onChangeText={(raw) => {
-            const formatted = formatMoneyInputLive(raw);
-            onChangeMinor(formatted, formatted.trim() === "" ? null : parseAmountExpression(formatted));
-          }}
-          keyboardType={expression ? "numbers-and-punctuation" : "decimal-pad"}
-          inputMode={expression ? "text" : "decimal"}
-          placeholder={placeholder}
-          placeholderTextColor={palette.textSecondary}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={{
-            ...controlStateStyle(palette, focused, invalid),
-            color: invalid ? palette.errorText : disabled ? palette.textSecondary : palette.text,
-            borderRadius: radius.sm,
-            paddingHorizontal: spacing.md,
-            paddingRight: controlSize.inputAccessoryInset,
-            minHeight: controlSize.regular,
-            ...type.moneyInput,
-            ...(disabled ? { borderColor: palette.border } : null),
-          }}
-        />
-        {disabled ? null : (
-          <Pressable
-            ref={calculatorTriggerRef}
-            accessibilityRole="button"
-            accessibilityLabel={tr.a11y.openCalculator}
-            accessibilityHint={accessibilityLabel ?? label}
-            onPress={() => setCalcOpen(true)}
-            hitSlop={8}
-            // The icon is 18px and `hitSlop` does not enlarge the DOM box on
-            // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
-            // 24). The box now fills the input's reserved 44px right padding
-            // with the icon centred, so the mark does not visibly move.
-            style={fieldAccessoryStyle}
-          >
-            <CalculatorIcon accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
-          </Pressable>
-        )}
+    <View style={{ marginBottom: inline ? spacing.sm : spacing.md }}>
+      <View style={inline ? { flexDirection: "row", alignItems: "center", gap: spacing.md } : undefined}>
+        {label ? (
+          <View style={inline ? { flex: 1, minWidth: 0 } : undefined}>
+            <Label nativeID={labelId} style={inline ? { marginBottom: 0 } : undefined}>{label}</Label>
+          </View>
+        ) : null}
+        <View style={inline ? { flex: 1, minWidth: 132 } : undefined}>
+          <TextInput
+            value={display}
+            accessibilityLabel={accessibilityLabel ?? label}
+            accessibilityLabelledBy={label ? labelId : undefined}
+            accessibilityHint={invalid ? tr.a11y.fieldError(tr.common.amountLimit) : undefined}
+            accessibilityState={{ disabled }}
+            maxLength={INPUT_LIMITS.money}
+            editable={!disabled}
+            onChangeText={(raw) => {
+              const formatted = formatMoneyInputLive(raw);
+              onChangeMinor(formatted, formatted.trim() === "" ? null : parseAmountExpression(formatted));
+            }}
+            keyboardType={expression ? "numbers-and-punctuation" : "decimal-pad"}
+            inputMode={expression ? "text" : "decimal"}
+            placeholder={placeholder}
+            placeholderTextColor={palette.textSecondary}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={{
+              ...controlStateStyle(palette, focused, invalid),
+              color: invalid ? palette.errorText : disabled ? palette.textSecondary : palette.text,
+              borderRadius: radius.sm,
+              paddingHorizontal: spacing.md,
+              paddingRight: controlSize.inputAccessoryInset,
+              minHeight: controlSize.regular,
+              ...type.moneyInput,
+              ...(disabled ? { borderColor: palette.border } : null),
+            }}
+          />
+          {disabled ? null : (
+            <Pressable
+              ref={calculatorTriggerRef}
+              accessibilityRole="button"
+              accessibilityLabel={tr.a11y.openCalculator}
+              accessibilityHint={accessibilityLabel ?? label}
+              onPress={() => setCalcOpen(true)}
+              hitSlop={8}
+              // The icon is 18px and `hitSlop` does not enlarge the DOM box on
+              // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
+              // 24). The box now fills the input's reserved 44px right padding
+              // with the icon centred, so the mark does not visibly move.
+              style={fieldAccessoryStyle}
+            >
+              <CalculatorIcon accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
+            </Pressable>
+          )}
+        </View>
       </View>
       <FieldError message={invalid ? tr.common.amountLimit : null} />
       {calcOpen ? (

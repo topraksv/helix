@@ -19,6 +19,7 @@ import {
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, MonthStepper, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { font, spacing, useTheme } from "../../../ui/theme";
+import { WorkspaceSplit } from "../../../ui/workspace-layout";
 
 export default function InstallmentsScreen() {
   const plansState = usePlansState();
@@ -156,41 +157,49 @@ export default function InstallmentsScreen() {
   }
 
   return (
-    <Screen>
+    <Screen maxWidth={1100}>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <MonthStepper value={viewMonth} onChange={setViewMonth} min={firstPlanMonth} max={lastPlanMonth} />
+      <WorkspaceSplit
+        testID="installments-workspace"
+        primary={(
+          <View>
+            <MonthStepper value={viewMonth} onChange={setViewMonth} min={firstPlanMonth} max={lastPlanMonth} />
+            <Card>
+              <Body muted>{tr.installments.thisMonthTotal} · {monthLabel(viewMonth)}</Body>
+              <Amount minor={monthObligationMinor} large colorized={false} />
+              {cardOptions.length > 1 ? (
+                <View style={{ marginTop: spacing.md }}>
+                  <ChipPicker options={cardOptions} value={cardFilter ?? ""} onChange={(v) => setCardFilter(v === "" ? null : v)} />
+                </View>
+              ) : null}
+              <Button icon={Plus} label={tr.installments.newPlan} onPress={() => router.push("/installment-new")} />
+            </Card>
+          </View>
+        )}
+        secondary={(
+          <View>
+            {plans.length === 0 ? (
+              <EmptyState icon={CreditCard} title={tr.installments.emptyTitle} hint={tr.installments.emptyHint} />
+            ) : nothingThisMonth ? (
+              <EmptyState icon={CreditCard} title={tr.installments.noneThisMonth} hint={tr.installments.noneThisMonthHint} />
+            ) : null}
 
-      <Card>
-        <Body muted>{tr.installments.thisMonthTotal} · {monthLabel(viewMonth)}</Body>
-        <Amount minor={monthObligationMinor} large colorized={false} />
-      </Card>
+            <CardList items={selfPlans} keyExtractor={(p) => p.id} renderItem={(p) => renderPlan(p)} />
 
-      {cardOptions.length > 1 ? (
-        <ChipPicker options={cardOptions} value={cardFilter ?? ""} onChange={(v) => setCardFilter(v === "" ? null : v)} />
-      ) : null}
-
-      <Button icon={Plus} label={tr.installments.newPlan} onPress={() => router.push("/installment-new")} />
-      <View style={{ height: spacing.lg }} />
-
-      {plans.length === 0 ? (
-        <EmptyState icon={CreditCard} title={tr.installments.emptyTitle} hint={tr.installments.emptyHint} />
-      ) : nothingThisMonth ? (
-        <EmptyState icon={CreditCard} title={tr.installments.noneThisMonth} hint={tr.installments.noneThisMonthHint} />
-      ) : null}
-
-      <CardList items={selfPlans} keyExtractor={(p) => p.id} renderItem={(p) => renderPlan(p)} />
-
-      {otherPlans.length > 0 ? (
-        <>
-          <SectionHeader>{tr.installments.othersSection}</SectionHeader>
-          <Card>
-            <Body muted>{tr.installments.watchedMonthTotal} · {monthLabel(viewMonth)}</Body>
-            <Amount minor={watchedObligationMinor} large colorized={false} />
-            <Body muted style={{ marginTop: spacing.xs }}>{tr.installments.watchedBalanceHint}</Body>
-          </Card>
-          <CardList items={otherPlans} keyExtractor={(p) => p.id} renderItem={(p) => renderPlan(p, personName.get(p.personId) ?? "")} />
-        </>
-      ) : null}
+            {otherPlans.length > 0 ? (
+              <>
+                <SectionHeader>{tr.installments.othersSection}</SectionHeader>
+                <Card>
+                  <Body muted>{tr.installments.watchedMonthTotal} · {monthLabel(viewMonth)}</Body>
+                  <Amount minor={watchedObligationMinor} large colorized={false} />
+                  <Body muted style={{ marginTop: spacing.xs }}>{tr.installments.watchedBalanceHint}</Body>
+                </Card>
+                <CardList items={otherPlans} keyExtractor={(p) => p.id} renderItem={(p) => renderPlan(p, personName.get(p.personId) ?? "")} />
+              </>
+            ) : null}
+          </View>
+        )}
+      />
     </Screen>
   );
 }
