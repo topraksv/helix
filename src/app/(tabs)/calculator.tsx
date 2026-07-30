@@ -13,12 +13,21 @@ export default function CalculatorScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   return (
-    <Screen title={tr.calc.title} maxWidth={1100}>
+    <Screen title={tr.tabs.calculator} maxWidth={1100}>
       <WorkspaceSplit
         testID="calculator-workspace"
-        primary={<CalculatorPad />}
+        primaryWeight={1}
+        secondaryWeight={1}
+        primary={(
+          <View testID="calculator-tool">
+            <Title>{tr.calc.title}</Title>
+            <Card>
+              <CalculatorPad />
+            </Card>
+          </View>
+        )}
         secondary={(
-          <View style={wide ? undefined : { marginTop: spacing.xl }}>
+          <View testID="converter-tool" style={wide ? undefined : { marginTop: spacing.xl }}>
             <Title>{tr.calc.converterTitle}</Title>
             <Card>
               <CurrencyConverter />

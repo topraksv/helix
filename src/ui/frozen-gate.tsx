@@ -20,6 +20,7 @@ import { Body, Button, Screen, Title, WaitingText } from "./components";
 import { appAlert } from "./dialog";
 import { spacing, useTheme } from "./theme";
 import { useOperationGuard } from "./operation-guard";
+import { OperationFlow } from "./operation-flow";
 
 export function FrozenGate() {
   const userId = useUserId();
@@ -83,9 +84,15 @@ export function FrozenGate() {
           <ShieldCheck accessible={false} size={48} color={palette.primary} />
           <Title>{operation === "reactivating" ? tr.account.reactivatingTitle : operation === "signing-out" ? tr.operation.signingOutTitle : tr.account.frozenTitle}</Title>
           {operation === "reactivating" ? (
-            <WaitingText message={tr.account.reactivatingBody} heading />
+            <>
+              <OperationFlow kind="reactivate" label={tr.account.reactivatingBody} />
+              <WaitingText message={tr.account.reactivatingBody} heading />
+            </>
           ) : operation === "signing-out" ? (
-            <WaitingText message={tr.operation.signingOut} heading />
+            <>
+              <OperationFlow kind="sign-out" label={tr.operation.signingOut} />
+              <WaitingText message={tr.operation.signingOut} heading />
+            </>
           ) : (
             <Body muted style={{ textAlign: "center" }}>{tr.account.frozenBody}</Body>
           )}
@@ -93,8 +100,7 @@ export function FrozenGate() {
         {useBiometric ? (
           <Button
             label={operation === "reactivating" ? tr.account.reactivatingTitle : tr.account.reactivate}
-            loading={operation === "reactivating"}
-            disabled={operation === "signing-out"}
+            disabled={operation !== "idle"}
             onPress={() => void unlockBiometric()}
           />
         ) : null}
@@ -102,8 +108,7 @@ export function FrozenGate() {
           <Button
             label={tr.account.frozenSignOut}
             variant={useBiometric ? "secondary" : "primary"}
-            loading={operation === "signing-out"}
-            disabled={operation === "reactivating"}
+            disabled={operation !== "idle"}
             onPress={async () => {
               await operationGuard.run(async () => {
                 setOperation("signing-out");
@@ -119,7 +124,7 @@ export function FrozenGate() {
         ) : (
           <Button
             label={operation === "reactivating" ? tr.account.reactivatingTitle : tr.account.reactivate}
-            loading={operation === "reactivating"}
+            disabled={operation !== "idle"}
             onPress={() => void unlockDirectly()}
           />
         )}

@@ -574,7 +574,12 @@ export default function DashboardScreen() {
                   )}
                   <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
                     <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
-                    <Amount minor={projected} colorized={false} color={palette.textStrong} style={{ textAlign: "left" }} />
+                    <Amount
+                      minor={projected}
+                      colorized={false}
+                      color={projected >= 0 ? palette.positiveText : palette.negativeText}
+                      style={{ textAlign: "left" }}
+                    />
                   </View>
                   {showForecast ? <ChevronUp size={18} color={palette.accentText} /> : <ChevronDown size={18} color={palette.accentText} />}
                 </Pressable>
@@ -646,20 +651,24 @@ export default function DashboardScreen() {
           </Spread>
           {incomingMinor > 0 ? (
             <Spread style={{ marginBottom: spacing.xs }}>
-              <Body muted>{tr.dashboard.forecastIncoming}</Body>
-              <Amount minor={incomingMinor} />
+              <Body style={{ color: palette.positiveText }}>{tr.dashboard.forecastIncoming}</Body>
+              <Amount minor={incomingMinor} colorized={false} color={palette.positiveText} />
             </Spread>
           ) : null}
           {remainingFixedMinor > 0 ? (
             <Spread style={{ marginBottom: spacing.xs }}>
-              <Body muted>{tr.dashboard.forecastOutgoing}</Body>
-              <Amount minor={-remainingFixedMinor} />
+              <Body style={{ color: palette.negativeText }}>{tr.dashboard.forecastOutgoing}</Body>
+              <Amount minor={-remainingFixedMinor} colorized={false} color={palette.negativeText} />
             </Spread>
           ) : null}
           <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.sm }} />
           <Spread>
             <Body style={{ fontFamily: font.semibold }}>{tr.dashboard.forecastResult}</Body>
-            <Amount minor={projected} />
+            <Amount
+              minor={projected}
+              colorized={false}
+              color={projected >= 0 ? palette.positiveText : palette.negativeText}
+            />
           </Spread>
         </Card>
       ) : null}

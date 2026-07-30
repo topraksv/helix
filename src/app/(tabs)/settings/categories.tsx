@@ -32,6 +32,7 @@ function CategoryLedgerMap({ expenseCount, incomeCount }: { expenseCount: number
   };
   return (
     <View
+      testID="category-ledger-map"
       accessible
       accessibilityRole="image"
       accessibilityLabel={tr.settings.categoryMapA11y(expenseCount, incomeCount)}
@@ -184,15 +185,15 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     <Screen scrollEnabled={!dragging} maxWidth={1100}>
       {header}
       <DataStateNotice status={dataStatus} retry={categoriesState.retry} />
-      <CategoryLedgerMap
-        expenseCount={categories.filter((category) => category.kind === "expense").length}
-        incomeCount={categories.filter((category) => category.kind === "income").length}
-      />
       <WorkspaceSplit
         testID="categories-workspace"
         primary={(
           <Card>
             <PanelHeader icon={Plus} title={tr.settings.createItemTitle} description={tr.settings.createItemHint} />
+            <CategoryLedgerMap
+              expenseCount={categories.filter((category) => category.kind === "expense").length}
+              incomeCount={categories.filter((category) => category.kind === "income").length}
+            />
             <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={categoryPlaceholder} />
             <Segmented
               options={[

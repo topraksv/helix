@@ -1,8 +1,9 @@
 /** One navigation guard for every form that can lose an in-memory draft. */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useNavigation } from "expo-router";
+import { usePreventRemove } from "@react-navigation/native";
 import { tr } from "../i18n/tr";
 import { appConfirm } from "./dialog";
 import { shouldBlockDirtyExit } from "../domain/form-state";
@@ -17,33 +18,43 @@ interface DirtyExitGuard {
 export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
   const navigation = useNavigation();
   const dirtyRef = useRef(dirty);
-  const allowedRef = useRef(false);
+  const [exitAllowed, setExitAllowed] = useState(false);
+  const exitAllowedRef = useRef(exitAllowed);
+  const pendingExitRef = useRef<(() => void) | null>(null);
   const confirmingRef = useRef(false);
   const askToDiscardRef = useRef<(action: () => void, contextDirty?: boolean) => void>(() => {});
   dirtyRef.current = dirty;
+  exitAllowedRef.current = exitAllowed;
 
-  /**
-   * Turn the swipe-back gesture off while there is something to lose.
-   *
-   * `beforeRemove` is the only hook the button, the Android hardware back and
-   * the iOS edge swipe all pass through, so the guard has to live there. But
-   * the native stack runs that gesture on the native side: the screen has
-   * already slid away by the time `preventDefault` is processed, and putting it
-   * back leaves the owner looking at a question about a screen they watched
-   * themselves leave.
-   *
-   * With the gesture disabled the remaining exits raise `beforeRemove` before
-   * anything moves, so the question arrives while the screen is still there.
-   * Re-enabled the moment the form is clean, which is nearly all of the time.
-   */
+  const permitExit = (action: () => void) => {
+    pendingExitRef.current = action;
+    setExitAllowed(true);
+  };
+
+  // React Navigation's native-stack integration translates this registration
+  // to `preventNativeDismiss` on iOS. The sheet's pull-down gesture therefore
+  // remains available, but a dirty dismissal is cancelled natively before the
+  // shared confirmation decides whether to replay the original action.
+  usePreventRemove(shouldBlockDirtyExit(dirty, exitAllowed), ({ data }) => {
+    // Re-dispatch the exact prevented action from this event. React Navigation
+    // marks it as already visited, so it can leave without disabling the guard
+    // for an unrelated navigation attempt in between.
+    askToDiscardRef.current(() => navigation.dispatch(data.action));
+  });
+
   useEffect(() => {
-    navigation.setOptions({ gestureEnabled: !dirty });
-  }, [navigation, dirty]);
+    if (!exitAllowed) return;
+    const action = pendingExitRef.current;
+    pendingExitRef.current = null;
+    action?.();
+    const timer = setTimeout(() => setExitAllowed(false), 0);
+    return () => clearTimeout(timer);
+  }, [exitAllowed]);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!shouldBlockDirtyExit(dirtyRef.current, allowedRef.current)) return;
+      if (!shouldBlockDirtyExit(dirtyRef.current, exitAllowedRef.current)) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -52,7 +63,7 @@ export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
   }, []);
 
   askToDiscardRef.current = (action, contextDirty = dirtyRef.current) => {
-    if (!shouldBlockDirtyExit(contextDirty, allowedRef.current)) {
+    if (!shouldBlockDirtyExit(contextDirty, exitAllowedRef.current)) {
       action();
       return;
     }
@@ -68,26 +79,11 @@ export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
     });
   };
 
-  useEffect(() => navigation.addListener("beforeRemove", (event) => {
-    if (!shouldBlockDirtyExit(dirtyRef.current, allowedRef.current)) return;
-    event.preventDefault();
-    askToDiscardRef.current(() => {
-      allowedRef.current = true;
-      navigation.dispatch(event.data.action);
-      setTimeout(() => {
-        allowedRef.current = false;
-      }, 0);
-    });
-  }), [navigation]);
-
   return {
-    allowExit: (action) => {
-      allowedRef.current = true;
-      action();
-      setTimeout(() => {
-        allowedRef.current = false;
-      }, 0);
-    },
-    confirmDiscard: (action, contextDirty) => askToDiscardRef.current(action, contextDirty),
+    allowExit: permitExit,
+    // A form-owned cancel has not been prevented by React Navigation yet, so
+    // lift the guard for exactly that queued action after confirmation.
+    confirmDiscard: (action, contextDirty) =>
+      askToDiscardRef.current(() => permitExit(action), contextDirty),
   };
 }

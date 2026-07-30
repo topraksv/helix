@@ -2,21 +2,21 @@
 
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { BellRing, CalendarClock, Repeat2 } from "lucide-react-native";
+import { ArrowRight, BellRing, CalendarClock, Repeat2 } from "lucide-react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
 import { useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
-import { dueDateInMonth, nextDueAfter } from "../domain/recurrence";
+import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { normalizedMonthlyLoadMinor } from "../domain/analytics";
 import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";
 import { formatMinor } from "../domain/money";
-import { dateLabel, tr } from "../i18n/tr";
+import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { CurrencyPicker } from "../ui/currency-picker";
-import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, Segmented, Select, Spread, Toggle } from "../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, Segmented, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -29,6 +29,7 @@ import { MonthDayField } from "../ui/month-day-field";
 import { Logo } from "../ui/logo";
 import { font, radius, spacing, type, useTheme } from "../ui/theme";
 import { WorkspaceSplit } from "../ui/workspace-layout";
+import { PersonAssignment } from "../ui/person-assignment";
 
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
@@ -41,6 +42,8 @@ function SubscriptionFormArtwork({
   amountMinor,
   currency,
   schedule,
+  nextDueDate,
+  followingDueDate,
 }: {
   name: string;
   cycle: "monthly" | "yearly" | "custom";
@@ -48,6 +51,8 @@ function SubscriptionFormArtwork({
   amountMinor: number | null;
   currency: string;
   schedule: string;
+  nextDueDate: ISODate | null;
+  followingDueDate: ISODate | null;
 }) {
   const { palette } = useTheme();
   const cycleLabel = cycle === "monthly" ? tr.subs.monthly : cycle === "yearly" ? tr.subs.yearly : tr.subs.custom;
@@ -64,84 +69,77 @@ function SubscriptionFormArtwork({
         monthlyMinor == null ? tr.common.none : formatMinor(monthlyMinor, currency),
       )}
       style={{
-        minHeight: 96,
         marginBottom: spacing.lg,
-        flexDirection: "row",
-        alignItems: "center",
         gap: spacing.md,
       }}
     >
-      <View
-        style={{
-          width: 86,
-          height: 86,
-          flexShrink: 0,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <View
-          style={{
-            position: "absolute",
-            width: 72,
-            height: 72,
-            borderRadius: 36,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: palette.tertiary + "80",
-          }}
-        />
-        {Array.from({ length: 12 }, (_, index) => {
-          const angle = (index / 12) * Math.PI * 2 - Math.PI / 2;
-          const active = index % interval === 0;
-          return (
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+        <Logo name={name || tr.subs.title} domain="" size={46} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[type.heading, { color: palette.text, fontFamily: font.semibold }]}>{name || tr.subs.formIdentity}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xs }}>
+            <Repeat2 accessible={false} size={14} color={palette.primary} />
+            <Text style={[type.small, { color: palette.textSecondary }]}>{cycleLabel}</Text>
+            <Text style={[type.small, { color: palette.textSecondary, flexShrink: 1 }]}>
+              · {schedule || (cycle === "yearly" ? tr.subs.yearlyRenewalDate : tr.subs.billingDay)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        {[nextDueDate, followingDueDate].map((date, index) => (
+          <React.Fragment key={index === 0 ? "next" : "following"}>
+            {index === 1 ? (
+              <FadeIn delay={90} style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                <View style={{ width: 10, height: StyleSheet.hairlineWidth, backgroundColor: palette.border }} />
+                <ArrowRight accessible={false} size={14} color={palette.primary} />
+                <View style={{ width: 10, height: StyleSheet.hairlineWidth, backgroundColor: palette.border }} />
+              </FadeIn>
+            ) : null}
             <FadeIn
-              key={`${cycle}-${interval}-${index}`}
-              delay={active ? index * 28 : 0}
+              delay={index * 120}
               style={{
-                position: "absolute",
-                left: 40 + Math.cos(angle) * 35,
-                top: 40 + Math.sin(angle) * 35,
-                width: active ? 7 : 3,
-                height: active ? 7 : 3,
-                borderRadius: 4,
-                backgroundColor: active ? palette.primary : palette.border,
+                flex: 1,
+                minWidth: 0,
+                minHeight: 58,
+                justifyContent: "center",
+                paddingHorizontal: spacing.sm,
+                paddingVertical: spacing.xs,
+                borderRadius: radius.md,
+                backgroundColor: index === 0 ? palette.primarySoft : palette.surfaceAlt,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: index === 0 ? palette.primary + "70" : palette.border,
               }}
             >
-              <View />
+              <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>
+                {index === 0 ? tr.subs.nextCharge : tr.subs.followingCharge}
+              </Text>
+              <Text style={[type.label, { color: index === 0 ? palette.primaryText : palette.text, marginTop: 2 }]}>
+                {date ? shortDateLabel(date) : "—"}
+              </Text>
             </FadeIn>
-          );
-        })}
-        <Logo name={name || tr.subs.title} domain="" size={46} />
+          </React.Fragment>
+        ))}
       </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[type.heading, { color: palette.text, fontFamily: font.semibold }]}>{name || tr.subs.formIdentity}</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.sm }}>
-          <Repeat2 accessible={false} size={14} color={palette.primary} />
-          <Text style={[type.small, { color: palette.textSecondary }]}>{cycleLabel}</Text>
-          <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: palette.border }} />
-          <CalendarClock accessible={false} size={14} color={palette.tertiary} />
-          <Text style={[type.small, { color: palette.textSecondary, flexShrink: 1 }]}>
-            {schedule || (cycle === "yearly" ? tr.subs.yearlyRenewalDate : tr.subs.billingDay)}
-          </Text>
+
+      <View style={{ flexDirection: "row", alignItems: "stretch" }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{tr.subs.monthlyEquivalent}</Text>
+          {monthlyMinor == null ? (
+            <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
+          ) : (
+            <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: 13, textAlign: "left", marginTop: 2 }} />
+          )}
         </View>
-        <View style={{ flexDirection: "row", alignItems: "stretch", marginTop: spacing.md }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{tr.subs.monthlyEquivalent}</Text>
-            {monthlyMinor == null ? (
-              <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
-            ) : (
-              <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: 13, textAlign: "left", marginTop: 2 }} />
-            )}
-          </View>
-          <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{tr.subs.annualEquivalent}</Text>
-            {monthlyMinor == null ? (
-              <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
-            ) : (
-              <Amount minor={monthlyMinor * 12} currency={currency} colorized={false} style={{ fontSize: 13, textAlign: "left", marginTop: 2 }} />
-            )}
-          </View>
+        <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{tr.subs.annualEquivalent}</Text>
+          {monthlyMinor == null ? (
+            <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
+          ) : (
+            <Amount minor={monthlyMinor * 12} currency={currency} colorized={false} style={{ fontSize: 13, textAlign: "left", marginTop: 2 }} />
+          )}
         </View>
       </View>
     </View>
@@ -237,7 +235,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     note,
   });
   const initialDraftSnapshot = React.useRef(draftSnapshot).current;
-  const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  const { allowExit, confirmDiscard } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
 
   const billingDay = cycle === "yearly" && yearlyRenewalDate
     ? Number(yearlyRenewalDate.slice(8, 10))
@@ -263,6 +261,19 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     sourceValid;
   const expenseCategories = categories.filter((category) => category.kind === "expense");
   const selectedCategoryId = expenseCategories.some((category) => category.id === categoryId) ? categoryId : null;
+  const today = todayISO();
+  const previewDueDate: ISODate | null =
+    cycle === "yearly"
+      ? yearlyRenewalDate
+      : isMonthDay(billingDay) && Number.isInteger(intervalMonths) && intervalMonths >= 1
+        ? dueDateInMonth(monthKeyOf(today), billingDay) >= today
+          ? dueDateInMonth(monthKeyOf(today), billingDay)
+          : nextDueAfter(today, today, intervalMonths, billingDay)
+        : null;
+  const followingDueDate =
+    previewDueDate && isMonthDay(billingDay) && Number.isInteger(intervalMonths) && intervalMonths >= 1
+      ? advanceDueDate(previewDueDate, intervalMonths, billingDay)
+      : null;
 
   const persist = async (resolvedCategoryId: string) => {
     if (!personId) return;
@@ -360,6 +371,8 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
             intervalMonths={Number(intervalStr)}
             amountMinor={amountMinor}
             currency={currency}
+            nextDueDate={previewDueDate}
+            followingDueDate={followingDueDate}
             schedule={cycle === "yearly"
               ? (yearlyRenewalDate ? dateLabel(yearlyRenewalDate) : "")
               : (billingDayStr ? tr.subs.daySchedule(billingDayStr) : "")}
@@ -485,12 +498,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
             ) : null}
           </>
         ) : null}
-        {persons.length > 1 ? (
-          <>
-            <Label>{tr.tx.person}</Label>
-            <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
-          </>
-        ) : null}
+        <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
       </Card>
 
       <Card>
@@ -524,7 +532,17 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         ) : null}
       </Card>
 
-      <Button label={tr.common.save} onPress={() => void save()} disabled={!baseValid} loading={busy} />
+      <Row style={{ alignItems: "center" }}>
+        <View style={{ flex: 1 }}>
+          <Button label={tr.common.save} onPress={() => void save()} disabled={!baseValid} loading={busy} />
+        </View>
+        <Button
+          label={tr.common.cancel}
+          variant="secondary"
+          disabled={busy}
+          onPress={() => confirmDiscard(close)}
+        />
+      </Row>
           </View>
         )}
       />

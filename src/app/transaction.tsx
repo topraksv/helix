@@ -19,7 +19,7 @@ import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, Label, MonthStepper, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
+import { Badge, Body, Button, Card, DataStateNotice, Divider, Field, Label, MonthStepper, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -33,6 +33,7 @@ import { useOperationGuard } from "../ui/operation-guard";
 import { useUndo } from "../ui/undo";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
+import { PersonAssignment } from "../ui/person-assignment";
 
 type EntryType = "expense" | "income" | "transfer";
 
@@ -485,8 +486,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       )}
       {/* Category and payment source are open-ended lists — a household can
           carry forty categories — so they read as one dropdown row rather than
-          a chip block that dwarfs the rest of the form. Person stays chips: it
-          is bounded by the household and usually two. */}
+          a chip block that dwarfs the rest of the form. */}
       <Divider />
       <SectionHeader>{tr.tx.assignment}</SectionHeader>
       {categoryOptions.length > 0 ? (
@@ -517,12 +517,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
         />
       ) : null}
 
-      {persons.length > 1 ? (
-        <>
-          <Label>{tr.tx.person}</Label>
-          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
-        </>
-      ) : null}
+      <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
       </Card>
         )}
         secondary={(

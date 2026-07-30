@@ -321,7 +321,7 @@ function RootLayoutInner() {
       (frozenState.status === "error" && !frozenState.updatedAt)),
   );
   if (guard.view === "wait" || guardQueryFailed) {
-    // While an existing account's first pull is still landing, show a spinner
+    // While an existing account's first pull is still landing, show progress
     // rather than a bare background so the hold never reads as a white screen.
     return (
       <View
@@ -342,7 +342,10 @@ function RootLayoutInner() {
           // A silent spinner after a correct password reads as a stall. This
           // hold is the account's first pull, and a brand-new account has
           // nothing to pull — so the two say different things.
-          <WaitingNotice message={isNewSignup ? tr.auth.restoringDataFresh : tr.auth.restoringData} />
+          <WaitingNotice
+            kind="restore"
+            message={isNewSignup ? tr.auth.restoringDataFresh : tr.auth.restoringData}
+          />
         ) : !guard.redirect ? (
           <DelayedLoadingIndicator />
         ) : null}

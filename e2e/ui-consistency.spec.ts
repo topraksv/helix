@@ -164,6 +164,84 @@ test("yearly subscriptions ask for a real renewal date", async ({ page }) => {
   await expect(page.getByText("Yıllık ücretin bir sonraki kez alınacağı tarihi seç.", { exact: true })).toBeVisible();
 });
 
+test("subscriptions explain recurrence with dates and summarize the next 31 days", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/subscription-form");
+
+  await expect(page.getByRole("img", { name: /Aboneliğin kimliği.*Aylık.*Aylık karşılığı/ })).toBeVisible();
+  await expect(page.getByText("Sıradaki ödeme", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sonraki tekrar", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Müzik");
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("199,90");
+  await pickOption(page, "Kategori", "Market");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
+  await expect(page.getByRole("img", { name: /1 abonelik.*31 günde 1 ödeme/ })).toBeVisible();
+  await expect(page.getByText("31 günlük ödeme rotası", { exact: true })).toBeVisible();
+  await expect(page.getByText(/TRY aylık karşılığı/)).toBeVisible();
+});
+
+test("a dirty subscription can be dismissed without saving", async ({ page }) => {
+  await onboard(page);
+  await page.goto("/helix/subscription-form");
+  await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Kaydedilmeyecek abonelik");
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Kaydedilmemiş değişiklikler var", exact: true })).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Vazgeç", exact: true }).click();
+  await expect(page).toHaveURL(/\/helix\/subscription-form$/);
+  await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
+  await page.getByRole("button", { name: "Değişiklikleri sil", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/helix\/subscriptions$/);
+});
+
+test("a single-person workspace keeps assignment optional and compact", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
+
+  await expect(page.getByTestId("person-assignment-hint")).toBeVisible();
+  await expect(page.getByText(/Sana ait/)).toBeVisible();
+  await expect(page.getByText("Kimin İçin", { exact: true })).toHaveCount(0);
+  await page.goto("/helix/settings/persons");
+  await expect(page.getByText("Şimdilik yalnızca kendi hesabını izliyorsun.", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Kişi Ekle", exact: true }).fill("Deniz");
+  await page.getByRole("button", { name: "Ekle", exact: true }).click();
+  await expect(page.getByTestId("persons-workspace-secondary").getByText("Deniz", { exact: true })).toBeVisible();
+  await page.goto("/helix/transaction");
+  await expect(page.getByText("Kimin İçin", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("person-assignment-hint")).toHaveCount(0);
+});
+
+test("wide tools start on one line with equal work areas", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await onboard(page);
+  await page.getByRole("tab", { name: "Araçlar", exact: true }).click();
+
+  const geometry = await page.getByTestId("calculator-workspace").evaluate((workspace) => {
+    const calculator = workspace.querySelector<HTMLElement>('[data-testid="calculator-tool"]')!;
+    const converter = workspace.querySelector<HTMLElement>('[data-testid="converter-tool"]')!;
+    const calculatorBox = calculator.getBoundingClientRect();
+    const converterBox = converter.getBoundingClientRect();
+    const calculatorCard = calculator.children[1]!.getBoundingClientRect();
+    const converterCard = converter.children[1]!.getBoundingClientRect();
+    return {
+      calculatorTop: calculatorBox.top,
+      converterTop: converterBox.top,
+      calculatorWidth: calculatorBox.width,
+      converterWidth: converterBox.width,
+      calculatorCardTop: calculatorCard.top,
+      converterCardTop: converterCard.top,
+    };
+  });
+
+  expect(Math.abs(geometry.calculatorTop - geometry.converterTop)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.calculatorCardTop - geometry.converterCardTop)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.calculatorWidth - geometry.converterWidth)).toBeLessThanOrEqual(1);
+});
+
 test("the phone financial-table tools stay in one compact row", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await onboard(page);
@@ -260,6 +338,43 @@ test("compact financial-table pins stay beside headers and month labels keep bre
 
   await page.getByRole("radio", { name: "Kolon odaklı" }).click();
   await assertPinBesideLabel("Temmuz kolonunu sabitle", "Tem");
+});
+
+test("bulk entry gives long item names more room than bounded amounts", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/bulk-entry");
+
+  const field = page.getByRole("textbox", { name: /Kredi Kartı/ }).first();
+  const widths = await field.evaluate((input) => {
+    const inputBox = input.parentElement!.getBoundingClientRect();
+    const row = input.parentElement!.parentElement!;
+    const labelBox = row.firstElementChild!.getBoundingClientRect();
+    return { input: inputBox.width, label: labelBox.width };
+  });
+  expect(widths.label).toBeGreaterThan(widths.input);
+  expect(widths.input).toBeLessThanOrEqual(156);
+});
+
+test("column builders align their functional graphics at the same card depth", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/columns-editor");
+  const categoryGraphic = page.getByTestId("category-ledger-map");
+  await expect(categoryGraphic).toBeVisible();
+  const categoryInset = await categoryGraphic.evaluate((graphic) => {
+    const card = graphic.parentElement!;
+    return Math.round(graphic.getBoundingClientRect().top - card.getBoundingClientRect().top);
+  });
+
+  await page.getByRole("radio", { name: "Hesaplanan Kolonlar", exact: true }).click();
+  const computedGraphic = page.getByTestId("calculation-flow");
+  await expect(computedGraphic).toBeVisible();
+  const computedInset = await computedGraphic.evaluate((graphic) => {
+    const card = graphic.parentElement!;
+    return Math.round(graphic.getBoundingClientRect().top - card.getBoundingClientRect().top);
+  });
+  expect(categoryInset).toBe(computedInset);
 });
 
 test("shared selection tiles search, toggle and reflow long labels consistently", async ({ page }) => {

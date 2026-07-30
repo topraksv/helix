@@ -28,7 +28,7 @@ import { AlertCircle, Calculator as CalculatorIcon, Check, ChevronDown, ChevronL
 import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { initialsBadgeColor } from "./badge-color";
-import { DelayedLoading, DelayedLoadingIndicator, LOADING_DOT_SLOT, LoadingIndicator } from "./loading-indicator";
+import { DelayedLoading, DelayedLoadingIndicator, LoadingIndicator } from "./loading-indicator";
 import type { TrackedOperationState } from "./operation-guard";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
@@ -58,6 +58,7 @@ import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 import { filterSelectionOptions, type SelectionOption } from "./selection";
+import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 
 function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
@@ -816,13 +817,26 @@ export function MoneyField({
   const invalid = value.trim() !== "" && minor === null;
   return (
     <View style={{ marginBottom: inline ? spacing.sm : spacing.md }}>
-      <View style={inline ? { flexDirection: "row", alignItems: "center", gap: spacing.md } : undefined}>
+      <View style={inline ? { flexDirection: "row", alignItems: "center", gap: spacing.sm } : undefined}>
         {label ? (
           <View style={inline ? { flex: 1, minWidth: 0 } : undefined}>
             <Label nativeID={labelId} style={inline ? { marginBottom: 0 } : undefined}>{label}</Label>
           </View>
         ) : null}
-        <View style={inline ? { flex: 1, minWidth: 132 } : undefined}>
+        <View
+          style={inline
+            ? {
+                // Repeated amount rows need their descriptive label more than
+                // a half-width amount box. TRY entry is bounded and the
+                // native TextInput scrolls its value, so keep that control
+                // predictable while returning the remaining width to context.
+                width: "42%",
+                maxWidth: 156,
+                minWidth: 120,
+                flexShrink: 1,
+              }
+            : undefined}
+        >
           <TextInput
             value={display}
             accessibilityLabel={accessibilityLabel ?? label}
@@ -1647,15 +1661,6 @@ export function OperationStatusNotice({
 }
 
 /**
- * A full-screen hold that says what is happening.
- *
- * The indicator's own 350 ms threshold means it appears AFTER its caption, and a
- * caption that is centred alone and then shoved down when the dots arrive reads
- * as a glitch rather than as work. The dots therefore occupy a reserved slot
- * from the first frame — nothing moves when they turn up, only the caption fades
- * in, so the screen looks like it is doing something rather than stuck.
- */
-/**
  * A caption for work the user is waiting on.
  *
  * Full `text`, never muted: it is the only thing on screen saying what is
@@ -1678,13 +1683,11 @@ export function WaitingText({ message, heading = false }: { message: string; hea
   );
 }
 
-/** The whole screen while the account's first pull lands. */
-export function WaitingNotice({ message }: { message: string }) {
+/** The whole screen while an account operation advances through real stages. */
+export function WaitingNotice({ message, kind }: { message: string; kind: OperationFlowKind }) {
   return (
-    <View style={{ alignItems: "center", gap: spacing.lg }}>
-      <View style={{ height: LOADING_DOT_SLOT, justifyContent: "center" }}>
-        <DelayedLoadingIndicator />
-      </View>
+    <View style={{ width: "100%", maxWidth: 420, alignItems: "center", gap: spacing.lg, paddingHorizontal: spacing.lg }}>
+      <OperationFlow kind={kind} label={message} />
       <WaitingText message={message} heading />
     </View>
   );

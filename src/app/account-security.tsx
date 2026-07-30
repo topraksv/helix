@@ -11,7 +11,7 @@ import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
-import { Body, Button, Card, Field, PanelHeader, Row, Screen, WaitingText } from "../ui/components";
+import { Body, Button, Card, Field, PanelHeader, Screen } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -19,8 +19,8 @@ import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
-import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { WorkspaceGrid } from "../ui/workspace-layout";
+import { OperationFlow } from "../ui/operation-flow";
 
 export default function AccountSecurityScreen() {
   // Account freeze promises a cloud-confirmed write followed by sign-out. A
@@ -257,13 +257,10 @@ function CloudAccountSecurityScreen() {
           label={freezePhase ? tr.operation.freezePhase[freezePhase] : tr.account.freeze}
           variant="danger"
           onPress={() => void freezeAccount()}
-          loading={freezing}
+          disabled={freezing}
         />
         {freezePhase ? (
-          <Row accessibilityLiveRegion="polite" gap={spacing.sm} style={{ marginTop: spacing.sm, alignItems: "flex-start" }}>
-            <DelayedLoadingIndicator size={6} label={tr.operation.freezePhase[freezePhase]} />
-            <WaitingText message={tr.operation.freezePhase[freezePhase]} />
-          </Row>
+          <OperationFlow kind="freeze" label={tr.operation.freezePhase[freezePhase]} freezePhase={freezePhase} />
         ) : null}
       </Card>
       </WorkspaceGrid>

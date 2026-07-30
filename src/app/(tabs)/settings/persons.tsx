@@ -34,6 +34,11 @@ function PeopleOverview({ people }: { people: { id: string; name: string; isSelf
   const { palette } = useTheme();
   const self = people.find((person) => person.isSelf);
   const watched = people.filter((person) => !person.isSelf);
+  if (watched.length === 0) {
+    return (
+      <Body muted style={{ fontSize: 12, marginBottom: spacing.md }}>{tr.persons.soloOverview}</Body>
+    );
+  }
   return (
     <Card>
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>

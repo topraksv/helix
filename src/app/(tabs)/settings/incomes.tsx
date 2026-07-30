@@ -13,7 +13,7 @@ import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { shortDateLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select } from "../../../ui/components";
+import { Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select } from "../../../ui/components";
 import { categoryIcon } from "../../../data/category-icons";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
@@ -25,6 +25,7 @@ import { addDaysISO, addMonthsToKey, clampDayToMonth, isISODate, isMonthDay, mon
 import { DateField } from "../../../ui/calendar";
 import { MonthDayField } from "../../../ui/month-day-field";
 import { appAlert } from "../../../ui/dialog";
+import { PersonAssignment } from "../../../ui/person-assignment";
 
 type IncomeKind = "salary" | "rent" | "allowance" | "other";
 type IncomeRecurrence = "monthly" | "weekly" | "biweekly";
@@ -322,12 +323,7 @@ export default function IncomeRulesScreen() {
         ) : (
           <DateField label={tr.incomes.firstPaymentDate} value={anchorDate} onChange={setAnchorDate} />
         )}
-        {persons.length > 1 ? (
-          <>
-            <Label>{tr.tx.person}</Label>
-            <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
-          </>
-        ) : null}
+        <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
         {incomeCategories.length > 1 ? (
           <Select
             label={tr.incomes.categoryLabel}

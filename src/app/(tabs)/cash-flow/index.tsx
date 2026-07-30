@@ -619,12 +619,16 @@ function MatrixTable({
    *   into the same month-sized box.
    */
   // The compact month rail follows the longest translated month instead of a
-  // category-derived fixed width. The measured 13px semibold glyph ceiling is
-  // 7.7px; two `md` insets keep every month on one line with real breathing
-  // room. The other pivot keeps its wider prose rail.
-  const compactMonthHeadWidth = Math.ceil(
-    months.reduce((longest, month) => Math.max(longest, monthName(month.month).length), 0) * 7.7
-      + spacing.md * 2,
+  // category-derived fixed width. Web's measured 13px semibold glyph ceiling
+  // is 7.7px, while iOS shapes the same word a few points wider; the 96pt
+  // platform floor keeps "Temmuz" whole instead of letting its final letter
+  // wrap. The other pivot keeps its wider prose rail.
+  const compactMonthHeadWidth = Math.max(
+    96,
+    Math.ceil(
+      months.reduce((longest, month) => Math.max(longest, monthName(month.month).length), 0) * 7.7
+        + spacing.md * 2,
+    ),
   );
   const HEAD_W = orientation === "monthsAsRows"
     ? (compact ? compactMonthHeadWidth : 96)

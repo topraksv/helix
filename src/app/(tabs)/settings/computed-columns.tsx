@@ -70,6 +70,7 @@ function CalculationFlow({
   };
   return (
     <View
+      testID="calculation-flow"
       accessible
       accessibilityRole="image"
       accessibilityLabel={tr.computed.flowA11y(inputCount, tr.computed.ops[op].title, formatMinor(result))}

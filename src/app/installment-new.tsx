@@ -13,7 +13,7 @@ import { deriveStartMonth, isValidInstallmentCount } from "../domain/installment
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Trash2 } from "lucide-react-native";
-import { Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MoneyField, PanelHeader, Row, Screen, Segmented, Select, Spread } from "../ui/components";
+import { Body, Button, Card, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MoneyField, PanelHeader, Row, Screen, Segmented, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -24,6 +24,7 @@ import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
+import { PersonAssignment } from "../ui/person-assignment";
 
 function InstallmentTimeline({ count, startMonth }: { count: number; startMonth: MonthKey }) {
   const { palette } = useTheme();
@@ -326,12 +327,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
                 ) : null}
               </>
             ) : null}
-            {persons.length > 1 ? (
-              <>
-                <Label>{tr.tx.person}</Label>
-                <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
-              </>
-            ) : null}
+            <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
             <Select
               label={tr.tx.category}
               placeholder={tr.tx.categoryPlaceholder}

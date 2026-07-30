@@ -30,6 +30,7 @@ import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { isMonthDay } from "../../../domain/dates";
 import { MonthDayField, monthDayLabel } from "../../../ui/month-day-field";
 import { selectionTapIfChanged } from "../../../ui/haptics";
+import { PersonAssignment } from "../../../ui/person-assignment";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const NO_SOURCE = "__none__";
@@ -341,9 +342,7 @@ export default function SourcesScreen() {
         />
         <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={sourcePlaceholder} />
         <SourceTypePicker value={sourceType} onChange={setSourceType} />
-        {persons.length > 1 ? (
-          <ChipPicker options={persons.map((p) => ({ value: p.id, label: p.name }))} value={personId} onChange={setPersonChoice} />
-        ) : null}
+        <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
         {sourceType === "credit_card" ? (
           <>
             <Row>

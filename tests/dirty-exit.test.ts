@@ -26,6 +26,11 @@ describe("dirty form navigation contract", () => {
     },
   );
 
+  it("registers dirty routes with the native stack instead of disabling dismissal gestures", () => {
+    const source = readFileSync(join(process.cwd(), "src/ui/dirty-exit.ts"), "utf8");
+    expect(source).toContain("usePreventRemove");
+    expect(source).not.toContain("navigation.setOptions({ gestureEnabled:");
+  });
 
   // Two booleans have exactly four states; asserting three of them left the
   // fourth free. `dirty !== explicitlyAllowed` satisfies the other three rows

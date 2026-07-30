@@ -1,6 +1,6 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
-import React, { useState, type ReactNode } from "react";
+import React, { useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
@@ -48,7 +48,7 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { dateLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle, WaitingText } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
 import { font, PALETTES, radius, spacing, type, useTheme, type Palette, type ThemePreference } from "../../../ui/theme";
@@ -57,6 +57,7 @@ import { todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
+import { OperationFlow } from "../../../ui/operation-flow";
 
 function ThemeChoice({
   value,
@@ -321,9 +322,10 @@ export default function SettingsScreen() {
   // if rows still couldn't be pushed (offline), make the user consciously
   // accept the loss instead of discovering it later.
   const [signingOut, setSigningOut] = useState(false);
+  const signOutLocked = useRef(false);
   const handleSignOut = async () => {
-    if (signingOut) return;
-    setSigningOut(true);
+    if (signOutLocked.current) return;
+    signOutLocked.current = true;
     try {
       // Local-only mode (no Supabase): sign-out wipes the device with NO cloud
       // to restore from. Make the permanent loss explicit before proceeding.
@@ -333,6 +335,7 @@ export default function SettingsScreen() {
           danger: true,
         });
         if (!proceed) return;
+        setSigningOut(true);
         const error = await signOut();
         if (error) void appAlert(error, tr.errors.title);
         return;
@@ -340,14 +343,17 @@ export default function SettingsScreen() {
       // The session layer owns the flush and refuses to wipe rows the cloud
       // never received; this screen owns the only thing it cannot decide —
       // whether the user accepts losing them.
+      setSigningOut(true);
       const error = await signOut();
       if (error === SIGN_OUT_PENDING_CHANGES) {
         const pending = await pendingSyncChangeCount();
+        setSigningOut(false);
         const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending), {
           confirmLabel: tr.auth.signOutAnyway,
           danger: true,
         });
         if (!proceed) return;
+        setSigningOut(true);
         const forced = await signOut({ force: true });
         if (forced) void appAlert(forced, tr.errors.title);
         return;
@@ -357,6 +363,7 @@ export default function SettingsScreen() {
       void appAlert(tr.errors.requestFailed, tr.errors.title);
     } finally {
       setSigningOut(false);
+      signOutLocked.current = false;
     }
   };
 
@@ -789,16 +796,14 @@ export default function SettingsScreen() {
           // The wait is a real flush before a real wipe, and it is kept: a row
           // the user believes is saved must reach the server before the device
           // copy goes. Saying so is what turns it from a stall into a step.
-          subtitle={signingOut ? <WaitingText message={tr.operation.signingOut} /> : undefined}
-          right={signingOut ? <DelayedLoadingIndicator size={7} label={tr.auth.signOut} /> : undefined}
+          subtitle={signingOut ? <OperationFlow kind={isSupabaseConfigured ? "sign-out" : "local-sign-out"} label={tr.operation.signingOut} /> : undefined}
           onPress={() => void handleSignOut()}
         />
         <ListRow
           icon={Trash2}
           iconColor={palette.destructive}
           title={deleting ? tr.operation.deletingAccountTitle : tr.account.delete}
-          subtitle={deleting ? <WaitingText message={tr.operation.deletingAccount} /> : tr.account.deleteDesc}
-          right={deleting ? <DelayedLoadingIndicator size={7} label={tr.account.delete} /> : undefined}
+          subtitle={deleting ? <OperationFlow kind="delete" label={tr.operation.deletingAccount} /> : tr.account.deleteDesc}
           onPress={() => void handleDeleteAccount()}
         />
       </Card>

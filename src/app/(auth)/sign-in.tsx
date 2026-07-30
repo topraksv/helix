@@ -9,6 +9,7 @@ import { BrandMark } from "../../ui/brand";
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
+import { OperationFlow } from "../../ui/operation-flow";
 
 function JourneyNode({
   icon: Icon,
@@ -272,10 +273,15 @@ export default function SignInScreen() {
             </View>
           ) : null}
 
+          {busy ? (
+            <OperationFlow
+              kind={mode === "signIn" ? "sign-in" : mode === "signUp" ? "sign-up" : "reset"}
+              label={primaryLabel}
+            />
+          ) : null}
           <Button
             label={primaryLabel}
             onPress={() => void submit()}
-            loading={busy}
             disabled={!canSubmit}
           />
           {resetSent ? (
