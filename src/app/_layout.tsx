@@ -343,7 +343,7 @@ function RootLayoutInner() {
           // hold is the account's first pull, and a brand-new account has
           // nothing to pull — so the two say different things.
           <WaitingNotice
-            kind="restore"
+            kind={isNewSignup ? "initialize" : "restore"}
             message={isNewSignup ? tr.auth.restoringDataFresh : tr.auth.restoringData}
           />
         ) : !guard.redirect ? (

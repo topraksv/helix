@@ -254,13 +254,13 @@ function CloudAccountSecurityScreen() {
         <PanelHeader icon={Snowflake} title={tr.account.freeze} description={tr.account.freezeDesc} />
         <Button
           icon={Snowflake}
-          label={freezePhase ? tr.operation.freezePhase[freezePhase] : tr.account.freeze}
+          label={tr.account.freeze}
           variant="danger"
           onPress={() => void freezeAccount()}
           disabled={freezing}
         />
         {freezePhase ? (
-          <OperationFlow kind="freeze" label={tr.operation.freezePhase[freezePhase]} freezePhase={freezePhase} />
+          <OperationFlow kind="freeze" label={tr.operation.freezePhase[freezePhase]} />
         ) : null}
       </Card>
       </WorkspaceGrid>

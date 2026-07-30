@@ -133,19 +133,19 @@ export default function SignInScreen() {
 
   const emailValid = /.+@.+\..+/.test(email.trim());
   const canSubmit = emailValid && (mode === "forgot" || password.length >= 6) && !busy;
-  const primaryLabel = busy
-    ? mode === "signIn"
-      ? tr.operation.signingIn
-      : mode === "signUp"
-        ? tr.operation.creatingAccount
-        : tr.operation.requestingReset
-    : mode === "signIn"
+  const primaryLabel = mode === "signIn"
       ? tr.auth.signIn
       : mode === "signUp"
         ? tr.auth.signUpTitle
         : resetSent
           ? tr.auth.resendResetLink
           : tr.auth.sendResetLink;
+  const operationLabel =
+    mode === "signIn"
+      ? tr.operation.signingIn
+      : mode === "signUp"
+        ? tr.operation.creatingAccount
+        : tr.operation.requestingReset;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -276,7 +276,7 @@ export default function SignInScreen() {
           {busy ? (
             <OperationFlow
               kind={mode === "signIn" ? "sign-in" : mode === "signUp" ? "sign-up" : "reset"}
-              label={primaryLabel}
+              label={operationLabel}
             />
           ) : null}
           <Button

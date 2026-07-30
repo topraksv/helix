@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createOperationGuard } from "../src/ui/operation-guard";
 import { tr } from "../src/i18n/tr";
 
@@ -41,11 +43,37 @@ describe("operation progress language", () => {
       tr.operation.requestingReset,
       tr.auth.restoringData,
       tr.operation.signingOut,
+      tr.operation.localSigningOut,
       tr.auth.signOutLocalTitle,
       tr.operation.deletingAccount,
       tr.account.reactivatingBody,
     ];
     expect(new Set(labels).size).toBe(labels.length);
     expect(labels.every((label) => label.trim().length > 0)).toBe(true);
+  });
+
+  it("uses one shared caption without repeating a second waiting message", () => {
+    const components = readFileSync(join(process.cwd(), "src/ui/components.tsx"), "utf8");
+    const frozenGate = readFileSync(join(process.cwd(), "src/ui/frozen-gate.tsx"), "utf8");
+    const rootLayout = readFileSync(join(process.cwd(), "src/app/_layout.tsx"), "utf8");
+    const settings = readFileSync(join(process.cwd(), "src/app/(tabs)/settings/index.tsx"), "utf8");
+
+    expect(tr.auth.restoringData.toLocaleLowerCase("tr-TR")).not.toContain("indir");
+    expect(components).not.toContain("WaitingText");
+    expect(frozenGate).not.toContain("WaitingText");
+    expect(components.match(/<OperationFlow/g)).toHaveLength(1);
+    expect(rootLayout).toContain('kind={isNewSignup ? "initialize" : "restore"}');
+    expect(settings).toContain("tr.operation.localSigningOut");
+  });
+
+  it("gives sign-in, sign-out, freeze and deletion different motion signatures", () => {
+    const source = readFileSync(join(process.cwd(), "src/ui/operation-flow.tsx"), "utf8");
+    expect(source).toContain('"sign-in": [KeyRound, "focus"]');
+    expect(source).toContain('"sign-out": [LogOut, "leave"]');
+    expect(source).toContain('freeze: [Snowflake, "turn"]');
+    expect(source).toContain('delete: [Trash2, "drop", true]');
+    expect(source).toMatch(/motion === "leave".*translateX/s);
+    expect(source).toMatch(/motion === "turn".*rotate/s);
+    expect(source).toMatch(/motion === "drop".*translateY.*scale/s);
   });
 });

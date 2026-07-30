@@ -796,7 +796,12 @@ export default function SettingsScreen() {
           // The wait is a real flush before a real wipe, and it is kept: a row
           // the user believes is saved must reach the server before the device
           // copy goes. Saying so is what turns it from a stall into a step.
-          subtitle={signingOut ? <OperationFlow kind={isSupabaseConfigured ? "sign-out" : "local-sign-out"} label={tr.operation.signingOut} /> : undefined}
+          subtitle={signingOut ? (
+            <OperationFlow
+              kind={isSupabaseConfigured ? "sign-out" : "local-sign-out"}
+              label={isSupabaseConfigured ? tr.operation.signingOut : tr.operation.localSigningOut}
+            />
+          ) : undefined}
           onPress={() => void handleSignOut()}
         />
         <ListRow

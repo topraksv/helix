@@ -52,7 +52,7 @@ import {
   useTheme,
   type Palette,
 } from "./theme";
-import { useReducedMotion, useWaitingPulse } from "./motion";
+import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
 import { shouldStackListActions } from "./responsive";
@@ -1660,35 +1660,11 @@ export function OperationStatusNotice({
   );
 }
 
-/**
- * A caption for work the user is waiting on.
- *
- * Full `text`, never muted: it is the only thing on screen saying what is
- * happening, so it is not secondary to anything. The pulse comes from the
- * shared `useWaitingPulse` so the login hold and the sign-out row breathe at
- * one rate instead of two.
- */
-export function WaitingText({ message, heading = false }: { message: string; heading?: boolean }) {
-  const { palette } = useTheme();
-  const pulse = useWaitingPulse();
-  return (
-    <Animated.Text
-      style={[
-        heading ? type.heading : type.body,
-        { color: palette.text, textAlign: heading ? "center" : "left", opacity: pulse },
-      ]}
-    >
-      {message}
-    </Animated.Text>
-  );
-}
-
 /** The whole screen while an account operation advances through real stages. */
 export function WaitingNotice({ message, kind }: { message: string; kind: OperationFlowKind }) {
   return (
-    <View style={{ width: "100%", maxWidth: 420, alignItems: "center", gap: spacing.lg, paddingHorizontal: spacing.lg }}>
-      <OperationFlow kind={kind} label={message} />
-      <WaitingText message={message} heading />
+    <View style={{ width: "100%", maxWidth: 440, alignItems: "center", paddingHorizontal: spacing.lg }}>
+      <OperationFlow kind={kind} label={message} presentation="hero" />
     </View>
   );
 }

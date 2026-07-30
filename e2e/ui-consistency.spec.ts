@@ -164,7 +164,7 @@ test("yearly subscriptions ask for a real renewal date", async ({ page }) => {
   await expect(page.getByText("Yıllık ücretin bir sonraki kez alınacağı tarihi seç.", { exact: true })).toBeVisible();
 });
 
-test("subscriptions explain recurrence with dates and summarize the next 31 days", async ({ page }) => {
+test("subscriptions explain recurrence with dates and turn the next 31 days into a responsive payment cycle", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.goto("/helix/subscription-form");
@@ -179,8 +179,15 @@ test("subscriptions explain recurrence with dates and summarize the next 31 days
 
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
   await expect(page.getByRole("img", { name: /1 abonelik.*31 günde 1 ödeme/ })).toBeVisible();
-  await expect(page.getByText("31 günlük ödeme rotası", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ödeme döngüsü", { exact: true })).toBeVisible();
   await expect(page.getByText(/TRY aylık karşılığı/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Abonelik Ekle", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+
+  await page.setViewportSize({ width: 1200, height: 900 });
+  const summary = await page.getByTestId("subscription-cycle-summary").boundingBox();
+  expect(summary).not.toBeNull();
+  expect(summary!.width).toBeGreaterThan(700);
 });
 
 test("a dirty subscription can be dismissed without saving", async ({ page }) => {

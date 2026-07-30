@@ -16,7 +16,7 @@ import { useSession } from "../auth/session";
 import { useUserId } from "../data/hooks";
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
-import { Body, Button, Screen, Title, WaitingText } from "./components";
+import { Body, Button, Screen, Title } from "./components";
 import { appAlert } from "./dialog";
 import { spacing, useTheme } from "./theme";
 import { useOperationGuard } from "./operation-guard";
@@ -84,15 +84,9 @@ export function FrozenGate() {
           <ShieldCheck accessible={false} size={48} color={palette.primary} />
           <Title>{operation === "reactivating" ? tr.account.reactivatingTitle : operation === "signing-out" ? tr.operation.signingOutTitle : tr.account.frozenTitle}</Title>
           {operation === "reactivating" ? (
-            <>
-              <OperationFlow kind="reactivate" label={tr.account.reactivatingBody} />
-              <WaitingText message={tr.account.reactivatingBody} heading />
-            </>
+            <OperationFlow kind="reactivate" label={tr.account.reactivatingBody} presentation="hero" />
           ) : operation === "signing-out" ? (
-            <>
-              <OperationFlow kind="sign-out" label={tr.operation.signingOut} />
-              <WaitingText message={tr.operation.signingOut} heading />
-            </>
+            <OperationFlow kind="sign-out" label={tr.operation.signingOut} presentation="hero" />
           ) : (
             <Body muted style={{ textAlign: "center" }}>{tr.account.frozenBody}</Body>
           )}

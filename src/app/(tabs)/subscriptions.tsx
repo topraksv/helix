@@ -12,12 +12,13 @@ import { daysBetween, usePersonsState, useSubscriptionsState, useUserId } from "
 import { combineLiveQueryStatus } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, PanelHeader, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Button, Card, CardList, DataStateNotice, EmptyState, PanelHeader, Screen, SectionHeader, Spread } from "../../ui/components";
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
-import { font, radius, spacing, type, useTheme } from "../../ui/theme";
+import { spacing, type, useTheme } from "../../ui/theme";
 import { appAlert } from "../../ui/dialog";
+import { WorkspaceGrid } from "../../ui/workspace-layout";
 
 function SubscriptionScheduleOverview({
   active,
@@ -31,7 +32,13 @@ function SubscriptionScheduleOverview({
   const upcoming = active
     .filter((subscription) => subscription.nextDueDate <= horizonEnd)
     .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
-  const markerDates = [...new Set(upcoming.map((subscription) => subscription.nextDueDate))].slice(0, 7);
+  const weeklyDensity = [0, 0, 0, 0, 0];
+  for (const subscription of upcoming) {
+    const days = Math.max(0, Math.min(31, daysBetween(today, subscription.nextDueDate)));
+    const index = Math.min(4, Math.floor(days / 7));
+    weeklyDensity[index] = (weeklyDensity[index] ?? 0) + 1;
+  }
+  const peakDensity = Math.max(1, ...weeklyDensity);
   const monthlyTryMinor = active
     .filter((subscription) => subscription.currency === "TRY")
     .reduce(
@@ -40,76 +47,64 @@ function SubscriptionScheduleOverview({
       0,
     );
   const autoPayCount = active.filter((subscription) => subscription.autoPay).length;
-  const next = upcoming[0] ?? null;
+  const manualCount = active.length - autoPayCount;
 
   return (
-    <Card>
+    <Card style={{ marginBottom: spacing.lg }}>
       <PanelHeader
         icon={CalendarDays}
         title={tr.subs.scheduleOverview}
-        description={next ? tr.subs.nextOverview(next.name, shortDateLabel(next.nextDueDate)) : tr.subs.noDueSoon}
-        right={monthlyTryMinor > 0 ? (
+        description={tr.subs.scheduleOverviewHint}
+        right={(
           <View style={{ alignItems: "flex-end", paddingLeft: spacing.sm }}>
             <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{tr.subs.tryMonthlyLoad}</Text>
             <Amount minor={monthlyTryMinor} colorized={false} style={{ fontSize: 13 }} />
           </View>
-        ) : undefined}
+        )}
       />
-
       <View
+        testID="subscription-cycle-summary"
         accessible
         accessibilityRole="image"
-        accessibilityLabel={tr.subs.scheduleOverviewA11y(active.length, upcoming.length, autoPayCount)}
-        style={{ height: 56, justifyContent: "center", marginHorizontal: spacing.xs }}
+        accessibilityLabel={tr.subs.scheduleOverviewA11y(active.length, upcoming.length, autoPayCount, weeklyDensity)}
       >
-        <View style={{ height: 3, borderRadius: 2, backgroundColor: palette.surfaceStrong, marginHorizontal: 11 }} />
-        {markerDates.map((date, index) => {
-          const days = Math.max(0, Math.min(31, daysBetween(today, date)));
-          return (
-            <FadeIn
-              key={date}
+        <View
+          style={{ height: 92, flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}
+        >
+          {weeklyDensity.map((count, index) => (
+            <View
+              key={index}
               style={{
-                position: "absolute",
-                left: `${(days / 31) * 100}%`,
-                top: index % 2 === 0 ? 2 : 28,
-                transform: [{ translateX: -11 }],
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: spacing.xs,
               }}
             >
+              {count > 0 ? (
+                <Text style={[type.small, { color: palette.textStrong, fontSize: 10 }]}>{count}</Text>
+              ) : null}
               <View
                 style={{
-                  width: 22,
-                  height: 24,
-                  borderRadius: 6,
-                  backgroundColor: palette.surfaceAlt,
-                  borderTopWidth: 5,
-                  borderTopColor: palette.primary,
-                  alignItems: "center",
-                  justifyContent: "center",
+                  width: "100%",
+                  maxWidth: 64,
+                  height: count === 0 ? 4 : Math.max(14, (count / peakDensity) * 58),
+                  backgroundColor: count === 0 ? palette.surfaceStrong : palette.primary,
+                  borderRadius: 7,
                 }}
-              >
-                <Text style={[type.small, { color: palette.textStrong, fontFamily: font.bold, fontSize: 10 }]}>
-                  {Number(date.slice(8, 10))}
-                </Text>
-              </View>
-            </FadeIn>
-          );
-        })}
-      </View>
-      <Spread>
-        <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.today}</Text>
-        <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.next31Days}</Text>
-      </Spread>
-      <View style={{ flexDirection: "row", marginTop: spacing.sm, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surfaceAlt }}>
-        {[
-          [active.length, tr.subs.activeCount],
-          [upcoming.length, tr.subs.dueSoonCount],
-          [autoPayCount, tr.subs.autoPayCount],
-        ].map(([value, label]) => (
-          <View key={String(label)} style={{ flex: 1, alignItems: "center" }}>
-            <Text style={[type.heading, { color: palette.textStrong, fontFamily: font.bold }]}>{value}</Text>
-            <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{label}</Text>
-          </View>
-        ))}
+              />
+              <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>
+                {tr.subs.dayWindow(Math.min(31, (index + 1) * 7))}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <Spread style={{ marginTop: spacing.sm, gap: spacing.md }}>
+          <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.dueSummary(upcoming.length)}</Text>
+          <Text style={[type.small, { color: palette.textSecondary, textAlign: "right" }]}>
+            {tr.subs.automaticCoverage(autoPayCount, manualCount)}
+          </Text>
+        </Spread>
       </View>
     </Card>
   );
@@ -191,34 +186,38 @@ export default function SubscriptionsScreen() {
   };
 
   return (
-    <Screen title={tr.subs.title}>
+    <Screen
+      title={tr.subs.title}
+      maxWidth={1080}
+      right={<Button icon={Plus} size="sm" label={tr.subs.add} onPress={() => router.push("/subscription-form")} />}
+    >
       <DataStateNotice status={dataStatus} retry={retryData} />
       {active.length > 0 ? (
         <SubscriptionScheduleOverview active={active} today={today} />
       ) : null}
-      <Button icon={Plus} label={tr.subs.add} onPress={() => router.push("/subscription-form")} />
-      <View style={{ height: spacing.lg }} />
       {active.length === 0 && watched.length === 0 && passive.length === 0 ? (
         <EmptyState icon={RefreshCw} title={tr.subs.emptyTitle} hint={tr.subs.emptyHint} />
       ) : null}
-      {active.length > 0 ? (
-        <>
-          <SectionHeader>{tr.common.active}</SectionHeader>
-          <CardList items={active} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
-        </>
-      ) : null}
-      {watched.length > 0 ? (
-        <>
-          <SectionHeader>{tr.subs.watchedSection}</SectionHeader>
-          <CardList items={watched} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
-        </>
-      ) : null}
-      {passive.length > 0 ? (
-        <>
-          <SectionHeader>{tr.common.inactive}</SectionHeader>
-          <CardList items={passive} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
-        </>
-      ) : null}
+      <WorkspaceGrid testID="subscription-groups">
+        {active.length > 0 ? (
+          <View>
+            <SectionHeader>{tr.common.active}</SectionHeader>
+            <CardList items={active} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
+          </View>
+        ) : null}
+        {watched.length > 0 ? (
+          <View>
+            <SectionHeader>{tr.subs.watchedSection}</SectionHeader>
+            <CardList items={watched} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
+          </View>
+        ) : null}
+        {passive.length > 0 ? (
+          <View>
+            <SectionHeader>{tr.common.inactive}</SectionHeader>
+            <CardList items={passive} keyExtractor={(subscription) => subscription.id} renderItem={renderSub} />
+          </View>
+        ) : null}
+      </WorkspaceGrid>
     </Screen>
   );
 }
