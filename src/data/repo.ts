@@ -41,6 +41,7 @@ export {
 export type {
   PaymentSourceInput,
   PaymentSourceReferenceUsage,
+  PaymentSourceDeleteSnapshot,
   PersonReferenceUsage,
 } from "./repo/accounts";
 

@@ -20,7 +20,7 @@ vi.mock("../src/db/ids", () => ({
   newId: () => "new-id",
 }));
 vi.mock("../src/db/mutations", () => ({
-  fromDbShape: vi.fn(),
+  fromDbShape: vi.fn((_table: string, row: Record<string, unknown>) => row),
   nowIso: () => "2026-07-16T00:00:00.000Z",
   readSetting: dependencies.readSetting,
   settingRow: dependencies.settingRow,
@@ -142,6 +142,69 @@ describe("repository compatibility contract", () => {
   it("rejects malformed bulk months before constructing persisted dates", async () => {
     await expect(repository.bulkMonthEntry("user-1", "2026-7" as never, "person-1", [])).rejects.toThrow("Invalid bulk entry month");
     expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
+  });
+
+  it("deletes and restores orphaned card statements with their payment source", async () => {
+    const source = {
+      id: "source-1",
+      user_id: "user-1",
+      type: "credit_card",
+      deleted_at: null,
+    };
+    const statement = {
+      id: "statement-1",
+      user_id: "user-1",
+      payment_source_id: "source-1",
+      period_month: "2026-07",
+      deleted_at: null,
+    };
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("COUNT(*)")
+        ? { installmentPlans: 0, cardInstallmentPlans: 0, transactions: 0, subscriptions: 0 }
+        : source,
+      getAllAsync: async (sql: string) => sql.includes("credit_card_statements") ? [statement] : [],
+    });
+
+    const snapshot = await repository.deleteUnreferencedPaymentSource("user-1", "source-1");
+    expect(snapshot).toEqual({ source, statements: [statement] });
+    const [, deleteWrites] = required(dependencies.writeRows.mock.calls[0]);
+    expect(deleteWrites.map((write: { table: string }) => write.table)).toEqual([
+      "payment_sources",
+      "credit_card_statements",
+    ]);
+    expect(deleteWrites.every((write: { row: { deletedAt: string } }) => write.row.deletedAt === NOW)).toBe(true);
+
+    dependencies.writeRows.mockReset();
+    await repository.restorePaymentSource("user-1", snapshot!);
+    const [, restoreWrites] = required(dependencies.writeRows.mock.calls[0]);
+    expect(restoreWrites.map((write: { table: string }) => write.table)).toEqual([
+      "payment_sources",
+      "credit_card_statements",
+    ]);
+    expect(restoreWrites.every((write: { row: { deletedAt: null } }) => write.row.deletedAt === null)).toBe(true);
+  });
+
+  it("tombstones every old card statement during payment-source reassignment", async () => {
+    const source = { id: "source-1", user_id: "user-1", type: "credit_card", deleted_at: null };
+    const statement = {
+      id: "statement-1",
+      user_id: "user-1",
+      payment_source_id: "source-1",
+      period_month: "2026-07",
+      deleted_at: null,
+    };
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => source,
+      getAllAsync: async (sql: string) => sql.includes("credit_card_statements") ? [statement] : [],
+    });
+
+    await repository.reassignAndDeletePaymentSource("user-1", "source-1", null);
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes.map((write: { table: string }) => write.table)).toEqual([
+      "credit_card_statements",
+      "payment_sources",
+    ]);
+    expect(writes[0].row.deletedAt).toBe(NOW);
   });
 
   it("writes a replacement opening anchor atomically", async () => {

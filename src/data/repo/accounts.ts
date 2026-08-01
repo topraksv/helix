@@ -26,6 +26,17 @@ export interface PaymentSourceReferenceUsage {
   total: number;
 }
 
+export interface PaymentSourceDeleteSnapshot {
+  source: Record<string, unknown>;
+  statements: Record<string, unknown>[];
+}
+
+function isPaymentSourceDeleteSnapshot(
+  snapshot: PaymentSourceDeleteSnapshot | Record<string, unknown>,
+): snapshot is PaymentSourceDeleteSnapshot {
+  return "source" in snapshot && "statements" in snapshot && Array.isArray(snapshot.statements);
+}
+
 export interface PaymentSourceInput {
   id?: string;
   name: string;
@@ -65,8 +76,19 @@ export function restorePerson(userId: string, snapshot: Record<string, unknown>)
   return restoreRow(userId, "persons", snapshot);
 }
 
-export function restorePaymentSource(userId: string, snapshot: Record<string, unknown>): Promise<void> {
-  return restoreRow(userId, "payment_sources", snapshot);
+export async function restorePaymentSource(
+  userId: string,
+  snapshot: PaymentSourceDeleteSnapshot | Record<string, unknown>,
+): Promise<void> {
+  const source = isPaymentSourceDeleteSnapshot(snapshot) ? snapshot.source : snapshot;
+  const statements = isPaymentSourceDeleteSnapshot(snapshot) ? snapshot.statements : [];
+  await writeRows(userId, [
+    { table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt: null } },
+    ...statements.map((statement) => ({
+      table: "credit_card_statements" as const,
+      row: { ...fromDbShape("credit_card_statements", statement), deletedAt: null },
+    })),
+  ]);
 }
 
 /** Repo-level validation protects imports/non-UI callers as well as the form. */
@@ -201,7 +223,10 @@ export async function reassignAndDeletePerson(userId: string, personId: string, 
   await runMaintenance(userId);
 }
 
-export async function deleteUnreferencedPaymentSource(userId: string, sourceId: string): Promise<Record<string, unknown> | null> {
+export async function deleteUnreferencedPaymentSource(
+  userId: string,
+  sourceId: string,
+): Promise<PaymentSourceDeleteSnapshot | null> {
   const usage = await paymentSourceReferenceUsage(userId, sourceId);
   if (usage.total > 0) throw new ReferencedRecordError();
   const sqlite = await getSqliteAsync();
@@ -210,8 +235,20 @@ export async function deleteUnreferencedPaymentSource(userId: string, sourceId: 
     [sourceId, userId],
   );
   if (!source) return null;
-  await writeRows(userId, [{ table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt: nowIso() } }]);
-  return source;
+  const statements = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM credit_card_statements
+     WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
+    [userId, sourceId],
+  );
+  const deletedAt = nowIso();
+  await writeRows(userId, [
+    { table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt } },
+    ...statements.map((statement) => ({
+      table: "credit_card_statements" as const,
+      row: { ...fromDbShape("credit_card_statements", statement), deletedAt },
+    })),
+  ]);
+  return { source, statements };
 }
 
 export async function reassignAndDeletePaymentSource(
@@ -247,16 +284,11 @@ export async function reassignAndDeletePaymentSource(
     `SELECT * FROM transactions WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
     [userId, sourceId],
   );
-  const oldStatementIds = [...new Set(
-    transactions.map((transaction) => transaction.card_statement_id).filter((id): id is string => typeof id === "string"),
-  )];
-  const oldStatements = oldStatementIds.length === 0
-    ? []
-    : await sqlite.getAllAsync<{ id: string; period_month: MonthKey }>(
-        `SELECT id, period_month FROM credit_card_statements
-         WHERE user_id = ? AND id IN (${oldStatementIds.map(() => "?").join(", ")})`,
-        [userId, ...oldStatementIds],
-      );
+  const oldStatements = await sqlite.getAllAsync<Record<string, unknown> & { id: string; period_month: MonthKey }>(
+    `SELECT * FROM credit_card_statements
+     WHERE user_id = ? AND payment_source_id = ? AND deleted_at IS NULL`,
+    [userId, sourceId],
+  );
   const oldPeriodById = new Map(oldStatements.map((statement) => [statement.id, statement.period_month]));
   const statementWrites = new Map<string, RowWrite>();
   const transactionWrites: RowWrite[] = [];
@@ -306,6 +338,7 @@ export async function reassignAndDeletePaymentSource(
       referenceUpdateRows(userId, "subscriptions", "payment_source_id", sourceId, "paymentSourceId", replacementId),
     ])
   ).flat();
+  const deletedAt = nowIso();
   const writes: RowWrite[] = [
     ...statementWrites.values(),
     ...plans.map((plan) => ({
@@ -320,7 +353,11 @@ export async function reassignAndDeletePaymentSource(
     })),
     ...transactionWrites,
     ...otherWrites,
+    ...oldStatements.map((statement) => ({
+      table: "credit_card_statements" as const,
+      row: { ...fromDbShape("credit_card_statements", statement), deletedAt },
+    })),
   ];
-  writes.push({ table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt: nowIso() } });
+  writes.push({ table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt } });
   await writeRows(userId, writes);
 }
