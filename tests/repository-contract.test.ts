@@ -237,6 +237,36 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
+  it("does not let a confirmation reassign a rule to another live person", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM expected_payments")) {
+          return {
+            id: "expected-1",
+            direction: "out",
+            kind: "subscription",
+            ref_id: "subscription-1",
+            due_date: "2026-07-15",
+            amount_minor: 5_000,
+            currency: "TRY",
+            status: "pending",
+            transaction_id: null,
+          };
+        }
+        if (sql.includes("FROM persons")) return { is_self: 1 };
+        if (sql.includes("FROM subscriptions")) return { person_id: "watch", category_id: "category-1" };
+        if (sql.includes("FROM categories")) return { kind: "expense", is_transfer: 0 };
+        return null;
+      },
+    });
+
+    await expect(repository.confirmExpected("user-1", "expected-1", {
+      personId: "self",
+      categoryId: "category-1",
+    })).rejects.toThrow("Expected payment person does not match source rule");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("requires the live rule category when confirming an expected income", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) => {

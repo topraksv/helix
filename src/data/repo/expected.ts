@@ -58,8 +58,6 @@ export async function confirmExpected(
   if (!isISODate(row.due_date) || (opts.paidOn != null && !isISODate(opts.paidOn))) {
     throw new Error("Invalid expected payment date");
   }
-  await assertLiveTransactionPerson(userId, opts.personId);
-
   const sqlite = await getSqliteAsync();
   const rule = row.kind === "subscription"
     ? await sqlite.getFirstAsync<Record<string, unknown>>(
@@ -75,6 +73,14 @@ export async function confirmExpected(
   if ((row.kind === "subscription" || row.kind === "recurring_income") && !rule) {
     throw new Error("Expected payment source rule does not exist");
   }
+  const rulePersonId = row.kind === "subscription" || row.kind === "recurring_income"
+    ? String(rule?.person_id ?? "")
+    : null;
+  if (rulePersonId && rulePersonId !== opts.personId) {
+    throw new Error("Expected payment person does not match source rule");
+  }
+  const transactionPersonId = rulePersonId || opts.personId;
+  await assertLiveTransactionPerson(userId, transactionPersonId);
   const categoryId = opts.categoryId ?? (rule?.category_id == null ? null : String(rule.category_id));
   await assertTransactionCategory(
     userId,
@@ -137,7 +143,7 @@ export async function confirmExpected(
         status: effectiveDate <= today ? "realized" : "pending",
         categoryId,
         paymentSourceId,
-        personId: opts.personId,
+        personId: transactionPersonId,
         installmentPlanId: null,
         installmentNo: null,
         cardStatementId,
