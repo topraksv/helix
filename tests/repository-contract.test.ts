@@ -132,6 +132,18 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
+  it("rejects unknown payment source types before touching persistence", async () => {
+    await expect(repository.upsertPaymentSource("user-1", {
+      name: "Bilinmeyen",
+      type: "crypto_wallet" as never,
+      personId: "person-1",
+      dueDay: null,
+      statementDay: null,
+    })).rejects.toThrow("Invalid payment source type");
+    expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("rejects a transaction person that is not live in the current account", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) =>
@@ -572,6 +584,8 @@ describe("repository compatibility contract", () => {
       .rejects.toThrow("Invalid recurring income anchor date");
     await expect(repository.upsertRecurringIncome("user-1", { ...input, recurrence: "daily" as never }))
       .rejects.toThrow("Invalid recurring income recurrence");
+    await expect(repository.upsertRecurringIncome("user-1", { ...input, kind: "crypto" as never }))
+      .rejects.toThrow("Invalid recurring income kind");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 

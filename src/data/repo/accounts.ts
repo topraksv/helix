@@ -2,7 +2,7 @@ import { getSqliteAsync } from "../../db/client";
 import { newId } from "../../db/ids";
 import { assertLiveRow, assertNotTombstonedRow, fromDbShape, nowIso, restoreRow, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { todayISO, type MonthKey } from "../../domain/dates";
-import type { PaymentSourceType } from "../../domain/types";
+import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, statementPeriod } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError, ReferencedRecordError } from "./errors";
 import { cardStatementWrite, type LivePaymentSource } from "./transactions";
@@ -96,6 +96,7 @@ export async function restorePaymentSource(
 export async function upsertPaymentSource(userId: string, input: PaymentSourceInput): Promise<string> {
   if (!input.name.trim() || !input.personId) throw new Error("Payment source name and owner are required");
   assertInputWithinLimit(input.name, "text");
+  if (!PAYMENT_SOURCE_TYPES.includes(input.type)) throw new Error("Invalid payment source type");
   const sqlite = await getSqliteAsync();
   const person = await sqlite.getFirstAsync<{ id: string }>(
     `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,

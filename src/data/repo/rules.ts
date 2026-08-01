@@ -279,10 +279,12 @@ export interface RecurringIncomeInput {
 }
 
 export async function upsertRecurringIncome(userId: string, input: RecurringIncomeInput): Promise<string> {
-  const sqlite = await getSqliteAsync();
   assertInputWithinLimit(input.name, "text");
   assertInputWithinLimit(input.note, "note");
   assertSupportedMinorAmount(input.defaultAmountMinor, false);
+  if (!["salary", "rent", "allowance", "other"].includes(input.kind)) {
+    throw new Error("Invalid recurring income kind");
+  }
   const recurrence = input.recurrence ?? "monthly";
   if (!["monthly", "weekly", "biweekly"].includes(recurrence)) {
     throw new Error("Invalid recurring income recurrence");
@@ -291,6 +293,7 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
   if (recurrence !== "monthly" && !isISODate(input.anchorDate)) {
     throw new Error("Invalid recurring income anchor date");
   }
+  const sqlite = await getSqliteAsync();
   const person = await sqlite.getFirstAsync<{ is_self: number }>(
     `SELECT is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [input.personId, userId],
