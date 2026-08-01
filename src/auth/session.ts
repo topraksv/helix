@@ -489,6 +489,10 @@ export const useSession = create<SessionStore>((set, get) => ({
       // The cloud identity is already gone, so keep the local owner marker and
       // surface an actionable error. A future account cannot open this
       // workspace: ensureWorkspaceFor will retry the wipe first.
+      await kv.set(LOCAL_OWNER_KEY, LOCAL_WIPE_PENDING_OWNER).catch(() => {});
+      set({ userId: null, email: null, isOnlineSession: false, isNewSignup: false, isFreezing: false, previousLoginAt: null });
+      await kv.remove(LAST_USER_KEY).catch(() => {});
+      await kv.remove(LAST_EMAIL_KEY).catch(() => {});
       return tr.errors.workspaceResetFailed;
     }
     // Same reason as signOut: an emptied workspace under a live user id reads as
