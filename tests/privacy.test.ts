@@ -159,6 +159,8 @@ describe("session background work ownership", () => {
     expect(session).toContain("useSession.getState().userId !== userId");
     expect(session).toContain("await stopSyncSession(userId)");
     expect(session).toContain("await resetLocalWorkspace()");
+    expect(session).toContain("LOCAL_WIPE_PENDING_OWNER");
+    expect(session).toMatch(/catch \{[\s\S]*LOCAL_WIPE_PENDING_OWNER/);
     expect(session).toContain("await kv.remove(LAST_USER_KEY)");
   });
 });

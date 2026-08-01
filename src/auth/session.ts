@@ -54,6 +54,8 @@ const LAST_USER_KEY = "helix.last_user_id";
 const LAST_EMAIL_KEY = "helix.last_email";
 /** Owner of the data currently in the local DB (for account-switch detection). */
 const LOCAL_OWNER_KEY = "helix.local_owner";
+/** A failed invalidation wipe must be retried even if the same account returns. */
+const LOCAL_WIPE_PENDING_OWNER = "__helix_wipe_pending__";
 /**
  * Entry-form "smart default" keys (`helix.last.<transaction type>`), written by
  * `src/app/transaction.tsx`.
@@ -124,8 +126,9 @@ async function clearInvalidatedSession(): Promise<void> {
   try {
     await resetLocalWorkspace();
   } catch {
-    // Keep LOCAL_OWNER_KEY so a different account must retry the wipe. Remove
-    // bootstrap credentials below so this invalid session cannot reopen.
+    // Keep a non-user owner marker so BOTH a different account and this same
+    // account must retry the wipe before any cached rows can be reopened.
+    await kv.set(LOCAL_OWNER_KEY, LOCAL_WIPE_PENDING_OWNER).catch(() => {});
   }
   if (useSession.getState().userId !== userId) return;
   // Before the key removals, for the same reason as signOut: the guard would
