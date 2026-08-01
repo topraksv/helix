@@ -2,6 +2,7 @@ import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import {
   assertLiveRow,
+  assertRestorableRows,
   fromDbShape,
   nowIso,
   restoreRow,
@@ -267,7 +268,7 @@ export function restoreTransaction(userId: string, snapshot: Record<string, unkn
     table: "transactions",
     row: { ...fromDbShape("transactions", snapshot), deletedAt: null },
   }];
-  return writeTransactionRows(userId, writes);
+  return writeTransactionRows(userId, writes, (sqlite) => assertRestorableRows(sqlite, userId, writes));
 }
 
 export function deleteBalanceAdjustment(userId: string, id: string) {

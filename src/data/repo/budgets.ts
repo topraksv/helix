@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
-import { fromDbShape, nowIso, restoreRow, softDelete, writeRows } from "../../db/mutations";
+import { fromDbShape, nowIso, restoreRow, restoreRows, softDelete, writeRows } from "../../db/mutations";
 import { isMonthKey, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 
@@ -79,7 +79,7 @@ export async function deleteCategoryWithBudgets(
 
 /** Undo for `deleteCategoryWithBudgets`: one write restores the whole set. */
 export async function restoreCategoryWithBudgets(userId: string, snapshot: CategoryDeleteSnapshot): Promise<void> {
-  await writeRows(userId, [
+  await restoreRows(userId, [
     { table: "categories", row: { ...snapshot.category, deletedAt: null } },
     ...snapshot.budgets.map((row) => ({ table: "category_budgets" as const, row: { ...row, deletedAt: null } })),
   ]);

@@ -140,6 +140,32 @@ export async function assertNotTombstonedRow(
   if (row?.deleted_at != null) throw new Error(`Cannot revive deleted ${table} row through an edit`);
 }
 
+/**
+ * Explicit undo is allowed to clear only a tombstone owned by this session.
+ * A snapshot can outlive its screen or arrive from a stale callback; letting
+ * `writeRows` stamp it with the caller's user id would otherwise insert a
+ * missing row (or overwrite a later row with the same id) as a new restore.
+ */
+export async function assertRestorableRows(
+  sqlite: SQLiteDatabase,
+  userId: string,
+  writes: readonly RowWrite[],
+): Promise<void> {
+  for (const write of writes) {
+    const id = write.row.id;
+    if (typeof id !== "string" || id === "" || write.row.userId !== userId) {
+      throw new Error(`Cannot restore ${write.table} row from another account`);
+    }
+    const existing = await sqlite.getFirstAsync<{ user_id: string; deleted_at: string | null }>(
+      `SELECT user_id, deleted_at FROM ${write.table} WHERE id = ?`,
+      [id],
+    );
+    if (!existing || existing.user_id !== userId || existing.deleted_at == null) {
+      throw new Error(`Cannot restore ${write.table} row without its tombstone`);
+    }
+  }
+}
+
 /** Run a domain invariant check inside the same serialized transaction that
  * persists the proposed rows. No competing local write can land between the
  * check and the outbox-backed commit. */
@@ -150,6 +176,18 @@ export async function writeRowsValidated(
   isUserEntry = true,
 ): Promise<void> {
   await writeRowBatchesAtomically(userId, [writes], isUserEntry, validate);
+}
+
+/** Restore one semantic undo unit only after every target passes the restore boundary. */
+export async function restoreRows(
+  userId: string,
+  writes: RowWrite[],
+  validate?: WriteRowsValidator,
+): Promise<void> {
+  await writeRowsValidated(userId, writes, async (sqlite) => {
+    await assertRestorableRows(sqlite, userId, writes);
+    await validate?.(sqlite);
+  });
 }
 
 /**
@@ -313,7 +351,7 @@ export async function restoreRow(
   table: SyncedTableName,
   snapshot: Record<string, unknown>,
 ): Promise<void> {
-  await writeRows(userId, [{ table, row: { ...fromDbShape(table, snapshot), deletedAt: null } }]);
+  await restoreRows(userId, [{ table, row: { ...fromDbShape(table, snapshot), deletedAt: null } }]);
 }
 
 /** snake_case DB row → camelCase Drizzle shape. */

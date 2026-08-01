@@ -1,6 +1,7 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import {
+  assertRestorableRows,
   fromDbShape,
   nowIso,
   writeRowsValidated,
@@ -259,6 +260,7 @@ export async function restoreInvestmentOperation(
     userId,
     writes,
     async (db) => {
+      await assertRestorableRows(db, userId, writes);
       const projected = await projectInvestmentWrites(db, userId, writes);
       if (projected) await applySaleResults(db, userId, writes, projected.operationResults);
       await assertInvestmentWrites(db, userId, writes);

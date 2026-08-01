@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { newId } from "../../db/ids";
-import { assertLiveRow, assertNotTombstonedRow, fromDbShape, nowIso, restoreRow, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
+import { assertLiveRow, assertNotTombstonedRow, fromDbShape, nowIso, restoreRow, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { todayISO, type MonthKey } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, statementPeriod } from "../../domain/card-statements";
@@ -83,7 +83,7 @@ export async function restorePaymentSource(
 ): Promise<void> {
   const source = isPaymentSourceDeleteSnapshot(snapshot) ? snapshot.source : snapshot;
   const statements = isPaymentSourceDeleteSnapshot(snapshot) ? snapshot.statements : [];
-  await writeRows(userId, [
+  await restoreRows(userId, [
     { table: "payment_sources", row: { ...fromDbShape("payment_sources", source), deletedAt: null } },
     ...statements.map((statement) => ({
       table: "credit_card_statements" as const,

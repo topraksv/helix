@@ -5,6 +5,7 @@ import type { TxLike } from "../src/domain/types";
 const dependencies = vi.hoisted(() => ({
   getSqliteAsync: vi.fn(),
   writeRows: vi.fn(),
+  restoreRows: vi.fn(),
 }));
 vi.mock("../src/db/client", () => ({ getSqliteAsync: dependencies.getSqliteAsync }));
 vi.mock("../src/db/ids", () => ({
@@ -16,6 +17,7 @@ vi.mock("../src/db/mutations", () => ({
   nowIso: () => "2026-07-18T00:00:00.000Z",
   softDelete: vi.fn(),
   writeRows: dependencies.writeRows,
+  restoreRows: dependencies.restoreRows,
 }));
 
 import { deleteCategoryWithBudgets, restoreCategoryWithBudgets, upsertCategoryBudget } from "../src/data/repo/budgets";
@@ -27,7 +29,12 @@ const tx = (id: string, categoryId: string, amountTryMinor: number, effectiveDat
 });
 
 describe("category deletion cascades to its budgets", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dependencies.restoreRows.mockImplementation(async (userId: string, writes: unknown[]) => {
+      dependencies.writeRows(userId, writes);
+    });
+  });
 
   it("tombstones the category and every live budget in one atomic write", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({

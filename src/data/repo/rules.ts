@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { assertNotTombstonedRow, fromDbShape, nowIso, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
+import { assertNotTombstonedRow, fromDbShape, nowIso, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { isISODate, isMonthDay, todayISO, type ISODate } from "../../domain/dates";
 import { generateExpected, obsoleteExpectedIds } from "../../domain/expected";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
@@ -390,7 +390,7 @@ export function deleteRecurringIncomeWithExpected(userId: string, id: string): P
 }
 
 export async function restoreDeletedRule(userId: string, snapshot: RuleDeleteSnapshot): Promise<void> {
-  await writeRows(userId, [
+  await restoreRows(userId, [
     { table: snapshot.table, row: { ...fromDbShape(snapshot.table, snapshot.root), deletedAt: null } },
     ...snapshot.expected.map((row) => ({
       table: "expected_payments" as const,

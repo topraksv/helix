@@ -5,6 +5,8 @@ const dependencies = vi.hoisted(() => ({
   getSqliteAsync: vi.fn(),
   readSetting: vi.fn(),
   writeRows: vi.fn(),
+  restoreRows: vi.fn(),
+  restoreRow: vi.fn(),
   writeRowsValidated: vi.fn(),
   writeSetting: vi.fn(),
   assertLiveRow: vi.fn(async (sqlite: { getFirstAsync: (sql: string, args: unknown[]) => Promise<unknown> }, table: string, userId: string, id: string) => {
@@ -15,6 +17,7 @@ const dependencies = vi.hoisted(() => ({
     const row = await sqlite.getFirstAsync(`SELECT deleted_at FROM ${table} WHERE id = ? AND user_id = ?`, [id, userId]);
     if (row?.deleted_at != null) throw new Error(`Cannot revive deleted ${table} row through an edit`);
   }),
+  assertRestorableRows: vi.fn(async () => {}),
   deterministicId: vi.fn(async (key: string) => `id:${key}`),
   settingRow: vi.fn(async (userId: string, key: string, value: unknown) => ({ table: "settings", row: { id: `id:setting|${userId}|${key}`, key, value: JSON.stringify(value), deletedAt: null } })),
 }));
@@ -34,9 +37,12 @@ vi.mock("../src/db/mutations", () => ({
   settingRow: dependencies.settingRow,
   softDelete: vi.fn(),
   writeRows: dependencies.writeRows,
+  restoreRows: dependencies.restoreRows,
+  restoreRow: dependencies.restoreRow,
   writeRowsValidated: dependencies.writeRowsValidated,
   assertLiveRow: dependencies.assertLiveRow,
   assertNotTombstonedRow: dependencies.assertNotTombstonedRow,
+  assertRestorableRows: dependencies.assertRestorableRows,
   writeSetting: dependencies.writeSetting,
 }));
 vi.mock("../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
@@ -103,6 +109,9 @@ describe("repository compatibility contract", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dependencies.readSetting.mockResolvedValue(null);
+    dependencies.restoreRows.mockImplementation(async (userId: string, writes: unknown[]) => {
+      dependencies.writeRows(userId, writes);
+    });
     dependencies.writeRowsValidated.mockImplementation(async (userId: string, writes: unknown[], validate: (sqlite: unknown) => Promise<void>) => {
       await validate(await dependencies.getSqliteAsync());
       dependencies.writeRows(userId, writes);
