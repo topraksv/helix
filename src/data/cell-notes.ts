@@ -1,6 +1,7 @@
 import { deterministicId, naturalKeys } from "../db/ids";
-import { nowIso, writeRows, type RowWrite } from "../db/mutations";
+import { assertLiveRow, nowIso, writeRowsValidated, type RowWrite } from "../db/mutations";
 import { scheduleSync } from "../sync/engine";
+import { isMonthKey } from "../domain/dates";
 import { assertInputWithinLimit } from "../domain/input";
 
 interface ExistingCellNote {
@@ -16,6 +17,7 @@ export async function saveCellNote(
   body: string,
   existing?: ExistingCellNote,
 ): Promise<void> {
+  if (!isMonthKey(month)) throw new Error("Invalid cell note month");
   assertInputWithinLimit(body, "note");
   const id = await deterministicId(naturalKeys.cellNote(userId, month, categoryId));
   const normalized = body.trim();
@@ -33,6 +35,6 @@ export async function saveCellNote(
     });
   }
   writes.push({ table: "cell_notes", row: { id, month, categoryId, body: normalized, deletedAt } });
-  await writeRows(userId, writes);
+  await writeRowsValidated(userId, writes, (sqlite) => assertLiveRow(sqlite, "categories", userId, categoryId));
   scheduleSync(userId);
 }
