@@ -174,6 +174,79 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
+  it("moves a card purchase to its statement due date atomically", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM categories")) return { kind: "expense", is_transfer: 0 };
+        if (sql.includes("FROM payment_sources")) {
+          return { id: "card-1", type: "credit_card", statement_day: 25, due_day: 5 };
+        }
+        return null;
+      },
+      getAllAsync: async () => [],
+    });
+
+    await repository.addTransaction("user-1", {
+      type: "expense",
+      amountMinor: 12_345,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: 12_345,
+      effectiveDate: "2026-07-26",
+      categoryId: "category-1",
+      paymentSourceId: "card-1",
+      personId: "person-1",
+      note: "Kart alışverişi",
+    });
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]) as [
+      string,
+      { table: string; row: Record<string, unknown> }[],
+    ];
+    expect(writes.map((write) => write.table)).toEqual(["credit_card_statements", "transactions"]);
+    expect(writes[0]?.row).toMatchObject({
+      periodMonth: "2026-08",
+      statementDate: "2026-08-25",
+      dueDate: "2026-09-05",
+    });
+    expect(writes[1]?.row).toMatchObject({
+      purchaseDate: "2026-07-26",
+      effectiveDate: "2026-09-05",
+      cardStatementId: writes[0]?.row.id,
+      amountMinor: 12_345,
+      amountTryMinor: 12_345,
+    });
+  });
+
+  it("rejects a card purchase without a valid statement cycle before writing", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM categories")) return { kind: "expense", is_transfer: 0 };
+        if (sql.includes("FROM payment_sources")) {
+          return { id: "card-1", type: "credit_card", statement_day: null, due_day: 5 };
+        }
+        return null;
+      },
+      getAllAsync: async () => [],
+    });
+
+    await expect(repository.addTransaction("user-1", {
+      type: "expense",
+      amountMinor: 1_000,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: 1_000,
+      effectiveDate: "2026-07-26",
+      categoryId: "category-1",
+      paymentSourceId: "card-1",
+      personId: "person-1",
+      note: null,
+    })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("rejects a transaction person that is not live in the current account", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) =>
