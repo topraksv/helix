@@ -1,7 +1,7 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { fromDbShape, nowIso, writeRows, type RowWrite } from "../../db/mutations";
-import { isISODate, todayISO, type ISODate } from "../../domain/dates";
+import { isISODate, isMonthDay, todayISO, type ISODate } from "../../domain/dates";
 import { convertToTryMinor } from "../../domain/fx";
 import { advanceDueDate } from "../../domain/recurrence";
 import { confirmEffectiveDate } from "../../domain/expected";
@@ -224,6 +224,27 @@ export async function revertExpected(userId: string, expectedId: string): Promis
       row: { ...fromDbShape("expected_payments", row as unknown as Record<string, unknown>), status: "pending", paidAt: null, transactionId: null, autoConfirmed: false },
     },
   ];
+  if (row.kind === "subscription" && isISODate(row.due_date)) {
+    const subscription = await sqlite.getFirstAsync<Record<string, unknown>>(
+      `SELECT * FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+      [row.ref_id, userId],
+    );
+    const intervalMonths = Number(subscription?.interval_months);
+    const billingDay = Number(subscription?.billing_day);
+    const currentNextDueDate = subscription?.next_due_date;
+    if (
+      subscription &&
+      isISODate(currentNextDueDate) &&
+      Number.isInteger(intervalMonths) && intervalMonths >= 1 &&
+      isMonthDay(billingDay) &&
+      currentNextDueDate === advanceDueDate(row.due_date, intervalMonths, billingDay)
+    ) {
+      writes.push({
+        table: "subscriptions",
+        row: { ...fromDbShape("subscriptions", subscription), nextDueDate: row.due_date },
+      });
+    }
+  }
   if (row.transaction_id) {
     const transaction = await sqlite.getFirstAsync<Record<string, unknown>>(
       `SELECT * FROM transactions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,

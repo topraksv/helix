@@ -376,6 +376,68 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
+  it("rewinds a subscription schedule when undoing its confirmation", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM subscriptions")) {
+          return {
+            id: "subscription-1",
+            next_due_date: "2026-08-10",
+            interval_months: 1,
+            billing_day: 10,
+          };
+        }
+        if (sql.includes("FROM transactions")) return { id: "transaction-1", deleted_at: null };
+        return {
+          id: "expected-1",
+          direction: "out",
+          kind: "subscription",
+          ref_id: "subscription-1",
+          due_date: "2026-07-10",
+          amount_minor: 5_000,
+          currency: "TRY",
+          status: "paid",
+          transaction_id: "transaction-1",
+        };
+      },
+    });
+
+    await repository.revertExpected("user-1", "expected-1");
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes.find((write: { table: string }) => write.table === "subscriptions")?.row.nextDueDate)
+      .toBe("2026-07-10");
+    expect(writes.find((write: { table: string }) => write.table === "transactions")?.row.deletedAt)
+      .toBe(NOW);
+    expect(writes.find((write: { table: string }) => write.table === "expected_payments")?.row.status)
+      .toBe("pending");
+  });
+
+  it("does not rewind a subscription after a later confirmation advanced it again", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM subscriptions")) {
+          return { next_due_date: "2026-09-10", interval_months: 1, billing_day: 10 };
+        }
+        if (sql.includes("FROM transactions")) return { id: "transaction-1", deleted_at: null };
+        return {
+          id: "expected-1",
+          direction: "out",
+          kind: "subscription",
+          ref_id: "subscription-1",
+          due_date: "2026-07-10",
+          amount_minor: 5_000,
+          currency: "TRY",
+          status: "paid",
+          transaction_id: "transaction-1",
+        };
+      },
+    });
+
+    await repository.revertExpected("user-1", "expected-1");
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes.some((write: { table: string }) => write.table === "subscriptions")).toBe(false);
+  });
+
   it("deletes and restores orphaned card statements with their payment source", async () => {
     const source = {
       id: "source-1",
