@@ -980,4 +980,46 @@ describe("replace-mode import with an unreadable batch", () => {
     ).rejects.toThrow("live self person");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
+
+  it("plans a valid spreadsheet import into one atomic write", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM persons") ? { id: "person-self" } : null,
+      getAllAsync: async () => [],
+    });
+    dependencies.readSetting.mockResolvedValue(null);
+
+    const result = await repository.importSheets("user-1", {
+      sheets: [{
+        sheetName: "2026",
+        year: 2026,
+        months: ["2026-07"],
+        columns: [{ label: "Market", kindGuess: "expense", isInvestment: false, dueDay: null }],
+        cells: [[{ valueMinor: 10_000, formulaParts: null, comment: null, commentParts: null }]],
+        skippedColumns: [],
+        openingBalance: null,
+      }],
+      excludedLabels: [],
+      selfId: "person-self",
+      mode: "add",
+    });
+
+    expect(result).toEqual({ imported: 1 });
+    expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]) as [
+      string,
+      { table: string; row: Record<string, unknown> }[],
+    ];
+    expect(writes.map((write) => write.table)).toEqual([
+      "categories",
+      "transactions",
+      "settings",
+      "settings",
+    ]);
+    expect(writes.find((write) => write.table === "transactions")?.row).toMatchObject({
+      amountMinor: 10_000,
+      amountTryMinor: 10_000,
+      personId: "person-self",
+      isAggregate: true,
+    });
+  });
 });
