@@ -239,6 +239,11 @@ describe("backup validation", () => {
       id: id(33), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
       currency: "USD", rate_date: "2026-07-15", rate_try: "40.25",
     };
+    const cardSource = {
+      id: id(34), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      name: "Kart", type: "credit_card", person_id: personId, due_day: null, statement_day: null,
+      color: null, logo_source: "initials", logo_ref: null, is_active: 1,
+    };
 
     expect(isValidImportRow("subscriptions", { ...subscription, amount_minor: 0 })).toBe(false);
     expect(isValidImportRow("subscriptions", { ...subscription, interval_months: 0 })).toBe(false);
@@ -247,6 +252,8 @@ describe("backup validation", () => {
     expect(isValidImportRow("installment_plans", { ...plan, total_amount_minor: null, monthly_amount_minor: null })).toBe(false);
     expect(isValidImportRow("fx_rates", { ...fxRate, rate_try: "0" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: 0 })).toBe(false);
+    expect(isValidImportRow("payment_sources", cardSource)).toBe(false);
+    expect(isValidImportRow("installment_plans", { ...plan, payment_source_id: null })).toBe(false);
   });
 
   it("validates backup relationships against bundled or existing parent ids", () => {

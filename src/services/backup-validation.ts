@@ -4,6 +4,7 @@ import { parseDefinition, type ComputedColumnDefinition } from "../domain/comput
 import { resolveInvestmentQuote } from "../domain/investments";
 import { isSupportedMinorAmount } from "../domain/money";
 import { MAX_INSTALLMENT_COUNT } from "../domain/installments";
+import { isValidCardCycle } from "../domain/card-statements";
 import { isMonthKey } from "../domain/dates";
 import { isSupportedCurrency } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
@@ -200,6 +201,10 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
   if (table === "balance_adjustments" && !isSupportedMoney(raw.amount_minor)) return false;
   if (table === "category_budgets" && !isPositiveMoney(raw.amount_minor)) return false;
   if (table === "fx_rates" && !isSupportedRate(raw.rate_try)) return false;
+  if (table === "payment_sources" && raw.type === "credit_card" && !isValidCardCycle({
+    statementDay: typeof raw.statement_day === "number" ? raw.statement_day : null,
+    dueDay: typeof raw.due_day === "number" ? raw.due_day : null,
+  })) return false;
   if (table === "installment_plans") {
     if (!isPositiveInteger(raw.installment_count) || raw.installment_count > MAX_INSTALLMENT_COUNT) {
       return false;
@@ -207,6 +212,7 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     const hasTotal = raw.total_amount_minor != null;
     const hasMonthly = raw.monthly_amount_minor != null;
     if (!hasTotal && !hasMonthly) return false;
+    if (raw.kind === "card_installment" && typeof raw.payment_source_id !== "string") return false;
     if (hasTotal && !isPositiveMoney(raw.total_amount_minor)) return false;
     if (hasMonthly && !isPositiveMoney(raw.monthly_amount_minor)) return false;
   }
