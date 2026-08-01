@@ -1,7 +1,7 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { assertNotTombstonedRow, fromDbShape, nowIso, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
-import { todayISO, type ISODate } from "../../domain/dates";
+import { isISODate, isMonthDay, todayISO, type ISODate } from "../../domain/dates";
 import { generateExpected, obsoleteExpectedIds } from "../../domain/expected";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
@@ -160,6 +160,17 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   assertInputWithinLimit(input.name, "text");
   assertInputWithinLimit(input.note, "note");
   assertSupportedMinorAmount(input.amountMinor, false);
+  if (!["monthly", "yearly", "custom"].includes(input.cycle)) {
+    throw new Error("Invalid subscription cycle");
+  }
+  if (!Number.isInteger(input.intervalMonths) || input.intervalMonths < 1) {
+    throw new Error("Invalid subscription interval");
+  }
+  if (!isMonthDay(input.billingDay)) throw new Error("Invalid subscription billing day");
+  if (!isISODate(input.nextDueDate)) throw new Error("Invalid subscription due date");
+  if (input.trialEndDate != null && !isISODate(input.trialEndDate)) {
+    throw new Error("Invalid subscription trial date");
+  }
   if (!input.categoryId) throw new SubscriptionCategoryRequiredError();
   const category = await sqlite.getFirstAsync<{ id: string }>(
     `SELECT id FROM categories WHERE id = ? AND user_id = ? AND kind = 'expense' AND deleted_at IS NULL`,
@@ -272,13 +283,20 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
   assertInputWithinLimit(input.name, "text");
   assertInputWithinLimit(input.note, "note");
   assertSupportedMinorAmount(input.defaultAmountMinor, false);
+  const recurrence = input.recurrence ?? "monthly";
+  if (!["monthly", "weekly", "biweekly"].includes(recurrence)) {
+    throw new Error("Invalid recurring income recurrence");
+  }
+  if (!isMonthDay(input.payDay)) throw new Error("Invalid recurring income pay day");
+  if (recurrence !== "monthly" && !isISODate(input.anchorDate)) {
+    throw new Error("Invalid recurring income anchor date");
+  }
   const person = await sqlite.getFirstAsync<{ is_self: number }>(
     `SELECT is_self FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [input.personId, userId],
   );
   if (!person) throw new Error("Recurring income person is required");
   await assertRecurringIncomeCategory(userId, input.categoryId);
-  const recurrence = input.recurrence ?? "monthly";
   const anchorDate = recurrence === "monthly" ? null : input.anchorDate ?? null;
   if ((recurrence === "weekly" || recurrence === "biweekly") && !anchorDate) {
     throw new Error("Recurring income anchor date is required");

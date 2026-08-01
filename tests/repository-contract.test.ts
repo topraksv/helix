@@ -513,6 +513,68 @@ describe("repository compatibility contract", () => {
     expect(wrotePriceHistory).toBe(true);
   });
 
+  it("rejects invalid subscription scheduling before writing a rule", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
+        ? { id: "cat-1" }
+        : sql.includes("FROM persons") ? { is_self: 1 } : null,
+      getAllAsync: async () => [],
+    });
+    const input = {
+      name: "Netflix",
+      amountMinor: 4_990,
+      currency: "TRY",
+      cycle: "monthly" as const,
+      intervalMonths: 1,
+      billingDay: 5,
+      nextDueDate: "2026-08-05",
+      paymentSourceId: null,
+      categoryId: "cat-1",
+      personId: "person-1",
+      isActive: true,
+      trialEndDate: null,
+      autoPay: false,
+      websiteDomain: null,
+      note: null,
+    };
+
+    await expect(repository.upsertSubscription("user-1", { ...input, intervalMonths: 0 }))
+      .rejects.toThrow("Invalid subscription interval");
+    await expect(repository.upsertSubscription("user-1", { ...input, billingDay: 0 }))
+      .rejects.toThrow("Invalid subscription billing day");
+    await expect(repository.upsertSubscription("user-1", { ...input, nextDueDate: "2026-02-31" as never }))
+      .rejects.toThrow("Invalid subscription due date");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid recurring-income scheduling before writing a rule", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM persons") ? { is_self: 1 } : { kind: "income" },
+      getAllAsync: async () => [],
+    });
+    const input = {
+      name: "Maaş",
+      kind: "salary" as const,
+      defaultAmountMinor: 50_000,
+      currency: "TRY",
+      payDay: 15,
+      recurrence: "weekly" as const,
+      anchorDate: "2026-07-18",
+      personId: "person-1",
+      categoryId: "income-cat",
+      isActive: true,
+      note: null,
+    };
+
+    await expect(repository.upsertRecurringIncome("user-1", { ...input, payDay: 32 }))
+      .rejects.toThrow("Invalid recurring income pay day");
+    await expect(repository.upsertRecurringIncome("user-1", { ...input, anchorDate: "2026-02-31" as never }))
+      .rejects.toThrow("Invalid recurring income anchor date");
+    await expect(repository.upsertRecurringIncome("user-1", { ...input, recurrence: "daily" as never }))
+      .rejects.toThrow("Invalid recurring income recurrence");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("does not revive a subscription deleted while its edit form was open", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) => sql.includes("FROM categories")
