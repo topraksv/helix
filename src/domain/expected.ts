@@ -6,7 +6,7 @@
  * truth; automation only assists.
  */
 
-import { addMonthsToKey, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
+import { addMonthsToKey, daysBetweenISO, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
 import { dayIntervalDatesInRange, dueDateInMonth, dueDatesInRange } from "./recurrence";
 import type {
   ExpectedPaymentLike,
@@ -177,8 +177,6 @@ export function findAutoConfirmable(
 /** Reminder window check: due within `days` days from today (inclusive). */
 export function isDueWithin(e: ExpectedPaymentLike, today: ISODate, days: number): boolean {
   if (e.status !== "pending") return false;
-  const due = new Date(`${e.dueDate}T00:00:00`);
-  const now = new Date(`${today}T00:00:00`);
-  const diffDays = Math.round((due.getTime() - now.getTime()) / 86_400_000);
+  const diffDays = daysBetweenISO(today, e.dueDate);
   return diffDays >= 0 && diffDays <= days;
 }

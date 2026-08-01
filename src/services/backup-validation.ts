@@ -3,6 +3,7 @@ import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { parseDefinition, type ComputedColumnDefinition } from "../domain/computed-columns";
 import { resolveInvestmentQuote } from "../domain/investments";
 import { isSupportedMinorAmount } from "../domain/money";
+import { isMonthKey } from "../domain/dates";
 import { tr } from "../i18n/tr";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 import { UserFacingError, userMessage } from "../domain/user-error";
@@ -97,10 +98,6 @@ function isIsoDate(value: unknown): boolean {
   if (year == null || month == null || day == null) return false;
   const parsed = new Date(Date.UTC(year, month - 1, day));
   return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
-}
-
-function isMonthKey(value: unknown): boolean {
-  return typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 }
 
 /** Validate a restore row completely before any database write begins. */

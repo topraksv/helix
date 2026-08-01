@@ -1,16 +1,14 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { fromDbShape, nowIso, restoreRow, softDelete, writeRows } from "../../db/mutations";
-import type { MonthKey } from "../../domain/dates";
+import { isMonthKey, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
-
-const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export async function upsertCategoryBudget(
   userId: string,
   input: { month: MonthKey; categoryId: string; amountMinor: Minor },
 ): Promise<string> {
-  if (!MONTH_RE.test(input.month)) throw new Error("Invalid budget month");
+  if (!isMonthKey(input.month)) throw new Error("Invalid budget month");
   assertSupportedMinorAmount(input.amountMinor, false);
   const sqlite = await getSqliteAsync();
   const category = await sqlite.getFirstAsync<{ id: string }>(
