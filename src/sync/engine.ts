@@ -244,7 +244,10 @@ async function pullAndMerge(userId: string, token: SessionEpochToken): Promise<n
         .limit(PULL_PAGE);
       query = curId
         ? query.or(`updated_at.gt.${curTs},and(updated_at.eq.${curTs},id.gt.${curId})`)
-        : query.gt("updated_at", curTs);
+        // A legacy cursor has no id tie-breaker. Include its timestamp once so
+        // rows sharing that timestamp are recovered during the migration to
+        // the composite cursor; the LWW merge makes the replay idempotent.
+        : query.gte("updated_at", curTs);
       const { data, error } = await query.abortSignal(token.signal);
       if (error) throw new Error(`pull ${table}: ${error.message}`);
       if (!data || data.length === 0) break;
