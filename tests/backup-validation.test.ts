@@ -215,6 +215,40 @@ describe("backup validation", () => {
     expect(isValidImportRow("expected_payments", expected)).toBe(true);
   });
 
+  it("rejects domain-invalid rows before backup or sync persistence", () => {
+    const subscription = {
+      id: id(30), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      name: "Servis", amount_minor: 100_00, currency: "TRY", cycle: "monthly", interval_months: 1,
+      billing_day: 10, next_due_date: "2026-08-10", payment_source_id: null, category_id: categoryId,
+      person_id: personId, is_active: 1, canceled_at: null, trial_end_date: null, auto_pay: 0,
+      website_domain: null, logo_source: "initials", logo_ref: null, note: null,
+    };
+    const income = {
+      id: id(31), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      name: "Maaş", kind: "salary", default_amount_minor: 50_000, currency: "TRY", pay_day: 15,
+      recurrence: "monthly", anchor_date: null, person_id: personId, category_id: null,
+      is_active: 1, note: null,
+    };
+    const plan = {
+      id: id(32), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      title: "Telefon", kind: "card_installment", total_amount_minor: 120_000, monthly_amount_minor: null,
+      installment_count: 3, currency: "TRY", start_month: "2026-07", due_day: 10,
+      payment_source_id: cardId, person_id: personId, category_id: categoryId, note: null,
+    };
+    const fxRate = {
+      id: id(33), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      currency: "USD", rate_date: "2026-07-15", rate_try: "40.25",
+    };
+
+    expect(isValidImportRow("subscriptions", { ...subscription, amount_minor: 0 })).toBe(false);
+    expect(isValidImportRow("subscriptions", { ...subscription, interval_months: 0 })).toBe(false);
+    expect(isValidImportRow("recurring_incomes", { ...income, default_amount_minor: -1 })).toBe(false);
+    expect(isValidImportRow("installment_plans", { ...plan, installment_count: 0 })).toBe(false);
+    expect(isValidImportRow("installment_plans", { ...plan, total_amount_minor: null, monthly_amount_minor: null })).toBe(false);
+    expect(isValidImportRow("fx_rates", { ...fxRate, rate_try: "0" })).toBe(false);
+    expect(isValidImportRow("transactions", { ...transaction, amount_minor: 0 })).toBe(false);
+  });
+
   it("validates backup relationships against bundled or existing parent ids", () => {
     const bundle = validateExportBundle({
       version: 1,

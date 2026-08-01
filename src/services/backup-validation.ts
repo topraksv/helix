@@ -3,6 +3,7 @@ import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { parseDefinition, type ComputedColumnDefinition } from "../domain/computed-columns";
 import { resolveInvestmentQuote } from "../domain/investments";
 import { isSupportedMinorAmount } from "../domain/money";
+import { MAX_INSTALLMENT_COUNT } from "../domain/installments";
 import { isMonthKey } from "../domain/dates";
 import { isSupportedCurrency } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
@@ -101,6 +102,24 @@ function isIsoDate(value: unknown): boolean {
   return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
 }
 
+function isSupportedMoney(value: unknown, allowZero = true): value is number {
+  return typeof value === "number" && isSupportedMinorAmount(value, allowZero);
+}
+
+function isPositiveMoney(value: unknown): value is number {
+  return isSupportedMoney(value, false) && value > 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
+function isSupportedRate(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const rate = Number(value);
+  return Number.isFinite(rate) && rate > 0 && rate <= 1_000_000;
+}
+
 /** Validate a restore row completely before any database write begins. */
 export function isValidImportRow(table: SyncedTableName, raw: Record<string, unknown>): boolean {
   if (typeof raw.id !== "string" || !UUID_RE.test(raw.id)) return false;
@@ -162,7 +181,35 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
       return false;
     }
   }
-  if (table === "category_budgets" && (typeof raw.amount_minor !== "number" || raw.amount_minor <= 0)) return false;
+  if (table === "transactions") {
+    if (
+      !isSupportedMoney(raw.amount_minor, false)
+      || !isSupportedMoney(raw.amount_try_minor, false)
+      || Math.sign(raw.amount_minor) !== Math.sign(raw.amount_try_minor)
+    ) return false;
+  }
+  if (table === "subscriptions") {
+    if (
+      !isPositiveMoney(raw.amount_minor)
+      || !isPositiveInteger(raw.interval_months)
+    ) return false;
+  }
+  if (table === "price_history" && !isPositiveMoney(raw.amount_minor)) return false;
+  if (table === "recurring_incomes" && !isPositiveMoney(raw.default_amount_minor)) return false;
+  if (table === "expected_payments" && !isPositiveMoney(raw.amount_minor)) return false;
+  if (table === "balance_adjustments" && !isSupportedMoney(raw.amount_minor)) return false;
+  if (table === "category_budgets" && !isPositiveMoney(raw.amount_minor)) return false;
+  if (table === "fx_rates" && !isSupportedRate(raw.rate_try)) return false;
+  if (table === "installment_plans") {
+    if (!isPositiveInteger(raw.installment_count) || raw.installment_count > MAX_INSTALLMENT_COUNT) {
+      return false;
+    }
+    const hasTotal = raw.total_amount_minor != null;
+    const hasMonthly = raw.monthly_amount_minor != null;
+    if (!hasTotal && !hasMonthly) return false;
+    if (hasTotal && !isPositiveMoney(raw.total_amount_minor)) return false;
+    if (hasMonthly && !isPositiveMoney(raw.monthly_amount_minor)) return false;
+  }
   if (table === "investment_profiles") {
     if (
       typeof raw.opening_cash_minor !== "number"
