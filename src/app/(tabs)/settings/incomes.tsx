@@ -21,7 +21,7 @@ import { font, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
-import { addDaysISO, addMonthsToKey, clampDayToMonth, isISODate, isMonthDay, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../../domain/dates";
+import { addDaysISO, addMonthsToKey, clampDayToMonth, daysBetweenISO, isISODate, isMonthDay, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../../domain/dates";
 import { DateField } from "../../../ui/calendar";
 import { MonthDayField } from "../../../ui/month-day-field";
 import { appAlert } from "../../../ui/dialog";
@@ -35,9 +35,7 @@ const QUICK_DAYS = [1, 5, 10, 15, 25, 28] as const;
 function firstIntervalDate(anchorDate: ISODate, intervalDays: number, today: ISODate): ISODate {
   const safeAnchor = isISODate(anchorDate) ? anchorDate : today;
   if (safeAnchor >= today) return safeAnchor;
-  const elapsedDays = Math.floor(
-    (Date.parse(`${today}T12:00:00Z`) - Date.parse(`${safeAnchor}T12:00:00Z`)) / 86_400_000,
-  );
+  const elapsedDays = daysBetweenISO(safeAnchor, today);
   return addDaysISO(safeAnchor, Math.ceil(elapsedDays / intervalDays) * intervalDays);
 }
 

@@ -8,6 +8,7 @@ import {
   addMonthsToKey,
   addDaysISO,
   clampDayToMonth,
+  daysBetweenISO,
   isMonthDay,
   monthKeyOf,
   monthOf,
@@ -98,9 +99,7 @@ export function dayIntervalDatesInRange(
   if (!Number.isInteger(intervalDays) || intervalDays < 1 || anchor > toInclusive) return [];
   let due = anchor;
   if (due < fromInclusive) {
-    const elapsedDays = Math.floor(
-      (Date.parse(`${fromInclusive}T12:00:00Z`) - Date.parse(`${anchor}T12:00:00Z`)) / 86_400_000,
-    );
+    const elapsedDays = daysBetweenISO(anchor, fromInclusive);
     due = addDaysISO(anchor, Math.floor(elapsedDays / intervalDays) * intervalDays);
     if (due < fromInclusive) due = addDaysISO(due, intervalDays);
   }
