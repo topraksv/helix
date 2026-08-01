@@ -108,6 +108,10 @@ const publicRuntimeExports = [
 describe("repository compatibility contract", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getAllAsync: async () => [],
+      getFirstAsync: async () => null,
+    });
     dependencies.readSetting.mockResolvedValue(null);
     dependencies.restoreRows.mockImplementation(async (userId: string, writes: unknown[]) => {
       dependencies.writeRows(userId, writes);
@@ -559,6 +563,39 @@ describe("repository compatibility contract", () => {
       ["user-1", "opening_balance_minor", 12_345],
     ]);
     expect(dependencies.writeSetting).not.toHaveBeenCalled();
+  });
+
+  it("tombstones seeded rows removed before onboarding commit", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getAllAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) {
+          return [{ id: "id:onboardingPerson|user-1|1", userId: "user-1", name: "Ada", isSelf: false, deletedAt: null }];
+        }
+        if (sql.includes("FROM payment_sources")) {
+          return [{ id: "id:onboardingSource|user-1|0", userId: "user-1", name: "Ada Nakit", type: "cash", personId: "id:onboardingPerson|user-1|1", deletedAt: null }];
+        }
+        if (sql.includes("FROM categories")) {
+          return [{ id: "id:seedCategory|user-1|Market", userId: "user-1", name: "Market", kind: "expense", isColumn: true, isTransfer: false, deletedAt: null }];
+        }
+        return [];
+      },
+    });
+
+    await repository.seedWorkspace("user-1", {
+      templateCategories: [],
+      startMonth: "2026-07",
+      openingBalanceMinor: 0,
+      persons: [{ name: "Ben", isSelf: true }],
+      sources: [],
+    });
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const tombstones = writes.filter((write: { row: { deletedAt?: unknown } }) => write.row.deletedAt != null);
+    expect(tombstones.map((write: { table: string; row: { id: string } }) => `${write.table}:${write.row.id}`)).toEqual([
+      "persons:id:onboardingPerson|user-1|1",
+      "payment_sources:id:onboardingSource|user-1|0",
+      "categories:id:seedCategory|user-1|Market",
+    ]);
   });
 
   it("rejects an onboarding graph without exactly one self person", async () => {

@@ -1,5 +1,6 @@
 import { deterministicId, naturalKeys } from "../../db/ids";
-import { readSetting, settingRow, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
+import { getSqliteAsync } from "../../db/client";
+import { fromDbShape, nowIso, readSetting, settingRow, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
 import { isMonthKey, monthKeyOf, todayISO, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
@@ -67,6 +68,59 @@ export interface SeedInput {
 }
 
 /**
+ * Re-seeding is also the commit step after an importer. Rows removed from the
+ * draft must therefore be tombstoned in the same write as the rows that remain;
+ * otherwise a cancelled source/person/template silently survives onboarding.
+ */
+async function removedSeedRows(
+  userId: string,
+  table: "persons" | "payment_sources" | "categories",
+  candidateKeys: string[],
+  desiredIds: ReadonlySet<string>,
+): Promise<RowWrite[]> {
+  if (candidateKeys.length === 0) return [];
+  const sqlite = await getSqliteAsync();
+  const liveRows = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM ${table} WHERE user_id = ? AND deleted_at IS NULL`,
+    [userId],
+  );
+  const candidateIds = new Set(await Promise.all(candidateKeys.map((key) => deterministicId(key))));
+  return liveRows
+    .filter((row) => typeof row.id === "string" && candidateIds.has(row.id) && !desiredIds.has(row.id))
+    .map((row) => ({
+      table,
+      row: { ...fromDbShape(table, row), deletedAt: nowIso() },
+    }));
+}
+
+async function removedOnboardingSlotRows(
+  userId: string,
+  table: "persons" | "payment_sources",
+  naturalKey: (index: number) => string,
+  desiredIds: ReadonlySet<string>,
+  firstIndex: number,
+  minimumSlots: number,
+): Promise<RowWrite[]> {
+  const sqlite = await getSqliteAsync();
+  const liveRows = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM ${table} WHERE user_id = ? AND deleted_at IS NULL`,
+    [userId],
+  );
+  const slotCount = Math.max(minimumSlots, liveRows.length + 1);
+  const candidateIds = new Set(
+    await Promise.all(
+      Array.from({ length: slotCount }, (_, offset) => deterministicId(naturalKey(firstIndex + offset))),
+    ),
+  );
+  return liveRows
+    .filter((row) => typeof row.id === "string" && candidateIds.has(row.id) && !desiredIds.has(row.id))
+    .map((row) => ({
+      table,
+      row: { ...fromDbShape(table, row), deletedAt: nowIso() },
+    }));
+}
+
+/**
  * Seed (or re-seed) the onboarding workspace. Fully idempotent: every seeded
  * row gets a DETERMINISTIC id (self person, watch-only persons by slot, sources
  * by slot, template categories by name), so re-entering setup — after a reload,
@@ -121,6 +175,31 @@ export async function seedWorkspace(userId: string, input: SeedInput): Promise<v
   const categoryIds = await Promise.all(
     input.templateCategories.map((c) => deterministicId(naturalKeys.seedCategory(userId, c.name))),
   );
+  const [removedPersons, removedSources, removedCategories] = await Promise.all([
+    removedOnboardingSlotRows(
+      userId,
+      "persons",
+      (index) => naturalKeys.onboardingPerson(userId, index),
+      new Set(personIds),
+      1,
+      input.persons.length,
+    ),
+    removedOnboardingSlotRows(
+      userId,
+      "payment_sources",
+      (index) => naturalKeys.onboardingSource(userId, index),
+      new Set(sourceIds),
+      0,
+      input.sources.length,
+    ),
+    removedSeedRows(
+      userId,
+      "categories",
+      [...TEMPLATE_CATEGORIES, ...TEMPLATE_EXTRA_CATEGORIES].map((category) => naturalKeys.seedCategory(userId, category.name)),
+      new Set(categoryIds),
+    ),
+  ]);
+  writes.push(...removedPersons, ...removedSources, ...removedCategories);
   input.templateCategories.forEach((c, i) => {
     writes.push({
       table: "categories",
