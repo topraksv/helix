@@ -239,6 +239,20 @@ describe("planImportCell", () => {
     expect(plan!.items.every((i) => i.note === null && !i.isAggregate)).toBe(true);
   });
 
+  it("keeps the cell total when formula parts do not reconcile", () => {
+    const plan = planImportCell(
+      cd({
+        valueMinor: 120000,
+        formulaParts: [50000, 60000],
+        comment: "kaydedilmiş toplam",
+      }),
+    );
+    expect(plan).toEqual({
+      items: [{ amountMinor: 120000, note: null, isAggregate: true }],
+      cellNote: "kaydedilmiş toplam",
+    });
+  });
+
   it("itemizes labeled comment amounts that reconcile to the value", () => {
     const plan = planImportCell(
       cd({ valueMinor: 30000, commentParts: [{ label: "A", amountMinor: 10000 }, { label: "B", amountMinor: 20000 }] }),

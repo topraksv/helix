@@ -336,16 +336,27 @@ export function planImportCell(cell: CellData): CellPlan | null {
   const fp = cell.formulaParts;
   const cp = cell.commentParts;
   const labeled = cp && cp.every((p) => p.amountMinor != null) ? cp : null;
+  // SheetJS gives us both the calculated cell value and the formula. Never
+  // let a stale/malformed cached value turn a formula breakdown into ledger
+  // rows whose sum differs from the spreadsheet cell. A safe total also avoids
+  // comparing an imprecise number when a hostile formula contains many large
+  // terms.
+  const formulaTotal = fp?.reduce<number | null>((sum, amount) => {
+    if (sum == null) return null;
+    const next = sum + amount;
+    return isSupportedMinorAmount(next) ? next : null;
+  }, 0);
+  const formulaReconciles = formulaTotal != null && formulaTotal === value;
 
   // 1) literal formula whose part count matches the comment lines → labeled items
-  if (fp && cp && cp.length === fp.length) {
+  if (formulaReconciles && fp && cp && cp.length === fp.length) {
     return {
       items: fp.map((amt, i) => ({ amountMinor: amt, note: cp[i]?.label || null, isAggregate: false })),
       cellNote: null,
     };
   }
   // 2) literal formula only → itemize (unlabeled); keep any comment as cell note
-  if (fp) {
+  if (formulaReconciles && fp) {
     return { items: fp.map((amt) => ({ amountMinor: amt, note: null, isAggregate: false })), cellNote: cell.comment };
   }
   // 3) labeled comment amounts that reconcile to the value → labeled items
