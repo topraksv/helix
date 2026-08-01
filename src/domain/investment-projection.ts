@@ -30,6 +30,7 @@ interface TransactionProjectionInput {
   effectiveDate: string;
   categoryId: string | null;
   amountTryMinor: number;
+  personIsSelf: boolean;
 }
 
 interface CategoryProjectionInput {
@@ -57,6 +58,7 @@ export function projectInvestmentState(
         transaction.type === "transfer"
         && transaction.status === "realized"
         && transaction.deletedAt == null
+        && transaction.personIsSelf
         && transaction.effectiveDate <= today
         && transaction.categoryId != null
         && transferIds.has(transaction.categoryId),

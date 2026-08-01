@@ -24,6 +24,7 @@ import {
   useInvestmentOperationsState,
   useInvestmentProductsState,
   useInvestmentProfilesState,
+  usePersonsState,
   useUserId,
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
@@ -304,18 +305,32 @@ export default function InvestmentsScreen() {
   const operationsState = useInvestmentOperationsState();
   const transactionsState = useAllTransactionsState();
   const categoriesState = useInvestmentCategoriesState();
-  const states = [profilesState, productsState, operationsState, transactionsState, categoriesState];
+  const personsState = usePersonsState();
+  const states = [profilesState, productsState, operationsState, transactionsState, categoriesState, personsState];
   const status = combineLiveQueryStatus(states);
   const ready = states.every((state) => state.updatedAt != null);
   const profile = profilesState.data[0];
+  const selfPersonIds = useMemo(
+    () => new Set(personsState.data.filter((person) => person.isSelf).map((person) => person.id)),
+    [personsState.data],
+  );
   const state = useMemo(() => {
     if (!profile) return null;
     try {
-      return projectInvestmentState(profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data);
+      return projectInvestmentState(
+        profile,
+        productsState.data,
+        operationsState.data,
+        transactionsState.data.map((transaction) => ({
+          ...transaction,
+          personIsSelf: selfPersonIds.has(transaction.personId),
+        })),
+        categoriesState.data,
+      );
     } catch {
       return null;
     }
-  }, [profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data]);
+  }, [profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data, selfPersonIds]);
   const retry = () => states.forEach((source) => source.retry());
   const productById = new Map(productsState.data.map((product) => [product.id, product]));
   const deleteOperation = async (id: string) => {
@@ -390,6 +405,7 @@ export default function InvestmentsScreen() {
     transaction.type === "transfer"
     && transaction.status === "realized"
     && transaction.deletedAt == null
+    && selfPersonIds.has(transaction.personId)
     && transaction.effectiveDate >= profile!.startedOn
     && transaction.effectiveDate <= todayISO()
     && transaction.categoryId != null

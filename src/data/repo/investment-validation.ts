@@ -50,12 +50,13 @@ export async function assertInvestmentWrites(
   ]);
   if (!force && !writes.some((write) => relevant.has(write.table))) return null;
 
-  const [profileRows, productRows, operationRows, transactionRows, categoryRows] = await Promise.all([
+  const [profileRows, productRows, operationRows, transactionRows, categoryRows, personRows] = await Promise.all([
     sqlite.getAllAsync<AnyRow>("SELECT * FROM investment_profiles WHERE user_id = ?", [userId]),
     sqlite.getAllAsync<AnyRow>("SELECT * FROM investment_products WHERE user_id = ?", [userId]),
     sqlite.getAllAsync<AnyRow>("SELECT * FROM investment_operations WHERE user_id = ?", [userId]),
     sqlite.getAllAsync<AnyRow>("SELECT * FROM transactions WHERE user_id = ?", [userId]),
     sqlite.getAllAsync<AnyRow>("SELECT * FROM categories WHERE user_id = ?", [userId]),
+    sqlite.getAllAsync<AnyRow>("SELECT * FROM persons WHERE user_id = ?", [userId]),
   ]);
 
   const profiles = overlay(profileRows, writes, "investment_profiles").filter(live);
@@ -123,6 +124,12 @@ export async function assertInvestmentWrites(
     });
 
   const categories = overlay(categoryRows, writes, "categories");
+  const selfPersonIds = new Set(
+    personRows
+      .filter(live)
+      .filter((row) => Boolean(value<boolean | number>(row, "isSelf", "is_self")))
+      .map((row) => String(row.id)),
+  );
   const transferIds = new Set(
     categories
       .filter((row) => Boolean(value<boolean | number>(row, "isTransfer", "is_transfer")))
@@ -135,6 +142,7 @@ export async function assertInvestmentWrites(
       value<string>(row, "type", "type") === "transfer"
       && value<string>(row, "status", "status") === "realized"
       && transferIds.has(value<string>(row, "categoryId", "category_id"))
+      && selfPersonIds.has(String(value<string>(row, "personId", "person_id")))
       && value<string>(row, "effectiveDate", "effective_date") <= today,
     )
     .map((row) => ({

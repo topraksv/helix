@@ -141,14 +141,27 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   const status = combineLiveQueryStatus(states);
   const ready = states.every((state) => state.updatedAt != null);
   const profile = profilesState.data[0];
+  const selfPersonIds = React.useMemo(
+    () => new Set(personsState.data.filter((person) => person.isSelf).map((person) => person.id)),
+    [personsState.data],
+  );
   const wallet = React.useMemo(() => {
     if (!profile) return null;
     try {
-      return projectInvestmentState(profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data);
+      return projectInvestmentState(
+        profile,
+        productsState.data,
+        operationsState.data,
+        transactionsState.data.map((transaction) => ({
+          ...transaction,
+          personIsSelf: selfPersonIds.has(transaction.personId),
+        })),
+        categoriesState.data,
+      );
     } catch {
       return null;
     }
-  }, [profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data]);
+  }, [profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data, selfPersonIds]);
   const transferCategories = categoriesState.data.filter((category) => category.isTransfer && category.deletedAt == null);
   const selfPerson = personsState.data.find((person) => person.isSelf) ?? personsState.data[0];
   const [amountMode, setAmountMode] = useState<"all" | "partial">("all");

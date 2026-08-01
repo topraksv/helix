@@ -21,6 +21,7 @@ describe("investment owner-graph validation", () => {
         id: "profile", user_id: USER, started_on: "2026-07-01",
         opening_cash_minor: 1_000, deleted_at: null,
       }],
+      persons: [{ id: "self", user_id: USER, is_self: 1, deleted_at: null }],
       categories: [
         { id: "named-only", user_id: USER, name: "Yatırım", is_transfer: 0, deleted_at: null },
         { id: "actual-transfer", user_id: USER, name: "Birikim", is_transfer: 1, deleted_at: null },
@@ -28,18 +29,46 @@ describe("investment owner-graph validation", () => {
       transactions: [
         {
           id: "name-is-not-semantics", user_id: USER, type: "transfer", status: "realized",
-          category_id: "named-only", effective_date: "2026-07-03", amount_try_minor: 9_000,
+          category_id: "named-only", person_id: "self", effective_date: "2026-07-03", amount_try_minor: 9_000,
           deleted_at: null,
         },
         {
           id: "before-cutoff", user_id: USER, type: "transfer", status: "realized",
-          category_id: "actual-transfer", effective_date: "2026-06-30", amount_try_minor: 5_000,
+          category_id: "actual-transfer", person_id: "self", effective_date: "2026-06-30", amount_try_minor: 5_000,
           deleted_at: null,
         },
         {
           id: "deposit", user_id: USER, type: "transfer", status: "realized",
-          category_id: "actual-transfer", effective_date: "2026-07-03", amount_try_minor: 200,
+          category_id: "actual-transfer", person_id: "self", effective_date: "2026-07-03", amount_try_minor: 200,
           deleted_at: null,
+        },
+      ],
+    }), USER, [], true);
+
+    expect(state?.cashMinor).toBe(1_200);
+  });
+
+  it("excludes transfer rows owned by a watch-only person", async () => {
+    const state = await assertInvestmentWrites(database({
+      investment_profiles: [{
+        id: "profile", user_id: USER, started_on: "2026-07-01",
+        opening_cash_minor: 1_000, deleted_at: null,
+      }],
+      persons: [
+        { id: "self", user_id: USER, is_self: 1, deleted_at: null },
+        { id: "watch", user_id: USER, is_self: 0, deleted_at: null },
+      ],
+      categories: [{ id: "transfer", user_id: USER, is_transfer: 1, deleted_at: null }],
+      transactions: [
+        {
+          id: "self-deposit", user_id: USER, type: "transfer", status: "realized",
+          category_id: "transfer", person_id: "self", effective_date: "2026-07-03",
+          amount_try_minor: 200, deleted_at: null,
+        },
+        {
+          id: "watch-deposit", user_id: USER, type: "transfer", status: "realized",
+          category_id: "transfer", person_id: "watch", effective_date: "2026-07-03",
+          amount_try_minor: 900, deleted_at: null,
         },
       ],
     }), USER, [], true);
