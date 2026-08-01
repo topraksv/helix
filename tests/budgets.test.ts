@@ -18,7 +18,7 @@ vi.mock("../src/db/mutations", () => ({
   writeRows: dependencies.writeRows,
 }));
 
-import { deleteCategoryWithBudgets, restoreCategoryWithBudgets } from "../src/data/repo/budgets";
+import { deleteCategoryWithBudgets, restoreCategoryWithBudgets, upsertCategoryBudget } from "../src/data/repo/budgets";
 
 const tx = (id: string, categoryId: string, amountTryMinor: number, effectiveDate = "2026-07-10"): TxLike => ({
   id, type: "expense", amountTryMinor, effectiveDate, status: "realized", categoryId,
@@ -91,5 +91,21 @@ describe("monthly category budgets", () => {
       "2026-07",
       "2026-07-18",
     )[0]?.spentMinor).toBe(0);
+  });
+});
+
+describe("budget repository boundary", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects zero and negative limits before touching persistence", async () => {
+    for (const amountMinor of [0, -1]) {
+      await expect(upsertCategoryBudget("user-1", {
+        month: "2026-07",
+        categoryId: "cat-1",
+        amountMinor,
+      })).rejects.toThrow("Budget amount must be positive");
+    }
+    expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 });
