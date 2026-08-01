@@ -12,7 +12,7 @@ import type { TxLike } from "./types";
 import { financialFlow } from "./transactions";
 import { convertToTryMinor } from "./fx";
 
-export interface CategoryYearRow {
+interface CategoryYearRow {
   categoryId: string;
   monthly: Map<MonthKey, Minor>;
   ytdMinor: Minor;

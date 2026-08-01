@@ -6,7 +6,7 @@ import { suggestCategoryIcon } from "../category-icons";
 import type { TemplateCategory } from "./onboarding";
 import { assertInvestmentWrites } from "./investment-validation";
 
-export type CategoryRow = typeof schema.categories.$inferSelect;
+type CategoryRow = typeof schema.categories.$inferSelect;
 
 function validateCategory(input: Pick<CategoryRow, "name" | "kind" | "isTransfer">): void {
   if (!input.name.trim()) throw new Error("Category name is required");

@@ -3,7 +3,7 @@ export function shouldBlockDirtyExit(dirty: boolean, explicitlyAllowed: boolean)
   return dirty && !explicitlyAllowed;
 }
 
-export interface AsyncFieldState {
+interface AsyncFieldState {
   /** What the control renders. */
   value: string;
   /** Real user intent: they typed. NOT inferred from comparing values. */

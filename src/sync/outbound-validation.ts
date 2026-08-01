@@ -12,7 +12,7 @@ type OutboundConversion =
   | { ok: true; row: Record<string, unknown> }
   | { ok: false; reason: "invalid_row" };
 
-export interface OutboundPolicy {
+interface OutboundPolicy {
   allowedColumns: ReadonlySet<string>;
   booleanColumns: ReadonlySet<string>;
 }

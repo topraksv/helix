@@ -17,7 +17,7 @@
  * gesture alike, and neither needs to be told anything.
  */
 
-export interface BackRouter<T> {
+interface BackRouter<T> {
   canGoBack: () => boolean;
   back: () => void;
   replace: (href: T) => void;

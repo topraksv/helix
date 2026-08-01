@@ -106,7 +106,7 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
   await writeRowBatchesAtomically(userId, [writes], isUserEntry);
 }
 
-export type WriteRowsValidator = (sqlite: SQLiteDatabase) => Promise<void>;
+type WriteRowsValidator = (sqlite: SQLiteDatabase) => Promise<void>;
 
 /** Run a domain invariant check inside the same serialized transaction that
  * persists the proposed rows. No competing local write can land between the

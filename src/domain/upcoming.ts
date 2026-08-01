@@ -4,12 +4,12 @@ import type { ISODate } from "./dates";
 import type { CardStatementLike, ExpectedPaymentLike, TxLike } from "./types";
 import { financialFlow, projectedTransactionFlow } from "./transactions";
 
-export interface CardDueSource {
+interface CardDueSource {
   id: string;
   name: string;
 }
 
-export interface UpcomingCardStatement {
+interface UpcomingCardStatement {
   cardId: string;
   cardName: string;
   amountMinor: number;

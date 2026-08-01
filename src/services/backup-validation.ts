@@ -13,7 +13,7 @@ export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
 export const MAX_BACKUP_ROWS = 100_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export interface ExportBundle {
+interface ExportBundle {
   version: number;
   exportedAt: string;
   tables: Record<string, Record<string, unknown>[]>;

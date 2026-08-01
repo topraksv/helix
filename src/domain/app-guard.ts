@@ -1,6 +1,6 @@
 /** Pure root-route guard. Effects consume `redirect`; rendering consumes `view`. */
 
-export type RootRouteArea = "auth" | "recovery" | "onboarding" | "setup-helper" | "protected" | "root";
+type RootRouteArea = "auth" | "recovery" | "onboarding" | "setup-helper" | "protected" | "root";
 type RootGuardRedirect = "/(auth)/sign-in" | "/(onboarding)/setup" | "/(tabs)";
 
 interface RootGuardInput {

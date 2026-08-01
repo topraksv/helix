@@ -1,6 +1,6 @@
 /** Pure tombstone generation rules shared by local writes and tests. */
 
-export interface TombstoneState {
+interface TombstoneState {
   deletedAt: string | null;
   tombstoneVersion: number;
 }

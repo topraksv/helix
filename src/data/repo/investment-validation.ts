@@ -170,10 +170,6 @@ export async function assertInvestmentWrites(
   return state;
 }
 
-export function readInvestmentState(sqlite: SQLiteDatabase, userId: string): Promise<InvestmentState | null> {
-  return assertInvestmentWrites(sqlite, userId, [], true);
-}
-
 export function projectInvestmentWrites(
   sqlite: SQLiteDatabase,
   userId: string,

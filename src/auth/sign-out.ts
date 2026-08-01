@@ -14,7 +14,7 @@
  * the account, where the identity itself is going away.
  */
 
-export type SignOutScope = "local" | "global";
+type SignOutScope = "local" | "global";
 
 /** Supabase reports many sign-out failures as `{ error }` rather than throwing.
  * Always fall back to a device-local revoke so a failed revocation cannot leave

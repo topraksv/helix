@@ -25,13 +25,13 @@ import {
   type LiveSnapshot,
 } from "./live-state";
 
-export interface LiveResult<T> extends LiveSnapshot<T[]> {
+interface LiveResult<T> extends LiveSnapshot<T[]> {
   data: T[];
   /** Immediately bypass the current backoff timer and try again. */
   retry: () => void;
 }
 
-export interface LiveValueResult<T> extends LiveSnapshot<T> {
+interface LiveValueResult<T> extends LiveSnapshot<T> {
   retry: () => void;
 }
 

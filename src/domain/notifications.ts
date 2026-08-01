@@ -28,7 +28,7 @@ export function createNotificationReplacementQueue() {
   };
 }
 
-export interface NotificationContent {
+interface NotificationContent {
   title: string;
   body: string;
 }

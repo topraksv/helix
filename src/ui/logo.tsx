@@ -75,8 +75,6 @@ const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
 ];
 
 /**
-
-/**
  * Known brand → website domain, so we can fetch the real favicon. Only generic
  * brand domains are ever requested (never the user's own data), and a failed
  * fetch falls back to the local chip — so nothing breaks offline.

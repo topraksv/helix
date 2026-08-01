@@ -1,6 +1,6 @@
 import { isSupportedMinorAmount, type Minor } from "./money";
 
-export const INVESTMENT_QUANTITY_SCALE = 8;
+const INVESTMENT_QUANTITY_SCALE = 8;
 const QUANTITY_FACTOR = 100_000_000n;
 const QUANTITY_LIMIT_ATOMS = 999_999_999_999n * QUANTITY_FACTOR;
 
@@ -42,7 +42,7 @@ export class InvestmentDomainError extends Error {
   }
 }
 
-export interface ParsedInvestmentQuantity {
+interface ParsedInvestmentQuantity {
   normalized: string;
   atoms: bigint;
 }
@@ -131,7 +131,7 @@ export interface InvestmentQuoteInput {
   totalMinor?: number | null;
 }
 
-export interface ResolvedInvestmentQuote {
+interface ResolvedInvestmentQuote {
   quantity: string;
   unitPriceMinor: Minor;
   totalMinor: Minor;

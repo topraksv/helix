@@ -9,7 +9,7 @@
  * The decision is pure so it can be asserted without a renderer; the caller
  * supplies the effect that reports a failure.
  */
-export type UndoOutcome = { ok: true } | { ok: false; error: unknown };
+type UndoOutcome = { ok: true } | { ok: false; error: unknown };
 
 export async function runUndo(action: () => Promise<unknown>): Promise<UndoOutcome> {
   try {

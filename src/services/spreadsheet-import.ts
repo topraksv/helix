@@ -365,7 +365,7 @@ export function planImportCell(cell: CellData): CellPlan | null {
 // they schedule themselves instead of landing as one opaque monthly total.
 
 /** One installment line recovered from a card-grouped comment. */
-export interface InstallmentNote {
+interface InstallmentNote {
   /** Card / bank section it sits under (becomes a payment source). "" if none. */
   card: string;
   /** Item label. */
@@ -477,7 +477,7 @@ export function parseInstallmentComment(comment: string): InstallmentNote[] {
 
 /** A deduplicated installment plan ready to materialize (card → payment source,
  *  columnLabel → the ledger category it belongs under). */
-export interface ImportInstallmentPlanSpec {
+interface ImportInstallmentPlanSpec {
   card: string;
   name: string;
   monthlyMinor: Minor;

@@ -66,9 +66,10 @@ export function isUuidShaped(id: unknown): id is string {
   return typeof id === "string" && UUID_SHAPE.test(id);
 }
 
-/** Corrupt local timestamps must not make a valid server row lose forever. */
 /**
  * Whether a pulled row REPLACED something the user could already see.
+ *
+ * Corrupt local timestamps must not make a valid server row lose forever.
  *
  * Deliberately stricter than `remoteWinsLww`, which accepts an equal
  * `updated_at` so a re-pulled row converges. That equality is exactly the shape

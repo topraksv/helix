@@ -6,7 +6,7 @@ export interface SecureStorageBackend {
   deleteItemAsync(key: string): Promise<void>;
 }
 
-export interface AsyncStorageAdapter {
+interface AsyncStorageAdapter {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
   removeItem(key: string): Promise<void>;

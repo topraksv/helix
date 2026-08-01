@@ -5,7 +5,7 @@ type OperationResult<T> =
   | { started: false }
   | { started: true; value: T };
 
-export interface OperationGuard {
+interface OperationGuard {
   readonly active: boolean;
   run<T>(operation: () => Promise<T>): Promise<OperationResult<T>>;
 }

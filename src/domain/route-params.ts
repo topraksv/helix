@@ -21,7 +21,7 @@ export function singleParam(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
-export interface CellParams {
+interface CellParams {
   month: string;
   categoryId: string;
 }
@@ -44,7 +44,7 @@ const MAX_YEAR = 2999;
 const ITEM_KINDS = ["category", "computed", "uncategorized"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
-export interface ItemParams {
+interface ItemParams {
   col: string;
   year: number;
   kind: ItemKind;

@@ -25,9 +25,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controlSize, font, spacing, type, useTheme, type Palette } from "./theme";
 
 /** Header row height, excluding the top safe-area inset. */
-export const HEADER_ROW_HEIGHT = 64;
+const HEADER_ROW_HEIGHT = 64;
 
-export function HeaderBar({
+function HeaderBar({
   title,
   left,
   topInset = true,

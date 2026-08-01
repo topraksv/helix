@@ -1,6 +1,6 @@
 import { friendlyAuthError } from "./auth-errors";
 
-export interface PasswordRecoveryEmailClient {
+interface PasswordRecoveryEmailClient {
   resetPasswordForEmail: (
     email: string,
     options: { redirectTo: string },

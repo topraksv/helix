@@ -144,7 +144,7 @@ export const BRAND: Record<string, { color: string; mark?: string }> = {
  * non-text boundary of WCAG 1.4.11, and the tile keeps the full brand colour
  * around it.
  */
-export interface BrandPlate {
+interface BrandPlate {
   /** Fill behind the monogram. */
   plate: string;
   /** Monogram colour, the theme pair of `plate`. */

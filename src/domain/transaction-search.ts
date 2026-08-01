@@ -40,7 +40,7 @@ export function filterTransactions<T extends SearchableTransaction>(
 
 export type TransactionSortMode = "recent" | "oldest" | "highest" | "lowest";
 
-export interface SortableTransaction {
+interface SortableTransaction {
   id: string;
   effectiveDate: ISODate;
   amountTryMinor: number;

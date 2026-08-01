@@ -2,7 +2,7 @@ import { distributionForRange } from "./analytics";
 import { firstDayOf, lastDayOf, type ISODate, type MonthKey } from "./dates";
 import type { TxLike } from "./types";
 
-export interface CategoryBudgetLike {
+interface CategoryBudgetLike {
   id: string;
   categoryId: string;
   month: MonthKey;

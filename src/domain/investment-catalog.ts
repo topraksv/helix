@@ -2,7 +2,7 @@ import { CURRENCY_INFO, FETCHED_FX_CURRENCIES } from "./fx-provider";
 import { tr } from "../i18n/tr";
 import type { InvestmentAssetType } from "./investments";
 
-export interface InvestmentMarketTitle {
+interface InvestmentMarketTitle {
   code: string;
   label: string;
   assetType: Extract<InvestmentAssetType, "metal" | "currency">;

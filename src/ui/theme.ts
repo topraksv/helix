@@ -335,7 +335,7 @@ const serviDark: Palette = {
 export type PaletteId = "clay" | "ocean" | "forest";
 
 export const DEFAULT_PALETTE_ID: PaletteId = "clay";
-export const PALETTE_IDS = ["clay", "ocean", "forest"] as const satisfies readonly PaletteId[];
+const PALETTE_IDS = ["clay", "ocean", "forest"] as const satisfies readonly PaletteId[];
 
 export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
   clay: { light: amberLight, dark: amberDark },
@@ -347,7 +347,7 @@ export const PALETTES: Record<PaletteId, { light: Palette; dark: Palette }> = {
 export const lightPalette = PALETTES[DEFAULT_PALETTE_ID].light;
 export const darkPalette = PALETTES[DEFAULT_PALETTE_ID].dark;
 
-export function isPaletteId(value: string | null): value is PaletteId {
+function isPaletteId(value: string | null): value is PaletteId {
   return value != null && PALETTE_IDS.some((id) => id === value);
 }
 
@@ -458,7 +458,6 @@ export const overlayShadow = themeShadow.overlay(lightPalette);
 /** @deprecated Yeni kodda `themeShadow.toggleThumb(palette)` kullan. */
 export const toggleThumbShadow = themeShadow.toggleThumb(lightPalette);
 
-/** Deterministik rozet renkleri için saf beyaz olmayan sabit foreground. */
 /** The balance instrument stays neutral so the money outranks the theme. */
 export function heroSurface(
   palette: Palette,
@@ -470,6 +469,7 @@ export function heroSurface(
   };
 }
 
+/** Deterministik rozet renkleri için saf beyaz olmayan sabit foreground. */
 export const generatedBadgeForeground = "#FBF6F1";
 
 /** Tab bar metrics — the single source for the bar itself AND for overlays
@@ -523,7 +523,7 @@ export function tabBarClearance(bottomInset: number, isWeb: boolean): number {
 
 export type ThemePreference = "system" | "light" | "dark";
 
-export interface Theme {
+interface Theme {
   palette: Palette;
   scheme: "light" | "dark";
   paletteId: PaletteId;

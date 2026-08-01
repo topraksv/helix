@@ -10,7 +10,7 @@ export const INPUT_LIMITS = {
   money: 64,
 } as const;
 
-export type InputLimitKind = keyof typeof INPUT_LIMITS;
+type InputLimitKind = keyof typeof INPUT_LIMITS;
 
 export function isInputWithinLimit(value: string | null | undefined, kind: InputLimitKind): boolean {
   return value == null || value.length <= INPUT_LIMITS[kind];

@@ -14,7 +14,7 @@ import type {
   SubscriptionLike,
 } from "./types";
 
-export interface ExpectedDraft {
+interface ExpectedDraft {
   direction: "in" | "out";
   kind: "subscription" | "recurring_income";
   refId: string;

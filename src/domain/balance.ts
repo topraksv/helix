@@ -110,7 +110,7 @@ export function monthColumnBasis(month: MonthLedger): {
   return { byCategory: month.byCategory, incomeMinor: flows.incomeMinor, expenseMinor: flows.expenseMinor };
 }
 
-export interface LedgerInput {
+interface LedgerInput {
   openingBalanceMinor: Minor;
   startMonth: MonthKey;
   endMonth: MonthKey;

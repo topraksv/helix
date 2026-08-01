@@ -18,7 +18,7 @@ import { errorNotice, mediumTap, selectionTap } from "./haptics";
 import { controlSize, elevation, layer, spacing, stateOpacity, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 
-export interface DragHandle {
+interface DragHandle {
   /** Spread onto the grip element to make it the drag initiator. */
   panHandlers: GestureResponderHandlers;
   /** True while this row is the one being dragged. */

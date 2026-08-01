@@ -6,7 +6,7 @@ type RecoveryLink =
   | { kind: "expired" }
   | { kind: "invalid" };
 
-export type RecoveryTarget =
+type RecoveryTarget =
   | { platform: "web"; origin: string; baseUrl: string }
   | { platform: "native"; scheme: string };
 

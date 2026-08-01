@@ -8,7 +8,7 @@ import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { font, radius, spacing, type, useTheme } from "./theme";
 
-export type SeriesColors = readonly [string, string, string, string, string, string, string, string];
+type SeriesColors = readonly [string, string, string, string, string, string, string, string];
 
 /**
  * Ordered fills for CATEGORICAL series (distribution slices, stacked bars),
@@ -36,7 +36,7 @@ function seriesColor(colors: SeriesColors, index: number): string {
   return colors[index % colors.length] ?? colors[0];
 }
 
-export interface DonutSlice {
+interface DonutSlice {
   label: string;
   valueMinor: number;
   color: string;

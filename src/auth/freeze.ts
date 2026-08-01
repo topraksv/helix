@@ -34,7 +34,7 @@ export type AccountFreezePhase =
   | "rolling-back"
   | "complete";
 
-export type AccountFreezeOutcome =
+type AccountFreezeOutcome =
   /** Frozen and signed out; every device will show the reactivation gate. */
   | { status: "frozen" }
   /**

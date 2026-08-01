@@ -3,7 +3,7 @@
 import type { Minor } from "./money";
 import type { CategoryKind, TransactionType, TxLike } from "./types";
 
-export interface FinancialFlow {
+interface FinancialFlow {
   type: TransactionType;
   amountTryMinor: Minor;
 }

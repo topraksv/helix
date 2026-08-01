@@ -16,9 +16,7 @@ import { loadingSize, radius, useTheme } from "./theme";
 
 const CYCLE_MS = 1200;
 const DOTS = 3;
-export const LOADING_DELAY_MS = 350;
-/** Reserved height so a caption never moves when the dots appear. */
-export const LOADING_DOT_SLOT = 12;
+const LOADING_DELAY_MS = 350;
 
 export interface ProgressValue {
   completed: number;
@@ -133,4 +131,3 @@ export function DelayedLoadingIndicator(props: React.ComponentProps<typeof Loadi
     </DelayedLoading>
   );
 }
-

@@ -4,7 +4,7 @@ import { restoreRow, softDelete, writeRows, writeSetting } from "../../db/mutati
 import { parseDefinition, type ComputedColumnDefinition } from "../../domain/computed-columns";
 import { assertInputWithinLimit } from "../../domain/input";
 
-export type ComputedColumnRow = typeof schema.computedColumns.$inferSelect;
+type ComputedColumnRow = typeof schema.computedColumns.$inferSelect;
 
 export async function saveComputedColumn(
   userId: string,

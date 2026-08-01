@@ -1,6 +1,6 @@
 /** Pure helpers for subscription category selection. */
 
-export interface SubscriptionCategoryLike {
+interface SubscriptionCategoryLike {
   id: string;
   name: string;
   kind: "expense" | "income";
