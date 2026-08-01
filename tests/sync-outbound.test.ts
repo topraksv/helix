@@ -40,6 +40,17 @@ describe("outbound row conversion", () => {
     });
   });
 
+  it("quarantines unsupported currencies before PostgREST", () => {
+    const currencyPolicy = {
+      allowedColumns: new Set(["id", "user_id", "currency"]),
+      booleanColumns: new Set<string>(),
+    };
+    expect(convertOutboundRow("transactions", { id: base.id, user_id: base.user_id, currency: "NOT-A-CURRENCY" }, currencyPolicy))
+      .toEqual({ ok: false, reason: "invalid_row" });
+    expect(convertOutboundRow("transactions", { id: base.id, user_id: base.user_id, currency: "USD" }, currencyPolicy))
+      .toEqual({ ok: true, row: { id: base.id, user_id: base.user_id, currency: "USD" } });
+  });
+
   it("quarantines contradictory investment quotes before PostgREST", () => {
     const investment = {
       id: base.id,

@@ -16,6 +16,7 @@ import { assertSupportedMinorAmount, isSupportedMinorAmount, type Minor } from "
 import { assertInputWithinLimit } from "../../domain/input";
 import type { PaymentSourceType, TransactionType } from "../../domain/types";
 import { reconciliationDelta } from "../../domain/balance";
+import { isSupportedCurrency } from "../../domain/fx-provider";
 import { categoryAcceptsTransaction } from "../../domain/transactions";
 import { isValidCardCycle, statementForPurchase, type CardStatementPeriod } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError } from "./errors";
@@ -171,6 +172,7 @@ async function writeTransactionRows(
 
 export async function addTransaction(userId: string, input: NewTransaction): Promise<string> {
   if (!isISODate(input.effectiveDate)) throw new Error("Invalid transaction date");
+  if (!isSupportedCurrency(input.currency)) throw new Error("Invalid transaction currency");
   assertSignedTransactionAmounts(input.amountMinor, input.amountTryMinor);
   assertInputWithinLimit(input.note, "note");
   await assertLiveTransactionPerson(userId, input.personId);
@@ -223,6 +225,7 @@ export async function updateTransaction(
   patch: TransactionPatch,
 ): Promise<void> {
   if (!isISODate(patch.effectiveDate)) throw new Error("Invalid transaction date");
+  if (!isSupportedCurrency(patch.currency)) throw new Error("Invalid transaction currency");
   assertSignedTransactionAmounts(patch.amountMinor, patch.amountTryMinor);
   assertInputWithinLimit(patch.note, "note");
   await assertLiveTransactionPerson(userId, patch.personId);

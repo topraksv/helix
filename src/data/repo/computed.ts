@@ -1,6 +1,6 @@
 import type * as schema from "../../db/schema";
 import { newId } from "../../db/ids";
-import { assertLiveRow, assertNotTombstonedRow, restoreRow, softDelete, writeRowsValidated, writeSetting } from "../../db/mutations";
+import { assertLiveRow, restoreRow, softDelete, writeRowsValidated, writeSetting } from "../../db/mutations";
 import { parseDefinition, type ComputedColumnDefinition } from "../../domain/computed-columns";
 import { assertInputWithinLimit } from "../../domain/input";
 
@@ -27,7 +27,7 @@ export async function saveComputedColumn(
   await writeRowsValidated(
     userId,
     writes,
-    (sqlite) => input.id ? assertNotTombstonedRow(sqlite, "computed_columns", userId, input.id) : Promise.resolve(),
+    (sqlite) => input.id ? assertLiveRow(sqlite, "computed_columns", userId, input.id) : Promise.resolve(),
   );
   return id;
 }

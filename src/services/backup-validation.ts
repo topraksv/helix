@@ -4,6 +4,7 @@ import { parseDefinition, type ComputedColumnDefinition } from "../domain/comput
 import { resolveInvestmentQuote } from "../domain/investments";
 import { isSupportedMinorAmount } from "../domain/money";
 import { isMonthKey } from "../domain/dates";
+import { isSupportedCurrency } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 import { UserFacingError, userMessage } from "../domain/user-error";
@@ -137,6 +138,7 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
   if ("start_month" in raw && !isMonthKey(raw.start_month)) return false;
   if ("month" in raw && !isMonthKey(raw.month)) return false;
   if ("period_month" in raw && !isMonthKey(raw.period_month)) return false;
+  if ("currency" in raw && !isSupportedCurrency(raw.currency)) return false;
   if (
     "tombstone_version" in raw &&
     (!Number.isSafeInteger(raw.tombstone_version) || Number(raw.tombstone_version) < 0)

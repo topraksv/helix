@@ -1,5 +1,6 @@
 import { parseDefinition } from "../domain/computed-columns";
 import { isISODate, todayISO } from "../domain/dates";
+import { isSupportedCurrency } from "../domain/fx-provider";
 import { resolveInvestmentQuote } from "../domain/investments";
 import type { SyncedTableName } from "../db/schema";
 import {
@@ -40,6 +41,7 @@ export function convertOutboundRow(
   }
 
   const out: Record<string, unknown> = { ...row };
+  if ("currency" in out && !isSupportedCurrency(out.currency)) return { ok: false, reason: "invalid_row" };
   for (const column of policy.booleanColumns) {
     if (column in out && out[column] !== null) {
       if (![true, false, 0, 1].includes(out[column] as boolean | number)) {

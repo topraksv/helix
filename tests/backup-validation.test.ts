@@ -93,6 +93,7 @@ describe("backup validation", () => {
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: Number.MAX_SAFE_INTEGER + 1 })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, type: "refund" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, effective_date: "2026-02-31" })).toBe(false);
+    expect(isValidImportRow("transactions", { ...transaction, currency: "NOT-A-CURRENCY" })).toBe(false);
   });
 
   it("requires UUID-shaped primary, owner and relation ids", () => {

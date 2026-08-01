@@ -1,7 +1,8 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { assertNotTombstonedRow, fromDbShape, nowIso, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
+import { assertLiveRow, fromDbShape, nowIso, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { isISODate, isMonthDay, todayISO, type ISODate } from "../../domain/dates";
+import { isSupportedCurrency } from "../../domain/fx-provider";
 import { generateExpected, obsoleteExpectedIds } from "../../domain/expected";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
@@ -159,7 +160,9 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   const sqlite = await getSqliteAsync();
   assertInputWithinLimit(input.name, "text");
   assertInputWithinLimit(input.note, "note");
+  if (!isSupportedCurrency(input.currency)) throw new Error("Invalid subscription currency");
   assertSupportedMinorAmount(input.amountMinor, false);
+  if (input.amountMinor <= 0) throw new Error("Subscription amount must be positive");
   if (!["monthly", "yearly", "custom"].includes(input.cycle)) {
     throw new Error("Invalid subscription cycle");
   }
@@ -258,7 +261,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   await writeRowsValidated(
     userId,
     writes,
-    (db) => input.id ? assertNotTombstonedRow(db, "subscriptions", userId, input.id) : Promise.resolve(),
+    (db) => input.id ? assertLiveRow(db, "subscriptions", userId, input.id) : Promise.resolve(),
   );
   return id;
 }
@@ -281,7 +284,9 @@ export interface RecurringIncomeInput {
 export async function upsertRecurringIncome(userId: string, input: RecurringIncomeInput): Promise<string> {
   assertInputWithinLimit(input.name, "text");
   assertInputWithinLimit(input.note, "note");
+  if (!isSupportedCurrency(input.currency)) throw new Error("Invalid recurring income currency");
   assertSupportedMinorAmount(input.defaultAmountMinor, false);
+  if (input.defaultAmountMinor <= 0) throw new Error("Recurring income amount must be positive");
   if (!["salary", "rent", "allowance", "other"].includes(input.kind)) {
     throw new Error("Invalid recurring income kind");
   }
@@ -341,7 +346,7 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
   await writeRowsValidated(
     userId,
     writes,
-    (db) => input.id ? assertNotTombstonedRow(db, "recurring_incomes", userId, input.id) : Promise.resolve(),
+    (db) => input.id ? assertLiveRow(db, "recurring_incomes", userId, input.id) : Promise.resolve(),
   );
   return id;
 }

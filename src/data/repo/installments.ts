@@ -2,6 +2,7 @@ import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { assertLiveRow, fromDbShape, nowIso, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { isMonthDay, isMonthKey, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
+import { isSupportedCurrency } from "../../domain/fx-provider";
 import { generateSchedule, isValidInstallmentCount } from "../../domain/installments";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
@@ -45,6 +46,7 @@ export async function buildPlanRows(planId: string, input: NewPlan, today: ISODa
   assertInputWithinLimit(input.title, "text");
   assertInputWithinLimit(input.note, "note");
   if (!["card_installment", "loan"].includes(input.kind)) throw new Error("Invalid installment plan kind");
+  if (!isSupportedCurrency(input.currency)) throw new Error("Invalid installment currency");
   if (!isMonthKey(input.startMonth)) throw new Error("Invalid installment start month");
   if (!isValidInstallmentCount(input.installmentCount)) throw new Error("Invalid installment count");
   if (input.dueDay != null && !isMonthDay(input.dueDay)) throw new Error("Invalid installment due day");

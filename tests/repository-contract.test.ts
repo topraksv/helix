@@ -11,7 +11,7 @@ const dependencies = vi.hoisted(() => ({
   writeSetting: vi.fn(),
   assertLiveRow: vi.fn(async (sqlite: { getFirstAsync: (sql: string, args: unknown[]) => Promise<unknown> }, table: string, userId: string, id: string) => {
     const row = await sqlite.getFirstAsync(`SELECT id FROM ${table} WHERE id = ? AND user_id = ? AND deleted_at IS NULL`, [id, userId]);
-    if (!row) throw new Error(`Cannot edit missing ${table} row`);
+    if (!row || typeof row !== "object" || !("id" in row)) throw new Error(`Cannot edit missing ${table} row`);
   }),
   assertNotTombstonedRow: vi.fn(async (sqlite: { getFirstAsync: (sql: string, args: unknown[]) => Promise<{ deleted_at: string | null } | null> }, table: string, userId: string, id: string) => {
     const row = await sqlite.getFirstAsync(`SELECT deleted_at FROM ${table} WHERE id = ? AND user_id = ?`, [id, userId]);
@@ -627,7 +627,7 @@ describe("repository compatibility contract", () => {
       getFirstAsync: async (sql: string) =>
         sql.includes("FROM categories") ? { id: "cat-1" }
         : sql.includes("FROM persons") ? { is_self: 1 }
-        : sql.includes("FROM subscriptions") ? stored
+        : sql.includes("FROM subscriptions") ? (stored ? { ...stored, id: "sub-1" } : null)
         : null,
       getAllAsync: async () => [],
     });
@@ -727,6 +727,8 @@ describe("repository compatibility contract", () => {
 
     await expect(repository.upsertSubscription("user-1", { ...input, intervalMonths: 0 }))
       .rejects.toThrow("Invalid subscription interval");
+    await expect(repository.upsertSubscription("user-1", { ...input, amountMinor: -1 }))
+      .rejects.toThrow("Subscription amount must be positive");
     await expect(repository.upsertSubscription("user-1", { ...input, billingDay: 0 }))
       .rejects.toThrow("Invalid subscription billing day");
     await expect(repository.upsertSubscription("user-1", { ...input, nextDueDate: "2026-02-31" as never }))
@@ -755,6 +757,8 @@ describe("repository compatibility contract", () => {
 
     await expect(repository.upsertRecurringIncome("user-1", { ...input, payDay: 32 }))
       .rejects.toThrow("Invalid recurring income pay day");
+    await expect(repository.upsertRecurringIncome("user-1", { ...input, defaultAmountMinor: -1 }))
+      .rejects.toThrow("Recurring income amount must be positive");
     await expect(repository.upsertRecurringIncome("user-1", { ...input, anchorDate: "2026-02-31" as never }))
       .rejects.toThrow("Invalid recurring income anchor date");
     await expect(repository.upsertRecurringIncome("user-1", { ...input, recurrence: "daily" as never }))
@@ -770,7 +774,7 @@ describe("repository compatibility contract", () => {
         ? { id: "cat-1" }
         : sql.includes("FROM persons")
           ? { is_self: 1 }
-          : sql.includes("FROM subscriptions")
+          : sql.includes("FROM subscriptions") && sql.includes("SELECT amount_minor")
             ? { amount_minor: 4_990, currency: "TRY", canceled_at: null, deleted_at: NOW }
             : null,
       getAllAsync: async () => [],
@@ -793,7 +797,7 @@ describe("repository compatibility contract", () => {
       autoPay: false,
       websiteDomain: null,
       note: null,
-    })).rejects.toThrow("Cannot revive deleted subscriptions row through an edit");
+    })).rejects.toThrow("Cannot edit missing subscriptions row");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 

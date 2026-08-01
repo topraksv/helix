@@ -15,6 +15,7 @@ import { SessionEpoch, SessionEpochCancelledError, runSessionEpochTask, type Ses
 import { isUuidShaped, remoteSupersededLocal, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
 import { prepareOutboundBatch } from "./outbound-validation";
+import { isValidImportRow } from "../services/backup-validation";
 import type { Database } from "./database.types";
 
 type SyncedInsert = Database["public"]["Tables"][SyncedTableName]["Insert"];
@@ -124,6 +125,7 @@ function validatedRemoteRow(
   ) {
     throw new Error(`pull ${table}: invalid server row`);
   }
+  if (!isValidImportRow(table, remote)) throw new Error(`pull ${table}: invalid server data`);
   return remote;
 }
 

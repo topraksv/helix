@@ -134,3 +134,8 @@ export const CURRENCY_INFO: Record<(typeof FETCHED_FX_CURRENCIES)[number] | "TRY
   BGN: { flag: "🇧🇬", name: "Bulgar Levası" },
   GEL: { flag: "🇬🇪", name: "Gürcistan Larisi" },
 };
+
+/** Runtime currency boundary shared by forms, restore and sync. */
+export function isSupportedCurrency(value: unknown): value is keyof typeof CURRENCY_INFO {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(CURRENCY_INFO, value);
+}

@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { newId } from "../../db/ids";
-import { assertLiveRow, assertNotTombstonedRow, fromDbShape, nowIso, restoreRow, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
+import { assertLiveRow, fromDbShape, nowIso, restoreRow, restoreRows, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { todayISO, type MonthKey } from "../../domain/dates";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, statementPeriod } from "../../domain/card-statements";
@@ -131,7 +131,7 @@ export async function upsertPaymentSource(userId: string, input: PaymentSourceIn
   await writeRowsValidated(
     userId,
     writes,
-    (db) => input.id ? assertNotTombstonedRow(db, "payment_sources", userId, input.id) : Promise.resolve(),
+    (db) => input.id ? assertLiveRow(db, "payment_sources", userId, input.id) : Promise.resolve(),
   );
   if (input.type === "credit_card") await repairCardStatementLinks(userId, todayISO());
   return id;
