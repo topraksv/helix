@@ -45,13 +45,15 @@ test("canonical interactive primitives retain visible keyboard focus", async ({ 
   await expect(page.getByRole("heading", { name: "Yeni İşlem" })).toBeVisible();
   await expectKeyboardFocusVisible(page, page.getByRole("textbox", { name: "Tutar · TRY" }));
   await expectKeyboardFocusVisible(page, page.getByRole("radio", { name: "Gider", exact: true }));
-  const amountOptions = page.getByRole("button", { name: "İade ve döviz seçenekleri · TRY", exact: true });
+  const amountOptions = page.getByRole("button", { name: "Gider iadesi veya döviz · TRY", exact: true });
   await expect(amountOptions).toHaveAttribute("aria-expanded", "false");
   await expectKeyboardFocusVisible(page, amountOptions);
   await page.keyboard.press("Enter");
-  const refund = page.getByRole("switch", { name: "İade" });
+  const refund = page.getByRole("switch", { name: "Gider iadesi" });
   await expect(refund).toBeVisible();
   await expectKeyboardFocusVisible(page, refund);
+  await page.getByRole("radio", { name: "Yatırım", exact: true }).click();
+  await expect(page.getByRole("switch", { name: "Gider iadesi" })).toHaveCount(0);
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -305,8 +307,8 @@ test("Enter belongs to the focused control, not the form's primary save", async 
 
   // 2 · A switch flips instead of committing the entry.
   await amount.fill("120,00");
-  await page.getByRole("button", { name: "İade ve döviz seçenekleri · TRY", exact: true }).click();
-  const refund = page.getByRole("switch", { name: "İade" }).first();
+  await page.getByRole("button", { name: "Gider iadesi veya döviz · TRY", exact: true }).click();
+  const refund = page.getByRole("switch", { name: "Gider iadesi" }).first();
   const before = await refund.getAttribute("aria-checked");
   await refund.focus();
   await page.keyboard.press("Enter");

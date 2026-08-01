@@ -16,6 +16,18 @@ export function uniqueNotifications<T extends { date: string; title: string; bod
   });
 }
 
+/** Queue destructive queue replacements. Two foreground/session triggers may
+ * request a rebuild together; allowing their cancel/schedule loops to overlap
+ * leaves duplicate OS notifications even though each plan is unique itself. */
+export function createNotificationReplacementQueue() {
+  let tail: Promise<void> = Promise.resolve();
+  return function replace<T>(task: () => Promise<T>): Promise<T> {
+    const result = tail.then(task, task);
+    tail = result.then(() => undefined, () => undefined);
+    return result;
+  };
+}
+
 export interface NotificationContent {
   title: string;
   body: string;

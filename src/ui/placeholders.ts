@@ -16,14 +16,18 @@ export const placeholderPools = {
   source: tr.placeholders.source,
   note: tr.placeholders.note,
   amount: tr.placeholders.amount,
+  investmentProduct: tr.placeholders.investmentProduct,
+  investmentQuantity: tr.placeholders.investmentQuantity,
+  investmentUnitPrice: tr.placeholders.investmentUnitPrice,
+  investmentNote: tr.placeholders.investmentNote,
 } as const;
 
 const ROTATE_MS = 4000;
 
 /**
  * A placeholder from the pool that starts at a random spot and keeps cycling.
- * Amount fields pass `prefix: false` so the example reads as a bare number
- * ("1.250") instead of "Ör. 1.250".
+ * Shared fields add the example prefix if the caller asks for a bare sample,
+ * while already-prefixed values pass through unchanged.
  */
 export function useRotatingPlaceholder(pool: readonly string[], opts?: { prefix?: boolean }): string {
   const [start] = useState(() => Math.floor(Math.random() * pool.length));

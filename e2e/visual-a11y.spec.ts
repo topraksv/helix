@@ -73,7 +73,7 @@ test.beforeEach(async ({ context }) => isolateExternalData(context));
 test("main routes have no WCAG A/AA violations @smoke", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
-  const routes = ["/helix/", "/helix/cash-flow", "/helix/subscriptions", "/helix/calculator", "/helix/settings", "/helix/transaction"];
+  const routes = ["/helix/", "/helix/cash-flow", "/helix/subscriptions", "/helix/investments", "/helix/settings", "/helix/transaction"];
   for (const route of routes) {
     await page.goto(route);
     await expect(page.locator("#root")).toBeVisible();
@@ -94,7 +94,7 @@ test("main routes have no WCAG A/AA violations @smoke", async ({ page }, testInf
  */
 const LOCAL_STATIC_ROUTES = [
   "/helix/", "/helix/cash-flow", "/helix/cash-flow/analytics", "/helix/cash-flow/installments",
-  "/helix/subscriptions", "/helix/calculator", "/helix/settings", "/helix/settings/categories",
+  "/helix/subscriptions", "/helix/investments", "/helix/investments/setup", "/helix/settings", "/helix/settings/tools", "/helix/settings/categories",
   "/helix/settings/computed-columns", "/helix/settings/payment-sources", "/helix/settings/persons",
   "/helix/settings/incomes", "/helix/settings/budgets", "/helix/settings/opening-balance",
   "/helix/transaction", "/helix/installment-new", "/helix/subscription-form", "/helix/bulk-entry",
@@ -340,7 +340,7 @@ test("dashboard reflows intact across the viewport and theme matrix", async ({ p
       // 320px bar is where a fifth destination first tries to buy room with an
       // ellipsis, which this project does not allow anywhere.
       const visibleLabels = await page.getByRole("tab").allTextContents();
-      expect(visibleLabels, tag).toEqual(["Durum", "Mali Tablo", "Abonelikler", "Araçlar", "Ayarlar"]);
+      expect(visibleLabels, tag).toEqual(["Durum", "Mali Tablo", "Abonelikler", "Yatırımlar", "Ayarlar"]);
       expect(visibleLabels.join(""), tag).not.toContain("…");
       // The dashboard's reason to exist is the balance block; a reflow that
       // drops it off the layout is the regression the baseline really guarded.
@@ -360,7 +360,7 @@ test("every primary tab lands on its own screen and fits the phone width @smoke"
   const tabs = [
     { name: "cash-flow", route: "/helix/cash-flow", heading: "Mali Tablo" },
     { name: "subscriptions", route: "/helix/subscriptions", heading: "Abonelikler" },
-    { name: "calculator", route: "/helix/calculator", heading: "Hesap Makinesi" },
+    { name: "investments", route: "/helix/investments", heading: "Yatırımlar" },
     { name: "settings", route: "/helix/settings", heading: "Ayarlar" },
   ] as const;
   for (const { name, route, heading } of tabs) {
@@ -394,8 +394,8 @@ test("switches stay visible in both states and both themes", async ({ page }, te
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     await page.goto("/helix/transaction");
-    await page.getByRole("button", { name: /İade ve döviz seçenekleri/ }).click();
-    const refund = page.getByRole("switch", { name: "İade" });
+    await page.getByRole("button", { name: /Gider iadesi veya döviz/ }).click();
+    const refund = page.getByRole("switch", { name: "Gider iadesi" });
     await expect(refund).toBeVisible();
     const track = refund.locator("div").first();
 

@@ -1,12 +1,14 @@
 import { getSqliteAsync } from "../../db/client";
 import { createSerialQueue } from "../../domain/serial-queue";
 import { deterministicId, naturalKeys } from "../../db/ids";
-import { fromDbShape, nowIso, softDelete, writeRows, writeSetting, type RowWrite } from "../../db/mutations";
+import { fromDbShape, nowIso, softDelete, writeRows, writeRowsValidated, writeSetting, type RowWrite } from "../../db/mutations";
 import { todayISO, type ISODate } from "../../domain/dates";
 import { findAutoConfirmable, findLate, generateExpected } from "../../domain/expected";
 import type { ExpectedPaymentLike } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, type CardStatementPeriod } from "../../domain/card-statements";
 import { FxRateUnavailableError } from "./errors";
+import { InvestmentDomainError } from "../../domain/investments";
+import { assertInvestmentWrites } from "./investment-validation";
 import { confirmExpected, type ExpectedRow } from "./expected";
 import { cardStatementWrite, type LivePaymentSource } from "./transactions";
 
@@ -231,11 +233,31 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     [userId, today],
   );
   if (due.length > 0) {
-    await writeRows(
-      userId,
-      due.map((row) => ({ table: "transactions" as const, row: { ...fromDbShape("transactions", row), status: "realized" } })),
-      false,
-    );
+    const priority = (row: Record<string, unknown>) =>
+      row.type === "transfer" && Number(row.amount_try_minor) > 0
+        ? 0
+        : row.type === "transfer" && Number(row.amount_try_minor) < 0
+          ? 2
+          : 1;
+    for (const row of [...due].sort((a, b) => priority(a) - priority(b) || String(a.id).localeCompare(String(b.id)))) {
+      const writes: RowWrite[] = [{
+        table: "transactions",
+        row: { ...fromDbShape("transactions", row), status: "realized" },
+      }];
+      try {
+        await writeRowsValidated(
+          userId,
+          writes,
+          (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
+          false,
+        );
+      } catch (error) {
+        // A scheduled refund can become unaffordable after later edits. Keep it
+        // pending for the user to adjust; every unrelated due row still lands.
+        if (error instanceof InvestmentDomainError && error.code === "insufficient_cash") continue;
+        throw error;
+      }
+    }
   }
 
   // 2) Generate missing expected items (subscriptions + recurring incomes).

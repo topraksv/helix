@@ -22,6 +22,7 @@ import { useModalAccessibility } from "./accessibility";
 import { advanceRequestQueue, emptyRequestQueue, enqueueRequest, type RequestQueue } from "./request-queue";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
+import { examplePlaceholder } from "./input-placeholder";
 
 interface DialogRequest {
   title: string;
@@ -197,7 +198,7 @@ export function PromptHost() {
         secureTextEntry={current.secure}
         accessibilityLabel={current.placeholder || current.title}
         accessibilityHint={current.message}
-        placeholder={current.placeholder}
+        placeholder={examplePlaceholder(current.placeholder)}
         placeholderTextColor={palette.textSecondary}
         autoFocus
         autoCapitalize="none"

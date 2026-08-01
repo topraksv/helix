@@ -1,22 +1,22 @@
 /** Subscriptions: one due-date overview, then active/passive rule lists. */
 
 import React from "react";
-import { Text, View } from "react-native";
+import { Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
-import { CalendarDays, Plus, RefreshCw, Repeat } from "lucide-react-native";
+import { CalendarClock, MousePointerClick, Plus, RefreshCw, Repeat, Zap } from "lucide-react-native";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
 import { addDaysISO, todayISO, type ISODate } from "../../domain/dates";
-import { formatMinor } from "../../domain/money";
+import { formatMinor, formatMinorCompact } from "../../domain/money";
 import { shortDateLabel, tr } from "../../i18n/tr";
 import { daysBetween, usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
 import { combineLiveQueryStatus } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Button, Card, CardList, DataStateNotice, EmptyState, PanelHeader, Screen, SectionHeader, Spread } from "../../ui/components";
+import { Amount, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, PanelHeader, Screen, SectionHeader } from "../../ui/components";
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
-import { spacing, type, useTheme } from "../../ui/theme";
+import { radius, spacing, type, useTheme } from "../../ui/theme";
 import { appAlert } from "../../ui/dialog";
 import { WorkspaceGrid } from "../../ui/workspace-layout";
 
@@ -28,17 +28,20 @@ function SubscriptionScheduleOverview({
   today: ISODate;
 }) {
   const { palette } = useTheme();
-  const horizonEnd = addDaysISO(today, 31);
+  const { width } = useWindowDimensions();
+  const compact = width < 560;
+  const horizonDays = 31;
+  const horizonEnd = addDaysISO(today, horizonDays - 1);
   const upcoming = active
     .filter((subscription) => subscription.nextDueDate <= horizonEnd)
     .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
-  const weeklyDensity = [0, 0, 0, 0, 0];
-  for (const subscription of upcoming) {
-    const days = Math.max(0, Math.min(31, daysBetween(today, subscription.nextDueDate)));
-    const index = Math.min(4, Math.floor(days / 7));
-    weeklyDensity[index] = (weeklyDensity[index] ?? 0) + 1;
-  }
-  const peakDensity = Math.max(1, ...weeklyDensity);
+  const scheduleStops = [...upcoming.reduce((groups, subscription) => {
+    const current = groups.get(subscription.nextDueDate) ?? [];
+    current.push(subscription);
+    groups.set(subscription.nextDueDate, current);
+    return groups;
+  }, new Map<ISODate, typeof active>()).entries()].map(([date, payments]) => ({ date, payments }));
+  const visibleStops = scheduleStops.slice(0, 3);
   const monthlyTryMinor = active
     .filter((subscription) => subscription.currency === "TRY")
     .reduce(
@@ -48,11 +51,34 @@ function SubscriptionScheduleOverview({
     );
   const autoPayCount = active.filter((subscription) => subscription.autoPay).length;
   const manualCount = active.length - autoPayCount;
+  const nextStop = scheduleStops[0] ?? null;
+  const nextDate = nextStop?.date ?? null;
+  const nextPayments = nextStop?.payments ?? [];
+  const nextCurrencies = new Set(nextPayments.map((subscription) => subscription.currency));
+  const nextAmount = nextCurrencies.size === 1 && nextPayments.length > 0
+    ? formatMinor(
+        nextPayments.reduce((total, subscription) => total + subscription.amountMinor, 0),
+        nextPayments[0]!.currency,
+      )
+    : null;
+  const nextDayOffset = nextDate == null ? null : Math.max(0, daysBetween(today, nextDate));
+  const nextLabel = nextPayments.length === 1
+    ? nextPayments[0]!.name
+    : tr.subs.sameDayPayments(nextPayments.length);
+
+  const stopAmount = (payments: typeof active) => {
+    const currencies = new Set(payments.map((payment) => payment.currency));
+    if (currencies.size !== 1 || payments.length === 0) return null;
+    return formatMinorCompact(
+      payments.reduce((total, payment) => total + payment.amountMinor, 0),
+      payments[0]!.currency,
+    );
+  };
 
   return (
     <Card style={{ marginBottom: spacing.lg }}>
       <PanelHeader
-        icon={CalendarDays}
+        icon={CalendarClock}
         title={tr.subs.scheduleOverview}
         description={tr.subs.scheduleOverviewHint}
         right={(
@@ -66,45 +92,127 @@ function SubscriptionScheduleOverview({
         testID="subscription-cycle-summary"
         accessible
         accessibilityRole="image"
-        accessibilityLabel={tr.subs.scheduleOverviewA11y(active.length, upcoming.length, autoPayCount, weeklyDensity)}
+        accessibilityLabel={tr.subs.scheduleOverviewA11y(
+          active.length,
+          upcoming.length,
+          autoPayCount,
+          manualCount,
+        )}
       >
         <View
-          style={{ height: 92, flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}
+          style={{
+            backgroundColor: palette.surfaceAlt,
+            borderRadius: radius.lg,
+            padding: spacing.md,
+          }}
         >
-          {weeklyDensity.map((count, index) => (
+          <View
+            style={{
+              flexDirection: compact ? "column" : "row",
+              alignItems: compact ? "stretch" : "center",
+              gap: spacing.lg,
+            }}
+          >
+            <FadeIn style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.nextCharge}</Text>
+              {nextDate == null ? (
+                <Text style={[type.heading, { color: palette.textSecondary, marginTop: spacing.xs }]}>{tr.subs.noUpcoming}</Text>
+              ) : (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.md,
+                    marginTop: spacing.xs,
+                  }}
+                >
+                  <View
+                    accessible={false}
+                    style={{
+                      width: 54,
+                      height: 54,
+                      borderRadius: radius.full,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: palette.primarySoft,
+                    }}
+                  >
+                    <Text style={[type.amountSm, { color: palette.primaryText, fontSize: nextDayOffset === 0 ? 12 : nextDayOffset === 1 ? 11 : 18 }]}>
+                      {nextDayOffset === 0 ? tr.subs.todayShort : nextDayOffset === 1 ? tr.subs.tomorrowShort : nextDayOffset}
+                    </Text>
+                    {nextDayOffset != null && nextDayOffset > 1 ? (
+                      <Text style={[type.small, { color: palette.primaryText, fontSize: 9 }]}>{tr.subs.daysShort}</Text>
+                    ) : null}
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[type.heading, { color: palette.textStrong }]}>{nextLabel}</Text>
+                    <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>
+                      {shortDateLabel(nextDate)}{nextAmount ? ` · ${nextAmount}` : ""}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </FadeIn>
+
             <View
-              key={index}
               style={{
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "flex-end",
-                gap: spacing.xs,
+                minWidth: compact ? 0 : 210,
+                flexDirection: "row",
+                gap: spacing.sm,
               }}
             >
-              {count > 0 ? (
-                <Text style={[type.small, { color: palette.textStrong, fontSize: 10 }]}>{count}</Text>
-              ) : null}
-              <View
-                style={{
-                  width: "100%",
-                  maxWidth: 64,
-                  height: count === 0 ? 4 : Math.max(14, (count / peakDensity) * 58),
-                  backgroundColor: count === 0 ? palette.surfaceStrong : palette.primary,
-                  borderRadius: 7,
-                }}
-              />
-              <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>
-                {tr.subs.dayWindow(Math.min(31, (index + 1) * 7))}
-              </Text>
+              <View style={{ flex: 1, paddingLeft: spacing.sm, borderLeftWidth: 3, borderLeftColor: palette.primary }}>
+                <Text style={[type.amountSm, { color: palette.textStrong }]}>{upcoming.length}</Text>
+                <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.next31Days}</Text>
+              </View>
+              <View style={{ flex: 1, paddingLeft: spacing.sm, borderLeftWidth: 3, borderLeftColor: palette.secondary }}>
+                <Text style={[type.amountSm, { color: palette.textStrong }]}>{autoPayCount}/{active.length}</Text>
+                <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.automaticShort}</Text>
+              </View>
             </View>
-          ))}
+          </View>
+
+          {visibleStops.length > 0 ? (
+            <View style={{ marginTop: spacing.lg }}>
+              <Text style={[type.small, { color: palette.textSecondary, marginBottom: spacing.sm }]}>{tr.subs.paymentPath}</Text>
+              <View accessible={false} style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                {visibleStops.map((stop, index) => (
+                  <FadeIn key={stop.date} delay={index * 90} style={{ flex: 1, minWidth: 0 }}>
+                    <View style={{ height: 18, flexDirection: "row", alignItems: "center" }}>
+                      <View style={{ flex: 1, height: 2, backgroundColor: index === 0 ? "transparent" : palette.primary + "55" }} />
+                      <View style={{ width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: palette.primary, backgroundColor: palette.surface }} />
+                      <View style={{ flex: 1, height: 2, backgroundColor: index === visibleStops.length - 1 ? "transparent" : palette.primary + "55" }} />
+                    </View>
+                    <View style={{ paddingHorizontal: spacing.xs, alignItems: "center" }}>
+                      <Text style={[type.label, { color: palette.textStrong, textAlign: "center" }]}>{shortDateLabel(stop.date)}</Text>
+                      {index > 0 ? (
+                        <Text
+                          style={[type.small, { color: palette.textSecondary, textAlign: "center", marginTop: 2 }]}
+                        >
+                          {stop.payments.length === 1 ? stop.payments[0]!.name : tr.subs.sameDayPayments(stop.payments.length)}
+                        </Text>
+                      ) : null}
+                      {stopAmount(stop.payments) ? (
+                        <Text style={[type.amountSm, { color: palette.text, fontSize: 11, textAlign: "center", marginTop: 2 }]}>{stopAmount(stop.payments)}</Text>
+                      ) : null}
+                    </View>
+                  </FadeIn>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.lg }}>
+            <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+              <Zap accessible={false} size={14} color={palette.primaryText} strokeWidth={2.3} />
+              <Text style={[type.small, { color: palette.text }]}>{tr.subs.automaticCount(autoPayCount)}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: spacing.xs }}>
+              <MousePointerClick accessible={false} size={14} color={palette.secondaryText} strokeWidth={2.3} />
+              <Text style={[type.small, { color: palette.textSecondary, textAlign: "right" }]}>{tr.subs.manualCount(manualCount)}</Text>
+            </View>
+          </View>
         </View>
-        <Spread style={{ marginTop: spacing.sm, gap: spacing.md }}>
-          <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.dueSummary(upcoming.length)}</Text>
-          <Text style={[type.small, { color: palette.textSecondary, textAlign: "right" }]}>
-            {tr.subs.automaticCoverage(autoPayCount, manualCount)}
-          </Text>
-        </Spread>
       </View>
     </Card>
   );

@@ -25,6 +25,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="computed-columns" options={{ title: tr.settings.computed }} />
       <Stack.Screen name="opening-balance" options={{ title: tr.settings.opening }} />
       <Stack.Screen name="budgets" options={{ title: tr.budgets.title }} />
+      <Stack.Screen name="tools" options={{ title: tr.settings.toolsDestination }} />
     </Stack>
   );
 }

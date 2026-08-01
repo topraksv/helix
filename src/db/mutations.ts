@@ -9,7 +9,7 @@
  */
 
 import { getTableColumns } from "drizzle-orm";
-import type { SQLiteBindValue } from "expo-sqlite";
+import type { SQLiteBindValue, SQLiteDatabase } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
 import { deterministicId, naturalKeys } from "./ids";
@@ -106,6 +106,20 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
   await writeRowBatchesAtomically(userId, [writes], isUserEntry);
 }
 
+export type WriteRowsValidator = (sqlite: SQLiteDatabase) => Promise<void>;
+
+/** Run a domain invariant check inside the same serialized transaction that
+ * persists the proposed rows. No competing local write can land between the
+ * check and the outbox-backed commit. */
+export async function writeRowsValidated(
+  userId: string,
+  writes: RowWrite[],
+  validate: WriteRowsValidator,
+  isUserEntry = true,
+): Promise<void> {
+  await writeRowBatchesAtomically(userId, [writes], isUserEntry, validate);
+}
+
 /**
  * Consume bounded batches inside one transaction. Large restores therefore do
  * not allocate a second full stamped/write-plan copy, while preserving the
@@ -115,12 +129,15 @@ export async function writeRowBatchesAtomically(
   userId: string,
   batches: Iterable<readonly RowWrite[]>,
   isUserEntry = true,
+  validate?: WriteRowsValidator,
+  validateAfter?: WriteRowsValidator,
 ): Promise<void> {
   const lastEntryId = isUserEntry
     ? await deterministicId(naturalKeys.setting(userId, "last_entry_at"))
     : null;
   const sqlite = await getSqliteAsync();
   await withTransaction(async () => {
+    if (validate) await validate(sqlite);
     interface ExistingRowState {
       userId: string;
       deletedAt: string | null;
@@ -230,6 +247,7 @@ export async function writeRowBatchesAtomically(
         value: JSON.stringify(timestamp),
       }, states);
     }
+    if (validateAfter) await validateAfter(sqlite);
   });
 }
 

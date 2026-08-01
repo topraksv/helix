@@ -5,7 +5,7 @@ import { isMarketFeedSocket } from "../e2e/helpers";
 import { FETCHED_FX_CURRENCIES, parseOpenExchangeRates, parseTcmbRates } from "../src/domain/fx-provider";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
-import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
+import { boundedScheduledNotifications, createNotificationReplacementQueue, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
 
 const kvStore = new Map<string, string>();
 vi.mock("../src/services/kv", () => ({
@@ -376,6 +376,37 @@ describe("live market freshness", () => {
 });
 
 describe("notification planning guards", () => {
+  it("serializes overlapping queue replacements so two app-open triggers cannot duplicate reminders", async () => {
+    const replace = createNotificationReplacementQueue();
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let active = 0;
+    let maxActive = 0;
+    const first = replace(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      order.push("first-start");
+      await firstGate;
+      order.push("first-end");
+      active -= 1;
+    });
+    await Promise.resolve();
+    const second = replace(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      order.push("second-start");
+      active -= 1;
+    });
+    await Promise.resolve();
+
+    expect(order).toEqual(["first-start"]);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(maxActive).toBe(1);
+    expect(order).toEqual(["first-start", "first-end", "second-start"]);
+  });
+
   it("bounds corrupt reminder settings", () => {
     expect(normalizeReminderDays(-5, 30)).toBe(0);
     expect(normalizeReminderDays(99, 30)).toBe(30);

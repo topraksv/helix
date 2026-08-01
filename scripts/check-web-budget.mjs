@@ -6,10 +6,14 @@ const root = process.argv[2] ?? "dist";
 // growth. The font budgets were tightened after two faces that no `type.*`
 // scale or fontFamily ever referenced (Inter_800ExtraBold, Fraunces_500Medium)
 // were removed: 8 files / 1_935_428 bytes -> 6 files / 1_518_000 bytes. Keep
-// fontFiles exact so adding a weight has to be a deliberate decision.
+// fontFiles exact so adding a weight has to be a deliberate decision. The
+// Investments V1 route set was measured against main before recalibrating the
+// JavaScript ceilings: entry 4_870_467 -> 4_964_522 bytes and total JavaScript
+// 5_499_676 -> 5_593_704 bytes. The new limits cover that shipped feature with
+// narrow headroom; total export, fonts and public source-map limits stay fixed.
 const limits = {
-  entryJavaScript: 4_900_000,
-  totalJavaScript: 5_500_000,
+  entryJavaScript: 5_050_000,
+  totalJavaScript: 5_650_000,
   totalExport: 10_000_000,
   fontFiles: 6,
   fontBytes: 1_600_000,

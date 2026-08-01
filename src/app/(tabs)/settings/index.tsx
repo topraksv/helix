@@ -29,6 +29,7 @@ import {
   Sun,
   Users,
   Wallet,
+  Wrench,
   type LucideIcon,
 } from "lucide-react-native";
 import { SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
@@ -504,6 +505,17 @@ export default function SettingsScreen() {
           items={workspaceDestinations}
           twoColumns={width >= 700}
           testID="settings-workspace-link"
+        />
+      </Card>
+
+      <SectionHeader>{tr.settings.tools}</SectionHeader>
+      <Card>
+        <ListRow
+          icon={Wrench}
+          title={tr.settings.toolsDestination}
+          subtitle={tr.settings.toolsDesc}
+          chevron
+          onPress={() => router.push("/settings/tools" as Href)}
         />
       </Card>
 

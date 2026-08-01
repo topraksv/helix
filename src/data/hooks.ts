@@ -269,6 +269,48 @@ export function useCategoriesState() {
   );
 }
 
+export function useInvestmentProfilesState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `investment_profiles:${userId}`,
+    () => getDb().select().from(s.investmentProfiles)
+      .where(and(eq(s.investmentProfiles.userId, userId), isNull(s.investmentProfiles.deletedAt))),
+    ["investment_profiles"],
+  );
+}
+
+/** Includes tombstoned categories because their stable IDs still classify
+ * historical investment transfers after a column is retired. */
+export function useInvestmentCategoriesState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `investment_categories:${userId}`,
+    () => getDb().select().from(s.categories).where(eq(s.categories.userId, userId)),
+    ["categories"],
+  );
+}
+
+export function useInvestmentProductsState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `investment_products:${userId}`,
+    () => getDb().select().from(s.investmentProducts)
+      .where(and(eq(s.investmentProducts.userId, userId), isNull(s.investmentProducts.deletedAt))),
+    ["investment_products"],
+  );
+}
+
+export function useInvestmentOperationsState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `investment_operations:${userId}`,
+    () => getDb().select().from(s.investmentOperations)
+      .where(and(eq(s.investmentOperations.userId, userId), isNull(s.investmentOperations.deletedAt)))
+      .orderBy(asc(s.investmentOperations.operationDate), asc(s.investmentOperations.id)),
+    ["investment_operations"],
+  );
+}
+
 export function useSourcesState() {
   const userId = useUserId();
   return useSharedLive(

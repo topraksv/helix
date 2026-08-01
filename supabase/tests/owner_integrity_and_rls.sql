@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(63);
+select extensions.plan(83);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -53,11 +53,12 @@ select is(
         'persons','payment_sources','categories','computed_columns',
         'installment_plans','credit_card_statements','transactions',
         'subscriptions','price_history','recurring_incomes','expected_payments',
-        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
+        'investment_profiles','investment_products','investment_operations'
       ])
   ),
-  48::bigint,
-  'all 16 synced tables have select, insert and update owner policies'
+  57::bigint,
+  'all 19 synced tables have select, insert and update owner policies'
 );
 
 select is(
@@ -69,11 +70,12 @@ select is(
         'persons','payment_sources','categories','computed_columns',
         'installment_plans','credit_card_statements','transactions',
         'subscriptions','price_history','recurring_incomes','expected_payments',
-        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
+        'investment_profiles','investment_products','investment_operations'
       ])
       and roles = array['authenticated']::name[]
   ),
-  48::bigint,
+  57::bigint,
   'every owner policy is restricted to authenticated'
 );
 
@@ -87,11 +89,12 @@ select is(
         'persons','payment_sources','categories','computed_columns',
         'installment_plans','credit_card_statements','transactions',
         'subscriptions','price_history','recurring_incomes','expected_payments',
-        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
+        'investment_profiles','investment_products','investment_operations'
       ])
       and c.relrowsecurity
   ),
-  16::bigint,
+  19::bigint,
   'RLS is enabled on every synced table'
 );
 
@@ -105,12 +108,13 @@ select is(
         'persons','payment_sources','categories','computed_columns',
         'installment_plans','credit_card_statements','transactions',
         'subscriptions','price_history','recurring_incomes','expected_payments',
-        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
+        'investment_profiles','investment_products','investment_operations'
       ])
       and with_check like '%auth.uid()%'
       and with_check like '%user_id%'
   ),
-  16::bigint,
+  19::bigint,
   'every insert policy checks the authenticated owner'
 );
 
@@ -124,14 +128,15 @@ select is(
         'persons','payment_sources','categories','computed_columns',
         'installment_plans','credit_card_statements','transactions',
         'subscriptions','price_history','recurring_incomes','expected_payments',
-        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
+        'investment_profiles','investment_products','investment_operations'
       ])
       and qual like '%auth.uid()%'
       and qual like '%user_id%'
       and with_check like '%auth.uid()%'
       and with_check like '%user_id%'
   ),
-  16::bigint,
+  19::bigint,
   'every update policy filters and re-checks the authenticated owner'
 );
 
@@ -142,7 +147,8 @@ select is(
       'persons','payment_sources','categories','computed_columns',
       'installment_plans','credit_card_statements','transactions',
       'subscriptions','price_history','recurring_incomes','expected_payments',
-      'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+      'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
+      'investment_profiles','investment_products','investment_operations'
     ]) as tables(name)
     where has_table_privilege('authenticated', format('public.%I', name), 'SELECT')
       and has_table_privilege('authenticated', format('public.%I', name), 'INSERT')
@@ -153,7 +159,7 @@ select is(
       and not has_table_privilege('authenticated', format('public.%I', name), 'TRIGGER')
       and not has_table_privilege('authenticated', format('public.%I', name), 'MAINTAIN')
   ),
-  16::bigint,
+  19::bigint,
   'authenticated grants are limited to select, insert and update'
 );
 
@@ -164,7 +170,8 @@ select is(
       'persons','payment_sources','categories','computed_columns',
       'installment_plans','credit_card_statements','transactions',
       'subscriptions','price_history','recurring_incomes','expected_payments',
-      'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+      'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
+      'investment_profiles','investment_products','investment_operations'
     ]) as tables(name)
     where has_table_privilege('anon', format('public.%I', name), 'SELECT')
        or has_table_privilege('anon', format('public.%I', name), 'INSERT')
@@ -294,7 +301,8 @@ select is(
         'persons','payment_sources','categories','computed_columns',
         'installment_plans','credit_card_statements','transactions',
         'subscriptions','price_history','recurring_incomes','expected_payments',
-        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets'
+        'balance_adjustments','cell_notes','settings','fx_rates','category_budgets',
+        'investment_profiles','investment_products','investment_operations'
       ])
   ),
   0::bigint,
@@ -652,6 +660,270 @@ select is(
   'transaction category kind must match its financial type'
 );
 
+select ok(
+  not has_schema_privilege('authenticated', 'private', 'USAGE')
+    and not has_schema_privilege('anon', 'private', 'USAGE')
+    and not has_function_privilege(
+      'authenticated',
+      (
+        select p.oid
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'private' and p.proname = 'investment_cash'
+      ),
+      'EXECUTE'
+    ),
+  'investment guard helpers have no client-callable surface'
+);
+
+select lives_ok(
+  $$insert into public.investment_profiles (
+      id, user_id, started_on, opening_cash_minor, setup_completed
+    ) values (
+      '20000000-0000-4000-8000-000000000041',
+      '20000000-0000-4000-8000-000000000002',
+      '2026-07-01', 10000, true
+    )$$,
+  'an owner can initialize one global investment wallet'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.investment_profiles (
+      id, user_id, started_on, opening_cash_minor, setup_completed
+    ) values (
+      '20000000-0000-4000-8000-000000000040',
+      '20000000-0000-4000-8000-000000000002',
+      '2026-07-01', 10000, true
+    )
+  $command$),
+  '23505',
+  'an account cannot create a second investment wallet'
+);
+
+select lives_ok(
+  $$insert into public.investment_products (
+      id, user_id, asset_type, name
+    ) values (
+      '20000000-0000-4000-8000-000000000042',
+      '20000000-0000-4000-8000-000000000002',
+      'metal', 'Gram Altın'
+    )$$,
+  'an owner can create a supported investment product'
+);
+
+select lives_ok(
+  $$insert into public.investment_operations (
+      id, user_id, product_id, kind, operation_date, quantity,
+      unit_price_minor, total_minor
+    ) values (
+      '20000000-0000-4000-8000-000000000043',
+      '20000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000042',
+      'existing', '2026-07-01', '1.25', 40000, 50000
+    )$$,
+  'an existing holding does not need investment cash'
+);
+
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date, quantity,
+        unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000044',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000042',
+        'buy', '2026-07-02', '1', 8000, 8000
+      ) returning deleted_at is null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'a buy within the global cash balance remains live'
+);
+
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date, quantity,
+        unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000045',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000042',
+        'buy', '2026-07-03', '1', 3000, 3000
+      ) returning deleted_at is not null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'a concurrent buy that would make cash negative converges as a tombstone'
+);
+
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date, quantity,
+        unit_price_minor, total_minor, cost_basis_minor,
+        realized_profit_loss_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000046',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000042',
+        'sell', '2026-07-04', '0.5', 10000, 5000, 0, 5000
+      ) returning deleted_at is null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'a sale returns its positive proceeds to investment cash'
+);
+
+select results_eq(
+  $$select cost_basis_minor, realized_profit_loss_minor
+    from public.investment_operations
+    where id = '20000000-0000-4000-8000-000000000046'$$,
+  $$values (12889::bigint, -7889::bigint)$$,
+  'the server derives weighted sale cost instead of trusting client caches'
+);
+
+select lives_ok(
+  $$update public.investment_operations
+    set unit_price_minor = 48000, total_minor = 60000
+    where id = '20000000-0000-4000-8000-000000000043'$$,
+  'an earlier investment cost can be edited'
+);
+
+-- A data-modifying CTE and its sibling SELECT share the statement's initial
+-- snapshot, so observe the AFTER-trigger correction in the next statement.
+select results_eq(
+  $$select cost_basis_minor, realized_profit_loss_minor
+    from public.investment_operations
+    where id = '20000000-0000-4000-8000-000000000046'$$,
+  $$values (15111::bigint, -10111::bigint)$$,
+  'editing an earlier cost reprojects every later sale result'
+);
+
+insert into public.investment_products (id, user_id, asset_type, name)
+values (
+  '20000000-0000-4000-8000-000000000053',
+  '20000000-0000-4000-8000-000000000002',
+  'fund', 'Aynı Gün Fonu'
+);
+
+insert into public.investment_operations (
+  id, user_id, product_id, kind, operation_date, quantity,
+  unit_price_minor, total_minor
+) values (
+  '20000000-0000-4000-8000-000000000055',
+  '20000000-0000-4000-8000-000000000002',
+  '20000000-0000-4000-8000-000000000053',
+  'buy', '2026-07-06', '10', 100, 1000
+);
+
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date, quantity,
+        unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000054',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000053',
+        'sell', '2026-07-06', '4', 150, 600
+      ) returning deleted_at is null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'a same-day buy is projected before its sale even when the sale id sorts first'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.investment_operations (
+      id, user_id, product_id, kind, operation_date, quantity,
+      unit_price_minor, total_minor
+    ) values (
+      '20000000-0000-4000-8000-000000000049',
+      '20000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000042',
+      'existing', '2026-07-04', '2', 1000, 9000
+    )
+  $command$),
+  '23514',
+  'the server rejects a contradictory quantity-price-total triple'
+);
+
+select lives_ok(
+  $$insert into public.investment_products (
+      id, user_id, asset_type, name
+    ) values (
+      '20000000-0000-4000-8000-000000000050',
+      '20000000-0000-4000-8000-000000000002',
+      'pension', 'BES Planı'
+    )$$,
+  'an owner can create a BES product'
+);
+
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date,
+        quantity, unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000051',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000050',
+        'contribution', '2026-07-05', null, null, 1000
+      ) returning deleted_at is null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'an amount-only contribution remains live for a BES product'
+);
+
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date,
+        quantity, unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000052',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000042',
+        'contribution', '2026-07-05', null, null, 1000
+      ) returning deleted_at is not null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'a BES contribution on another asset type converges as a tombstone'
+);
+
+select results_eq(
+  $$with inserted as (
+      insert into public.transactions (
+        id, user_id, type, amount_minor, amount_try_minor, entry_date,
+        effective_date, status, category_id, person_id
+      ) values (
+        '20000000-0000-4000-8000-000000000047',
+        '20000000-0000-4000-8000-000000000002',
+        'transfer', -8000, -8000, '2026-07-05', '2026-07-05', 'realized',
+        '20000000-0000-4000-8000-000000000023',
+        '20000000-0000-4000-8000-000000000021'
+      ) returning deleted_at is not null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'an investment refund above free cash converges as a tombstone'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.investment_operations (
+      id, user_id, product_id, kind, operation_date, quantity,
+      unit_price_minor, total_minor
+    ) values (
+      '20000000-0000-4000-8000-000000000048',
+      '20000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000042',
+      'buy', '2026-07-06', '1.123456789', 1000, 1000
+    )
+  $command$),
+  '23514',
+  'fractional quantities reject more than eight decimal places'
+);
+
 
 -- ---------------------------------------------------------------------------
 -- Cross-user adversarial matrix (Package 4C)
@@ -668,6 +940,36 @@ select is(
 reset role;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 set local role authenticated;
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.investment_products (
+      id, user_id, asset_type, name
+    ) values (
+      '10000000-0000-4000-8000-000000000089',
+      '10000000-0000-4000-8000-000000000001',
+      'fund', 'Kurulumsuz Fon'
+    )
+  $command$),
+  '23503',
+  'an investment product requires its owner wallet to be initialized'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.investment_operations (
+      id, user_id, product_id, kind, operation_date, quantity,
+      unit_price_minor, total_minor
+    ) values (
+      '10000000-0000-4000-8000-000000000090',
+      '10000000-0000-4000-8000-000000000001',
+      '20000000-0000-4000-8000-000000000042',
+      'existing', '2026-07-01', '1', 1000, 1000
+    )
+  $command$),
+  '23503',
+  'an investment operation cannot borrow another account''s product'
+);
 
 select is(
   pg_temp.exec_sqlstate($command$

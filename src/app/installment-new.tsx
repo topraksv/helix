@@ -1,7 +1,7 @@
 /** New / edit installment plan or loan (also supports mid-progress "4/6 paid" entry). */
 
 import React, { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
 import { useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
@@ -12,13 +12,13 @@ import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/d
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
-import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Trash2 } from "lucide-react-native";
-import { Body, Button, Card, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MoneyField, PanelHeader, Row, Screen, Segmented, Select, Spread } from "../ui/components";
+import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Landmark, Trash2, type LucideIcon } from "lucide-react-native";
+import { Body, Button, Card, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { scheduleSync } from "../sync/engine";
-import { font, spacing, type, useTheme } from "../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
@@ -74,6 +74,45 @@ function InstallmentTimeline({ count, startMonth }: { count: number; startMonth:
         </Body>
       ) : null}
     </View>
+  );
+}
+
+function PlanKindChoice({
+  icon: Icon,
+  label,
+  selected,
+  onPress,
+}: {
+  icon: LucideIcon;
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { palette } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      aria-checked={selected}
+      accessibilityState={{ checked: selected, selected }}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minWidth: 0,
+        minHeight: 78,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: spacing.xs,
+        padding: spacing.sm,
+        borderRadius: radius.md,
+        borderWidth: selected ? 2 : 1,
+        borderColor: selected ? palette.primary : palette.border,
+        backgroundColor: selected ? palette.primarySoft : palette.surface,
+        opacity: pressed ? 0.76 : 1,
+      })}
+    >
+      <Icon accessible={false} size={22} color={selected ? palette.primaryText : palette.textSecondary} strokeWidth={2.2} />
+      <Text style={[type.small, { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? font.semibold : font.medium, textAlign: "center" }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -258,14 +297,24 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
               description={isEdit ? tr.installments.editHint : tr.installments.planDetailsHint}
             />
             <InstallmentTimeline count={count} startMonth={resolvedStart} />
-            <Segmented
-              options={[
-                { value: "card_installment", label: tr.installments.plan },
-                { value: "loan", label: tr.installments.loan },
-              ]}
-              value={kind}
-              onChange={setKind}
-            />
+            <View
+              accessibilityRole="radiogroup"
+              accessibilityLabel={tr.installments.planType}
+              style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}
+            >
+              <PlanKindChoice
+                icon={CreditCard}
+                label={tr.installments.plan}
+                selected={kind === "card_installment"}
+                onPress={() => setKind("card_installment")}
+              />
+              <PlanKindChoice
+                icon={Landmark}
+                label={tr.installments.loan}
+                selected={kind === "loan"}
+                onPress={() => setKind("loan")}
+              />
+            </View>
             <Field label={tr.installments.titleField} value={title} onChangeText={setTitle} placeholder={titlePlaceholder} />
             <MoneyField
               label={kind === "card_installment" ? tr.installments.totalAmount : tr.installments.monthlyAmount}
@@ -312,20 +361,16 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
               </>
             )}
 
-            {sources.length > 0 ? (
-              <>
-                <Select
-                  label={tr.tx.source}
-                  placeholder={tr.tx.sourcePlaceholder}
-                  options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
-                  value={sourceId}
-                  onChange={setSourceId}
-                  onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
-                />
-                {kind === "card_installment" && !cardSourceValid ? (
-                  <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
-                ) : null}
-              </>
+            <Select
+              label={tr.tx.source}
+              placeholder={tr.tx.sourcePlaceholder}
+              options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
+              value={sourceId}
+              onChange={setSourceId}
+              onCreate={{ label: tr.installments.addCard, run: () => router.push("/payment-sources") }}
+            />
+            {kind === "card_installment" && !cardSourceValid ? (
+              <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
             ) : null}
             <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
             <Select

@@ -40,6 +40,61 @@ describe("outbound row conversion", () => {
     });
   });
 
+  it("quarantines contradictory investment quotes before PostgREST", () => {
+    const investment = {
+      id: base.id,
+      user_id: base.user_id,
+      kind: "buy",
+      quantity: "2",
+      unit_price_minor: 10_000,
+      total_minor: 20_000,
+      cost_basis_minor: 0,
+      realized_profit_loss_minor: 0,
+    };
+    const investmentPolicy = {
+      allowedColumns: new Set(Object.keys(investment)),
+      booleanColumns: new Set<string>(),
+    };
+    expect(convertOutboundRow("investment_operations", investment, investmentPolicy)).toEqual({
+      ok: true,
+      row: investment,
+    });
+    expect(convertOutboundRow(
+      "investment_operations",
+      { ...investment, total_minor: 90_000 },
+      investmentPolicy,
+    )).toEqual({ ok: false, reason: "invalid_row" });
+  });
+
+  it("pushes an offline investment journal in deterministic replay order", () => {
+    const row = (id: string, kind: string, date: string) => ({
+      id,
+      user_id: base.user_id,
+      kind,
+      operation_date: date,
+      quantity: "1",
+      unit_price_minor: 10_000,
+      total_minor: 10_000,
+      cost_basis_minor: kind === "sell" ? 10_000 : 0,
+      realized_profit_loss_minor: 0,
+    });
+    const events = [
+      row("sale", "sell", "2026-07-03"),
+      row("buy", "buy", "2026-07-03"),
+      row("existing", "existing", "2026-07-03"),
+    ].map((payload, index) => ({
+      id: index + 1,
+      row_id: payload.id,
+      payload: JSON.stringify(payload),
+    }));
+    const batch = prepareOutboundBatch("investment_operations", events, base.user_id, {
+      allowedColumns: new Set(Object.keys(row("x", "buy", "2026-07-01"))),
+      booleanColumns: new Set<string>(),
+    });
+
+    expect(batch.rows.map((candidate) => candidate.id)).toEqual(["existing", "buy", "sale"]);
+  });
+
   it("keeps a healthy row pushable when another row is quarantined", () => {
     const validId = "0198b3f5-0e39-7b76-8f95-f7679d6b72b3";
     const batch = prepareOutboundBatch(

@@ -5,6 +5,7 @@ const dependencies = vi.hoisted(() => ({
   getSqliteAsync: vi.fn(),
   readSetting: vi.fn(),
   writeRows: vi.fn(),
+  writeRowsValidated: vi.fn(),
   writeSetting: vi.fn(),
   deterministicId: vi.fn(async (key: string) => `id:${key}`),
   settingRow: vi.fn(async (userId: string, key: string, value: unknown) => ({ table: "settings", row: { id: `id:setting|${userId}|${key}`, key, value: JSON.stringify(value), deletedAt: null } })),
@@ -25,6 +26,7 @@ vi.mock("../src/db/mutations", () => ({
   settingRow: dependencies.settingRow,
   softDelete: vi.fn(),
   writeRows: dependencies.writeRows,
+  writeRowsValidated: dependencies.writeRowsValidated,
   writeSetting: dependencies.writeSetting,
 }));
 vi.mock("../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
@@ -56,6 +58,12 @@ const publicRuntimeExports = [
   "updateTransaction",
   "deleteTransaction",
   "setCurrentBalance",
+  "setupInvestments",
+  "saveInvestmentProduct",
+  "addInvestmentOperation",
+  "updateInvestmentOperation",
+  "deleteInvestmentOperation",
+  "restoreInvestmentOperation",
   "countTransactionsForCategory",
   "countInstallmentsForPlan",
   "createInstallmentPlan",

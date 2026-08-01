@@ -12,13 +12,14 @@ import { addDaysISO, todayISO } from "../domain/dates";
 import { formatMinor } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { loadDevicePreferences, notificationsEnabled, setNotificationDetailsEnabled, setNotificationsEnabled } from "./device-preferences";
-import { boundedScheduledNotifications, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../domain/notifications";
+import { boundedScheduledNotifications, createNotificationReplacementQueue, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../domain/notifications";
 
 const HORIZON_DAYS = 30;
 /** iOS keeps at most 64 pending local notifications and silently drops the
  *  rest; schedule the soonest ones only — the next app open replans anyway. */
 const MAX_SCHEDULED = 60;
 const ANDROID_CHANNEL_ID = "helix-reminders";
+const replaceNotificationQueue = createNotificationReplacementQueue();
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -183,8 +184,13 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
   return planned;
 }
 
-/** Cancel + reschedule everything (idempotent, run on each app open). */
-export async function rescheduleAll(userId: string): Promise<void> {
+/** Cancel + reschedule everything. Replacements are serialized because app
+ * foreground and session initialization can legitimately request one together. */
+export function rescheduleAll(userId: string): Promise<void> {
+  return replaceNotificationQueue(() => replaceScheduledNotifications(userId));
+}
+
+async function replaceScheduledNotifications(userId: string): Promise<void> {
   if (Platform.OS === "web") return;
   if (!(await notificationsEnabled())) {
     await clearAccountNotifications();

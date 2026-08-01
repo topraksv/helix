@@ -64,7 +64,8 @@ test("a card's trailing action leaves the same gap as its first row", async ({ p
   await pickOption(page, "Kategori", /Market/);
   await page.getByRole("button", { name: "Ödeme Günü" }).click();
   const days = await page.getByRole("button").evaluateAll((els) =>
-    els.map((e) => e.getAttribute("aria-label")).filter((l): l is string => !!l && /^\d{1,2} \w+ \d{4}$/.test(l)));
+    els.map((e) => e.getAttribute("aria-label")).filter((l): l is string => !!l && /^\d{1,2} .+ \d{4}$/u.test(l)));
+  expect(days.length).toBeGreaterThan(0);
   await page.getByRole("button", { name: days[days.length - 1]!, exact: true }).click();
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await page.getByRole("tab", { name: "Durum" }).click();
@@ -164,7 +165,7 @@ test("yearly subscriptions ask for a real renewal date", async ({ page }) => {
   await expect(page.getByText("Yıllık ücretin bir sonraki kez alınacağı tarihi seç.", { exact: true })).toBeVisible();
 });
 
-test("subscriptions explain recurrence with dates and turn the next 31 days into a responsive payment cycle", async ({ page }) => {
+test("subscriptions explain recurrence and summarize the next payment path", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.goto("/helix/subscription-form");
@@ -178,10 +179,14 @@ test("subscriptions explain recurrence with dates and turn the next 31 days into
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
-  await expect(page.getByRole("img", { name: /1 abonelik.*31 günde 1 ödeme/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /1 aktif abonelik.*31 günde 1 ödeme.*0 otomatik, 1 elle/ })).toBeVisible();
   await expect(page.getByText("Ödeme döngüsü", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sıradaki ödeme durakları", { exact: true })).toBeVisible();
+  await expect(page.getByText("0/1", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 elle takip", { exact: true })).toBeVisible();
   await expect(page.getByText(/TRY aylık karşılığı/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Abonelik Ekle", exact: true })).toBeVisible();
+  await expect(page.getByTestId("screen-header").getByRole("button", { name: "Abonelik Ekle", exact: true })).toBeVisible();
+  await expect(page.getByTestId("subscription-cycle-summary").getByText("Müzik", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 
   await page.setViewportSize({ width: 1200, height: 900 });
@@ -225,7 +230,9 @@ test("a single-person workspace keeps assignment optional and compact", async ({
 test("wide tools start on one line with equal work areas", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
-  await page.getByRole("tab", { name: "Araçlar", exact: true }).click();
+  await page.goto("/helix/settings/tools");
+  await expect(page.getByRole("heading", { name: "Araçlar", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
 
   const geometry = await page.getByTestId("calculator-workspace").evaluate((workspace) => {
     const calculator = workspace.querySelector<HTMLElement>('[data-testid="calculator-tool"]')!;
@@ -249,10 +256,110 @@ test("wide tools start on one line with equal work areas", async ({ page }) => {
   expect(Math.abs(geometry.calculatorWidth - geometry.converterWidth)).toBeLessThanOrEqual(1);
 });
 
+test("investment setup, weighted sale, BES contribution and wallet refund form one flow @smoke", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Yatırım alanını başlat", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("10.000");
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await expect(page.getByText("Serbest nakit ve ürün maliyetleri", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("radio", { name: "Borsa", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("SASA");
+  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+
+  await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("10");
+  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100");
+  await page.getByRole("textbox", { name: "Toplam TRY · isteğe bağlı", exact: true }).fill("2.000");
+  await expect(page.getByRole("alert")).toContainText("birbiriyle uyuşmuyor");
+  await page.getByRole("textbox", { name: "Toplam TRY · isteğe bağlı", exact: true }).fill("1.000");
+  await page.getByRole("button", { name: "Alış ekle", exact: true }).click();
+  await expect(page.getByText("SASA", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Satış Yap", exact: true }).click();
+  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("4");
+  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("150");
+  await page.getByRole("button", { name: "Satış yap", exact: true }).click();
+  await expect(page.getByText("₺200,00", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("radio", { name: "BES", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Emeklilik Planım");
+  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await pickOption(page, "Ürün", "Emeklilik Planım · BES");
+  await page.getByRole("radio", { name: "Yalnız katkı tutarı", exact: true }).click();
+  await page.getByRole("textbox", { name: "Toplam katkı · zorunlu", exact: true }).fill("500");
+  await page.getByRole("button", { name: "BES katkısı ekle", exact: true }).click();
+  await expect(page.getByText("Pay bilgisi yok", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar", exact: true }).click();
+  await page.getByRole("radio", { name: "Bir kısmı", exact: true }).click();
+  await page.getByRole("textbox", { name: "Aktarılacak tutar", exact: true }).fill("100");
+  await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
+  await expect(page.getByText("₺9.000,00", { exact: true }).first()).toBeVisible();
+});
+
+test("the investment wallet keeps large balances readable at the narrowest phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await onboard(page);
+  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("987.654.321.000");
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+
+  const summary = page.getByTestId("investment-wallet-summary");
+  const cash = page.getByTestId("investment-cash-amount");
+  await expect(cash).toHaveAttribute("aria-label", "Serbest bakiye: ₺987.654.321.000,00");
+  const geometry = await summary.evaluate((element) => {
+    const parent = element.getBoundingClientRect();
+    const cashAmount = element.querySelector<HTMLElement>('[data-testid="investment-cash-amount"]')!;
+    const amount = cashAmount.getBoundingClientRect();
+    const descendantsFit = Array.from(element.querySelectorAll<HTMLElement>("*")).every((child) => {
+      const box = child.getBoundingClientRect();
+      return box.width === 0 || (box.left >= parent.left - 1 && box.right <= parent.right + 1);
+    });
+    return {
+      parentLeft: parent.left,
+      parentRight: parent.right,
+      amountLeft: amount.left,
+      amountRight: amount.right,
+      amountFontSize: parseFloat(getComputedStyle(cashAmount).fontSize),
+      descendantsFit,
+    };
+  });
+  expect(geometry.amountLeft).toBeGreaterThanOrEqual(geometry.parentLeft - 1);
+  expect(geometry.amountRight).toBeLessThanOrEqual(geometry.parentRight + 1);
+  expect(geometry.amountFontSize).toBeGreaterThanOrEqual(24);
+  expect(geometry.descendantsFit).toBe(true);
+  await expect(page.getByTestId("investment-mobile-allocation")).toBeVisible();
+  const actions = page.getByTestId("investment-actions").getByRole("button");
+  await expect(actions).toHaveCount(4);
+  const actionGeometry = await actions.evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect();
+    return { left: Math.round(box.left), right: Math.round(box.right), top: Math.round(box.top), width: Math.round(box.width) };
+  }));
+  expect(new Set(actionGeometry.map(({ left }) => left)).size).toBe(4);
+  expect(new Set(actionGeometry.map(({ top }) => top)).size).toBe(1);
+  expect(Math.max(...actionGeometry.map(({ width }) => width)) - Math.min(...actionGeometry.map(({ width }) => width))).toBeLessThanOrEqual(1);
+  expect(Math.max(...actionGeometry.map(({ right }) => right))).toBeLessThanOrEqual(320 - 16);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
 test("the phone financial-table tools stay in one compact row", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await onboard(page);
   await page.goto("/helix/cash-flow");
+
+  await expect(page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("screen-header").getByText(/^\d{4}$/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
   const tools = page.getByRole("button").filter({
     has: page.locator("text=/^(Düzenle|Taksitler|Analiz|Toplu|Açılış)$/"),
@@ -273,16 +380,35 @@ test("pivoting the financial table resets unrelated offsets and keeps complete c
   await onboard(page);
   await page.goto("/helix/cash-flow");
 
-  await expect(page.getByRole("radio", { name: "Satır odaklı" })).toHaveAttribute("aria-checked", "true");
-  await page.getByRole("radio", { name: "Kolon odaklı" }).click();
-  await expect(page.getByRole("button", { name: "Temmuz", exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Kolon odaklı" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("link", { name: "Kredi Kartı", exact: true })).toBeVisible();
-  for (const month of ["Temmuz", "Ağustos"]) {
-    const monthBox = await page.getByRole("button", { name: month, exact: true }).boundingBox();
-    expect(monthBox).not.toBeNull();
-    expect(monthBox!.x).toBeGreaterThanOrEqual(16 + 112);
-    expect(monthBox!.x + monthBox!.width).toBeLessThanOrEqual(320 - 16);
-  }
+  const visibleMonths = await page.getByTestId("table-horizontal-header").getByRole("button").evaluateAll((buttons) => {
+    const viewport = buttons[0]?.parentElement?.parentElement?.getBoundingClientRect();
+    if (!viewport) return [];
+    return buttons
+      .map((button) => {
+        const box = button.getBoundingClientRect();
+        return { name: button.getAttribute("aria-label"), left: box.left, right: box.right };
+      })
+      .filter(({ name, left, right }) =>
+        name != null
+        && !name.startsWith("Sabitle")
+        && !name.startsWith("Sabitlemeyi kaldır")
+        && right > viewport.left
+        && left < viewport.right,
+      )
+      .map(({ name, left, right }) => ({
+        name,
+        left,
+        right,
+        viewportLeft: viewport.left,
+        viewportRight: viewport.right,
+      }));
+  });
+  expect(visibleMonths.length).toBeGreaterThanOrEqual(2);
+  expect(visibleMonths.every(({ left, right, viewportLeft, viewportRight }) =>
+    left >= viewportLeft - 1 && right <= viewportRight + 1
+  )).toBe(true);
   await page.getByRole("radio", { name: "Satır odaklı" }).click();
   const firstCategory = page.getByRole("button", { name: "Kredi Kartı", exact: true });
   await expect(firstCategory).toBeVisible();
@@ -590,6 +716,15 @@ test("settings workspace navigation reflows from one to two columns", async ({ p
   await page.goto("/helix/settings");
   const links = page.getByTestId("settings-workspace-link");
   await expect(links).toHaveCount(6);
+  const toolsLink = page.getByRole("button", { name: /Hızlı Hesaplamalar/ });
+  await expect(toolsLink).toHaveCount(1);
+  const sectionOrder = await Promise.all(
+    ["Çalışma Alanı", "Araçlar", "Uygulama"].map((label) =>
+      page.getByText(label, { exact: true }).first().evaluate((element) => element.getBoundingClientRect().top),
+    ),
+  );
+  expect(sectionOrder[0]).toBeLessThan(sectionOrder[1]!);
+  expect(sectionOrder[1]).toBeLessThan(sectionOrder[2]!);
 
   await page.setViewportSize({ width: 320, height: 844 });
   await expect.poll(async () => {

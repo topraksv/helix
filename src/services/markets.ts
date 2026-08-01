@@ -6,9 +6,9 @@
 
 import { create } from "zustand";
 import { io, type Socket } from "socket.io-client";
-import { tr } from "../i18n/tr";
 import { freshMarketQuote, validMarketQuote } from "../domain/market";
 import { kv } from "./kv";
+import { MARKET_SYMBOLS } from "../domain/investment-catalog";
 
 const FEED_URL = "wss://hrmsocketonly.haremaltin.com";
 const THROTTLE_MS = 3000;
@@ -18,17 +18,7 @@ const LIFECYCLE_GRACE_MS = 5000;
 const SNAPSHOT_KEY = "helix.markets.snapshot";
 const SNAPSHOT_PERSIST_MS = 30_000;
 
-/** Provider code → display label; order = display order. */
-export const MARKET_SYMBOLS = [
-  { code: "ALTIN", label: tr.markets.gram },
-  { code: "CEYREK_YENI", label: tr.markets.quarter },
-  // The provider names the full coin `TEK`, not `TAM`, and publishes it apart
-  // from `ATA` (Cumhuriyet) — two separate quotes, ~1000 TL apart, not aliases.
-  { code: "TEK_YENI", label: tr.markets.full },
-  { code: "ATA_YENI", label: tr.markets.republic },
-  { code: "USDTRY", label: tr.markets.usd },
-  { code: "EURTRY", label: tr.markets.eur },
-] as const;
+export { MARKET_SYMBOLS } from "../domain/investment-catalog";
 
 interface MarketPrice {
   code: string;

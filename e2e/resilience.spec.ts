@@ -344,10 +344,10 @@ test("multi-entry settings screens return to whoever opened them", async ({ page
  * `root-lifecycle.ts` calls `refreshRates` DIRECTLY on boot (it awaits it inside
  * the session task), while the currency converter goes through the throttled
  * `ensureFreshRates`. The throttle timestamp used to be armed only by the
- * wrapper, so the boot fetch left it at 0 and the converter — mounting on the
- * calculator screen within the next minute — issued a second request for the
+ * wrapper, so the boot fetch left it at 0 and the converter — mounting in the
+ * Settings tool workspace within the next minute — issued a second request for the
  * same rates. Measured before the fix: every route made one rate request,
- * the calculator made two.
+ * the tool workspace made two.
  */
 test("the FX provider is called once per session, not once per entry point", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
@@ -366,10 +366,10 @@ test("the FX provider is called once per session, not once per entry point", asy
   });
 
   // Every `goto` in this suite is a full page load, so one load == one app
-  // session. Count exactly one load: the calculator, where BOTH callers run —
+  // session. Count exactly one load: the tool workspace, where BOTH callers run —
   // the boot refresh and the converter's focus refresh.
   fxCalls.length = 0;
-  await page.goto("/helix/calculator");
+  await page.goto("/helix/settings/tools");
   await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
   await expect.poll(
     () => fxCalls.length,
@@ -379,7 +379,9 @@ test("the FX provider is called once per session, not once per entry point", asy
   // Client-side navigation away and back must not add another inside the window.
   await page.getByRole("tab", { name: "Durum" }).click();
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Araçlar" }).click();
+  await page.getByRole("tab", { name: "Ayarlar" }).click();
+  // The settings stack preserves its selected child when its tab loses focus,
+  // so returning to Settings is itself the repeat visit to this workspace.
   await expect(page.getByRole("heading", { name: "Hesap Makinesi", exact: true })).toBeVisible();
   const repeatVisitObservationStartedAt = Date.now();
   await expect.poll(

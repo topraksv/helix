@@ -1,9 +1,10 @@
 import type * as schema from "../../db/schema";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { writeRows, type RowWrite } from "../../db/mutations";
+import { writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { assertInputWithinLimit } from "../../domain/input";
 import { suggestCategoryIcon } from "../category-icons";
 import type { TemplateCategory } from "./onboarding";
+import { assertInvestmentWrites } from "./investment-validation";
 
 export type CategoryRow = typeof schema.categories.$inferSelect;
 
@@ -43,7 +44,12 @@ export async function updateCategory(
 ): Promise<void> {
   const next = { ...category, ...patch, name: (patch.name ?? category.name).trim() };
   validateCategory(next);
-  await writeRows(userId, [{ table: "categories", row: next }]);
+  const writes: RowWrite[] = [{ table: "categories", row: next }];
+  await writeRowsValidated(
+    userId,
+    writes,
+    (sqlite) => assertInvestmentWrites(sqlite, userId, writes).then(() => undefined),
+  );
 }
 
 export async function reorderCategoryGroup(

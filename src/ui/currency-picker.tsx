@@ -104,7 +104,7 @@ export function CurrencyPicker({
         onChange={onChange}
         trigger={(open) =>
           chip(
-            isPrimary ? tr.common.other : `${CURRENCY_INFO[value as Currency]?.flag ?? ""} ${value}`.trim(),
+            isPrimary ? `••• ${tr.common.other}` : `${CURRENCY_INFO[value as Currency]?.flag ?? ""} ${value}`.trim(),
             !isPrimary,
             open,
             tr.common.otherCurrencies,

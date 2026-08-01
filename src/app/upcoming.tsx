@@ -100,35 +100,38 @@ export default function UpcomingScreen() {
             {items.map((item) => (
               <ListRow
                 key={item.key}
-                leading={
+                onPress={() => openItem(item)}
+                leading={(
                   <View
                     accessible={false}
                     style={{
-                      width: 48,
-                      height: 48,
+                      width: 42,
+                      height: 42,
                       flexShrink: 0,
                       alignItems: "center",
                       justifyContent: "center",
-                      borderRadius: radius.md,
-                      borderWidth: 1,
-                      borderColor: item.status === "late" ? palette.error + "70" : palette.border + "70",
-                      backgroundColor: item.direction === "in" ? palette.positive + "16" : palette.surfaceAlt,
+                      borderRadius: radius.sm,
+                      backgroundColor: item.status === "late"
+                        ? palette.error + "14"
+                        : item.direction === "in"
+                          ? palette.positive + "14"
+                          : palette.surfaceAlt,
                     }}
                   >
-                    <Text style={[type.heading, { color: item.status === "late" ? palette.errorText : palette.textStrong, fontSize: 18 }]}>
+                    <Text style={[type.label, { color: item.status === "late" ? palette.errorText : palette.textStrong, fontFamily: font.semibold }]}>
                       {Number(item.date.slice(8, 10))}
                     </Text>
                     <Text style={[type.small, { color: palette.textSecondary, fontFamily: font.semibold, fontSize: 10, textTransform: "uppercase" }]}>
                       {shortMonthLabel(monthKeyOf(item.date))}
                     </Text>
                   </View>
-                }
+                )}
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}
                 subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)} · ${formatMinor(item.amountMinor, item.currency)}`}
+                right={item.status === "late"
+                  ? <StatusPill label={tr.dashboard.late} color={palette.error} foreground={palette.errorText} />
+                  : undefined}
                 chevron
-                onPress={() => openItem(item)}
-                right={item.status === "late" ? <StatusPill label={tr.dashboard.late} color={palette.error} foreground={palette.errorText} /> : undefined}
-                stackRightOnNarrow
               />
             ))}
           </Card>

@@ -58,6 +58,20 @@ export {
 export type { NewTransaction, TransactionPatch } from "./repo/transactions";
 
 export {
+  addInvestmentOperation,
+  deleteInvestmentOperation,
+  restoreInvestmentOperation,
+  saveInvestmentProduct,
+  setupInvestments,
+  updateInvestmentOperation,
+} from "./repo/investments";
+export type {
+  InvestmentOperationInput,
+  InvestmentProductInput,
+  InvestmentSetupInput,
+} from "./repo/investments";
+
+export {
   countInstallmentsForPlan,
   createInstallmentPlan,
   deletePlan,

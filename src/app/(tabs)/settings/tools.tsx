@@ -1,19 +1,19 @@
-/** Calculator tab: the shared calculator pad plus a live currency converter. */
+/** Settings tool workspace: calculator plus a live currency converter. */
 
 import React from "react";
 import { View, useWindowDimensions } from "react-native";
-import { Card, Screen, Title } from "../../ui/components";
-import { CalculatorPad } from "../../ui/calculator";
-import { CurrencyConverter } from "../../ui/currency-converter";
-import { tr } from "../../i18n/tr";
-import { spacing } from "../../ui/theme";
-import { WorkspaceSplit } from "../../ui/workspace-layout";
+import { Card, Screen, Title } from "../../../ui/components";
+import { CalculatorPad } from "../../../ui/calculator";
+import { CurrencyConverter } from "../../../ui/currency-converter";
+import { tr } from "../../../i18n/tr";
+import { spacing } from "../../../ui/theme";
+import { WorkspaceSplit } from "../../../ui/workspace-layout";
 
 export default function CalculatorScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   return (
-    <Screen title={tr.tabs.calculator} maxWidth={1100}>
+    <Screen maxWidth={1100}>
       <WorkspaceSplit
         testID="calculator-workspace"
         primaryWeight={1}

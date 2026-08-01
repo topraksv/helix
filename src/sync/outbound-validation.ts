@@ -1,4 +1,5 @@
 import { parseDefinition } from "../domain/computed-columns";
+import { resolveInvestmentQuote } from "../domain/investments";
 import type { SyncedTableName } from "../db/schema";
 import {
   classifyOutboxBatch,
@@ -68,6 +69,43 @@ export function convertOutboundRow(
     if (rate == null || rate <= 0) return { ok: false, reason: "invalid_row" };
     out.rate_try = rate;
   }
+  if (table === "investment_profiles") {
+    if (
+      !Number.isSafeInteger(out.opening_cash_minor)
+      || Number(out.opening_cash_minor) < 0
+      || typeof out.started_on !== "string"
+      || !/^\d{4}-\d{2}-\d{2}$/.test(out.started_on)
+    ) return { ok: false, reason: "invalid_row" };
+  }
+  if (table === "investment_operations") {
+    const positiveMoney = (value: unknown) => Number.isSafeInteger(value) && Number(value) > 0;
+    if (
+      !positiveMoney(out.total_minor)
+      || !Number.isSafeInteger(out.cost_basis_minor)
+      || Number(out.cost_basis_minor) < 0
+      || !Number.isSafeInteger(out.realized_profit_loss_minor)
+    ) return { ok: false, reason: "invalid_row" };
+    if (out.quantity == null) {
+      if (out.kind !== "contribution" || out.unit_price_minor != null) {
+        return { ok: false, reason: "invalid_row" };
+      }
+    } else if (
+      typeof out.quantity !== "string"
+      || !/^[0-9]+(\.[0-9]{1,8})?$/.test(out.quantity)
+      || !positiveMoney(out.unit_price_minor)
+    ) return { ok: false, reason: "invalid_row" };
+    if (out.quantity != null) {
+      try {
+        resolveInvestmentQuote({
+          quantity: out.quantity as string,
+          unitPriceMinor: Number(out.unit_price_minor),
+          totalMinor: Number(out.total_minor),
+        });
+      } catch {
+        return { ok: false, reason: "invalid_row" };
+      }
+    }
+  }
 
   return { ok: true, row: out };
 }
@@ -94,6 +132,15 @@ export function prepareOutboundBatch(
     }
     pushedEvents.push(event);
     rows.push(converted.row);
+  }
+  if (table === "investment_operations") {
+    const priority = (kind: unknown) =>
+      kind === "existing" ? 0 : kind === "sell" ? 2 : 1;
+    rows.sort((a, b) =>
+      String(a.operation_date).localeCompare(String(b.operation_date))
+      || priority(a.kind) - priority(b.kind)
+      || String(a.id).localeCompare(String(b.id)),
+    );
   }
   return { rows, pushedEvents, rejected };
 }

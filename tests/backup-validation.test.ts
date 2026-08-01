@@ -132,6 +132,37 @@ describe("backup validation", () => {
     expect(isValidImportRow("category_budgets", { ...budget, amount_minor: 0 })).toBe(false);
   });
 
+  it("validates investment rows and their exact quote relationship", () => {
+    const profile = {
+      id: id(20), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp,
+      deleted_at: null, started_on: "2026-07-01", opening_cash_minor: 10_000_00,
+      setup_completed: 1,
+    };
+    const product = {
+      id: id(21), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp,
+      deleted_at: null, asset_type: "metal", name: "Gram Altın", market_code: "ALTIN", note: null,
+    };
+    const operation = {
+      id: id(22), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp,
+      deleted_at: null, product_id: product.id, kind: "buy", operation_date: "2026-07-02",
+      quantity: "2", unit_price_minor: 50_000, total_minor: 100_000,
+      cost_basis_minor: 0, realized_profit_loss_minor: 0, note: null, import_key: null,
+    };
+    expect(isValidImportRow("investment_profiles", profile)).toBe(true);
+    expect(isValidImportRow("investment_products", product)).toBe(true);
+    expect(isValidImportRow("investment_operations", operation)).toBe(true);
+    expect(isValidImportRow("investment_operations", { ...operation, total_minor: 900_000 })).toBe(false);
+    expect(() => validateBundleRelationships(validateExportBundle({
+      version: 1,
+      exportedAt: timestamp,
+      tables: {
+        investment_profiles: [profile],
+        investment_products: [product],
+        investment_operations: [operation],
+      },
+    }))).not.toThrow();
+  });
+
   it("rejects one invalid row before returning any restore plan", () => {
     const bundle = {
       version: 1,

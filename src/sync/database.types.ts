@@ -480,6 +480,154 @@ export type Database = {
           },
         ]
       }
+      investment_operations: {
+        Row: {
+          cost_basis_minor: number
+          created_at: string
+          deleted_at: string | null
+          id: string
+          import_key: string | null
+          kind: string
+          note: string | null
+          operation_date: string
+          product_id: string
+          quantity: string | null
+          realized_profit_loss_minor: number
+          tombstone_version: number
+          total_minor: number
+          unit_price_minor: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cost_basis_minor?: number
+          created_at?: string
+          deleted_at?: string | null
+          id: string
+          import_key?: string | null
+          kind: string
+          note?: string | null
+          operation_date: string
+          product_id: string
+          quantity?: string | null
+          realized_profit_loss_minor?: number
+          tombstone_version?: number
+          total_minor: number
+          unit_price_minor?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          cost_basis_minor?: number
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          import_key?: string | null
+          kind?: string
+          note?: string | null
+          operation_date?: string
+          product_id?: string
+          quantity?: string | null
+          realized_profit_loss_minor?: number
+          tombstone_version?: number
+          total_minor?: number
+          unit_price_minor?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investment_operations_user_product_fk"
+            columns: ["user_id", "product_id"]
+            isOneToOne: false
+            referencedRelation: "investment_products"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
+      investment_products: {
+        Row: {
+          asset_type: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          market_code: string | null
+          name: string
+          note: string | null
+          tombstone_version: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          asset_type: string
+          created_at?: string
+          deleted_at?: string | null
+          id: string
+          market_code?: string | null
+          name: string
+          note?: string | null
+          tombstone_version?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          asset_type?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          market_code?: string | null
+          name?: string
+          note?: string | null
+          tombstone_version?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investment_products_user_profile_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "investment_profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      investment_profiles: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          id: string
+          opening_cash_minor: number
+          setup_completed: boolean
+          started_on: string
+          tombstone_version: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          id: string
+          opening_cash_minor: number
+          setup_completed?: boolean
+          started_on: string
+          tombstone_version?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          opening_cash_minor?: number
+          setup_completed?: boolean
+          started_on?: string
+          tombstone_version?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       keep_alive: {
         Row: {
           id: number

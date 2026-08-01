@@ -6,7 +6,17 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, SlidersHorizontal, TrendingUp, Undo2, WalletCards, type LucideIcon } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
-import { useAllTransactionsState, useCategoriesState, usePersonsState, useSourcesState, useUserId } from "../data/hooks";
+import {
+  useAllTransactionsState,
+  useCategoriesState,
+  useInvestmentCategoriesState,
+  useInvestmentOperationsState,
+  useInvestmentProductsState,
+  useInvestmentProfilesState,
+  usePersonsState,
+  useSourcesState,
+  useUserId,
+} from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
@@ -15,6 +25,7 @@ import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKe
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
 import { formatMinor, isSupportedMinorAmount } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
+import { projectInvestmentState } from "../domain/investment-projection";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
@@ -87,7 +98,7 @@ function EntryTypeChoice({
 }
 
 export default function TransactionModal() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, intent } = useLocalSearchParams<{ id?: string; intent?: string }>();
   const record = classifyRecordId(id);
   const txState = useAllTransactionsState();
   const existing = record?.mode === "edit" ? txState.data.find((t) => t.id === record.id) : undefined;
@@ -110,10 +121,167 @@ export default function TransactionModal() {
   if (existing?.installmentPlanId) {
     return <Redirect href={{ pathname: "/installment-new", params: { id: existing.installmentPlanId } }} />;
   }
-  return <TransactionForm key={existing?.id ?? "new"} existing={existing} />;
+  if (intent === "investment-refund" && record.mode === "new") {
+    return <InvestmentRefundForm transactionsState={txState} />;
+  }
+  return <TransactionForm key={existing?.id ?? `new-${intent ?? "default"}`} existing={existing} investmentRefund={intent === "investment-refund"} />;
 }
 
-function TransactionForm({ existing }: { existing?: ExistingTx }) {
+function InvestmentRefundForm({ transactionsState }: { transactionsState: ReturnType<typeof useAllTransactionsState> }) {
+  const userId = useUserId();
+  const router = useRouter();
+  const { palette } = useTheme();
+  const operationGuard = useOperationGuard();
+  const profilesState = useInvestmentProfilesState();
+  const productsState = useInvestmentProductsState();
+  const operationsState = useInvestmentOperationsState();
+  const categoriesState = useInvestmentCategoriesState();
+  const personsState = usePersonsState();
+  const states = [profilesState, productsState, operationsState, categoriesState, personsState, transactionsState];
+  const status = combineLiveQueryStatus(states);
+  const ready = states.every((state) => state.updatedAt != null);
+  const profile = profilesState.data[0];
+  const wallet = React.useMemo(() => {
+    if (!profile) return null;
+    try {
+      return projectInvestmentState(profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data);
+    } catch {
+      return null;
+    }
+  }, [profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data]);
+  const transferCategories = categoriesState.data.filter((category) => category.isTransfer && category.deletedAt == null);
+  const selfPerson = personsState.data.find((person) => person.isSelf) ?? personsState.data[0];
+  const [amountMode, setAmountMode] = useState<"all" | "partial">("all");
+  const [amountRaw, setAmountRaw] = useState("");
+  const [amountMinor, setAmountMinor] = useState<number | null>(null);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [dateMode, setDateMode] = useState<"month" | "day">("day");
+  const [monthKey, setMonthKey] = useState<MonthKey>(monthKeyOf(todayISO()));
+  const [dateStr, setDateStr] = useState(todayISO());
+  const [busy, setBusy] = useState(false);
+  const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount);
+  React.useEffect(() => {
+    if (categoryId || transferCategories.length !== 1) return;
+    setCategoryId(transferCategories[0]!.id);
+  }, [categoryId, transferCategories]);
+  const selectedAmount = amountMode === "all" ? wallet?.cashMinor ?? null : amountMinor;
+  const amountError = amountMode === "partial" && selectedAmount != null && wallet && selectedAmount > wallet.cashMinor
+    ? tr.investments.refundExceedsCash(formatMinor(wallet.cashMinor))
+    : null;
+  const dateless = dateMode === "month";
+  const effectiveDate = dateless ? `${monthKey}-01` : dateStr;
+  const dateValid = dateless || isISODate(dateStr);
+  const canSave = ready
+    && wallet != null
+    && selectedAmount != null
+    && selectedAmount > 0
+    && selectedAmount <= wallet.cashMinor
+    && categoryId != null
+    && selfPerson != null
+    && dateValid
+    && !busy;
+  const draftSnapshot = JSON.stringify({ amountMode, amountRaw, categoryId, dateMode, monthKey, dateStr });
+  const initialDraftSnapshot = React.useRef(draftSnapshot).current;
+  const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  const close = () => navigateBack(router, "/(tabs)/investments");
+
+  const save = async () => {
+    if (!canSave || !selectedAmount || !categoryId || !selfPerson) return;
+    await operationGuard.run(async () => {
+      setBusy(true);
+      try {
+        assertISODate(effectiveDate);
+        await addTransaction(userId, {
+          type: "transfer",
+          amountMinor: -selectedAmount,
+          currency: "TRY",
+          fxRate: null,
+          amountTryMinor: -selectedAmount,
+          effectiveDate,
+          isAggregate: dateless,
+          categoryId,
+          paymentSourceId: null,
+          personId: selfPerson.id,
+          note: null,
+        });
+        scheduleSync(userId);
+        allowExit(close);
+      } catch (error) {
+        devError("investment.refund", error);
+        void appAlert(tr.errors.saveFailed, tr.errors.title);
+      } finally {
+        setBusy(false);
+      }
+    });
+  };
+
+  if (!ready) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ title: tr.investments.refundTitle }} />
+        <DataStateNotice status={status} retry={() => states.forEach((state) => state.retry())} />
+      </Screen>
+    );
+  }
+  if (!profile) return <Redirect href="/(tabs)/investments" />;
+
+  return (
+    <Screen maxWidth={820}>
+      <Stack.Screen options={{ title: tr.investments.refundTitle }} />
+      <Card style={{ marginBottom: spacing.lg }}>
+        <PanelHeader icon={WalletCards} title={tr.investments.refundAmountTitle} description={tr.investments.refundAmountHint} />
+        <View style={{ padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.primarySoft, marginBottom: spacing.md }}>
+          <Text style={[type.small, { color: palette.primaryText }]}>{tr.investments.cash}</Text>
+          <Text style={[type.amountLg, { color: palette.textStrong, marginTop: 2 }]}>{formatMinor(wallet?.cashMinor ?? 0)}</Text>
+        </View>
+        <Segmented
+          value={amountMode}
+          onChange={setAmountMode}
+          options={[
+            { value: "all", label: tr.investments.refundAll },
+            { value: "partial", label: tr.investments.refundPartial },
+          ]}
+        />
+        {amountMode === "partial" ? (
+          <MoneyField
+            label={tr.investments.refundPartialAmount}
+            value={amountRaw}
+            error={amountError}
+            placeholder={amountPlaceholder}
+            onChangeMinor={(raw, minor) => {
+              setAmountRaw(raw);
+              setAmountMinor(minor);
+            }}
+          />
+        ) : null}
+      </Card>
+      <Card style={{ marginBottom: spacing.lg }}>
+        <PanelHeader icon={CalendarClock} title={tr.investments.refundDestinationTitle} description={tr.investments.refundDestinationHint} />
+        <Select
+          label={tr.tx.category}
+          placeholder={tr.tx.categoryPlaceholder}
+          options={transferCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
+          value={categoryId}
+          onChange={setCategoryId}
+          onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
+        />
+        <Label>{tr.tx.whenLabel}</Label>
+        <Segmented
+          value={dateMode}
+          onChange={setDateMode}
+          options={[
+            { value: "month", label: tr.tx.monthOnly },
+            { value: "day", label: tr.tx.specificDay },
+          ]}
+        />
+        {dateless ? <MonthStepper value={monthKey} onChange={setMonthKey} /> : <DateField label={tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />}
+      </Card>
+      <Button label={tr.investments.refundAction} icon={ArrowUpRight} disabled={!canSave} loading={busy} onPress={() => void save()} />
+    </Screen>
+  );
+}
+
+function TransactionForm({ existing, investmentRefund = false }: { existing?: ExistingTx; investmentRefund?: boolean }) {
   const userId = useUserId();
   const categoriesState = useCategoriesState();
   const sourcesState = useSourcesState();
@@ -136,12 +304,12 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
   const isEdit = existing != null;
   // Opened as a router modal normally, but a web deep-link to /transaction has
   // no back stack — fall back to a real screen so "save" always closes it.
-  const close = () => navigateBack(router, "/(tabs)/cash-flow");
+  const close = () => navigateBack(router, investmentRefund ? "/(tabs)/investments" : "/(tabs)/cash-flow");
 
-  const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? "expense");
+  const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? (investmentRefund ? "transfer" : "expense"));
   const [amountRaw, setAmountRaw] = useState(existing ? (Math.abs(existing.amountMinor) / 100).toFixed(2).replace(".", ",") : "");
   const [amountMinor, setAmountMinor] = useState<number | null>(existing ? Math.abs(existing.amountMinor) : null);
-  const [isReversal, setIsReversal] = useState((existing?.amountMinor ?? 0) < 0);
+  const [isReversal, setIsReversal] = useState((existing?.amountMinor ?? 0) < 0 || investmentRefund);
   const [currency, setCurrency] = useState<string>(existing?.currency ?? "TRY");
   const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
   const [showAmountOptions, setShowAmountOptions] = useState(
@@ -194,7 +362,14 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       try {
         const parsed = JSON.parse(v) as { categoryId?: string; sourceId?: string };
         const expectedKind = entryType === "income" ? "income" : "expense";
-        if (parsed.categoryId && categories.some((c) => c.id === parsed.categoryId && c.kind === expectedKind)) {
+        if (
+          parsed.categoryId
+          && categories.some((c) =>
+            c.id === parsed.categoryId
+            && c.kind === expectedKind
+            && (entryType !== "transfer" || c.isTransfer),
+          )
+        ) {
           setCategoryId(parsed.categoryId);
         }
         if (parsed.sourceId && sources.some((s) => s.id === parsed.sourceId)) setSourceId(parsed.sourceId);
@@ -202,6 +377,12 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryType, dataReady]);
+
+  React.useEffect(() => {
+    if (isEdit || entryType !== "transfer" || !dataReady || categoryId) return;
+    const investmentCategories = categories.filter((category) => category.kind === "expense" && category.isTransfer);
+    if (investmentCategories.length === 1) setCategoryId(investmentCategories[0]!.id);
+  }, [categories, categoryId, dataReady, entryType, isEdit]);
 
   useFxRates();
   const today = todayISO();
@@ -225,7 +406,7 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
 
   const kindForCategories = entryType === "income" ? "income" : "expense";
   const categoryOptions = categories
-    .filter((c) => c.kind === kindForCategories)
+    .filter((c) => c.kind === kindForCategories && (entryType !== "transfer" || c.isTransfer))
     .map((c) => ({ value: c.id, label: c.name, icon: categoryIcon(c) }));
 
   const sourceOptions = sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }));
@@ -362,9 +543,13 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
     setEntryType(next);
     setIsReversal(false);
     setCategoryId((current) => {
-      if (!current || next === "transfer") return current;
+      if (!current) return current;
       const expectedKind = next === "income" ? "income" : "expense";
-      return categories.some((category) => category.id === current && category.kind === expectedKind) ? current : null;
+      return categories.some((category) =>
+        category.id === current
+        && category.kind === expectedKind
+        && (next !== "transfer" || category.isTransfer),
+      ) ? current : null;
     });
     if (next !== "expense") setInstallment(false);
   };
@@ -409,11 +594,11 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       <MoneyField
         label={`${tr.tx.amount} · ${currency}`}
         value={amountRaw}
-        expression
+        expression={entryType !== "transfer"}
         placeholder={amountPlaceholder}
         onChangeMinor={(raw, minor) => {
-          setAmountRaw(raw);
-          if (minor != null && minor < 0) setIsReversal(true);
+          setAmountRaw(entryType === "transfer" ? raw.replace(/^-/, "") : raw);
+          if (entryType !== "transfer" && minor != null && minor < 0) setIsReversal(true);
           setAmountMinor(minor == null ? null : Math.abs(minor));
         }}
       />
@@ -423,21 +608,15 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
             icon={SlidersHorizontal}
             size="sm"
             variant="ghost"
-            label={tr.tx.amountOptions(currency)}
+            label={tr.tx.amountOptions(entryType, currency)}
             expanded={showAmountOptions}
             onPress={() => setShowAmountOptions(true)}
           />
         </View>
       ) : (
       <>
-      {/* Refund/return toggle: off = an ordinary entry (no confusing "normal"
-          label), on = a reversal that flips the amount's sign. The description
-          explains the balance effect in the same card, so the meaning is clear
-          without a second segmented control. */}
-      {/* The selected state is carried by the outline, icon and label — not by
-          repainting the row in `primarySoft`, which is the toggle track's own
-          active colour and swallowed the switch whole. */}
-      <View
+      {entryType !== "transfer" || (isEdit && isReversal) ? (
+        <View
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -452,20 +631,21 @@ function TransactionForm({ existing }: { existing?: ExistingTx }) {
       >
         <Undo2 accessible={false} size={20} color={isReversal ? palette.primary : palette.textSecondary} />
         <View style={{ flex: 1 }}>
-          <Body style={{ color: isReversal ? palette.primaryText : palette.text }}>{tr.tx.refundToggleLabel}</Body>
+          <Body style={{ color: isReversal ? palette.primaryText : palette.text }}>{tr.tx.reversalLabel(entryType)}</Body>
           <Body muted style={{ fontSize: 12, marginTop: 2 }}>
             {isReversal ? tr.tx.reversalHint(entryType) : tr.tx.refundToggleHint(entryType)}
           </Body>
         </View>
         <Toggle
-          label={tr.tx.refundToggleLabel}
+          label={tr.tx.reversalLabel(entryType)}
           value={isReversal}
           onValueChange={(v) => {
             setIsReversal(v);
             if (v) setInstallment(false);
           }}
         />
-      </View>
+        </View>
+      ) : null}
       {showCurrency ? (
         <>
           <Label>{tr.tx.currency}</Label>

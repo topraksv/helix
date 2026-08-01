@@ -4,11 +4,12 @@
  *  hidden — each month shows only its own live installments (spec §3.2, §2.8). */
 
 import React, { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronRight, CreditCard, Plus } from "lucide-react-native";
+import { ChevronRight, CreditCard, Landmark, Plus } from "lucide-react-native";
 import { installmentDisplayTitle, planProgress, type GeneratedInstallment } from "../../../domain/installments";
 import { monthKeyOf, todayISO } from "../../../domain/dates";
+import { formatMinor } from "../../../domain/money";
 import { monthLabel, tr } from "../../../i18n/tr";
 import {
   usePersonsState,
@@ -17,8 +18,9 @@ import {
   useAllTransactionsState,
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
-import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, MonthStepper, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
-import { font, spacing, useTheme } from "../../../ui/theme";
+import { paymentSourceIcon } from "../../../data/category-icons";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, Select } from "../../../ui/components";
+import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 
 export default function InstallmentsScreen() {
@@ -32,6 +34,8 @@ export default function InstallmentsScreen() {
   const allTx = transactionsState.data;
   const router = useRouter();
   const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const compact = width < 560;
   const [viewMonth, setViewMonth] = useState(monthKeyOf(todayISO()));
   const [cardFilter, setCardFilter] = useState<string | null>(null);
   const liveStates = [plansState, sourcesState, personsState, transactionsState];
@@ -46,6 +50,7 @@ export default function InstallmentsScreen() {
 
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const sourceName = new Map(sources.map((s) => [s.id, s.name]));
+  const sourceById = new Map(sources.map((source) => [source.id, source]));
   const personName = new Map(persons.map((p) => [p.id, p.name]));
   const noteByPlan = new Map<string, string>();
   for (const tx of allTx) {
@@ -90,7 +95,11 @@ export default function InstallmentsScreen() {
   }
   const cardOptions = [
     { value: "" as string, label: tr.installments.allCards },
-    ...[...cardIdsThisMonth].map((id) => ({ value: id, label: sourceName.get(id) ?? tr.installments.noSource })),
+    ...[...cardIdsThisMonth].map((id) => ({
+      value: id,
+      label: sourceName.get(id) ?? tr.installments.noSource,
+      icon: sourceById.get(id) ? paymentSourceIcon(sourceById.get(id)!.type) : undefined,
+    })),
   ];
 
   const matchesCard = (p: (typeof plans)[number]) => cardFilter == null || p.paymentSourceId === cardFilter;
@@ -107,41 +116,63 @@ export default function InstallmentsScreen() {
     const progress = planProgress(items);
     const finished = progress.remaining === 0;
     const thisMonth = itemInMonth(plan.id);
+    const Icon = plan.kind === "loan" ? Landmark : CreditCard;
     return (
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel={`${installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}. ${thisMonth ? formatMinor(thisMonth.amountMinor) : ""}. ${tr.installments.progress(progress.paid, progress.total)}`}
         onPress={() => router.push({ pathname: "/installment-new", params: { id: plan.id } })}
         style={({ pressed }) => [pressed && { opacity: 0.6 }]}
       >
-        <Spread style={{ paddingVertical: spacing.sm, alignItems: "flex-start" }}>
-          <View style={{ flex: 1, paddingRight: spacing.sm }}>
-            <Body style={{ fontFamily: font.medium }}>
+        <View style={{ paddingVertical: spacing.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <View
+              accessible={false}
+              style={{
+                width: 38,
+                height: 38,
+                flexShrink: 0,
+                borderRadius: radius.md,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: plan.kind === "loan" ? palette.secondarySoft : palette.primarySoft,
+              }}
+            >
+              <Icon accessible={false} size={18} color={plan.kind === "loan" ? palette.secondaryText : palette.primaryText} strokeWidth={2.2} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Body style={{ fontFamily: font.medium }}>
               {installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}
-            </Body>
-            <Body muted style={{ marginTop: 2 }}>{sourceName.get(plan.paymentSourceId ?? "") ?? tr.installments.noSource}</Body>
-            <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs }}>
-              {plan.kind === "loan" ? <Badge text={tr.installments.loan} /> : null}
-              {thisMonth ? <Badge text={tr.installments.thisMonthInstallment(thisMonth.installmentNo, progress.total)} tone="primary" /> : null}
-              <Badge text={tr.installments.progress(progress.paid, progress.total)} tone={finished ? "success" : "muted"} />
+              </Body>
+              <Body muted style={{ marginTop: 2 }}>{sourceName.get(plan.paymentSourceId ?? "") ?? tr.installments.noSource}</Body>
+            </View>
+            <ChevronRight accessible={false} size={18} color={palette.textSecondary} />
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.md, marginTop: spacing.md }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[type.small, { color: palette.textSecondary }]}>
+                {thisMonth ? tr.installments.thisMonthInstallment(thisMonth.installmentNo, progress.total) : tr.installments.progress(progress.paid, progress.total)}
+              </Text>
+              {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} style={{ fontSize: compact ? 17 : 19, textAlign: "left", marginTop: 2 }} /> : null}
+            </View>
+            <View style={{ alignItems: "flex-end", gap: spacing.xs }}>
+              <Text style={[type.label, { color: finished ? palette.positiveText : palette.textStrong }]}>{progress.paid}/{progress.total}</Text>
               {watchedBy ? <Badge text={`${tr.installments.watchOnly}: ${watchedBy}`} tone="warning" /> : null}
-            </Row>
-            {/* progress track */}
-            <View style={{ height: 6, borderRadius: 3, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
-              <View
-                style={{
-                  height: 6,
-                  borderRadius: 3,
-                  width: `${Math.round((progress.paid / Math.max(progress.total, 1)) * 100)}%`,
-                  backgroundColor: finished ? palette.success : palette.primary,
-                }}
-              />
             </View>
           </View>
-          <Row gap={spacing.xs} style={{ flexShrink: 0, paddingTop: 1 }}>
-            {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} /> : null}
-            <ChevronRight size={16} color={palette.textSecondary} />
-          </Row>
-        </Spread>
+
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
+            <View
+              style={{
+                height: 6,
+                borderRadius: 3,
+                width: `${Math.round((progress.paid / Math.max(progress.total, 1)) * 100)}%`,
+                backgroundColor: finished ? palette.success : palette.primary,
+              }}
+            />
+          </View>
+        </View>
       </Pressable>
     );
   };
@@ -167,11 +198,15 @@ export default function InstallmentsScreen() {
             <Card>
               <Body muted>{tr.installments.thisMonthTotal} · {monthLabel(viewMonth)}</Body>
               <Amount minor={monthObligationMinor} large colorized={false} />
-              {cardOptions.length > 1 ? (
-                <View style={{ marginTop: spacing.md }}>
-                  <ChipPicker options={cardOptions} value={cardFilter ?? ""} onChange={(v) => setCardFilter(v === "" ? null : v)} />
-                </View>
-              ) : null}
+              <View style={{ marginTop: spacing.md }}>
+                <Select
+                  label={tr.installments.cardFilter}
+                  options={cardOptions}
+                  value={cardFilter ?? ""}
+                  onChange={(value) => setCardFilter(value === "" ? null : value)}
+                  onCreate={{ label: tr.installments.addCard, run: () => router.push("/payment-sources") }}
+                />
+              </View>
               <Button icon={Plus} label={tr.installments.newPlan} onPress={() => router.push("/installment-new")} />
             </Card>
           </View>

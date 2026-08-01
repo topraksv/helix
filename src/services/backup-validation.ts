@@ -1,6 +1,8 @@
 import { getTableColumns } from "drizzle-orm";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { parseDefinition, type ComputedColumnDefinition } from "../domain/computed-columns";
+import { resolveInvestmentQuote } from "../domain/investments";
+import { isSupportedMinorAmount } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 import { UserFacingError, userMessage } from "../domain/user-error";
@@ -49,6 +51,8 @@ const DATE_COLUMNS = new Set([
   "date",
   "rate_date",
   "anchor_date",
+  "started_on",
+  "operation_date",
 ]);
 
 const TIMESTAMP_COLUMNS = new Set(["created_at", "updated_at", "deleted_at", "canceled_at", "paid_at"]);
@@ -72,6 +76,7 @@ const RELATIONS = [
   ["recurring_incomes", "person_id", "persons"],
   ["recurring_incomes", "category_id", "categories"],
   ["category_budgets", "category_id", "categories"],
+  ["investment_operations", "product_id", "investment_products"],
   ["expected_payments", "transaction_id", "transactions"],
   ["cell_notes", "category_id", "categories"],
 ] as const satisfies readonly (readonly [SyncedTableName, string, SyncedTableName])[];
@@ -159,6 +164,51 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     }
   }
   if (table === "category_budgets" && (typeof raw.amount_minor !== "number" || raw.amount_minor <= 0)) return false;
+  if (table === "investment_profiles") {
+    if (
+      typeof raw.opening_cash_minor !== "number"
+      || raw.opening_cash_minor < 0
+      || !isSupportedMinorAmount(raw.opening_cash_minor)
+    ) return false;
+  }
+  if (table === "investment_products") {
+    if (
+      !["metal", "currency", "equity", "fund", "crypto", "pension"].includes(String(raw.asset_type))
+      || typeof raw.name !== "string"
+      || raw.name.trim() === ""
+    ) return false;
+  }
+  if (table === "investment_operations") {
+    if (
+      !["existing", "buy", "sell", "contribution"].includes(String(raw.kind))
+      || typeof raw.total_minor !== "number"
+      || raw.total_minor <= 0
+      || typeof raw.cost_basis_minor !== "number"
+      || typeof raw.realized_profit_loss_minor !== "number"
+      || !isSupportedMinorAmount(raw.total_minor, false)
+      || !isSupportedMinorAmount(raw.cost_basis_minor)
+      || !isSupportedMinorAmount(raw.realized_profit_loss_minor)
+    ) return false;
+    if (raw.quantity == null) {
+      if (raw.kind !== "contribution" || raw.unit_price_minor != null) return false;
+    } else if (
+      typeof raw.quantity !== "string"
+      || !/^[0-9]+(\.[0-9]{1,8})?$/.test(raw.quantity)
+      || typeof raw.unit_price_minor !== "number"
+      || raw.unit_price_minor <= 0
+    ) return false;
+    if (raw.quantity != null) {
+      try {
+        resolveInvestmentQuote({
+          quantity: raw.quantity,
+          unitPriceMinor: raw.unit_price_minor,
+          totalMinor: raw.total_minor,
+        });
+      } catch {
+        return false;
+      }
+    }
+  }
   if (table === "categories" && raw.is_transfer != null) {
     const transfer = raw.is_transfer === true || raw.is_transfer === 1;
     if (transfer && raw.kind !== "expense") return false;

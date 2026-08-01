@@ -1,6 +1,6 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import { Calculator, ChartPie, RefreshCw, Settings, WalletCards } from "lucide-react-native";
+import { ChartPie, Landmark, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
 import { selectionTapIfChanged } from "../../ui/haptics";
 import { TabBar } from "../../ui/tab-bar";
@@ -55,12 +55,12 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="calculator"
+        name="investments"
         options={{
-          title: tr.tabs.calculator,
-          tabBarLabel: tr.tabBar.calculator,
-          tabBarAccessibilityLabel: tr.tabs.calculator,
-          tabBarIcon: ({ color, size }) => <Calculator color={color} size={size - 2} strokeWidth={2} />,
+          title: tr.tabs.investments,
+          tabBarLabel: tr.tabBar.investments,
+          tabBarAccessibilityLabel: tr.tabs.investments,
+          tabBarIcon: ({ color, size }) => <Landmark color={color} size={size - 2} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen

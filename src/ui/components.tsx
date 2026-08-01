@@ -59,6 +59,7 @@ import { shouldStackListActions } from "./responsive";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 import { filterSelectionOptions, type SelectionOption } from "./selection";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
+import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder";
 
 function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
@@ -249,6 +250,7 @@ export function Card({
   onLayout,
   padded = true,
   tone,
+  accessibilityLabel,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -256,6 +258,7 @@ export function Card({
   onLayout?: (e: LayoutChangeEvent) => void;
   padded?: boolean;
   tone?: "success" | "warning" | "error";
+  accessibilityLabel?: string;
 }) {
   const { palette } = useTheme();
   const toneColor = tone ? palette[tone] : null;
@@ -274,6 +277,7 @@ export function Card({
     return (
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
         onPress={onPress}
         onLayout={onLayout}
         style={({ pressed }) => [base, style, pressed && { backgroundColor: palette.surfaceHover }]}
@@ -399,7 +403,7 @@ export function PanelHeader({
 }) {
   const { palette } = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md, marginBottom: spacing.md }}>
+    <View style={{ flexDirection: "row", alignItems: description ? "flex-start" : "center", gap: spacing.md, marginBottom: spacing.md }}>
       <View
         accessible={false}
         style={{
@@ -710,6 +714,11 @@ export function Field({
   const labelId = `${fieldId}-label`;
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(secure === true);
+  const numericPlaceholder = props.keyboardType === "number-pad"
+    || props.keyboardType === "numeric"
+    || props.keyboardType === "decimal-pad"
+    || props.inputMode === "numeric"
+    || props.inputMode === "decimal";
   const maxLength = props.maxLength ?? (
     props.multiline
       ? INPUT_LIMITS.note
@@ -726,8 +735,9 @@ export function Field({
       {label ? <Label nativeID={labelId}>{label}</Label> : null}
       <View>
         <TextInput
-          placeholderTextColor={palette.textSecondary}
           {...props}
+          placeholder={examplePlaceholder(props.placeholder)}
+          placeholderTextColor={numericPlaceholder ? numericPlaceholderColor(palette.textSecondary) : palette.textSecondary}
           accessibilityLabel={props.accessibilityLabel ?? label}
           accessibilityLabelledBy={label ? labelId : props.accessibilityLabelledBy}
           accessibilityHint={error ? [props.accessibilityHint, tr.a11y.fieldError(error)].filter(Boolean).join(". ") : props.accessibilityHint}
@@ -794,6 +804,7 @@ export function MoneyField({
   disabled = false,
   accessibilityLabel,
   inline = false,
+  error,
 }: {
   label?: string;
   value: string;
@@ -805,6 +816,8 @@ export function MoneyField({
   accessibilityLabel?: string;
   /** Keeps repeated amount rows compact without reducing the input target. */
   inline?: boolean;
+  /** Domain validation message shown in addition to the input parser's own error. */
+  error?: string | null;
 }) {
   const { palette } = useTheme();
   const fieldId = useId();
@@ -815,6 +828,7 @@ export function MoneyField({
   const display = formatMoneyInputLive(value);
   const minor = value.trim() === "" ? null : parseAmountExpression(display);
   const invalid = value.trim() !== "" && minor === null;
+  const resolvedError = invalid ? tr.common.amountLimit : error;
   return (
     <View style={{ marginBottom: inline ? spacing.sm : spacing.md }}>
       <View style={inline ? { flexDirection: "row", alignItems: "center", gap: spacing.sm } : undefined}>
@@ -841,7 +855,7 @@ export function MoneyField({
             value={display}
             accessibilityLabel={accessibilityLabel ?? label}
             accessibilityLabelledBy={label ? labelId : undefined}
-            accessibilityHint={invalid ? tr.a11y.fieldError(tr.common.amountLimit) : undefined}
+            accessibilityHint={resolvedError ? tr.a11y.fieldError(resolvedError) : undefined}
             accessibilityState={{ disabled }}
             maxLength={INPUT_LIMITS.money}
             editable={!disabled}
@@ -851,13 +865,13 @@ export function MoneyField({
             }}
             keyboardType={expression ? "numbers-and-punctuation" : "decimal-pad"}
             inputMode={expression ? "text" : "decimal"}
-            placeholder={placeholder}
-            placeholderTextColor={palette.textSecondary}
+            placeholder={examplePlaceholder(placeholder)}
+            placeholderTextColor={numericPlaceholderColor(palette.textSecondary)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             style={{
-              ...controlStateStyle(palette, focused, invalid),
-              color: invalid ? palette.errorText : disabled ? palette.textSecondary : palette.text,
+              ...controlStateStyle(palette, focused, Boolean(resolvedError)),
+              color: resolvedError ? palette.errorText : disabled ? palette.textSecondary : palette.text,
               borderRadius: radius.sm,
               paddingHorizontal: spacing.md,
               paddingRight: controlSize.inputAccessoryInset,
@@ -885,7 +899,7 @@ export function MoneyField({
           )}
         </View>
       </View>
-      <FieldError message={invalid ? tr.common.amountLimit : null} />
+      <FieldError message={resolvedError} />
       {calcOpen ? (
         <LazyCalculatorModal
           returnFocusRef={calculatorTriggerRef}
@@ -925,6 +939,26 @@ function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: num
 
 /** Width of a select row's icon column, so every label starts at one x. */
 const SELECT_ICON_W = 22;
+type SelectOptionIcon = string | LucideIcon | React.ReactElement;
+
+function SelectOptionMark({ icon, color }: { icon: SelectOptionIcon; color: string }) {
+  if (typeof icon === "string") {
+    return (
+      <Text accessible={false} aria-hidden style={[type.body, { width: SELECT_ICON_W, textAlign: "center" }]}>
+        {icon}
+      </Text>
+    );
+  }
+  if (React.isValidElement(icon)) {
+    return <View accessible={false} style={{ width: SELECT_ICON_W, alignItems: "center" }}>{icon}</View>;
+  }
+  const Icon = icon;
+  return (
+    <View accessible={false} style={{ width: SELECT_ICON_W, alignItems: "center" }}>
+      <Icon size={iconSize.control} color={color} strokeWidth={2} />
+    </View>
+  );
+}
 
 /** Dropdown select: field-styled trigger opening a modal option list. */
 export function Select<T extends string>({
@@ -935,6 +969,7 @@ export function Select<T extends string>({
   placeholder,
   disabled = false,
   onCreate,
+  selectedOption,
   trigger,
 }: {
   label?: string;
@@ -944,7 +979,7 @@ export function Select<T extends string>({
    * widths differ — so a list of categories read as a ragged left edge. Its
    * own fixed column makes the names line up.
    */
-  options: { value: T; label: string; icon?: string }[];
+  options: { value: T; label: string; icon?: SelectOptionIcon }[];
   value: T | null;
   onChange: (v: T) => void;
   placeholder?: string;
@@ -959,6 +994,9 @@ export function Select<T extends string>({
    * these" actually happens.
    */
   onCreate?: { label: string; run: () => void };
+  /** A value chosen through the pinned create action can remain visible in the
+   * trigger without becoming a duplicate ordinary option in the list. */
+  selectedOption?: { value: T; label: string; icon?: SelectOptionIcon };
   /**
    * Render the control that opens the list. A caller whose control already
    * exists in another shape — a chip in a row of chips — uses this instead of
@@ -974,7 +1012,8 @@ export function Select<T extends string>({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<View>(null);
   const modalTitleRef = useModalAccessibility(open, triggerRef);
-  const current = options.find((o) => o.value === value);
+  const current = options.find((o) => o.value === value)
+    ?? (selectedOption?.value === value ? selectedOption : undefined);
   const modalVerticalInset = width < 640 ? spacing.lg : spacing.lg * 2;
   const modalMaxHeight = Math.max(0, Math.min(width < 640 ? 560 : 460, height - modalVerticalInset));
   const optionsModal = (
@@ -1059,13 +1098,12 @@ export function Select<T extends string>({
                         >
                           <Row gap={spacing.sm}>
                             {option.icon ? (
-                              // Decorative: the icon is a second encoding of the
-                              // name beside it, so joining the accessible name
-                              // would make the option announce as "💳 Günlük
-                              // Hesap" and break every exact-name query.
-                              <Text accessible={false} aria-hidden style={[type.body, { width: SELECT_ICON_W, textAlign: "center" }]}>
-                                {option.icon}
-                              </Text>
+                              // Decorative: the mark repeats the adjacent name,
+                              // so it stays out of the accessible option label.
+                              <SelectOptionMark
+                                icon={option.icon}
+                                color={selected ? palette.primaryText : palette.textSecondary}
+                              />
                             ) : null}
                             <Text
                               style={[
@@ -1150,6 +1188,11 @@ export function Select<T extends string>({
           },
         ]}
       >
+        {current?.icon ? (
+          <View style={{ marginRight: spacing.sm }}>
+            <SelectOptionMark icon={current.icon} color={disabled ? palette.textSecondary : palette.text} />
+          </View>
+        ) : null}
         <Text
           style={[type.body, { color: disabled || !current ? palette.textSecondary : palette.text, flex: 1 }]}
         >

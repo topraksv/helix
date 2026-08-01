@@ -56,6 +56,8 @@ export const naturalKeys = {
    *  deterministic so re-correcting the same day updates one row instead of
    *  stacking a new adjustment each time. */
   balanceAdjustment: (userId: string, date: string) => `baladj:${userId}:${date}`,
+  /** Exactly one global investment wallet profile per account. */
+  investmentProfile: (userId: string) => `investment-profile:${userId}`,
   /** A payment source (card) created from a spreadsheet import, keyed by name so
    *  the same card mentioned across many months/years converges to one source. */
   importSource: (userId: string, name: string) => `impsource:${userId}:${name.toLocaleLowerCase("tr-TR")}`,

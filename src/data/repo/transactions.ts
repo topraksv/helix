@@ -1,6 +1,14 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { nowIso, restoreRow, softDelete, writeRows, type RowWrite } from "../../db/mutations";
+import {
+  fromDbShape,
+  nowIso,
+  restoreRow,
+  softDelete,
+  writeRows,
+  writeRowsValidated,
+  type RowWrite,
+} from "../../db/mutations";
 import { isCurrentOrFutureMonth, isISODate, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, isSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
@@ -9,6 +17,7 @@ import { reconciliationDelta } from "../../domain/balance";
 import { categoryAcceptsTransaction } from "../../domain/transactions";
 import { isValidCardCycle, statementForPurchase, type CardStatementPeriod } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError } from "./errors";
+import { assertInvestmentWrites } from "./investment-validation";
 
 // ---------------------------------------------------------------------------
 // Transactions
@@ -120,13 +129,25 @@ export async function assertTransactionCategory(
     return;
   }
   const sqlite = await getSqliteAsync();
-  const category = await sqlite.getFirstAsync<{ kind: "expense" | "income" }>(
-    `SELECT kind FROM categories WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+  const category = await sqlite.getFirstAsync<{ kind: "expense" | "income"; is_transfer: number }>(
+    `SELECT kind, is_transfer FROM categories WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
     [categoryId, userId],
   );
-  if (!category || !categoryAcceptsTransaction(type, category.kind)) {
+  if (
+    !category
+    || !categoryAcceptsTransaction(type, category.kind)
+    || (type === "transfer" && category.is_transfer !== 1)
+  ) {
     throw new Error("Transaction type and category do not match");
   }
+}
+
+async function writeTransactionRows(userId: string, writes: RowWrite[]): Promise<void> {
+  await writeRowsValidated(
+    userId,
+    writes,
+    (sqlite) => assertInvestmentWrites(sqlite, userId, writes).then(() => undefined),
+  );
 }
 
 export async function addTransaction(userId: string, input: NewTransaction): Promise<string> {
@@ -137,7 +158,7 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
   const today = todayISO();
   const id = newId();
   const dates = await resolveSingleTransactionDates(userId, input);
-  await writeRows(userId, [
+  await writeTransactionRows(userId, [
     ...(dates.statementWrite ? [dates.statementWrite] : []),
     {
       table: "transactions",
@@ -186,7 +207,7 @@ export async function updateTransaction(
   assertInputWithinLimit(patch.note, "note");
   await assertTransactionCategory(userId, patch.type, patch.categoryId, true);
   const dates = await resolveSingleTransactionDates(userId, patch);
-  await writeRows(userId, [
+  await writeTransactionRows(userId, [
     ...(dates.statementWrite ? [dates.statementWrite] : []),
     {
       table: "transactions",
@@ -203,11 +224,26 @@ export async function updateTransaction(
 }
 
 export async function deleteTransaction(userId: string, id: string) {
-  return softDelete(userId, "transactions", id);
+  const sqlite = await getSqliteAsync();
+  const previous = await sqlite.getFirstAsync<Record<string, unknown>>(
+    "SELECT * FROM transactions WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+    [id, userId],
+  );
+  if (!previous) return null;
+  const writes: RowWrite[] = [{
+    table: "transactions",
+    row: { ...fromDbShape("transactions", previous), deletedAt: nowIso() },
+  }];
+  await writeTransactionRows(userId, writes);
+  return previous;
 }
 
 export function restoreTransaction(userId: string, snapshot: Record<string, unknown>): Promise<void> {
-  return restoreRow(userId, "transactions", snapshot);
+  const writes: RowWrite[] = [{
+    table: "transactions",
+    row: { ...fromDbShape("transactions", snapshot), deletedAt: null },
+  }];
+  return writeTransactionRows(userId, writes);
 }
 
 export function deleteBalanceAdjustment(userId: string, id: string) {
@@ -325,5 +361,5 @@ export async function bulkMonthEntry(
       },
     })),
   );
-  await writeRows(userId, writes);
+  await writeTransactionRows(userId, writes);
 }

@@ -378,7 +378,9 @@ export default function DashboardScreen() {
     statements: cardStatements,
     today,
     horizonDays: 31,
-  }).filter((item) => item.status === "upcoming").slice(0, 12);
+  }).filter((item) => item.status === "upcoming");
+  const dashboardLate = late.slice(0, 5);
+  const dashboardUpcoming = upcoming.slice(0, Math.max(0, 5 - dashboardLate.length));
   const timelineTypeLabel = (sourceType: (typeof upcoming)[number]["sourceType"]) => ({
     recurring_income: tr.dashboard.expectedIncome,
     subscription: tr.subs.title,
@@ -686,14 +688,14 @@ export default function DashboardScreen() {
       {dataStatus === "loading" || dataStatus === "error" ? null : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
         <Card style={pairedDashboard ? { flex: 1 } : undefined}>
           <View style={pairedDashboard ? { flexGrow: 1 } : undefined}>
-            {late.map((e) => (
+            {dashboardLate.map((e) => (
               <ListRow
                 key={e.id}
                 icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
                 iconColor={palette.error}
                 title={nameOf(e)}
                 subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
-                right={
+                right={(
                   <View style={{ width: STATUS_W }}>
                     <Button
                       size="sm"
@@ -704,33 +706,31 @@ export default function DashboardScreen() {
                       onPress={() => setPaying(e)}
                     />
                   </View>
-                }
+                )}
               />
             ))}
-            {upcoming.map((u) => (
+            {dashboardUpcoming.map((u) => (
               <ListRow
                 key={u.key}
                 icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
                 iconColor={u.direction === "in" ? palette.positive : undefined}
                 title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
                 subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetween(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
-                right={
-                  u.kind === "expected" && u.expectedId ? (
-                    <View style={{ width: STATUS_W }}>
-                      <Button
-                        size="sm"
-                        label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
-                        variant="secondary"
-                        loading={confirmingId === u.expectedId}
-                        disabled={confirmingId != null}
-                        onPress={() => {
-                          const e = expected.find((x) => x.id === u.expectedId);
-                          if (e) setPaying(e);
-                        }}
-                      />
-                    </View>
-                  ) : undefined
-                }
+                right={u.kind === "expected" && u.expectedId ? (
+                  <View style={{ width: STATUS_W }}>
+                    <Button
+                      size="sm"
+                      label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                      variant="secondary"
+                      loading={confirmingId === u.expectedId}
+                      disabled={confirmingId != null}
+                      onPress={() => {
+                        const expectedItem = expected.find((item) => item.id === u.expectedId);
+                        if (expectedItem) setPaying(expectedItem);
+                      }}
+                    />
+                  </View>
+                ) : undefined}
               />
             ))}
           </View>

@@ -9,6 +9,10 @@ import { File, Paths } from "expo-file-system";
 import { getSqliteAsync } from "../db/client";
 import { SYNCED_TABLES, type SyncedTableName } from "../db/schema";
 import { fromDbShape, writeRowBatchesAtomically } from "../db/mutations";
+import { assertInvestmentWrites } from "../data/repo/investment-validation";
+import { InvestmentDomainError } from "../domain/investments";
+import { UserFacingError } from "../domain/user-error";
+import { tr } from "../i18n/tr";
 import {
   csvCell,
   ExportTextBuilder,
@@ -180,7 +184,20 @@ export async function importBundle(
   }
   // One transaction for every table: a malformed/out-of-space restore can no
   // longer leave half the backup applied.
-  await writeRowBatchesAtomically(userId, restoreBatches(), false);
+  try {
+    await writeRowBatchesAtomically(
+      userId,
+      restoreBatches(),
+      false,
+      undefined,
+      (db) => assertInvestmentWrites(db, userId, [], true).then(() => undefined),
+    );
+  } catch (error) {
+    if (error instanceof InvestmentDomainError) {
+      throw new UserFacingError(tr.errors.invalidBackupFile);
+    }
+    throw error;
+  }
   options?.onProgress?.(3, RESTORE_PHASE_COUNT);
   return { imported, skipped };
 }

@@ -142,9 +142,12 @@ export default function CashflowScreen() {
   const wide = shouldUseWideWorkspace(width);
   const router = useRouter();
   const { palette } = useTheme();
-  // Mali Tablo is row-focused by default at every width. A user's explicit
-  // choice still wins once device preferences finish loading.
-  const [mode, setMode] = useState<MatrixMode>("rows");
+  // A phone needs the category-first scan of column mode; a wide workspace has
+  // room for the year-wide row mode. Once the owner chooses, that persisted
+  // preference wins over device width on every later mount.
+  const defaultMode: MatrixMode = wide ? "rows" : "columns";
+  const [mode, setMode] = useState<MatrixMode>(defaultMode);
+  const [hasSavedMode, setHasSavedMode] = useState<boolean | null>(null);
   const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [tableAreaH, setTableAreaH] = useState(0);
@@ -152,13 +155,20 @@ export default function CashflowScreen() {
   const monthFocusScrollRef = React.useRef<ScrollView>(null);
   const tableRef = useRef<ScrollView>(null);
   React.useEffect(() => {
-    void kv.get("helix.matrix.mode").then((v) => setMode(resolveMatrixMode(v)));
+    void kv.get("helix.matrix.mode").then((v) => {
+      setHasSavedMode(Boolean(v));
+      setMode(v ? resolveMatrixMode(v) : defaultMode);
+    });
     void kv.get("helix.matrix.pinned").then((v) => {
       if (v) setPinnedKey(v);
     });
-  }, []);
+  }, [defaultMode]);
+  React.useEffect(() => {
+    if (hasSavedMode === false) setMode(defaultMode);
+  }, [defaultMode, hasSavedMode]);
   const changeMode = (v: MatrixMode) => {
     setMode(v);
+    setHasSavedMode(true);
     void kv.set("helix.matrix.mode", v);
   };
   const togglePin = (key: string) => {
@@ -188,10 +198,10 @@ export default function CashflowScreen() {
   const liveCategoryIds = new Set(categories.map((c) => c.id));
 
   const yearSwitcher = (
-    <Row gap={spacing.sm}>
-      <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={year <= minYear} />
-      <Text style={[type.heading, { color: palette.text, minWidth: 48, textAlign: "center" }]}>{year}</Text>
-      <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= maxYear} />
+    <Row testID="cash-flow-year-control" gap={spacing.sm}>
+      <IconButton size={36} icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={year <= minYear} />
+      <Text style={[type.label, { color: palette.text, minWidth: 44, textAlign: "center" }]}>{year}</Text>
+      <IconButton size={36} icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= maxYear} />
     </Row>
   );
 
@@ -209,42 +219,37 @@ export default function CashflowScreen() {
 
   return (
     <Screen title={tr.cashflow.title} right={yearSwitcher} maxWidth={wide ? 1200 : 760} scroll={false} padded>
-      {/* On phones keep the primary action full-width and every secondary tool
-          in one compact row. The matrix remains the dominant work surface. */}
       <View
         style={{
-          backgroundColor: palette.surface,
-          borderRadius: radius.lg,
-          borderWidth: 1,
-          borderColor: palette.border + "70",
-          paddingHorizontal: wide ? spacing.md : spacing.sm,
-          paddingVertical: wide ? spacing.md : spacing.sm,
+          gap: spacing.sm,
           marginBottom: spacing.sm,
         }}
       >
-      {wide ? (
-        <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
-          <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-          <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
-          <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
-          <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
-          <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} />
-          <Button icon={PiggyBank} size="sm" label={tr.cashflow.openingLink} variant="ghost" onPress={() => router.push("/opening-balance")} />
-        </Row>
-      ) : (
-        <View style={{ gap: spacing.xs }}>
-          <View>
-            <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+        {wide ? (
+          <View style={{ gap: spacing.sm }}>
+            <View style={{ alignSelf: "flex-start" }}>
+              <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+            </View>
+            <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
+              <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
+              <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
+              <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
+              <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} />
+              <Button icon={PiggyBank} size="sm" label={tr.cashflow.openingLink} variant="ghost" onPress={() => router.push("/opening-balance")} />
+            </Row>
           </View>
-          <Row gap={2} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap" }}>
-            <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} />
-            <MatrixTool icon={CreditCard} caption={tr.cashflow.toolInstallments} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
-            <MatrixTool icon={ChartNoAxesColumn} caption={tr.cashflow.toolAnalysis} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
-            <MatrixTool icon={CalendarPlus} caption={tr.cashflow.toolBulk} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
-            <MatrixTool icon={PiggyBank} caption={tr.cashflow.toolOpening} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
-          </Row>
-        </View>
-      )}
+        ) : (
+          <View style={{ gap: spacing.xs }}>
+            <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+            <Row gap={2} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap" }}>
+              <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} />
+              <MatrixTool icon={CreditCard} caption={tr.cashflow.toolInstallments} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
+              <MatrixTool icon={ChartNoAxesColumn} caption={tr.cashflow.toolAnalysis} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
+              <MatrixTool icon={CalendarPlus} caption={tr.cashflow.toolBulk} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
+              <MatrixTool icon={PiggyBank} caption={tr.cashflow.toolOpening} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
+            </Row>
+          </View>
+        )}
       </View>
 
       <DataStateNotice status={dataStatus} retry={retryData} />

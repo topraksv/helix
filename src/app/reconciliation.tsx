@@ -210,9 +210,10 @@ export default function CatchUpScreen() {
                 </Row>
               </View>
             ) : (
-              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-                <View>
+              <Row gap={spacing.xs} style={{ marginTop: spacing.md }}>
+                <View style={{ flex: 1 }}>
                   <Button
+                    size="sm"
                     label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                     loading={confirmingId === e.id}
                     disabled={confirmingId != null}
@@ -220,27 +221,29 @@ export default function CatchUpScreen() {
                     onPress={() => void confirm(e)}
                   />
                 </View>
-                <Row gap={spacing.sm}>
-                  <View style={{ flex: 1 }}>
-                    <Button
-                      label={tr.catchup.fixAmount}
-                      variant="secondary"
-                      onPress={() => confirmDiscard(() => {
-                        setEditing(e.id);
-                        setAmountRaw("");
-                        setAmountMinor(null);
-                      })}
-                    />
-                  </View>
+                <View style={{ flex: 1.45 }}>
                   <Button
+                    size="sm"
+                    label={tr.catchup.fixAmount}
+                    variant="secondary"
+                    onPress={() => confirmDiscard(() => {
+                      setEditing(e.id);
+                      setAmountRaw("");
+                      setAmountMinor(null);
+                    })}
+                  />
+                </View>
+                <View style={{ flex: 0.7 }}>
+                  <Button
+                    size="sm"
                     label={tr.common.skip}
                     variant="ghost"
                     loading={confirmingId === e.id}
                     disabled={confirmingId != null}
                     onPress={() => void skip(e)}
                   />
-                </Row>
-              </View>
+                </View>
+              </Row>
             )}
           </Card>
         ))}

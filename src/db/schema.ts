@@ -62,6 +62,49 @@ export const categories = sqliteTable("categories", {
   isTransfer: integer("is_transfer", { mode: "boolean" }).notNull().default(false),
 });
 
+/** One global investment wallet configuration per account. */
+export const investmentProfiles = sqliteTable("investment_profiles", {
+  ...syncColumns,
+  startedOn: text("started_on").notNull(),
+  openingCashMinor: integer("opening_cash_minor").notNull(),
+  setupCompleted: integer("setup_completed", { mode: "boolean" }).notNull().default(false),
+});
+
+export const investmentProducts = sqliteTable("investment_products", {
+  ...syncColumns,
+  assetType: text("asset_type", {
+    enum: ["metal", "currency", "equity", "fund", "crypto", "pension"],
+  }).notNull(),
+  name: text("name").notNull(),
+  /** Static identifier from the existing market-title catalog; never a price feed key. */
+  marketCode: text("market_code"),
+  note: text("note"),
+});
+
+export const investmentOperations = sqliteTable(
+  "investment_operations",
+  {
+    ...syncColumns,
+    productId: text("product_id").notNull(),
+    kind: text("kind", { enum: ["existing", "buy", "sell", "contribution"] }).notNull(),
+    operationDate: text("operation_date").notNull(),
+    /** Canonical positive decimal string with at most eight fractional digits. */
+    quantity: text("quantity"),
+    unitPriceMinor: integer("unit_price_minor"),
+    totalMinor: integer("total_minor").notNull(),
+    /** Populated only for sales from deterministic weighted-average replay. */
+    costBasisMinor: integer("cost_basis_minor").notNull().default(0),
+    realizedProfitLossMinor: integer("realized_profit_loss_minor").notNull().default(0),
+    note: text("note"),
+    /** Deterministic workbook row key; null for manual actions. */
+    importKey: text("import_key"),
+  },
+  (t) => [
+    index("idx_investment_operations_product_date").on(t.productId, t.operationDate),
+    index("idx_investment_operations_date").on(t.operationDate),
+  ],
+);
+
 export const computedColumns = sqliteTable("computed_columns", {
   ...syncColumns,
   name: text("name").notNull(),
@@ -286,12 +329,15 @@ export const SYNCED_TABLES = {
   persons,
   categories: categories,
   category_budgets: categoryBudgets,
+  investment_profiles: investmentProfiles,
+  investment_products: investmentProducts,
   payment_sources: paymentSources,
   computed_columns: computedColumns,
   installment_plans: installmentPlans,
   credit_card_statements: creditCardStatements,
   subscriptions,
   transactions,
+  investment_operations: investmentOperations,
   price_history: priceHistory,
   recurring_incomes: recurringIncomes,
   expected_payments: expectedPayments,

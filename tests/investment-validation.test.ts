@@ -1,0 +1,58 @@
+import { describe, expect, it } from "vitest";
+import type { SQLiteDatabase } from "expo-sqlite";
+import { assertInvestmentWrites } from "../src/data/repo/investment-validation";
+
+const USER = "11111111-1111-4111-8111-111111111111";
+
+function database(rows: Record<string, Record<string, unknown>[]>): SQLiteDatabase {
+  return {
+    getAllAsync: async (sql: string, args?: unknown[]) => {
+      expect(args).toEqual([USER]);
+      const table = sql.match(/FROM\s+(\w+)/i)?.[1];
+      return table ? rows[table] ?? [] : [];
+    },
+  } as unknown as SQLiteDatabase;
+}
+
+describe("investment owner-graph validation", () => {
+  it("uses persisted transfer semantics and the wallet cutoff, never a category name", async () => {
+    const state = await assertInvestmentWrites(database({
+      investment_profiles: [{
+        id: "profile", user_id: USER, started_on: "2026-07-01",
+        opening_cash_minor: 1_000, deleted_at: null,
+      }],
+      categories: [
+        { id: "named-only", user_id: USER, name: "Yatırım", is_transfer: 0, deleted_at: null },
+        { id: "actual-transfer", user_id: USER, name: "Birikim", is_transfer: 1, deleted_at: null },
+      ],
+      transactions: [
+        {
+          id: "name-is-not-semantics", user_id: USER, type: "transfer", status: "realized",
+          category_id: "named-only", effective_date: "2026-07-03", amount_try_minor: 9_000,
+          deleted_at: null,
+        },
+        {
+          id: "before-cutoff", user_id: USER, type: "transfer", status: "realized",
+          category_id: "actual-transfer", effective_date: "2026-06-30", amount_try_minor: 5_000,
+          deleted_at: null,
+        },
+        {
+          id: "deposit", user_id: USER, type: "transfer", status: "realized",
+          category_id: "actual-transfer", effective_date: "2026-07-03", amount_try_minor: 200,
+          deleted_at: null,
+        },
+      ],
+    }), USER, [], true);
+
+    expect(state?.cashMinor).toBe(1_200);
+  });
+
+  it("refuses live products without the account's single wallet profile", async () => {
+    await expect(assertInvestmentWrites(database({
+      investment_products: [{
+        id: "orphan", user_id: USER, asset_type: "fund", name: "Fon",
+        deleted_at: null,
+      }],
+    }), USER, [], true)).rejects.toThrow("does not exist");
+  });
+});
