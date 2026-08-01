@@ -7,6 +7,14 @@ const dependencies = vi.hoisted(() => ({
   writeRows: vi.fn(),
   writeRowsValidated: vi.fn(),
   writeSetting: vi.fn(),
+  assertLiveRow: vi.fn(async (sqlite: { getFirstAsync: (sql: string, args: unknown[]) => Promise<unknown> }, table: string, userId: string, id: string) => {
+    const row = await sqlite.getFirstAsync(`SELECT id FROM ${table} WHERE id = ? AND user_id = ? AND deleted_at IS NULL`, [id, userId]);
+    if (!row) throw new Error(`Cannot edit missing ${table} row`);
+  }),
+  assertNotTombstonedRow: vi.fn(async (sqlite: { getFirstAsync: (sql: string, args: unknown[]) => Promise<{ deleted_at: string | null } | null> }, table: string, userId: string, id: string) => {
+    const row = await sqlite.getFirstAsync(`SELECT deleted_at FROM ${table} WHERE id = ? AND user_id = ?`, [id, userId]);
+    if (row?.deleted_at != null) throw new Error(`Cannot revive deleted ${table} row through an edit`);
+  }),
   deterministicId: vi.fn(async (key: string) => `id:${key}`),
   settingRow: vi.fn(async (userId: string, key: string, value: unknown) => ({ table: "settings", row: { id: `id:setting|${userId}|${key}`, key, value: JSON.stringify(value), deletedAt: null } })),
 }));
@@ -27,6 +35,8 @@ vi.mock("../src/db/mutations", () => ({
   softDelete: vi.fn(),
   writeRows: dependencies.writeRows,
   writeRowsValidated: dependencies.writeRowsValidated,
+  assertLiveRow: dependencies.assertLiveRow,
+  assertNotTombstonedRow: dependencies.assertNotTombstonedRow,
   writeSetting: dependencies.writeSetting,
 }));
 vi.mock("../src/services/fx-fetch", () => ({ lookupRate: vi.fn() }));
@@ -93,6 +103,10 @@ describe("repository compatibility contract", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dependencies.readSetting.mockResolvedValue(null);
+    dependencies.writeRowsValidated.mockImplementation(async (userId: string, writes: unknown[], validate: (sqlite: unknown) => Promise<void>) => {
+      await validate(await dependencies.getSqliteAsync());
+      dependencies.writeRows(userId, writes);
+    });
   });
 
   it("keeps the existing runtime API available from data/repo", () => {
@@ -412,6 +426,39 @@ describe("repository compatibility contract", () => {
       { isActive: false, amountMinor: 5_990 },
     );
     expect(wrotePriceHistory).toBe(true);
+  });
+
+  it("does not revive a subscription deleted while its edit form was open", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
+        ? { id: "cat-1" }
+        : sql.includes("FROM persons")
+          ? { is_self: 1 }
+          : sql.includes("FROM subscriptions")
+            ? { amount_minor: 4_990, currency: "TRY", canceled_at: null, deleted_at: NOW }
+            : null,
+      getAllAsync: async () => [],
+    });
+
+    await expect(repository.upsertSubscription("user-1", {
+      id: "sub-1",
+      name: "Netflix",
+      amountMinor: 4_990,
+      currency: "TRY",
+      cycle: "monthly",
+      intervalMonths: 1,
+      billingDay: 5,
+      nextDueDate: "2026-08-05",
+      paymentSourceId: null,
+      categoryId: "cat-1",
+      personId: "person-1",
+      isActive: true,
+      trialEndDate: null,
+      autoPay: false,
+      websiteDomain: null,
+      note: null,
+    })).rejects.toThrow("Cannot revive deleted subscriptions row through an edit");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
   it("rejects oversized onboarding text and money before any write", async () => {

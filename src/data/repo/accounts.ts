@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { newId } from "../../db/ids";
-import { fromDbShape, nowIso, restoreRow, writeRows, type RowWrite } from "../../db/mutations";
+import { assertLiveRow, assertNotTombstonedRow, fromDbShape, nowIso, restoreRow, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { todayISO, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, statementPeriod } from "../../domain/card-statements";
@@ -69,7 +69,8 @@ export async function renamePerson(
 ): Promise<void> {
   if (!name.trim()) throw new Error("Person name is required");
   assertInputWithinLimit(name, "text");
-  await writeRows(userId, [{ table: "persons", row: { ...person, name: name.trim() } }]);
+  const writes: RowWrite[] = [{ table: "persons", row: { ...person, name: name.trim() } }];
+  await writeRowsValidated(userId, writes, (sqlite) => assertLiveRow(sqlite, "persons", userId, String(person.id)));
 }
 
 export function restorePerson(userId: string, snapshot: Record<string, unknown>): Promise<void> {
@@ -109,25 +110,28 @@ export async function upsertPaymentSource(userId: string, input: PaymentSourceIn
       )
     : null;
   const id = input.id ?? newId();
-  await writeRows(userId, [
-    {
-      table: "payment_sources",
-      row: {
-        ...(existing ? fromDbShape("payment_sources", existing) : {}),
-        id,
-        name: input.name.trim(),
-        type: input.type,
-        personId: input.personId,
-        dueDay: input.type === "credit_card" ? input.dueDay : null,
-        statementDay: input.type === "credit_card" ? input.statementDay : null,
-        color: existing?.color ?? null,
-        logoSource: existing?.logo_source ?? "initials",
-        logoRef: existing?.logo_ref ?? null,
-        isActive: existing?.is_active == null ? true : Boolean(existing.is_active),
-        deletedAt: null,
-      },
+  const writes: RowWrite[] = [{
+    table: "payment_sources",
+    row: {
+      ...(existing ? fromDbShape("payment_sources", existing) : {}),
+      id,
+      name: input.name.trim(),
+      type: input.type,
+      personId: input.personId,
+      dueDay: input.type === "credit_card" ? input.dueDay : null,
+      statementDay: input.type === "credit_card" ? input.statementDay : null,
+      color: existing?.color ?? null,
+      logoSource: existing?.logo_source ?? "initials",
+      logoRef: existing?.logo_ref ?? null,
+      isActive: existing?.is_active == null ? true : Boolean(existing.is_active),
+      deletedAt: null,
     },
-  ]);
+  }];
+  await writeRowsValidated(
+    userId,
+    writes,
+    (db) => input.id ? assertNotTombstonedRow(db, "payment_sources", userId, input.id) : Promise.resolve(),
+  );
   if (input.type === "credit_card") await repairCardStatementLinks(userId, todayISO());
   return id;
 }

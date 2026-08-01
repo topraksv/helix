@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { fromDbShape, nowIso, writeRows, type RowWrite } from "../../db/mutations";
+import { assertNotTombstonedRow, fromDbShape, nowIso, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { todayISO, type ISODate } from "../../domain/dates";
 import { generateExpected, obsoleteExpectedIds } from "../../domain/expected";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
@@ -244,7 +244,11 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
       },
     })),
   );
-  await writeRows(userId, writes);
+  await writeRowsValidated(
+    userId,
+    writes,
+    (db) => input.id ? assertNotTombstonedRow(db, "subscriptions", userId, input.id) : Promise.resolve(),
+  );
   return id;
 }
 
@@ -313,7 +317,11 @@ export async function upsertRecurringIncome(userId: string, input: RecurringInco
       },
     })),
   ];
-  await writeRows(userId, writes);
+  await writeRowsValidated(
+    userId,
+    writes,
+    (db) => input.id ? assertNotTombstonedRow(db, "recurring_incomes", userId, input.id) : Promise.resolve(),
+  );
   return id;
 }
 

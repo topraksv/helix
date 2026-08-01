@@ -1,6 +1,6 @@
 import type * as schema from "../../db/schema";
 import { newId } from "../../db/ids";
-import { restoreRow, softDelete, writeRows, writeSetting } from "../../db/mutations";
+import { assertLiveRow, assertNotTombstonedRow, restoreRow, softDelete, writeRowsValidated, writeSetting } from "../../db/mutations";
 import { parseDefinition, type ComputedColumnDefinition } from "../../domain/computed-columns";
 import { assertInputWithinLimit } from "../../domain/input";
 
@@ -14,8 +14,8 @@ export async function saveComputedColumn(
   assertInputWithinLimit(input.name, "text");
   const definition = parseDefinition(input.definition);
   const id = input.id ?? newId();
-  await writeRows(userId, [{
-    table: "computed_columns",
+  const writes = [{
+    table: "computed_columns" as const,
     row: {
       id,
       name: input.name.trim(),
@@ -23,7 +23,12 @@ export async function saveComputedColumn(
       sortOrder: input.sortOrder,
       deletedAt: null,
     },
-  }]);
+  }];
+  await writeRowsValidated(
+    userId,
+    writes,
+    (sqlite) => input.id ? assertNotTombstonedRow(sqlite, "computed_columns", userId, input.id) : Promise.resolve(),
+  );
   return id;
 }
 
@@ -53,5 +58,9 @@ export async function reorderComputedColumns(
       ? [{ table: "computed_columns" as const, row: { ...column, sortOrder } }]
       : [];
   });
-  if (writes.length > 0) await writeRows(userId, writes);
+  if (writes.length > 0) {
+    await writeRowsValidated(userId, writes, async (sqlite) => {
+      await Promise.all(writes.map((write) => assertLiveRow(sqlite, "computed_columns", userId, String(write.row.id))));
+    });
+  }
 }

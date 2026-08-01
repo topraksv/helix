@@ -108,6 +108,38 @@ export async function writeRows(userId: string, writes: RowWrite[], isUserEntry 
 
 type WriteRowsValidator = (sqlite: SQLiteDatabase) => Promise<void>;
 
+/**
+ * An edit may race a remote delete while its form is open. Keep that stale
+ * snapshot from reviving a tombstone; explicit restore flows use `restoreRow`
+ * and remain the only way to bring a deleted record back.
+ */
+export async function assertLiveRow(
+  sqlite: SQLiteDatabase,
+  table: SyncedTableName,
+  userId: string,
+  id: string,
+): Promise<void> {
+  const row = await sqlite.getFirstAsync<{ id: string }>(
+    `SELECT id FROM ${table} WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [id, userId],
+  );
+  if (!row) throw new Error(`Cannot edit missing ${table} row`);
+}
+
+/** Validate an upsert id without rejecting a genuinely new id. */
+export async function assertNotTombstonedRow(
+  sqlite: SQLiteDatabase,
+  table: SyncedTableName,
+  userId: string,
+  id: string,
+): Promise<void> {
+  const row = await sqlite.getFirstAsync<{ deleted_at: string | null }>(
+    `SELECT deleted_at FROM ${table} WHERE id = ? AND user_id = ?`,
+    [id, userId],
+  );
+  if (row?.deleted_at != null) throw new Error(`Cannot revive deleted ${table} row through an edit`);
+}
+
 /** Run a domain invariant check inside the same serialized transaction that
  * persists the proposed rows. No competing local write can land between the
  * check and the outbox-backed commit. */

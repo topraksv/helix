@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { fromDbShape, nowIso, writeRows, type RowWrite } from "../../db/mutations";
+import { assertLiveRow, fromDbShape, nowIso, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { todayISO, type ISODate, type MonthKey } from "../../domain/dates";
 import { generateSchedule } from "../../domain/installments";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
@@ -203,7 +203,11 @@ async function writePlanWithSchedule(
         })),
     );
   }
-  await writeRows(userId, writes);
+  if (preserveRealized) {
+    await writeRowsValidated(userId, writes, (sqlite) => assertLiveRow(sqlite, "installment_plans", userId, planId));
+  } else {
+    await writeRows(userId, writes);
+  }
   return keepNos;
 }
 

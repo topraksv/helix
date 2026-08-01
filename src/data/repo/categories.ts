@@ -1,6 +1,6 @@
 import type * as schema from "../../db/schema";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
+import { assertLiveRow, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { assertInputWithinLimit } from "../../domain/input";
 import { suggestCategoryIcon } from "../category-icons";
 import type { TemplateCategory } from "./onboarding";
@@ -48,7 +48,10 @@ export async function updateCategory(
   await writeRowsValidated(
     userId,
     writes,
-    (sqlite) => assertInvestmentWrites(sqlite, userId, writes).then(() => undefined),
+    async (sqlite) => {
+      await assertLiveRow(sqlite, "categories", userId, category.id);
+      await assertInvestmentWrites(sqlite, userId, writes);
+    },
   );
 }
 
@@ -68,7 +71,11 @@ export async function reorderCategoryGroup(
       ? [{ table: "categories" as const, row: { ...category, sortOrder } }]
       : [];
   });
-  if (writes.length > 0) await writeRows(userId, writes);
+  if (writes.length > 0) {
+    await writeRowsValidated(userId, writes, async (sqlite) => {
+      await Promise.all(writes.map((write) => assertLiveRow(sqlite, "categories", userId, String(write.row.id))));
+    });
+  }
 }
 
 export async function addTemplateCategories(
