@@ -1,8 +1,8 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { assertLiveRow, fromDbShape, nowIso, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
-import { todayISO, type ISODate, type MonthKey } from "../../domain/dates";
-import { generateSchedule } from "../../domain/installments";
+import { isMonthDay, isMonthKey, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
+import { generateSchedule, isValidInstallmentCount } from "../../domain/installments";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
 import { isValidCardCycle, statementForDueDate, type CardCycle, type CardStatementPeriod } from "../../domain/card-statements";
@@ -44,8 +44,19 @@ export interface NewPlan {
 export async function buildPlanRows(planId: string, input: NewPlan, today: ISODate): Promise<{ rows: RowWrite[]; keepNos: Set<number> }> {
   assertInputWithinLimit(input.title, "text");
   assertInputWithinLimit(input.note, "note");
-  if (input.totalAmountMinor != null) assertSupportedMinorAmount(input.totalAmountMinor, false);
-  if (input.monthlyAmountMinor != null) assertSupportedMinorAmount(input.monthlyAmountMinor, false);
+  if (!["card_installment", "loan"].includes(input.kind)) throw new Error("Invalid installment plan kind");
+  if (!isMonthKey(input.startMonth)) throw new Error("Invalid installment start month");
+  if (!isValidInstallmentCount(input.installmentCount)) throw new Error("Invalid installment count");
+  if (input.dueDay != null && !isMonthDay(input.dueDay)) throw new Error("Invalid installment due day");
+  if (!Number.isFinite(input.tryFactor) || input.tryFactor <= 0) throw new Error("Invalid installment FX factor");
+  if (input.totalAmountMinor != null) {
+    assertSupportedMinorAmount(input.totalAmountMinor, false);
+    if (input.totalAmountMinor < 0) throw new Error("Installment amount must be positive");
+  }
+  if (input.monthlyAmountMinor != null) {
+    assertSupportedMinorAmount(input.monthlyAmountMinor, false);
+    if (input.monthlyAmountMinor < 0) throw new Error("Installment amount must be positive");
+  }
   const schedule = generateSchedule(
     {
       id: planId,
@@ -167,6 +178,8 @@ async function writePlanWithSchedule(
     }
     cardCycle = candidate;
     resolvedInput = { ...input, dueDay: candidate.dueDay };
+  } else if (input.paymentSourceId && !(await livePaymentSource(userId, input.paymentSourceId))) {
+    throw new Error("Installment payment source does not exist");
   }
   const { rows, keepNos } = await buildPlanRows(planId, resolvedInput, todayISO());
   let writes = cardCycle && resolvedInput.paymentSourceId

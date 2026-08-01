@@ -193,6 +193,73 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
+  it("rejects a loan payment source that is not live in the current account", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM categories")) return { kind: "expense", is_transfer: 0 };
+        if (sql.includes("FROM payment_sources")) return null;
+        return null;
+      },
+      getAllAsync: async () => [],
+    });
+
+    await expect(repository.createInstallmentPlan("user-1", {
+      title: "Kredi",
+      kind: "loan",
+      totalAmountMinor: null,
+      monthlyAmountMinor: 1_000,
+      installmentCount: 2,
+      currency: "TRY",
+      fxRate: null,
+      startMonth: "2026-07",
+      dueDay: 5,
+      paymentSourceId: "source-from-another-account",
+      personId: "person-1",
+      personIsSelf: true,
+      categoryId: "category-1",
+      note: null,
+      tryFactor: 1,
+    })).rejects.toThrow("Installment payment source does not exist");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed installment values before materializing rows", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM persons")
+        ? { id: "person-1" }
+        : { kind: "expense", is_transfer: 0 },
+      getAllAsync: async () => [],
+    });
+    const input = {
+      title: "Kredi",
+      kind: "loan" as const,
+      totalAmountMinor: null,
+      monthlyAmountMinor: 10_000,
+      installmentCount: 3,
+      currency: "TRY",
+      fxRate: null,
+      startMonth: "2026-07" as const,
+      dueDay: 5,
+      paymentSourceId: null,
+      personId: "person-1",
+      personIsSelf: true,
+      categoryId: "category-1",
+      note: null,
+      tryFactor: 1,
+    };
+
+    await expect(repository.createInstallmentPlan("user-1", { ...input, startMonth: "2026-99" as never }))
+      .rejects.toThrow("Invalid installment start month");
+    await expect(repository.createInstallmentPlan("user-1", { ...input, installmentCount: 0 }))
+      .rejects.toThrow("Invalid installment count");
+    await expect(repository.createInstallmentPlan("user-1", { ...input, monthlyAmountMinor: -1 }))
+      .rejects.toThrow("Installment amount must be positive");
+    await expect(repository.createInstallmentPlan("user-1", { ...input, tryFactor: 0 }))
+      .rejects.toThrow("Invalid installment FX factor");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("does not revive a transaction deleted while its edit form was open", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) => {
