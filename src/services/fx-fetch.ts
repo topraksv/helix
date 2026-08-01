@@ -145,9 +145,11 @@ export function useFxRates(): number {
 export async function loadRateCache(userId: string): Promise<void> {
   const request = ++cacheRequest;
   const sqlite = await getSqliteAsync();
+  // Backdated entries and delayed expected payments need the last known rate
+  // on or before their own date; a global row cap would evict that history.
   const rows = await sqlite.getAllAsync<{ currency: string; rate_date: string; rate_try: string }>(
     `SELECT currency, rate_date, rate_try FROM fx_rates
-     WHERE user_id = ? AND deleted_at IS NULL ORDER BY rate_date DESC LIMIT 200`,
+     WHERE user_id = ? AND deleted_at IS NULL ORDER BY rate_date DESC`,
     [userId],
   );
   if (request !== cacheRequest) return;
