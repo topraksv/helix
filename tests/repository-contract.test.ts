@@ -153,6 +153,33 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
   });
 
+  it("does not revive a transaction deleted while its edit form was open", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM categories")) return { kind: "expense", is_transfer: 0 };
+        if (sql.includes("FROM transactions")) return null;
+        return null;
+      },
+    });
+    const input = {
+      type: "expense" as const,
+      amountMinor: 1_000,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: 1_000,
+      effectiveDate: "2026-07-15",
+      categoryId: "category-1",
+      paymentSourceId: null,
+      personId: "person-1",
+      note: null,
+    };
+
+    await expect(repository.updateTransaction("user-1", { id: "transaction-1" }, input))
+      .rejects.toThrow("Cannot edit missing transactions row");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed bulk months before constructing persisted dates", async () => {
     await expect(repository.bulkMonthEntry("user-1", "2026-7" as never, "person-1", [])).rejects.toThrow("Invalid bulk entry month");
     expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();

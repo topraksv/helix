@@ -1,6 +1,7 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import {
+  assertLiveRow,
   fromDbShape,
   nowIso,
   restoreRow,
@@ -152,11 +153,18 @@ export async function assertTransactionCategory(
   }
 }
 
-async function writeTransactionRows(userId: string, writes: RowWrite[]): Promise<void> {
+async function writeTransactionRows(
+  userId: string,
+  writes: RowWrite[],
+  validate?: (sqlite: Parameters<typeof assertLiveRow>[0]) => Promise<void>,
+): Promise<void> {
   await writeRowsValidated(
     userId,
     writes,
-    (sqlite) => assertInvestmentWrites(sqlite, userId, writes).then(() => undefined),
+    async (sqlite) => {
+      if (validate) await validate(sqlite);
+      await assertInvestmentWrites(sqlite, userId, writes);
+    },
   );
 }
 
@@ -219,20 +227,24 @@ export async function updateTransaction(
   await assertLiveTransactionPerson(userId, patch.personId);
   await assertTransactionCategory(userId, patch.type, patch.categoryId, true);
   const dates = await resolveSingleTransactionDates(userId, patch);
-  await writeTransactionRows(userId, [
-    ...(dates.statementWrite ? [dates.statementWrite] : []),
-    {
-      table: "transactions",
-      row: {
-        ...existing,
-        ...patch,
-        purchaseDate: dates.purchaseDate,
-        effectiveDate: dates.effectiveDate,
-        cardStatementId: dates.cardStatementId,
-        status: dates.effectiveDate <= todayISO() ? "realized" : "pending",
+  await writeTransactionRows(
+    userId,
+    [
+      ...(dates.statementWrite ? [dates.statementWrite] : []),
+      {
+        table: "transactions",
+        row: {
+          ...existing,
+          ...patch,
+          purchaseDate: dates.purchaseDate,
+          effectiveDate: dates.effectiveDate,
+          cardStatementId: dates.cardStatementId,
+          status: dates.effectiveDate <= todayISO() ? "realized" : "pending",
+        },
       },
-    },
-  ]);
+    ],
+    (sqlite) => assertLiveRow(sqlite, "transactions", userId, String(existing.id)),
+  );
 }
 
 export async function deleteTransaction(userId: string, id: string) {
