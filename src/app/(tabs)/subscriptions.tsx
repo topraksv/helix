@@ -5,10 +5,10 @@ import { Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { CalendarClock, MousePointerClick, Plus, RefreshCw, Repeat, Zap } from "lucide-react-native";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
-import { addDaysISO, todayISO, type ISODate } from "../../domain/dates";
+import { addDaysISO, daysBetweenISO, todayISO, type ISODate } from "../../domain/dates";
 import { formatMinor, formatMinorCompact } from "../../domain/money";
 import { shortDateLabel, tr } from "../../i18n/tr";
-import { daysBetween, usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
+import { usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
 import { combineLiveQueryStatus } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
@@ -61,7 +61,7 @@ function SubscriptionScheduleOverview({
         nextPayments[0]!.currency,
       )
     : null;
-  const nextDayOffset = nextDate == null ? null : Math.max(0, daysBetween(today, nextDate));
+  const nextDayOffset = nextDate == null ? null : Math.max(0, daysBetweenISO(today, nextDate));
   const nextLabel = nextPayments.length === 1
     ? nextPayments[0]!.name
     : tr.subs.sameDayPayments(nextPayments.length);

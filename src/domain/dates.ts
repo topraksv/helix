@@ -154,3 +154,8 @@ export function addDaysISO(date: ISODate, delta: number): ISODate {
   d.setUTCDate(d.getUTCDate() + delta);
   return d.toISOString().slice(0, 10);
 }
+
+/** Whole calendar days from `a` to `b` (b − a), independent of local timezone. */
+export function daysBetweenISO(a: ISODate, b: ISODate): number {
+  return Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
+}

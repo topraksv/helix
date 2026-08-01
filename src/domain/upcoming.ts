@@ -1,6 +1,6 @@
 /** Pure rules for the dashboard's upcoming-payment list. */
 
-import type { ISODate } from "./dates";
+import { daysBetweenISO, type ISODate } from "./dates";
 import type { CardStatementLike, ExpectedPaymentLike, TxLike } from "./types";
 import { financialFlow, projectedTransactionFlow } from "./transactions";
 
@@ -14,10 +14,6 @@ interface UpcomingCardStatement {
   cardName: string;
   amountMinor: number;
   dueDate: ISODate;
-}
-
-function daysBetween(a: ISODate, b: ISODate): number {
-  return Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
 }
 
 /**
@@ -39,7 +35,7 @@ export function standaloneUpcomingTransactions(
       (tx.paymentSourceId == null || !creditCardIds.has(tx.paymentSourceId)) &&
       tx.status === "pending" &&
       tx.effectiveDate > today &&
-      daysBetween(today, tx.effectiveDate) <= horizonDays,
+      daysBetweenISO(today, tx.effectiveDate) <= horizonDays,
   );
 }
 
@@ -74,7 +70,7 @@ export function upcomingCardStatements(
   for (const statement of statements) {
     const cardName = cardNameById.get(statement.paymentSourceId);
     if (cardName == null) continue;
-    const distance = daysBetween(today, statement.dueDate);
+    const distance = daysBetweenISO(today, statement.dueDate);
     if (distance < 0 || distance > horizonDays) continue;
     const amountMinor = amountByStatementAndCard.get(`${statement.id}\u0000${statement.paymentSourceId}`) ?? 0;
     if (amountMinor <= 0) continue;
@@ -138,7 +134,7 @@ export function buildUpcomingTimeline(input: {
   const expectedItems: UpcomingTimelineItem[] = input.expected.flatMap((row) => {
     if (row.status !== "pending" && row.status !== "late") return [];
     const late = row.status === "late" || row.dueDate < input.today;
-    if (!late && daysBetween(input.today, row.dueDate) > horizonDays) return [];
+    if (!late && daysBetweenISO(input.today, row.dueDate) > horizonDays) return [];
     const source = sourceById.get(row.refId);
     const sourceType = source?.sourceType ?? (row.kind === "recurring_income" ? "recurring_income" : "subscription");
     return [{

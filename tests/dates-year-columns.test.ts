@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDaysISO, assertISODate, clampDayToMonth, dateForMonthEntry, isISODate, isMonthDay } from "../src/domain/dates";
+import { addDaysISO, assertISODate, clampDayToMonth, dateForMonthEntry, daysBetweenISO, isISODate, isMonthDay } from "../src/domain/dates";
 import { resolveYearColumns } from "../src/domain/year-columns";
 
 describe("addDaysISO", () => {
@@ -19,6 +19,14 @@ describe("addDaysISO", () => {
 
   it("delta 0 is identity", () => {
     expect(addDaysISO("2026-07-11", 0)).toBe("2026-07-11");
+  });
+});
+
+describe("daysBetweenISO", () => {
+  it("returns signed calendar-day distance across month and leap boundaries", () => {
+    expect(daysBetweenISO("2026-07-15", "2026-07-18")).toBe(3);
+    expect(daysBetweenISO("2026-07-18", "2026-07-15")).toBe(-3);
+    expect(daysBetweenISO("2024-02-28", "2024-03-01")).toBe(2);
   });
 });
 

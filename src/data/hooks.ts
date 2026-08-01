@@ -10,7 +10,7 @@ import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
 import { buildLedger, currentBalance, resolveLedgerAnchor, type MonthLedger } from "../domain/balance";
-import { makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
+import { daysBetweenISO, makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { devError } from "../services/logger";
 import { decodeSettingValue } from "../domain/settings";
@@ -660,15 +660,10 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   };
 }
 
-/** Days between two ISO dates (b − a). */
-export function daysBetween(a: string, b: string): number {
-  return Math.round((Date.parse(`${b}T00:00:00`) - Date.parse(`${a}T00:00:00`)) / 86_400_000);
-}
-
 export function useLastEntryInfoState(): LiveValueResult<{ at: string | null; daysAgo: number | null }> {
   const settingsState = useSettingsMapState();
   const iso = settingValue<string | null>(settingsState.data, "last_entry_at", null);
   if (!iso) return { ...settingsState, data: { at: null, daysAgo: null } };
   const date = iso.slice(0, 10);
-  return { ...settingsState, data: { at: date, daysAgo: daysBetween(date, todayISO()) } };
+  return { ...settingsState, data: { at: date, daysAgo: daysBetweenISO(date, todayISO()) } };
 }
