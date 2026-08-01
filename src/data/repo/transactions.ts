@@ -57,7 +57,7 @@ export async function livePaymentSource(userId: string, sourceId: string | null)
   );
 }
 
-async function assertLiveTransactionPerson(userId: string, personId: string): Promise<void> {
+export async function assertLiveTransactionPerson(userId: string, personId: string): Promise<void> {
   const sqlite = await getSqliteAsync();
   const person = await sqlite.getFirstAsync<{ id: string }>(
     `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,

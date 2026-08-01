@@ -1,16 +1,16 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { fromDbShape, nowIso, writeRows, type RowWrite } from "../../db/mutations";
-import { todayISO, type ISODate } from "../../domain/dates";
+import { isISODate, todayISO, type ISODate } from "../../domain/dates";
 import { convertToTryMinor } from "../../domain/fx";
 import { advanceDueDate } from "../../domain/recurrence";
 import { confirmEffectiveDate } from "../../domain/expected";
-import type { Minor } from "../../domain/money";
+import { isSupportedMinorAmount, type Minor } from "../../domain/money";
 import { isValidCardCycle, statementForPurchase } from "../../domain/card-statements";
 import { lookupRate } from "../../services/fx-fetch";
 import { marketSellRateTry } from "../../services/markets";
 import { FxRateUnavailableError } from "./errors";
-import { assertSignedTransactionAmounts, assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
+import { assertLiveTransactionPerson, assertSignedTransactionAmounts, assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
 
 // Expected payments: confirm / skip / revert
 // ---------------------------------------------------------------------------
@@ -54,11 +54,33 @@ export async function confirmExpected(
   const row = await getExpectedRow(userId, expectedId);
   if (!row || (row.status !== "pending" && row.status !== "late")) return;
   const amount = opts.actualAmountMinor ?? row.amount_minor;
+  if (!isSupportedMinorAmount(amount, false)) throw new Error("Invalid expected payment amount");
+  if (!isISODate(row.due_date) || (opts.paidOn != null && !isISODate(opts.paidOn))) {
+    throw new Error("Invalid expected payment date");
+  }
+  await assertLiveTransactionPerson(userId, opts.personId);
+
+  const sqlite = await getSqliteAsync();
+  const rule = row.kind === "subscription"
+    ? await sqlite.getFirstAsync<Record<string, unknown>>(
+        `SELECT * FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+        [row.ref_id, userId],
+      )
+    : row.kind === "recurring_income"
+      ? await sqlite.getFirstAsync<Record<string, unknown>>(
+          `SELECT * FROM recurring_incomes WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+          [row.ref_id, userId],
+        )
+      : null;
+  if ((row.kind === "subscription" || row.kind === "recurring_income") && !rule) {
+    throw new Error("Expected payment source rule does not exist");
+  }
+  const categoryId = opts.categoryId ?? (rule?.category_id == null ? null : String(rule.category_id));
   await assertTransactionCategory(
     userId,
     row.direction === "in" ? "income" : "expense",
-    opts.categoryId ?? null,
-    false,
+    categoryId,
+    true,
   );
   // Deterministic id: a double-tap (or two devices auto-confirming the same
   // item) upserts the same transaction row instead of creating a duplicate.
@@ -67,19 +89,14 @@ export async function confirmExpected(
   // Ledger-affecting date: due date (once passed) / today, unless the user
   // recorded a manual/early payment via `paidOn`. See confirmEffectiveDate.
   let effectiveDate = confirmEffectiveDate(row.due_date, today, opts.paidOn);
-  const sqlite = await getSqliteAsync();
-  const sub = row.kind === "subscription"
-    ? await sqlite.getFirstAsync<Record<string, unknown>>(
-        `SELECT * FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
-        [row.ref_id, userId],
-      )
-    : null;
+  const sub = row.kind === "subscription" ? rule : null;
   const paymentSourceId = sub?.payment_source_id == null ? null : String(sub.payment_source_id);
+  const source = paymentSourceId ? await livePaymentSource(userId, paymentSourceId) : null;
+  if (paymentSourceId && !source) throw new Error("Expected payment source does not exist");
   let purchaseDate: ISODate | null = null;
   let cardStatementId: string | null = null;
   let statementWrite: RowWrite | null = null;
-  if (row.direction === "out" && paymentSourceId) {
-    const source = await livePaymentSource(userId, paymentSourceId);
+  if (row.direction === "out" && paymentSourceId && source) {
     const cycle = { statementDay: source?.statement_day, dueDay: source?.due_day };
     if (source?.type === "credit_card" && isValidCardCycle(cycle)) {
       purchaseDate = opts.paidOn ?? row.due_date;
@@ -118,7 +135,7 @@ export async function confirmExpected(
         purchaseDate,
         effectiveDate,
         status: effectiveDate <= today ? "realized" : "pending",
-        categoryId: opts.categoryId ?? null,
+        categoryId,
         paymentSourceId,
         personId: opts.personId,
         installmentPlanId: null,

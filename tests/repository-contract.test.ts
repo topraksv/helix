@@ -144,6 +144,60 @@ describe("repository compatibility contract", () => {
     expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
   });
 
+  it("rejects expected confirmations for a person outside the current account", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM expected_payments")
+        ? {
+            id: "expected-1",
+            direction: "in",
+            kind: "recurring_income",
+            ref_id: "income-1",
+            due_date: "2026-07-15",
+            amount_minor: 5_000,
+            currency: "TRY",
+            status: "pending",
+            transaction_id: null,
+          }
+        : sql.includes("FROM persons") ? null : { category_id: "income-category" },
+    });
+
+    await expect(repository.confirmExpected("user-1", "expected-1", {
+      personId: "person-from-another-account",
+      categoryId: "income-category",
+    })).rejects.toThrow("Transaction person does not exist");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("requires the live rule category when confirming an expected income", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM expected_payments")) {
+          return {
+            id: "expected-1",
+            direction: "in",
+            kind: "recurring_income",
+            ref_id: "income-1",
+            due_date: "2026-07-15",
+            amount_minor: 5_000,
+            currency: "TRY",
+            status: "pending",
+            transaction_id: null,
+          };
+        }
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM recurring_incomes")) return { category_id: null };
+        if (sql.includes("FROM categories")) return null;
+        return null;
+      },
+    });
+
+    await expect(repository.confirmExpected("user-1", "expected-1", {
+      personId: "person-1",
+      categoryId: null,
+    })).rejects.toThrow("Transaction category is required");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("deletes and restores orphaned card statements with their payment source", async () => {
     const source = {
       id: "source-1",
