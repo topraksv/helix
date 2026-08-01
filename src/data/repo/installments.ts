@@ -7,7 +7,7 @@ import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
 import { isValidCardCycle, statementForDueDate, type CardCycle, type CardStatementPeriod } from "../../domain/card-statements";
 import { CreditCardCycleRequiredError, InstallmentHistoryConflictError } from "./errors";
-import { assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
+import { assertLiveTransactionPerson, assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
 
 // Installment plans
 // ---------------------------------------------------------------------------
@@ -143,6 +143,7 @@ async function writePlanWithSchedule(
   input: NewPlan,
   preserveRealized = false,
 ): Promise<Set<number>> {
+  await assertLiveTransactionPerson(userId, input.personId);
   await assertTransactionCategory(userId, "expense", input.categoryId, false);
   const sqlite = await getSqliteAsync();
   const existingPlanTransactions = preserveRealized

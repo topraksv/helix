@@ -153,6 +153,34 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
   });
 
+  it("rejects an installment plan person that is not live in the current account", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM persons")
+        ? null
+        : { kind: "expense", is_transfer: 0 },
+      getAllAsync: async () => [],
+    });
+
+    await expect(repository.createInstallmentPlan("user-1", {
+      title: "Kredi",
+      kind: "loan",
+      totalAmountMinor: null,
+      monthlyAmountMinor: 1_000,
+      installmentCount: 2,
+      currency: "TRY",
+      fxRate: null,
+      startMonth: "2026-07",
+      dueDay: 5,
+      paymentSourceId: null,
+      personId: "person-from-another-account",
+      personIsSelf: true,
+      categoryId: "category-1",
+      note: null,
+      tryFactor: 1,
+    })).rejects.toThrow("Transaction person does not exist");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("does not revive a transaction deleted while its edit form was open", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) => {
