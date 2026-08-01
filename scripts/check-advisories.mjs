@@ -22,45 +22,7 @@ import { execFileSync } from "node:child_process";
  * Before extending this list: confirm the advisory has no compatible fix,
  * prove the package is absent from the export, and date the check.
  */
-const ACKNOWLEDGED = [
-  {
-    id: "GHSA-mh99-v99m-4gvg",
-    package: "brace-expansion",
-    checkedOn: "2026-07-29",
-    // An acceptance is a decision about a shape of the dependency tree, not a
-    // permanent pass for a package name. These are the only consumers proven
-    // to be build-time; if the advisory turns up under anything else, that
-    // path has not been examined and the gate must stop.
-    expectedPaths: ["babel-preset-expo", "eslint", "eslint-config-expo", "expo", "react-native"],
-    // Re-examine on this date whether upstream now has a compatible fix.
-    // Reachability cannot be re-proven automatically here — that needs a
-    // production export — so expiry is a deliberate, controlled failure that
-    // asks a human to look again rather than a silent renewal.
-    recheckAfter: "2026-10-29",
-    reason: [
-      "DoS via unbounded brace expansion. The advisory covers <=5.0.7 with no",
-      "backport: 5.0.8 is the only patched release, and it is not a drop-in.",
-      "v1/v2 export the expand function as module.exports; v5 exports an object",
-      "({ expand, EXPANSION_MAX, EXPANSION_MAX_LENGTH }), so forcing it into the",
-      "two consumers below makes `expand(pattern)` throw and breaks both.",
-      "",
-      "Every root is build-time tooling and none has a fixed release:",
-      "  eslint / eslint-config-expo > minimatch@3.1.5 — eslint is already the",
-      "    newest 9.x, and @eslint/eslintrc@3.3.6 (latest) still pins",
-      "    minimatch@^3.1.5. Lint only; never bundled.",
-      "  expo / react-native / babel-preset-expo > @expo/cli, @react-native/*",
-      "    > minimatch@9.0.9 — pinned by the SDK 54 matrix; bumping it belongs",
-      "    to the coordinated BACKLOG-SDK-01 upgrade. Metro and the CLI run at",
-      "    build time; the transform output contains none of it.",
-      "",
-      "Not reachable at runtime: a search of the production web export (4 JS",
-      "files, 5.4 MB) returns zero occurrences of brace-expansion, minimatch,",
-      "expandTop or EXPANSION_MAX. No application source imports either package.",
-      "It runs in eslint and the Expo CLI on a developer machine and in CI, on",
-      "patterns this repository writes itself.",
-    ].join("\n      "),
-  },
-];
+const ACKNOWLEDGED = [];
 
 const BLOCKING = new Set(["high", "critical"]);
 

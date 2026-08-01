@@ -168,11 +168,15 @@ describe("advisory gate: dependency paths and expiry", () => {
     expect(problems[0]).toContain("EXPIRED");
   });
 
-  it("requires the real acknowledgement to carry paths and an expiry", () => {
+  it("requires every real acknowledgement to carry paths and an expiry", () => {
     const source = readFileSync(resolve(process.cwd(), "scripts/check-advisories.mjs"), "utf8");
+    const list = source.match(/const ACKNOWLEDGED = (\[[\s\S]*?\]);\n\nconst BLOCKING/)?.[1];
+    expect(list).toBeDefined();
+    if (list === "[]") return;
+
     for (const field of ["expectedPaths", "recheckAfter", "checkedOn"]) {
-      expect(source, field).toContain(`${field}:`);
+      expect(list, field).toContain(`${field}:`);
     }
-    expect(source).toMatch(/recheckAfter: "\d{4}-\d{2}-\d{2}"/);
+    expect(list).toMatch(/recheckAfter: "\d{4}-\d{2}-\d{2}"/);
   });
 });
