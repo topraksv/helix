@@ -1,4 +1,5 @@
 import { parseDefinition } from "../domain/computed-columns";
+import { isISODate, todayISO } from "../domain/dates";
 import { resolveInvestmentQuote } from "../domain/investments";
 import type { SyncedTableName } from "../db/schema";
 import {
@@ -74,7 +75,8 @@ export function convertOutboundRow(
       !Number.isSafeInteger(out.opening_cash_minor)
       || Number(out.opening_cash_minor) < 0
       || typeof out.started_on !== "string"
-      || !/^\d{4}-\d{2}-\d{2}$/.test(out.started_on)
+      || !isISODate(out.started_on)
+      || out.started_on > todayISO()
     ) return { ok: false, reason: "invalid_row" };
   }
   if (table === "investment_operations") {
@@ -84,6 +86,9 @@ export function convertOutboundRow(
       || !Number.isSafeInteger(out.cost_basis_minor)
       || Number(out.cost_basis_minor) < 0
       || !Number.isSafeInteger(out.realized_profit_loss_minor)
+      || typeof out.operation_date !== "string"
+      || !isISODate(out.operation_date)
+      || out.operation_date > todayISO()
     ) return { ok: false, reason: "invalid_row" };
     if (out.quantity == null) {
       if (out.kind !== "contribution" || out.unit_price_minor != null) {

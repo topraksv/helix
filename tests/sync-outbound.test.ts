@@ -45,6 +45,7 @@ describe("outbound row conversion", () => {
       id: base.id,
       user_id: base.user_id,
       kind: "buy",
+      operation_date: "2026-07-03",
       quantity: "2",
       unit_price_minor: 10_000,
       total_minor: 20_000,
@@ -64,6 +65,43 @@ describe("outbound row conversion", () => {
       { ...investment, total_minor: 90_000 },
       investmentPolicy,
     )).toEqual({ ok: false, reason: "invalid_row" });
+  });
+
+  it("quarantines impossible or future investment dates before PostgREST", () => {
+    const profile = {
+      id: base.id,
+      user_id: base.user_id,
+      started_on: "2026-07-01",
+      opening_cash_minor: 1_000,
+    };
+    const profilePolicy = {
+      allowedColumns: new Set(Object.keys(profile)),
+      booleanColumns: new Set<string>(),
+    };
+    expect(convertOutboundRow("investment_profiles", { ...profile, started_on: "2026-02-31" }, profilePolicy))
+      .toEqual({ ok: false, reason: "invalid_row" });
+    expect(convertOutboundRow("investment_profiles", { ...profile, started_on: "2099-01-01" }, profilePolicy))
+      .toEqual({ ok: false, reason: "invalid_row" });
+
+    const operation = {
+      id: base.id,
+      user_id: base.user_id,
+      kind: "buy",
+      operation_date: "2026-07-03",
+      quantity: "2",
+      unit_price_minor: 10_000,
+      total_minor: 20_000,
+      cost_basis_minor: 0,
+      realized_profit_loss_minor: 0,
+    };
+    const operationPolicy = {
+      allowedColumns: new Set(Object.keys(operation)),
+      booleanColumns: new Set<string>(),
+    };
+    expect(convertOutboundRow("investment_operations", { ...operation, operation_date: "2026-02-31" }, operationPolicy))
+      .toEqual({ ok: false, reason: "invalid_row" });
+    expect(convertOutboundRow("investment_operations", { ...operation, operation_date: "2099-01-01" }, operationPolicy))
+      .toEqual({ ok: false, reason: "invalid_row" });
   });
 
   it("pushes an offline investment journal in deterministic replay order", () => {
