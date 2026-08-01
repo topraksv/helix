@@ -11,6 +11,8 @@ type CategoryRow = typeof schema.categories.$inferSelect;
 function validateCategory(input: Pick<CategoryRow, "name" | "kind" | "isTransfer">): void {
   if (!input.name.trim()) throw new Error("Category name is required");
   assertInputWithinLimit(input.name, "text");
+  if (input.kind !== "expense" && input.kind !== "income") throw new Error("Invalid category kind");
+  if (typeof input.isTransfer !== "boolean") throw new Error("Invalid category transfer flag");
   if (input.kind === "income" && input.isTransfer) throw new Error("Income category cannot be a transfer");
 }
 

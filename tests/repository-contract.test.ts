@@ -64,6 +64,7 @@ const publicRuntimeExports = [
   "setOpeningBalance",
   "finalizeOnboarding",
   "upsertPaymentSource",
+  "createCategory",
   "personReferenceUsage",
   "paymentSourceReferenceUsage",
   "deleteUnreferencedPerson",
@@ -154,6 +155,22 @@ describe("repository compatibility contract", () => {
       statementDay: null,
     })).rejects.toThrow("Invalid payment source type");
     expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed category classification before touching persistence", async () => {
+    await expect(repository.createCategory("user-1", {
+      name: "Bilinmeyen",
+      kind: "other" as never,
+      isTransfer: false,
+      sortOrder: 0,
+    })).rejects.toThrow("Invalid category kind");
+    await expect(repository.createCategory("user-1", {
+      name: "Bilinmeyen",
+      kind: "expense",
+      isTransfer: "yes" as never,
+      sortOrder: 0,
+    })).rejects.toThrow("Invalid category transfer flag");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
