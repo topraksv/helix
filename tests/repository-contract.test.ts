@@ -118,6 +118,32 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
+  it("rejects a transaction person that is not live in the current account", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) =>
+        sql.includes("FROM persons") ? null : { kind: "expense", is_transfer: 0 },
+    });
+    const input = {
+      type: "expense" as const,
+      amountMinor: 1_000,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: 1_000,
+      effectiveDate: "2026-07-15",
+      categoryId: "category-1",
+      paymentSourceId: null,
+      personId: "person-from-another-account",
+      note: null,
+    };
+    await expect(repository.addTransaction("user-1", input)).rejects.toThrow("Transaction person does not exist");
+    expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed bulk months before constructing persisted dates", async () => {
+    await expect(repository.bulkMonthEntry("user-1", "2026-7" as never, "person-1", [])).rejects.toThrow("Invalid bulk entry month");
+    expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
+  });
+
   it("writes a replacement opening anchor atomically", async () => {
     await repository.setOpeningBalance("user-1", "2026-07", 12_345);
     expect(dependencies.writeRows).toHaveBeenCalledTimes(1);

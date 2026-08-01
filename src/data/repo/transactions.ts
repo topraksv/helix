@@ -9,7 +9,7 @@ import {
   writeRowsValidated,
   type RowWrite,
 } from "../../db/mutations";
-import { isCurrentOrFutureMonth, isISODate, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
+import { isCurrentOrFutureMonth, isISODate, isMonthKey, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, isSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
 import type { PaymentSourceType, TransactionType } from "../../domain/types";
@@ -57,6 +57,15 @@ export async function livePaymentSource(userId: string, sourceId: string | null)
   );
 }
 
+async function assertLiveTransactionPerson(userId: string, personId: string): Promise<void> {
+  const sqlite = await getSqliteAsync();
+  const person = await sqlite.getFirstAsync<{ id: string }>(
+    `SELECT id FROM persons WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [personId, userId],
+  );
+  if (!person) throw new Error("Transaction person does not exist");
+}
+
 export async function cardStatementWrite(
   userId: string,
   paymentSourceId: string,
@@ -92,6 +101,7 @@ async function resolveSingleTransactionDates(
   statementWrite: RowWrite | null;
 }> {
   const source = await livePaymentSource(userId, input.paymentSourceId);
+  if (input.paymentSourceId && !source) throw new Error("Transaction payment source does not exist");
   if (!source || source.type !== "credit_card" || input.type !== "expense") {
     return { purchaseDate: null, effectiveDate: input.effectiveDate, cardStatementId: null, statementWrite: null };
   }
@@ -154,6 +164,7 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
   if (!isISODate(input.effectiveDate)) throw new Error("Invalid transaction date");
   assertSignedTransactionAmounts(input.amountMinor, input.amountTryMinor);
   assertInputWithinLimit(input.note, "note");
+  await assertLiveTransactionPerson(userId, input.personId);
   await assertTransactionCategory(userId, input.type, input.categoryId, true);
   const today = todayISO();
   const id = newId();
@@ -205,6 +216,7 @@ export async function updateTransaction(
   if (!isISODate(patch.effectiveDate)) throw new Error("Invalid transaction date");
   assertSignedTransactionAmounts(patch.amountMinor, patch.amountTryMinor);
   assertInputWithinLimit(patch.note, "note");
+  await assertLiveTransactionPerson(userId, patch.personId);
   await assertTransactionCategory(userId, patch.type, patch.categoryId, true);
   const dates = await resolveSingleTransactionDates(userId, patch);
   await writeTransactionRows(userId, [
@@ -326,8 +338,10 @@ export async function bulkMonthEntry(
   personId: string,
   entries: { categoryId: string; type: TransactionType; amountMinor: Minor }[],
 ): Promise<void> {
+  if (!isMonthKey(month)) throw new Error("Invalid bulk entry month");
   if (isCurrentOrFutureMonth(month)) throw new Error("Bulk history accepts past months only");
   entries.forEach((entry) => assertSupportedMinorAmount(entry.amountMinor, false));
+  await assertLiveTransactionPerson(userId, personId);
   await Promise.all(
     entries.map((entry) =>
       assertTransactionCategory(userId, entry.type, entry.categoryId, true),
