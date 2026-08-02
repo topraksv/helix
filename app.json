@@ -51,7 +51,8 @@
       [
         "expo-notifications",
         {}
-      ]
+      ],
+      "./plugins/with-ios-native-product-name.js"
     ],
     "experiments": {
       "typedRoutes": true,
