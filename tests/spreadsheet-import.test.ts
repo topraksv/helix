@@ -8,6 +8,7 @@ import {
   parseMonthLabel,
   parseSheet,
   parseSheetAmount,
+  parseWorkbookBytes,
   parseWorkbook,
   planImportCell,
   validateWorkbookContainer,
@@ -59,6 +60,22 @@ describe("workbook container preflight", () => {
   it("accepts bounded ZIP metadata and non-ZIP CSV bytes", () => {
     expect(() => validateWorkbookContainer(fakeZipSizes(1_000, 10_000))).not.toThrow();
     expect(() => validateWorkbookContainer(new TextEncoder().encode("Ay;Kira\nOcak;100"))).not.toThrow();
+  });
+
+  it("parses current SheetJS bytes without mutating the object prototype", async () => {
+    const marker = "__helix_workbook_probe__";
+    expect((Object.prototype as Record<string, unknown>)[marker]).toBeUndefined();
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([["__proto__", "constructor", "prototype"], ["x", "y", "z"]]),
+      "__proto__",
+    );
+    const bytes = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+
+    await parseWorkbookBytes(new Uint8Array(bytes));
+
+    expect((Object.prototype as Record<string, unknown>)[marker]).toBeUndefined();
   });
 });
 

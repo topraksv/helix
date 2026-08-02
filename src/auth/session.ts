@@ -11,6 +11,7 @@ import {
   clearPasswordRecoveryDetected,
   getSupabase,
   isSupabaseConfigured,
+  markPasswordRecoverySession,
   subscribeSupabaseAuthEvents,
   wasPasswordRecoveryDetected,
 } from "../sync/supabase";
@@ -338,28 +339,41 @@ export const useSession = create<SessionStore>((set, get) => ({
     const link = parsePasswordRecoveryUrl(url, target);
     if (link.kind === "expired") return "expired";
     if (link.kind === "code") {
-      const { error } = await supabase.auth.exchangeCodeForSession(link.code);
-      if (!error) return "ready";
+      const { data: exchange, error } = await supabase.auth.exchangeCodeForSession(link.code);
+      if (!error && exchange.session?.user) {
+        markPasswordRecoverySession(exchange.session.user.id);
+        return "ready";
+      }
       // On web, detectSessionInUrl may win the race and consume the one-time
       // code before this screen mounts. Accept only an observed recovery event,
       // never an unrelated existing session.
-      const { data } = await supabase.auth.getSession();
-      return data.session && wasPasswordRecoveryDetected() ? "ready" : "invalid";
+      const { data: current } = await supabase.auth.getSession();
+      return current.session && wasPasswordRecoveryDetected(current.session.user.id) ? "ready" : "invalid";
     }
     if (link.kind === "tokens") {
-      const { error } = await supabase.auth.setSession({
+      const { data, error } = await supabase.auth.setSession({
         access_token: link.accessToken,
         refresh_token: link.refreshToken,
       });
-      return error ? "invalid" : "ready";
+      if (error || !data.session?.user) return "invalid";
+      markPasswordRecoverySession(data.session.user.id);
+      return "ready";
     }
     const { data } = await supabase.auth.getSession();
-    return data.session && wasPasswordRecoveryDetected() ? "ready" : "invalid";
+    return data.session && wasPasswordRecoveryDetected(data.session.user.id) ? "ready" : "invalid";
   },
 
   completePasswordRecovery: async (newPassword) => {
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
+    const { data } = await supabase.auth.getSession();
+    const recoveryUserId = data.session?.user.id;
+    if (!recoveryUserId || !wasPasswordRecoveryDetected(recoveryUserId)) return tr.auth.resetInvalidBody;
+    if (get().userId && get().userId !== recoveryUserId) {
+      clearPasswordRecoveryDetected();
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      return tr.auth.resetInvalidBody;
+    }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return friendlyAuthError(error.message);
     clearPasswordRecoveryDetected();

@@ -26,10 +26,15 @@ export function createDiagnosticEvent(
   error: unknown,
   at = new Date(),
 ): SafeDiagnosticEvent {
-  const normalizedScope = scope.toLocaleLowerCase("en-US").replace(/[^a-z0-9_-]/g, "-").slice(0, 40);
+  // Scopes are internal labels, not user input. Reject an unexpected shape
+  // instead of sanitizing it into a persisted e-mail, path or other identifier.
+  const normalizedScope = scope.trim().toLocaleLowerCase("en-US");
+  const safeScope = /^[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)*$/.test(normalizedScope) && normalizedScope.length <= 40
+    ? normalizedScope
+    : "app";
   return {
     at: at.toISOString(),
-    scope: normalizedScope || "app",
+    scope: safeScope,
     severity,
     code: classifyDiagnostic(error),
   };

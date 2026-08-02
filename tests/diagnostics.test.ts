@@ -19,11 +19,11 @@ describe("diagnostic redaction categories", () => {
 
     expect(event).toEqual({
       at: "2026-07-18T10:00:00.000Z",
-      scope: "sync---user-example-com",
+      scope: "app",
       severity: "error",
       code: "network",
     });
     expect(Object.keys(event).sort()).toEqual(["at", "code", "scope", "severity"]);
-    expect(JSON.stringify(event)).not.toMatch(/125000|private|failed to fetch/i);
+    expect(JSON.stringify(event)).not.toMatch(/125000|private|failed to fetch|user-example-com/i);
   });
 });

@@ -18,16 +18,21 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 export const isSupabaseConfigured = Boolean(url && anonKey);
 
 let client: SupabaseClient<Database> | null = null;
-let passwordRecoveryDetected = false;
+let passwordRecoveryUserId: string | null = null;
 const authEventListeners = new Set<(event: AuthChangeEvent, session: Session | null) => void>();
 
-/** True only when Supabase itself completed a recovery URL before the route mounted. */
-export function wasPasswordRecoveryDetected(): boolean {
-  return passwordRecoveryDetected;
+/** True only for the recovery session belonging to `userId`, when supplied. */
+export function wasPasswordRecoveryDetected(userId?: string): boolean {
+  return passwordRecoveryUserId !== null && (userId === undefined || passwordRecoveryUserId === userId);
+}
+
+/** Bind a recovery flow that Supabase established through an explicit link. */
+export function markPasswordRecoverySession(userId: string): void {
+  passwordRecoveryUserId = userId;
 }
 
 export function clearPasswordRecoveryDetected(): void {
-  passwordRecoveryDetected = false;
+  passwordRecoveryUserId = null;
 }
 
 /** Subscribe without creating a second Supabase auth listener. Callbacks must
@@ -53,7 +58,12 @@ export function getSupabase(): SupabaseClient<Database> | null {
       },
     });
     client.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY") passwordRecoveryDetected = true;
+      const userId = session?.user?.id ?? null;
+      if (event === "PASSWORD_RECOVERY") {
+        passwordRecoveryUserId = userId;
+      } else if (event === "SIGNED_OUT" || (passwordRecoveryUserId && userId && userId !== passwordRecoveryUserId)) {
+        passwordRecoveryUserId = null;
+      }
       for (const listener of authEventListeners) listener(event, session);
     });
   }
