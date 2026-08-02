@@ -276,6 +276,15 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
     expect(titleBox && actionBox && actionBox.x > titleBox.x, `row ${row}: action left of title`).toBeTruthy();
   }
 
+  await page.goto("/helix/cash-flow/analytics");
+  await page.getByRole("textbox", { name: "Ara", exact: true }).fill("Arşivde olmayan işlem");
+  await expect(page.getByText("Eşleşen işlem yok.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Tüm zamanlarda ara", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Filtreleri gizle", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "Arama dönemi", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Tüm zamanlar", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+
   await page.goto("/helix/settings");
   await expect(page.getByText(/Tanılama|senkron sağlığı/i)).toHaveCount(0);
   await assertNoRuntimeErrors(errors, testInfo);

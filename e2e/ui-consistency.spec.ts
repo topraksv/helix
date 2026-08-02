@@ -362,7 +362,7 @@ test("the phone financial-table tools stay in one compact row", async ({ page })
   await expect(page.getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
   const tools = page.getByRole("button").filter({
-    has: page.locator("text=/^(Düzenle|Taksitler|Analiz|Toplu|Açılış)$/"),
+    has: page.locator("text=/^(Düzenle|Taksitler|Analiz|Geçmiş|Başlangıç)$/"),
   });
   await expect(tools).toHaveCount(5);
   const boxes = await tools.evaluateAll((elements) =>

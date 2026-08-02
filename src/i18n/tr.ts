@@ -388,8 +388,8 @@ export const tr = {
     toolEdit: "Düzenle",
     toolInstallments: "Taksitler",
     toolAnalysis: "Analiz",
-    toolBulk: "Toplu",
-    toolOpening: "Açılış",
+    toolBulk: "Geçmiş",
+    toolOpening: "Başlangıç",
   },
   tx: {
     amountDetails: "Tutar ve işlem türü",
@@ -630,6 +630,7 @@ export const tr = {
     showAllResults: (n: number) => `Tümünü göster (${n})`,
     showFewerResults: "Daha az göster",
     clearSearch: "Aramayı Temizle",
+    searchAllTime: "Tüm zamanlarda ara",
     openTransaction: "İşlemi düzenlemek için aç",
     title: "Analiz",
     period1m: "1 Ay",

@@ -356,6 +356,17 @@ export default function AnalysisScreen() {
       {searchActive && searchResults.length === 0 ? (
           <View style={{ gap: spacing.sm, paddingTop: spacing.sm }}>
             <Body muted>{tr.analysis.noResults}</Body>
+            {searchScope === "period" ? (
+              <Button
+                label={tr.analysis.searchAllTime}
+                variant="ghost"
+                size="sm"
+                onPress={() => {
+                  setSearchScope("all");
+                  setShowSearchDetails(true);
+                }}
+              />
+            ) : null}
             <Button
               label={tr.analysis.clearSearch}
               variant="ghost"
