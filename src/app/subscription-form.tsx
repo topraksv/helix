@@ -288,7 +288,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           ? dueDateInMonth(monthKeyOf(today), billingDay)
           : nextDueAfter(today, today, intervalMonths, billingDay);
     await upsertSubscription(userId, {
-      id: draftId,
+      id: existing ? draftId : undefined,
       name: name.trim(),
       amountMinor: amountMinor!,
       currency,
