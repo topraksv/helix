@@ -6,7 +6,7 @@ import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react
 import type { Distribution } from "../domain/analytics";
 import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
-import { font, radius, spacing, type, useTheme } from "./theme";
+import { chart, font, radius, spacing, type, useTheme } from "./theme";
 
 type SeriesColors = readonly [string, string, string, string, string, string, string, string];
 
@@ -106,7 +106,7 @@ export function Donut({
   const r = size / 2 - 14;
   const cx = size / 2;
   const cy = size / 2;
-  const strokeWidth = 22;
+  const strokeWidth = chart.donutWidth;
 
   const arcs: (DonutSlice & { path: string; sweep: number; end: number })[] = [];
   let start = -90;
@@ -338,7 +338,7 @@ export function Lines({
               y2={y(value)}
               stroke={palette.border}
               strokeWidth={1}
-              opacity={Math.abs(value) < 1 ? 0.55 : 0.18}
+              opacity={Math.abs(value) < 1 ? chart.baselineOpacity : chart.gridOpacity}
             />
             <SvgText
               x={padding.left - 8}
@@ -360,7 +360,7 @@ export function Lines({
             y2={padding.top + plotH}
             stroke={palette.border}
             strokeWidth={1}
-            opacity={0.12}
+            opacity={chart.gridOpacity - 0.06}
           />
         ))}
         {series.map((s) => {
@@ -377,12 +377,12 @@ export function Lines({
                 return (
                   <React.Fragment key={run[0]}>
                     <Path d={area} fill={s.color} opacity={0.12} />
-                    <Path d={line} stroke={s.color} strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d={line} stroke={s.color} strokeWidth={chart.lineWidth} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                   </React.Fragment>
                 );
               })}
               {lastIdx >= 0 ? (
-                <Circle cx={x(lastIdx)} cy={y(s.points[lastIdx]!)} r={4} fill={s.color} stroke={palette.surface} strokeWidth={2} />
+                <Circle cx={x(lastIdx)} cy={y(s.points[lastIdx]!)} r={chart.markerRadius} fill={s.color} stroke={palette.surface} strokeWidth={2} />
               ) : null}
             </React.Fragment>
           );
@@ -531,7 +531,7 @@ export function Bars({
             y={pad.top}
             width={plotW}
             height={plotH}
-            rx={radius.sm}
+            rx={chart.barRadius}
             fill={palette.surfaceAlt}
           />
           {ticks.map((value) => (
@@ -543,7 +543,7 @@ export function Bars({
                 y2={y(value)}
                 stroke={palette.border}
                 strokeWidth={Math.abs(value) < 1 ? 1.5 : 1}
-                opacity={Math.abs(value) < 1 ? 0.58 : 0.22}
+                opacity={Math.abs(value) < 1 ? chart.baselineOpacity : chart.gridOpacity + 0.04}
                 strokeDasharray={Math.abs(value) < 1 ? undefined : "3 5"}
               />
               <SvgText

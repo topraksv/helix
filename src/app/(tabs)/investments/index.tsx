@@ -43,6 +43,8 @@ import {
   DataStateNotice,
   EmptyState,
   Heading,
+  HeroCard,
+  MetricStrip,
   Row,
   Screen,
   SectionHeader,
@@ -351,7 +353,8 @@ export default function InvestmentsScreen() {
   if (ready && !profile) {
     return (
       <Screen title={tr.investments.title} maxWidth={820}>
-        <View style={{ minHeight: width >= 760 ? 420 : 340, alignItems: "center", justifyContent: "center" }}>
+        <HeroCard style={{ minHeight: width >= 760 ? 420 : 340, marginTop: spacing.md }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <View
             accessible={false}
             style={{
@@ -373,6 +376,7 @@ export default function InvestmentsScreen() {
           </Body>
           <Button icon={Sparkles} label={tr.investments.setupAction} onPress={() => router.push("/investments/setup")} />
         </View>
+        </HeroCard>
       </Screen>
     );
   }
@@ -464,7 +468,7 @@ export default function InvestmentsScreen() {
     >
       <DataStateNotice status={status} retry={retry} />
       <View testID="investment-wallet-summary">
-        <Card style={{ marginBottom: spacing.lg }}>
+        <HeroCard style={{ marginBottom: spacing.lg }}>
           {compact ? (
             <>
               {cashSummary}
@@ -480,17 +484,14 @@ export default function InvestmentsScreen() {
             <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} compact={compact} />
             <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} compact={compact} />
           </View>
-          <View style={{ flexDirection: "row", gap: compact ? spacing.sm : spacing.lg, marginTop: spacing.lg }}>
-            <Stat compact={compact} label={tr.investments.investedCost} accent={palette.primary} value={<Text style={[type.amountSm, { color: palette.text }]}>{formatMinorCompact(state.investedCostMinor)}</Text>} />
-            <Stat compact={compact} label={tr.investments.activeProducts} accent={palette.secondary} value={<Text style={[type.amountSm, { color: palette.text }]}>{active.length}</Text>} />
-            <Stat
-              compact={compact}
-              label={tr.investments.realizedResult}
-              accent={state.realizedProfitLossMinor >= 0 ? palette.positive : palette.negative}
-              value={<Text style={[type.amountSm, { color: state.realizedProfitLossMinor >= 0 ? palette.positiveText : palette.negativeText }]}>{compact ? formatMinorCompact(state.realizedProfitLossMinor) : formatMinor(state.realizedProfitLossMinor)}</Text>}
-            />
-          </View>
-        </Card>
+          <MetricStrip
+            items={[
+              { label: tr.investments.investedCost, value: <Text style={[type.amountSm, { color: palette.text }]}>{formatMinorCompact(state.investedCostMinor)}</Text> },
+              { label: tr.investments.activeProducts, value: <Text style={[type.amountSm, { color: palette.text }]}>{active.length}</Text> },
+              { label: tr.investments.realizedResult, value: <Text style={[type.amountSm, { color: state.realizedProfitLossMinor >= 0 ? palette.positiveText : palette.negativeText }]}>{compact ? formatMinorCompact(state.realizedProfitLossMinor) : formatMinor(state.realizedProfitLossMinor)}</Text> },
+            ]}
+          />
+        </HeroCard>
       </View>
 
       <View

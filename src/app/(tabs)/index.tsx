@@ -29,7 +29,7 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, HeroCard, ListRow, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, HeroCard, ListRow, MetricStrip, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
 import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
@@ -321,7 +321,6 @@ export default function DashboardScreen() {
   const hero = heroSurface(palette, scheme);
   const heroInk = hero.ink;
   const { width } = useWindowDimensions();
-  const compactDashboardStats = width < 360;
   const chartColors = useSeriesColors();
   // Re-render when FX rates land so foreign-currency projections settle.
   useFxRates();
@@ -599,28 +598,14 @@ export default function DashboardScreen() {
                 <Text style={[type.label, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 1.1, fontSize: 11 }]}>
                   {monthName(month)}
                 </Text>
-                <View style={{ flexDirection: compactDashboardStats ? "column" : "row", gap: compactDashboardStats ? spacing.xs : spacing.lg, marginTop: spacing.md }}>
-                  {[
-                    { label: tr.cashflow.income, minor: monthIncomeMinor, color: palette.positiveText },
-                    { label: tr.dashboard.outflow, minor: -monthOutflowMinor, color: palette.negativeText },
-                    { label: tr.dashboard.netChange, minor: monthNetMinor, color: palette.textStrong },
-                  ].map((stat) => (
-                    <View
-                      key={stat.label}
-                      style={compactDashboardStats
-                        ? { minWidth: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }
-                        : { flex: 1, minWidth: 0 }}
-                    >
-                      <Text style={[type.small, { color: palette.textSecondary, flexShrink: 0 }]}>{stat.label}</Text>
-                      <Amount
-                        minor={stat.minor}
-                        colorized={false}
-                        color={stat.color}
-                        style={{ textAlign: compactDashboardStats ? "right" : "left", marginTop: compactDashboardStats ? 0 : 2 }}
-                      />
-                    </View>
-                  ))}
-                </View>
+                <MetricStrip
+                  style={{ marginTop: spacing.md }}
+                  items={[
+                    { label: tr.cashflow.income, value: <Amount minor={monthIncomeMinor} colorized={false} color={palette.positiveText} style={{ textAlign: "left" }} /> },
+                    { label: tr.dashboard.outflow, value: <Amount minor={-monthOutflowMinor} colorized={false} color={palette.negativeText} style={{ textAlign: "left" }} /> },
+                    { label: tr.dashboard.netChange, value: <Amount minor={monthNetMinor} colorized={false} color={palette.textStrong} style={{ textAlign: "left" }} /> },
+                  ]}
+                />
               </View>
               <Row style={{ marginTop: spacing.lg }}>
                 <View style={{ flex: 1 }}>

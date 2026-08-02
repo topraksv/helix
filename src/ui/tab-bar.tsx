@@ -98,10 +98,10 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         padding: 2,
         flexDirection: "row",
         alignItems: "center",
-        borderRadius: radius.lg,
-        // No outline. The bar reads as a floating object from its own fill and
-        // shadow, and the surface ramp now steps far enough from the page that
-        // a hairline only added a hard edge across the bottom of every screen.
+        borderRadius: radius.md,
+        // The rail is a quiet navigation instrument, not a second card pile.
+        // A restrained outline separates it from long pages without competing
+        // with the selected destination.
         backgroundColor: glass ? palette.surfaceTranslucent : palette.surface,
         borderWidth: 1,
         borderColor: palette.border + "70",
@@ -115,7 +115,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         // for an 11px label. `primaryText` is the ink that role exists for and
         // is already proved against `primarySoft` for every palette, so the
         // selected tab reads by weight and fill rather than by hue alone.
-        const color = focused ? palette.onPrimary : palette.textSecondary;
+        const color = focused ? palette.accentText : palette.textSecondary;
         const label = options.tabBarLabel ?? options.title ?? route.name;
 
         return (
@@ -147,8 +147,10 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               gap: 1,
               borderRadius: radius.sm,
               borderWidth: focused ? 1 : 0,
-              borderColor: focused ? palette.primary + "70" : "transparent",
-              backgroundColor: focused ? palette.surfaceAlt : "transparent",
+              borderColor: focused ? palette.primary : "transparent",
+              borderBottomWidth: focused ? 2 : 0,
+              borderBottomColor: focused ? palette.primary : "transparent",
+              backgroundColor: focused ? palette.primarySoft : "transparent",
               opacity: pressed ? stateOpacity.pressed : 1,
             })}
           >
@@ -160,7 +162,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: radius.sm,
-                backgroundColor: focused ? palette.primary : "transparent",
+                backgroundColor: "transparent",
               }}
             >
               {options.tabBarIcon?.({ focused, color, size: 22 })}

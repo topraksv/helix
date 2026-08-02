@@ -114,75 +114,76 @@ const darkSemanticColors = {
  */
 
 // ---------------------------------------------------------------------------
-// Amber — reçine sıcaklığı: keten taban, pişmiş toprak, zeytin ve eskitilmiş pirinç.
+// Signal — mineral paper, ink, copper and lichen. The palette treats the
+// balance like an instrument: the field stays quiet and the signal is legible.
 // ---------------------------------------------------------------------------
 const amberLight: Palette = {
-  background: "#F1EDE8",
-  surface: "#FFFDFB",
-  surfaceTranslucent: "#FFFDFBEB",
-  surfaceAlt: "#E7DFD7",
-  surfaceHover: "#D7CCC1",
-  surfaceStrong: "#C2B2A3",
-  border: "#8B796A",
-  controlBorder: "#6D5B4D",
-  textStrong: "#2A211B",
-  text: "#3A3028",
-  textSecondary: "#62564C",
-  textMuted: "#6D6157",
-  primary: "#A55335",
-  primaryStrong: "#88432D",
-  primarySoft: "#EED8CC",
-  accentText: "#7B3A28",
-  primaryText: "#2A211B",
-  onPrimary: "#FBF4EF",
-  secondary: "#6C7047",
-  secondaryStrong: "#585C39",
-  secondarySoft: "#E2E1C9",
-  secondaryText: "#555937",
-  onSecondary: "#FAF8F0",
-  tertiary: "#91672F",
-  tertiaryStrong: "#765226",
-  tertiarySoft: "#EDDFC5",
-  tertiaryText: "#775624",
-  onTertiary: "#FBF7EE",
-  shadow: "rgba(63, 45, 34, 0.08)",
-  shadowStrong: "rgba(63, 45, 34, 0.20)",
-  scrim: "rgba(39, 29, 23, 0.52)",
+  background: "#E8EDE9",
+  surface: "#FCFDF9",
+  surfaceTranslucent: "#FCFDF9EB",
+  surfaceAlt: "#E3E9E4",
+  surfaceHover: "#D0DAD4",
+  surfaceStrong: "#B7C4BC",
+  border: "#7C8E84",
+  controlBorder: "#52665C",
+  textStrong: "#12231B",
+  text: "#22362C",
+  textSecondary: "#53675D",
+  textMuted: "#5C6D64",
+  primary: "#C8623D",
+  primaryStrong: "#9E432D",
+  primarySoft: "#F1D8CE",
+  accentText: "#93412E",
+  primaryText: "#3F2117",
+  onPrimary: "#1F100B",
+  secondary: "#477A78",
+  secondaryStrong: "#335F5D",
+  secondarySoft: "#D5E6E2",
+  secondaryText: "#335F5D",
+  onSecondary: "#F4FBF8",
+  tertiary: "#B18A3B",
+  tertiaryStrong: "#846428",
+  tertiarySoft: "#EDE3C8",
+  tertiaryText: "#745720",
+  onTertiary: "#FFF9EE",
+  shadow: "rgba(18, 35, 27, 0.10)",
+  shadowStrong: "rgba(18, 35, 27, 0.22)",
+  scrim: "rgba(11, 22, 17, 0.52)",
   ...lightSemanticColors,
 };
 
 const amberDark: Palette = {
-  background: "#090807",
-  surface: "#191512",
-  surfaceTranslucent: "#191512EB",
-  surfaceAlt: "#27211D",
-  surfaceHover: "#352D28",
-  surfaceStrong: "#473D36",
-  border: "#5F534A",
-  controlBorder: "#8F8176",
-  textStrong: "#F2ECE6",
-  text: "#E5DDD6",
-  textSecondary: "#BEB2A8",
-  textMuted: "#9D9289",
-  primary: "#D88967",
-  primaryStrong: "#BE6B4A",
-  primarySoft: "#3C2A22",
-  accentText: "#E7A68B",
-  primaryText: "#F2ECE6",
-  onPrimary: "#2C1D17",
-  secondary: "#A3A774",
-  secondaryStrong: "#898E5E",
-  secondarySoft: "#3A3B2B",
-  secondaryText: "#CED1A5",
-  onSecondary: "#25261B",
-  tertiary: "#CAA05F",
-  tertiaryStrong: "#AD8549",
-  tertiarySoft: "#443824",
-  tertiaryText: "#E3C187",
-  onTertiary: "#2D2416",
-  shadow: "rgba(9, 7, 6, 0.30)",
-  shadowStrong: "rgba(9, 7, 6, 0.50)",
-  scrim: "rgba(10, 8, 7, 0.68)",
+  background: "#081012",
+  surface: "#111C1D",
+  surfaceTranslucent: "#111C1DEB",
+  surfaceAlt: "#1C2B2B",
+  surfaceHover: "#273A38",
+  surfaceStrong: "#3A504C",
+  border: "#536D67",
+  controlBorder: "#91A9A0",
+  textStrong: "#F2F5EC",
+  text: "#E2EAE2",
+  textSecondary: "#B1C2B8",
+  textMuted: "#92A59A",
+  primary: "#E28760",
+  primaryStrong: "#C56847",
+  primarySoft: "#3A2924",
+  accentText: "#F0A383",
+  primaryText: "#FFF0E8",
+  onPrimary: "#24140E",
+  secondary: "#76B2AA",
+  secondaryStrong: "#5A928B",
+  secondarySoft: "#213C3A",
+  secondaryText: "#B1D5CE",
+  onSecondary: "#0F211F",
+  tertiary: "#D1AA5D",
+  tertiaryStrong: "#B28A43",
+  tertiarySoft: "#3B3221",
+  tertiaryText: "#E4C982",
+  onTertiary: "#201A0F",
+  shadow: "rgba(0, 0, 0, 0.34)",
+  shadowStrong: "rgba(0, 0, 0, 0.56)",
+  scrim: "rgba(5, 12, 13, 0.72)",
   ...darkSemanticColors,
 };
 
@@ -362,6 +363,36 @@ export const scrim = lightPalette.scrim;
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 // Crisp ledger geometry: enough softness for touch, never a stack of bubbles.
 export const radius = { sm: 8, md: 10, lg: 14, xl: 18, full: 999 } as const;
+
+/** Context-specific rhythm keeps a dashboard breathable without making a
+ * financial table wasteful or turning settings into a dense control panel. */
+export const density = {
+  dashboard: { sectionGap: spacing.xl, cardPadding: spacing.xl, rowGap: spacing.md },
+  list: { sectionGap: spacing.lg, cardPadding: spacing.md, rowGap: spacing.sm },
+  settings: { sectionGap: spacing.lg, cardPadding: spacing.md, rowGap: spacing.xs },
+  analytics: { sectionGap: spacing.lg, cardPadding: spacing.lg, rowGap: spacing.sm },
+} as const;
+
+/** Named motion families. A duration belongs to a user-perceived event, not a
+ * screen's private taste. Reduced motion still short-circuits every family. */
+export const motion = {
+  feedback: 120,
+  standard: 220,
+  sheet: 320,
+  settle: 420,
+  waiting: 1600,
+} as const;
+
+/** Shared chart grammar: series meaning is chosen by the caller, geometry is
+ * chosen here. The palette supplies semantic colors; charts never invent one. */
+export const chart = {
+  gridOpacity: 0.18,
+  baselineOpacity: 0.58,
+  lineWidth: 2.5,
+  donutWidth: 20,
+  markerRadius: 4,
+  barRadius: 4,
+} as const;
 
 /** Shared control geometry. Keep compact visual controls distinct from the
  *  minimum interactive target: compact buttons use hitSlop to reach 44pt. */

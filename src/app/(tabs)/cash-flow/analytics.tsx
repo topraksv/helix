@@ -24,7 +24,7 @@ import {
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { categoryIcon, paymentSourceIcon } from "../../../data/category-icons";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
@@ -384,6 +384,14 @@ export default function AnalysisScreen() {
       ) : null}
       </Card>
       </View>
+      <MetricStrip
+        style={{ marginBottom: spacing.lg }}
+        items={[
+          { label: tr.cashflow.income, value: <Amount minor={periodDistribution.incomeTotalMinor} colorized={false} color={palette.positiveText} style={{ textAlign: "left" }} /> },
+          { label: tr.cashflow.expense, value: <Amount minor={-periodDistribution.expenseTotalMinor} colorized={false} color={palette.negativeText} style={{ textAlign: "left" }} /> },
+          { label: tr.cashflow.transfer, value: <Amount minor={-periodDistribution.transferTotalMinor} colorized={false} color={palette.secondaryText} style={{ textAlign: "left" }} /> },
+        ]}
+      />
     </View>
   );
 

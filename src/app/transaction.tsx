@@ -30,7 +30,7 @@ import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, Card, DataStateNotice, Divider, Field, Label, MonthStepper, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
+import { Badge, Body, Button, Card, DataStateNotice, Divider, Field, HeroCard, Label, MonthStepper, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -574,7 +574,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       <WorkspaceSplit
         testID="transaction-workspace"
         primary={(
-      <Card>
+      <HeroCard>
       <PanelHeader icon={WalletCards} title={tr.tx.amountDetails} description={tr.tx.amountDetailsHint} />
       <View
         role="radiogroup"
@@ -711,7 +711,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       ) : null}
 
       <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
-      </Card>
+      </HeroCard>
         )}
         secondary={(
       <Card>

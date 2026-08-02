@@ -17,6 +17,38 @@ import { modalAnimationType } from "../src/ui/modal-motion";
 
 const root = process.cwd();
 
+const canonicalPresentationFiles = [
+  "src/ui/components.tsx",
+  "src/ui/charts.tsx",
+  "src/ui/header-bar.tsx",
+  "src/ui/tab-bar.tsx",
+] as const;
+
+// Small measured micro-insets (for example a chart marker offset) are allowed;
+// a new layout rhythm value still has to come from the shared scale.
+const allowedSpacingValues = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 17, 24, 32, 36, 42, 44, 46, 48]);
+
+function presentationViolations(source: string, path: string): string[] {
+  const violations: string[] = [];
+  const lineAt = (index: number) => source.slice(0, index).split("\n").length;
+  const rawColor = /\b(?:color|backgroundColor|borderColor|shadowColor|tintColor|fill|stroke):\s*["'](?:#|rgba?\()/g;
+  for (const match of source.matchAll(rawColor)) {
+    violations.push(`${path}:${lineAt(match.index!)} raw color`);
+  }
+
+  const spacing = /\b(?:padding(?:Top|Bottom|Left|Right|Horizontal|Vertical)?|margin(?:Top|Bottom|Left|Right|Horizontal|Vertical)?|gap|rowGap|columnGap):\s*(-?\d+(?:\.\d+)?)/g;
+  for (const match of source.matchAll(spacing)) {
+    if (!allowedSpacingValues.has(Number(match[1]))) {
+      violations.push(`${path}:${lineAt(match.index!)} off-scale spacing ${match[1]}`);
+    }
+  }
+
+  for (const obsolete of ["AnimatedPressable", "useSpringPress"]) {
+    if (source.includes(obsolete)) violations.push(`${path} obsolete primitive ${obsolete}`);
+  }
+  return violations;
+}
+
 function sourceFiles(directory: string): string[] {
   return readdirSync(join(root, directory), { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -156,6 +188,23 @@ describe("interaction feedback contracts", () => {
       const source = readFileSync(join(root, path), "utf8");
       expect(source, path).not.toMatch(/<Card[^>]*borderColor: palette\.(?:success|warning|error)/);
     }
+  });
+
+  it("keeps shared presentation code on tokens and rejects injected violations", () => {
+    const current = canonicalPresentationFiles.flatMap((path) =>
+      presentationViolations(readFileSync(join(root, path), "utf8"), path),
+    );
+    expect(current).toEqual([]);
+
+    const injected = presentationViolations(
+      'const bad = { backgroundColor: "#123456", padding: 13, component: AnimatedPressable };',
+      "injected.tsx",
+    );
+    expect(injected).toEqual([
+      "injected.tsx:1 raw color",
+      "injected.tsx:1 off-scale spacing 13",
+      "injected.tsx obsolete primitive AnimatedPressable",
+    ]);
   });
 });
 

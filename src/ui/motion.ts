@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { AccessibilityInfo, Animated, Easing, type EmitterSubscription } from "react-native";
+import { motion } from "./theme";
 
 let reducedMotion = false;
 let nativeSubscription: EmitterSubscription | null = null;
@@ -70,7 +71,6 @@ export function useReduceTransparency(): boolean {
 }
 
 /** One dim-and-return of a waiting caption. */
-const WAITING_PULSE_MS = 1600;
 /**
  * The dimmest a waiting caption may go.
  *
@@ -99,7 +99,7 @@ export function useWaitingPulse(): Animated.Value {
     const step = (toValue: number) =>
       Animated.timing(pulse, {
         toValue,
-        duration: WAITING_PULSE_MS / 2,
+        duration: motion.waiting / 2,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       });

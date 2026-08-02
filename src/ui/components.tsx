@@ -37,6 +37,7 @@ import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./
 import {
   borderWidth,
   controlSize,
+  density,
   font,
   generatedBadgeForeground,
   heroSurface,
@@ -268,9 +269,10 @@ export function Card({
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: toneColor ? toneColor + "66" : palette.border + "70",
       borderRadius: radius.lg,
-      padding: padded ? spacing.lg : 0,
+      padding: padded ? density.list.cardPadding : 0,
       marginBottom: spacing.md,
       overflow: "hidden",
+      borderCurve: "continuous",
     },
   ];
   if (onPress) {
@@ -298,16 +300,54 @@ export function HeroCard({ children, style }: { children: ReactNode; style?: Sty
         {
           backgroundColor: heroSurface(palette, scheme).fill,
           borderRadius: radius.lg,
-          padding: spacing.xl,
+          padding: density.dashboard.cardPadding,
           marginBottom: spacing.md,
           overflow: "hidden",
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: palette.border + "70",
+          borderWidth: 1,
+          borderColor: palette.primary + "72",
+          borderTopWidth: 3,
+          borderTopColor: palette.primary,
+          borderCurve: "continuous",
         },
         style,
       ]}
     >
       {children}
+    </View>
+  );
+}
+
+/** Shared, unboxed metric rail. The values stay in a predictable row while
+ * surrounding screens decide whether the rail belongs to a hero, chart or
+ * portfolio surface. */
+export function MetricStrip({
+  items,
+  style,
+}: {
+    items: { label: string; value: ReactNode }[];
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const compact = width < 360;
+  return (
+    <View style={[{ flexDirection: compact ? "column" : "row", flexWrap: compact ? "nowrap" : "wrap", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, marginTop: spacing.lg }, style]}>
+      {items.map((item, index) => (
+        <View
+          key={item.label}
+          style={{
+            flex: compact ? undefined : 1,
+            flexBasis: compact ? undefined : 112,
+            width: compact ? "100%" : undefined,
+            minWidth: 0,
+            paddingTop: spacing.sm,
+            paddingRight: compact || index === items.length - 1 ? 0 : spacing.md,
+          }}
+        >
+          <Text style={[type.small, { color: palette.textSecondary }]}>{item.label}</Text>
+          <View style={{ marginTop: 2 }}>{item.value}</View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -364,8 +404,9 @@ export function SectionHeader({
 }) {
   const { palette } = useTheme();
   return (
-    <View style={{ marginBottom: spacing.sm, marginTop: spacing.md }}>
+    <View style={{ marginBottom: spacing.sm, marginTop: density.list.sectionGap }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+        <View accessible={false} style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: palette.primary }} />
         <Text
           accessibilityRole="header"
           style={[
@@ -409,10 +450,12 @@ export function PanelHeader({
         style={{
           width: 36,
           height: 36,
-          borderRadius: 12,
+          borderRadius: radius.sm,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: palette.surfaceAlt,
+          backgroundColor: palette.primarySoft,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.primary + "72",
         }}
       >
         <IconCmp accessible={false} size={17} color={palette.accentText} strokeWidth={2} />
@@ -465,6 +508,7 @@ export function Amount({
   };
   return (
     <Text
+      selectable
       accessibilityLabel={formatted}
       onTextLayout={(event) => {
         if (event.nativeEvent.lines.length <= 1) return;
@@ -567,6 +611,7 @@ export function Button({
         {
           backgroundColor: pressed && !visuallyDisabled ? pressedBackground : colors.background,
           borderRadius: radius.md,
+          borderCurve: "continuous",
           paddingVertical: small ? spacing.sm : spacing.md + 1,
           paddingHorizontal: small ? spacing.md : spacing.lg,
           minHeight: small ? controlSize.compact : controlSize.regular,

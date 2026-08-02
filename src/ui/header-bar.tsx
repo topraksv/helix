@@ -45,13 +45,13 @@ function HeaderBar({
   return (
     <View
       style={{
-        backgroundColor: palette.background,
+        backgroundColor: palette.surface,
         paddingTop: topInset ? insets.top : 0,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: palette.border + "70",
+        borderBottomColor: palette.primary + "55",
       }}
     >
-      <View style={{ minHeight: HEADER_ROW_HEIGHT, flexDirection: "row", alignItems: "center" }}>
+      <View style={{ minHeight: HEADER_ROW_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm }}>
         {left}
         {title ? (
           // The screen title is the page's heading, exactly as the native
@@ -60,7 +60,7 @@ function HeaderBar({
           <Text
             accessibilityRole="header"
             style={[
-              type.heading,
+              type.title,
               {
                 color: palette.textStrong,
                 fontFamily: font.semibold,
