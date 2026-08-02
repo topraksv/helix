@@ -32,6 +32,11 @@ describe("sync merge policy", () => {
     expect(shouldApplyServerAck(8, null)).toBe(true);
   });
 
+  it("accepts equal server timestamps for idempotent convergence", () => {
+    const stamp = "2026-07-15T10:00:00.000Z";
+    expect(remoteWinsLww(stamp, stamp)).toBe(true);
+  });
+
   it("lets a valid remote timestamp repair a corrupt local clock value", () => {
     expect(remoteWinsLww("not-a-date", "2026-07-15T10:00:00.000Z")).toBe(true);
     expect(remoteWinsLww("2099-01-01T00:00:00.000Z", "2026-07-15T10:00:00.000Z")).toBe(false);

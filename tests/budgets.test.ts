@@ -4,7 +4,9 @@ import type { TxLike } from "../src/domain/types";
 
 const dependencies = vi.hoisted(() => ({
   getSqliteAsync: vi.fn(),
+  assertLiveRow: vi.fn(),
   writeRows: vi.fn(),
+  restoreRow: vi.fn(),
   restoreRows: vi.fn(),
 }));
 vi.mock("../src/db/client", () => ({ getSqliteAsync: dependencies.getSqliteAsync }));
@@ -13,14 +15,16 @@ vi.mock("../src/db/ids", () => ({
   naturalKeys: { categoryBudget: (...parts: unknown[]) => parts.join("|") },
 }));
 vi.mock("../src/db/mutations", () => ({
+  assertLiveRow: dependencies.assertLiveRow,
   fromDbShape: (_table: string, row: Record<string, unknown>) => row,
   nowIso: () => "2026-07-18T00:00:00.000Z",
   softDelete: vi.fn(),
   writeRows: dependencies.writeRows,
+  restoreRow: dependencies.restoreRow,
   restoreRows: dependencies.restoreRows,
 }));
 
-import { deleteCategoryWithBudgets, restoreCategoryWithBudgets, upsertCategoryBudget } from "../src/data/repo/budgets";
+import { deleteCategoryWithBudgets, restoreCategoryBudget, restoreCategoryWithBudgets, upsertCategoryBudget } from "../src/data/repo/budgets";
 
 const tx = (id: string, categoryId: string, amountTryMinor: number, effectiveDate = "2026-07-10"): TxLike => ({
   id, type: "expense", amountTryMinor, effectiveDate, status: "realized", categoryId,
@@ -71,6 +75,22 @@ describe("category deletion cascades to its budgets", () => {
     expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
     const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
     expect(writes.map((write) => write.row.deletedAt)).toEqual([null, null]);
+  });
+
+  it("does not restore a budget after its parent category was deleted", async () => {
+    const sqlite = { getFirstAsync: vi.fn(async () => null) };
+    dependencies.getSqliteAsync.mockResolvedValue(sqlite);
+    dependencies.assertLiveRow.mockImplementation(async () => {
+      throw new Error("Cannot edit missing categories row");
+    });
+    dependencies.restoreRows.mockImplementation(async (_userId: string, _writes: unknown[], validate?: (db: unknown) => Promise<void>) => {
+      await validate?.(sqlite);
+    });
+
+    await expect(restoreCategoryBudget("user-1", {
+      id: "budget-1", userId: "user-1", categoryId: "cat-1", deletedAt: "x",
+    })).rejects.toThrow("Cannot edit missing categories row");
+    expect(dependencies.restoreRow).not.toHaveBeenCalled();
   });
 });
 

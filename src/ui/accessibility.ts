@@ -45,6 +45,9 @@ export function useModalAccessibility(
     const webPrevious = Platform.OS === "web" && typeof document !== "undefined"
       ? document.activeElement as HTMLElement | null
       : null;
+    const webModal = Platform.OS === "web" && typeof document !== "undefined"
+      ? (titleRef.current as unknown as HTMLElement | null)?.closest<HTMLElement>('[aria-modal="true"]') ?? null
+      : null;
     const returnTarget = returnFocusRef?.current;
     // The web modal already exists by the time this effect runs. Delaying its
     // focus lets the browser's own modal autofocus win briefly, so a quick Tab
@@ -82,6 +85,19 @@ export function useModalAccessibility(
       if (trapFocus) document.removeEventListener("keydown", trapFocus, true);
       releaseOverlay();
       setTimeout(() => {
+        // Closing a modal normally returns focus to its trigger. Do not steal
+        // focus from a user action that already moved elsewhere in the same
+        // tick; the old unconditional timer could reopen a select when Enter
+        // immediately followed a selection.
+        const active = Platform.OS === "web" && typeof document !== "undefined"
+          ? document.activeElement as HTMLElement | null
+          : null;
+        const focusMoved = Platform.OS === "web"
+          && active != null
+          && active !== document.body
+          && active !== document.documentElement
+          && !webModal?.contains(active);
+        if (focusMoved) return;
         if (returnTarget) moveAccessibilityFocus(returnTarget);
         else webPrevious?.focus?.();
       }, 0);

@@ -84,4 +84,13 @@ describe("investment owner-graph validation", () => {
       }],
     }), USER, [], true)).rejects.toThrow("does not exist");
   });
+
+  it("refuses a wallet profile that starts in the future", async () => {
+    await expect(assertInvestmentWrites(database({
+      investment_profiles: [{
+        id: "profile", user_id: USER, started_on: "2999-01-01",
+        opening_cash_minor: 1_000, deleted_at: null,
+      }],
+    }), USER, [], true)).rejects.toThrow("invalid investment money");
+  });
 });

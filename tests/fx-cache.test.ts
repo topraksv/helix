@@ -53,5 +53,10 @@ describe("FX cache history", () => {
       rate: { currency: "USD", rateDate: "2025-01-01", rateTry: 39 },
       isStale: true,
     });
+    expect(lookupRate("user-1", "USD", "2026-01-01")).toEqual({
+      rate: { currency: "USD", rateDate: "2026-01-01", rateTry: 40 },
+      isStale: false,
+    });
+    expect(lookupRate("user-1", "USD", "2024-12-31")).toBeNull();
   });
 });

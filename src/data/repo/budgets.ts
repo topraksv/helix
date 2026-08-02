@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
-import { fromDbShape, nowIso, restoreRow, restoreRows, softDelete, writeRows } from "../../db/mutations";
+import { assertLiveRow, fromDbShape, nowIso, restoreRows, softDelete, writeRows } from "../../db/mutations";
 import { isMonthKey, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 
@@ -37,7 +37,12 @@ export function deleteCategoryBudget(userId: string, id: string) {
 }
 
 export function restoreCategoryBudget(userId: string, snapshot: Record<string, unknown>): Promise<void> {
-  return restoreRow(userId, "category_budgets", snapshot);
+  const row: Record<string, unknown> = { ...fromDbShape("category_budgets", snapshot), deletedAt: null };
+  return restoreRows(
+    userId,
+    [{ table: "category_budgets", row }],
+    (sqlite) => assertLiveRow(sqlite, "categories", userId, String(row["categoryId"])),
+  );
 }
 
 export interface CategoryDeleteSnapshot {

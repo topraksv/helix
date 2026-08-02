@@ -32,6 +32,14 @@ describe("Turkish locale and calendar boundaries", () => {
     expect(addDaysISO("2026-10-24", 1)).toBe("2026-10-25");
   });
 
+  it("keeps interval schedules identical across host timezones", () => {
+    const expected = ["2026-03-29", "2026-04-05", "2026-04-12", "2026-04-19"];
+    for (const timezone of ["UTC", "Europe/Istanbul", "America/New_York", "Pacific/Auckland"]) {
+      process.env.TZ = timezone;
+      expect(dayIntervalDatesInRange("2026-03-01", 7, "2026-03-29", "2026-04-19")).toEqual(expected);
+    }
+  });
+
   it("generates weekly and biweekly income dates across month boundaries", () => {
     expect(dayIntervalDatesInRange("2026-01-28", 7, "2026-02-01", "2026-02-28")).toEqual([
       "2026-02-04",

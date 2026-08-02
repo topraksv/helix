@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { addDaysISO, assertISODate, clampDayToMonth, dateForMonthEntry, daysBetweenISO, isISODate, isMonthDay } from "../src/domain/dates";
+import {
+  addDaysISO,
+  addMonthsToKey,
+  assertISODate,
+  clampDayToMonth,
+  dateForMonthEntry,
+  daysBetweenISO,
+  daysInMonth,
+  firstDayOf,
+  isISODate,
+  isMonthDay,
+  lastDayOf,
+  makeMonthKey,
+  monthRange,
+} from "../src/domain/dates";
 import { resolveYearColumns } from "../src/domain/year-columns";
 
 describe("addDaysISO", () => {
@@ -19,6 +33,23 @@ describe("addDaysISO", () => {
 
   it("delta 0 is identity", () => {
     expect(addDaysISO("2026-07-11", 0)).toBe("2026-07-11");
+  });
+
+  it("preserves month/day algebra across the full 400-year Gregorian cycle", () => {
+    for (let year = 2000; year < 2400; year += 1) {
+      for (let month = 1; month <= 12; month += 1) {
+        const key = makeMonthKey(year, month);
+        const next = addMonthsToKey(key, 1);
+        const first = firstDayOf(key);
+        const nextFirst = firstDayOf(next);
+        const last = lastDayOf(key);
+
+        expect(monthRange(key, next)).toEqual([key, next]);
+        expect(isISODate(last)).toBe(true);
+        expect(addDaysISO(last, 1)).toBe(nextFirst);
+        expect(daysBetweenISO(first, nextFirst)).toBe(daysInMonth(year, month));
+      }
+    }
   });
 });
 

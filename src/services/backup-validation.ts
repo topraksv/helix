@@ -5,7 +5,7 @@ import { resolveInvestmentQuote } from "../domain/investments";
 import { isSupportedMinorAmount } from "../domain/money";
 import { MAX_INSTALLMENT_COUNT } from "../domain/installments";
 import { isValidCardCycle } from "../domain/card-statements";
-import { isMonthKey } from "../domain/dates";
+import { isMonthKey, todayISO } from "../domain/dates";
 import { isSupportedCurrency } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
@@ -123,6 +123,7 @@ function isSupportedRate(value: unknown): boolean {
 
 /** Validate a restore row completely before any database write begins. */
 export function isValidImportRow(table: SyncedTableName, raw: Record<string, unknown>): boolean {
+  const today = todayISO();
   if (typeof raw.id !== "string" || !UUID_RE.test(raw.id)) return false;
   for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
     const value = raw[column.name];
@@ -218,7 +219,9 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
   }
   if (table === "investment_profiles") {
     if (
-      typeof raw.opening_cash_minor !== "number"
+      typeof raw.started_on !== "string"
+      || raw.started_on > today
+      || typeof raw.opening_cash_minor !== "number"
       || raw.opening_cash_minor < 0
       || !isSupportedMinorAmount(raw.opening_cash_minor)
     ) return false;
@@ -233,6 +236,8 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
   if (table === "investment_operations") {
     if (
       !["existing", "buy", "sell", "contribution"].includes(String(raw.kind))
+      || typeof raw.operation_date !== "string"
+      || raw.operation_date > today
       || typeof raw.total_minor !== "number"
       || raw.total_minor <= 0
       || typeof raw.cost_basis_minor !== "number"

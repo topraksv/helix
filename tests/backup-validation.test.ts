@@ -150,8 +150,10 @@ describe("backup validation", () => {
       cost_basis_minor: 0, realized_profit_loss_minor: 0, note: null, import_key: null,
     };
     expect(isValidImportRow("investment_profiles", profile)).toBe(true);
+    expect(isValidImportRow("investment_profiles", { ...profile, started_on: "2999-01-01" })).toBe(false);
     expect(isValidImportRow("investment_products", product)).toBe(true);
     expect(isValidImportRow("investment_operations", operation)).toBe(true);
+    expect(isValidImportRow("investment_operations", { ...operation, operation_date: "2999-01-01" })).toBe(false);
     expect(isValidImportRow("investment_operations", { ...operation, total_minor: 900_000 })).toBe(false);
     expect(() => validateBundleRelationships(validateExportBundle({
       version: 1,

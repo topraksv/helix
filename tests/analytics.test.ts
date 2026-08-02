@@ -39,6 +39,19 @@ describe("categoryMonthMatrix + YTD", () => {
     expect(series.map((p) => p.amountMinor)).toEqual([140_00, 150_00, 0]);
   });
 
+  it("keeps December and January in their own calendar buckets", () => {
+    const matrix = categoryMonthMatrix([
+      tx({ type: "expense", amountTryMinor: 10_00, effectiveDate: "2025-12-31", categoryId: "kk" }),
+      tx({ type: "expense", amountTryMinor: 20_00, effectiveDate: "2026-01-01", categoryId: "kk" }),
+      tx({ type: "expense", amountTryMinor: 30_00, effectiveDate: "2026-12-31", categoryId: "kk" }),
+    ], 2026, "2026-12-31");
+    expect([...matrix.get("kk")!.monthly.entries()]).toEqual([
+      ["2026-01", 20_00],
+      ["2026-12", 30_00],
+    ]);
+    expect(matrix.get("kk")!.ytdMinor).toBe(50_00);
+  });
+
   it("does not count transfer categories as income or expense analytics", () => {
     const matrix = categoryMonthMatrix(
       [tx({ type: "transfer", amountTryMinor: 1_000_00, effectiveDate: "2026-02-10", categoryId: "yatirim" })],

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { daysInMonth, isISODate } from "../src/domain/dates";
 import { advanceDueDate, dueDatesInRange, nextDueAfter } from "../src/domain/recurrence";
 
 describe("advanceDueDate — month-end clamping", () => {
@@ -56,6 +57,31 @@ describe("dueDatesInRange", () => {
     const dates = dueDatesInRange("1900-01-10", 1, 10, "1900-01-01", "3000-01-01");
     expect(dates.length).toBeLessThanOrEqual(6000);
     expect(dates[0]).toBe("1900-01-10");
+  });
+
+  it("keeps leap/year schedules strictly increasing for every month-end sentinel", () => {
+    for (const billingDay of [28, 29, 30, 31]) {
+      for (const intervalMonths of [1, 2, 3, 12]) {
+        const dates = dueDatesInRange(
+          `2000-01-${String(billingDay).padStart(2, "0")}`,
+          intervalMonths,
+          billingDay,
+          "2000-01-01",
+          "2400-12-31",
+        );
+        expect(dates.length).toBeGreaterThan(0);
+        expect(new Set(dates).size).toBe(dates.length);
+        for (let index = 0; index < dates.length; index += 1) {
+          const date = dates[index]!;
+          expect(isISODate(date)).toBe(true);
+          if (index > 0) expect(dates[index - 1]! < date).toBe(true);
+          const year = Number(date.slice(0, 4));
+          const month = Number(date.slice(5, 7));
+          const day = Number(date.slice(8, 10));
+          expect(day).toBe(Math.min(billingDay, daysInMonth(year, month)));
+        }
+      }
+    }
   });
 });
 

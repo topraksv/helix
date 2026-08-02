@@ -78,7 +78,12 @@ export async function assertInvestmentWrites(
   const profile = profiles[0]!;
   const startedOn = value<string>(profile, "startedOn", "started_on");
   const openingCashMinor = value<number>(profile, "openingCashMinor", "opening_cash_minor");
-  if (!isISODate(startedOn) || !isSupportedMinorAmount(openingCashMinor) || openingCashMinor < 0) {
+  if (
+    !isISODate(startedOn)
+    || startedOn > todayISO()
+    || !isSupportedMinorAmount(openingCashMinor)
+    || openingCashMinor < 0
+  ) {
     throw new InvestmentDomainError("invalid_money");
   }
 
