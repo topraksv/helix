@@ -68,10 +68,10 @@ describe("operation progress language", () => {
 
   it("gives sign-in, sign-out, freeze and deletion different motion signatures", () => {
     const source = readFileSync(join(process.cwd(), "src/ui/operation-flow.tsx"), "utf8");
-    expect(source).toContain('"sign-in": [KeyRound, "focus"]');
-    expect(source).toContain('"sign-out": [LogOut, "leave"]');
-    expect(source).toContain('freeze: [Snowflake, "turn"]');
-    expect(source).toContain('delete: [Trash2, "drop", true]');
+    expect(source).toContain('"sign-in": [KeyRound, "focus", "primary"]');
+    expect(source).toContain('"sign-out": [LogOut, "leave", "secondary"]');
+    expect(source).toContain('freeze: [Snowflake, "turn", "warning"]');
+    expect(source).toContain('delete: [Trash2, "drop", "destructive"]');
     expect(source).toMatch(/motion === "leave".*translateX/s);
     expect(source).toMatch(/motion === "turn".*rotate/s);
     expect(source).toMatch(/motion === "drop".*translateY.*scale/s);

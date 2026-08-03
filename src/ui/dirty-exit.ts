@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useNavigation } from "expo-router";
-import { usePreventRemove } from "@react-navigation/native";
+import { useIsFocused, usePreventRemove } from "@react-navigation/native";
 import { tr } from "../i18n/tr";
 import { appConfirm } from "./dialog";
 import { shouldBlockDirtyExit } from "../domain/form-state";
+import { registerDirtyExitFallback } from "./navigation";
 
 interface DirtyExitGuard {
   /** Run an action after a successful save/delete without asking to discard. */
@@ -17,6 +18,7 @@ interface DirtyExitGuard {
 
 export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
   const navigation = useNavigation();
+  const focused = useIsFocused();
   const dirtyRef = useRef(dirty);
   const [exitAllowed, setExitAllowed] = useState(false);
   const exitAllowedRef = useRef(exitAllowed);
@@ -78,6 +80,18 @@ export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
       confirmingRef.current = false;
     });
   };
+
+  useEffect(() => {
+    if (!focused) return;
+    return registerDirtyExitFallback((action) => {
+      if (!shouldBlockDirtyExit(dirtyRef.current, exitAllowedRef.current)) return false;
+      // A direct-link replacement is still a navigation action. Lift the
+      // guard for that one confirmed action, otherwise the replacement would
+      // immediately re-enter `usePreventRemove` while the dialog is settling.
+      askToDiscardRef.current(() => permitExit(action));
+      return true;
+    });
+  }, [focused]);
 
   return {
     allowExit: permitExit,

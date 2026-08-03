@@ -44,6 +44,7 @@ function HeaderBar({
   const insets = useSafeAreaInsets();
   return (
     <View
+      testID="navigation-header"
       style={{
         backgroundColor: palette.surface,
         paddingTop: topInset ? insets.top : 0,
@@ -59,12 +60,16 @@ function HeaderBar({
           // suite's `getByRole("heading")` both depend on that.
           <Text
             accessibilityRole="header"
+            numberOfLines={1}
+            ellipsizeMode="tail"
             style={[
-              type.title,
+              type.heading,
               {
                 color: palette.textStrong,
                 fontFamily: font.semibold,
                 flex: 1,
+                minWidth: 0,
+                flexShrink: 1,
                 // The title sits against the back control when there is one,
                 // and on the screen gutter when there is not. Either way it
                 // shares the row's vertical centre with the chevron.
@@ -85,6 +90,11 @@ function HeaderBar({
 }
 
 export function stackScreenOptions(palette: Palette) {
+  // Presentation taxonomy: full-page workspaces and drill-down routes share
+  // this stack contract; sheets use `sheetScreenOptions`; root card routes are
+  // bounded tools. Dialogs/overlays live in `ui/dialog` and never become a
+  // second navigation header. Keeping the taxonomy at the route boundary
+  // makes title, back, safe-area and dismissal behaviour predictable.
   return {
     headerStyle: { backgroundColor: palette.background },
     headerTintColor: palette.accentText,

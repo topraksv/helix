@@ -11,6 +11,8 @@ export const unstable_settings = { initialRouteName: "index" };
 export default function CashflowLayout() {
   const { palette } = useTheme();
   return (
+    // These are drill-down routes: they retain the full-page stack header and
+    // return to the cash-flow workspace through the same back contract.
     <Stack
       screenOptions={{
         ...stackScreenOptions(palette),

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { navigateBack } from "../src/ui/navigation";
+import { navigateBack, registerDirtyExitFallback } from "../src/ui/navigation";
 
 const root = process.cwd();
 const mockRouter = (canGoBack: boolean) => ({
@@ -23,6 +23,39 @@ describe("safe back navigation", () => {
     navigateBack(router, "/fallback");
     expect(router.back).not.toHaveBeenCalled();
     expect(router.replace).toHaveBeenCalledWith("/fallback");
+  });
+
+  it("lets a focused dirty form confirm before a direct-link fallback", () => {
+    const router = mockRouter(false);
+    const confirm = vi.fn((action: () => void) => {
+      action();
+      return true;
+    });
+    const unregister = registerDirtyExitFallback(confirm);
+    navigateBack(router, "/fallback");
+    unregister();
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(router.replace).toHaveBeenCalledWith("/fallback");
+  });
+
+  it("does not replace a direct link twice when the guard owns the exit", () => {
+    const router = mockRouter(false);
+    const unregister = registerDirtyExitFallback(() => true);
+    navigateBack(router, "/fallback");
+    unregister();
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("lets a dirty form choose its deterministic parent before browser history", () => {
+    const router = mockRouter(true);
+    const unregister = registerDirtyExitFallback((action) => {
+      action();
+      return true;
+    });
+    navigateBack(router, "/fallback");
+    unregister();
+    expect(router.replace).toHaveBeenCalledWith("/fallback");
+    expect(router.back).not.toHaveBeenCalled();
   });
 });
 

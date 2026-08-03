@@ -8,6 +8,7 @@ import {
   font,
   iconSize,
   layer,
+  motion,
   radius,
   stateOpacity,
   toggleSize,
@@ -68,11 +69,13 @@ describe("design-system metric contracts", () => {
       compact: 36,
       minimumTarget: 44,
       regular: 48,
+      segmented: 52,
       inputAccessoryWidth: 42,
       inputAccessoryInset: 44,
     });
     expect(controlSize.compact).toBeLessThan(controlSize.minimumTarget);
     expect(controlSize.minimumTarget).toBeLessThan(controlSize.regular);
+    expect(controlSize.segmented).toBeGreaterThan(controlSize.regular);
     expect(iconSize).toEqual({ compact: 15, control: 17, accessory: 18, headerBack: 24 });
     expect(borderWidth).toEqual({ control: 1.5, toggle: 1 });
   });
@@ -89,6 +92,13 @@ describe("design-system metric contracts", () => {
       pressed: 0.85,
       dragActive: 0.96,
     });
+  });
+
+  it("routes animation tuning through named motion families", () => {
+    expect(motion.spring.entrance).toEqual({ damping: 18, stiffness: 170, mass: 1 });
+    expect(motion.spring.toggle).toEqual({ speed: 20, bounciness: 6 });
+    expect(motion.loading).toBe(1200);
+    expect(motion.loadingReveal).toBe(350);
   });
 });
 

@@ -12,11 +12,9 @@ import React, { useEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, Easing, View } from "react-native";
 import { useReducedMotion } from "./motion";
 import { tr } from "../i18n/tr";
-import { loadingSize, radius, useTheme } from "./theme";
+import { loadingSize, motion, radius, useTheme } from "./theme";
 
-const CYCLE_MS = 1200;
 const DOTS = 3;
-const LOADING_DELAY_MS = 350;
 
 export interface ProgressValue {
   completed: number;
@@ -36,7 +34,7 @@ export function DelayedLoading({
       setVisible(false);
       return;
     }
-    const timer = setTimeout(() => setVisible(true), LOADING_DELAY_MS);
+    const timer = setTimeout(() => setVisible(true), motion.loadingReveal);
     return () => clearTimeout(timer);
   }, [active]);
   return visible ? children : null;
@@ -61,10 +59,10 @@ export function LoadingIndicator({
     const loops = values.map((value, index) =>
       Animated.loop(
         Animated.sequence([
-          Animated.delay((CYCLE_MS / DOTS) * index),
-          Animated.timing(value, { toValue: 1, duration: CYCLE_MS / 2, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(value, { toValue: 0, duration: CYCLE_MS / 2, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.delay((CYCLE_MS / DOTS) * (DOTS - 1 - index)),
+          Animated.delay((motion.loading / DOTS) * index),
+          Animated.timing(value, { toValue: 1, duration: motion.loading / 2, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(value, { toValue: 0, duration: motion.loading / 2, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.delay((motion.loading / DOTS) * (DOTS - 1 - index)),
         ]),
       ),
     );

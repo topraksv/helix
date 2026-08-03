@@ -143,23 +143,23 @@ describe("semantic theme contrast", () => {
 
   /**
    * Clay is the default and therefore the one users see without choosing.
-   * Pinning it keeps the Signal Ledger ramp intentional for everyone who never
+   * Pinning it keeps the warm Helix ramp intentional for everyone who never
    * opens the theme picker.
    */
   it("keeps the default ramp exact", () => {
     expect(lightPalette).toMatchObject({
-      background: "#E8EDE9", surface: "#FCFDF9", surfaceAlt: "#E3E9E4",
-      surfaceHover: "#D0DAD4", surfaceStrong: "#B7C4BC", textStrong: "#12231B",
-      text: "#22362C", textSecondary: "#53675D", textMuted: "#5C6D64",
-      primary: "#C8623D", accentText: "#93412E", primaryStrong: "#9E432D",
-      primarySoft: "#F1D8CE", border: "#7C8E84",
+      background: "#F1EDE8", surface: "#FFFDFB", surfaceAlt: "#E7DFD7",
+      surfaceHover: "#D7CCC1", surfaceStrong: "#C2B2A3", textStrong: "#2A211B",
+      text: "#3A3028", textSecondary: "#62564C", textMuted: "#6D6157",
+      primary: "#A55335", accentText: "#7B3A28", primaryStrong: "#88432D",
+      primarySoft: "#EED8CC", border: "#8B796A",
     });
     expect(darkPalette).toMatchObject({
-      background: "#081012", surface: "#111C1D", surfaceAlt: "#1C2B2B",
-      surfaceHover: "#273A38", surfaceStrong: "#3A504C", textStrong: "#F2F5EC",
-      text: "#E2EAE2", textSecondary: "#B1C2B8", textMuted: "#92A59A",
-      primary: "#E28760", accentText: "#F0A383", primaryStrong: "#C56847",
-      primarySoft: "#3A2924", border: "#536D67",
+      background: "#090807", surface: "#191512", surfaceAlt: "#27211D",
+      surfaceHover: "#352D28", surfaceStrong: "#473D36", textStrong: "#F2ECE6",
+      text: "#E5DDD6", textSecondary: "#BEB2A8", textMuted: "#9D9289",
+      primary: "#D88967", accentText: "#E7A68B", primaryStrong: "#BE6B4A",
+      primarySoft: "#3C2A22", border: "#5F534A",
     });
   });
 

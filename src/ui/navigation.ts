@@ -23,7 +23,29 @@ interface BackRouter<T> {
   replace: (href: T) => void;
 }
 
+type DirtyExitFallback = (action: () => void) => boolean;
+
+let dirtyExitFallback: DirtyExitFallback | null = null;
+
+/**
+ * A direct link has no stack action for `usePreventRemove` to intercept. The
+ * focused dirty form registers the same confirmation for that one fallback
+ * path, so a header back and a native gesture cannot disagree about drafts.
+ */
+export function registerDirtyExitFallback(handler: DirtyExitFallback): () => void {
+  dirtyExitFallback = handler;
+  return () => {
+    if (dirtyExitFallback === handler) dirtyExitFallback = null;
+  };
+}
+
 export function navigateBack<T>(router: BackRouter<T>, fallback: T): void {
+  // A browser history entry can make `canGoBack()` true even for a direct URL
+  // opened more than once. A focused dirty form has the route-owned parent and
+  // must get first refusal, otherwise Back can revisit the same form without
+  // firing the native remove guard.
+  const dirtyHandled = dirtyExitFallback?.(() => router.replace(fallback)) ?? false;
+  if (dirtyHandled) return;
   if (router.canGoBack()) router.back();
   // No history: a direct link, a hand-typed URL or a stale bookmark. The
   // fallback is the screen's deterministic parent.

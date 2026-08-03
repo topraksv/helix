@@ -804,6 +804,7 @@ export default function SettingsScreen() {
             all of it and the wait read as a freeze. */}
         <ListRow
           icon={LogOut}
+          iconColor={palette.secondary}
           title={signingOut ? tr.operation.signingOutTitle : tr.auth.signOut}
           // The wait is a real flush before a real wipe, and it is kept: a row
           // the user believes is saved must reach the server before the device

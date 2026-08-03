@@ -122,6 +122,36 @@ test("dragging across the footer still changes tabs", async ({ page }) => {
   await page.mouse.up();
 });
 
+test("the footer keeps a restrained material in both themes", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+
+  const readMaterial = () => page.getByRole("tablist").evaluate((element) => {
+    const style = getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    return {
+      background: style.backgroundColor,
+      backdrop: style.backdropFilter || style.getPropertyValue("-webkit-backdrop-filter"),
+      bottom: box.bottom,
+      viewportHeight: window.innerHeight,
+    };
+  });
+
+  const light = await readMaterial();
+  expect(light.background).toMatch(/^rgba\(/);
+  expect(light.backdrop).toContain("blur");
+  expect(light.bottom).toBeLessThanOrEqual(light.viewportHeight + 1);
+
+  await page.goto("/helix/settings");
+  await page.getByRole("radio", { name: "Koyu", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
+  const dark = await readMaterial();
+  expect(dark.background).toMatch(/^rgba\(/);
+  expect(dark.backdrop).toContain("blur");
+  expect(dark.background).not.toBe(light.background);
+  expect(dark.bottom).toBeLessThanOrEqual(dark.viewportHeight + 1);
+});
+
 test("bar-chart amounts stay readable and contained on phone and desktop", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await onboard(page);
@@ -207,6 +237,69 @@ test("a dirty subscription can be dismissed without saving", async ({ page }) =>
   await page.getByRole("button", { name: "Değişiklikleri sil", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/helix\/subscriptions$/);
+});
+
+test("a dirty balance correction can be cancelled, cleared and reopened safely", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  const amount = () => page.getByRole("textbox", { name: "Gerçek güncel bakiyen", exact: true });
+  const back = () => page.getByRole("button", { name: "Geri", exact: true }).first();
+
+  await page.goto("/helix/opening-balance");
+  await amount().fill("100");
+  await amount().focus();
+  await back().click();
+  await expect(page.getByRole("dialog")).toContainText("Kaydedilmemiş değişiklikler var");
+  await page.getByRole("dialog").getByRole("button", { name: "Vazgeç", exact: true }).click();
+  await amount().fill("");
+  await back().click();
+  await expect(page).toHaveURL(/\/helix\/cash-flow$/);
+
+  // Re-entering the same route must install a fresh guard, not reuse a stale
+  // confirmation or leave a transparent overlay intercepting the next tap.
+  await page.goto("/helix/opening-balance");
+  await amount().fill("100");
+  await back().click();
+  await page.getByRole("dialog").getByRole("button", { name: "Değişiklikleri sil", exact: true }).click();
+  await expect(page).toHaveURL(/\/helix\/cash-flow$/);
+});
+
+test("stack headers keep navigation titles on one line at narrow width", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await onboard(page);
+  for (const route of ["/helix/opening-balance", "/helix/subscription-form", "/helix/settings/payment-sources"]) {
+    await page.goto(route);
+    const header = page.getByTestId("navigation-header");
+    await expect(header).toBeVisible();
+    const metrics = await header.evaluate((element) => {
+      const title = element.querySelector<HTMLElement>('[role="heading"]');
+      if (!title) throw new Error("navigation header has no title");
+      const style = getComputedStyle(title);
+      const box = title.getBoundingClientRect();
+      return {
+        height: box.height,
+        scrollHeight: title.scrollHeight,
+        clientHeight: title.clientHeight,
+      };
+    });
+    expect(metrics.height).toBeLessThanOrEqual(24);
+    expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
+  }
+});
+
+test("narrow panel headers keep their title clear of status metadata", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/opening-balance");
+  const title = page.getByRole("heading", { name: "Gerçek güncel bakiyen", exact: true });
+  await expect(title).toBeVisible();
+  const metrics = await title.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { height: box.height, lines: Math.round(element.scrollHeight / box.height) };
+  });
+  expect(metrics.height).toBeLessThanOrEqual(24);
+  expect(metrics.lines).toBe(1);
+  await expect(page.getByText("Bakiye eşleşiyor", { exact: true })).toBeVisible();
 });
 
 test("a single-person workspace keeps assignment optional and compact", async ({ page }) => {
@@ -416,6 +509,37 @@ test("pivoting the financial table resets unrelated offsets and keeps complete c
   expect(box).not.toBeNull();
   expect(box!.x).toBeGreaterThanOrEqual(16);
   expect(box!.x + box!.width).toBeLessThanOrEqual(320 - 16);
+});
+
+test("supplementary financial-table details collapse without losing recovery", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/cash-flow");
+
+  const details = page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true });
+  await expect(details).toBeVisible();
+  await expect(page.getByTestId("cash-flow-table-details-content")).toHaveCount(0);
+  const initialGeometry = await details.evaluate((element) => {
+    const button = element.getBoundingClientRect();
+    const segment = element.parentElement!.querySelector<HTMLElement>('[role="radiogroup"]')!.getBoundingClientRect();
+    return { buttonHeight: button.height, segmentHeight: segment.height };
+  });
+  expect(Math.abs(initialGeometry.buttonHeight - initialGeometry.segmentHeight)).toBeLessThanOrEqual(1);
+  const table = page.getByTestId("cash-flow-matrix-table");
+  const collapsedHeight = (await table.boundingBox())!.height;
+  await details.click();
+  await expect(page.getByTestId("cash-flow-table-details-content")).toBeVisible();
+  await expect.poll(async () => (await table.boundingBox())!.height).toBeLessThan(collapsedHeight - 20);
+  const expandedHeight = (await table.boundingBox())!.height;
+  expect(collapsedHeight - expandedHeight).toBeGreaterThan(20);
+  await details.click();
+  await expect(page.getByTestId("cash-flow-table-details-content")).toHaveCount(0);
+  await expect.poll(async () => (await table.boundingBox())!.height).toBeGreaterThanOrEqual(collapsedHeight - 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+
+  await page.setViewportSize({ width: 768, height: 844 });
+  await page.goto("/helix/cash-flow");
+  await expect(page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true })).toHaveCount(0);
 });
 
 test("compact financial-table pins stay beside headers and month labels keep breathing room", async ({ page }) => {

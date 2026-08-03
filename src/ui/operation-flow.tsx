@@ -27,18 +27,19 @@ export type OperationFlowKind =
   | "reactivate";
 
 type Motion = "focus" | "leave" | "turn" | "drop" | "rise";
-type Visual = readonly [LucideIcon, Motion, boolean?];
+type Tone = "primary" | "secondary" | "success" | "warning" | "destructive";
+type Visual = readonly [LucideIcon, Motion, Tone?];
 const operationVisuals: Record<OperationFlowKind, Visual> = {
-  "sign-in": [KeyRound, "focus"],
-  "sign-up": [ShieldCheck, "focus"],
-  reset: [Mail, "focus"],
-  initialize: [WalletCards, "rise"],
-  restore: [RefreshCw, "turn"],
-  "sign-out": [LogOut, "leave"],
-  "local-sign-out": [LogOut, "leave", true],
-  delete: [Trash2, "drop", true],
-  freeze: [Snowflake, "turn"],
-  reactivate: [KeyRound, "rise"],
+  "sign-in": [KeyRound, "focus", "primary"],
+  "sign-up": [ShieldCheck, "focus", "success"],
+  reset: [Mail, "focus", "secondary"],
+  initialize: [WalletCards, "rise", "primary"],
+  restore: [RefreshCw, "turn", "secondary"],
+  "sign-out": [LogOut, "leave", "secondary"],
+  "local-sign-out": [LogOut, "leave", "destructive"],
+  delete: [Trash2, "drop", "destructive"],
+  freeze: [Snowflake, "turn", "warning"],
+  reactivate: [KeyRound, "rise", "success"],
 };
 
 /** Motion rests at its neutral endpoint when Reduced Motion is enabled. */
@@ -74,8 +75,17 @@ export function OperationFlow({
 }) {
   const { palette } = useTheme();
   const pulse = useWaitingPulse();
-  const [Icon, motion, destructive = false] = operationVisuals[kind];
-  const color = destructive ? palette.destructive : palette.primary;
+  const [Icon, motion, tone = "primary"] = operationVisuals[kind];
+  const color = tone === "destructive"
+    ? palette.destructive
+    : tone === "warning"
+      ? palette.warning
+      : tone === "success"
+        ? palette.success
+        : tone === "secondary"
+          ? palette.secondary
+          : palette.primary;
+  const destructive = tone === "destructive";
   const hero = presentation === "hero";
 
   return (

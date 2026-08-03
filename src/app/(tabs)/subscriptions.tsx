@@ -76,7 +76,14 @@ function SubscriptionScheduleOverview({
   };
 
   return (
-    <Card style={{ marginBottom: spacing.lg }}>
+    <Card
+      style={{
+        marginBottom: spacing.lg,
+        borderColor: palette.primary + "70",
+        borderTopWidth: 3,
+        borderTopColor: palette.primary,
+      }}
+    >
       <PanelHeader
         icon={CalendarClock}
         title={tr.subs.scheduleOverview}
@@ -100,8 +107,10 @@ function SubscriptionScheduleOverview({
         )}
       >
         <View
-          style={{
-            backgroundColor: palette.surfaceAlt,
+        style={{
+            backgroundColor: palette.surface,
+            borderWidth: 1,
+            borderColor: palette.primary + "35",
             borderRadius: radius.lg,
             padding: spacing.md,
           }}
@@ -135,6 +144,8 @@ function SubscriptionScheduleOverview({
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: palette.primarySoft,
+                      borderWidth: 1,
+                      borderColor: palette.primary + "70",
                     }}
                   >
                     <Text style={[type.amountSm, { color: palette.primaryText, fontSize: nextDayOffset === 0 ? 12 : nextDayOffset === 1 ? 11 : 18 }]}>
@@ -161,11 +172,11 @@ function SubscriptionScheduleOverview({
                 gap: spacing.sm,
               }}
             >
-              <View style={{ flex: 1, paddingLeft: spacing.sm, borderLeftWidth: 3, borderLeftColor: palette.primary }}>
+              <View style={{ flex: 1, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: palette.primarySoft, borderLeftWidth: 3, borderLeftColor: palette.primary }}>
                 <Text style={[type.amountSm, { color: palette.textStrong }]}>{upcoming.length}</Text>
                 <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.next31Days}</Text>
               </View>
-              <View style={{ flex: 1, paddingLeft: spacing.sm, borderLeftWidth: 3, borderLeftColor: palette.secondary }}>
+              <View style={{ flex: 1, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: palette.secondarySoft, borderLeftWidth: 3, borderLeftColor: palette.secondary }}>
                 <Text style={[type.amountSm, { color: palette.textStrong }]}>{autoPayCount}/{active.length}</Text>
                 <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.automaticShort}</Text>
               </View>

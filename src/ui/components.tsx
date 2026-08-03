@@ -42,6 +42,7 @@ import {
   generatedBadgeForeground,
   heroSurface,
   iconSize,
+  motion,
   radius,
   spacing,
   stateOpacity,
@@ -97,9 +98,7 @@ export function FadeIn({
       toValue: 1,
       delay,
       useNativeDriver: Platform.OS !== "web",
-      damping: 18,
-      stiffness: 170,
-      mass: 1,
+      ...motion.spring.entrance,
     });
     anim.start();
     return () => anim.stop();
@@ -186,7 +185,14 @@ export function Screen({
       <View testID="screen-header" style={{ marginBottom: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
         {leading}
         <View style={{ flex: 1 }}>
-          <Text accessibilityRole="header" style={[type.title, { color: palette.textStrong }]}>{title}</Text>
+          <Text
+            accessibilityRole="header"
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={[type.title, { color: palette.textStrong, minWidth: 0, flexShrink: 1 }]}
+          >
+            {title}
+          </Text>
           {subtitle ? <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{subtitle}</Text> : null}
         </View>
         {right}
@@ -252,6 +258,7 @@ export function Card({
   padded = true,
   tone,
   accessibilityLabel,
+  testID,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -260,6 +267,7 @@ export function Card({
   padded?: boolean;
   tone?: "success" | "warning" | "error";
   accessibilityLabel?: string;
+  testID?: string;
 }) {
   const { palette } = useTheme();
   const toneColor = tone ? palette[tone] : null;
@@ -280,6 +288,7 @@ export function Card({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
+        testID={testID}
         onPress={onPress}
         onLayout={onLayout}
         style={({ pressed }) => [base, style, pressed && { backgroundColor: palette.surfaceHover }]}
@@ -288,7 +297,7 @@ export function Card({
       </Pressable>
     );
   }
-  return <View style={[base, style]} onLayout={onLayout}>{children}</View>;
+  return <View testID={testID} style={[base, style]} onLayout={onLayout}>{children}</View>;
 }
 
 /** Quiet balance instrument. The value, not decoration, carries the hierarchy. */
@@ -436,39 +445,55 @@ export function PanelHeader({
   title,
   description,
   right,
+  tone = "primary",
 }: {
   icon: LucideIcon;
   title: string;
   description?: string;
   right?: ReactNode;
+  tone?: "primary" | "secondary" | "warning" | "error" | "success";
 }) {
   const { palette } = useTheme();
+  const { width: viewportWidth } = useWindowDimensions();
+  const stackRight = Boolean(right) && viewportWidth < 360;
+  const toneColor = tone === "warning"
+    ? palette.warning
+    : tone === "error"
+      ? palette.error
+      : tone === "success"
+        ? palette.success
+        : tone === "secondary"
+          ? palette.secondary
+          : palette.primary;
   return (
-    <View style={{ flexDirection: "row", alignItems: description ? "flex-start" : "center", gap: spacing.md, marginBottom: spacing.md }}>
-      <View
-        accessible={false}
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: radius.sm,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: palette.primarySoft,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: palette.primary + "72",
-        }}
-      >
-        <IconCmp accessible={false} size={17} color={palette.accentText} strokeWidth={2} />
+    <View style={{ gap: stackRight ? spacing.xs : spacing.md, marginBottom: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: description ? "flex-start" : "center", gap: spacing.md }}>
+        <View
+          accessible={false}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: radius.sm,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: tone === "primary" ? palette.primarySoft : toneColor + "18",
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: toneColor + "72",
+          }}
+        >
+          <IconCmp accessible={false} size={17} color={tone === "primary" ? palette.accentText : toneColor} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text accessibilityRole="header" style={[type.body, { color: palette.textStrong, fontFamily: font.semibold }]}>
+            {title}
+          </Text>
+          {description ? (
+            <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{description}</Text>
+          ) : null}
+        </View>
+        {!stackRight ? right : null}
       </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text accessibilityRole="header" style={[type.body, { color: palette.textStrong, fontFamily: font.semibold }]}>
-          {title}
-        </Text>
-        {description ? (
-          <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{description}</Text>
-        ) : null}
-      </View>
-      {right}
+      {stackRight ? <View style={{ marginLeft: 48 }}>{right}</View> : null}
     </View>
   );
 }
@@ -647,6 +672,8 @@ export function IconButton({
   icon: IconCmp,
   onPress,
   disabled,
+  expanded,
+  iconSize: iconSizeValue,
   tone = "default",
   size = controlSize.compact,
   label,
@@ -655,6 +682,8 @@ export function IconButton({
   icon: LucideIcon;
   onPress: () => void;
   disabled?: boolean;
+  expanded?: boolean;
+  iconSize?: number;
   tone?: "default" | "danger" | "primary";
   size?: number;
   label?: string;
@@ -672,7 +701,7 @@ export function IconButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: Boolean(disabled) }}
+      accessibilityState={{ disabled: Boolean(disabled), ...(expanded == null ? {} : { expanded }) }}
       disabled={disabled}
       onPress={() => {
         haptic(hapticKind);
@@ -684,7 +713,7 @@ export function IconButton({
           width: size,
           height: size,
           borderRadius: radius.sm,
-          backgroundColor: pressed ? palette.surfaceHover : palette.surface,
+          backgroundColor: tone === "primary" ? palette.primarySoft : pressed ? palette.surfaceHover : palette.surface,
           alignItems: "center",
           justifyContent: "center",
           borderWidth: StyleSheet.hairlineWidth,
@@ -692,7 +721,7 @@ export function IconButton({
         },
       ]}
     >
-      <IconCmp accessible={false} size={size * 0.5} color={color} strokeWidth={2.2} />
+      <IconCmp accessible={false} size={iconSizeValue ?? size * 0.5} color={color} strokeWidth={2.2} />
     </Pressable>
   );
 }
@@ -1896,7 +1925,7 @@ export function Toggle({
       progress.setValue(value ? 1 : 0);
       return;
     }
-    const animation = Animated.spring(progress, { toValue: value ? 1 : 0, useNativeDriver: false, speed: 20, bounciness: 6 });
+    const animation = Animated.spring(progress, { toValue: value ? 1 : 0, useNativeDriver: false, ...motion.spring.toggle });
     animation.start();
     return () => animation.stop();
   }, [value, progress, reducedMotion]);

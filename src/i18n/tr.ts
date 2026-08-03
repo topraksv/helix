@@ -380,6 +380,7 @@ export const tr = {
        it does there too. A one-line version fit the width and lost the reader,
        so this says the whole thing in plain sentences and wraps if it must. */
     tableHint: "Tabloyu yana kaydır. Kaleme dokun: aylık dökümü açılır. Aya dokun: o ay açılır. 📌 kolonu sabitler.",
+    tableGuide: "Mali tabloyu okuma rehberi",
     cellTransactions: "Hareketler",
     cellNote: "Hücre Notu",
     uncategorizedLegacy: "Kategorisiz eski kayıtlar",

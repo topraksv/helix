@@ -6,6 +6,7 @@ import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react
 import type { Distribution } from "../domain/analytics";
 import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
+import { resolveBarAxis } from "./chart-axis";
 import { chart, font, radius, spacing, type, useTheme } from "./theme";
 
 type SeriesColors = readonly [string, string, string, string, string, string, string, string];
@@ -405,20 +406,6 @@ interface BarGroup {
   values: (number | null)[];
 }
 
-/**
- * A financial axis should land on values a person can estimate between.
- * Dividing the largest amount into arbitrary thirds produced labels such as
- * ₺19.583,33 — technically accurate, visually noisy and useless as a ruler.
- * The familiar 1 / 2 / 5 sequence keeps every step round at any magnitude.
- */
-function niceChartStep(range: number, targetIntervals = 4): number {
-  const roughStep = Math.max(1, range / targetIntervals);
-  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
-  const normalized = roughStep / magnitude;
-  const niceMultiplier = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  return niceMultiplier * magnitude;
-}
-
 /** Axis labels communicate scale, not ledger precision. Keep the exact amount
  * in the value strip and use Turkish compact notation where a full TRY figure
  * would be clipped into a row of zeroes. */
@@ -484,18 +471,10 @@ export function Bars({
   width?: number;
 }) {
   const { palette } = useTheme();
-  const all = groups.flatMap((g) => g.values.filter((v): v is number => v != null));
-  if (all.length === 0 || groups.length === 0) return null;
-  const dataMax = Math.max(...all, 1);
-  const dataMin = Math.min(0, ...all);
-  const step = niceChartStep(dataMax - dataMin);
-  const max = Math.ceil(dataMax / step) * step;
-  const min = Math.floor(dataMin / step) * step;
-  const span = Math.max(step, max - min);
-  const ticks = Array.from(
-    { length: Math.round(span / step) + 1 },
-    (_, index) => max - index * step,
-  );
+  const axis = resolveBarAxis(groups.flatMap((g) => g.values));
+  if (!axis || groups.length === 0) return null;
+  const { min, max, ticks } = axis;
+  const span = Math.max(axis.step, max - min);
   const axisFontSize = width >= 480 ? 11 : 10;
   const pad = { left: width >= 480 ? 64 : 58, right: 10, top: 14, bottom: 28 };
   const plotW = Math.max(1, width - pad.left - pad.right);

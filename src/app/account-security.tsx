@@ -250,8 +250,8 @@ function CloudAccountSecurityScreen() {
         />
       </Card>
 
-      <Card>
-        <PanelHeader icon={Snowflake} title={tr.account.freeze} description={tr.account.freezeDesc} />
+      <Card tone="warning">
+        <PanelHeader tone="warning" icon={Snowflake} title={tr.account.freeze} description={tr.account.freezeDesc} />
         <Button
           icon={Snowflake}
           label={tr.account.freeze}

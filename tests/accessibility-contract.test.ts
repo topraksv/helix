@@ -33,15 +33,22 @@ function sourceFiles(directory: string, extensions: string[]): string[] {
 }
 
 describe("truncation preserves the accessible full text", () => {
-  // Mali Tablo is the one deliberate exception to the product-wide wrapping
-  // rule: item names wrap naturally for up to two lines in the dense matrix;
-  // only text that still does not fit is shortened, while its semantic label
-  // remains complete for assistive technology.
-  it("limits two-line ellipsis to the shared table label primitive", () => {
+  // Navigation titles are intentionally single-line at narrow widths so a
+  // long title cannot push the back control or header out of the viewport.
+  // Mali Tablo remains the only surface allowed to use a two-line label clamp:
+  // item names wrap naturally in the dense matrix and retain their full
+  // accessibility label when the visual label still needs shortening.
+  it("limits multi-line ellipsis to the shared table label primitive", () => {
     const offenders = sourceFiles("src", [".tsx"]).filter((file) =>
       /numberOfLines|ellipsizeMode/.test(source(file)),
     );
-    expect(offenders).toEqual(["src/ui/sticky-table.tsx"]);
+    expect(offenders).toEqual([
+      "src/ui/components.tsx",
+      "src/ui/header-bar.tsx",
+      "src/ui/sticky-table.tsx",
+    ]);
+    expect(source("src/ui/components.tsx")).toContain("numberOfLines={1}");
+    expect(source("src/ui/header-bar.tsx")).toContain("numberOfLines={1}");
     const table = source("src/ui/sticky-table.tsx");
     expect(table).toContain("accessibilityLabel={accessibilityLabel ?? label}");
     expect(table).toContain("numberOfLines={c.truncateLabel ? 2 : undefined}");

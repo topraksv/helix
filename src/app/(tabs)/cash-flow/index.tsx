@@ -9,7 +9,7 @@
 import React, { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
+import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Info, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
 import { monthFlowTotals } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
@@ -38,6 +38,8 @@ import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn
 import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
 import { categoryIcon } from "../../../data/category-icons";
+
+type MatrixModel = ReturnType<typeof buildCashFlowMatrixModel>;
 
 /** Phone toolbar item: icon + always-visible mini caption. Five equal tools
  *  share one 44px band so the matrix, not its chrome, owns the screen. */
@@ -140,6 +142,7 @@ export default function CashflowScreen() {
   };
   const { width } = useWindowDimensions();
   const wide = shouldUseWideWorkspace(width);
+  const mobileTable = width < 600;
   const router = useRouter();
   const { palette } = useTheme();
   // A phone needs the category-first scan of column mode; a wide workspace has
@@ -151,6 +154,7 @@ export default function CashflowScreen() {
   const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [tableAreaH, setTableAreaH] = useState(0);
+  const [showTableDetails, setShowTableDetails] = useState(false);
   // The tab's repeat-press behavior needs the active month-focused scroller.
   const monthFocusScrollRef = React.useRef<ScrollView>(null);
   const tableRef = useRef<ScrollView>(null);
@@ -168,6 +172,7 @@ export default function CashflowScreen() {
   }, [defaultMode, hasSavedMode]);
   const changeMode = (v: MatrixMode) => {
     setMode(v);
+    if (v === "cards") setShowTableDetails(false);
     setHasSavedMode(true);
     void kv.set("helix.matrix.mode", v);
   };
@@ -196,6 +201,20 @@ export default function CashflowScreen() {
   // Every live category id — used to expose a repair link for legacy rows whose
   // category is missing, without inventing a special non-editable table column.
   const liveCategoryIds = new Set(categories.map((c) => c.id));
+  const tableMatrix = bundle
+    ? buildCashFlowMatrixModel({
+        year,
+        yearMonths: bundle.yearMonths,
+        categories: columnCategories,
+        computedColumns: visibleComputed,
+        transactions: txLike,
+        creditCardIds,
+        liveCategoryIds,
+        today: todayISO(),
+        openingLabel: tr.cashflow.opening,
+        closingLabel: tr.cashflow.closing,
+      })
+    : null;
 
   const yearSwitcher = (
     <Row testID="cash-flow-year-control" gap={spacing.sm}>
@@ -265,15 +284,41 @@ export default function CashflowScreen() {
         <View style={{ flex: 1 }}>
           {/* Full-width segmented so the month-orientation labels never clip
               (web ignores adjustsFontSizeToFit); the column editor sits below. */}
-          <Segmented
-            options={[
-              { value: "rows", label: tr.cashflow.monthsAsRows },
-              { value: "columns", label: tr.cashflow.monthsAsColumns },
-              { value: "cards", label: tr.cashflow.viewCards },
-            ]}
-            value={mode}
-            onChange={changeMode}
-          />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Segmented
+                noMargin
+                options={[
+                  { value: "rows", label: tr.cashflow.monthsAsRows },
+                  { value: "columns", label: tr.cashflow.monthsAsColumns },
+                  { value: "cards", label: tr.cashflow.viewCards },
+                ]}
+                value={mode}
+                onChange={changeMode}
+              />
+            </View>
+            {showTable && mobileTable ? (
+              <IconButton
+                icon={Info}
+                size={controlSize.segmented}
+                iconSize={18}
+                label={tr.cashflow.tableGuide}
+                tone={showTableDetails ? "primary" : "default"}
+                expanded={showTableDetails}
+                onPress={() => setShowTableDetails((visible) => !visible)}
+              />
+            ) : null}
+          </View>
+          {showTable && tableMatrix && (showTableDetails || !mobileTable) ? (
+            <TableDetailsPanel
+              hasUncategorized={tableMatrix.hasUncategorized}
+              uncategorizedTotal={tableMatrix.uncategorizedTotal}
+              onOpenUncategorized={() => router.push({
+                pathname: "/cash-flow/item",
+                params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
+              })}
+            />
+          ) : null}
           {showTable ? (
             <View style={{ flex: 1 }} onLayout={(e) => setTableAreaH(e.nativeEvent.layout.height)}>
               {tableAreaH > 0 ? (
@@ -281,11 +326,7 @@ export default function CashflowScreen() {
                   scrollRef={tableRef}
                   year={year}
                   bundle={bundle}
-                  columnCategories={columnCategories}
-                  computedColumns={visibleComputed}
-                  creditCardIds={creditCardIds}
-                  liveCategoryIds={liveCategoryIds}
-                  txLike={txLike}
+                  matrix={tableMatrix!}
                   cellNotes={cellNotesState.data}
                   orientation={orientation}
                   compact={!wide}
@@ -547,14 +588,68 @@ function MonthFocusTable({
   );
 }
 
+function TableDetailsPanel({
+  hasUncategorized,
+  uncategorizedTotal,
+  onOpenUncategorized,
+}: {
+  hasUncategorized: boolean;
+  uncategorizedTotal: number;
+  onOpenUncategorized: () => void;
+}) {
+  const { palette } = useTheme();
+  return (
+    <View
+      testID="cash-flow-table-details-content"
+      style={{
+        marginBottom: spacing.sm,
+        padding: spacing.md,
+        borderRadius: radius.md,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: palette.primary + "60",
+        backgroundColor: palette.surfaceAlt,
+        gap: spacing.sm,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        <Info accessible={false} size={17} color={palette.accentText} strokeWidth={2.2} />
+        <Text style={[type.heading, { color: palette.textStrong, flex: 1, minWidth: 0 }]}>{tr.cashflow.tableGuide}</Text>
+      </View>
+      <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.tableHint}</Text>
+      {hasUncategorized ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={tr.cashflow.uncategorizedLegacy}
+          onPress={onOpenUncategorized}
+          style={({ pressed }) => ({
+            padding: spacing.sm,
+            borderRadius: radius.sm,
+            backgroundColor: pressed ? palette.primarySoft : palette.surface,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.warning + "55",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+          })}
+        >
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[type.label, { color: palette.warningText }]}>{tr.cashflow.uncategorizedLegacy}</Text>
+            <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
+          </View>
+          <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negativeText : palette.text }]}>
+            {formatMinorCompact(uncategorizedTotal)}
+          </Text>
+          <ChevronRight accessible={false} size={16} color={palette.textSecondary} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 function MatrixTable({
   year,
   bundle,
-  columnCategories,
-  computedColumns,
-  creditCardIds,
-  liveCategoryIds,
-  txLike,
+  matrix,
   cellNotes,
   orientation,
   compact,
@@ -565,11 +660,7 @@ function MatrixTable({
 }: {
   year: number;
   bundle: LedgerBundle;
-  columnCategories: ReturnType<typeof useCategoriesState>["data"];
-  computedColumns: ReturnType<typeof useComputedColumnsState>["data"];
-  creditCardIds: Set<string>;
-  liveCategoryIds: Set<string>;
-  txLike: ReturnType<typeof toTxLike>;
+  matrix: MatrixModel;
   cellNotes: ReturnType<typeof useCellNotesState>["data"];
   orientation: "monthsAsRows" | "monthsAsColumns";
   compact: boolean;
@@ -578,7 +669,6 @@ function MatrixTable({
   onTogglePin: (key: string) => void;
   scrollRef: React.RefObject<ScrollView | null>;
 }) {
-  const { palette } = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
   const router = useRouter();
   const today = todayISO();
@@ -600,19 +690,7 @@ function MatrixTable({
         ? noteByCell.get(`${month}:${column.categoryId}`)
         : undefined;
 
-  const matrix = buildCashFlowMatrixModel({
-    year,
-    yearMonths: bundle.yearMonths,
-    categories: columnCategories,
-    computedColumns,
-    transactions: txLike,
-    creditCardIds,
-    liveCategoryIds,
-    today,
-    openingLabel: tr.cashflow.opening,
-    closingLabel: tr.cashflow.closing,
-  });
-  const { months, columns, hasUncategorized, uncategorizedTotal } = matrix;
+  const { months, columns } = matrix;
 
   /**
    * The two pivots do not share a useful first-column shape.
@@ -690,14 +768,8 @@ function MatrixTable({
     ? Math.max(compactNaturalCellWidth, Math.min(144, compactWholeColumnCellWidth))
     : Math.max(naturalCellWidth, Math.min(320, wholeColumnCellWidth));
   const fontSize = compact ? 11 : 13;
-  // Reserve enough for the two-line hint below the table; the card clips
-  // (overflow:hidden), so an under-estimate cut the hint in half on phones.
-  const HINT_H = 30;
-  // Breathing room between the bottom hint and the tab bar so the two never
-  // crowd each other (the card is content-sized, so this leaves a real gap
-  // below it before the footer).
-  const FOOTER_GAP = spacing.lg;
-
+  // The optional details panel now lives above this flex area, so the table
+  // receives all remaining height while the panel is hidden or open.
   // Size the table to its natural content (StickyTable's fixed header/row
   // heights) but never taller than the space measured above the tab bar. When
   // there are few items (e.g. a short column-focused view) the table shrinks
@@ -708,7 +780,7 @@ function MatrixTable({
   // inset. This is the minimum used for initial content sizing; category
   // headers grow from their text while short month headers stay at this floor.
   const naturalTableH = STICKY_HEADER_HEIGHT + rowCount * STICKY_ROW_HEIGHT + spacing.sm;
-  const availTableH = Math.max(160, measuredHeight - HINT_H - FOOTER_GAP);
+  const availTableH = Math.max(160, measuredHeight);
   const tableHeight = Math.min(naturalTableH, availTableH);
 
   // Tapping a category/computed column opens its month-by-month breakdown.
@@ -834,7 +906,7 @@ function MatrixTable({
   const focusMonth = yearOf(currentMonth) === year ? currentMonth : undefined;
 
   return (
-    <Card padded={false} style={{ alignSelf: "stretch" }}>
+    <Card testID="cash-flow-matrix-table" padded={false} style={{ alignSelf: "stretch" }}>
       <StickyTable
         scrollRef={scrollRef}
         cornerLabel={cornerLabel}
@@ -851,35 +923,6 @@ function MatrixTable({
         onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : openBreakdown}
         height={tableHeight}
       />
-      {hasUncategorized ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push({
-            pathname: "/cash-flow/item",
-            params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
-          })}
-          style={({ pressed }) => ({
-            marginHorizontal: spacing.md,
-            marginTop: spacing.sm,
-            padding: spacing.sm,
-            borderRadius: radius.sm,
-            backgroundColor: pressed ? palette.primarySoft : palette.surfaceAlt,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.sm,
-          })}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={[type.label, { color: palette.text }]}>{tr.cashflow.uncategorizedLegacy}</Text>
-            <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
-          </View>
-          <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negativeText : palette.text }]}>{formatMinorCompact(uncategorizedTotal)}</Text>
-          <ChevronRight accessible={false} size={16} color={palette.textSecondary} />
-        </Pressable>
-      ) : null}
-      <Text style={[type.small, { color: palette.textSecondary, paddingVertical: spacing.xs, paddingHorizontal: spacing.md, textAlign: "center" }]}>
-        {tr.cashflow.tableHint}
-      </Text>
     </Card>
   );
 }

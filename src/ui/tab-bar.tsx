@@ -1,14 +1,13 @@
 /**
  * The app's navigation surface: one bounded bottom bar on every viewport.
  *
- * Only iOS gets the translucent material, because only there does it read as
- * the system's own glass. Android and web use the solid `surface`; Reduce
- * Transparency turns iOS solid too.
+ * Native platforms use a light translucent material; web adds the browser's
+ * backdrop blur when available and falls back to the same tinted surface.
+ * Reduce Transparency always selects the opaque fallback.
  *
- * It is translucency, not blur: `expo-blur` and the glass-tab packages built on
- * it are native modules that cannot ship over OTA, so the background layer here
- * is deliberately the only thing that would change if real blur is adopted
- * after a device build exists.
+ * The native material stays dependency-free so it can ship with the current
+ * runtime; web's CSS blur is an optional enhancement, never a requirement for
+ * contrast or navigation.
  *
  * Metrics live in the shared `TAB_BAR` tokens so `Screen` and the undo snackbar
  * cannot drift from the real height, and the press behaviour reproduces the
@@ -18,7 +17,7 @@
  */
 
 import React, { useMemo, useRef } from "react";
-import { PanResponder, Platform, Pressable, Text, View } from "react-native";
+import { PanResponder, Platform, Pressable, Text, View, type ViewStyle } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReduceTransparency } from "./motion";
@@ -29,10 +28,13 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const reduceTransparency = useReduceTransparency();
   const isWeb = Platform.OS === "web";
-  // Owner's decision: the glass material is iOS only. Android and web get the
-  // same shape in a solid `surface` rather than an imitation of a system look
-  // neither platform has.
-  const glass = Platform.OS === "ios" && !reduceTransparency;
+  const glass = !reduceTransparency;
+  const webMaterial = isWeb
+    ? ({
+        backdropFilter: glass ? "blur(18px) saturate(125%)" : "none",
+        WebkitBackdropFilter: glass ? "blur(18px) saturate(125%)" : "none",
+      } as unknown as ViewStyle)
+    : null;
 
   // Dragging across the bar scrubs through the tabs. The geometry and the
   // current index are read from refs so the responder can be created once:
@@ -100,14 +102,27 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         alignItems: "center",
         borderRadius: radius.md,
         // The rail is a quiet navigation instrument, not a second card pile.
-        // A restrained outline separates it from long pages without competing
-        // with the selected destination.
+        // A restrained outline and a faint top highlight give the translucent
+        // surface depth without a full-screen blur or a solid footer block.
         backgroundColor: glass ? palette.surfaceTranslucent : palette.surface,
         borderWidth: 1,
         borderColor: palette.border + "70",
+        ...webMaterial,
         ...themeShadow.overlay(palette),
       }}
     >
+      <View
+        pointerEvents="none"
+        accessible={false}
+        style={{
+          position: "absolute",
+          top: 1,
+          left: 18,
+          right: 18,
+          height: 1,
+          backgroundColor: palette.textStrong + (glass ? "18" : "0D"),
+        }}
+      />
       {state.routes.map((route, index) => {
         const options = descriptors[route.key]?.options ?? {};
         const focused = state.index === index;
