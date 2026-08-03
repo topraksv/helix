@@ -176,6 +176,7 @@ export default function BudgetsScreen() {
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="budgets-workspace"
+        wideLayout={monthBudgets.length === 0 ? "stack" : "split"}
         primary={(
           <View>
           {/* Forward only. A limit is something to steer by, and a month that

@@ -240,6 +240,7 @@ export default function PersonsScreen() {
       <PeopleOverview people={persons} />
       <WorkspaceSplit
         testID="persons-workspace"
+        wideLayout={persons.length === 0 ? "stack" : "split"}
         primary={(
           <View>
           <Card>

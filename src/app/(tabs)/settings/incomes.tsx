@@ -269,6 +269,7 @@ export default function IncomeRulesScreen() {
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="incomes-workspace"
+        wideLayout={incomes.length === 0 ? "stack" : "split"}
         primary={(
           <Card>
         <PanelHeader

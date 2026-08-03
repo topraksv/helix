@@ -332,15 +332,17 @@ export function HeroCard({ children, style }: { children: ReactNode; style?: Sty
 export function MetricStrip({
   items,
   style,
+  testID,
 }: {
-    items: { label: string; value: ReactNode }[];
+  items: { label: string; value: ReactNode }[];
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }) {
   const { palette } = useTheme();
   const { width } = useWindowDimensions();
   const compact = width < 360;
   return (
-    <View style={[{ flexDirection: compact ? "column" : "row", flexWrap: compact ? "nowrap" : "wrap", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, marginTop: spacing.lg }, style]}>
+    <View testID={testID} style={[{ flexDirection: compact ? "column" : "row", flexWrap: compact ? "nowrap" : "wrap", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, marginTop: spacing.lg }, style]}>
       {items.map((item, index) => (
         <View
           key={item.label}
@@ -664,6 +666,53 @@ export function Button({
         </>
       )}
     </Pressable>
+  );
+}
+
+/** Static action marker used inside a larger pressable surface. */
+export function ActionBadge({
+  label,
+  icon: IconCmp,
+  variant = "secondary",
+  disabled = false,
+}: {
+  label: string;
+  icon?: LucideIcon;
+  variant?: "primary" | "secondary" | "danger" | "ghost";
+  disabled?: boolean;
+}) {
+  const { palette } = useTheme();
+  const enabledColors = {
+    primary: { background: palette.primary, foreground: palette.onPrimary },
+    secondary: { background: palette.surfaceAlt, foreground: palette.text },
+    danger: { background: palette.destructive, foreground: palette.onDestructive },
+    ghost: { background: "transparent", foreground: palette.accentText },
+  }[variant];
+  const colors = disabled
+    ? { background: variant === "ghost" ? "transparent" : palette.surfaceAlt, foreground: palette.textSecondary }
+    : enabledColors;
+  return (
+    <View
+      accessible={false}
+      style={{
+        backgroundColor: colors.background,
+        borderRadius: radius.md,
+        borderCurve: "continuous",
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.md,
+        minHeight: controlSize.compact,
+        flexDirection: "row",
+        gap: spacing.sm,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: variant === "secondary" || disabled ? StyleSheet.hairlineWidth : 0,
+        borderColor: palette.border,
+        opacity: disabled ? 0.62 : 1,
+      }}
+    >
+      {IconCmp ? <IconCmp accessible={false} size={iconSize.compact} color={colors.foreground} strokeWidth={2.2} /> : null}
+      <Text style={[type.buttonCompact, { color: colors.foreground, textAlign: "center", flexShrink: 1 }]}>{label}</Text>
+    </View>
   );
 }
 
@@ -1777,12 +1826,14 @@ export function OperationStatusNotice({
   );
 }
 
-/** The whole screen while an account operation advances through real stages. */
+/** The whole screen while the account's first data pull is still in flight. */
 export function WaitingNotice({ message, kind }: { message: string; kind: OperationFlowKind }) {
   return (
-    <View style={{ width: "100%", maxWidth: 440, alignItems: "center", paddingHorizontal: spacing.lg }}>
-      <OperationFlow kind={kind} label={message} presentation="hero" />
-    </View>
+    <DelayedLoading>
+      <View style={{ width: "100%", maxWidth: 480, alignItems: "center", paddingHorizontal: spacing.lg }}>
+        <OperationFlow kind={kind} label={message} presentation="hero" />
+      </View>
+    </DelayedLoading>
   );
 }
 

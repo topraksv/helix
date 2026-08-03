@@ -332,6 +332,7 @@ export default function SourcesScreen() {
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="payment-sources-workspace"
+        wideLayout={sources.length === 0 ? "stack" : "split"}
         primary={(
           <View>
           <Card>

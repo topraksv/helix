@@ -397,6 +397,36 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByRole("textbox", { name: "Aktarılacak tutar", exact: true }).fill("100");
   await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
   await expect(page.getByText("₺9.000,00", { exact: true }).first()).toBeVisible();
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const walletGeometry = await page.getByTestId("investment-wallet-summary").evaluate((wallet) => {
+    const cash = wallet.querySelector<HTMLElement>('[data-testid="investment-cash-amount"]')!;
+    const transfers = wallet.querySelector<HTMLElement>('[data-testid="investment-transfer-summary"]')!;
+    const metrics = wallet.querySelector<HTMLElement>('[data-testid="investment-portfolio-metrics"]')!;
+    const chart = wallet.querySelector<HTMLElement>('[data-testid="investment-distribution-chart"]')!;
+    const box = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width };
+    };
+    return { cash: box(cash), transfers: box(transfers), metrics: box(metrics), chart: box(chart) };
+  });
+  expect(walletGeometry.chart.left).toBeGreaterThan(walletGeometry.cash.right);
+  expect(walletGeometry.chart.width).toBeGreaterThan(walletGeometry.cash.width);
+  expect(walletGeometry.metrics.left).toBeCloseTo(walletGeometry.cash.left, 0);
+  expect(walletGeometry.metrics.top).toBeGreaterThanOrEqual(walletGeometry.transfers.bottom - 1);
+
+  const productItems = page.locator('[data-testid^="investment-products-item-"]');
+  const productGeometry = await productItems.evaluateAll((elements) => elements.map((element) => {
+    const rect = element.getBoundingClientRect();
+    return { left: rect.left, top: rect.top };
+  }));
+  expect(productGeometry.length).toBeGreaterThanOrEqual(2);
+  expect(productGeometry.every((box) => Math.abs(box.left - productGeometry[0]!.left) <= 1)).toBe(true);
+  expect(productGeometry[1]!.top).toBeGreaterThan(productGeometry[0]!.top);
+  await page.getByRole("radio", { name: "Borsa", exact: true }).click();
+  await expect(page.locator('[data-testid^="investment-products-item-"]')).toHaveCount(1);
+  await page.getByRole("radio", { name: "Tümü", exact: true }).click();
+  await expect(page.locator('[data-testid^="investment-products-item-"]')).toHaveCount(2);
 });
 
 test("the investment wallet keeps large balances readable at the narrowest phone width", async ({ page }) => {
@@ -651,14 +681,14 @@ test("lifecycle confirmations carry the operation context after the action", asy
   await page.goto("/helix/settings");
 
   const signOutCard = page.getByTestId("account-sign-out-card");
-  const compactSignature = signOutCard.getByTestId("account-sign-out-signature");
-  await expect(compactSignature).toBeVisible();
-  expect((await compactSignature.boundingBox())!.height).toBeLessThan(90);
-  await expect(compactSignature.getByTestId("account-sign-out-signature-icon")).toHaveCSS("transform", "none");
+  const signOutAction = signOutCard.getByTestId("account-sign-out-action");
+  await expect(signOutAction).toBeVisible();
+  expect((await signOutAction.boundingBox())!.height).toBeLessThan(90);
 
-  await signOutCard.getByRole("button", { name: "Çıkış yap", exact: true }).click();
+  await signOutCard.click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
   await expect(page.getByTestId("operation-dialog-message")).toContainText("Cihazdan ayrılmadan önce");
+  await expect(page.getByTestId("operation-dialog-plan")).toContainText("Önce yedek al");
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Cihazdan ayrıl");
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Bu cihazdaki veriler silinir");
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Önce yedek al");
@@ -667,20 +697,20 @@ test("lifecycle confirmations carry the operation context after the action", asy
   await expect(page.getByTestId("operation-dialog-header")).toHaveCount(0);
 
   const deleteCard = page.getByTestId("account-delete-card");
-  const deleteSignature = deleteCard.getByTestId("account-delete-signature");
-  expect((await deleteSignature.boundingBox())!.height).toBeLessThan(90);
-  await expect(deleteSignature.getByTestId("account-delete-signature-icon")).toHaveCSS("transform", "none");
-  await deleteCard.getByRole("button", { name: "Hesabı Sil", exact: true }).click();
+  const deleteAction = deleteCard.getByTestId("account-delete-action");
+  expect((await deleteAction.boundingBox())!.height).toBeLessThan(90);
+  await deleteCard.click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Kalıcı silme");
   await expect(page.getByTestId("operation-dialog-message")).toContainText("Kalıcı silme kapsamı");
+  await expect(page.getByTestId("operation-dialog-plan")).toContainText("Son kontrol");
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Mali tablo, işlemler ve taksitler");
   await expect(page.getByTestId("operation-dialog-header").getByText("Hesabı sil", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/helix/settings");
-  await page.getByTestId("account-sign-out-card").getByRole("button", { name: "Çıkış yap", exact: true }).click();
+  await page.getByTestId("account-sign-out-card").click();
   const mobileSurface = page.getByTestId("operation-dialog-surface");
   await expect(mobileSurface).toBeVisible();
   const mobileBox = await mobileSurface.boundingBox();
@@ -690,6 +720,26 @@ test("lifecycle confirmations carry the operation context after the action", asy
   expect(mobileBox!.y).toBeGreaterThanOrEqual(0);
   expect(mobileBox!.y + mobileBox!.height).toBeLessThanOrEqual(844);
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Önce yedek al");
+});
+
+test("empty settings contexts return desktop width to the active editor", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await onboard(page);
+  for (const [route, testID] of [
+    ["/helix/settings/budgets", "budgets-workspace"],
+    ["/helix/settings/computed-columns", "computed-columns-workspace"],
+    ["/helix/settings/incomes", "incomes-workspace"],
+    ["/helix/settings/payment-sources", "payment-sources-workspace"],
+  ] as const) {
+    await page.goto(route);
+    const workspace = page.getByTestId(testID);
+    await expect(workspace).toBeVisible();
+    const primary = await workspace.getByTestId(`${testID}-primary`).boundingBox();
+    const secondary = await workspace.getByTestId(`${testID}-secondary`).boundingBox();
+    expect(primary).not.toBeNull();
+    expect(secondary).not.toBeNull();
+    expect(Math.abs(primary!.x - secondary!.x)).toBeLessThanOrEqual(2);
+  }
 });
 
 test("compact financial-table pins stay beside headers and month labels keep breathing room", async ({ page }) => {

@@ -66,14 +66,27 @@ describe("operation progress language", () => {
     expect(settings).toContain("tr.operation.localSigningOut");
   });
 
-  it("gives sign-in, sign-out, freeze and deletion different motion signatures", () => {
+  it("keeps first-pull copy separate from account lifecycle actions", () => {
+    expect(tr.auth.restoringData).toContain("Hesabındaki veriler");
+    expect(tr.auth.restoringData).not.toContain("Çalışma alanın");
+    expect(tr.auth.restoringData).not.toContain("Mali tablon");
+  });
+
+  it("gives each operation a distinct static visual signature", () => {
     const source = readFileSync(join(process.cwd(), "src/ui/operation-flow.tsx"), "utf8");
-    expect(source).toContain('"sign-in": [KeyRound, "focus", "primary"]');
-    expect(source).toContain('"sign-out": [LogOut, "leave", "secondary"]');
-    expect(source).toContain('freeze: [Snowflake, "turn", "warning"]');
-    expect(source).toContain('delete: [Trash2, "drop", "destructive"]');
-    expect(source).toMatch(/motion === "leave".*translateX/s);
-    expect(source).toMatch(/motion === "turn".*rotate/s);
-    expect(source).toMatch(/motion === "drop".*translateY.*scale/s);
+    expect(source).toContain('"sign-in": [KeyRound, "primary"]');
+    expect(source).toContain('"sign-out": [LogOut, "secondary"]');
+    expect(source).toContain('freeze: [Snowflake, "warning"]');
+    expect(source).toContain('delete: [Trash2, "destructive"]');
+    expect(source).not.toContain("useWaitingPulse");
+    expect(source).not.toContain("<Animated.View");
+  });
+
+  it("keeps lifecycle entry points quiet and routes cloud sign-out through confirmation", () => {
+    const settings = readFileSync(join(process.cwd(), "src/app/(tabs)/settings/index.tsx"), "utf8");
+    expect(settings).not.toContain("<OperationSignature");
+    expect(settings).toContain('testID="account-sign-out-action"');
+    expect(settings).toContain('operation: "sign-out"');
+    expect(settings).toContain('testID="account-delete-action"');
   });
 });

@@ -49,7 +49,7 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { dateLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
+import { ActionBadge, Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
 import { font, PALETTES, radius, spacing, type, useTheme, type Palette, type ThemePreference } from "../../../ui/theme";
@@ -58,7 +58,7 @@ import { todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
-import { OperationFlow, OperationSignature, type OperationFlowKind } from "../../../ui/operation-flow";
+import { OperationFlow, type OperationFlowKind } from "../../../ui/operation-flow";
 
 function ThemeChoice({
   value,
@@ -279,6 +279,36 @@ function SettingsDestinationGrid({
   );
 }
 
+function AccountActionRow({
+  testID,
+  icon: Icon,
+  title,
+  subtitle,
+  actionLabel,
+  variant,
+  busy,
+}: {
+  testID: string;
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+  actionLabel: string;
+  variant: "secondary" | "danger";
+  busy: boolean;
+}) {
+  return (
+    <View testID={testID}>
+      <ListRow
+        icon={Icon}
+        title={title}
+        subtitle={subtitle}
+        stackRightOnNarrow
+        right={<ActionBadge label={actionLabel} icon={Icon} variant={variant} disabled={busy} />}
+      />
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const userId = useUserId();
   const { signOut, deleteAccount, verifyPassword } = useSession();
@@ -342,6 +372,11 @@ export default function SettingsScreen() {
         if (error) void appAlert(error, tr.errors.title);
         return;
       }
+      const proceed = await appConfirm(tr.auth.signOut, tr.auth.signOutSignatureDescription, {
+        confirmLabel: tr.auth.signOut,
+        operation: "sign-out",
+      });
+      if (!proceed) return;
       // The session layer owns the flush and refuses to wipe rows the cloud
       // never received; this screen owns the only thing it cannot decide —
       // whether the user accepts losing them.
@@ -804,61 +839,59 @@ export default function SettingsScreen() {
         </Card>
       ) : null}
 
-      <Card testID="account-sign-out-card">
-        <OperationSignature
-          kind={isSupabaseConfigured ? "sign-out" : "local-sign-out"}
-          eyebrow={tr.auth.signOutSignatureEyebrow}
-          title={tr.auth.signOut}
-          description={isSupabaseConfigured ? tr.auth.signOutSignatureDescription : tr.auth.localSignOutSignatureDescription}
-          detail={isSupabaseConfigured ? tr.auth.signOutSignatureDetail : tr.auth.localSignOutSignatureDetail}
-          compact
-          testID="account-sign-out-signature"
-        />
+      <Card
+        testID="account-sign-out-card"
+        padded={false}
+        accessibilityLabel={tr.auth.signOut}
+        onPress={() => {
+          if (!signingOut) void handleSignOut();
+        }}
+      >
+        <View style={{ paddingHorizontal: spacing.md }}>
+          <AccountActionRow
+            testID="account-sign-out-action"
+            icon={LogOut}
+            title={tr.auth.signOut}
+            subtitle={isSupabaseConfigured ? tr.auth.signOutSignatureDescription : tr.auth.localSignOutSignatureDescription}
+            actionLabel={tr.auth.signOut}
+            variant="secondary"
+            busy={signingOut}
+          />
+        </View>
         {signingOut ? (
-          <View style={{ marginTop: spacing.md }}>
+          <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.md }}>
             <OperationFlow
               kind={isSupabaseConfigured ? "sign-out" : "local-sign-out"}
               label={isSupabaseConfigured ? tr.operation.signingOut : tr.operation.localSigningOut}
             />
           </View>
         ) : null}
-        <View style={{ marginTop: spacing.md }}>
-          <Button
-            icon={LogOut}
-            label={tr.auth.signOut}
-            variant="secondary"
-            loading={signingOut}
-            disabled={signingOut}
-            onPress={() => void handleSignOut()}
-          />
-        </View>
       </Card>
 
-      <Card testID="account-delete-card">
-        <OperationSignature
-          kind="delete"
-          eyebrow={tr.account.deleteSignatureEyebrow}
-          title={tr.account.delete}
-          description={tr.account.deleteSignatureDescription}
-          detail={tr.account.deleteSignatureDetail}
-          compact
-          testID="account-delete-signature"
-        />
+      <Card
+        testID="account-delete-card"
+        padded={false}
+        accessibilityLabel={tr.account.delete}
+        onPress={() => {
+          if (!deleting) void handleDeleteAccount();
+        }}
+      >
+        <View style={{ paddingHorizontal: spacing.md }}>
+          <AccountActionRow
+            testID="account-delete-action"
+            icon={Trash2}
+            title={tr.account.delete}
+            subtitle={tr.account.deleteSignatureDescription}
+            actionLabel={tr.account.delete}
+            variant="danger"
+            busy={deleting}
+          />
+        </View>
         {deleting ? (
-          <View style={{ marginTop: spacing.md }}>
+          <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.md }}>
             <OperationFlow kind="delete" label={tr.operation.deletingAccount} />
           </View>
         ) : null}
-        <View style={{ marginTop: spacing.md }}>
-          <Button
-            icon={Trash2}
-            label={deleting ? tr.operation.deletingAccountTitle : tr.account.delete}
-            variant="danger"
-            loading={deleting}
-            disabled={deleting}
-            onPress={() => void handleDeleteAccount()}
-          />
-        </View>
       </Card>
       {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}
 

@@ -13,6 +13,7 @@ export function WorkspaceSplit({
   breakpoint = 900,
   primaryWeight = 0.9,
   secondaryWeight = 1.1,
+  wideLayout = "split",
   testID,
 }: {
   primary: ReactNode;
@@ -20,10 +21,12 @@ export function WorkspaceSplit({
   breakpoint?: number;
   primaryWeight?: number;
   secondaryWeight?: number;
+  /** Empty context panes can return their width to the active editor. */
+  wideLayout?: "split" | "stack";
   testID?: string;
 }) {
   const { width } = useWindowDimensions();
-  const wide = width >= breakpoint;
+  const wide = width >= breakpoint && wideLayout === "split";
   return (
     <View
       testID={testID}

@@ -288,6 +288,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="computed-columns-workspace"
+        wideLayout={columns.length === 0 ? "stack" : "split"}
         primary={(
           <View>
       {editingId ? (

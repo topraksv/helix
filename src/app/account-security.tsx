@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from "react";
+import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { KeyRound, Mail, RotateCcw, Snowflake } from "lucide-react-native";
 import { useSession } from "../auth/session";
@@ -11,7 +12,7 @@ import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
-import { Body, Button, Card, Field, PanelHeader, Screen } from "../ui/components";
+import { ActionBadge, Body, Button, Card, Field, ListRow, PanelHeader, Screen } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -20,7 +21,7 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { WorkspaceGrid } from "../ui/workspace-layout";
-import { OperationFlow, OperationSignature } from "../ui/operation-flow";
+import { OperationFlow } from "../ui/operation-flow";
 
 export default function AccountSecurityScreen() {
   // Account freeze promises a cloud-confirmed write followed by sign-out. A
@@ -252,23 +253,21 @@ function CloudAccountSecurityScreen() {
         />
       </Card>
 
-      <Card>
-        <OperationSignature
-          kind="freeze"
-          eyebrow={tr.account.freezeSignatureEyebrow}
-          title={tr.account.freeze}
-          description={tr.account.freezeSignatureDescription}
-          detail={tr.account.freezeSignatureDetail}
-          compact
-          testID="account-freeze-signature"
-        />
-        <Button
-          icon={Snowflake}
-          label={tr.account.freeze}
-          variant="secondary"
-          onPress={() => void freezeAccount()}
-          disabled={freezing}
-        />
+      <Card
+        accessibilityLabel={tr.account.freeze}
+        onPress={() => {
+          if (!freezing) void freezeAccount();
+        }}
+      >
+        <View testID="account-freeze-action">
+          <ListRow
+            icon={Snowflake}
+            title={tr.account.freeze}
+            subtitle={tr.account.freezeSignatureDescription}
+            stackRightOnNarrow
+            right={<ActionBadge label={tr.account.freeze} icon={Snowflake} variant="secondary" disabled={freezing} />}
+          />
+        </View>
         {freezePhase ? (
           <OperationFlow kind="freeze" label={tr.operation.freezePhase[freezePhase]} />
         ) : null}

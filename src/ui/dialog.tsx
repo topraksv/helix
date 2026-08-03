@@ -234,7 +234,7 @@ export function PromptHost() {
           fontSize: 16,
         }}
       />
-      <View style={{ flexDirection: current.operation ? "column" : "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
+      <View style={{ flexDirection: current.operation ? "column" : "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap", ...(current.operation ? { marginTop: spacing.xl, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border } : {}) }}>
         <View style={current.operation ? { width: "100%" } : undefined}>
           <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />
         </View>
@@ -253,6 +253,7 @@ export function PromptHost() {
 }
 
 export function DialogHost() {
+  const { palette } = useTheme();
   const current = useDialogStore((s) => s.current);
   const titleRef = useModalAccessibility(current != null, undefined, current?.title);
   if (!current) return null;
@@ -271,7 +272,7 @@ export function DialogHost() {
       onDismiss={() => close(current.cancelLabel == null)}
       operation={current.operation}
     >
-      <View style={{ flexDirection: current.operation ? "column" : "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
+      <View style={{ flexDirection: current.operation ? "column" : "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap", ...(current.operation ? { marginTop: spacing.xl, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border } : {}) }}>
         {current.cancelLabel != null ? (
           <View style={current.operation ? { width: "100%" } : undefined}>
             <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />

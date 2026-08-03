@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -40,6 +40,7 @@ import {
   Body,
   Button,
   Card,
+  ChipPicker,
   DataStateNotice,
   EmptyState,
   Heading,
@@ -97,6 +98,7 @@ function Stat({
           type.small,
           {
             color: palette.textSecondary,
+            minHeight: compact ? 24 : 32,
             ...(compact ? { fontSize: 10, lineHeight: 12 } : null),
           },
         ]}
@@ -113,18 +115,20 @@ function TransferMetric({
   label,
   minor,
   compact,
+  stacked = false,
 }: {
   direction: "in" | "out";
   label: string;
   minor: number;
   compact: boolean;
+  stacked?: boolean;
 }) {
   const { palette } = useTheme();
   const Icon = direction === "in" ? ArrowDownToLine : ArrowUpFromLine;
   const iconColor = direction === "in" ? palette.positiveText : palette.secondaryText;
   const iconBackground = direction === "in" ? palette.success + "20" : palette.secondarySoft;
   return (
-    <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+    <View style={{ flex: stacked ? undefined : 1, width: stacked ? "100%" : undefined, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
       <View
         accessible={false}
         style={{
@@ -300,6 +304,8 @@ export default function InvestmentsScreen() {
   const undo = useUndo();
   const { width } = useWindowDimensions();
   const compact = width < 560;
+  const desktop = width >= 900;
+  const [productFilter, setProductFilter] = useState<"all" | InvestmentAssetType>("all");
   const { palette } = useTheme();
   const colors = useSeriesColors();
   const profilesState = useInvestmentProfilesState();
@@ -390,6 +396,10 @@ export default function InvestmentsScreen() {
   }
 
   const active = state.products.filter((product) => product.active);
+  const activeAssetTypes = ASSET_TYPES.filter((assetType) => active.some((product) => product.assetType === assetType));
+  const visibleActive = productFilter === "all"
+    ? active
+    : active.filter((product) => product.assetType === productFilter);
   const byType = new Map<InvestmentAssetType, number>();
   for (const product of active) byType.set(product.assetType, (byType.get(product.assetType) ?? 0) + product.costMinor);
   const slices = [
@@ -456,7 +466,33 @@ export default function InvestmentsScreen() {
     <Donut
       slices={slices}
       totalMinor={totalCapital}
-      size={width >= 760 ? 148 : 112}
+      size={desktop ? 204 : width >= 760 ? 148 : 112}
+    />
+  );
+  const transferSummary = (
+    <View
+      testID="investment-transfer-summary"
+      style={{
+        flexDirection: desktop ? "column" : "row",
+        gap: compact ? spacing.sm : spacing.md,
+        marginTop: spacing.lg,
+        padding: spacing.md,
+        borderRadius: radius.md,
+        backgroundColor: palette.surfaceAlt,
+      }}
+    >
+      <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} compact={compact} stacked={desktop} />
+      <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} compact={compact} stacked={desktop} />
+    </View>
+  );
+  const portfolioMetrics = (
+    <MetricStrip
+      testID="investment-portfolio-metrics"
+      items={[
+        { label: tr.investments.investedCost, value: <Text style={[type.amountSm, { color: palette.text }]}>{formatMinorCompact(state.investedCostMinor)}</Text> },
+        { label: tr.investments.activeProducts, value: <Text style={[type.amountSm, { color: palette.text }]}>{active.length}</Text> },
+        { label: tr.investments.realizedResult, value: <Text style={[type.amountSm, { color: state.realizedProfitLossMinor >= 0 ? palette.positiveText : palette.negativeText }]}>{compact ? formatMinorCompact(state.realizedProfitLossMinor) : formatMinor(state.realizedProfitLossMinor)}</Text> },
+      ]}
     />
   );
 
@@ -473,24 +509,32 @@ export default function InvestmentsScreen() {
             <>
               {cashSummary}
               <AllocationStrip slices={slices} totalMinor={totalCapital} />
+              {transferSummary}
+              {portfolioMetrics}
             </>
-          ) : (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
-              {cashSummary}
-              {distributionChart}
+          ) : desktop ? (
+            <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.xl }}>
+              <View style={{ flex: 0.82, minWidth: 0 }}>
+                {cashSummary}
+                {transferSummary}
+                {portfolioMetrics}
+              </View>
+              <View testID="investment-distribution-chart" style={{ flex: 1.18, minWidth: 0, justifyContent: "center" }}>
+                {distributionChart}
+              </View>
             </View>
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
+                {cashSummary}
+                <View testID="investment-distribution-chart" style={{ flex: 1, minWidth: 0 }}>
+                  {distributionChart}
+                </View>
+              </View>
+              {transferSummary}
+              {portfolioMetrics}
+            </>
           )}
-          <View style={{ flexDirection: "row", gap: compact ? spacing.sm : spacing.xl, marginTop: spacing.lg, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt }}>
-            <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} compact={compact} />
-            <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} compact={compact} />
-          </View>
-          <MetricStrip
-            items={[
-              { label: tr.investments.investedCost, value: <Text style={[type.amountSm, { color: palette.text }]}>{formatMinorCompact(state.investedCostMinor)}</Text> },
-              { label: tr.investments.activeProducts, value: <Text style={[type.amountSm, { color: palette.text }]}>{active.length}</Text> },
-              { label: tr.investments.realizedResult, value: <Text style={[type.amountSm, { color: state.realizedProfitLossMinor >= 0 ? palette.positiveText : palette.negativeText }]}>{compact ? formatMinorCompact(state.realizedProfitLossMinor) : formatMinor(state.realizedProfitLossMinor)}</Text> },
-            ]}
-          />
         </HeroCard>
       </View>
 
@@ -515,11 +559,31 @@ export default function InvestmentsScreen() {
       </View>
 
       <SectionHeader>{tr.investments.activeProducts}</SectionHeader>
-      {active.length === 0 ? (
-        <Card><EmptyState icon={Landmark} title={tr.investments.noProducts} hint={tr.investments.noProductsHint} /></Card>
+      {active.length > 0 ? (
+        <View testID="investment-product-filter" style={{ marginBottom: spacing.sm }}>
+          <Text style={[type.small, { color: palette.textSecondary, marginBottom: spacing.xs }]}>{tr.investments.productFilter}</Text>
+          <ChipPicker
+            compact
+            options={[
+              { value: "all" as const, label: tr.common.all },
+              ...activeAssetTypes.map((assetType) => ({ value: assetType, label: tr.investments.types[assetType] })),
+            ]}
+            value={productFilter}
+            onChange={setProductFilter}
+          />
+        </View>
+      ) : null}
+      {visibleActive.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Landmark}
+            title={active.length === 0 ? tr.investments.noProducts : tr.investments.noFilteredProducts}
+            hint={active.length === 0 ? tr.investments.noProductsHint : tr.investments.noFilteredProductsHint}
+          />
+        </Card>
       ) : (
-        <WorkspaceGrid testID="investment-products">
-          {active.map((product) => {
+        <WorkspaceGrid testID="investment-products" layout="stack">
+          {visibleActive.map((product) => {
             const resultPositive = product.realizedProfitLossMinor >= 0;
             const ProductIcon = ASSET_ICONS[product.assetType];
             return (
@@ -538,17 +602,15 @@ export default function InvestmentsScreen() {
                     </Text>
                   </View>
                 </Spread>
-                <Row style={{ marginTop: spacing.lg }}>
+                <Row style={{ marginTop: spacing.lg, alignItems: "stretch", justifyContent: "center" }}>
                   <Stat compact={compact} label={tr.investments.averageCost} accent={palette.border} value={<Text style={[type.amountSm, { color: palette.text }]}>{product.averageCostMinor == null ? "—" : formatMinorCompact(product.averageCostMinor)}</Text>} />
                   <Stat compact={compact} label={tr.investments.totalCost} accent={palette.primary} value={<Text style={[type.amountSm, { color: palette.text }]}>{formatMinorCompact(product.costMinor)}</Text>} />
-                  {product.realizedProfitLossMinor !== 0 ? (
-                    <Stat
-                      compact={compact}
-                      label={resultPositive ? tr.investments.realizedProfit : tr.investments.realizedLoss}
-                      accent={resultPositive ? palette.positive : palette.negative}
-                      value={<Text style={[type.amountSm, { color: resultPositive ? palette.positiveText : palette.negativeText }]}>{compact ? formatMinorCompact(product.realizedProfitLossMinor) : formatMinor(product.realizedProfitLossMinor)}</Text>}
-                    />
-                  ) : null}
+                  <Stat
+                    compact={compact}
+                    label={product.realizedProfitLossMinor === 0 ? tr.investments.realizedResult : resultPositive ? tr.investments.realizedProfit : tr.investments.realizedLoss}
+                    accent={product.realizedProfitLossMinor === 0 ? palette.border : resultPositive ? palette.positive : palette.negative}
+                    value={<Text style={[type.amountSm, { color: product.realizedProfitLossMinor === 0 ? palette.textSecondary : resultPositive ? palette.positiveText : palette.negativeText }]}>{product.realizedProfitLossMinor === 0 ? "—" : compact ? formatMinorCompact(product.realizedProfitLossMinor) : formatMinor(product.realizedProfitLossMinor)}</Text>}
+                  />
                 </Row>
               </Card>
             );

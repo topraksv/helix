@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { hexToRgb } from "../src/ui/badge-color";
 import { BRAND, brandPlate } from "../src/ui/brand-colors";
 import { badgeHue, initialsBadgeColor } from "../src/ui/badge-color";
 import { darkPalette, DEFAULT_PALETTE_ID, generatedBadgeForeground, heroSurface, lightPalette, PALETTES, resolvePaletteId, type Palette } from "../src/ui/theme";
@@ -278,29 +277,12 @@ describe("semantic theme contrast", () => {
     }
   });
 
-  /**
-   * The waiting caption pulses, so its faintest frame is the one that has to
-   * pass — a token that clears AA at full strength says nothing about the
-   * trough. The floor is read from `motion.ts` rather than restated here, so
-   * deepening the pulse fails this test instead of quietly dimming the only
-   * text on the sign-in and sign-out screens.
-   */
-  it("keeps the waiting caption readable at the bottom of its pulse", () => {
+  /** The waiting surface is static, so its normal text token must clear AA. */
+  it("keeps the static waiting caption readable on its surface", () => {
     const source = readFileSync("src/ui/motion.ts", "utf8");
-    const floor = Number(/WAITING_PULSE_FLOOR = ([\d.]+)/.exec(source)?.[1]);
-    expect(floor).toBeGreaterThan(0);
+    expect(source).not.toContain("WAITING_PULSE_FLOOR");
     for (const palette of shippedPalettes) {
-      // `hexToRgb` is normalised to 0–1, so scale back before re-encoding.
-      const bg = hexToRgb(palette.background);
-      const fg = hexToRgb(palette.text);
-      const dimmed = `#${fg
-        .map((value, index) =>
-          Math.round((floor * value + (1 - floor) * (bg[index] ?? 0)) * 255)
-            .toString(16)
-            .padStart(2, "0"),
-        )
-        .join("")}`;
-      expect(contrastRatio(dimmed, palette.background), `dimmed text on ${palette.background}`)
+      expect(contrastRatio(palette.text, palette.surface), `waiting text on ${palette.surface}`)
         .toBeGreaterThanOrEqual(4.5);
     }
   });

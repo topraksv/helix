@@ -187,6 +187,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
       <DataStateNotice status={dataStatus} retry={categoriesState.retry} />
       <WorkspaceSplit
         testID="categories-workspace"
+        wideLayout={categories.length === 0 ? "stack" : "split"}
         primary={(
           <Card>
             <PanelHeader icon={Plus} title={tr.settings.createItemTitle} description={tr.settings.createItemHint} />

@@ -1,5 +1,5 @@
 import React from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import {
   Check,
   CheckCircle2,
@@ -14,7 +14,6 @@ import {
   WalletCards,
   type LucideIcon,
 } from "lucide-react-native";
-import { useWaitingPulse } from "./motion";
 import { radius, spacing, type, useTheme, type Palette } from "./theme";
 import { tr } from "../i18n/tr";
 
@@ -30,20 +29,19 @@ export type OperationFlowKind =
   | "freeze"
   | "reactivate";
 
-type Motion = "focus" | "leave" | "turn" | "drop" | "rise";
 type Tone = "primary" | "secondary" | "success" | "warning" | "destructive";
-type Visual = readonly [LucideIcon, Motion, Tone?];
+type Visual = readonly [LucideIcon, Tone?];
 const operationVisuals: Record<OperationFlowKind, Visual> = {
-  "sign-in": [KeyRound, "focus", "primary"],
-  "sign-up": [ShieldCheck, "focus", "success"],
-  reset: [Mail, "focus", "secondary"],
-  initialize: [WalletCards, "rise", "primary"],
-  restore: [RefreshCw, "turn", "secondary"],
-  "sign-out": [LogOut, "leave", "secondary"],
-  "local-sign-out": [LogOut, "leave", "destructive"],
-  delete: [Trash2, "drop", "destructive"],
-  freeze: [Snowflake, "turn", "warning"],
-  reactivate: [KeyRound, "rise", "success"],
+  "sign-in": [KeyRound, "primary"],
+  "sign-up": [ShieldCheck, "success"],
+  reset: [Mail, "secondary"],
+  initialize: [WalletCards, "primary"],
+  restore: [RefreshCw, "secondary"],
+  "sign-out": [LogOut, "secondary"],
+  "local-sign-out": [LogOut, "destructive"],
+  delete: [Trash2, "destructive"],
+  freeze: [Snowflake, "warning"],
+  reactivate: [KeyRound, "success"],
 };
 
 function operationColor(palette: Palette, tone: Tone): string {
@@ -69,27 +67,6 @@ function operationSupportIcon(kind: OperationFlowKind): LucideIcon {
   }
 }
 
-/** Motion rests at its neutral endpoint when Reduced Motion is enabled. */
-function motionStyle(motion: Motion, pulse: Animated.Value) {
-  const interpolate = (from: number) =>
-    pulse.interpolate({ inputRange: [0.72, 1], outputRange: [from, 0] });
-  if (motion === "leave") return { transform: [{ translateX: interpolate(-9) }] };
-  if (motion === "turn") {
-    return { transform: [{ rotate: pulse.interpolate({ inputRange: [0.72, 1], outputRange: ["-14deg", "0deg"] }) }] };
-  }
-  if (motion === "drop") {
-    return {
-      opacity: pulse,
-      transform: [
-        { translateY: interpolate(6) },
-        { scale: pulse.interpolate({ inputRange: [0.72, 1], outputRange: [0.72, 1] }) },
-      ],
-    };
-  }
-  if (motion === "rise") return { transform: [{ translateY: interpolate(6) }] };
-  return { transform: [{ scale: pulse.interpolate({ inputRange: [0.72, 1], outputRange: [0.9, 1] }) }] };
-}
-
 /** One operation-specific visual and one caption; callers cannot duplicate it. */
 export function OperationFlow({
   kind,
@@ -101,8 +78,7 @@ export function OperationFlow({
   presentation?: "inline" | "hero";
 }) {
   const { palette } = useTheme();
-  const pulse = useWaitingPulse();
-  const [Icon, motion, tone = "primary"] = operationVisuals[kind];
+  const [Icon, tone = "primary"] = operationVisuals[kind];
   const color = operationColor(palette, tone);
   const destructive = tone === "destructive";
   const hero = presentation === "hero";
@@ -115,38 +91,37 @@ export function OperationFlow({
       accessibilityValue={{ text: label }}
       style={{
         width: "100%",
-        maxWidth: hero ? 440 : undefined,
-        alignItems: hero ? "center" : "flex-start",
+        maxWidth: hero ? 480 : undefined,
+        alignItems: hero ? "stretch" : "flex-start",
         backgroundColor: hero ? palette.surface : "transparent",
         borderRadius: hero ? radius.lg : 0,
-        padding: hero ? spacing.xl : 0,
+        borderWidth: hero ? StyleSheet.hairlineWidth : 0,
+        borderColor: hero ? palette.border : "transparent",
+        padding: hero ? spacing.lg : 0,
       }}
     >
-      <View style={{ flexDirection: hero ? "column" : "row", alignItems: "center", gap: hero ? spacing.lg : spacing.sm }}>
-        <Animated.View
-          style={[
-            {
-              width: hero ? 64 : 36,
-              height: hero ? 64 : 36,
-              borderRadius: hero ? 22 : 12,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: color + "20",
-              borderWidth: 2,
-              borderColor: color,
-            },
-            motionStyle(motion, pulse),
-          ]}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: hero ? spacing.md : spacing.sm }}>
+        <View
+          style={{
+            width: hero ? 48 : 36,
+            height: hero ? 48 : 36,
+            flexShrink: 0,
+            borderRadius: hero ? radius.md : 12,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: color + "18",
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: color + "80",
+          }}
         >
           <Icon accessible={false} size={hero ? 28 : 17} color={color} strokeWidth={2.3} />
-        </Animated.View>
+        </View>
         <Text
           accessibilityLiveRegion="polite"
           style={[
-            hero ? type.heading : type.small,
+            hero ? type.label : type.small,
             {
               color: destructive ? palette.errorText : palette.text,
-              textAlign: hero ? "center" : "left",
               flexShrink: 1,
             },
           ]}
@@ -159,8 +134,8 @@ export function OperationFlow({
 }
 
 /**
- * A persistent operation signature. The waiting indicator above is intentionally
- * separate; these surfaces explain an action before it starts with a quiet,
+ * A persistent operation signature. The in-flight status above is intentionally
+ * separate; this surface explains an action before it starts with a quiet,
  * static visual signal and consequence line.
  */
 export function OperationSignature({
@@ -181,7 +156,7 @@ export function OperationSignature({
   testID?: string;
 }) {
   const { palette } = useTheme();
-  const [Icon, , tone = "primary"] = operationVisuals[kind];
+  const [Icon, tone = "primary"] = operationVisuals[kind];
   const color = operationColor(palette, tone);
   const foreground = tone === "destructive"
     ? palette.errorText
@@ -329,6 +304,50 @@ function DialogMessage({
   );
 }
 
+function DialogFact({
+  icon: Icon,
+  label,
+  detail,
+  color,
+}: {
+  icon: LucideIcon;
+  label: string;
+  detail: string;
+  color: string;
+}) {
+  const { palette } = useTheme();
+  return (
+    <View
+      style={{
+        flexGrow: 1,
+        flexBasis: 180,
+        minWidth: 180,
+        padding: spacing.md,
+        borderRadius: radius.md,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: color + "55",
+        backgroundColor: palette.surfaceAlt,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        <Icon accessible={false} size={16} color={color} strokeWidth={2.2} />
+        <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.6, flex: 1 }]}>{label}</Text>
+      </View>
+      <Text style={[type.small, { color: palette.text, marginTop: spacing.xs }]}>{detail}</Text>
+    </View>
+  );
+}
+
+function DialogPlan({ children }: { children: React.ReactNode }) {
+  const { palette } = useTheme();
+  return (
+    <View testID="operation-dialog-plan" style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+      <Text style={[type.small, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 0.7 }]}>{tr.common.operationPlan}</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>{children}</View>
+    </View>
+  );
+}
+
 function DialogHeading({
   icon: Icon,
   eyebrow,
@@ -374,7 +393,7 @@ export function OperationDialogHeader({
   testID?: string;
 }) {
   const { palette } = useTheme();
-  const [Icon, , tone = "primary"] = operationVisuals[kind];
+  const [Icon, tone = "primary"] = operationVisuals[kind];
   const color = operationColor(palette, tone);
   const eyebrow = operationEyebrow(kind);
 
@@ -387,24 +406,36 @@ export function OperationDialogHeader({
         <>
           <DialogHeading icon={LogOut} eyebrow={eyebrow} title={title} color={color} />
           <DialogMessage label={tr.auth.signOutDialogSection} message={message} color={color} />
+          <DialogPlan>
+            <DialogFact icon={CheckCircle2} label={tr.auth.signOutDialogAccountTitle} detail={tr.auth.signOutDialogAccountDetail} color={palette.success} />
+            <DialogFact icon={RefreshCw} label={tr.auth.signOutDialogReturnTitle} detail={tr.auth.signOutDialogReturnDetail} color={color} />
+          </DialogPlan>
           <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-            <DialogStep icon={CheckCircle2} title={tr.auth.signOutDialogAccountTitle} detail={tr.auth.signOutDialogAccountDetail} color={palette.success} />
-            <DialogStep icon={RefreshCw} title={tr.auth.signOutDialogReturnTitle} detail={tr.auth.signOutDialogReturnDetail} color={color} last />
+            <DialogStep index="1" icon={LogOut} title={tr.auth.signOutDialogStepSessionTitle} detail={tr.auth.signOutDialogStepSessionDetail} color={color} />
+            <DialogStep index="2" icon={KeyRound} title={tr.auth.signOutDialogStepReturnTitle} detail={tr.auth.signOutDialogStepReturnDetail} color={palette.primary} last />
           </View>
         </>
       ) : kind === "local-sign-out" ? (
         <>
           <DialogHeading icon={LogOut} eyebrow={eyebrow} title={title} color={palette.destructive} shape="square" />
           <DialogMessage label={tr.auth.localSignOutDialogSection} message={message} color={palette.destructive} tone="danger" />
+          <DialogPlan>
+            <DialogFact icon={CircleAlert} label={tr.auth.localSignOutDialogDeviceTitle} detail={tr.auth.localSignOutDialogDeviceDetail} color={palette.destructive} />
+            <DialogFact icon={Check} label={tr.auth.localSignOutDialogBackupTitle} detail={tr.auth.localSignOutDialogBackupDetail} color={palette.warning} />
+          </DialogPlan>
           <View style={{ marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, gap: spacing.md }}>
-            <DialogStep icon={CircleAlert} title={tr.auth.localSignOutDialogDeviceTitle} detail={tr.auth.localSignOutDialogDeviceDetail} color={palette.destructive} />
-            <DialogStep icon={Check} title={tr.auth.localSignOutDialogBackupTitle} detail={tr.auth.localSignOutDialogBackupDetail} color={palette.warning} last />
+            <DialogStep index="1" icon={CircleAlert} title={tr.auth.localSignOutDialogStepDeviceTitle} detail={tr.auth.localSignOutDialogStepDeviceDetail} color={palette.destructive} />
+            <DialogStep index="2" icon={Check} title={tr.auth.localSignOutDialogStepBackupTitle} detail={tr.auth.localSignOutDialogStepBackupDetail} color={palette.warning} last />
           </View>
         </>
       ) : kind === "freeze" ? (
         <>
           <DialogHeading icon={Snowflake} eyebrow={eyebrow} title={title} color={palette.warning} />
           <DialogMessage label={tr.account.freezeDialogSection} message={message} color={palette.warning} tone="warning" />
+          <DialogPlan>
+            <DialogFact icon={ShieldCheck} label={tr.account.freezeDialogProtectTitle} detail={tr.account.freezeDialogProtectDetail} color={palette.success} />
+            <DialogFact icon={LogOut} label={tr.account.freezeDialogCloseTitle} detail={tr.account.freezeDialogCloseDetail} color={palette.warning} />
+          </DialogPlan>
           <View style={{ marginTop: spacing.md, gap: spacing.xs }}>
             <DialogStep index="1" icon={ShieldCheck} title={tr.account.freezeDialogProtectTitle} detail={tr.account.freezeDialogProtectDetail} color={palette.success} />
             <DialogStep index="2" icon={LogOut} title={tr.account.freezeDialogCloseTitle} detail={tr.account.freezeDialogCloseDetail} color={palette.warning} />
@@ -415,6 +446,10 @@ export function OperationDialogHeader({
         <>
           <DialogHeading icon={Trash2} eyebrow={eyebrow} title={title} color={palette.destructive} shape="square" />
           <DialogMessage label={tr.account.deleteDialogSection} message={message} color={palette.destructive} tone="danger" />
+          <DialogPlan>
+            <DialogFact icon={Trash2} label={tr.account.deleteDialogListTitle} detail={tr.account.deleteDialogIrreversible} color={palette.destructive} />
+            <DialogFact icon={CircleAlert} label={tr.account.deleteDialogFinalCheckTitle} detail={tr.account.deleteDialogFinalCheckDetail} color={palette.warning} />
+          </DialogPlan>
           <View style={{ marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: palette.destructive + "75", backgroundColor: palette.error + "0D", gap: spacing.sm }}>
             <Text style={[type.label, { color: palette.errorText }]}>{tr.account.deleteDialogListTitle}</Text>
             {[tr.account.deleteDialogItemAccount, tr.account.deleteDialogItemFinance, tr.account.deleteDialogItemSettings].map((item) => (
