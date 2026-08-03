@@ -9,7 +9,11 @@ import type { PaymentSourceType } from "../domain/types";
 const RULES: [RegExp, string][] = [
   [/kira/i, "🏠"],
   [/market|gıda|mutfak/i, "🛒"],
-  [/ulaşım|benzin|akaryakıt|otobüs|metro|taksi/i, "🚌"],
+  // Fuel and the vehicle it goes into are their own category in most Turkish
+  // workbooks; matched before transit so "Araç & Yakıt" stops falling through
+  // to a deterministic shopping bag.
+  [/araç|araba|otomobil|yakıt|benzin|akaryakıt|otopark/i, "⛽"],
+  [/ulaşım|otobüs|metro|taksi/i, "🚌"],
   [/fatura|abonelik/i, "🧾"],
   [/yatırım|borsa|fon/i, "📈"],
   [/maaş/i, "💰"],
@@ -22,6 +26,9 @@ const RULES: [RegExp, string][] = [
   [/spor|fitness/i, "🏋️"],
   [/tatil|seyahat|u[çc]ak/i, "✈️"],
   [/hediye/i, "🎁"],
+  [/sigorta/i, "🛡️"],
+  [/vergi|harç/i, "🏛️"],
+  [/bakım|onarım|tamir/i, "🔧"],
   [/elektrik/i, "⚡"],
   [/\bsu\b/i, "💧"],
   [/gaz|ısınma/i, "🔥"],

@@ -182,6 +182,13 @@ test("navigation stands up into a rail on desktop and stays a bar on a phone", a
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole("tab", { name: "Mali Tablo" })).toBeVisible();
+  // Poll rather than measure once: the bar and the rail are the same component
+  // re-laying itself out, so a single read can land mid-switch and see the
+  // orientation that is on its way out.
+  await expect.poll(async () => {
+    const box = await geometry();
+    return box.height > box.width;
+  }).toBe(true);
   const rail = await geometry();
   expect(rail.height, "the desktop rail stands up").toBeGreaterThan(rail.width);
   expect(rail.x, "the rail sits against the leading edge").toBeLessThan(rail.width);
