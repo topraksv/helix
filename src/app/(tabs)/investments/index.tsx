@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import {
   ArrowDownToLine,
@@ -498,13 +498,13 @@ export default function InvestmentsScreen() {
         testID="investment-actions"
         style={{
           width: "100%",
-          maxWidth: 820,
-          alignSelf: "flex-start",
           flexDirection: "row",
           gap: spacing.xs,
           padding: spacing.xs,
           borderRadius: radius.lg,
           backgroundColor: palette.surface,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: palette.border + "70",
           marginBottom: spacing.lg,
         }}
       >

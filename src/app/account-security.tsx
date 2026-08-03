@@ -20,7 +20,7 @@ import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { WorkspaceGrid } from "../ui/workspace-layout";
-import { OperationFlow } from "../ui/operation-flow";
+import { OperationFlow, OperationSignature } from "../ui/operation-flow";
 
 export default function AccountSecurityScreen() {
   // Account freeze promises a cloud-confirmed write followed by sign-out. A
@@ -183,7 +183,7 @@ function CloudAccountSecurityScreen() {
 
   return (
     <Screen maxWidth={1100}>
-      <WorkspaceGrid testID="account-security-grid">
+      <WorkspaceGrid testID="account-security-grid" layout="stack">
       <Card>
         <PanelHeader icon={Mail} title={tr.account.changeEmail} description={tr.account.changeEmailSectionHint} />
         {email ? <Body muted style={{ marginBottom: spacing.md }}>{tr.account.currentEmail(email)}</Body> : null}
@@ -251,11 +251,18 @@ function CloudAccountSecurityScreen() {
       </Card>
 
       <Card tone="warning">
-        <PanelHeader tone="warning" icon={Snowflake} title={tr.account.freeze} description={tr.account.freezeDesc} />
+        <OperationSignature
+          kind="freeze"
+          eyebrow={tr.account.freezeSignatureEyebrow}
+          title={tr.account.freeze}
+          description={tr.account.freezeSignatureDescription}
+          detail={tr.account.freezeSignatureDetail}
+          testID="account-freeze-signature"
+        />
         <Button
           icon={Snowflake}
           label={tr.account.freeze}
-          variant="danger"
+          variant="secondary"
           onPress={() => void freezeAccount()}
           disabled={freezing}
         />

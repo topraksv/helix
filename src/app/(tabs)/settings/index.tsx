@@ -58,7 +58,7 @@ import { todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
-import { OperationFlow } from "../../../ui/operation-flow";
+import { OperationFlow, OperationSignature } from "../../../ui/operation-flow";
 
 function ThemeChoice({
   value,
@@ -794,36 +794,65 @@ export default function SettingsScreen() {
       </Card>
 
       <SectionHeader>{tr.account.section}</SectionHeader>
-      <Card>
-        {isSupabaseConfigured ? (
+      {isSupabaseConfigured ? (
+        <Card>
           <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
-        ) : null}
-        {/* Signing out flushes, stops background work, clears device state and
-            wipes the workspace before the screen can change. `signingOut` used
-            to exist only to block a second tap, so the row sat silent through
-            all of it and the wait read as a freeze. */}
-        <ListRow
-          icon={LogOut}
-          iconColor={palette.secondary}
-          title={signingOut ? tr.operation.signingOutTitle : tr.auth.signOut}
-          // The wait is a real flush before a real wipe, and it is kept: a row
-          // the user believes is saved must reach the server before the device
-          // copy goes. Saying so is what turns it from a stall into a step.
-          subtitle={signingOut ? (
+        </Card>
+      ) : null}
+
+      <Card testID="account-sign-out-card">
+        <OperationSignature
+          kind={isSupabaseConfigured ? "sign-out" : "local-sign-out"}
+          eyebrow={tr.auth.signOutSignatureEyebrow}
+          title={tr.auth.signOut}
+          description={isSupabaseConfigured ? tr.auth.signOutSignatureDescription : tr.auth.localSignOutSignatureDescription}
+          detail={isSupabaseConfigured ? tr.auth.signOutSignatureDetail : tr.auth.localSignOutSignatureDetail}
+          testID="account-sign-out-signature"
+        />
+        {signingOut ? (
+          <View style={{ marginTop: spacing.md }}>
             <OperationFlow
               kind={isSupabaseConfigured ? "sign-out" : "local-sign-out"}
               label={isSupabaseConfigured ? tr.operation.signingOut : tr.operation.localSigningOut}
             />
-          ) : undefined}
-          onPress={() => void handleSignOut()}
+          </View>
+        ) : null}
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            icon={LogOut}
+            label={tr.auth.signOut}
+            variant="secondary"
+            loading={signingOut}
+            disabled={signingOut}
+            onPress={() => void handleSignOut()}
+          />
+        </View>
+      </Card>
+
+      <Card tone="error" testID="account-delete-card">
+        <OperationSignature
+          kind="delete"
+          eyebrow={tr.account.deleteSignatureEyebrow}
+          title={tr.account.delete}
+          description={tr.account.deleteSignatureDescription}
+          detail={tr.account.deleteSignatureDetail}
+          testID="account-delete-signature"
         />
-        <ListRow
-          icon={Trash2}
-          iconColor={palette.destructive}
-          title={deleting ? tr.operation.deletingAccountTitle : tr.account.delete}
-          subtitle={deleting ? <OperationFlow kind="delete" label={tr.operation.deletingAccount} /> : tr.account.deleteDesc}
-          onPress={() => void handleDeleteAccount()}
-        />
+        {deleting ? (
+          <View style={{ marginTop: spacing.md }}>
+            <OperationFlow kind="delete" label={tr.operation.deletingAccount} />
+          </View>
+        ) : null}
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            icon={Trash2}
+            label={deleting ? tr.operation.deletingAccountTitle : tr.account.delete}
+            variant="danger"
+            loading={deleting}
+            disabled={deleting}
+            onPress={() => void handleDeleteAccount()}
+          />
+        </View>
       </Card>
       {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}
 

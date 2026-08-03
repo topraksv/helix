@@ -539,7 +539,111 @@ test("supplementary financial-table details collapse without losing recovery", a
 
   await page.setViewportSize({ width: 768, height: 844 });
   await page.goto("/helix/cash-flow");
-  await expect(page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true })).toHaveCount(0);
+  const desktopDetails = page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true });
+  await expect(desktopDetails).toBeVisible();
+  await expect(page.getByTestId("cash-flow-table-details-content")).toBeVisible();
+  const desktopTable = page.getByTestId("cash-flow-matrix-table");
+  const desktopOpenHeight = (await desktopTable.boundingBox())!.height;
+  await desktopDetails.click();
+  await expect(page.getByTestId("cash-flow-table-details-content")).toHaveCount(0);
+  await expect.poll(async () => (await desktopTable.boundingBox())!.height).toBeGreaterThan(desktopOpenHeight + 20);
+  await desktopDetails.click();
+  await expect(page.getByTestId("cash-flow-table-details-content")).toBeVisible();
+});
+
+test("desktop action systems use intentional full-width or single-stream geometry", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await onboard(page);
+
+  await page.goto("/helix/cash-flow");
+  const toolbar = page.getByTestId("cash-flow-action-toolbar");
+  await expect(toolbar).toBeVisible();
+  const toolbarBox = await toolbar.boundingBox();
+  const contentBox = await page.getByTestId("screen-header").locator("..").boundingBox();
+  expect(toolbarBox).not.toBeNull();
+  expect(contentBox).not.toBeNull();
+  expect(toolbarBox!.width).toBeGreaterThanOrEqual(contentBox!.width * 0.9);
+
+  await page.goto("/helix/subscription-form");
+  const behavior = page.getByText("Takip ve otomasyon", { exact: true });
+  await expect(behavior).toBeVisible();
+  const behaviorCard = behavior.locator("..").locator("..");
+  const behaviorBox = await behaviorCard.boundingBox();
+  const formBox = await page.getByTestId("subscription-form-workspace").boundingBox();
+  expect(behaviorBox).not.toBeNull();
+  expect(formBox).not.toBeNull();
+  expect(behaviorBox!.width).toBeGreaterThanOrEqual(formBox!.width * 0.9);
+
+  await page.goto("/helix/reconciliation");
+  const grid = page.getByTestId("reconciliation-grid");
+  // A clean onboarding workspace has no due recurring items, so the route
+  // intentionally renders its empty state instead of an empty grid. When the
+  // fixture contains pending items, the actual grid must still stay a single
+  // readable stream on desktop.
+  if (await grid.count() === 0) {
+    await expect(page.getByText("Onay bekleyen bir şey yok, güncelsin ✅", { exact: true })).toBeVisible();
+    return;
+  }
+  await expect(grid).toBeVisible();
+  const items = grid.locator('[data-testid^="reconciliation-grid-item-"]');
+  const itemCount = await items.count();
+  if (itemCount > 1) {
+    const boxes = await items.evaluateAll((elements) => elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { left: Math.round(box.left), width: Math.round(box.width) };
+    }));
+    expect(new Set(boxes.map(({ left }) => left)).size).toBe(1);
+    expect(new Set(boxes.map(({ width }) => width)).size).toBe(1);
+  }
+});
+
+test("investment summary keeps financial meaning grouped on phone and desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/investments");
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("100000");
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("radio", { name: "Borsa", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Uzun Vadeli Büyüme Sepeti");
+  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await pickOption(page, "Ürün", "Uzun Vadeli Büyüme Sepeti · Borsa");
+  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("12");
+  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("1.250");
+
+  const summary = page.getByTestId("investment-operation-summary");
+  await expect(summary).toContainText("Uzun Vadeli Büyüme Sepeti");
+  await expect(summary).toContainText("İşlem tarihi");
+  await expect(summary).toContainText("Bakiye etkisi");
+  await expect(summary).toContainText("Hesaplanan toplam");
+  const mobileBox = await summary.boundingBox();
+  expect(mobileBox).not.toBeNull();
+  expect(mobileBox!.x).toBeGreaterThanOrEqual(16);
+  expect(mobileBox!.x + mobileBox!.width).toBeLessThanOrEqual(390 - 16);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const desktopBox = await summary.boundingBox();
+  expect(desktopBox).not.toBeNull();
+  expect(desktopBox!.width).toBeGreaterThan(600);
+  expect(desktopBox!.x + desktopBox!.width).toBeLessThanOrEqual(1440 - 16);
+});
+
+test("month notes use the note content as their marker without a duplicate title", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await addMarketExpense(page, "Not başlığı tekrarlanmamalı");
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+
+  const market = page.getByRole("button", { name: /Market/ }).first();
+  await expect(market).toBeVisible();
+  await market.click();
+  const note = page.getByRole("textbox", { name: "Hücre Notu", exact: true });
+  await note.fill("Bu içerik başlık yerine görünür.");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).last().click();
+  await expect(market).toContainText("Bu içerik başlık yerine görünür.");
+  expect(await market.getByText("Not", { exact: true }).count()).toBe(0);
 });
 
 test("compact financial-table pins stay beside headers and month labels keep breathing room", async ({ page }) => {

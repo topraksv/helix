@@ -168,7 +168,7 @@ export default function CatchUpScreen() {
       {items.length === 0 ? (
         <EmptyState icon={CheckCircle2} title={tr.catchup.nothing} />
       ) : (
-        <WorkspaceGrid testID="reconciliation-grid">
+        <WorkspaceGrid testID="reconciliation-grid" layout="stack">
         {items.map((e) => (
           <Card key={e.id}>
             <Spread>

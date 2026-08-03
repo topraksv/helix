@@ -142,7 +142,6 @@ export default function CashflowScreen() {
   };
   const { width } = useWindowDimensions();
   const wide = shouldUseWideWorkspace(width);
-  const mobileTable = width < 600;
   const router = useRouter();
   const { palette } = useTheme();
   // A phone needs the category-first scan of column mode; a wide workspace has
@@ -154,7 +153,9 @@ export default function CashflowScreen() {
   const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [tableAreaH, setTableAreaH] = useState(0);
-  const [showTableDetails, setShowTableDetails] = useState(false);
+  // Desktop starts with the reading guide open so the table explains itself;
+  // every viewport can collapse it once the user knows the grammar.
+  const [showTableDetails, setShowTableDetails] = useState(() => width >= 600);
   // The tab's repeat-press behavior needs the active month-focused scroller.
   const monthFocusScrollRef = React.useRef<ScrollView>(null);
   const tableRef = useRef<ScrollView>(null);
@@ -245,11 +246,22 @@ export default function CashflowScreen() {
         }}
       >
         {wide ? (
-          <View style={{ gap: spacing.sm }}>
-            <View style={{ alignSelf: "flex-start" }}>
-              <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-            </View>
-            <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
+          <View
+            testID="cash-flow-action-toolbar"
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: spacing.sm,
+              padding: spacing.xs,
+              borderRadius: radius.md,
+              backgroundColor: palette.surface,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: palette.border + "70",
+            }}
+          >
+            <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+            <Row gap={spacing.sm} style={{ flex: 1, minWidth: 0, flexWrap: "wrap" }}>
               <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
               <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
               <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
@@ -297,7 +309,7 @@ export default function CashflowScreen() {
                 onChange={changeMode}
               />
             </View>
-            {showTable && mobileTable ? (
+            {showTable ? (
               <IconButton
                 icon={Info}
                 size={controlSize.segmented}
@@ -309,7 +321,7 @@ export default function CashflowScreen() {
               />
             ) : null}
           </View>
-          {showTable && tableMatrix && (showTableDetails || !mobileTable) ? (
+          {showTable && tableMatrix && showTableDetails ? (
             <TableDetailsPanel
               hasUncategorized={tableMatrix.hasUncategorized}
               uncategorizedTotal={tableMatrix.uncategorizedTotal}

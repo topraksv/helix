@@ -1,7 +1,7 @@
 import React from "react";
 import { Stack } from "expo-router";
 import { HeaderBackButton } from "../../../ui/header-back";
-import { stackScreenOptions } from "../../../ui/header-bar";
+import { drillDownScreenOptions } from "../../../ui/header-bar";
 import { useTheme } from "../../../ui/theme";
 import { tr } from "../../../i18n/tr";
 
@@ -12,7 +12,7 @@ export default function InvestmentsLayout() {
   return (
     <Stack
       screenOptions={{
-        ...stackScreenOptions(palette),
+        ...drillDownScreenOptions(palette),
         headerLeft: () => <HeaderBackButton fallback="/(tabs)/investments" />,
       }}
     >

@@ -41,7 +41,7 @@ import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { HeaderBackButton } from "../ui/header-back";
-import { sheetScreenOptions, stackScreenOptions } from "../ui/header-bar";
+import { cardScreenOptions, primaryScreenOptions, sheetScreenOptions } from "../ui/header-bar";
 
 import { devError } from "../services/logger";
 import { PrivacyCover } from "../ui/privacy-cover";
@@ -363,7 +363,7 @@ function RootLayoutInner() {
         <ErrorBoundary>
         <Stack
           screenOptions={{
-            ...stackScreenOptions(theme.palette),
+            ...primaryScreenOptions(theme.palette),
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -375,15 +375,15 @@ function RootLayoutInner() {
           <Stack.Screen name="subscription-form" options={{ ...sheetScreenOptions(theme.palette), title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
           <Stack.Screen name="bulk-entry" options={{ ...sheetScreenOptions(theme.palette), title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="cell-editor" options={{ ...sheetScreenOptions(theme.palette), title: tr.cell.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="import-wizard" options={{ presentation: "card", title: tr.importer.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
-          <Stack.Screen name="workspace-template" options={{ presentation: "card", title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
+          <Stack.Screen name="import-wizard" options={{ ...cardScreenOptions(theme.palette), title: tr.importer.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="workspace-template" options={{ ...cardScreenOptions(theme.palette), title: tr.template.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings/categories" /> }} />
           <Stack.Screen name="opening-balance" options={{ ...sheetScreenOptions(theme.palette), title: tr.settings.opening, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
-          <Stack.Screen name="account-security" options={{ presentation: "card", title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="account-security" options={{ ...cardScreenOptions(theme.palette), title: tr.account.security, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           {/* Keep the shared column editor in a normal stack card. An iOS sheet
               owns the same vertical pan used by the reorder grip, even when
               swipe-to-dismiss is disabled; the Settings entry point works
               because it has no sheet recognizer. */}
-          <Stack.Screen name="columns-editor" options={{ presentation: "card", title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="columns-editor" options={{ ...cardScreenOptions(theme.palette), title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="upcoming" options={{ title: tr.upcoming.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="analytics" options={{ title: tr.analysis.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />

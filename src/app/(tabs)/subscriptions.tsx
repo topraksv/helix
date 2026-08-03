@@ -317,7 +317,7 @@ export default function SubscriptionsScreen() {
       {active.length === 0 && watched.length === 0 && passive.length === 0 ? (
         <EmptyState icon={RefreshCw} title={tr.subs.emptyTitle} hint={tr.subs.emptyHint} />
       ) : null}
-      <WorkspaceGrid testID="subscription-groups">
+      <WorkspaceGrid testID="subscription-groups" layout="stack">
         {active.length > 0 ? (
           <View>
             <SectionHeader>{tr.common.active}</SectionHeader>

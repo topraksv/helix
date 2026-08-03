@@ -23,6 +23,7 @@ import React, { type ReactNode } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controlSize, font, spacing, type, useTheme, type Palette } from "./theme";
+import { PRESENTATION_TAXONOMY, type PresentationClass } from "./presentation";
 
 /** Header row height, excluding the top safe-area inset. */
 const HEADER_ROW_HEIGHT = 64;
@@ -89,19 +90,20 @@ function HeaderBar({
   );
 }
 
-export function stackScreenOptions(palette: Palette) {
+export function stackScreenOptions(palette: Palette, presentationClass: PresentationClass = "drill-down") {
   // Presentation taxonomy: full-page workspaces and drill-down routes share
   // this stack contract; sheets use `sheetScreenOptions`; root card routes are
   // bounded tools. Dialogs/overlays live in `ui/dialog` and never become a
   // second navigation header. Keeping the taxonomy at the route boundary
   // makes title, back, safe-area and dismissal behaviour predictable.
+  const presentation = PRESENTATION_TAXONOMY[presentationClass];
   return {
     headerStyle: { backgroundColor: palette.background },
     headerTintColor: palette.accentText,
     headerTitleStyle: { color: palette.textStrong, fontFamily: font.semibold },
     headerBackButtonDisplayMode: "minimal" as const,
     headerShadowVisible: false,
-    gestureEnabled: true,
+    gestureEnabled: presentation.backAction === "back",
     contentStyle: { backgroundColor: palette.background },
     // One header component on every platform — see `ui/header-bar.tsx` for why
     // the native stack's own header could not be made to match the web one.
@@ -110,6 +112,14 @@ export function stackScreenOptions(palette: Palette) {
       <HeaderBar title={options.title} left={options.headerLeft?.({ canGoBack: true, tintColor: palette.accentText })} />
     ),
   };
+}
+
+export function primaryScreenOptions(palette: Palette) {
+  return stackScreenOptions(palette, "primary-page");
+}
+
+export function drillDownScreenOptions(palette: Palette) {
+  return stackScreenOptions(palette, "drill-down");
 }
 
 /**
@@ -125,9 +135,11 @@ export function stackScreenOptions(palette: Palette) {
  * option set rather than a change to `stackScreenOptions`.
  */
 export function sheetScreenOptions(palette: Palette) {
+  const presentation = PRESENTATION_TAXONOMY["task-sheet"];
   const presentsAsSheet = Platform.OS === "ios";
   return {
     presentation: (presentsAsSheet ? "modal" : "card") as "modal" | "card",
+    gestureEnabled: presentation.backAction === "close",
     header: ({ options }: StackHeaderArgs) => (
       <HeaderBar
         title={options.title}
@@ -135,6 +147,16 @@ export function sheetScreenOptions(palette: Palette) {
         topInset={!presentsAsSheet}
       />
     ),
+  };
+}
+
+/** Full-screen bounded tools keep the same header contract without a sheet gesture. */
+export function cardScreenOptions(palette: Palette) {
+  const presentation = PRESENTATION_TAXONOMY["primary-page"];
+  return {
+    ...stackScreenOptions(palette, "primary-page"),
+    presentation: "card" as const,
+    gestureEnabled: presentation.backAction === "back",
   };
 }
 

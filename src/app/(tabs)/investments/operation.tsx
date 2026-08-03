@@ -231,44 +231,61 @@ export default function InvestmentOperationScreen() {
       <Stack.Screen options={{ title: pageTitle }} />
       <FadeIn style={{ marginBottom: spacing.lg }}>
         <View
+          testID="investment-operation-summary"
           accessible
           accessibilityRole="image"
-          accessibilityLabel={`${pageTitle}. ${tr.investments.operationHint[kind]}`}
+          accessibilityLabel={`${pageTitle}. ${selected?.name ?? tr.investments.product}. ${date}. ${calculationTotal == null ? "—" : formatMinor(calculationTotal)}. ${tr.investments.operationImpact[kind]}`}
           style={{
             borderLeftWidth: 4,
             borderLeftColor: impactColor,
-            padding: spacing.md,
+            padding: spacing.lg,
             borderRadius: radius.lg,
             backgroundColor: palette.surfaceAlt,
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            <View style={{ width: 36, height: 36, borderRadius: radius.full, alignItems: "center", justifyContent: "center", backgroundColor: palette.surface }}>
-              <ImpactIcon accessible={false} size={18} color={impactColor} />
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
+            <View style={{ width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "70" }}>
+              <ImpactIcon accessible={false} size={21} color={impactColor} strokeWidth={2.2} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[type.label, { color: palette.textStrong, fontFamily: font.semibold }]}>{tr.investments.calculationSummary}</Text>
-              <Text style={[type.small, { color: impactColor, marginTop: 2 }]}>{tr.investments.operationImpact[kind]}</Text>
+              <Text style={[type.small, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 0.7 }]}>{tr.investments.calculationSummary}</Text>
+              <Text style={[type.heading, { color: palette.textStrong, marginTop: 2 }]}>{pageTitle}</Text>
+              <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>
+                {selected ? `${selected.name} · ${tr.investments.types[selected.assetType]}` : tr.investments.product}
+              </Text>
+            </View>
+            <View style={{ maxWidth: "34%", paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.full, backgroundColor: impactColor + "18", borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "70" }}>
+              <Text style={[type.small, { color: impactColor, fontFamily: font.semibold, textAlign: "center" }]}>{tr.investments.operationImpact[kind]}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.lg }}>
+            <View style={{ flex: 1, minWidth: 110, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
+              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.operationDate}</Text>
+              <Text style={[type.label, { color: palette.textStrong, marginTop: 2 }]}>{date}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 110, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
+              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.operationImpactLabel}</Text>
+              <Text style={[type.label, { color: impactColor, marginTop: 2 }]}>{tr.investments.operationImpact[kind]}</Text>
             </View>
           </View>
           {!amountOnlyContribution ? (
-            <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.sm, marginTop: spacing.md }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
+              <View style={{ flex: 1, minWidth: 0, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
                 <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.quantity}</Text>
                 <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2 }]}>{quantity || "—"}</Text>
               </View>
-              <View accessible={false} style={{ justifyContent: "center" }}>
-                <Text style={[type.heading, { color: palette.textSecondary }]}>×</Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
-                <Text style={[type.small, { color: palette.textSecondary, textAlign: "right" }]}>{tr.investments.unitPrice}</Text>
-                <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2, textAlign: "right" }]}>{unitMinor == null ? "—" : formatMinor(unitMinor)}</Text>
+              <View style={{ flex: 1, minWidth: 0, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
+                <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.unitPrice}</Text>
+                <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2 }]}>{unitMinor == null ? "—" : formatMinor(unitMinor)}</Text>
               </View>
             </View>
           ) : null}
-          <View style={{ height: 1, backgroundColor: palette.border, marginVertical: spacing.md }} />
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
-            <Text style={[type.label, { color: palette.textSecondary }]}>{tr.investments.calculatedTotal}</Text>
+          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.lg }} />
+          <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: spacing.md }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.calculatedTotal}</Text>
+              <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.investments.operationHint[kind]}</Text>
+            </View>
             <Text style={[type.amount, { color: calculationTotal == null ? palette.textSecondary : impactColor, textAlign: "right" }]}>
               {calculationTotal == null ? "—" : formatMinor(calculationTotal)}
             </Text>

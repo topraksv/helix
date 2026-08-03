@@ -1,5 +1,5 @@
 import React from "react";
-import { Animated, Text, View } from "react-native";
+import { Animated, StyleSheet, Text, View } from "react-native";
 import {
   KeyRound,
   LogOut,
@@ -134,6 +134,115 @@ export function OperationFlow({
         >
           {label}
         </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * A persistent operation signature. The waiting state above is intentionally
+ * small; these surfaces explain an action before it starts, so each account
+ * lifecycle operation gets its own visual signal and consequence line.
+ */
+export function OperationSignature({
+  kind,
+  eyebrow,
+  title,
+  description,
+  detail,
+  testID,
+}: {
+  kind: OperationFlowKind;
+  eyebrow: string;
+  title: string;
+  description: string;
+  detail?: string;
+  testID?: string;
+}) {
+  const { palette } = useTheme();
+  const pulse = useWaitingPulse();
+  const [Icon, motion, tone = "primary"] = operationVisuals[kind];
+  const color = tone === "destructive"
+    ? palette.destructive
+    : tone === "warning"
+      ? palette.warning
+      : tone === "success"
+        ? palette.success
+        : tone === "secondary"
+          ? palette.secondary
+          : palette.primary;
+  const foreground = tone === "destructive"
+    ? palette.errorText
+    : tone === "warning"
+      ? palette.warningText
+      : tone === "success"
+        ? palette.successText
+        : palette.textStrong;
+  const SupportIcon = kind === "freeze"
+    ? RefreshCw
+    : kind === "delete"
+      ? Trash2
+      : kind === "sign-in" || kind === "sign-up"
+        ? WalletCards
+        : ShieldCheck;
+  const support = detail ?? (
+    kind === "freeze"
+      ? "Geçici bir durum; yeniden girişle devam edebilirsin."
+      : kind === "delete"
+        ? "Bu işlem geri alınamaz."
+        : kind === "sign-out" || kind === "local-sign-out"
+          ? "Oturum kapanır; hesabın silinmez."
+          : "Çalışma alanına güvenle dön."
+  );
+
+  return (
+    <View
+      testID={testID}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`${title}. ${description}. ${support}`}
+      style={{
+        borderLeftWidth: 3,
+        borderLeftColor: color,
+        borderRadius: radius.md,
+        padding: spacing.md,
+        backgroundColor: tone === "destructive"
+          ? palette.error + "0D"
+          : tone === "warning"
+            ? palette.warning + "10"
+            : palette.surfaceAlt,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: color + "55",
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
+        <Animated.View
+          style={[
+            {
+              width: 46,
+              height: 46,
+              flexShrink: 0,
+              borderRadius: kind === "delete" ? radius.sm : radius.full,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: color + "18",
+              borderWidth: kind === "delete" ? 2 : StyleSheet.hairlineWidth,
+              borderColor: color,
+            },
+            motionStyle(motion, pulse),
+          ]}
+        >
+          <Icon accessible={false} size={21} color={color} strokeWidth={2.2} />
+        </Animated.View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{eyebrow}</Text>
+          <Text style={[type.heading, { color: foreground, marginTop: 2 }]}>{title}</Text>
+          <Text style={[type.body, { color: palette.textSecondary, marginTop: 3 }]}>{description}</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color + "40" }}>
+        <SupportIcon accessible={false} size={15} color={color} strokeWidth={2.1} />
+        <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{support}</Text>
       </View>
     </View>
   );

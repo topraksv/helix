@@ -9,7 +9,7 @@ import { BrandMark } from "../../ui/brand";
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
-import { OperationFlow } from "../../ui/operation-flow";
+import { OperationFlow, OperationSignature } from "../../ui/operation-flow";
 
 function JourneyNode({
   icon: Icon,
@@ -221,6 +221,16 @@ export default function SignInScreen() {
         </View>
 
         <Card style={{ flex: wide ? 0.92 : undefined, justifyContent: "center", marginBottom: 0, padding: wide ? spacing.xl : spacing.lg }}>
+          {mode === "signIn" ? (
+            <OperationSignature
+              kind="sign-in"
+              eyebrow={tr.auth.signInSignatureEyebrow}
+              title={tr.auth.signInSignatureTitle}
+              description={tr.auth.signInSignatureDescription}
+              detail={tr.auth.signInSignatureDetail}
+              testID="sign-in-signature"
+            />
+          ) : null}
           <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>
             {mode === "signIn" ? tr.auth.welcomeBack : mode === "signUp" ? tr.auth.signUpTitle : tr.auth.forgotTitle}
           </Text>

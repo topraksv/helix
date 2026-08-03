@@ -56,19 +56,22 @@ export function WorkspaceSplit({
 export function WorkspaceGrid({
   children,
   breakpoint = 900,
+  layout = "grid",
   testID,
 }: {
   children: ReactNode;
   breakpoint?: number;
+  /** Independent peers may share a desktop row; sequential work stays one stream. */
+  layout?: "grid" | "stack";
   testID?: string;
 }) {
   const { width } = useWindowDimensions();
-  const wide = width >= breakpoint;
+  const wide = layout === "grid" && width >= breakpoint;
   return (
     <View
       testID={testID}
       style={{
-        flexDirection: "row",
+        flexDirection: wide ? "row" : "column",
         flexWrap: "wrap",
         alignItems: "stretch",
         columnGap: wide ? spacing.lg : 0,

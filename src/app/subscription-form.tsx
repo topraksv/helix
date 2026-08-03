@@ -365,141 +365,141 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         testID="subscription-form-workspace"
         primary={(
           <Card>
-          <SubscriptionFormArtwork
-            name={name}
-            cycle={cycle}
-            intervalMonths={Number(intervalStr)}
-            amountMinor={amountMinor}
-            currency={currency}
-            nextDueDate={previewDueDate}
-            followingDueDate={followingDueDate}
-            schedule={cycle === "yearly"
-              ? (yearlyRenewalDate ? dateLabel(yearlyRenewalDate) : "")
-              : (billingDayStr ? tr.subs.daySchedule(billingDayStr) : "")}
-          />
-        <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
-        <MoneyField
-          label={`${tr.tx.amount} · ${currency}`}
-          value={amountRaw}
-          onChangeMinor={(raw, minor) => {
-            setAmountRaw(raw);
-            setAmountMinor(minor);
-          }}
-        />
-        {showCurrency ? (
-          <>
-            <Label>{tr.tx.currency}</Label>
-            <CurrencyPicker value={currency} onChange={setCurrency} />
-          </>
-        ) : (
-          <View style={{ alignSelf: "flex-start" }}>
-            <Button size="sm" variant="ghost" label={tr.tx.changeCurrency} onPress={() => setShowCurrency(true)} />
-          </View>
-        )}
+            <SubscriptionFormArtwork
+              name={name}
+              cycle={cycle}
+              intervalMonths={Number(intervalStr)}
+              amountMinor={amountMinor}
+              currency={currency}
+              nextDueDate={previewDueDate}
+              followingDueDate={followingDueDate}
+              schedule={cycle === "yearly"
+                ? (yearlyRenewalDate ? dateLabel(yearlyRenewalDate) : "")
+                : (billingDayStr ? tr.subs.daySchedule(billingDayStr) : "")}
+            />
+            <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
+            <MoneyField
+              label={`${tr.tx.amount} · ${currency}`}
+              value={amountRaw}
+              onChangeMinor={(raw, minor) => {
+                setAmountRaw(raw);
+                setAmountMinor(minor);
+              }}
+            />
+            {showCurrency ? (
+              <>
+                <Label>{tr.tx.currency}</Label>
+                <CurrencyPicker value={currency} onChange={setCurrency} />
+              </>
+            ) : (
+              <View style={{ alignSelf: "flex-start" }}>
+                <Button size="sm" variant="ghost" label={tr.tx.changeCurrency} onPress={() => setShowCurrency(true)} />
+              </View>
+            )}
           </Card>
         )}
         secondary={(
-          <View>
-
-      <Card>
-        <PanelHeader icon={CalendarClock} title={tr.subs.formSchedule} description={tr.subs.formScheduleHint} />
-        <Label>{tr.subs.cycle}</Label>
-        <Segmented
-          options={[
-            { value: "monthly", label: tr.subs.monthly },
-            { value: "yearly", label: tr.subs.yearly },
-            { value: "custom", label: tr.subs.custom },
-          ]}
-          value={cycle}
-          onChange={setCycle}
-        />
-        {cycle === "custom" ? (
-          <>
-            <Field label={tr.subs.intervalLabel} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
-            <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.intervalHint}</Body>
-          </>
-        ) : null}
-
-        {cycle === "yearly" ? (
-          <>
-            <DateField
-              label={tr.subs.yearlyRenewalDate}
-              value={yearlyRenewalDate}
-              min={todayISO()}
-              onChange={(date) => {
-                setYearlyRenewalDate(date);
-                setBillingDayStr(String(Number(date.slice(8, 10))));
-              }}
+          <Card>
+            <PanelHeader icon={CalendarClock} title={tr.subs.formSchedule} description={tr.subs.formScheduleHint} />
+            <Label>{tr.subs.cycle}</Label>
+            <Segmented
+              options={[
+                { value: "monthly", label: tr.subs.monthly },
+                { value: "yearly", label: tr.subs.yearly },
+                { value: "custom", label: tr.subs.custom },
+              ]}
+              value={cycle}
+              onChange={setCycle}
             />
-            <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
-              {tr.subs.yearlyRenewalHint}
-            </Body>
-          </>
-        ) : (
-          <>
-            <MonthDayField
-              label={tr.subs.billingDay}
-              value={billingDayStr}
-              onChange={setBillingDayStr}
-              quickDays={QUICK_DAYS}
-              error={billingDayStr !== "" && !isMonthDay(billingDayStr) ? tr.incomes.dayError : null}
-            />
-            <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
-              {tr.subs.billingDayHint}
-            </Body>
-          </>
-        )}
-
-        {expenseCategories.length > 0 ? (
-          <Select
-            label={tr.tx.category}
-            placeholder={tr.tx.categoryPlaceholder}
-            options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
-            value={selectedCategoryId}
-            onChange={(value) => {
-              setCategoryId(value);
-              setShowCategoryOffer(false);
-            }}
-            onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
-          />
-        ) : null}
-        {showCategoryOffer && !selectedCategoryId ? (
-          <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md }}>
-            <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
-            <Row gap={spacing.sm} style={{ alignItems: "center", flexWrap: "wrap" }}>
-              <Button
-                size="sm"
-                label={tr.subs.categoryOfferAccept}
-                onPress={() => void acceptCategoryOffer()}
-                loading={busy}
-              />
-              <Button
-                size="sm"
-                variant="ghost"
-                label={tr.subs.categoryOfferDecline}
-                onPress={() => setShowCategoryOffer(false)}
-                disabled={busy}
-              />
-            </Row>
-          </View>
-        ) : null}
-        {sources.length > 0 ? (
-          <>
-            <Select
-              label={tr.tx.source}
-              placeholder={tr.tx.sourcePlaceholder}
-              options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
-              value={sourceId}
-              onChange={setSourceId}
-              onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
-            />
-            {!sourceValid ? (
-              <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
+            {cycle === "custom" ? (
+              <>
+                <Field label={tr.subs.intervalLabel} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
+                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.intervalHint}</Body>
+              </>
             ) : null}
-          </>
-        ) : null}
-        <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
-      </Card>
+
+            {cycle === "yearly" ? (
+              <>
+                <DateField
+                  label={tr.subs.yearlyRenewalDate}
+                  value={yearlyRenewalDate}
+                  min={todayISO()}
+                  onChange={(date) => {
+                    setYearlyRenewalDate(date);
+                    setBillingDayStr(String(Number(date.slice(8, 10))));
+                  }}
+                />
+                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
+                  {tr.subs.yearlyRenewalHint}
+                </Body>
+              </>
+            ) : (
+              <>
+                <MonthDayField
+                  label={tr.subs.billingDay}
+                  value={billingDayStr}
+                  onChange={setBillingDayStr}
+                  quickDays={QUICK_DAYS}
+                  error={billingDayStr !== "" && !isMonthDay(billingDayStr) ? tr.incomes.dayError : null}
+                />
+                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
+                  {tr.subs.billingDayHint}
+                </Body>
+              </>
+            )}
+
+            {expenseCategories.length > 0 ? (
+              <Select
+                label={tr.tx.category}
+                placeholder={tr.tx.categoryPlaceholder}
+                options={expenseCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
+                value={selectedCategoryId}
+                onChange={(value) => {
+                  setCategoryId(value);
+                  setShowCategoryOffer(false);
+                }}
+                onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
+              />
+            ) : null}
+            {showCategoryOffer && !selectedCategoryId ? (
+              <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md }}>
+                <Body style={{ marginBottom: spacing.sm }}>{tr.subs.categoryOffer}</Body>
+                <Row gap={spacing.sm} style={{ alignItems: "center", flexWrap: "wrap" }}>
+                  <Button
+                    size="sm"
+                    label={tr.subs.categoryOfferAccept}
+                    onPress={() => void acceptCategoryOffer()}
+                    loading={busy}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    label={tr.subs.categoryOfferDecline}
+                    onPress={() => setShowCategoryOffer(false)}
+                    disabled={busy}
+                  />
+                </Row>
+              </View>
+            ) : null}
+            {sources.length > 0 ? (
+              <>
+                <Select
+                  label={tr.tx.source}
+                  placeholder={tr.tx.sourcePlaceholder}
+                  options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIcon(s.type) }))}
+                  value={sourceId}
+                  onChange={setSourceId}
+                  onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}
+                />
+                {!sourceValid ? (
+                  <Body muted style={{ marginBottom: spacing.sm }}>{tr.tx.cardCycleMissing}</Body>
+                ) : null}
+              </>
+            ) : null}
+            <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
+          </Card>
+        )}
+      />
 
       <Card>
         <PanelHeader icon={BellRing} title={tr.subs.formBehavior} description={tr.subs.formBehaviorHint} />
@@ -543,9 +543,6 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           onPress={() => confirmDiscard(close)}
         />
       </Row>
-          </View>
-        )}
-      />
     </Screen>
   );
 }
