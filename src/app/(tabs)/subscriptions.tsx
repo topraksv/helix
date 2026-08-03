@@ -307,7 +307,7 @@ export default function SubscriptionsScreen() {
   return (
     <Screen
       title={tr.subs.title}
-      maxWidth={1080}
+      width="workspace"
       right={<Button icon={Plus} size="sm" label={tr.subs.add} onPress={() => router.push("/subscription-form")} />}
     >
       <DataStateNotice status={dataStatus} retry={retryData} />

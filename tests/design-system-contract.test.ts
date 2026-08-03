@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   borderWidth,
+  contentWidth,
   controlSize,
   elevation,
   font,
@@ -119,6 +120,65 @@ describe("design-system typography contracts", () => {
       if (path === "src/ui/theme.ts" || path === "src/app/_layout.tsx") return false;
       return /Inter_[4567]00/.test(readFileSync(join(root, path), "utf8"));
     });
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The shipped `Fraunces_700Bold` exposes no `tnum` feature and its digit
+   * advances span 978–1404 units at 2000 upem. A serif figure would jump as a
+   * balance updated and would never align down a column, so the brand face is
+   * allowed on voice — the sign-in hero and screen titles — and nowhere near a
+   * number.
+   */
+  it("keeps every figure role on the tabular Inter faces, never the brand serif", () => {
+    for (const [name, role] of Object.entries(type)) {
+      const carriesFigures = "fontVariant" in role || /^amount|^money/.test(name);
+      if (!carriesFigures) continue;
+      expect(role.fontFamily, `${name} must not use the serif`).not.toBe(font.serifBold);
+      expect(
+        (role as { fontVariant?: readonly string[] }).fontVariant,
+        `${name} must request tabular figures`,
+      ).toEqual(["tabular-nums"]);
+    }
+    expect(type.title.fontFamily, "screen titles carry the brand voice").toBe(font.serifBold);
+    expect(type.display.fontFamily).toBe(font.serifBold);
+  });
+});
+
+/**
+ * Content width used to be a number each route picked for itself, and they
+ * drifted: settings stopped at 920 while the dashboard beside it ran to 1120
+ * and the ledger to 1200, so moving between two tabs on one desktop shifted the
+ * whole page. A route now declares the STRUCTURE of its information and the
+ * scale decides the pixels.
+ */
+describe("content width is a shared scale, not a per-route number", () => {
+  it("orders the scale from a single decision up to dense financial data", () => {
+    expect(contentWidth.focus).toBeLessThan(contentWidth.form);
+    expect(contentWidth.form).toBeLessThan(contentWidth.workspace);
+    expect(contentWidth.workspace).toBeLessThan(contentWidth.wide);
+  });
+
+  it("leaves no route setting its own pixel width", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src")) {
+      const source = readFileSync(join(root, path), "utf8");
+      for (const match of source.matchAll(/maxWidth=\{/g)) {
+        offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length}`);
+      }
+    }
+    expect(offenders, "use <Screen width=…> from the contentWidth scale").toEqual([]);
+  });
+
+  it("gives every screen a width its structure earns", () => {
+    const names = new Set(Object.keys(contentWidth));
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src")) {
+      const source = readFileSync(join(root, path), "utf8");
+      for (const match of source.matchAll(/<Screen\b[^>]*\bwidth="([a-z]+)"/g)) {
+        if (!names.has(match[1]!)) offenders.push(`${path} unknown width "${match[1]}"`);
+      }
+    }
     expect(offenders).toEqual([]);
   });
 });

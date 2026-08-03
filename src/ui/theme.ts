@@ -360,6 +360,33 @@ export function resolvePaletteId(value: string | null): PaletteId {
 export const scrim = lightPalette.scrim;
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
+
+/**
+ * How wide a screen's content column is allowed to grow.
+ *
+ * These used to be per-route numbers, and the routes drifted: settings stopped
+ * at 920 while the dashboard beside it ran to 1120 and the ledger to 1200, so
+ * moving between two tabs on the same desktop shifted the whole page. The width
+ * now follows the information structure, which is a property of the screen, not
+ * a taste — and four names are enough to describe every surface Helix has.
+ *
+ * `wide` is a ceiling, not a target: it exists so a very large monitor cannot
+ * stretch a table into unreadable line lengths, and everything below it simply
+ * fills the column.
+ */
+export const contentWidth = {
+  /** One decision at a time — sign-in, onboarding, recovery. */
+  focus: 560,
+  /** One object being edited, with its own explanation beside it. */
+  form: 860,
+  /** A primary work area plus the records or context it manages. */
+  workspace: 1180,
+  /** Dense financial data that earns the width it is given. */
+  wide: 1560,
+} as const;
+
+export type ContentWidth = keyof typeof contentWidth;
+
 // Crisp ledger geometry: enough softness for touch, never a stack of bubbles.
 export const radius = { sm: 8, md: 10, lg: 14, xl: 18, full: 999 } as const;
 
@@ -456,14 +483,21 @@ export const font = {
 
 /**
  * Static font files carry one weight each, so tokens set fontFamily only —
- * never fontWeight (iOS would try to synthesize a second face). Fraunces is
- * reserved for the sign-in hero; navigation, headings, financial amounts,
- * labels and tables stay in Inter so dense surfaces scan consistently on every
- * platform and Turkish/English glyph widths stay predictable.
+ * never fontWeight (iOS would try to synthesize a second face).
+ *
+ * Fraunces carries the brand voice: the sign-in hero and every screen title.
+ * It is verified to cover ₺ (U+20BA) and the full Turkish alphabet, so a title
+ * never falls back mid-word.
+ *
+ * It carries NO figure, ever. The shipped `Fraunces_700Bold` exposes no `tnum`
+ * feature and its digit advances span 978–1404 units at 2000 upem — a 43%
+ * spread. A balance that updates in place would visibly jump, and a column of
+ * amounts would never align. Every amount, table cell, label and input stays
+ * Inter, whose `tnum` the amount roles below already request.
  */
 export const type = {
   display: { fontSize: 40, fontFamily: font.serifBold, letterSpacing: -0.8 },
-  title: { fontSize: 26, fontFamily: font.semibold, letterSpacing: -0.45 },
+  title: { fontSize: 26, fontFamily: font.serifBold, letterSpacing: -0.2 },
   heading: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.2 },
   body: { fontSize: 15, fontFamily: font.regular },
   label: { fontSize: 13, fontFamily: font.medium },

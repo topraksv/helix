@@ -239,7 +239,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   if (!profile) return <Redirect href="/(tabs)/investments" />;
 
   return (
-    <Screen maxWidth={820}>
+    <Screen width="workspace">
       <Stack.Screen options={{ title: tr.investments.refundTitle }} />
       <Card style={{ marginBottom: spacing.lg }}>
         <PanelHeader icon={WalletCards} title={tr.investments.refundAmountTitle} description={tr.investments.refundAmountHint} />
@@ -568,7 +568,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   };
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <Stack.Screen options={{ title: isEdit ? tr.tx.edit : tr.tx.new }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit

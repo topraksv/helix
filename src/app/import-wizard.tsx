@@ -431,7 +431,7 @@ export default function ImportWizardModal() {
 
   if (!dataReady) {
     return (
-      <Screen scrollRef={scrollRef} maxWidth={1040}>
+      <Screen scrollRef={scrollRef} width="workspace">
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
@@ -439,7 +439,7 @@ export default function ImportWizardModal() {
 
   if (doneCount != null) {
     return (
-      <Screen scrollRef={scrollRef} maxWidth={1040}>
+      <Screen scrollRef={scrollRef} width="workspace">
         <ImportJourney stage={2} />
         <Card tone="success">
           <Row gap={spacing.md} style={{ alignItems: "center" }}>
@@ -470,7 +470,7 @@ export default function ImportWizardModal() {
   const preview: ParsedSheet | undefined = activeSheets[0];
 
   return (
-    <Screen scrollRef={scrollRef} maxWidth={1040}>
+    <Screen scrollRef={scrollRef} width="workspace">
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Card style={{ backgroundColor: palette.surfaceAlt }}>
         <View style={{ flexDirection: wide ? "row" : "column", alignItems: "center", gap: spacing.lg }}>

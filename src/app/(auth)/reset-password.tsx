@@ -64,7 +64,7 @@ export default function ResetPasswordScreen() {
 
   if (state === "checking") {
     return (
-      <Screen scroll={false} maxWidth={440}>
+      <Screen scroll={false} width="focus">
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <DelayedLoadingIndicator />
         </View>
@@ -84,7 +84,7 @@ export default function ResetPasswordScreen() {
   if (state === "expired" || state === "invalid" || state === "success") {
     const success = state === "success";
     return (
-      <Screen scroll={false} maxWidth={440}>
+      <Screen scroll={false} width="focus">
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md }}>
           <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: (success ? palette.success : palette.error) + "16" }}>
             {success ? <CheckCircle2 accessible={false} size={28} color={palette.success} /> : <AlertCircle accessible={false} size={28} color={palette.error} />}
@@ -111,7 +111,7 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <Screen maxWidth={440}>
+    <Screen width="focus">
       <View style={{ paddingVertical: spacing.xxl }}>
         <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: palette.primary + "16", marginBottom: spacing.lg }}>
           <KeyRound accessible={false} size={27} color={palette.primary} />

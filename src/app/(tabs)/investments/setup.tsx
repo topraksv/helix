@@ -50,7 +50,7 @@ export default function InvestmentSetupScreen() {
   if (profilesState.data.length > 0) return <Redirect href="/(tabs)/investments" />;
 
   return (
-    <Screen maxWidth={760}>
+    <Screen width="form">
       <View
         accessible
         accessibilityRole="image"

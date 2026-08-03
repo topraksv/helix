@@ -255,7 +255,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   }
 
   return (
-    <Screen scroll={false} maxWidth={1100}>
+    <Screen scroll={false} width="workspace">
       <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(rangeMonth)}` }} />
       <FlatList
         data={cellTx}

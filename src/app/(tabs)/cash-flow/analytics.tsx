@@ -628,14 +628,14 @@ export default function AnalysisScreen() {
 
   if (!dataReady) {
     return (
-      <Screen maxWidth={1120}>
+      <Screen width="wide">
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
   }
 
   return (
-    <Screen scroll={false} maxWidth={1120}>
+    <Screen scroll={false} width="wide">
       <FlatList
         data={searchActive ? visibleResults : []}
         keyExtractor={(t: (typeof visibleResults)[number]) => t.id}

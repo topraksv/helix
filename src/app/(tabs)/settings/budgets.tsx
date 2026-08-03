@@ -172,7 +172,7 @@ export default function BudgetsScreen() {
   }
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="budgets-workspace"

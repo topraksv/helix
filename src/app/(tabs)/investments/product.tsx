@@ -119,7 +119,7 @@ export default function InvestmentProductScreen() {
   };
 
   return (
-    <Screen maxWidth={760}>
+    <Screen width="form">
       <Card style={{ marginBottom: spacing.lg }}>
         <PanelHeader icon={Shapes} title={tr.investments.productType} />
         <View

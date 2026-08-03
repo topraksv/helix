@@ -175,7 +175,7 @@ function ItemBreakdown({
   }
 
   return (
-    <Screen maxWidth={900}>
+    <Screen width="form">
       <Stack.Screen options={{ title: label ?? tr.cashflow.monthDetail }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       {!bundle ? (

@@ -235,7 +235,7 @@ export default function PersonsScreen() {
   }
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <DataStateNotice status={dataStatus} retry={personsState.retry} />
       <PeopleOverview people={persons} />
       <WorkspaceSplit

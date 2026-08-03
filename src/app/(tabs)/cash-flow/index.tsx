@@ -238,7 +238,7 @@ export default function CashflowScreen() {
   const editColumns = () => router.push("/columns-editor");
 
   return (
-    <Screen title={tr.cashflow.title} right={yearSwitcher} maxWidth={wide ? 1200 : 760} scroll={false} padded>
+    <Screen title={tr.cashflow.title} right={yearSwitcher} width="wide" scroll={false} padded>
       <View
         style={{
           gap: spacing.sm,

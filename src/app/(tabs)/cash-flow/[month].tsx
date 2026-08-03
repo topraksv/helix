@@ -369,7 +369,7 @@ export default function MonthDetailScreen() {
   }
 
   return (
-    <Screen scroll={false} maxWidth={900}>
+    <Screen scroll={false} width="workspace">
       <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
       <FlatList
         data={items}

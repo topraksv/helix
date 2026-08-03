@@ -186,7 +186,7 @@ function CloudAccountSecurityScreen() {
     });
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <WorkspaceGrid testID="account-security-grid" layout="stack">
       <Card>
         <PanelHeader icon={Mail} title={tr.account.changeEmail} description={tr.account.changeEmailSectionHint} />

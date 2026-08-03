@@ -36,6 +36,7 @@ import type { LiveQueryStatus } from "../data/live-state";
 import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
 import {
   borderWidth,
+  contentWidth,
   controlSize,
   density,
   font,
@@ -52,8 +53,10 @@ import {
   themeShadow,
   type,
   useTheme,
+  type ContentWidth,
   type Palette,
 } from "./theme";
+import { shouldUseWideGutter } from "./responsive";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
@@ -131,7 +134,7 @@ export function Screen({
   subtitle,
   right,
   leading,
-  maxWidth = 760,
+  width: widthName = "form",
   scrollRef,
 }: {
   children: ReactNode;
@@ -144,13 +147,18 @@ export function Screen({
   right?: ReactNode;
   /** Optional mark shown to the left of the title (e.g. the brand logo). */
   leading?: ReactNode;
-  maxWidth?: number;
+  /**
+   * How much width this screen's information structure earns. Named, not
+   * numeric, so two adjacent surfaces cannot drift apart — see `contentWidth`.
+   */
+  width?: ContentWidth;
   /** Access to the vertical scroller for explicit workflow navigation. */
   scrollRef?: React.RefObject<ScrollView | null>;
 }) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const maxWidth = contentWidth[widthName];
   const segments = useSegments();
   // Pressing the tab you are already on returns that screen to the top. The
   // navigator's own hook is used rather than a listener here because it also
@@ -160,7 +168,10 @@ export function Screen({
   const ownScrollRef = useRef<ScrollView>(null);
   const activeScrollRef = scrollRef ?? ownScrollRef;
   useScrollToTop(activeScrollRef);
-  const wide = width > maxWidth + spacing.xl * 2;
+  // A screen that fills its column still needs a margin to read as a page
+  // rather than as content pressed against the window. The phone gutter is the
+  // one the thumb expects; a pointer-sized viewport gets a real one.
+  const gutter = shouldUseWideGutter(width) ? spacing.xxl : spacing.lg;
   // The tab bar floats over its scene, so the navigator no longer reserves its
   // height — the last row would otherwise sit under it. `tabBarClearance` is
   // the single source for that space; a modal or stack scene has no bar over it
@@ -200,10 +211,12 @@ export function Screen({
     ) : null;
 
   const inner: StyleProp<ViewStyle> = [
-    padded && { paddingHorizontal: spacing.lg },
+    padded && { paddingHorizontal: gutter },
     { paddingTop: needsTopInset ? Math.max(insets.top, spacing.lg) : spacing.lg },
     { paddingBottom: bottomPad },
-    wide && { width: "100%", maxWidth, alignSelf: "center" },
+    // Unconditional: below its cap the column simply fills, so there is no
+    // second layout mode to reason about and no threshold to drift.
+    { width: "100%", maxWidth, alignSelf: "center" },
   ];
 
   // Nothing here adjusts a content inset, and that is the point.

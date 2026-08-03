@@ -283,7 +283,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   }
 
   return (
-    <Screen scrollEnabled={!dragging} maxWidth={1100}>
+    <Screen scrollEnabled={!dragging} width="workspace">
       {header}
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit

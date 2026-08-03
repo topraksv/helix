@@ -160,7 +160,7 @@ export default function CatchUpScreen() {
   }
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <Stack.Screen options={{ title: tr.catchup.title }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       {lastEntry.at ? <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.subtitle(dateLabel(lastEntry.at))}</Body> : null}

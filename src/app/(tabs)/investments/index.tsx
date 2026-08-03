@@ -358,7 +358,7 @@ export default function InvestmentsScreen() {
 
   if (ready && !profile) {
     return (
-      <Screen title={tr.investments.title} maxWidth={820}>
+      <Screen title={tr.investments.title} width="workspace">
         <HeroCard style={{ minHeight: width >= 760 ? 420 : 340, marginTop: spacing.md }}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <View
@@ -499,7 +499,7 @@ export default function InvestmentsScreen() {
   return (
     <Screen
       title={tr.investments.title}
-      maxWidth={1120}
+      width="workspace"
       right={<Button icon={Plus} size="sm" label={tr.investments.addOperation} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "buy" } })} />}
     >
       <DataStateNotice status={status} retry={retry} />

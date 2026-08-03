@@ -328,7 +328,7 @@ export default function SourcesScreen() {
   }
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="payment-sources-workspace"

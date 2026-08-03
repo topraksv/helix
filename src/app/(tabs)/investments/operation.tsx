@@ -227,7 +227,7 @@ export default function InvestmentOperationScreen() {
   const ImpactIcon = kind === "sell" ? ArrowUpFromLine : kind === "existing" ? Landmark : ArrowDownToLine;
 
   return (
-    <Screen maxWidth={820}>
+    <Screen width="form">
       <Stack.Screen options={{ title: pageTitle }} />
       <FadeIn style={{ marginBottom: spacing.lg }}>
         <View

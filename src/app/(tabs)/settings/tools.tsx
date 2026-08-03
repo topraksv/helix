@@ -13,7 +13,7 @@ export default function CalculatorScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <WorkspaceSplit
         testID="calculator-workspace"
         primaryWeight={1}

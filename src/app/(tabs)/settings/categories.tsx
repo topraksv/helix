@@ -182,7 +182,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   }
 
   return (
-    <Screen scrollEnabled={!dragging} maxWidth={1100}>
+    <Screen scrollEnabled={!dragging} width="workspace">
       {header}
       <DataStateNotice status={dataStatus} retry={categoriesState.retry} />
       <WorkspaceSplit

@@ -187,7 +187,7 @@ export default function SignInScreen() {
   useSubmitOnEnter(() => void submit(), canSubmit);
 
   return (
-    <Screen scroll maxWidth={980}>
+    <Screen scroll width="form">
       <View
         style={{
           flex: 1,

@@ -530,7 +530,7 @@ export default function SettingsScreen() {
   ];
 
   return (
-    <Screen title={tr.settings.title} maxWidth={920}>
+    <Screen title={tr.settings.title} width="workspace">
       <DataStateNotice status={combineLiveQueryStatus([settingsState])} retry={settingsState.retry} />
       <SectionHeader>{tr.settings.balanceSection}</SectionHeader>
       <Card>

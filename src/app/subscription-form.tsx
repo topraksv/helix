@@ -358,7 +358,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   }
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <Stack.Screen options={{ title: existing ? tr.subs.edit : tr.subs.add }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit

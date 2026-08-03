@@ -76,7 +76,7 @@ export default function WorkspaceTemplateModal() {
   }
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <DataStateNotice status={combineLiveQueryStatus([categoriesState])} retry={categoriesState.retry} />
       <WorkspaceSplit
         testID="workspace-template-layout"

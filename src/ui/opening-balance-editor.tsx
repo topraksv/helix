@@ -207,7 +207,7 @@ export function OpeningBalanceEditor() {
   }
   const visibleAdjustments = [...adjustments].sort((a, b) => b.date.localeCompare(a.date));
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="balance-workspace"

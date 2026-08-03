@@ -84,7 +84,7 @@ export default function UpcomingScreen() {
   })[item.sourceType];
 
   return (
-    <Screen maxWidth={900}>
+    <Screen width="form">
       <DataStateNotice status={status} retry={retry} />
       {sync.state === "error" ? (
         <Card tone="warning">

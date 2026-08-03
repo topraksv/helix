@@ -501,7 +501,7 @@ export default function DashboardScreen() {
       title={greeting()}
       subtitle={dateLabel(today)}
       leading={<BrandMark size={40} />}
-      maxWidth={1120}
+      width="workspace"
     >
       <FirstRunTour />
       <DataStateNotice status={dataStatus} retry={retryData} />

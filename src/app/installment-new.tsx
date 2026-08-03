@@ -284,7 +284,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
   }
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <Stack.Screen options={{ title: isEdit ? tr.installments.editTitle : tr.installments.newTitle }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit

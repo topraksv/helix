@@ -102,7 +102,7 @@ export default function BulkEntryModal() {
   }
 
   return (
-    <Screen maxWidth={1100}>
+    <Screen width="workspace">
       <DataStateNotice status={dataStatus} retry={retryData} />
       <Card>
         <PanelHeader

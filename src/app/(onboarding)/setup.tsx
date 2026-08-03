@@ -320,14 +320,14 @@ export default function SetupScreen() {
 
   if (!dataReady) {
     return (
-      <Screen maxWidth={560}>
+      <Screen width="focus">
         <DataStateNotice status={dataStatus} retry={settingsState.retry} />
       </Screen>
     );
   }
 
   return (
-    <Screen maxWidth={560}>
+    <Screen width="focus">
       <View>
         <DataStateNotice status={dataStatus} retry={settingsState.retry} />
         <Row gap={spacing.md} style={{ marginBottom: spacing.lg }}>
