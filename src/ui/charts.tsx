@@ -75,6 +75,11 @@ interface DonutSlice {
   color: string;
 }
 
+/** The legend's preferred column: one category name beside its share. */
+const LEGEND_BASIS = 220;
+/** Below this the ring stops being readable, so the pair wraps instead. */
+const MIN_PAIRED_RING = 140;
+
 export function distributionDonutData(
   distribution: Distribution,
   colors: SeriesColors,
@@ -129,6 +134,16 @@ export function Donut({
   size?: number;
 }) {
   const { palette } = useTheme();
+  // The caller's `size` is a ceiling, not a demand. A ring and its legend read
+  // as one chart only while they sit side by side, and the box they sit in is
+  // no longer the screen: paired into a dashboard column the row had 471px for
+  // a 236 ring, a 16 gap and a 220 legend, so the legend dropped underneath a
+  // centred ring and the card grew a wasted band on both sides of it. Below the
+  // point where shrinking the ring would make it unreadable, wrapping is the
+  // right answer and the caller's size stands — which is every phone.
+  const [boxWidth, onBoxLayout] = useMeasuredWidth(size + LEGEND_BASIS + spacing.lg);
+  const ringBudget = boxWidth - LEGEND_BASIS - spacing.lg - 2;
+  const fittedSize = ringBudget >= MIN_PAIRED_RING ? Math.min(size, ringBudget) : size;
   const arcTotal = slices.reduce((sum, s) => sum + Math.max(s.valueMinor, 0), 0);
   const displayTotal = totalMinor ?? arcTotal;
   const largest = slices.reduce<DonutSlice | null>(
@@ -136,9 +151,9 @@ export function Donut({
     null,
   );
   const largestPercent = largest && arcTotal > 0 ? Math.round((largest.valueMinor / arcTotal) * 100) : 0;
-  const r = size / 2 - 14;
-  const cx = size / 2;
-  const cy = size / 2;
+  const r = fittedSize / 2 - 14;
+  const cx = fittedSize / 2;
+  const cy = fittedSize / 2;
   const strokeWidth = chart.donutWidth;
 
   const arcs: (DonutSlice & { path: string; sweep: number; end: number })[] = [];
@@ -158,9 +173,9 @@ export function Donut({
   );
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.lg, flexWrap: "wrap" }}>
+    <View onLayout={onBoxLayout} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.lg, flexWrap: "wrap" }}>
       <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
-        <Svg accessible={false} width={size} height={size}>
+        <Svg accessible={false} width={fittedSize} height={fittedSize}>
           <Circle
             cx={cx}
             cy={cy}
@@ -200,7 +215,7 @@ export function Donut({
         </Svg>
       </View>
       {/* Paired legend list: identity never color-alone (relief rule) */}
-      <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 160, maxWidth: 420, gap: 6 }}>
+      <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: LEGEND_BASIS, minWidth: 160, maxWidth: 420, gap: 6 }}>
         {largest ? (
           <View
             style={{

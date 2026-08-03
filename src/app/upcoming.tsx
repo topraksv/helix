@@ -127,10 +127,21 @@ export default function UpcomingScreen() {
                   </View>
                 )}
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)} · ${formatMinor(item.amountMinor, item.currency)}`}
-                right={item.status === "late"
-                  ? <StatusPill label={tr.dashboard.late} color={palette.error} foreground={palette.errorText} />
-                  : undefined}
+                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}`}
+                /* The amount is a column, not the tail of a sentence. Buried in
+                   the subtitle it left the middle of every row empty while the
+                   figures it should be scanned against stayed unaligned. Same
+                   string, same value — read down instead of across. */
+                right={(
+                  <View style={{ alignItems: "flex-end", gap: 4 }}>
+                    <Text style={[type.amountSm, { color: palette.text }]}>
+                      {formatMinor(item.amountMinor, item.currency)}
+                    </Text>
+                    {item.status === "late" ? (
+                      <StatusPill label={tr.dashboard.late} color={palette.error} foreground={palette.errorText} />
+                    ) : null}
+                  </View>
+                )}
                 chevron
               />
             ))}

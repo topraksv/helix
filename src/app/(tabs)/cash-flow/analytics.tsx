@@ -478,11 +478,17 @@ export default function AnalysisScreen() {
       <View style={compact ? undefined : { flex: 1.15, minWidth: 0 }}>
       {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
         <Card>
+          {/* Wraps on its own box, not on the screen's width. Paired with the
+              limits card this header has about 464px, and a heading beside a
+              three-option control asks for 485 — measured as a 21px overflow of
+              the card at 901 and 1121. `flexWrap` lets the control take its own
+              line exactly when the container cannot hold both. */}
           <View
             style={{
               flexDirection: narrow ? "column" : "row",
               alignItems: narrow ? "stretch" : "center",
               justifyContent: "space-between",
+              flexWrap: "wrap",
               gap: spacing.md,
               marginBottom: spacing.md,
             }}
@@ -498,7 +504,11 @@ export default function AnalysisScreen() {
                 one named "Net Trend" wrapped inside its own segment, so the
                 control asks for what its labels need and the heading beside it
                 yields the difference. */}
-            <View style={{ width: narrow ? "100%" : segmentedMaxWidth(chartModes.length) }}>
+            <View
+              style={narrow
+                ? { width: "100%" }
+                : { flexGrow: 1, flexBasis: segmentedMaxWidth(chartModes.length), minWidth: 240, maxWidth: segmentedMaxWidth(chartModes.length) }}
+            >
               <Segmented
                 noMargin
                 options={chartModes}
