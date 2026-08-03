@@ -67,6 +67,40 @@ describe("change classification", () => {
     expect(classify(["public/manifest.json"])).toMatchObject({ deploy_web: true, deploy_mobile: false });
   });
 
+  it("emits deterministic specialist hints without changing CI gates", () => {
+    expect(classify(["src/auth/session.ts"]).quality_checks).toEqual(["security"]);
+    for (const [file, expected] of [
+      ["src/app/(auth)/sign-in.tsx", ["security", "ui"]],
+      ["src/app/_layout.tsx", ["security", "ui", "platform"]],
+      ["src/app/+html.tsx", ["security", "ui"]],
+      ["src/app/account-security.tsx", ["security", "ui"]],
+    ] as const) {
+      expect(classify([file]).quality_checks, file).toEqual(expected);
+    }
+    expect(classify(["src/domain/balance.ts"]).quality_checks).toEqual(["financial"]);
+    expect(classify(["src/services/picked-file.ts"]).quality_checks).toEqual(["financial"]);
+    expect(classify(["src/app/analytics.tsx"]).quality_checks).toEqual(["ui"]);
+    expect(classify(["src/services/fx-fetch.ts"]).quality_checks).toEqual(["network"]);
+    expect(classify(["package.json"]).quality_checks).toEqual(["dependency"]);
+    for (const file of ["eslint.config.js", "babel.config.js", "metro.config.js", "tsconfig.json", "vitest.config.ts"]) {
+      expect(classify([file]).quality_checks, file).toEqual(["tooling"]);
+    }
+    expect(classify(["supabase/migrations/20260101_add.sql"]).quality_checks).toEqual([
+      "security",
+      "financial",
+      "database",
+    ]);
+    expect(classify(["README.md"]).quality_checks).toEqual(["none"]);
+    expect(classify(["docs/old-snapshot.md"])).toMatchObject({
+      run_ci: false,
+      full_e2e: false,
+      run_web_build: false,
+      deploy_web: false,
+      deploy_mobile: false,
+      quality_checks: ["none"],
+    });
+  });
+
   it("escalates the whole push when one file in it is high risk", () => {
     expect(classify(["src/i18n/tr.ts", "src/domain/money.ts"]).full_e2e).toBe(true);
   });

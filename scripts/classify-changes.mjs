@@ -11,6 +11,7 @@
  *   run_web_build a production Expo export is worth producing
  *   deploy_web    the web app can have changed, so Pages must be republished
  *   deploy_mobile shared React Native code changed, so preview needs an OTA
+ *   quality_checks deterministic specialist domains for local agent routing
  *
  * `run_web_build` is separate from `run_ci` because a CI-only or test-only
  * commit still has to be verified but cannot change a single byte of the
@@ -73,6 +74,7 @@ const NO_APP_IMPACT = [
   /^LICENSE$/,
   /^\.gitignore$/,
   /^\.vscode\//,
+  /^docs\//,
   /^assets\/screenshots\//,
   /^assets\/brand\//,
   // Local-only agent working set; ignored by Git, listed for completeness.
@@ -132,7 +134,7 @@ const NEVER_WEB_BUILD = [
   /^\.eas\//,
   /^eas\.json$/,
   /^\.nvmrc$/,
-  /^scripts\/(classify-changes|check-advisories|check-skills)\.mjs$/,
+  /^scripts\/(classify-changes|check-advisories)\.mjs$/,
 ];
 
 /** Paths whose produced JavaScript or shipped assets can change in Expo Go. */
@@ -145,7 +147,96 @@ const AFFECTS_MOBILE_UPDATE = [
   /^tsconfig\.json$/,
 ];
 
+/**
+ * Deterministic domain hints for agents. These are labels, not an LLM router:
+ * CI keeps using the booleans above, while local agents use the smallest
+ * specialist procedure justified by the changed paths.
+ */
+const QUALITY_PROCEDURES = [
+  {
+    name: "security",
+    patterns: [
+      /^src\/auth\//,
+      /^src\/sync\//,
+      /^src\/services\/(session|logger|secure|notifications|device-preferences|diagnostics)/,
+      /^src\/app\/\(auth\)\//,
+      /^src\/app\/_layout\.tsx$/,
+      /^src\/app\/\+html\.tsx$/,
+      /^src\/app\/account-security\.tsx$/,
+      /^supabase\//,
+      /^\.github\//,
+      /^app\.json$/,
+      /^scripts\/check-advisories\.mjs$/,
+    ],
+  },
+  {
+    name: "financial",
+    patterns: [
+      /^src\/domain\//,
+      /^src\/data\//,
+      /^src\/services\/(backup|import|export|spreadsheet|csv)/,
+      /^src\/services\/picked-file\.ts$/,
+      /^src\/app\/import-wizard\.tsx$/,
+      /^supabase\//,
+    ],
+  },
+  {
+    name: "database",
+    patterns: [/^src\/db\//, /^supabase\//, /^drizzle\.config\.ts$/],
+  },
+  {
+    name: "dependency",
+    patterns: [/^package(-lock)?\.json$/, /^\.npmrc$/, /^\.github\//, /^scripts\/check-advisories\.mjs$/],
+  },
+  {
+    name: "ui",
+    patterns: [/^src\/app\/.*\.tsx$/, /^src\/ui\//, /^src\/i18n\//, /^assets\/images\//, /^public\//],
+  },
+  {
+    name: "platform",
+    patterns: [/^app\.json$/, /^eas\.json$/, /^\.eas\//, /^\.github\//, /^src\/app\/.*_layout\.tsx$/],
+  },
+  {
+    name: "browser",
+    patterns: [/^e2e\//, /^playwright\.config\.ts$/, /^scripts\/(export-e2e-web|serve-static)\.mjs$/],
+  },
+  {
+    name: "network",
+    patterns: [/^src\/services\/(fx-fetch|markets)\.ts$/],
+  },
+  {
+    name: "performance",
+    patterns: [/^scripts\/check-web-budget\.mjs$/],
+  },
+  {
+    name: "tooling",
+    patterns: [
+      /^scripts\//,
+      /^\.github\//,
+      /^(babel|eslint|metro)\.config\.js$/,
+      /^playwright\.config\.ts$/,
+      /^tsconfig\.json$/,
+      /^vitest\.config\.ts$/,
+    ],
+  },
+];
+
 const matches = (path, patterns) => patterns.some((pattern) => pattern.test(path));
+
+function qualityChecks(files) {
+  const relevant = files.filter((file) => !matches(file, NO_APP_IMPACT));
+  if (relevant.length === 0) return ["none"];
+
+  const unknown = relevant.some(
+    (file) => !matches(file, HIGH_RISK) && !matches(file, KNOWN_NORMAL),
+  );
+  if (unknown) return ["all"];
+
+  const checks = QUALITY_PROCEDURES.filter(({ patterns }) =>
+    relevant.some((file) => matches(file, patterns)),
+  ).map(({ name }) => name);
+  return checks.length > 0 ? checks : ["routine"];
+}
 
 export function classify(files) {
   // No file list is not "nothing changed" — it is "the diff could not be
@@ -160,6 +251,7 @@ export function classify(files) {
       run_web_build: true,
       deploy_web: true,
       deploy_mobile: true,
+      quality_checks: ["all"],
       reason: "no diff available",
     };
   }
@@ -172,6 +264,7 @@ export function classify(files) {
       run_web_build: false,
       deploy_web: false,
       deploy_mobile: false,
+      quality_checks: ["none"],
       reason: "no application impact",
     };
   }
@@ -195,6 +288,7 @@ export function classify(files) {
     // `deploy_web` can never outrun `run_web_build`.
     deploy_web: deployWeb,
     deploy_mobile: shipping.some((file) => matches(file, AFFECTS_MOBILE_UPDATE)),
+    quality_checks: qualityChecks(files),
     reason: highRisk.length > 0 ? `high risk: ${highRisk.slice(0, 5).join(", ")}` : "normal change",
   };
 }
