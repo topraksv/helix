@@ -628,16 +628,18 @@ export function tabBarClearance(bottomInset: number, isWeb: boolean): number {
  * `e2e/ui-consistency.spec.ts` asserts against the real rendered font.
  */
 export const SIDE_NAV = {
-  width: 216,
-  /** Distance from the window edge on every side the rail touches. */
-  inset: 12,
-  /** Gap the rail keeps from the content column beside it. */
-  gap: 12,
-  itemHeight: 46,
+  width: 220,
+  itemHeight: 44,
   itemGap: 2,
-  /** The accent that marks the selected destination, rotated off the bar's
-   *  bottom border onto the rail's leading edge. */
+  /** Inner padding of the panel; items keep their own leading indent inside it. */
+  padding: spacing.md,
+  /**
+   * The selected marker is a rounded bar inset from the item's own top and
+   * bottom, not a border on its edge. A straight full-height rule inside a
+   * rounded row reads as a stray tick; an inset capsule reads as a marker.
+   */
   markerWidth: 3,
+  markerInset: 11,
 } as const;
 
 /**
@@ -658,7 +660,9 @@ export function navigationInset({
   isWeb: boolean;
   side: boolean;
 }): { bottom: number; left: number } {
-  if (side) return { bottom: spacing.xl, left: SIDE_NAV.inset + SIDE_NAV.width + SIDE_NAV.gap };
+  // The rail is flush chrome, so the scene starts exactly where it ends and the
+  // screen's own desktop gutter supplies the breathing room between them.
+  if (side) return { bottom: spacing.xl, left: SIDE_NAV.width };
   return { bottom: tabBarClearance(bottomInset, isWeb), left: 0 };
 }
 

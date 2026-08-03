@@ -57,7 +57,7 @@ import {
   type ContentWidth,
   type Palette,
 } from "./theme";
-import { shouldUseSideNavigation, shouldUseWideGutter } from "./responsive";
+import { shouldBoundIntrinsicControls, shouldUseSideNavigation, shouldUseWideGutter } from "./responsive";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
@@ -1315,14 +1315,17 @@ export function Segmented<T extends string>({
   disabled?: boolean;
 }) {
   const { palette } = useTheme();
+  const { width } = useWindowDimensions();
+  const bounded = shouldBoundIntrinsicControls(width);
   return (
     <View
       role="radiogroup"
       style={{
         flexDirection: "row",
-        // Bounded by its own options, not by whatever container it lands in —
-        // see `segmentedMaxWidth`. Phones sit below the cap and are unchanged.
-        maxWidth: segmentedMaxWidth(options.length),
+        // Bounded by its own options once the container stops being a bound —
+        // see `shouldBoundIntrinsicControls`. A phone keeps the full-width
+        // control it expects; capping there only left a ragged edge beside it.
+        maxWidth: bounded ? segmentedMaxWidth(options.length) : undefined,
         backgroundColor: palette.surface,
         borderRadius: radius.sm,
         padding: 0,

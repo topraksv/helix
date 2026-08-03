@@ -25,8 +25,8 @@
  * working.
  */
 
-import React, { useMemo, useRef } from "react";
-import { PanResponder, Platform, Pressable, Text, View, useWindowDimensions, type ViewStyle } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { PanResponder, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type ViewStyle } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandMark } from "./brand";
@@ -40,6 +40,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const side = shouldUseSideNavigation(viewportWidth);
+  const [hovered, setHovered] = useState<string | null>(null);
   const reduceTransparency = useReduceTransparency();
   const isWeb = Platform.OS === "web";
   const glass = !reduceTransparency;
@@ -126,21 +127,23 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             navigation.navigate(route.name, route.params);
           }
         }}
+        onHoverIn={() => setHovered(route.key)}
+        onHoverOut={() => setHovered((current) => (current === route.key ? null : current))}
         style={({ pressed }) => (side
           ? {
               flexDirection: "row",
               alignItems: "center",
-              gap: spacing.md,
+              gap: spacing.sm,
               height: SIDE_NAV.itemHeight,
               paddingLeft: spacing.md,
               paddingRight: spacing.sm,
-              borderRadius: radius.sm,
-              // The bar marks the selected tab with a bottom rule; upright, the
-              // same rule becomes a leading one, so the accent still runs along
-              // the edge the row is read from.
-              borderLeftWidth: focused ? SIDE_NAV.markerWidth : 0,
-              borderLeftColor: focused ? palette.primary : "transparent",
-              backgroundColor: focused ? palette.primarySoft : "transparent",
+              borderRadius: radius.md,
+              // A pointer needs to be told what it is about to click. The bar
+              // never had a hover state because a finger has no hover; the rail
+              // is the first navigation surface in this app that does.
+              backgroundColor: focused
+                ? palette.primarySoft
+                : hovered === route.key ? palette.surfaceHover : "transparent",
               opacity: pressed ? stateOpacity.pressed : 1,
             }
           : {
@@ -159,6 +162,19 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               opacity: pressed ? stateOpacity.pressed : 1,
             })}
       >
+        {side ? (
+          <View
+            accessible={false}
+            style={{
+              width: SIDE_NAV.markerWidth,
+              alignSelf: "stretch",
+              marginVertical: SIDE_NAV.markerInset,
+              marginRight: spacing.sm,
+              borderRadius: SIDE_NAV.markerWidth,
+              backgroundColor: focused ? palette.primary : "transparent",
+            }}
+          />
+        ) : null}
         <View
           accessible={false}
           style={{
@@ -174,7 +190,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         </View>
         <Text
           style={side
-            ? { ...typeScale.label, fontFamily: focused ? font.semibold : font.medium, color: focused ? palette.textStrong : palette.textSecondary, flexShrink: 1 }
+            ? { ...typeScale.body, fontFamily: focused ? font.semibold : font.medium, color: focused ? palette.textStrong : palette.textSecondary, flexShrink: 1 }
             : { fontFamily: focused ? font.semibold : font.medium, fontSize: 11, lineHeight: 14, color: focused ? palette.textStrong : palette.textSecondary }}
         >
           {typeof label === "string" ? label : route.name}
@@ -185,29 +201,48 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   if (side) {
     return (
+      // Chrome, not a card.
+      //
+      // The rail first shipped as a floating rounded panel with an overlay
+      // shadow, which is the treatment this app gives transient instruments —
+      // and with only five destinations it spent most of its height as an empty
+      // card, which is exactly what an empty card looks like. Flush against the
+      // window with a single hairline on the edge it meets the content, the
+      // same emptiness is just the quiet part of a sidebar.
       <View
         accessibilityRole="tablist"
         style={{
           position: "absolute",
-          left: SIDE_NAV.inset,
-          top: insets.top + SIDE_NAV.inset,
-          bottom: SIDE_NAV.inset,
+          left: 0,
+          top: 0,
+          bottom: 0,
           width: SIDE_NAV.width,
-          padding: spacing.sm,
+          paddingTop: insets.top + spacing.lg,
+          paddingBottom: spacing.lg,
+          paddingHorizontal: SIDE_NAV.padding,
           gap: SIDE_NAV.itemGap,
-          borderRadius: radius.lg,
-          ...material,
+          backgroundColor: glass ? palette.surfaceTranslucent : palette.surface,
+          borderRightWidth: StyleSheet.hairlineWidth,
+          borderRightColor: palette.border + "70",
+          ...webMaterial,
         }}
       >
-        {/* Desktop has room for the product to say its own name; the phone bar
-            spends every pixel on the five targets instead. */}
+        {/* Desktop has room for the product to say its own name, and it says it
+            in the face the screen titles use — the brand should not be the one
+            place the brand voice is missing. */}
         <View
           accessible={false}
-          style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: spacing.sm, paddingBottom: spacing.md, paddingTop: spacing.xs }}
+          style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.sm, paddingBottom: spacing.lg }}
         >
-          <BrandMark size={24} />
-          <Text style={[typeScale.heading, { color: palette.textStrong, fontSize: 17 }]}>{tr.app.name}</Text>
+          <BrandMark size={26} />
+          <Text style={[typeScale.heading, { color: palette.textStrong, fontFamily: font.serifBold, fontSize: 20, letterSpacing: -0.2 }]}>
+            {tr.app.name}
+          </Text>
         </View>
+        <View
+          accessible={false}
+          style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border + "55", marginHorizontal: spacing.sm, marginBottom: spacing.md }}
+        />
         {destinations}
       </View>
     );

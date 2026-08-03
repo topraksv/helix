@@ -25,6 +25,21 @@ export function shouldUseWideGutter(viewportWidth: number): boolean {
   return viewportWidth >= DESKTOP_WIDTH;
 }
 
+/**
+ * Where a control stops taking its container and starts taking only what it
+ * needs.
+ *
+ * On a phone the container IS the natural bound — a segmented control that fills
+ * the column is the convention, and capping it there just leaves a ragged edge
+ * beside it. Past this width the container stops being a bound at all (a
+ * two-way choice was spanning 1090 px), so the control has to carry its own.
+ */
+const INTRINSIC_CONTROL_WIDTH = 600;
+
+export function shouldBoundIntrinsicControls(viewportWidth: number): boolean {
+  return viewportWidth >= INTRINSIC_CONTROL_WIDTH;
+}
+
 export function shouldStackListActions(viewportWidth: number): boolean {
   return viewportWidth < NARROW_ACTION_STACK_WIDTH;
 }
