@@ -33,6 +33,7 @@ import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, HeroCard, 
 import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
+import { shouldUseSideNavigation } from "../../ui/responsive";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
@@ -473,7 +474,11 @@ export default function DashboardScreen() {
               value={chartType}
               onChange={setChartType}
             />
-            <View style={{ marginTop: spacing.lg, alignItems: "center" }}>
+            {/* No `alignItems: center` here: the chart already lays its ring
+                and legend out as one centred row, and centring the wrapper
+                collapsed that row to its content width so the two wrapped and
+                stacked with a third of the card empty on either side. */}
+            <View style={{ marginTop: spacing.lg }}>
               {chartType === "pie" ? (
                 <Donut
                   slices={monthDonut.slices}
@@ -500,7 +505,10 @@ export default function DashboardScreen() {
     <Screen
       title={greeting()}
       subtitle={dateLabel(today)}
-      leading={<BrandMark size={40} />}
+      // The rail already carries the mark and the product name at desktop
+      // widths; repeating it beside the greeting is the same identity twice on
+      // one screen. Phones have no rail, so the greeting keeps it.
+      leading={shouldUseSideNavigation(width) ? undefined : <BrandMark size={40} />}
       width="workspace"
     >
       <FirstRunTour />

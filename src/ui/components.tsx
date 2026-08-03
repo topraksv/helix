@@ -45,6 +45,7 @@ import {
   iconSize,
   motion,
   radius,
+  segmentedMaxWidth,
   spacing,
   stateOpacity,
   navigationInset,
@@ -1319,6 +1320,9 @@ export function Segmented<T extends string>({
       role="radiogroup"
       style={{
         flexDirection: "row",
+        // Bounded by its own options, not by whatever container it lands in —
+        // see `segmentedMaxWidth`. Phones sit below the cap and are unchanged.
+        maxWidth: segmentedMaxWidth(options.length),
         backgroundColor: palette.surface,
         borderRadius: radius.sm,
         padding: 0,

@@ -442,6 +442,28 @@ export const loadingSize = {
 } as const;
 
 /**
+ * Intrinsic control width.
+ *
+ * A segmented control is a choice, not a banner. Given a whole desktop column it
+ * stretched to it — three options across 1130 px, ~376 px per segment — and
+ * stopped reading as one control. This is the same defect `TAB_BAR.maxWidth`
+ * already fixes for navigation; it simply never propagated to the other control
+ * that divides its container between equal children.
+ *
+ * The budget is per option so a two-way choice does not inherit the width a
+ * six-way one needs, and the ceiling stops even a long row from spanning a wide
+ * monitor. Below the cap nothing changes, which is every phone.
+ */
+export const controlWidth = {
+  segmentedPerOption: 132,
+  segmentedMax: 560,
+} as const;
+
+export function segmentedMaxWidth(optionCount: number): number {
+  return Math.min(optionCount * controlWidth.segmentedPerOption, controlWidth.segmentedMax);
+}
+
+/**
  * `headerBack` is deliberately even.
  *
  * The chevron is centred inside `controlSize.minimumTarget`, so the leftover
