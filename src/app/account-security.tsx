@@ -12,7 +12,7 @@ import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
-import { ActionBadge, Body, Button, Card, Field, ListRow, PanelHeader, Screen } from "../ui/components";
+import { Body, Button, Card, Field, ListRow, PanelHeader, Screen } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
 import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
@@ -22,6 +22,7 @@ import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { WorkspaceGrid } from "../ui/workspace-layout";
 import { OperationFlow } from "../ui/operation-flow";
+import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 
 export default function AccountSecurityScreen() {
   // Account freeze promises a cloud-confirmed write followed by sign-out. A
@@ -253,19 +254,15 @@ function CloudAccountSecurityScreen() {
         />
       </Card>
 
-      <Card
-        accessibilityLabel={tr.account.freeze}
-        onPress={() => {
-          if (!freezing) void freezeAccount();
-        }}
-      >
+      <Card>
         <View testID="account-freeze-action">
           <ListRow
             icon={Snowflake}
             title={tr.account.freeze}
             subtitle={tr.account.freezeSignatureDescription}
-            stackRightOnNarrow
-            right={<ActionBadge label={tr.account.freeze} icon={Snowflake} variant="secondary" disabled={freezing} />}
+            chevron={!freezing}
+            right={freezing ? <DelayedLoadingIndicator size={7} label={tr.account.freeze} /> : undefined}
+            onPress={freezing ? undefined : () => void freezeAccount()}
           />
         </View>
         {freezePhase ? (

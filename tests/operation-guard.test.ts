@@ -84,9 +84,14 @@ describe("operation progress language", () => {
 
   it("keeps lifecycle entry points quiet and routes cloud sign-out through confirmation", () => {
     const settings = readFileSync(join(process.cwd(), "src/app/(tabs)/settings/index.tsx"), "utf8");
+    const accountSecurity = readFileSync(join(process.cwd(), "src/app/account-security.tsx"), "utf8");
     expect(settings).not.toContain("<OperationSignature");
+    expect(settings).not.toContain("ActionBadge");
     expect(settings).toContain('testID="account-sign-out-action"');
     expect(settings).toContain('operation: "sign-out"');
     expect(settings).toContain('testID="account-delete-action"');
+    expect(accountSecurity).not.toContain("ActionBadge");
+    expect(accountSecurity).toContain("chevron={!freezing}");
+    expect(accountSecurity).toContain("onPress={freezing ? undefined :");
   });
 });

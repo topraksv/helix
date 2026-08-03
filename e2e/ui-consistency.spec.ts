@@ -684,8 +684,10 @@ test("lifecycle confirmations carry the operation context after the action", asy
   const signOutAction = signOutCard.getByTestId("account-sign-out-action");
   await expect(signOutAction).toBeVisible();
   expect((await signOutAction.boundingBox())!.height).toBeLessThan(90);
+  const signOutButton = signOutAction.getByRole("button", { name: /Çıkış yap/ });
+  await expect(signOutButton).toBeVisible();
 
-  await signOutCard.click();
+  await signOutButton.click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
   await expect(page.getByTestId("operation-dialog-message")).toContainText("Cihazdan ayrılmadan önce");
   await expect(page.getByTestId("operation-dialog-plan")).toContainText("Önce yedek al");
@@ -699,7 +701,8 @@ test("lifecycle confirmations carry the operation context after the action", asy
   const deleteCard = page.getByTestId("account-delete-card");
   const deleteAction = deleteCard.getByTestId("account-delete-action");
   expect((await deleteAction.boundingBox())!.height).toBeLessThan(90);
-  await deleteCard.click();
+  await expect(deleteAction.getByRole("button", { name: /Hesabı sil/i })).toBeVisible();
+  await deleteAction.getByRole("button", { name: /Hesabı sil/i }).click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Kalıcı silme");
   await expect(page.getByTestId("operation-dialog-message")).toContainText("Kalıcı silme kapsamı");
@@ -710,7 +713,7 @@ test("lifecycle confirmations carry the operation context after the action", asy
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/helix/settings");
-  await page.getByTestId("account-sign-out-card").click();
+  await page.getByTestId("account-sign-out-action").getByRole("button", { name: /Çıkış yap/ }).click();
   const mobileSurface = page.getByTestId("operation-dialog-surface");
   await expect(mobileSurface).toBeVisible();
   const mobileBox = await mobileSurface.boundingBox();

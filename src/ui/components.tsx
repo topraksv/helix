@@ -669,53 +669,6 @@ export function Button({
   );
 }
 
-/** Static action marker used inside a larger pressable surface. */
-export function ActionBadge({
-  label,
-  icon: IconCmp,
-  variant = "secondary",
-  disabled = false,
-}: {
-  label: string;
-  icon?: LucideIcon;
-  variant?: "primary" | "secondary" | "danger" | "ghost";
-  disabled?: boolean;
-}) {
-  const { palette } = useTheme();
-  const enabledColors = {
-    primary: { background: palette.primary, foreground: palette.onPrimary },
-    secondary: { background: palette.surfaceAlt, foreground: palette.text },
-    danger: { background: palette.destructive, foreground: palette.onDestructive },
-    ghost: { background: "transparent", foreground: palette.accentText },
-  }[variant];
-  const colors = disabled
-    ? { background: variant === "ghost" ? "transparent" : palette.surfaceAlt, foreground: palette.textSecondary }
-    : enabledColors;
-  return (
-    <View
-      accessible={false}
-      style={{
-        backgroundColor: colors.background,
-        borderRadius: radius.md,
-        borderCurve: "continuous",
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.md,
-        minHeight: controlSize.compact,
-        flexDirection: "row",
-        gap: spacing.sm,
-        alignItems: "center",
-        justifyContent: "center",
-        borderWidth: variant === "secondary" || disabled ? StyleSheet.hairlineWidth : 0,
-        borderColor: palette.border,
-        opacity: disabled ? 0.62 : 1,
-      }}
-    >
-      {IconCmp ? <IconCmp accessible={false} size={iconSize.compact} color={colors.foreground} strokeWidth={2.2} /> : null}
-      <Text style={[type.buttonCompact, { color: colors.foreground, textAlign: "center", flexShrink: 1 }]}>{label}</Text>
-    </View>
-  );
-}
-
 /** Circular icon-only button (navigation arrows, close, inline actions). */
 export function IconButton({
   icon: IconCmp,

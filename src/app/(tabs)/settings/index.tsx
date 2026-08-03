@@ -49,7 +49,7 @@ import { TourModal } from "../../../ui/tour";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { dateLabel, tr } from "../../../i18n/tr";
-import { ActionBadge, Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
+import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
 import { font, PALETTES, radius, spacing, type, useTheme, type Palette, type ThemePreference } from "../../../ui/theme";
@@ -284,17 +284,15 @@ function AccountActionRow({
   icon: Icon,
   title,
   subtitle,
-  actionLabel,
-  variant,
   busy,
+  onPress,
 }: {
   testID: string;
   icon: LucideIcon;
   title: string;
   subtitle: string;
-  actionLabel: string;
-  variant: "secondary" | "danger";
   busy: boolean;
+  onPress: () => void;
 }) {
   return (
     <View testID={testID}>
@@ -302,8 +300,9 @@ function AccountActionRow({
         icon={Icon}
         title={title}
         subtitle={subtitle}
-        stackRightOnNarrow
-        right={<ActionBadge label={actionLabel} icon={Icon} variant={variant} disabled={busy} />}
+        chevron={!busy}
+        right={busy ? <DelayedLoadingIndicator size={7} label={title} /> : undefined}
+        onPress={busy ? undefined : onPress}
       />
     </View>
   );
@@ -839,23 +838,15 @@ export default function SettingsScreen() {
         </Card>
       ) : null}
 
-      <Card
-        testID="account-sign-out-card"
-        padded={false}
-        accessibilityLabel={tr.auth.signOut}
-        onPress={() => {
-          if (!signingOut) void handleSignOut();
-        }}
-      >
+      <Card testID="account-sign-out-card" padded={false}>
         <View style={{ paddingHorizontal: spacing.md }}>
           <AccountActionRow
             testID="account-sign-out-action"
             icon={LogOut}
             title={tr.auth.signOut}
             subtitle={isSupabaseConfigured ? tr.auth.signOutSignatureDescription : tr.auth.localSignOutSignatureDescription}
-            actionLabel={tr.auth.signOut}
-            variant="secondary"
             busy={signingOut}
+            onPress={() => void handleSignOut()}
           />
         </View>
         {signingOut ? (
@@ -868,23 +859,15 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
-      <Card
-        testID="account-delete-card"
-        padded={false}
-        accessibilityLabel={tr.account.delete}
-        onPress={() => {
-          if (!deleting) void handleDeleteAccount();
-        }}
-      >
+      <Card testID="account-delete-card" padded={false}>
         <View style={{ paddingHorizontal: spacing.md }}>
           <AccountActionRow
             testID="account-delete-action"
             icon={Trash2}
             title={tr.account.delete}
             subtitle={tr.account.deleteSignatureDescription}
-            actionLabel={tr.account.delete}
-            variant="danger"
             busy={deleting}
+            onPress={() => void handleDeleteAccount()}
           />
         </View>
         {deleting ? (
