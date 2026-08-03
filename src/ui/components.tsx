@@ -48,7 +48,6 @@ import {
   segmentedMaxWidth,
   spacing,
   stateOpacity,
-  navigationInset,
   toggleSize,
   toggleThumbShadow,
   themeShadow,
@@ -57,11 +56,11 @@ import {
   type ContentWidth,
   type Palette,
 } from "./theme";
-import { shouldBoundIntrinsicControls, shouldUseSideNavigation, shouldUseWideGutter } from "./responsive";
+import { shouldBoundIntrinsicControls, shouldStackListActions, shouldUseWideGutter } from "./responsive";
+import { useContentWidth, useNavigationSpace } from "./viewport";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
-import { shouldStackListActions } from "./responsive";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 import { filterSelectionOptions, type SelectionOption } from "./selection";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
@@ -177,15 +176,12 @@ export function Screen({
   // height — the last row would otherwise sit under it. `tabBarClearance` is
   // the single source for that space; a modal or stack scene has no bar over it
   // and only needs the safe-area inset.
-  const inTabs = segments[0] === "(tabs)";
-  const nav = navigationInset({
-    bottomInset: insets.bottom,
-    isWeb: Platform.OS === "web",
-    side: shouldUseSideNavigation(width),
-  });
-  // Only the bottom clearance: the tab SCENE owns the rail's left inset, so a
-  // nested stack's header is inset by the same rule as the screen under it.
-  const bottomPad = inTabs ? nav.bottom : Math.max(insets.bottom, spacing.lg) + spacing.md;
+  // One owner for where navigation is — the same hook every layout rule reads.
+  // Only the bottom clearance is applied here: the tab SCENE owns the rail's
+  // left inset, so a nested stack's header is inset by the same rule as the
+  // screen under it.
+  const { bottom: navBottom, inTabs } = useNavigationSpace();
+  const bottomPad = inTabs ? navBottom : Math.max(insets.bottom, spacing.lg) + spacing.md;
   // Content must clear the status bar / Dynamic Island on headerless full
   // screens. Titled screens already inset the top; the auth + onboarding
   // screens run with `headerShown: false` and no title, so they need it too
@@ -1315,8 +1311,7 @@ export function Segmented<T extends string>({
   disabled?: boolean;
 }) {
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
-  const bounded = shouldBoundIntrinsicControls(width);
+  const bounded = shouldBoundIntrinsicControls(useContentWidth());
   return (
     <View
       role="radiogroup"
@@ -1875,8 +1870,10 @@ export function ListRow({
   stackRightOnNarrow?: boolean;
 }) {
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
-  const stackRight = Boolean(right && stackRightOnNarrow && shouldStackListActions(width));
+  // The row lays itself out inside the content column, so it measures that
+  // column — not the window the rail also takes a share of.
+  const contentWidth = useContentWidth();
+  const stackRight = Boolean(right && stackRightOnNarrow && shouldStackListActions(contentWidth));
   const content = (
     <View style={{ paddingVertical: spacing.md - 2 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>

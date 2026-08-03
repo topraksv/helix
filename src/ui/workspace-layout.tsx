@@ -1,6 +1,7 @@
 import React, { type ReactNode } from "react";
-import { View, useWindowDimensions } from "react-native";
+import { View } from "react-native";
 import { spacing } from "./theme";
+import { useContentWidth } from "./viewport";
 
 /**
  * Task pages use the same reading order on every device: the active editor
@@ -25,7 +26,7 @@ export function WorkspaceSplit({
   wideLayout?: "split" | "stack";
   testID?: string;
 }) {
-  const { width } = useWindowDimensions();
+  const width = useContentWidth();
   const wide = width >= breakpoint && wideLayout === "split";
   return (
     <View
@@ -68,7 +69,7 @@ export function WorkspaceGrid({
   layout?: "grid" | "stack";
   testID?: string;
 }) {
-  const { width } = useWindowDimensions();
+  const width = useContentWidth();
   const wide = layout === "grid" && width >= breakpoint;
   return (
     <View

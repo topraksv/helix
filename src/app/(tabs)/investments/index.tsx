@@ -54,6 +54,7 @@ import {
 } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { useClusterWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { scheduleSync } from "../../../sync/engine";
@@ -303,6 +304,7 @@ export default function InvestmentsScreen() {
   const userId = useUserId();
   const undo = useUndo();
   const { width } = useWindowDimensions();
+  const actionBarWidth = useClusterWidth(5);
   const compact = width < 560;
   const desktop = width >= 900;
   const [productFilter, setProductFilter] = useState<"all" | InvestmentAssetType>("all");
@@ -538,10 +540,15 @@ export default function InvestmentsScreen() {
         </HeroCard>
       </View>
 
+      {/* An action bar is a cluster of controls, not a banner. Left to fill the
+          workspace each of its four targets got ~295px of empty tile, so it
+          takes what four actions need and stops — the same rule the segmented
+          control follows. */}
       <View
         testID="investment-actions"
         style={{
           width: "100%",
+          maxWidth: actionBarWidth,
           flexDirection: "row",
           gap: spacing.xs,
           padding: spacing.xs,
@@ -598,7 +605,7 @@ export default function InvestmentsScreen() {
                   </View>
                   <View style={{ maxWidth: compact ? "42%" : "55%", paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.full, backgroundColor: palette.surfaceAlt }}>
                     <Text style={[type.small, { color: palette.primaryText, fontFamily: font.semibold, textAlign: "center" }]}>
-                      {product.quantity ?? tr.investments.quantityUnknown}
+                      {product.quantity ? tr.investments.quantityHeld(product.quantity) : tr.investments.quantityUnknown}
                     </Text>
                   </View>
                 </Spread>

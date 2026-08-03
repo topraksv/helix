@@ -35,8 +35,9 @@ import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
-import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { controlSize, radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
+import { useContentWidth } from "../../../ui/viewport";
 import { categoryIcon } from "../../../data/category-icons";
 
 type MatrixModel = ReturnType<typeof buildCashFlowMatrixModel>;
@@ -108,6 +109,14 @@ function FlowStat({
   );
 }
 
+/** The pivot's three orientations, named so the control and the wrapper that
+ *  bounds it cannot disagree about how many segments there are. */
+const PIVOT_MODES = [
+  { value: "rows" as MatrixMode, label: tr.cashflow.monthsAsRows },
+  { value: "columns" as MatrixMode, label: tr.cashflow.monthsAsColumns },
+  { value: "cards" as MatrixMode, label: tr.cashflow.viewCards },
+];
+
 export default function CashflowScreen() {
   const currentYear = yearOf(todayISO());
   const [year, setYear] = useState(currentYear);
@@ -141,7 +150,8 @@ export default function CashflowScreen() {
     cellNotesState.retry();
   };
   const { width } = useWindowDimensions();
-  const wide = shouldUseWideWorkspace(width);
+  const contentWidth = useContentWidth();
+  const wide = shouldUseWideWorkspace(contentWidth);
   const router = useRouter();
   const { palette } = useTheme();
   // A phone needs the category-first scan of column mode; a wide workspace has
@@ -294,17 +304,16 @@ export default function CashflowScreen() {
         )
       ) : (
         <View style={{ flex: 1 }}>
-          {/* Full-width segmented so the month-orientation labels never clip
-              (web ignores adjustsFontSizeToFit); the column editor sits below. */}
+          {/* The pivot fills the row on a phone so its month-orientation labels
+              never clip (web ignores adjustsFontSizeToFit), and stops at the
+              control's own bound above that. The wrapper carries the same bound:
+              left to stretch it parked the guide button a thousand pixels away
+              from the control it explains on a wide monitor. */}
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flex: 1, minWidth: 0, maxWidth: segmentedMaxWidth(PIVOT_MODES.length) }}>
               <Segmented
                 noMargin
-                options={[
-                  { value: "rows", label: tr.cashflow.monthsAsRows },
-                  { value: "columns", label: tr.cashflow.monthsAsColumns },
-                  { value: "cards", label: tr.cashflow.viewCards },
-                ]}
+                options={PIVOT_MODES}
                 value={mode}
                 onChange={changeMode}
               />

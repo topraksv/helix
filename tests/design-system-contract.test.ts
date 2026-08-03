@@ -170,6 +170,32 @@ describe("content width is a shared scale, not a per-route number", () => {
     expect(offenders, "use <Screen width=…> from the contentWidth scale").toEqual([]);
   });
 
+  /**
+   * A rail standing beside the content broke the equality every responsive rule
+   * silently relied on — that the window width and the content width are the
+   * same number. At a 1024px window the dashboard still paired its columns as
+   * if it had 1024 while laying out 784. Layout rules must therefore measure the
+   * content column, and `useWindowDimensions` inside a layout decision is how
+   * that regresses.
+   */
+  it("measures layout rules against the content column, not the window", () => {
+    // Two kinds of question, and only one of them may read the window.
+    // "What kind of window is this?" decides whether a rail exists at all and
+    // how far the page holds off its own edges — both are properties of the
+    // window itself. "How wide is my column?" is everything else, and after the
+    // rail those two numbers differ by 220px inside a tab scene.
+    const windowScoped = new Set(["shouldUseSideNavigation", "shouldUseWideGutter"]);
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src")) {
+      const source = readFileSync(join(root, path), "utf8");
+      for (const match of source.matchAll(/(should[A-Z]\w*)\(\s*width\s*\)/g)) {
+        if (windowScoped.has(match[1]!)) continue;
+        offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length} ${match[0]}`);
+      }
+    }
+    expect(offenders, "pass useContentWidth() to layout predicates").toEqual([]);
+  });
+
   it("gives every screen a width its structure earns", () => {
     const names = new Set(Object.keys(contentWidth));
     const offenders: string[] = [];

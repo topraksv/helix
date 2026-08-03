@@ -33,11 +33,11 @@ import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, HeroCard, 
 import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
-import { shouldUseSideNavigation } from "../../ui/responsive";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
-import { shouldUseCompactChart } from "../../ui/responsive";
+import { shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart, shouldUseSideNavigation } from "../../ui/responsive";
+import { useContentWidth } from "../../ui/viewport";
 import { font, heroSurface, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
@@ -322,6 +322,7 @@ export default function DashboardScreen() {
   const hero = heroSurface(palette, scheme);
   const heroInk = hero.ink;
   const { width } = useWindowDimensions();
+  const contentWidth = useContentWidth();
   const chartColors = useSeriesColors();
   // Re-render when FX rates land so foreign-currency projections settle.
   useFxRates();
@@ -442,8 +443,8 @@ export default function DashboardScreen() {
   };
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
-  const wideDashboard = width >= 960;
-  const pairedDashboard = wideDashboard;
+  const wideDashboard = shouldSplitDashboardHero(contentWidth);
+  const pairedDashboard = shouldPairDashboardPanels(contentWidth);
   const dashboardUpcomingCount = late.length + upcoming.length;
   const marketDesktopColumns: 2 | 3 = dashboardUpcomingCount <= 3 ? 3 : 2;
   const analysisSection = (
@@ -484,7 +485,7 @@ export default function DashboardScreen() {
                   slices={monthDonut.slices}
                   supplementalSlices={monthDonut.supplementalSlices}
                   totalMinor={monthDonut.totalMinor}
-                  size={shouldUseCompactChart(width) ? 152 : 236}
+                  size={shouldUseCompactChart(contentWidth) ? 152 : 236}
                 />
               ) : (
                 <Bars

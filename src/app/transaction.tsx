@@ -31,6 +31,7 @@ import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Badge, Body, Button, Card, DataStateNotice, Divider, Field, HeroCard, Label, MonthStepper, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
+import { useClusterWidth } from "../ui/viewport";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -304,6 +305,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   const persons = personsState.data;
   const router = useRouter();
   const { palette } = useTheme();
+  const saveClusterWidth = useClusterWidth(2);
   const operationGuard = useOperationGuard();
   const undo = useUndo();
   const liveStates = [categoriesState, sourcesState, personsState];
@@ -783,7 +785,9 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       <Divider />
       <SectionHeader>{tr.tx.completion}</SectionHeader>
       <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
-      <View style={{ gap: spacing.sm }}>
+      {/* The commit pair is a cluster, not a banner: across a desktop column
+          each button ran to ~490px. */}
+      <View style={{ gap: spacing.sm, maxWidth: saveClusterWidth }}>
         <Button label={tr.common.save} onPress={() => void save(false)} disabled={!canSave} loading={busy} />
         {!isEdit ? (
           <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void save(true)} disabled={!canSave || busy} />

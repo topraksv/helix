@@ -907,6 +907,7 @@ export const tr = {
       pension: "BES",
     },
     quantityUnknown: "Pay bilgisi yok",
+    quantityHeld: (amount: string) => `${amount} adet`,
     averageCost: "Ort. maliyet",
     totalCost: "Toplam maliyet",
     realizedProfit: "Gerçekleşen kâr",

@@ -28,7 +28,8 @@ import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, 
 import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
 import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
-import { radius, spacing, type, useTheme } from "../../../ui/theme";
+import { useContentWidth } from "../../../ui/viewport";
+import { radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 
 type Period = "1m" | "3m" | "6m" | "12m" | "year" | "custom";
 
@@ -40,8 +41,9 @@ export default function AnalysisScreen() {
   const currentYear = yearOf(today);
   const currentMonth = monthKeyOf(today);
   const { width } = useWindowDimensions();
-  const compact = !shouldUseWideWorkspace(width);
-  const narrow = shouldUseNarrowAnalytics(width);
+  const contentWidth = useContentWidth();
+  const compact = !shouldUseWideWorkspace(contentWidth);
+  const narrow = shouldUseNarrowAnalytics(contentWidth);
   // Phone starts with a useful comparison that fits the table in fewer
   // horizontal gestures; year and custom windows remain explicit choices.
   const [period, setPeriod] = useState<Period>(narrow ? "3m" : "year");
@@ -213,6 +215,15 @@ export default function AnalysisScreen() {
     .filter((budget) => categoryById.has(budget.categoryId));
 
   // Everything above the virtualized result list (period/filters/search box).
+  // One list for the control and for the width it needs: a third option
+  // appearing only when a trend is available must not leave the control sized
+  // for two.
+  const chartModes = [
+    { value: "pie" as const, label: tr.analysis.chartPie },
+    { value: "bars" as const, label: tr.analysis.chartBars },
+    ...(supportsTrend ? [{ value: "trend" as const, label: tr.analysis.chartTrend }] : []),
+  ];
+
   const searchHeader = (
     <View>
       <DataStateNotice status={dataStatus} retry={retryData} />
@@ -458,6 +469,69 @@ export default function AnalysisScreen() {
           />
         </View>
       ) : null}
+      {/* The distribution follows the totals it explains. It used to sit
+          below the budget block, which put the whole first viewport of a
+          screen called Analysis under filters and limits with no chart in
+          sight. */}
+      {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
+        <Card>
+          <View
+            style={{
+              flexDirection: narrow ? "column" : "row",
+              alignItems: narrow ? "stretch" : "center",
+              justifyContent: "space-between",
+              gap: spacing.md,
+              marginBottom: spacing.md,
+            }}
+          >
+            <Heading style={{ marginTop: 0, marginBottom: 0, flex: narrow ? undefined : 1 }}>
+              {chartType === "pie"
+                ? tr.analysis.chartExpenseDist
+                : chartType === "trend"
+                  ? tr.analysis.chartNetTrendTitle
+                  : categoryFilter ? catName(categoryFilter) : tr.analysis.monthlyFlows}
+            </Heading>
+            {/* 168px was chosen when this control had two options. A third
+                one named "Net Trend" wrapped inside its own segment, so the
+                control asks for what its labels need and the heading beside it
+                yields the difference. */}
+            <View style={{ width: narrow ? "100%" : segmentedMaxWidth(chartModes.length) }}>
+              <Segmented
+                noMargin
+                options={chartModes}
+                value={chartType}
+                onChange={setChartType}
+              />
+            </View>
+          </View>
+          {chartType === "pie" ? (
+            pieSlices.length > 0 || pieSupplemental.length > 0 ? (
+              <Donut
+                slices={pieSlices}
+                supplementalSlices={pieSupplemental}
+                totalMinor={pieTotalMinor}
+                size={narrow ? 168 : 220}
+              />
+            ) : (
+              <Body muted>{tr.analysis.noResults}</Body>
+            )
+          ) : chartType === "bars" ? (
+            <Bars width={Math.min(width - spacing.lg * 4, 1040)} groups={barGroups} series={barSeries} />
+          ) : (
+            <Lines
+              width={Math.min(width - spacing.lg * 4, 1040)}
+              height={220}
+              xLabels={monthKeys.map(shortMonthLabel)}
+              series={[{
+                label: tr.dashboard.netChange,
+                color: colors[0],
+                points: netTrendPoints,
+              }]}
+            />
+          )}
+        </Card>
+      ) : null}
+
       {activeBudgetRows.length === 0 ? (
         <Card>
           <ListRow
@@ -506,65 +580,6 @@ export default function AnalysisScreen() {
           )}
         />
       )}
-
-      {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
-        <Card>
-          <View
-            style={{
-              flexDirection: narrow ? "column" : "row",
-              alignItems: narrow ? "stretch" : "center",
-              justifyContent: "space-between",
-              gap: spacing.md,
-              marginBottom: spacing.md,
-            }}
-          >
-            <Heading style={{ marginTop: 0, marginBottom: 0, flex: narrow ? undefined : 1 }}>
-              {chartType === "pie"
-                ? tr.analysis.chartExpenseDist
-                : chartType === "trend"
-                  ? tr.analysis.chartNetTrendTitle
-                  : categoryFilter ? catName(categoryFilter) : tr.analysis.monthlyFlows}
-            </Heading>
-            <View style={{ width: narrow ? "100%" : 168 }}>
-              <Segmented
-                noMargin
-                options={[
-                  { value: "pie", label: tr.analysis.chartPie },
-                  { value: "bars", label: tr.analysis.chartBars },
-                  ...(supportsTrend ? [{ value: "trend" as const, label: tr.analysis.chartTrend }] : []),
-                ]}
-                value={chartType}
-                onChange={setChartType}
-              />
-            </View>
-          </View>
-          {chartType === "pie" ? (
-            pieSlices.length > 0 || pieSupplemental.length > 0 ? (
-              <Donut
-                slices={pieSlices}
-                supplementalSlices={pieSupplemental}
-                totalMinor={pieTotalMinor}
-                size={narrow ? 168 : 220}
-              />
-            ) : (
-              <Body muted>{tr.analysis.noResults}</Body>
-            )
-          ) : chartType === "bars" ? (
-            <Bars width={Math.min(width - spacing.lg * 4, 1040)} groups={barGroups} series={barSeries} />
-          ) : (
-            <Lines
-              width={Math.min(width - spacing.lg * 4, 1040)}
-              height={220}
-              xLabels={monthKeys.map(shortMonthLabel)}
-              series={[{
-                label: tr.dashboard.netChange,
-                color: colors[0],
-                points: netTrendPoints,
-              }]}
-            />
-          )}
-        </Card>
-      ) : null}
 
       {rows.length === 0 ? (
         <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />

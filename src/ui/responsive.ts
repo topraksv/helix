@@ -40,6 +40,28 @@ export function shouldBoundIntrinsicControls(viewportWidth: number): boolean {
   return viewportWidth >= INTRINSIC_CONTROL_WIDTH;
 }
 
+/**
+ * The dashboard's two composition rules, which used to share one hand-written
+ * `width >= 960` and therefore arrived together whether or not both fitted.
+ *
+ * The hero needs room for a balance beside a three-value month strip, which is
+ * about 650 px of content; below that it stacks and its action stretches across
+ * the whole card. Pairing the upcoming list with the market strip needs
+ * materially more, because the narrower of the two columns still has to hold a
+ * status line and a message without turning into a paragraph. Splitting them
+ * lets the hero use a tablet properly while the panels wait for real width.
+ */
+const DASHBOARD_HERO_SPLIT_WIDTH = 700;
+const DASHBOARD_PANEL_PAIR_WIDTH = 900;
+
+export function shouldSplitDashboardHero(contentWidth: number): boolean {
+  return contentWidth >= DASHBOARD_HERO_SPLIT_WIDTH;
+}
+
+export function shouldPairDashboardPanels(contentWidth: number): boolean {
+  return contentWidth >= DASHBOARD_PANEL_PAIR_WIDTH;
+}
+
 export function shouldStackListActions(viewportWidth: number): boolean {
   return viewportWidth < NARROW_ACTION_STACK_WIDTH;
 }

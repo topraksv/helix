@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { ArrowRight, CheckCircle2, FileCheck2, FileSpreadsheet, ScanLine, TableProperties, Upload, type LucideIcon } from "lucide-react-native";
@@ -27,6 +27,7 @@ import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { shouldUseWideImportGuide } from "../ui/responsive";
+import { useContentWidth } from "../ui/viewport";
 import { readPickedBytes } from "../services/picked-file";
 import { MonthDayField } from "../ui/month-day-field";
 import { devError } from "../services/logger";
@@ -268,8 +269,7 @@ export default function ImportWizardModal() {
   const sources = sourcesState.data;
   const router = useRouter();
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
-  const wide = shouldUseWideImportGuide(width);
+  const wide = shouldUseWideImportGuide(useContentWidth());
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [excluded, setExcluded] = useState<string[]>([]);

@@ -17,6 +17,8 @@ import { Pencil, Trash2, type LucideIcon } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, IconButton, Row } from "./components";
 import { controlSize, font, spacing } from "./theme";
+import { shouldStackListActions } from "./responsive";
+import { useContentWidth } from "./viewport";
 
 export interface RuleBadge {
   text: string;
@@ -80,6 +82,8 @@ export function RuleRow({
     </View>
   );
 
+  const stackActions = shouldStackListActions(useContentWidth());
+
   return (
     <View style={{ flexDirection: "row", gap: spacing.md, paddingVertical: spacing.sm, alignItems: "center" }}>
       {leading}
@@ -95,14 +99,24 @@ export function RuleRow({
       ) : (
         label
       )}
-      <View style={{ alignItems: "flex-end", gap: spacing.xs }}>
-        <Amount minor={amountMinor} currency={currency} colorized={false} />
-        {amountNote ? (
-          <Body muted style={{ fontSize: 12 }}>
-            {amountNote}
-          </Body>
-        ) : null}
-        <Row gap={spacing.sm} style={{ marginTop: 2 }}>
+      {/* The row's controls sit BESIDE the amount wherever the row has width
+          for them. Stacked unconditionally they pushed every subscription to
+          90px tall on a surface with a third of its width to spare; below the
+          narrow threshold that stack is still the only thing that fits. */}
+      <View
+        style={stackActions
+          ? { alignItems: "flex-end", gap: spacing.xs }
+          : { flexDirection: "row", alignItems: "center", gap: spacing.lg }}
+      >
+        <View style={stackActions ? { alignItems: "flex-end" } : { alignItems: "flex-end", gap: 1 }}>
+          <Amount minor={amountMinor} currency={currency} colorized={false} />
+          {amountNote ? (
+            <Body muted style={{ fontSize: 12 }}>
+              {amountNote}
+            </Body>
+          ) : null}
+        </View>
+        <Row gap={spacing.sm} style={stackActions ? { marginTop: 2 } : undefined}>
           <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${title}`} onPress={onEdit} />
           <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${title}`} haptic="none" onPress={onDelete} />
         </Row>
