@@ -222,11 +222,18 @@ export function Logo({
 
   if (faviconDomain && faviconUrl && failedDomain !== faviconDomain) {
     return (
-      <View style={tileStyle(size)}>
+      // Hidden on the tile, not on the image: `expo-image` renders its own web
+      // `<img>` and forwards only `alt`, `src` and `style`, so accessibility
+      // props handed to it never reach the DOM. The row already names the
+      // subscription, and this favicon repeats nothing.
+      <View
+        aria-hidden
+        accessible={false}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={tileStyle(size)}
+      >
         <Image
-          accessible={false}
-          accessibilityRole="none"
-          accessibilityLabel=""
           alt=""
           source={{ uri: faviconUrl }}
           onError={() => setFailedDomain(faviconDomain)}

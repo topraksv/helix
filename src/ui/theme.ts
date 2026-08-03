@@ -592,6 +592,54 @@ export function tabBarClearance(bottomInset: number, isWeb: boolean): number {
   return tabBarHeight(isWeb) + tabBarBottomOffset(bottomInset) + TAB_BAR.gap;
 }
 
+/**
+ * The same navigation surface, stood on its side.
+ *
+ * A bottom bar is a thumb affordance: it belongs at the edge a held hand can
+ * reach. On a pointer-sized viewport that edge is nowhere near the pointer, the
+ * bar spends vertical space the content wants, and it floats over the very rows
+ * it is supposed to sit beside. The rail is the same five destinations, the same
+ * material and the same semantics, on the axis desktop has to spare.
+ *
+ * The width is measured, not chosen: the longest Turkish destination
+ * ("Abonelikler") beside a 22pt icon needs the label to stay on one line, which
+ * `e2e/ui-consistency.spec.ts` asserts against the real rendered font.
+ */
+export const SIDE_NAV = {
+  width: 216,
+  /** Distance from the window edge on every side the rail touches. */
+  inset: 12,
+  /** Gap the rail keeps from the content column beside it. */
+  gap: 12,
+  itemHeight: 46,
+  itemGap: 2,
+  /** The accent that marks the selected destination, rotated off the bar's
+   *  bottom border onto the rail's leading edge. */
+  markerWidth: 3,
+} as const;
+
+/**
+ * Space a tab scene must leave for navigation, on whichever axis the bar
+ * currently occupies.
+ *
+ * One function rather than two so a scene, the undo snackbar and the bar itself
+ * cannot disagree about where navigation actually is — the bug the old
+ * bottom-only `tabBarClearance` existed to prevent, kept intact while the bar
+ * gained a second orientation.
+ */
+export function navigationInset({
+  bottomInset,
+  isWeb,
+  side,
+}: {
+  bottomInset: number;
+  isWeb: boolean;
+  side: boolean;
+}): { bottom: number; left: number } {
+  if (side) return { bottom: spacing.xl, left: SIDE_NAV.inset + SIDE_NAV.width + SIDE_NAV.gap };
+  return { bottom: tabBarClearance(bottomInset, isWeb), left: 0 };
+}
+
 export type ThemePreference = "system" | "light" | "dark";
 
 interface Theme {

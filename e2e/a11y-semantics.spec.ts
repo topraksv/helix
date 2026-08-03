@@ -99,19 +99,30 @@ test("busy controls, spinners and decorative art are correctly exposed", async (
   // Decorative brand art must be OUT of the accessibility tree: an empty
   // accessible name on a visible img is an axe violation, so the element has to
   // be hidden rather than merely unlabelled.
+  //
+  // The hiding is checked on the element OR any ancestor, which is what ARIA
+  // actually specifies — `aria-hidden` removes a whole subtree. It also has to
+  // be checked that way here: `expo-image` renders its own web `<img>` and
+  // forwards only `alt`, `src` and `style`, so an image component physically
+  // cannot carry the attribute itself and a wrapper is the only place it fits.
   await page.goto("/helix/settings");
   await expect(page.getByRole("heading", { name: "Ayarlar", exact: true })).toBeVisible();
   const decorative = await page.evaluate(() => {
+    const hides = (el: HTMLElement) =>
+      el.getAttribute("aria-hidden") === "true"
+      || el.getAttribute("role") === "none"
+      || el.getAttribute("role") === "presentation";
     const out: { tag: string; hidden: boolean; role: string | null; alt: string | null }[] = [];
     for (const el of Array.from(document.querySelectorAll<HTMLElement>("img"))) {
       const alt = el.getAttribute("alt");
       if (alt !== "") continue; // only the deliberately decorative ones
-      out.push({
-        tag: el.tagName,
-        hidden: el.getAttribute("aria-hidden") === "true" || el.getAttribute("role") === "none" || el.getAttribute("role") === "presentation",
-        role: el.getAttribute("role"),
-        alt,
-      });
+      let node: HTMLElement | null = el;
+      let hidden = false;
+      while (node && !hidden) {
+        hidden = hides(node);
+        node = node.parentElement;
+      }
+      out.push({ tag: el.tagName, hidden, role: el.getAttribute("role"), alt });
     }
     return out;
   });

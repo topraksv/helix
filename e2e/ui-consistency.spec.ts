@@ -5,7 +5,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { addMarketExpense, currentMonthKey, isolateExternalData, onboard, pickOption } from "./helpers";
+import { addMarketExpense, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -150,6 +150,62 @@ test("the footer keeps a restrained material in both themes", async ({ page }) =
   expect(dark.backdrop).toContain("blur");
   expect(dark.background).not.toBe(light.background);
   expect(dark.bottom).toBeLessThanOrEqual(dark.viewportHeight + 1);
+});
+
+/**
+ * Navigation is one component with two orientations, so the contract is one
+ * test: the bar belongs to the thumb, the rail belongs to the pointer, and
+ * neither may sit on top of the content it navigates.
+ *
+ * The rail's width is a claim about the real rendered Turkish font — "Abonelikler"
+ * beside a 22pt icon has to stay on one line — so it is measured from the
+ * client rects a wrapped label would split into, not eyeballed.
+ */
+test("navigation stands up into a rail on desktop and stays a bar on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await openCashFlow(page);
+
+  const geometry = () => page.getByRole("tablist").evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+  });
+  const labelLineCounts = () => page.getByRole("tab").evaluateAll((tabs) =>
+    tabs.map((tab) => {
+      const text = Array.from(tab.querySelectorAll("*")).find((node) => node.textContent?.trim().length);
+      return { text: text?.textContent?.trim() ?? "", rects: text ? text.getClientRects().length : 0 };
+    }));
+
+  const bar = await geometry();
+  expect(bar.width, "the phone bar runs across the bottom").toBeGreaterThan(bar.height);
+  expect(bar.bottom).toBeLessThanOrEqual(844);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole("tab", { name: "Mali Tablo" })).toBeVisible();
+  const rail = await geometry();
+  expect(rail.height, "the desktop rail stands up").toBeGreaterThan(rail.width);
+  expect(rail.x, "the rail sits against the leading edge").toBeLessThan(rail.width);
+
+  for (const label of await labelLineCounts()) {
+    expect(label.rects, `"${label.text}" must stay on one line in the rail`).toBe(1);
+  }
+
+  // The bar used to float over the very rows it navigates. The rail stands
+  // beside them, so the scene has to have given up the space.
+  const heading = await page.getByRole("heading", { name: "Mali Tablo", exact: true }).boundingBox();
+  expect(heading!.x, "content starts clear of the rail").toBeGreaterThanOrEqual(rail.right);
+
+  // Clicking still routes through the library's cancellable tabPress contract.
+  await page.getByRole("tab", { name: "Yatırımlar" }).click();
+  await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
+
+  // Same instrument, so the same restrained material in either orientation.
+  const material = await page.getByRole("tablist").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, backdrop: style.backdropFilter || style.getPropertyValue("-webkit-backdrop-filter") };
+  });
+  expect(material.background).toMatch(/^rgba\(/);
+  expect(material.backdrop).toContain("blur");
 });
 
 test("bar-chart amounts stay readable and contained on phone and desktop", async ({ page }) => {

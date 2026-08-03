@@ -47,7 +47,7 @@ import {
   radius,
   spacing,
   stateOpacity,
-  tabBarClearance,
+  navigationInset,
   toggleSize,
   toggleThumbShadow,
   themeShadow,
@@ -56,7 +56,7 @@ import {
   type ContentWidth,
   type Palette,
 } from "./theme";
-import { shouldUseWideGutter } from "./responsive";
+import { shouldUseSideNavigation, shouldUseWideGutter } from "./responsive";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
@@ -177,9 +177,14 @@ export function Screen({
   // the single source for that space; a modal or stack scene has no bar over it
   // and only needs the safe-area inset.
   const inTabs = segments[0] === "(tabs)";
-  const bottomPad = inTabs
-    ? tabBarClearance(insets.bottom, Platform.OS === "web")
-    : Math.max(insets.bottom, spacing.lg) + spacing.md;
+  const nav = navigationInset({
+    bottomInset: insets.bottom,
+    isWeb: Platform.OS === "web",
+    side: shouldUseSideNavigation(width),
+  });
+  // Only the bottom clearance: the tab SCENE owns the rail's left inset, so a
+  // nested stack's header is inset by the same rule as the screen under it.
+  const bottomPad = inTabs ? nav.bottom : Math.max(insets.bottom, spacing.lg) + spacing.md;
   // Content must clear the status bar / Dynamic Island on headerless full
   // screens. Titled screens already inset the top; the auth + onboarding
   // screens run with `headerShown: false` and no title, so they need it too
