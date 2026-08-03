@@ -191,7 +191,10 @@ export function Donut({
           const supplemental = i >= slices.length;
           const share = !supplemental && arcTotal > 0 ? Math.round((s.valueMinor / arcTotal) * 100) : 0;
           return (
-            <View key={`${s.label}-${i}`} style={{ gap: 3 }}>
+            // The share rule needs its own air: at a 3px gap under a 3px bar it
+            // read as an underline on the label rather than as a track beside
+            // the donut it belongs to.
+            <View key={`${s.label}-${i}`} style={{ gap: 6, marginBottom: 2 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                 <View style={{ width: 9, height: 9, borderRadius: 3, backgroundColor: s.color }} />
                 <Text style={[type.small, { color: palette.text, flex: 1 }]}>{s.label}</Text>
@@ -204,7 +207,7 @@ export function Donut({
                 </Text>
               </View>
               {!supplemental ? (
-                <View style={{ marginLeft: 17, height: 3, borderRadius: 2, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
+                <View style={{ marginLeft: 17, height: 4, borderRadius: 2, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
                   <View style={{ width: `${share}%`, height: "100%", borderRadius: 2, backgroundColor: s.color }} />
                 </View>
               ) : null}

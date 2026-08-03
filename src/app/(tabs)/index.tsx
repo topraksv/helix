@@ -669,12 +669,14 @@ export default function DashboardScreen() {
 
       {analysisSection}
 
+      {/* These two are not peers, so they do not get equal halves. Upcoming
+          payments is the task — it carries the rows the owner acts on — while
+          the market strip is ambient reference that is frequently a single
+          status line. Split 50/50 they produced a tall, near-empty markets card
+          beside a list that had run out of room, so the task leads and takes
+          the larger share. */}
       <View style={pairedDashboard ? { flexDirection: "row", alignItems: "stretch", gap: spacing.lg } : undefined}>
-        <View style={pairedDashboard ? { flex: 1 } : undefined}>
-          <MarketsCard fill={pairedDashboard} desktopColumns={marketDesktopColumns} />
-        </View>
-
-        <View style={pairedDashboard ? { flex: 1 } : undefined}>
+        <View style={pairedDashboard ? { flex: 1.35, minWidth: 0 } : undefined}>
           {/* Upcoming payments */}
           <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
       {dataStatus === "loading" || dataStatus === "error" ? null : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
@@ -803,6 +805,10 @@ export default function DashboardScreen() {
           </View>
         </Card>
       )}
+        </View>
+
+        <View style={pairedDashboard ? { flex: 0.65, minWidth: 0 } : undefined}>
+          <MarketsCard fill={pairedDashboard} desktopColumns={marketDesktopColumns} />
         </View>
       </View>
 
