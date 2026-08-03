@@ -159,7 +159,7 @@ function DialogShell({
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: operation ? 520 : 400 }}>
+          <Pressable testID={operation ? "operation-dialog-surface" : undefined} accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: operation ? 520 : 400 }}>
             <FadeIn
               style={[
                 { backgroundColor: palette.surface, borderRadius: radius.lg, padding: operation ? spacing.xl : spacing.lg },
@@ -167,26 +167,11 @@ function DialogShell({
               ]}
             >
               <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
-                {operation ? <OperationDialogHeader kind={operation} title={title} testID="operation-dialog-header" /> : <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>}
+                {operation ? <OperationDialogHeader kind={operation} title={title} message={message} testID="operation-dialog-header" /> : <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>}
               </View>
-              {operation ? (
-                <View
-                  testID="operation-dialog-message"
-                  style={{
-                    borderRadius: radius.md,
-                    borderWidth: StyleSheet.hairlineWidth,
-                    borderColor: palette.border,
-                    backgroundColor: palette.surfaceAlt,
-                    padding: spacing.md,
-                    marginBottom: messageGap,
-                  }}
-                >
-                  <Text style={[type.small, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 0.6 }]}>{tr.common.operationSummary}</Text>
-                  <Text style={[type.body, { color: palette.text, marginTop: spacing.xs }]}>{message}</Text>
-                </View>
-              ) : (
+              {!operation ? (
                 <Text style={[type.body, { color: palette.textSecondary, marginBottom: messageGap }]}>{message}</Text>
-              )}
+              ) : null}
               {children}
             </FadeIn>
           </Pressable>

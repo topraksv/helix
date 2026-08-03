@@ -1,6 +1,9 @@
 import React from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
 import {
+  Check,
+  CheckCircle2,
+  CircleAlert,
   KeyRound,
   LogOut,
   Mail,
@@ -63,21 +66,6 @@ function operationSupportIcon(kind: OperationFlowKind): LucideIcon {
       return WalletCards;
     default:
       return ShieldCheck;
-  }
-}
-
-function operationDialogDetail(kind: OperationFlowKind): string | undefined {
-  switch (kind) {
-    case "sign-out":
-      return tr.auth.signOutDialogDetail;
-    case "local-sign-out":
-      return tr.auth.localSignOutDialogDetail;
-    case "freeze":
-      return tr.account.freezeSignatureDetail;
-    case "delete":
-      return tr.account.deleteSignatureDetail;
-    default:
-      return undefined;
   }
 }
 
@@ -171,9 +159,9 @@ export function OperationFlow({
 }
 
 /**
- * A persistent operation signature. The waiting state above is intentionally
- * small; these surfaces explain an action before it starts, so each account
- * lifecycle operation gets its own visual signal and consequence line.
+ * A persistent operation signature. The waiting indicator above is intentionally
+ * separate; these surfaces explain an action before it starts with a quiet,
+ * static visual signal and consequence line.
  */
 export function OperationSignature({
   kind,
@@ -193,8 +181,7 @@ export function OperationSignature({
   testID?: string;
 }) {
   const { palette } = useTheme();
-  const pulse = useWaitingPulse();
-  const [Icon, motion, tone = "primary"] = operationVisuals[kind];
+  const [Icon, , tone = "primary"] = operationVisuals[kind];
   const color = operationColor(palette, tone);
   const foreground = tone === "destructive"
     ? palette.errorText
@@ -240,24 +227,22 @@ export function OperationSignature({
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
-        <Animated.View
-          style={[
-            {
-              width: compact ? 34 : 46,
-              height: compact ? 34 : 46,
-              flexShrink: 0,
-              borderRadius: compact || kind === "delete" ? radius.sm : radius.full,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: color + "18",
-              borderWidth: compact ? StyleSheet.hairlineWidth : kind === "delete" ? 2 : StyleSheet.hairlineWidth,
-              borderColor: color,
-            },
-            motionStyle(motion, pulse),
-          ]}
+        <View
+          testID={testID ? `${testID}-icon` : undefined}
+          style={{
+            width: compact ? 34 : 46,
+            height: compact ? 34 : 46,
+            flexShrink: 0,
+            borderRadius: compact || kind === "delete" ? radius.sm : radius.full,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: color + "18",
+            borderWidth: compact ? StyleSheet.hairlineWidth : kind === "delete" ? 2 : StyleSheet.hairlineWidth,
+            borderColor: color,
+          }}
         >
           <Icon accessible={false} size={compact ? 17 : 21} color={color} strokeWidth={2.2} />
-        </Animated.View>
+        </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           {!compact ? <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{eyebrow}</Text> : null}
           <Text style={[compact ? type.body : type.heading, { color: foreground, marginTop: compact ? 0 : 2 }]}>{title}</Text>
@@ -291,68 +276,162 @@ function operationEyebrow(kind: OperationFlowKind): string {
   }
 }
 
-/** A focused visual header for the confirmation/prompt that follows an action. */
+function DialogStep({
+  index,
+  icon: Icon,
+  title,
+  detail,
+  color,
+  last = false,
+}: {
+  index?: string;
+  icon: LucideIcon;
+  title: string;
+  detail: string;
+  color: string;
+  last?: boolean;
+}) {
+  const { palette } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
+      <View style={{ alignItems: "center", width: 26 }}>
+        <View style={{ width: 26, height: 26, borderRadius: radius.full, alignItems: "center", justifyContent: "center", backgroundColor: color + "18", borderWidth: StyleSheet.hairlineWidth, borderColor: color }}>
+          {index ? <Text style={[type.small, { color, fontVariant: ["tabular-nums"] }]}>{index}</Text> : <Icon accessible={false} size={14} color={color} strokeWidth={2.4} />}
+        </View>
+        {!last ? <View style={{ width: StyleSheet.hairlineWidth, height: 22, backgroundColor: color + "55", marginVertical: 2 }} /> : null}
+      </View>
+      <View style={{ flex: 1, paddingBottom: last ? 0 : spacing.sm }}>
+        <Text style={[type.label, { color: palette.text }]}>{title}</Text>
+        <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{detail}</Text>
+      </View>
+    </View>
+  );
+}
+
+function DialogMessage({
+  label,
+  message,
+  color,
+  tone = "neutral",
+}: {
+  label: string;
+  message: string;
+  color: string;
+  tone?: "neutral" | "warning" | "danger";
+}) {
+  const { palette } = useTheme();
+  const background = tone === "danger" ? palette.error + "14" : tone === "warning" ? palette.warning + "12" : palette.surfaceAlt;
+  return (
+    <View testID="operation-dialog-message" style={{ borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: color + "55", backgroundColor: background, padding: spacing.md, marginTop: spacing.lg }}>
+      <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{label}</Text>
+      <Text selectable style={[type.body, { color: palette.text, marginTop: spacing.xs }]}>{message}</Text>
+    </View>
+  );
+}
+
+function DialogHeading({
+  icon: Icon,
+  eyebrow,
+  title,
+  color,
+  shape = "circle",
+}: {
+  icon: LucideIcon;
+  eyebrow: string;
+  title: string;
+  color: string;
+  shape?: "circle" | "square";
+}) {
+  const { palette } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+      <View style={{ width: 52, height: 52, flexShrink: 0, borderRadius: shape === "square" ? radius.md : radius.full, alignItems: "center", justifyContent: "center", backgroundColor: color + "18", borderWidth: shape === "square" ? 2 : StyleSheet.hairlineWidth, borderColor: color }}>
+        <Icon accessible={false} size={24} color={color} strokeWidth={2.2} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{eyebrow}</Text>
+        <Text style={[type.heading, { color: palette.text, marginTop: 2 }]}>{title}</Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The confirmation surface is deliberately composed per operation. The
+ * shared modal shell owns focus, dismissal and button order; this component
+ * owns the consequence hierarchy so logout, freeze and deletion cannot look
+ * like recoloured copies of the same alert.
+ */
 export function OperationDialogHeader({
   kind,
   title,
+  message,
   testID,
 }: {
   kind: OperationFlowKind;
   title: string;
+  message: string;
   testID?: string;
 }) {
   const { palette } = useTheme();
-  const pulse = useWaitingPulse();
-  const [Icon, motion, tone = "primary"] = operationVisuals[kind];
+  const [Icon, , tone = "primary"] = operationVisuals[kind];
   const color = operationColor(palette, tone);
-  const SupportIcon = operationSupportIcon(kind);
-  const detail = operationDialogDetail(kind);
+  const eyebrow = operationEyebrow(kind);
 
   return (
     <View
       testID={testID ?? `operation-dialog-${kind}`}
-      style={{
-        borderLeftWidth: 3,
-        borderLeftColor: color,
-        borderRadius: radius.md,
-        padding: spacing.md,
-        marginBottom: spacing.md,
-        backgroundColor: tone === "destructive"
-          ? palette.error + "0D"
-          : tone === "warning"
-            ? palette.warning + "10"
-            : palette.surfaceAlt,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: color + "55",
-      }}
+      style={{ width: "100%" }}
     >
-      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
-        <Animated.View
-          style={[{
-            width: 44,
-            height: 44,
-            flexShrink: 0,
-            borderRadius: kind === "delete" ? radius.sm : radius.full,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: color + "18",
-            borderWidth: kind === "delete" ? 2 : StyleSheet.hairlineWidth,
-            borderColor: color,
-          }, motionStyle(motion, pulse)]}
-        >
-          <Icon accessible={false} size={21} color={color} strokeWidth={2.2} />
-        </Animated.View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{operationEyebrow(kind)}</Text>
-          <Text style={[type.heading, { color: palette.text, marginTop: 2 }]}>{title}</Text>
-        </View>
-      </View>
-      {detail ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color + "40" }}>
-          <SupportIcon accessible={false} size={15} color={color} strokeWidth={2.1} />
-          <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{detail}</Text>
-        </View>
-      ) : null}
+      {kind === "sign-out" ? (
+        <>
+          <DialogHeading icon={LogOut} eyebrow={eyebrow} title={title} color={color} />
+          <DialogMessage label={tr.auth.signOutDialogSection} message={message} color={color} />
+          <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+            <DialogStep icon={CheckCircle2} title={tr.auth.signOutDialogAccountTitle} detail={tr.auth.signOutDialogAccountDetail} color={palette.success} />
+            <DialogStep icon={RefreshCw} title={tr.auth.signOutDialogReturnTitle} detail={tr.auth.signOutDialogReturnDetail} color={color} last />
+          </View>
+        </>
+      ) : kind === "local-sign-out" ? (
+        <>
+          <DialogHeading icon={LogOut} eyebrow={eyebrow} title={title} color={palette.destructive} shape="square" />
+          <DialogMessage label={tr.auth.localSignOutDialogSection} message={message} color={palette.destructive} tone="danger" />
+          <View style={{ marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, gap: spacing.md }}>
+            <DialogStep icon={CircleAlert} title={tr.auth.localSignOutDialogDeviceTitle} detail={tr.auth.localSignOutDialogDeviceDetail} color={palette.destructive} />
+            <DialogStep icon={Check} title={tr.auth.localSignOutDialogBackupTitle} detail={tr.auth.localSignOutDialogBackupDetail} color={palette.warning} last />
+          </View>
+        </>
+      ) : kind === "freeze" ? (
+        <>
+          <DialogHeading icon={Snowflake} eyebrow={eyebrow} title={title} color={palette.warning} />
+          <DialogMessage label={tr.account.freezeDialogSection} message={message} color={palette.warning} tone="warning" />
+          <View style={{ marginTop: spacing.md, gap: spacing.xs }}>
+            <DialogStep index="1" icon={ShieldCheck} title={tr.account.freezeDialogProtectTitle} detail={tr.account.freezeDialogProtectDetail} color={palette.success} />
+            <DialogStep index="2" icon={LogOut} title={tr.account.freezeDialogCloseTitle} detail={tr.account.freezeDialogCloseDetail} color={palette.warning} />
+            <DialogStep index="3" icon={KeyRound} title={tr.account.freezeDialogReturnTitle} detail={tr.account.freezeDialogReturnDetail} color={palette.primary} last />
+          </View>
+        </>
+      ) : kind === "delete" ? (
+        <>
+          <DialogHeading icon={Trash2} eyebrow={eyebrow} title={title} color={palette.destructive} shape="square" />
+          <DialogMessage label={tr.account.deleteDialogSection} message={message} color={palette.destructive} tone="danger" />
+          <View style={{ marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: palette.destructive + "75", backgroundColor: palette.error + "0D", gap: spacing.sm }}>
+            <Text style={[type.label, { color: palette.errorText }]}>{tr.account.deleteDialogListTitle}</Text>
+            {[tr.account.deleteDialogItemAccount, tr.account.deleteDialogItemFinance, tr.account.deleteDialogItemSettings].map((item) => (
+              <View key={item} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                <Check accessible={false} size={15} color={palette.errorText} strokeWidth={2.4} />
+                <Text style={[type.small, { color: palette.text }]}>{item}</Text>
+              </View>
+            ))}
+            <Text style={[type.small, { color: palette.errorText, marginTop: spacing.xs }]}>{tr.account.deleteDialogIrreversible}</Text>
+          </View>
+        </>
+      ) : (
+        <>
+          <DialogHeading icon={Icon} eyebrow={eyebrow} title={title} color={color} />
+          <DialogMessage label={tr.common.operationSummary} message={message} color={color} />
+        </>
+      )}
     </View>
   );
 }

@@ -654,12 +654,14 @@ test("lifecycle confirmations carry the operation context after the action", asy
   const compactSignature = signOutCard.getByTestId("account-sign-out-signature");
   await expect(compactSignature).toBeVisible();
   expect((await compactSignature.boundingBox())!.height).toBeLessThan(90);
+  await expect(compactSignature.getByTestId("account-sign-out-signature-icon")).toHaveCSS("transform", "none");
 
   await signOutCard.getByRole("button", { name: "Çıkış yap", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
-  await expect(page.getByTestId("operation-dialog-message")).toContainText("Bu adımda ne olur");
+  await expect(page.getByTestId("operation-dialog-message")).toContainText("Cihazdan ayrılmadan önce");
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Cihazdan ayrıl");
-  await expect(page.getByTestId("operation-dialog-header")).toContainText("Bu cihazdaki veriler geri alınamaz");
+  await expect(page.getByTestId("operation-dialog-header")).toContainText("Bu cihazdaki veriler silinir");
+  await expect(page.getByTestId("operation-dialog-header")).toContainText("Önce yedek al");
   await expect(page.getByTestId("operation-dialog-header").getByText("Tüm veriler silinecek", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toHaveCount(0);
@@ -667,12 +669,27 @@ test("lifecycle confirmations carry the operation context after the action", asy
   const deleteCard = page.getByTestId("account-delete-card");
   const deleteSignature = deleteCard.getByTestId("account-delete-signature");
   expect((await deleteSignature.boundingBox())!.height).toBeLessThan(90);
+  await expect(deleteSignature.getByTestId("account-delete-signature-icon")).toHaveCSS("transform", "none");
   await deleteCard.getByRole("button", { name: "Hesabı Sil", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Kalıcı silme");
-  await expect(page.getByTestId("operation-dialog-header")).toContainText("Son adımda şifren yeniden doğrulanır");
+  await expect(page.getByTestId("operation-dialog-message")).toContainText("Kalıcı silme kapsamı");
+  await expect(page.getByTestId("operation-dialog-header")).toContainText("Mali tablo, işlemler ve taksitler");
   await expect(page.getByTestId("operation-dialog-header").getByText("Hesabı sil", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/helix/settings");
+  await page.getByTestId("account-sign-out-card").getByRole("button", { name: "Çıkış yap", exact: true }).click();
+  const mobileSurface = page.getByTestId("operation-dialog-surface");
+  await expect(mobileSurface).toBeVisible();
+  const mobileBox = await mobileSurface.boundingBox();
+  expect(mobileBox).not.toBeNull();
+  expect(mobileBox!.x).toBeGreaterThanOrEqual(0);
+  expect(mobileBox!.x + mobileBox!.width).toBeLessThanOrEqual(390);
+  expect(mobileBox!.y).toBeGreaterThanOrEqual(0);
+  expect(mobileBox!.y + mobileBox!.height).toBeLessThanOrEqual(844);
+  await expect(page.getByTestId("operation-dialog-header")).toContainText("Önce yedek al");
 });
 
 test("compact financial-table pins stay beside headers and month labels keep breathing room", async ({ page }) => {
