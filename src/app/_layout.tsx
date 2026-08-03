@@ -33,6 +33,9 @@ import {
   type ThemePreference,
 } from "../ui/theme";
 import { Button, Screen, Title, WaitingNotice } from "../ui/components";
+import { useLifecycleIntent, type LifecycleIntent } from "../ui/lifecycle-intent";
+import type { OperationFlowKind } from "../ui/operation-flow";
+
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
@@ -40,7 +43,7 @@ import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
-import { HeaderBackButton } from "../ui/header-back";
+import { HeaderBackButton, TransactionBackButton } from "../ui/header-back";
 import { cardScreenOptions, primaryScreenOptions, sheetScreenOptions } from "../ui/header-bar";
 
 import { devError } from "../services/logger";
@@ -52,6 +55,31 @@ import {
   useMarketLifecycle,
   useWorkspaceMaintenance,
 } from "../ui/root-lifecycle";
+
+/** What the guard's waiting view should say, given what the user just did. */
+function waitingState(
+  intent: LifecycleIntent | null,
+  newSignup: boolean,
+): { kind: OperationFlowKind; message: string } {
+  switch (intent) {
+    case "sign-out":
+      return { kind: "sign-out", message: tr.operation.signingOut };
+    case "local-sign-out":
+      return { kind: "local-sign-out", message: tr.operation.localSigningOut };
+    case "delete":
+      return { kind: "delete", message: tr.operation.deletingAccount };
+    case "freeze":
+      return { kind: "freeze", message: tr.operation.freezePhase.syncing };
+    case "reactivate":
+      return { kind: "reactivate", message: tr.auth.restoringData };
+    default:
+      // No lifecycle operation: this is the first pull after a sign-in, and a
+      // brand-new account has nothing to pull.
+      return newSignup
+        ? { kind: "initialize", message: tr.auth.restoringDataFresh }
+        : { kind: "restore", message: tr.auth.restoringData };
+  }
+}
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -167,6 +195,7 @@ function RootLayoutInner() {
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [palettePref, setPalettePref] = useState<PaletteId>("clay");
   const { userId, ready, bootstrap, isOnlineSession, isNewSignup, isFreezing } = useSession();
+  const lifecycle = useLifecycleIntent();
   const { locked, unlock } = useBiometricLock(ready, userId);
   const onboardedState = useOnboardedState(userId);
   const frozenState = useAccountFrozenState(userId);
@@ -318,6 +347,12 @@ function RootLayoutInner() {
     ((onboardedState.status === "error" && !onboardedState.updatedAt) ||
       (frozenState.status === "error" && !frozenState.updatedAt)),
   );
+  // Signing out, freezing and deleting all land here, because all three end the
+  // session. Saying "Hesabın eşitleniyor" through a deletion is the app telling
+  // the user the opposite of what it is doing, so the waiting view names the
+  // operation the user confirmed — and `OperationFlow` already gives each kind
+  // its own icon, tone and motion.
+  const wait = waitingState(lifecycle, isNewSignup);
   if (guard.view === "wait" || guardQueryFailed) {
     // This branch renders before the navigator's provider. Keep its retry and
     // first-pull surfaces inside the same palette, otherwise a dark background
@@ -342,10 +377,7 @@ function RootLayoutInner() {
             // A silent spinner after a correct password reads as a stall. This
             // hold is the account's first pull, and a brand-new account has
             // nothing to pull — so the two say different things.
-            <WaitingNotice
-              kind={isNewSignup ? "initialize" : "restore"}
-              message={isNewSignup ? tr.auth.restoringDataFresh : tr.auth.restoringData}
-            />
+            <WaitingNotice kind={wait.kind} message={wait.message} />
           ) : !guard.redirect ? (
             <DelayedLoadingIndicator />
           ) : null}
@@ -373,7 +405,7 @@ function RootLayoutInner() {
           <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="(onboarding)/setup" options={{ headerShown: false }} />
-          <Stack.Screen name="transaction" options={{ ...sheetScreenOptions(theme.palette), title: tr.tx.new, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="transaction" options={{ ...sheetScreenOptions(theme.palette), title: tr.tx.new, headerLeft: () => <TransactionBackButton /> }} />
           <Stack.Screen name="installment-new" options={{ ...sheetScreenOptions(theme.palette), title: tr.installments.newPlan, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow/installments" /> }} />
           <Stack.Screen name="subscription-form" options={{ ...sheetScreenOptions(theme.palette), title: tr.subs.add, headerLeft: () => <HeaderBackButton fallback="/(tabs)/subscriptions" /> }} />
           <Stack.Screen name="bulk-entry" options={{ ...sheetScreenOptions(theme.palette), title: tr.bulk.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />

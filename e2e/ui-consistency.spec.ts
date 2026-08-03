@@ -450,6 +450,32 @@ test("wide tools start on one line with equal work areas", async ({ page }) => {
   expect(Math.abs(geometry.calculatorWidth - geometry.converterWidth)).toBeLessThanOrEqual(1);
 });
 
+/**
+ * A route with two entrances needs two exits. `/transaction` is the ledger's
+ * entry form and, with `intent=investment-refund`, the wallet transfer opened
+ * from Investments — and leaving the second one without saving used to walk out
+ * into the Financial Table, a different tab, after asking to discard a form the
+ * user had not touched. (The form declared itself dirty because its single
+ * transfer category is assigned by an effect once the data loads.)
+ */
+test("leaving the wallet transfer returns to Investments without inventing a draft", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await onboard(page);
+  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("10.000");
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+
+  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Serbest Bakiyeyi Aktar" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  // No discard dialog: nothing was edited.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
+  await expect(page).toHaveURL(/investments/);
+});
+
 test("investment setup, weighted sale, BES contribution and wallet refund form one flow @smoke", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -652,7 +678,7 @@ test("supplementary financial-table details collapse without losing recovery", a
   await expect(page.getByTestId("cash-flow-table-details-content")).toHaveCount(0);
   const initialGeometry = await details.evaluate((element) => {
     const button = element.getBoundingClientRect();
-    const segment = element.parentElement!.querySelector<HTMLElement>('[role="radiogroup"]')!.getBoundingClientRect();
+    const segment = element.closest<HTMLElement>('[role="radiogroup"]')!.getBoundingClientRect();
     return { buttonHeight: button.height, segmentHeight: segment.height };
   });
   expect(Math.abs(initialGeometry.buttonHeight - initialGeometry.segmentHeight)).toBeLessThanOrEqual(1);

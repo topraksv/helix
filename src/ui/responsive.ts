@@ -14,8 +14,14 @@ const WIDE_WORKSPACE_WIDTH = 900;
  *
  * Both facts change together on purpose — two thresholds a few pixels apart is
  * how a layout starts looking accidental.
+ *
+ * A tablet in portrait belongs on the desktop side of it. It was on the phone
+ * side while the rail cost 220px, which a 768px window cannot spare; a compact
+ * rail costs 108, and everything a tablet gains from that — a persistent
+ * navigation instrument, a real page margin, paired columns — is what the
+ * device is for. It is a pointer-or-two-hand device, not a big phone.
  */
-const DESKTOP_WIDTH = 1024;
+const DESKTOP_WIDTH = 768;
 
 export function shouldUseSideNavigation(viewportWidth: number): boolean {
   return viewportWidth >= DESKTOP_WIDTH;
@@ -44,15 +50,13 @@ export function shouldBoundIntrinsicControls(viewportWidth: number): boolean {
  * The dashboard's two composition rules, which used to share one hand-written
  * `width >= 960` and therefore arrived together whether or not both fitted.
  *
- * The hero needs room for a balance beside a three-value month strip, which is
- * about 650 px of content; below that it stacks and its action stretches across
- * the whole card. Pairing the upcoming list with the market strip needs
- * materially more, because the narrower of the two columns still has to hold a
- * status line and a message without turning into a paragraph. Splitting them
- * lets the hero use a tablet properly while the panels wait for real width.
+ * The hero needs room for a balance beside a three-value month strip. The
+ * payment list and the market strip need less than that between them, because
+ * each side is a short row rather than a figure that must not wrap — so they
+ * pair a little earlier, and a tablet in portrait gets both.
  */
-const DASHBOARD_HERO_SPLIT_WIDTH = 700;
-const DASHBOARD_PANEL_PAIR_WIDTH = 900;
+const DASHBOARD_HERO_SPLIT_WIDTH = 640;
+const DASHBOARD_PANEL_PAIR_WIDTH = 620;
 
 export function shouldSplitDashboardHero(contentWidth: number): boolean {
   return contentWidth >= DASHBOARD_HERO_SPLIT_WIDTH;
@@ -91,7 +95,7 @@ export function shouldUseWideWorkspace(viewportWidth: number): boolean {
  * keep a six-option period control on one line, so they can pair a long way
  * before a workspace can.
  */
-const PAIRED_FILTER_WIDTH = 700;
+const PAIRED_FILTER_WIDTH = 640;
 
 export function shouldPairFilterCards(contentWidth: number): boolean {
   return contentWidth >= PAIRED_FILTER_WIDTH;

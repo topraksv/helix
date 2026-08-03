@@ -1,27 +1,13 @@
 import React from "react";
-import { Platform, useWindowDimensions } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Tabs } from "expo-router";
 import { ChartPie, Landmark, RefreshCw, Settings, WalletCards } from "lucide-react-native";
 import { tr } from "../../i18n/tr";
 import { selectionTapIfChanged } from "../../ui/haptics";
-import { shouldUseSideNavigation } from "../../ui/responsive";
 import { TabBar } from "../../ui/tab-bar";
-import { navigationInset, useTheme } from "../../ui/theme";
+import { useTheme } from "../../ui/theme";
 
 export default function TabsLayout() {
   const { palette } = useTheme();
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  // The rail stands beside the scene rather than over it, so the SCENE gives up
-  // the space — not each screen. A nested stack draws its own header inside
-  // this container and outside `Screen`, and insetting only `Screen` left the
-  // rail covering that header's back control.
-  const nav = navigationInset({
-    bottomInset: insets.bottom,
-    isWeb: Platform.OS === "web",
-    side: shouldUseSideNavigation(width),
-  });
   return (
     <Tabs
       // The bar floats over the scene, so it draws itself rather than being
@@ -37,7 +23,12 @@ export default function TabsLayout() {
       screenOptions={{
         // Screens draw their own large titles; a native header would repeat them.
         headerShown: false,
-        sceneStyle: { backgroundColor: palette.background, paddingLeft: nav.left },
+        // No left inset here. The rail is a floating panel centred on its own
+        // axis, not a column the scene stands beside, so a nested stack's header
+        // spans the whole window as a header should; padding the scene cut that
+        // header short and left a notch of background beside it. `Screen` insets
+        // its own content, which is the only thing the rail can reach.
+        sceneStyle: { backgroundColor: palette.background },
       }}
     >
       <Tabs.Screen

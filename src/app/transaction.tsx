@@ -195,8 +195,18 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
     && dateValid
     && !busy;
   const draftSnapshot = JSON.stringify({ amountMode, amountRaw, categoryId, dateMode, monthKey, dateStr });
-  const initialDraftSnapshot = React.useRef(draftSnapshot).current;
-  const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  // The baseline is the form as the DATA leaves it, not as the first render
+  // leaves it. The single transfer category is assigned by an effect once the
+  // categories load, so a snapshot taken on mount differed from the very next
+  // one and the screen declared itself dirty before the user had touched
+  // anything: leaving it asked "discard your changes?" and then walked out to
+  // the discard fallback — a different tab — for a form nobody had edited.
+  const baseline = React.useRef<string | null>(null);
+  if (baseline.current === null && ready && (transferCategories.length !== 1 || categoryId != null)) {
+    baseline.current = draftSnapshot;
+  }
+  const dirty = baseline.current != null && draftSnapshot !== baseline.current && !busy;
+  const { allowExit } = useDirtyExitGuard(dirty);
   const close = () => navigateBack(router, "/(tabs)/investments");
 
   const save = async () => {

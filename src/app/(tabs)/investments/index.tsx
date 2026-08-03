@@ -54,7 +54,7 @@ import {
 } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
-import { useClusterWidth, useContentWidth } from "../../../ui/viewport";
+import { useContentWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { scheduleSync } from "../../../sync/engine";
@@ -304,7 +304,6 @@ export default function InvestmentsScreen() {
   const userId = useUserId();
   const undo = useUndo();
   const width = useContentWidth();
-  const actionBarWidth = useClusterWidth(5);
   const compact = width < 560;
   const desktop = width >= 900;
   const [productFilter, setProductFilter] = useState<"all" | InvestmentAssetType>("all");
@@ -540,15 +539,14 @@ export default function InvestmentsScreen() {
         </HeroCard>
       </View>
 
-      {/* An action bar is a cluster of controls, not a banner. Left to fill the
-          workspace each of its four targets got ~295px of empty tile, so it
-          takes what four actions need and stops — the same rule the segmented
-          control follows. */}
+      {/* These four are the page's primary actions and they belong to the
+          wallet above them, so they span the same width the hero does. Bounded
+          to a cluster they read as a half-empty second row under a full-width
+          card — the tiles themselves keep their own even share of the row. */}
       <View
         testID="investment-actions"
         style={{
           width: "100%",
-          maxWidth: actionBarWidth,
           flexDirection: "row",
           gap: spacing.xs,
           padding: spacing.xs,

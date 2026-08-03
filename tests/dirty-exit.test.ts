@@ -17,10 +17,8 @@ describe("dirty form navigation contract", () => {
     "%s keeps disclosure state out of the draft snapshot",
     (file) => {
       const source = readFileSync(join(process.cwd(), file), "utf8");
-      const snapshot = source.slice(
-        source.indexOf("const draftSnapshot = JSON.stringify({"),
-        source.indexOf("const initialDraftSnapshot"),
-      );
+      const start = source.indexOf("const draftSnapshot = JSON.stringify({");
+      const snapshot = source.slice(start, source.indexOf("\n", source.indexOf("})", start)));
       expect(snapshot).not.toBe("");
       expect(snapshot).not.toContain("showCurrency");
     },

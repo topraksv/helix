@@ -35,7 +35,7 @@ import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
-import { controlSize, radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
+import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useClusterWidth, useContentWidth } from "../../../ui/viewport";
 import { categoryIcon } from "../../../data/category-icons";
@@ -253,7 +253,7 @@ export default function CashflowScreen() {
   const editColumns = () => router.push("/columns-editor");
 
   return (
-    <Screen title={tr.cashflow.title} right={yearSwitcher} width="wide" scroll={false} padded>
+    <Screen title={tr.cashflow.title} right={yearSwitcher} width="workspace" scroll={false} padded>
       <View
         style={{
           gap: spacing.sm,
@@ -321,26 +321,24 @@ export default function CashflowScreen() {
               control's own bound above that. The wrapper carries the same bound:
               left to stretch it parked the guide button a thousand pixels away
               from the control it explains on a wide monitor. */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
-            <View style={{ flex: 1, minWidth: 0, maxWidth: segmentedMaxWidth(PIVOT_MODES.length) }}>
-              <Segmented
-                noMargin
-                options={PIVOT_MODES}
-                value={mode}
-                onChange={changeMode}
-              />
-            </View>
-            {showTable ? (
-              <IconButton
-                icon={Info}
-                size={controlSize.segmented}
-                iconSize={18}
-                label={tr.cashflow.tableGuide}
-                tone={showTableDetails ? "primary" : "default"}
-                expanded={showTableDetails}
-                onPress={() => setShowTableDetails((visible) => !visible)}
-              />
-            ) : null}
+          {/* The guide toggle lives inside the pivot's own strip, so it shares
+              its height, its baseline and its selected treatment instead of
+              sitting beside it as a taller bordered square. */}
+          <View style={{ marginBottom: spacing.md }}>
+            <Segmented
+              noMargin
+              options={PIVOT_MODES}
+              value={mode}
+              onChange={changeMode}
+              action={showTable
+                ? {
+                    icon: Info,
+                    label: tr.cashflow.tableGuide,
+                    active: showTableDetails,
+                    onPress: () => setShowTableDetails((visible) => !visible),
+                  }
+                : undefined}
+            />
           </View>
           {showTable && tableMatrix && showTableDetails ? (
             <TableDetailsPanel

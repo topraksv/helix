@@ -307,10 +307,10 @@ export default function SubscriptionsScreen() {
   return (
     <Screen
       title={tr.subs.title}
-      // Same reason as the month detail: a subscription row is a name, a next
-      // date and an amount. A workspace column left 400px of nothing in the
-      // middle of every row.
-      width="form"
+      // Every primary tab shares one measure, so moving between them does not
+      // move the page. The rows do not stretch to fill it — the groups pair
+      // into columns at desktop width instead.
+      width="workspace"
       right={<Button icon={Plus} size="sm" label={tr.subs.add} onPress={() => router.push("/subscription-form")} />}
     >
       <DataStateNotice status={dataStatus} retry={retryData} />
@@ -320,7 +320,7 @@ export default function SubscriptionsScreen() {
       {active.length === 0 && watched.length === 0 && passive.length === 0 ? (
         <EmptyState icon={RefreshCw} title={tr.subs.emptyTitle} hint={tr.subs.emptyHint} />
       ) : null}
-      <WorkspaceGrid testID="subscription-groups" layout="stack">
+      <WorkspaceGrid testID="subscription-groups" breakpoint={900}>
         {active.length > 0 ? (
           <View>
             <SectionHeader>{tr.common.active}</SectionHeader>

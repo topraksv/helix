@@ -66,7 +66,13 @@ import { filterSelectionOptions, type SelectionOption } from "./selection";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder";
 
-function controlStateStyle(palette: Palette, active: boolean, error = false) {
+/**
+ * The shared look of every control that accepts a value: text fields, selects
+ * and the date trigger. Exported because the date trigger lives in
+ * `calendar.tsx` and had grown its own `surfaceAlt` fill, which is why one
+ * field on an investment form was grey while the two beside it were not.
+ */
+export function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
     backgroundColor: palette.surface,
     borderWidth: active || error ? borderWidth.control : StyleSheet.hairlineWidth,
@@ -180,7 +186,7 @@ export function Screen({
   // Only the bottom clearance is applied here: the tab SCENE owns the rail's
   // left inset, so a nested stack's header is inset by the same rule as the
   // screen under it.
-  const { bottom: navBottom, inTabs } = useNavigationSpace();
+  const { bottom: navBottom, left: navLeft, inTabs } = useNavigationSpace();
   const bottomPad = inTabs ? navBottom : Math.max(insets.bottom, spacing.lg) + spacing.md;
   // Content must clear the status bar / Dynamic Island on headerless full
   // screens. Titled screens already inset the top; the auth + onboarding
@@ -243,7 +249,10 @@ export function Screen({
   // patched with a third mechanism in the same breath as removing the second.
   if (!scroll) {
     return (
-      <View style={{ flex: 1, backgroundColor: palette.background }}>
+      // The rail's space is taken here, by the content, and not by the tab scene:
+    // a scene-level inset also shortened the nested stack's header, which is
+    // chrome that belongs to the whole window.
+    <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
         <FadeIn style={[{ flex: 1 }, inner]}>
           {header}
           {children}
@@ -252,7 +261,10 @@ export function Screen({
     );
   }
   return (
-    <View style={{ flex: 1, backgroundColor: palette.background }}>
+    // The rail's space is taken here, by the content, and not by the tab scene:
+    // a scene-level inset also shortened the nested stack's header, which is
+    // chrome that belongs to the whole window.
+    <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
       <ScrollView
         ref={activeScrollRef}
         contentContainerStyle={inner}
@@ -1310,12 +1322,24 @@ export function Segmented<T extends string>({
   onChange,
   noMargin = false,
   disabled = false,
+  action,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
   noMargin?: boolean;
   disabled?: boolean;
+  /**
+   * A companion toggle that belongs to the same strip — the ledger's reading
+   * guide beside its pivot.
+   *
+   * It used to be an `IconButton` parked next to the control: a bordered 52pt
+   * square beside a 44pt underlined strip, which is two control languages and
+   * two heights on one row. Rendered as part of the strip it cannot drift from
+   * it, and it keeps its own button role rather than pretending to be a fourth
+   * choice.
+   */
+  action?: { icon: LucideIcon; label: string; active: boolean; onPress: () => void };
 }) {
   const { palette } = useTheme();
   const bounded = shouldBoundIntrinsicControls(useContentWidth());
@@ -1327,7 +1351,9 @@ export function Segmented<T extends string>({
         // Bounded by its own options once the container stops being a bound —
         // see `shouldBoundIntrinsicControls`. A phone keeps the full-width
         // control it expects; capping there only left a ragged edge beside it.
-        maxWidth: bounded ? segmentedMaxWidth(options.length) : undefined,
+        maxWidth: bounded
+          ? segmentedMaxWidth(options.length) + (action ? controlSize.minimumTarget : 0)
+          : undefined,
         backgroundColor: palette.surface,
         borderRadius: radius.sm,
         padding: 0,
@@ -1384,6 +1410,30 @@ export function Segmented<T extends string>({
           </Pressable>
         );
       })}
+      {action ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={action.label}
+          aria-expanded={action.active}
+          accessibilityState={{ expanded: action.active }}
+          onPress={action.onPress}
+          style={({ pressed }) => ({
+            width: controlSize.minimumTarget,
+            minHeight: controlSize.minimumTarget,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: pressed ? palette.surfaceHover : "transparent",
+            borderBottomWidth: 3,
+            borderBottomColor: action.active ? palette.primary : "transparent",
+          })}
+        >
+          <action.icon
+            accessible={false}
+            size={iconSize.accessory}
+            color={action.active ? palette.primaryText : palette.textSecondary}
+          />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -1585,14 +1635,25 @@ export function ChipPicker<T extends string>({
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected }}
             hitSlop={compact ? 8 : 4}
-            style={{
+            // One selection language. This row used to be fully rounded pills
+            // while the same question asked as a grid — pick your columns, pick
+            // your categories — was answered with bordered tiles, so two
+            // controls doing the same job on adjacent screens looked unrelated.
+            // The tile's shape, border and selected treatment win because they
+            // survive a long label and read as chosen without relying on fill
+            // alone; the pill's geometry and touch target are unchanged.
+            style={({ pressed }) => ({
               paddingVertical: spacing.sm + 2,
               paddingHorizontal: compact ? spacing.sm + 2 : spacing.md + 2,
-              borderRadius: radius.full,
-              backgroundColor: selected ? palette.primarySoft : palette.surfaceAlt,
+              borderRadius: radius.md,
+              borderWidth: selected ? borderWidth.control : StyleSheet.hairlineWidth,
+              borderColor: selected ? palette.primary : palette.border,
+              backgroundColor: pressed
+                ? palette.surfaceHover
+                : selected ? palette.primarySoft : palette.surfaceAlt,
               minHeight: controlSize.minimumTarget,
               justifyContent: "center",
-            }}
+            })}
           >
             <Text
               style={[

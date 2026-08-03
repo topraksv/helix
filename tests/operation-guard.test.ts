@@ -62,7 +62,13 @@ describe("operation progress language", () => {
     expect(components).not.toContain("WaitingText");
     expect(frozenGate).not.toContain("WaitingText");
     expect(components.match(/<OperationFlow/g)).toHaveLength(1);
-    expect(rootLayout).toContain('kind={isNewSignup ? "initialize" : "restore"}');
+    expect(rootLayout).toContain("<WaitingNotice kind={wait.kind} message={wait.message} />");
+    // Signing out, freezing and deleting all end the session and land on this
+    // same view, so each one has to say what it is rather than borrowing the
+    // first-pull sentence.
+    for (const intent of ["sign-out", "local-sign-out", "delete", "freeze"]) {
+      expect(rootLayout).toContain(`case "${intent}":`);
+    }
     expect(settings).toContain("tr.operation.localSigningOut");
   });
 

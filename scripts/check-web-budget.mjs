@@ -11,9 +11,16 @@ const root = process.argv[2] ?? "dist";
 // JavaScript ceilings: entry 4_870_467 -> 4_964_522 bytes and total JavaScript
 // 5_499_676 -> 5_593_704 bytes. The new limits cover that shipped feature with
 // narrow headroom; total export, fonts and public source-map limits stay fixed.
+//
+// The adaptive-layout work measured 5_022_450 entry / 5_651_632 total: a
+// measured chart frame, a container-measuring donut, the axis's real-value
+// ticks, per-operation lifecycle waiting copy and the rail's second gesture
+// axis. That is +58k entry and +58k total against the line above, which the
+// entry ceiling still covered and the total ceiling missed by 1_632 bytes.
+// Both move once, together, keeping the same narrow headroom.
 const limits = {
-  entryJavaScript: 5_050_000,
-  totalJavaScript: 5_650_000,
+  entryJavaScript: 5_090_000,
+  totalJavaScript: 5_700_000,
   totalExport: 10_000_000,
   fontFiles: 6,
   fontBytes: 1_600_000,

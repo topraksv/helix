@@ -8,8 +8,8 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { borderWidth, cardShadow, controlSize, radius, scrim, spacing, stateOpacity, type, useTheme } from "./theme";
-import { Button, FadeIn, IconButton, Label } from "./components";
+import { cardShadow, controlSize, radius, scrim, spacing, stateOpacity, type, useTheme } from "./theme";
+import { Button, FadeIn, IconButton, Label, controlStateStyle } from "./components";
 import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
@@ -164,10 +164,10 @@ export function DateField({
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
           {
-            backgroundColor: palette.surfaceAlt,
+            // The same fill and border every other field uses, from the same
+            // function — a date is a value being entered, not a read-only chip.
+            ...controlStateStyle(palette, open),
             borderRadius: radius.sm,
-            borderWidth: open ? borderWidth.control : StyleSheet.hairlineWidth,
-            borderColor: open ? palette.focus : palette.border,
             paddingHorizontal: spacing.md,
             minHeight: controlSize.regular,
             flexDirection: "row",

@@ -143,7 +143,8 @@ export function Donut({
   // right answer and the caller's size stands — which is every phone.
   const [boxWidth, onBoxLayout] = useMeasuredWidth(size + LEGEND_BASIS + spacing.lg);
   const ringBudget = boxWidth - LEGEND_BASIS - spacing.lg - 2;
-  const fittedSize = ringBudget >= MIN_PAIRED_RING ? Math.min(size, ringBudget) : size;
+  const sideBySide = ringBudget >= MIN_PAIRED_RING;
+  const fittedSize = sideBySide ? Math.min(size, ringBudget) : size;
   const arcTotal = slices.reduce((sum, s) => sum + Math.max(s.valueMinor, 0), 0);
   const displayTotal = totalMinor ?? arcTotal;
   const largest = slices.reduce<DonutSlice | null>(
@@ -173,7 +174,19 @@ export function Donut({
   );
 
   return (
-    <View onLayout={onBoxLayout} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.lg, flexWrap: "wrap" }}>
+    // Side by side the two halves span the row, so a wide card reads as one
+    // chart rather than a centred island with a margin on each side. Wrapped —
+    // every phone — the ring centres over its legend as before.
+    <View
+      onLayout={onBoxLayout}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: sideBySide ? "flex-start" : "center",
+        gap: spacing.lg,
+        flexWrap: "wrap",
+      }}
+    >
       <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
         <Svg accessible={false} width={fittedSize} height={fittedSize}>
           <Circle
@@ -215,7 +228,21 @@ export function Donut({
         </Svg>
       </View>
       {/* Paired legend list: identity never color-alone (relief rule) */}
-      <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: LEGEND_BASIS, minWidth: 160, maxWidth: 420, gap: 6 }}>
+      <View
+        style={{
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: LEGEND_BASIS,
+          minWidth: 160,
+          // Beside the ring the legend takes the rest of the row: its rows are
+          // a name on the left and a share on the right, which is the same
+          // anatomy every list in the app uses at full width. Capped only when
+          // it has wrapped underneath, where a full-width block of legend under
+          // a centred ring would read as a second list.
+          maxWidth: sideBySide ? undefined : 420,
+          gap: 6,
+        }}
+      >
         {largest ? (
           <View
             style={{
@@ -538,6 +565,16 @@ export function Bars({
   const barW = Math.max(3, (clusterW - barGap * (nSeries - 1)) / nSeries);
   const y = (v: number) => pad.top + plotH - ((v - min) / span) * plotH;
   const zeroY = y(0);
+  // Collision is a question about pixels, not about amounts. The axis drops a
+  // reference line whose value is close to a real one, but "close" in value
+  // depends on the step while "overlapping" depends on the plot's height: a
+  // 190px plot with six rungs puts them 30px apart, and two 11px labels a few
+  // pixels apart are unreadable whatever their values say. Zero is structural
+  // and always survives — it is the line the signs are read against.
+  const labelGap = axisFontSize + 3;
+  const referenceTicks = ticks.filter(
+    (tick) => tick === 0 || axis.valueTicks.every((value) => Math.abs(y(tick) - y(value)) >= labelGap),
+  );
   const everyN = groups.length <= 6 ? 1 : Math.ceil(groups.length / 6);
   const visibleValueCount = groups.reduce(
     (count, group) => count + group.values.filter((value) => value != null && value !== 0).length,
@@ -563,7 +600,7 @@ export function Bars({
             rx={chart.barRadius}
             fill={palette.surfaceAlt}
           />
-          {ticks.map((value) => (
+          {referenceTicks.map((value) => (
             <React.Fragment key={`tick-${value}`}>
               <SvgLine
                 x1={pad.left}
@@ -582,6 +619,34 @@ export function Bars({
                 fontFamily={font.semibold}
                 fontSize={axisFontSize}
                 fill={palette.textSecondary}
+                textAnchor="end"
+              >
+                {formatChartAxis(value)}
+              </SvgText>
+            </React.Fragment>
+          ))}
+          {/* The real extremes, drawn over the ruler: a solid rule and the ink
+              the rest of the app gives a figure, so "what is the tallest column
+              actually worth" is answered on the axis instead of being rounded
+              away by the nearest reference line. */}
+          {axis.valueTicks.map((value) => (
+            <React.Fragment key={`value-${value}`}>
+              <SvgLine
+                x1={pad.left}
+                y1={y(value)}
+                x2={pad.left + plotW}
+                y2={y(value)}
+                stroke={palette.textSecondary}
+                strokeWidth={1}
+                opacity={0.45}
+              />
+              <SvgText
+                testID="bar-axis-value"
+                x={pad.left - 8}
+                y={y(value) + axisFontSize * 0.36}
+                fontFamily={font.bold}
+                fontSize={axisFontSize}
+                fill={palette.text}
                 textAnchor="end"
               >
                 {formatChartAxis(value)}

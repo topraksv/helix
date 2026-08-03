@@ -12,6 +12,7 @@ import {
   motion,
   radius,
   stateOpacity,
+  SIDE_NAV,
   toggleSize,
   type,
 } from "../src/ui/theme";
@@ -240,17 +241,21 @@ describe("composition thresholds are ordered by the content they need", () => {
   it("pairs two filter cards long before it pairs two panels", () => {
     // Two filter cards need about 350px each; a dashboard panel pair needs a
     // ring, a legend and a payment list beside them.
-    expect(shouldPairFilterCards(699)).toBe(false);
-    expect(shouldPairFilterCards(700)).toBe(true);
+    expect(shouldPairFilterCards(639)).toBe(false);
+    expect(shouldPairFilterCards(640)).toBe(true);
     expect(shouldPairFilterCards(880)).toBe(true);
-    expect(shouldPairDashboardPanels(880)).toBe(false);
-    expect(shouldPairDashboardPanels(900)).toBe(true);
+    // The panels are a pair of short rows, so they need less than the filter
+    // cards, not more — each side holds a name and an amount.
+    expect(shouldPairDashboardPanels(619)).toBe(false);
+    expect(shouldPairDashboardPanels(620)).toBe(true);
   });
 
-  it("keeps the tablet-portrait content column on the paired side of the filter rule", () => {
-    // 768px window, no rail, minus the page gutter: the width a tablet in
-    // portrait actually gives a row of cards.
-    expect(shouldPairFilterCards(768 - 24 * 2)).toBe(true);
+  it("keeps the tablet-portrait content column on the paired side of both rules", () => {
+    // 768px window minus the rail: the width a tablet in portrait actually
+    // gives its content once navigation stands beside it.
+    const tabletContent = 768 - SIDE_NAV.width;
+    expect(shouldPairFilterCards(tabletContent)).toBe(true);
+    expect(shouldPairDashboardPanels(tabletContent)).toBe(true);
   });
 });
 

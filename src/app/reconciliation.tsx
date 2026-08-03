@@ -28,6 +28,7 @@ import { spacing } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { WorkspaceGrid } from "../ui/workspace-layout";
+import { useClusterWidth } from "../ui/viewport";
 
 export default function CatchUpScreen() {
   const userId = useUserId();
@@ -47,6 +48,7 @@ export default function CatchUpScreen() {
   const [editing, setEditing] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
+  const actionClusterWidth = useClusterWidth(3);
   const { confirmDiscard } = useDirtyExitGuard(editing != null && amountRaw.trim() !== "");
   // One confirmation at a time (spinner on the active button) — a double-tap
   // must not submit the same expected item twice.
@@ -172,7 +174,7 @@ export default function CatchUpScreen() {
           action={<Button icon={Plus} label={tr.cashflow.addTransaction} variant="secondary" onPress={() => router.push("/transaction")} />}
         />
       ) : (
-        <WorkspaceGrid testID="reconciliation-grid" layout="stack">
+        <WorkspaceGrid testID="reconciliation-grid">
         {items.map((e) => (
           <Card key={e.id}>
             <Spread>
@@ -214,7 +216,7 @@ export default function CatchUpScreen() {
                 </Row>
               </View>
             ) : (
-              <Row gap={spacing.xs} style={{ marginTop: spacing.md }}>
+              <Row gap={spacing.xs} style={{ marginTop: spacing.md, maxWidth: actionClusterWidth }}>
                 <View style={{ flex: 1 }}>
                   <Button
                     size="sm"

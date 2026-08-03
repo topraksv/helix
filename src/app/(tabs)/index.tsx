@@ -123,7 +123,7 @@ function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number 
   );
 }
 
-function MarketsCard({ desktopColumns = 2 }: { desktopColumns?: 2 | 3 }) {
+function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; desktopColumns?: 2 | 3 }) {
   const { palette } = useTheme();
   // How many quote tiles fit is a question about this card, not about the
   // window: the same card is a full-width strip on a phone and one column of a
@@ -162,7 +162,7 @@ function MarketsCard({ desktopColumns = 2 }: { desktopColumns?: 2 | 3 }) {
   return (
     <>
       <SectionHeader>{tr.markets.title}</SectionHeader>
-      <Card onLayout={onCardLayout}>
+      <Card onLayout={onCardLayout} style={fill ? { flex: 1 } : undefined}>
         <Row
           gap={spacing.xs}
           style={{ justifyContent: "flex-end", marginBottom: spacing.xs }}
@@ -492,7 +492,11 @@ export default function DashboardScreen() {
                   slices={monthDonut.slices}
                   supplementalSlices={monthDonut.supplementalSlices}
                   totalMinor={monthDonut.totalMinor}
-                  size={shouldUseCompactChart(contentWidth) ? 152 : 236}
+                  // A ceiling per class of viewport, not a fixed ring: the
+                  // month card owns a whole desktop row, and a 236 ring in it
+                  // is a small picture in a large frame. `Donut` still fits
+                  // whatever box it actually gets.
+                  size={shouldUseCompactChart(contentWidth) ? 152 : contentWidth >= 900 ? 300 : 236}
                 />
               ) : (
                 <ChartFrame>
@@ -673,25 +677,28 @@ export default function DashboardScreen() {
         </Card>
       ) : null}
 
-      {/* Desktop composition, not a stack of full-width cards.
-          The distribution card is a ring plus a legend — about 650px of
-          content. Given the whole column it kept that size and centred itself,
-          so a 1440 monitor drew 230px of empty card on either side of it while
-          the payments the owner has to act on sat below the fold. Paired, the
-          chart fills a column it can actually use and the task list comes up
-          into the first screen beside it. The market strip is ambient
-          reference, so it follows the task rather than claiming a column. */}
-      <View style={pairedDashboard ? { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg } : undefined}>
-        <View style={pairedDashboard ? { flex: 1.15, minWidth: 0 } : undefined}>
-          {analysisSection}
-        </View>
+      {/* The month owns its own row, the two panels share the one under it.
+          The distribution is the screen's one piece of analysis and it reads
+          across: a ring on the left and its legend on the right, using the
+          whole column rather than centring 650px of content inside 1180 and
+          leaving a dead margin either side. Below it the payments to act on and
+          the ambient market strip are peers in width but not in weight, so the
+          task takes the larger share — and the pair keeps the page short enough
+          that a desktop does not have to scroll for either. */}
+      {analysisSection}
 
-        <View style={pairedDashboard ? { flex: 0.85, minWidth: 0 } : undefined}>
+      {/* Equal columns, equal heights. The two panels answer different
+          questions but they are the page's footer row, and a row whose two
+          cards end at different heights reads as one of them having failed to
+          load. `stretch` plus `flex: 1` on the cards is what makes both bottoms
+          land on the same line. */}
+      <View style={pairedDashboard ? { flexDirection: "row", alignItems: "stretch", gap: spacing.lg } : undefined}>
+        <View style={pairedDashboard ? { flex: 1, minWidth: 0 } : undefined}>
           {/* Upcoming payments */}
           <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
       {dataStatus === "loading" || dataStatus === "error" ? null : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
-        <Card>
-          <View>
+        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
+          <View style={pairedDashboard ? { flexGrow: 1 } : undefined}>
             {dashboardLate.map((e) => (
               <ListRow
                 key={e.id}
@@ -747,8 +754,8 @@ export default function DashboardScreen() {
       ) : (
         /* A compact calendar picture gives an otherwise empty equal-height
            desktop panel visual weight without inventing any future payment. */
-        <Card>
-          <View style={{ alignItems: "center", gap: spacing.sm }}>
+        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
+          <View style={pairedDashboard ? { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.sm } : { alignItems: "center", gap: spacing.sm }}>
             <View
               accessible={false}
               style={{
@@ -815,7 +822,10 @@ export default function DashboardScreen() {
           </View>
         </Card>
       )}
-          <MarketsCard desktopColumns={marketDesktopColumns} />
+        </View>
+
+        <View style={pairedDashboard ? { flex: 1, minWidth: 0 } : undefined}>
+          <MarketsCard fill={pairedDashboard} desktopColumns={marketDesktopColumns} />
         </View>
       </View>
 

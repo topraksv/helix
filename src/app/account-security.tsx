@@ -22,6 +22,7 @@ import { scheduleSync, syncNow } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";
 import { WorkspaceGrid } from "../ui/workspace-layout";
 import { OperationFlow } from "../ui/operation-flow";
+import { clearLifecycleIntent, setLifecycleIntent } from "../ui/lifecycle-intent";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 
 export default function AccountSecurityScreen() {
@@ -151,6 +152,7 @@ function CloudAccountSecurityScreen() {
         return;
       }
 
+      setLifecycleIntent("freeze");
       setFreezing(true);
       useSession.setState({ isFreezing: true });
       try {
@@ -180,6 +182,7 @@ function CloudAccountSecurityScreen() {
         useSession.setState({ isFreezing: false });
         setFreezing(false);
         setFreezePhase(null);
+        clearLifecycleIntent();
       }
     }).catch(() => {
       void appAlert(tr.errors.requestFailed, tr.errors.title);

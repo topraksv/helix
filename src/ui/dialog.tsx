@@ -234,7 +234,20 @@ export function PromptHost() {
           fontSize: 16,
         }}
       />
-      <View style={{ flexDirection: current.operation ? "column" : "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap", ...(current.operation ? { marginTop: spacing.xl, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border } : {}) }}>
+      <View
+        style={current.operation
+          ? {
+              // A stacked pair. No `flexWrap` — in a column Yoga wraps into a
+              // second column, which is why iOS drew the two buttons side by
+              // side and offset while the web build stacked them.
+              gap: spacing.sm,
+              marginTop: spacing.xl,
+              paddingTop: spacing.md,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: palette.border,
+            }
+          : { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}
+      >
         <View style={current.operation ? { width: "100%" } : undefined}>
           <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />
         </View>
@@ -272,7 +285,20 @@ export function DialogHost() {
       onDismiss={() => close(current.cancelLabel == null)}
       operation={current.operation}
     >
-      <View style={{ flexDirection: current.operation ? "column" : "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap", ...(current.operation ? { marginTop: spacing.xl, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border } : {}) }}>
+      <View
+        style={current.operation
+          ? {
+              // A stacked pair. No `flexWrap` — in a column Yoga wraps into a
+              // second column, which is why iOS drew the two buttons side by
+              // side and offset while the web build stacked them.
+              gap: spacing.sm,
+              marginTop: spacing.xl,
+              paddingTop: spacing.md,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: palette.border,
+            }
+          : { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}
+      >
         {current.cancelLabel != null ? (
           <View style={current.operation ? { width: "100%" } : undefined}>
             <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />

@@ -623,24 +623,51 @@ export function tabBarClearance(bottomInset: number, isWeb: boolean): number {
  * it is supposed to sit beside. The rail is the same five destinations, the same
  * material and the same semantics, on the axis desktop has to spare.
  *
- * The width is measured, not chosen: the longest Turkish destination
- * ("Abonelikler") beside a 22pt icon needs the label to stay on one line, which
- * `e2e/ui-consistency.spec.ts` asserts against the real rendered font.
+ * It is an instrument, not a sidebar: a compact floating panel centred on its
+ * own axis, holding the same icon-over-label item the bottom bar uses. Stood up
+ * as a full-height 220px column with a wordmark it read as a page region that
+ * happened to be mostly empty; five destinations do not fill a sidebar, and
+ * pretending otherwise is what made it look unfinished. Centred and bounded to
+ * the width its longest label needs, the emptiness around it belongs to the
+ * page instead of to the navigation.
+ *
+ * `width` is what the page gives up (panel plus the air on both sides);
+ * `panelWidth` is measured — the longest Turkish destination ("Abonelikler") at
+ * the label size, which `e2e/ui-consistency.spec.ts` asserts against the real
+ * rendered font.
  */
 export const SIDE_NAV = {
-  width: 220,
-  itemHeight: 44,
-  itemGap: 2,
-  /** Inner padding of the panel; items keep their own leading indent inside it. */
-  padding: spacing.md,
-  /**
-   * The selected marker is a rounded bar inset from the item's own top and
-   * bottom, not a border on its edge. A straight full-height rule inside a
-   * rounded row reads as a stray tick; an inset capsule reads as a marker.
-   */
-  markerWidth: 3,
-  markerInset: 11,
+  width: 108,
+  panelWidth: 84,
+  itemHeight: 54,
+  itemGap: 4,
+  /** Inner padding of the panel. */
+  padding: 6,
 } as const;
+
+/**
+ * Navigation material.
+ *
+ * The bar and the rail float over the content they navigate, and the point of
+ * floating is that the page keeps going underneath — so the fill is a veil, not
+ * a lid. Web can afford a thinner one because a real backdrop blur removes the
+ * detail that would otherwise compete with an 11px label; native has no blur in
+ * this runtime, so its veil stays denser or the label would sit directly on
+ * whatever text scrolls behind it.
+ *
+ * Both are alpha over `surface`, so every contrast pair already proved against
+ * `surface` still describes the ink on top.
+ */
+export const NAV_GLASS = {
+  webAlpha: "B8",
+  nativeAlpha: "D6",
+  blur: "blur(24px) saturate(150%)",
+} as const;
+
+export function navigationMaterial(surface: string, { glass, isWeb }: { glass: boolean; isWeb: boolean }): string {
+  if (!glass) return surface;
+  return surface + (isWeb ? NAV_GLASS.webAlpha : NAV_GLASS.nativeAlpha);
+}
 
 /**
  * Space a tab scene must leave for navigation, on whichever axis the bar
@@ -660,8 +687,8 @@ export function navigationInset({
   isWeb: boolean;
   side: boolean;
 }): { bottom: number; left: number } {
-  // The rail is flush chrome, so the scene starts exactly where it ends and the
-  // screen's own desktop gutter supplies the breathing room between them.
+  // The rail floats clear of the page, so what the scene gives up is the panel
+  // plus the air on both sides of it — `SIDE_NAV.width`, not the panel width.
   if (side) return { bottom: spacing.xl, left: SIDE_NAV.width };
   return { bottom: tabBarClearance(bottomInset, isWeb), left: 0 };
 }

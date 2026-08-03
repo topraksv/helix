@@ -30,10 +30,9 @@ import { PanResponder, Platform, Pressable, StyleSheet, Text, View, useWindowDim
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandMark } from "./brand";
-import { tr } from "../i18n/tr";
 import { useReduceTransparency } from "./motion";
 import { shouldUseSideNavigation } from "./responsive";
-import { font, radius, SIDE_NAV, spacing, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type as typeScale, useTheme } from "./theme";
+import { font, NAV_GLASS, navigationMaterial, radius, SIDE_NAV, spacing, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, useTheme } from "./theme";
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { palette } = useTheme();
@@ -46,18 +45,21 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const glass = !reduceTransparency;
   const webMaterial = isWeb
     ? ({
-        backdropFilter: glass ? "blur(18px) saturate(125%)" : "none",
-        WebkitBackdropFilter: glass ? "blur(18px) saturate(125%)" : "none",
+        backdropFilter: glass ? NAV_GLASS.blur : "none",
+        WebkitBackdropFilter: glass ? NAV_GLASS.blur : "none",
       } as unknown as ViewStyle)
     : null;
+  const materialFill = navigationMaterial(palette.surface, { glass, isWeb });
 
   // Dragging across the bar scrubs through the tabs. The geometry and the
   // current index are read from refs so the responder can be created once:
   // rebuilding it per render would drop an in-flight gesture.
   const barRef = useRef<View>(null);
-  const barBox = useRef({ x: 0, width: 0 });
+  const barBox = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const latest = useRef({ routes: state.routes, index: state.index });
   latest.current = { routes: state.routes, index: state.index };
+  const axis = useRef<"horizontal" | "vertical">(side ? "vertical" : "horizontal");
+  axis.current = side ? "vertical" : "horizontal";
 
   const goToIndex = (index: number) => {
     const { routes, index: current } = latest.current;
@@ -67,18 +69,37 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     if (!event.defaultPrevented) navigation.navigate(route.name, route.params);
   };
 
+  // One gesture, read on whichever axis the destinations are laid out along.
+  // The rail inherited none of this when it stood up, so a habit learned on the
+  // bar stopped working the moment the window got wider — the same navigation
+  // has to answer the same drag.
+  // The drag needs the panel's box in window coordinates on both axes: the
+  // bar scrubs across its width, the rail down its height.
+  const measureBar = () => {
+    barRef.current?.measureInWindow((x, y, width, height) => {
+      barBox.current = { x, y, width, height };
+    });
+  };
+
   const pan = useMemo(
     () =>
       PanResponder.create({
-        // Claim only a deliberate horizontal drag, so a tap still reaches the
-        // Pressable underneath and a vertical scroll still belongs to the page.
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+        // Claim only a deliberate drag along the navigation's own axis, so a tap
+        // still reaches the Pressable underneath and a scroll still belongs to
+        // the page.
+        onMoveShouldSetPanResponder: (_event, gesture) => {
+          const along = axis.current === "vertical" ? gesture.dy : gesture.dx;
+          const across = axis.current === "vertical" ? gesture.dx : gesture.dy;
+          return Math.abs(along) > 8 && Math.abs(along) > Math.abs(across);
+        },
         onPanResponderMove: (_event, gesture) => {
-          const { width, x } = barBox.current;
+          const { x, y, width, height } = barBox.current;
           const count = latest.current.routes.length;
-          if (width <= 0 || count === 0) return;
-          const slot = Math.floor(((gesture.moveX - x) / width) * count);
+          const vertical = axis.current === "vertical";
+          const extent = vertical ? height : width;
+          if (extent <= 0 || count === 0) return;
+          const position = vertical ? gesture.moveY - y : gesture.moveX - x;
+          const slot = Math.floor((position / extent) * count);
           goToIndex(Math.min(Math.max(slot, 0), count - 1));
         },
       }),
@@ -90,7 +111,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   // second card pile. A restrained outline over a translucent fill gives it
   // depth without a full-screen blur or a solid block.
   const material: ViewStyle = {
-    backgroundColor: glass ? palette.surfaceTranslucent : palette.surface,
+    backgroundColor: materialFill,
     borderWidth: 1,
     borderColor: palette.border + "70",
     ...webMaterial,
@@ -131,12 +152,14 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         onHoverOut={() => setHovered((current) => (current === route.key ? null : current))}
         style={({ pressed }) => (side
           ? {
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
+              // The bottom bar's item, turned upright: icon over label, one
+              // rounded target. Two different item designs for the same five
+              // destinations is how a rail starts feeling like a different app.
+              alignSelf: "stretch",
               height: SIDE_NAV.itemHeight,
-              paddingLeft: spacing.md,
-              paddingRight: spacing.sm,
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 2,
               borderRadius: radius.md,
               // A pointer needs to be told what it is about to click. The bar
               // never had a hover state because a finger has no hover; the rail
@@ -162,19 +185,6 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               opacity: pressed ? stateOpacity.pressed : 1,
             })}
       >
-        {side ? (
-          <View
-            accessible={false}
-            style={{
-              width: SIDE_NAV.markerWidth,
-              alignSelf: "stretch",
-              marginVertical: SIDE_NAV.markerInset,
-              marginRight: spacing.sm,
-              borderRadius: SIDE_NAV.markerWidth,
-              backgroundColor: focused ? palette.primary : "transparent",
-            }}
-          />
-        ) : null}
         <View
           accessible={false}
           style={{
@@ -189,9 +199,13 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           {options.tabBarIcon?.({ focused, color, size: 22 })}
         </View>
         <Text
-          style={side
-            ? { ...typeScale.body, fontFamily: focused ? font.semibold : font.medium, color: focused ? palette.textStrong : palette.textSecondary, flexShrink: 1 }
-            : { fontFamily: focused ? font.semibold : font.medium, fontSize: 11, lineHeight: 14, color: focused ? palette.textStrong : palette.textSecondary }}
+          style={{
+            fontFamily: focused ? font.semibold : font.medium,
+            fontSize: 11,
+            lineHeight: 14,
+            textAlign: "center",
+            color: focused ? palette.textStrong : palette.textSecondary,
+          }}
         >
           {typeof label === "string" ? label : route.name}
         </Text>
@@ -201,49 +215,51 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   if (side) {
     return (
-      // Chrome, not a card.
+      // An instrument that floats beside the page, centred on its own axis.
       //
-      // The rail first shipped as a floating rounded panel with an overlay
-      // shadow, which is the treatment this app gives transient instruments —
-      // and with only five destinations it spent most of its height as an empty
-      // card, which is exactly what an empty card looks like. Flush against the
-      // window with a single hairline on the edge it meets the content, the
-      // same emptiness is just the quiet part of a sidebar.
+      // Two earlier attempts bracket this one. A floating full-height panel put
+      // five items in the top third of a tall rounded card, so it read as an
+      // empty card. Flush full-height chrome fixed that by turning the emptiness
+      // into a sidebar the app does not otherwise have — 220px of window given
+      // to five words. Centred, compact and clear of both edges, the panel is
+      // only as big as what is in it, and the space around it reads as page.
       <View
-        accessibilityRole="tablist"
+        pointerEvents="box-none"
         style={{
           position: "absolute",
           left: 0,
-          top: 0,
+          top: insets.top,
           bottom: 0,
           width: SIDE_NAV.width,
-          paddingTop: insets.top + spacing.lg,
-          paddingBottom: spacing.lg,
-          paddingHorizontal: SIDE_NAV.padding,
-          gap: SIDE_NAV.itemGap,
-          backgroundColor: glass ? palette.surfaceTranslucent : palette.surface,
-          borderRightWidth: StyleSheet.hairlineWidth,
-          borderRightColor: palette.border + "70",
-          ...webMaterial,
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        {/* Desktop has room for the product to say its own name, and it says it
-            in the face the screen titles use — the brand should not be the one
-            place the brand voice is missing. */}
         <View
-          accessible={false}
-          style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.sm, paddingBottom: spacing.lg }}
+          ref={barRef}
+          accessibilityRole="tablist"
+          onLayout={measureBar}
+          {...pan.panHandlers}
+          style={{
+            width: SIDE_NAV.panelWidth,
+            padding: SIDE_NAV.padding,
+            gap: SIDE_NAV.itemGap,
+            borderRadius: radius.xl,
+            ...material,
+          }}
         >
-          <BrandMark size={26} />
-          <Text style={[typeScale.heading, { color: palette.textStrong, fontFamily: font.serifBold, fontSize: 20, letterSpacing: -0.2 }]}>
-            {tr.app.name}
-          </Text>
+          {/* The mark alone, not the wordmark: at this width the name would set
+              the panel's width instead of the labels doing it, and the screen
+              title already carries the brand voice in type. */}
+          <View accessible={false} style={{ alignItems: "center", paddingTop: 2, paddingBottom: spacing.sm }}>
+            <BrandMark size={24} />
+          </View>
+          <View
+            accessible={false}
+            style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border + "55", marginBottom: spacing.xs }}
+          />
+          {destinations}
         </View>
-        <View
-          accessible={false}
-          style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border + "55", marginHorizontal: spacing.sm, marginBottom: spacing.md }}
-        />
-        {destinations}
       </View>
     );
   }
@@ -268,7 +284,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     <View
       ref={barRef}
       accessibilityRole="tablist"
-      onLayout={() => barRef.current?.measureInWindow((x, _y, width) => { barBox.current = { x, width }; })}
+      onLayout={measureBar}
       {...pan.panHandlers}
       style={{
         width: "100%",

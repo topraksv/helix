@@ -3,6 +3,7 @@
 import React, { useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useContentWidth } from "../../../ui/viewport";
+import { shouldPairFilterCards } from "../../../ui/responsive";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
@@ -60,6 +61,7 @@ import { formatMinor } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
 import { OperationFlow, type OperationFlowKind } from "../../../ui/operation-flow";
+import { clearLifecycleIntent, setLifecycleIntent } from "../../../ui/lifecycle-intent";
 
 function ThemeChoice({
   value,
@@ -367,6 +369,7 @@ export default function SettingsScreen() {
           operation: "local-sign-out",
         });
         if (!proceed) return;
+        setLifecycleIntent("local-sign-out");
         setSigningOut(true);
         const error = await signOut();
         if (error) void appAlert(error, tr.errors.title);
@@ -380,6 +383,7 @@ export default function SettingsScreen() {
       // The session layer owns the flush and refuses to wipe rows the cloud
       // never received; this screen owns the only thing it cannot decide —
       // whether the user accepts losing them.
+      setLifecycleIntent("sign-out");
       setSigningOut(true);
       const error = await signOut();
       if (error === SIGN_OUT_PENDING_CHANGES) {
@@ -401,6 +405,7 @@ export default function SettingsScreen() {
       void appAlert(tr.errors.requestFailed, tr.errors.title);
     } finally {
       setSigningOut(false);
+      clearLifecycleIntent();
       signOutLocked.current = false;
     }
   };
@@ -510,12 +515,14 @@ export default function SettingsScreen() {
     if (!ok1) return;
     // Final gate: verify the password (replaces the old "are you sure?" step).
     if (!(await confirmWithPassword(tr.account.deletePasswordBody, tr.account.deleteConfirm, "delete"))) return;
+    setLifecycleIntent("delete");
     setDeleting(true);
     try {
       const err = await deleteAccount();
       if (err) void appAlert(err, tr.errors.title);
     } finally {
       setDeleting(false);
+      clearLifecycleIntent();
     }
   };
 
@@ -542,7 +549,7 @@ export default function SettingsScreen() {
       <Card>
         <SettingsDestinationGrid
           items={workspaceDestinations}
-          twoColumns={contentWidth >= 700}
+          twoColumns={shouldPairFilterCards(contentWidth)}
           testID="settings-workspace-link"
         />
       </Card>
@@ -606,7 +613,7 @@ export default function SettingsScreen() {
               swatch={PALETTES[id][scheme]}
               selected={paletteId === id}
               disabled={!localPreferencesLoaded}
-              stacked={contentWidth < 700}
+              stacked={!shouldPairFilterCards(contentWidth)}
               onPress={() => {
                 selectionTapIfChanged(paletteId, id);
                 setGlobalPalettePreference(id);

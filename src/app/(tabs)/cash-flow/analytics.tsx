@@ -670,14 +670,14 @@ export default function AnalysisScreen() {
 
   if (!dataReady) {
     return (
-      <Screen width="wide">
+      <Screen width="workspace">
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
   }
 
   return (
-    <Screen scroll={false} width="wide">
+    <Screen scroll={false} width="workspace">
       <FlatList
         data={searchActive ? visibleResults : []}
         keyExtractor={(t: (typeof visibleResults)[number]) => t.id}

@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable } from "react-native";
-import { useRouter, type Href } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { navigateBack } from "./navigation";
@@ -37,4 +37,17 @@ export function HeaderBackButton({ fallback }: { fallback: Href }) {
       <ChevronLeft accessible={false} size={iconSize.headerBack} color={palette.accentText} strokeWidth={2.2} />
     </Pressable>
   );
+}
+
+/**
+ * `/transaction` is two screens behind one route: the ordinary entry form,
+ * reached from the ledger, and the wallet transfer, reached from Investments.
+ * A single static fallback could only be right for one of them, so leaving the
+ * transfer without saving walked out into the Financial Table — a different tab
+ * from the one the user was in. The intent is already in the URL; the parent
+ * follows it.
+ */
+export function TransactionBackButton() {
+  const { intent } = useLocalSearchParams<{ intent?: string }>();
+  return <HeaderBackButton fallback={intent === "investment-refund" ? "/(tabs)/investments" : "/(tabs)/cash-flow"} />;
 }
