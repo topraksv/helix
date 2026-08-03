@@ -58,7 +58,7 @@ import { todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
-import { OperationFlow, OperationSignature } from "../../../ui/operation-flow";
+import { OperationFlow, OperationSignature, type OperationFlowKind } from "../../../ui/operation-flow";
 
 function ThemeChoice({
   value,
@@ -334,6 +334,7 @@ export default function SettingsScreen() {
         const proceed = await appConfirm(tr.auth.signOutLocalTitle, tr.auth.signOutLocalWarn, {
           confirmLabel: tr.auth.signOutAnyway,
           danger: true,
+          operation: "local-sign-out",
         });
         if (!proceed) return;
         setSigningOut(true);
@@ -352,6 +353,7 @@ export default function SettingsScreen() {
         const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending), {
           confirmLabel: tr.auth.signOutAnyway,
           danger: true,
+          operation: "sign-out",
         });
         if (!proceed) return;
         setSigningOut(true);
@@ -444,13 +446,14 @@ export default function SettingsScreen() {
 
   // Re-auth gate for sensitive actions. Only meaningful with a cloud account;
   // local-only mode has no password, so it passes through.
-  const confirmWithPassword = async (message: string, confirmLabel: string): Promise<boolean> => {
+  const confirmWithPassword = async (message: string, confirmLabel: string, operation: OperationFlowKind): Promise<boolean> => {
     if (!isSupabaseConfigured) return true;
     const pw = await appPrompt(tr.account.confirmPasswordTitle, message, {
       secure: true,
       placeholder: tr.auth.password,
       confirmLabel,
       danger: true,
+      operation,
     });
     if (pw == null) return false;
     const verifyError = await verifyPassword(pw);
@@ -467,10 +470,11 @@ export default function SettingsScreen() {
     const ok1 = await appConfirm(tr.account.deleteConfirm1Title, tr.account.deleteConfirm1Body, {
       confirmLabel: tr.common.delete,
       danger: true,
+      operation: "delete",
     });
     if (!ok1) return;
     // Final gate: verify the password (replaces the old "are you sure?" step).
-    if (!(await confirmWithPassword(tr.account.deletePasswordBody, tr.account.deleteConfirm))) return;
+    if (!(await confirmWithPassword(tr.account.deletePasswordBody, tr.account.deleteConfirm, "delete"))) return;
     setDeleting(true);
     try {
       const err = await deleteAccount();
@@ -807,6 +811,7 @@ export default function SettingsScreen() {
           title={tr.auth.signOut}
           description={isSupabaseConfigured ? tr.auth.signOutSignatureDescription : tr.auth.localSignOutSignatureDescription}
           detail={isSupabaseConfigured ? tr.auth.signOutSignatureDetail : tr.auth.localSignOutSignatureDetail}
+          compact
           testID="account-sign-out-signature"
         />
         {signingOut ? (
@@ -829,13 +834,14 @@ export default function SettingsScreen() {
         </View>
       </Card>
 
-      <Card tone="error" testID="account-delete-card">
+      <Card testID="account-delete-card">
         <OperationSignature
           kind="delete"
           eyebrow={tr.account.deleteSignatureEyebrow}
           title={tr.account.delete}
           description={tr.account.deleteSignatureDescription}
           detail={tr.account.deleteSignatureDetail}
+          compact
           testID="account-delete-signature"
         />
         {deleting ? (

@@ -12,7 +12,8 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useWaitingPulse } from "./motion";
-import { radius, spacing, type, useTheme } from "./theme";
+import { radius, spacing, type, useTheme, type Palette } from "./theme";
+import { tr } from "../i18n/tr";
 
 export type OperationFlowKind =
   | "sign-in"
@@ -41,6 +42,14 @@ const operationVisuals: Record<OperationFlowKind, Visual> = {
   freeze: [Snowflake, "turn", "warning"],
   reactivate: [KeyRound, "rise", "success"],
 };
+
+function operationColor(palette: Palette, tone: Tone): string {
+  if (tone === "destructive") return palette.destructive;
+  if (tone === "warning") return palette.warning;
+  if (tone === "success") return palette.success;
+  if (tone === "secondary") return palette.secondary;
+  return palette.primary;
+}
 
 /** Motion rests at its neutral endpoint when Reduced Motion is enabled. */
 function motionStyle(motion: Motion, pulse: Animated.Value) {
@@ -76,15 +85,7 @@ export function OperationFlow({
   const { palette } = useTheme();
   const pulse = useWaitingPulse();
   const [Icon, motion, tone = "primary"] = operationVisuals[kind];
-  const color = tone === "destructive"
-    ? palette.destructive
-    : tone === "warning"
-      ? palette.warning
-      : tone === "success"
-        ? palette.success
-        : tone === "secondary"
-          ? palette.secondary
-          : palette.primary;
+  const color = operationColor(palette, tone);
   const destructive = tone === "destructive";
   const hero = presentation === "hero";
 
@@ -150,6 +151,7 @@ export function OperationSignature({
   title,
   description,
   detail,
+  compact = false,
   testID,
 }: {
   kind: OperationFlowKind;
@@ -157,20 +159,13 @@ export function OperationSignature({
   title: string;
   description: string;
   detail?: string;
+  compact?: boolean;
   testID?: string;
 }) {
   const { palette } = useTheme();
   const pulse = useWaitingPulse();
   const [Icon, motion, tone = "primary"] = operationVisuals[kind];
-  const color = tone === "destructive"
-    ? palette.destructive
-    : tone === "warning"
-      ? palette.warning
-      : tone === "success"
-        ? palette.success
-        : tone === "secondary"
-          ? palette.secondary
-          : palette.primary;
+  const color = operationColor(palette, tone);
   const foreground = tone === "destructive"
     ? palette.errorText
     : tone === "warning"
@@ -202,47 +197,122 @@ export function OperationSignature({
       accessibilityRole="image"
       accessibilityLabel={`${title}. ${description}. ${support}`}
       style={{
-        borderLeftWidth: 3,
-        borderLeftColor: color,
-        borderRadius: radius.md,
-        padding: spacing.md,
-        backgroundColor: tone === "destructive"
-          ? palette.error + "0D"
-          : tone === "warning"
-            ? palette.warning + "10"
-            : palette.surfaceAlt,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: color + "55",
+        width: "100%",
+        ...(compact
+          ? {}
+          : {
+              borderLeftWidth: 3,
+              borderLeftColor: color,
+              borderRadius: radius.md,
+              padding: spacing.md,
+              backgroundColor: tone === "destructive"
+                ? palette.error + "0D"
+                : tone === "warning"
+                  ? palette.warning + "10"
+                  : palette.surfaceAlt,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: color + "55",
+            }),
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
         <Animated.View
           style={[
             {
-              width: 46,
-              height: 46,
+              width: compact ? 34 : 46,
+              height: compact ? 34 : 46,
               flexShrink: 0,
-              borderRadius: kind === "delete" ? radius.sm : radius.full,
+              borderRadius: compact || kind === "delete" ? radius.sm : radius.full,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: color + "18",
-              borderWidth: kind === "delete" ? 2 : StyleSheet.hairlineWidth,
+              borderWidth: compact ? StyleSheet.hairlineWidth : kind === "delete" ? 2 : StyleSheet.hairlineWidth,
               borderColor: color,
             },
             motionStyle(motion, pulse),
           ]}
         >
-          <Icon accessible={false} size={21} color={color} strokeWidth={2.2} />
+          <Icon accessible={false} size={compact ? 17 : 21} color={color} strokeWidth={2.2} />
         </Animated.View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{eyebrow}</Text>
-          <Text style={[type.heading, { color: foreground, marginTop: 2 }]}>{title}</Text>
-          <Text style={[type.body, { color: palette.textSecondary, marginTop: 3 }]}>{description}</Text>
+          {!compact ? <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{eyebrow}</Text> : null}
+          <Text style={[compact ? type.body : type.heading, { color: foreground, marginTop: compact ? 0 : 2 }]}>{title}</Text>
+          <Text style={[compact ? type.small : type.body, { color: palette.textSecondary, marginTop: compact ? 1 : 3 }]}>{description}</Text>
         </View>
       </View>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color + "40" }}>
-        <SupportIcon accessible={false} size={15} color={color} strokeWidth={2.1} />
-        <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{support}</Text>
+      {!compact ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color + "40" }}>
+          <SupportIcon accessible={false} size={15} color={color} strokeWidth={2.1} />
+          <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{support}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function operationEyebrow(kind: OperationFlowKind): string {
+  switch (kind) {
+    case "sign-in":
+      return tr.auth.signInSignatureEyebrow;
+    case "sign-out":
+      return tr.auth.signOutSignatureEyebrow;
+    case "local-sign-out":
+      return tr.auth.localSignOutDialogEyebrow;
+    case "freeze":
+      return tr.account.freezeSignatureEyebrow;
+    case "delete":
+      return tr.account.deleteSignatureEyebrow;
+    default:
+      return tr.app.name;
+  }
+}
+
+/** A focused visual header for the confirmation/prompt that follows an action. */
+export function OperationDialogHeader({
+  kind,
+  title,
+  testID,
+}: {
+  kind: OperationFlowKind;
+  title: string;
+  testID?: string;
+}) {
+  const { palette } = useTheme();
+  const pulse = useWaitingPulse();
+  const [Icon, motion, tone = "primary"] = operationVisuals[kind];
+  const color = operationColor(palette, tone);
+
+  return (
+    <View
+      testID={testID ?? `operation-dialog-${kind}`}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        paddingBottom: spacing.md,
+        marginBottom: spacing.md,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: palette.border,
+      }}
+    >
+      <Animated.View
+        style={[{
+          width: 44,
+          height: 44,
+          flexShrink: 0,
+          borderRadius: kind === "delete" ? radius.sm : radius.full,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: color + "18",
+          borderWidth: kind === "delete" ? 2 : StyleSheet.hairlineWidth,
+          borderColor: color,
+        }, motionStyle(motion, pulse)]}
+      >
+        <Icon accessible={false} size={21} color={color} strokeWidth={2.2} />
+      </Animated.View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{operationEyebrow(kind)}</Text>
+        <Text style={[type.heading, { color: palette.text, marginTop: 2 }]}>{title}</Text>
       </View>
     </View>
   );

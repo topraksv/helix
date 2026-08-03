@@ -147,6 +147,7 @@ export const tr = {
     signIn: "Giriş yap",
     signOut: "Çıkış yap",
     signOutSignatureEyebrow: "Oturum sınırı",
+    localSignOutDialogEyebrow: "Cihazdan ayrıl",
     signOutSignatureDescription: "Bu cihazdaki oturum kapanır; hesabın ve buluttaki verilerin korunur.",
     signOutSignatureDetail: "Hesap silinmez; yeniden giriş yaptığında kaldığın yerden devam edersin.",
     localSignOutSignatureDescription: "Bu cihazdaki çalışma alanı kapanır ve yerel veriler temizlenir.",

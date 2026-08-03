@@ -228,6 +228,7 @@ export default function SignInScreen() {
               title={tr.auth.signInSignatureTitle}
               description={tr.auth.signInSignatureDescription}
               detail={tr.auth.signInSignatureDetail}
+              compact
               testID="sign-in-signature"
             />
           ) : null}

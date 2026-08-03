@@ -23,6 +23,7 @@ import { advanceRequestQueue, emptyRequestQueue, enqueueRequest, type RequestQue
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { examplePlaceholder } from "./input-placeholder";
+import { OperationDialogHeader, type OperationFlowKind } from "./operation-flow";
 
 interface DialogRequest {
   title: string;
@@ -31,6 +32,7 @@ interface DialogRequest {
   /** null = single-button alert. */
   cancelLabel: string | null;
   danger: boolean;
+  operation?: OperationFlowKind;
   resolve: (ok: boolean) => void;
 }
 
@@ -54,7 +56,7 @@ export function appAlert(message: string, title: string = tr.app.name): Promise<
 export function appConfirm(
   title: string,
   message: string,
-  opts?: { confirmLabel?: string; cancelLabel?: string; danger?: boolean },
+  opts?: { confirmLabel?: string; cancelLabel?: string; danger?: boolean; operation?: OperationFlowKind },
 ): Promise<boolean> {
   return new Promise((resolve) => {
     enqueueDialog({
@@ -63,6 +65,7 @@ export function appConfirm(
       confirmLabel: opts?.confirmLabel ?? tr.common.confirm,
       cancelLabel: opts?.cancelLabel ?? tr.common.cancel,
       danger: opts?.danger ?? false,
+      operation: opts?.operation,
       resolve,
     });
   });
@@ -79,6 +82,7 @@ interface PromptRequest {
   confirmLabel: string;
   secure: boolean;
   danger: boolean;
+  operation?: OperationFlowKind;
   resolve: (value: string | null) => void;
 }
 
@@ -97,7 +101,7 @@ function enqueuePrompt(request: PromptRequest) {
 export function appPrompt(
   title: string,
   message: string,
-  opts?: { placeholder?: string; confirmLabel?: string; secure?: boolean; danger?: boolean },
+  opts?: { placeholder?: string; confirmLabel?: string; secure?: boolean; danger?: boolean; operation?: OperationFlowKind },
 ): Promise<string | null> {
   return new Promise((resolve) => {
     enqueuePrompt({
@@ -107,6 +111,7 @@ export function appPrompt(
       confirmLabel: opts?.confirmLabel ?? tr.common.confirm,
       secure: opts?.secure ?? false,
       danger: opts?.danger ?? false,
+      operation: opts?.operation,
       resolve,
     });
   });
@@ -127,6 +132,7 @@ function DialogShell({
   messageGap,
   titleRef,
   onDismiss,
+  operation,
   children,
 }: {
   title: string;
@@ -134,6 +140,7 @@ function DialogShell({
   messageGap: number;
   titleRef: React.RefObject<View | null>;
   onDismiss: () => void;
+  operation?: OperationFlowKind;
   children: React.ReactNode;
 }) {
   const { palette, scheme } = useTheme();
@@ -146,7 +153,7 @@ function DialogShell({
         style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
         onPress={onDismiss}
       >
-        <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: 400 }}>
+        <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: operation ? 440 : 400 }}>
           <FadeIn
             style={[
               { backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg },
@@ -154,7 +161,7 @@ function DialogShell({
             ]}
           >
             <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
-              <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>
+              {operation ? <OperationDialogHeader kind={operation} title={title} testID="operation-dialog-header" /> : <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>}
             </View>
             <Text style={[type.body, { color: palette.textSecondary, marginBottom: messageGap }]}>{message}</Text>
             {children}
@@ -190,6 +197,7 @@ export function PromptHost() {
       messageGap={spacing.md}
       titleRef={titleRef}
       onDismiss={() => close(null)}
+      operation={current.operation}
     >
       <TextInput
         value={value}
@@ -248,6 +256,7 @@ export function DialogHost() {
       messageGap={spacing.lg}
       titleRef={titleRef}
       onDismiss={() => close(current.cancelLabel == null)}
+      operation={current.operation}
     >
       <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
         {current.cancelLabel != null ? (

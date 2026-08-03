@@ -646,6 +646,32 @@ test("month notes use the note content as their marker without a duplicate title
   expect(await market.getByText("Not", { exact: true }).count()).toBe(0);
 });
 
+test("lifecycle confirmations carry the operation context after the action", async ({ page }) => {
+  await onboard(page);
+  await page.goto("/helix/settings");
+
+  const signOutCard = page.getByTestId("account-sign-out-card");
+  const compactSignature = signOutCard.getByTestId("account-sign-out-signature");
+  await expect(compactSignature).toBeVisible();
+  expect((await compactSignature.boundingBox())!.height).toBeLessThan(90);
+
+  await signOutCard.getByRole("button", { name: "Çıkış yap", exact: true }).click();
+  await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
+  await expect(page.getByTestId("operation-dialog-header")).toContainText("Cihazdan ayrıl");
+  await expect(page.getByTestId("operation-dialog-header").getByText("Tüm veriler silinecek", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
+  await expect(page.getByTestId("operation-dialog-header")).toHaveCount(0);
+
+  const deleteCard = page.getByTestId("account-delete-card");
+  const deleteSignature = deleteCard.getByTestId("account-delete-signature");
+  expect((await deleteSignature.boundingBox())!.height).toBeLessThan(90);
+  await deleteCard.getByRole("button", { name: "Hesabı Sil", exact: true }).click();
+  await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
+  await expect(page.getByTestId("operation-dialog-header")).toContainText("Kalıcı silme");
+  await expect(page.getByTestId("operation-dialog-header").getByText("Hesabı sil", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
+});
+
 test("compact financial-table pins stay beside headers and month labels keep breathing room", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
   await onboard(page);

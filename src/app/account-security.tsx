@@ -132,6 +132,7 @@ function CloudAccountSecurityScreen() {
       const accepted = await appConfirm(tr.account.freezeConfirmTitle, tr.account.freezeConfirmBody, {
         confirmLabel: tr.account.freezeConfirm,
         danger: true,
+        operation: "freeze",
       });
       if (!accepted) return;
       const password = await appPrompt(tr.account.confirmPasswordTitle, tr.account.freezePasswordBody, {
@@ -139,6 +140,7 @@ function CloudAccountSecurityScreen() {
         placeholder: tr.auth.password,
         confirmLabel: tr.account.freezeConfirm,
         danger: true,
+        operation: "freeze",
       });
       if (password == null) return;
       const verifyError = await verifyPassword(password);
@@ -250,13 +252,14 @@ function CloudAccountSecurityScreen() {
         />
       </Card>
 
-      <Card tone="warning">
+      <Card>
         <OperationSignature
           kind="freeze"
           eyebrow={tr.account.freezeSignatureEyebrow}
           title={tr.account.freeze}
           description={tr.account.freezeSignatureDescription}
           detail={tr.account.freezeSignatureDetail}
+          compact
           testID="account-freeze-signature"
         />
         <Button
