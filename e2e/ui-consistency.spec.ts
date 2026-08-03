@@ -658,6 +658,7 @@ test("lifecycle confirmations carry the operation context after the action", asy
   await signOutCard.getByRole("button", { name: "Çıkış yap", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Cihazdan ayrıl");
+  await expect(page.getByTestId("operation-dialog-header")).toContainText("Bu cihazdaki veriler geri alınamaz");
   await expect(page.getByTestId("operation-dialog-header").getByText("Tüm veriler silinecek", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toHaveCount(0);
@@ -668,6 +669,7 @@ test("lifecycle confirmations carry the operation context after the action", asy
   await deleteCard.getByRole("button", { name: "Hesabı Sil", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Kalıcı silme");
+  await expect(page.getByTestId("operation-dialog-header")).toContainText("Son adımda şifren yeniden doğrulanır");
   await expect(page.getByTestId("operation-dialog-header").getByText("Hesabı sil", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
 });

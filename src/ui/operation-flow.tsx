@@ -51,6 +51,36 @@ function operationColor(palette: Palette, tone: Tone): string {
   return palette.primary;
 }
 
+function operationSupportIcon(kind: OperationFlowKind): LucideIcon {
+  switch (kind) {
+    case "freeze":
+      return RefreshCw;
+    case "delete":
+      return Trash2;
+    case "sign-in":
+    case "sign-up":
+    case "local-sign-out":
+      return WalletCards;
+    default:
+      return ShieldCheck;
+  }
+}
+
+function operationDialogDetail(kind: OperationFlowKind): string | undefined {
+  switch (kind) {
+    case "sign-out":
+      return tr.auth.signOutDialogDetail;
+    case "local-sign-out":
+      return tr.auth.localSignOutDialogDetail;
+    case "freeze":
+      return tr.account.freezeSignatureDetail;
+    case "delete":
+      return tr.account.deleteSignatureDetail;
+    default:
+      return undefined;
+  }
+}
+
 /** Motion rests at its neutral endpoint when Reduced Motion is enabled. */
 function motionStyle(motion: Motion, pulse: Animated.Value) {
   const interpolate = (from: number) =>
@@ -173,13 +203,7 @@ export function OperationSignature({
       : tone === "success"
         ? palette.successText
         : palette.textStrong;
-  const SupportIcon = kind === "freeze"
-    ? RefreshCw
-    : kind === "delete"
-      ? Trash2
-      : kind === "sign-in" || kind === "sign-up"
-        ? WalletCards
-        : ShieldCheck;
+  const SupportIcon = operationSupportIcon(kind);
   const support = detail ?? (
     kind === "freeze"
       ? "Geçici bir durum; yeniden girişle devam edebilirsin."
@@ -281,39 +305,54 @@ export function OperationDialogHeader({
   const pulse = useWaitingPulse();
   const [Icon, motion, tone = "primary"] = operationVisuals[kind];
   const color = operationColor(palette, tone);
+  const SupportIcon = operationSupportIcon(kind);
+  const detail = operationDialogDetail(kind);
 
   return (
     <View
       testID={testID ?? `operation-dialog-${kind}`}
       style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: spacing.md,
-        paddingBottom: spacing.md,
+        borderLeftWidth: 3,
+        borderLeftColor: color,
+        borderRadius: radius.md,
+        padding: spacing.md,
         marginBottom: spacing.md,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: palette.border,
+        backgroundColor: tone === "destructive"
+          ? palette.error + "0D"
+          : tone === "warning"
+            ? palette.warning + "10"
+            : palette.surfaceAlt,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: color + "55",
       }}
     >
-      <Animated.View
-        style={[{
-          width: 44,
-          height: 44,
-          flexShrink: 0,
-          borderRadius: kind === "delete" ? radius.sm : radius.full,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: color + "18",
-          borderWidth: kind === "delete" ? 2 : StyleSheet.hairlineWidth,
-          borderColor: color,
-        }, motionStyle(motion, pulse)]}
-      >
-        <Icon accessible={false} size={21} color={color} strokeWidth={2.2} />
-      </Animated.View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{operationEyebrow(kind)}</Text>
-        <Text style={[type.heading, { color: palette.text, marginTop: 2 }]}>{title}</Text>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
+        <Animated.View
+          style={[{
+            width: 44,
+            height: 44,
+            flexShrink: 0,
+            borderRadius: kind === "delete" ? radius.sm : radius.full,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: color + "18",
+            borderWidth: kind === "delete" ? 2 : StyleSheet.hairlineWidth,
+            borderColor: color,
+          }, motionStyle(motion, pulse)]}
+        >
+          <Icon accessible={false} size={21} color={color} strokeWidth={2.2} />
+        </Animated.View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[type.small, { color, textTransform: "uppercase", letterSpacing: 0.7 }]}>{operationEyebrow(kind)}</Text>
+          <Text style={[type.heading, { color: palette.text, marginTop: 2 }]}>{title}</Text>
+        </View>
       </View>
+      {detail ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color + "40" }}>
+          <SupportIcon accessible={false} size={15} color={color} strokeWidth={2.1} />
+          <Text style={[type.small, { color: palette.textSecondary, flex: 1 }]}>{detail}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
