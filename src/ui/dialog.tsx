@@ -12,7 +12,7 @@
  */
 
 import React, { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
 import { cardShadow, font, radius, scrim, spacing, type, useTheme } from "./theme";
@@ -150,23 +150,47 @@ function DialogShell({
       <Pressable
         accessible={false}
         tabIndex={-1}
-        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", padding: spacing.lg }}
+        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center" }}
         onPress={onDismiss}
       >
-        <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: operation ? 440 : 400 }}>
-          <FadeIn
-            style={[
-              { backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg },
-              scheme === "light" && cardShadow,
-            ]}
-          >
-            <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
-              {operation ? <OperationDialogHeader kind={operation} title={title} testID="operation-dialog-header" /> : <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>}
-            </View>
-            <Text style={[type.body, { color: palette.textSecondary, marginBottom: messageGap }]}>{message}</Text>
-            {children}
-          </FadeIn>
-        </Pressable>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: spacing.lg }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: operation ? 520 : 400 }}>
+            <FadeIn
+              style={[
+                { backgroundColor: palette.surface, borderRadius: radius.lg, padding: operation ? spacing.xl : spacing.lg },
+                scheme === "light" && cardShadow,
+              ]}
+            >
+              <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
+                {operation ? <OperationDialogHeader kind={operation} title={title} testID="operation-dialog-header" /> : <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>}
+              </View>
+              {operation ? (
+                <View
+                  testID="operation-dialog-message"
+                  style={{
+                    borderRadius: radius.md,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: palette.border,
+                    backgroundColor: palette.surfaceAlt,
+                    padding: spacing.md,
+                    marginBottom: messageGap,
+                  }}
+                >
+                  <Text style={[type.small, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 0.6 }]}>{tr.common.operationSummary}</Text>
+                  <Text style={[type.body, { color: palette.text, marginTop: spacing.xs }]}>{message}</Text>
+                </View>
+              ) : (
+                <Text style={[type.body, { color: palette.textSecondary, marginBottom: messageGap }]}>{message}</Text>
+              )}
+              {children}
+            </FadeIn>
+          </Pressable>
+        </ScrollView>
       </Pressable>
     </Modal>
   );
@@ -225,15 +249,19 @@ export function PromptHost() {
           fontSize: 16,
         }}
       />
-      <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
-        <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />
-        <Button
-          label={current.confirmLabel}
-          variant={current.danger ? "danger" : "primary"}
-          size="sm"
-          disabled={value.trim() === ""}
-          onPress={() => close(value)}
-        />
+      <View style={{ flexDirection: current.operation ? "column" : "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
+        <View style={current.operation ? { width: "100%" } : undefined}>
+          <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />
+        </View>
+        <View style={current.operation ? { width: "100%" } : undefined}>
+          <Button
+            label={current.confirmLabel}
+            variant={current.danger ? "danger" : "primary"}
+            size="sm"
+            disabled={value.trim() === ""}
+            onPress={() => close(value)}
+          />
+        </View>
       </View>
     </DialogShell>
   );
@@ -258,11 +286,15 @@ export function DialogHost() {
       onDismiss={() => close(current.cancelLabel == null)}
       operation={current.operation}
     >
-      <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
+      <View style={{ flexDirection: current.operation ? "column" : "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}>
         {current.cancelLabel != null ? (
-          <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />
+          <View style={current.operation ? { width: "100%" } : undefined}>
+            <Button label={current.cancelLabel} variant="ghost" size="sm" onPress={() => close(false)} />
+          </View>
         ) : null}
-        <Button label={current.confirmLabel} variant={current.danger ? "danger" : "primary"} size="sm" onPress={() => close(true)} />
+        <View style={current.operation ? { width: "100%" } : undefined}>
+          <Button label={current.confirmLabel} variant={current.danger ? "danger" : "primary"} size="sm" onPress={() => close(true)} />
+        </View>
       </View>
     </DialogShell>
   );

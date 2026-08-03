@@ -657,6 +657,7 @@ test("lifecycle confirmations carry the operation context after the action", asy
 
   await signOutCard.getByRole("button", { name: "Çıkış yap", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toBeVisible();
+  await expect(page.getByTestId("operation-dialog-message")).toContainText("Bu adımda ne olur");
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Cihazdan ayrıl");
   await expect(page.getByTestId("operation-dialog-header")).toContainText("Bu cihazdaki veriler geri alınamaz");
   await expect(page.getByTestId("operation-dialog-header").getByText("Tüm veriler silinecek", { exact: true })).toBeVisible();

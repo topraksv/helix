@@ -31,6 +31,7 @@ export const tr = {
     undo: "Geri Al", deleted: "Silindi", search: "Ara", close: "Kapat", done: "Tamam",
     total: "Toplam", note: "Not", notes: "Notlar", none: "Kategorisiz", retry: "Tekrar dene",
     confirm: "Onayla", skip: "Atla", all: "Tümü", active: "Aktif", inactive: "Pasif",
+    operationSummary: "Bu adımda ne olur",
     selectAll: "Tümünü seç", clearAll: "Tümünü bırak",
     amountLimit: "Bu tutar desteklenen sınırı aşıyor. En fazla ₺999.999.999.999,99 girebilirsin.",
     optionalHint: "Opsiyonel",
