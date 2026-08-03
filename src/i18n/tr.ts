@@ -214,8 +214,8 @@ export const tr = {
     signOutPendingWarn: (n: number) =>
       `${n} kayıt henüz buluta eşitlenmedi. Şimdi çıkarsan bu kayıtlar kalıcı olarak silinir. Yine de çıkmak istiyor musun?`,
     signOutAnyway: "Yine de Çık",
-    restoringData: "Hesabındaki veriler getiriliyor",
-    restoringDataFresh: "İlk hesap verilerin hazırlanıyor",
+    restoringData: "Hesabın eşitleniyor",
+    restoringDataFresh: "Hesabın hazırlanıyor",
     signOutPendingBlocked: "Bazı değişikliklerin henüz eşitlenmedi. Verilerin cihazında korunuyor.",
     signOutLocalTitle: "Tüm veriler silinecek",
     signOutLocalWarn:

@@ -319,35 +319,38 @@ function RootLayoutInner() {
       (frozenState.status === "error" && !frozenState.updatedAt)),
   );
   if (guard.view === "wait" || guardQueryFailed) {
-    // While an existing account's first pull is still landing, show progress
-    // rather than a bare background so the hold never reads as a white screen.
+    // This branch renders before the navigator's provider. Keep its retry and
+    // first-pull surfaces inside the same palette, otherwise a dark background
+    // falls back to the light default theme and produces a white card.
     return (
-      <View
-        style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}
-      >
-        {guardQueryFailed ? (
-          <View style={{ width: "100%", maxWidth: 420, padding: 24, gap: 16 }}>
-            <Title>{tr.errors.database}</Title>
-            <Button
-              label={tr.common.retry}
-              onPress={() => {
-                onboardedState.retry();
-                frozenState.retry();
-              }}
+      <ThemeContext.Provider value={theme}>
+        <View
+          style={{ flex: 1, backgroundColor: theme.palette.background, justifyContent: "center", alignItems: "center" }}
+        >
+          {guardQueryFailed ? (
+            <View style={{ width: "100%", maxWidth: 420, padding: 24, gap: 16 }}>
+              <Title>{tr.errors.database}</Title>
+              <Button
+                label={tr.common.retry}
+                onPress={() => {
+                  onboardedState.retry();
+                  frozenState.retry();
+                }}
+              />
+            </View>
+          ) : awaitingFirstPull ? (
+            // A silent spinner after a correct password reads as a stall. This
+            // hold is the account's first pull, and a brand-new account has
+            // nothing to pull — so the two say different things.
+            <WaitingNotice
+              kind={isNewSignup ? "initialize" : "restore"}
+              message={isNewSignup ? tr.auth.restoringDataFresh : tr.auth.restoringData}
             />
-          </View>
-        ) : awaitingFirstPull ? (
-          // A silent spinner after a correct password reads as a stall. This
-          // hold is the account's first pull, and a brand-new account has
-          // nothing to pull — so the two say different things.
-          <WaitingNotice
-            kind={isNewSignup ? "initialize" : "restore"}
-            message={isNewSignup ? tr.auth.restoringDataFresh : tr.auth.restoringData}
-          />
-        ) : !guard.redirect ? (
-          <DelayedLoadingIndicator />
-        ) : null}
-      </View>
+          ) : !guard.redirect ? (
+            <DelayedLoadingIndicator />
+          ) : null}
+        </View>
+      </ThemeContext.Provider>
     );
   }
 

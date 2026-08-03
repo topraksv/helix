@@ -67,9 +67,22 @@ describe("operation progress language", () => {
   });
 
   it("keeps first-pull copy separate from account lifecycle actions", () => {
-    expect(tr.auth.restoringData).toContain("Hesabındaki veriler");
+    expect(tr.auth.restoringData).toBe("Hesabın eşitleniyor");
     expect(tr.auth.restoringData).not.toContain("Çalışma alanın");
     expect(tr.auth.restoringData).not.toContain("Mali tablon");
+  });
+
+  it("keeps the first-pull wait in the active theme and uses a compact presentation", () => {
+    const components = readFileSync(join(process.cwd(), "src/ui/components.tsx"), "utf8");
+    const rootLayout = readFileSync(join(process.cwd(), "src/app/_layout.tsx"), "utf8");
+    const waitStart = rootLayout.indexOf("if (guard.view === \"wait\" || guardQueryFailed)");
+    const waitEnd = rootLayout.indexOf("\n\n  return (\n    <ThemeContext.Provider", waitStart);
+    const waitBranch = rootLayout.slice(waitStart, waitEnd);
+
+    expect(waitBranch).toContain("<ThemeContext.Provider value={theme}>");
+    expect(components).toContain('presentation="waiting"');
+    expect(tr.auth.restoringData).toBe("Hesabın eşitleniyor");
+    expect(tr.auth.restoringDataFresh).toBe("Hesabın hazırlanıyor");
   });
 
   it("gives each operation a distinct static visual signature", () => {

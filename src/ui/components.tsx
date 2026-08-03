@@ -1783,8 +1783,8 @@ export function OperationStatusNotice({
 export function WaitingNotice({ message, kind }: { message: string; kind: OperationFlowKind }) {
   return (
     <DelayedLoading>
-      <View style={{ width: "100%", maxWidth: 480, alignItems: "center", paddingHorizontal: spacing.lg }}>
-        <OperationFlow kind={kind} label={message} presentation="hero" />
+      <View testID="waiting-notice" style={{ width: "100%", alignItems: "center", paddingHorizontal: spacing.lg }}>
+        <OperationFlow kind={kind} label={message} presentation="waiting" />
       </View>
     </DelayedLoading>
   );

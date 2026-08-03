@@ -75,13 +75,14 @@ export function OperationFlow({
 }: {
   kind: OperationFlowKind;
   label: string;
-  presentation?: "inline" | "hero";
+  presentation?: "inline" | "waiting" | "hero";
 }) {
   const { palette } = useTheme();
   const [Icon, tone = "primary"] = operationVisuals[kind];
   const color = operationColor(palette, tone);
   const destructive = tone === "destructive";
   const hero = presentation === "hero";
+  const waiting = presentation === "waiting";
 
   return (
     <View
@@ -91,22 +92,22 @@ export function OperationFlow({
       accessibilityValue={{ text: label }}
       style={{
         width: "100%",
-        maxWidth: hero ? 480 : undefined,
-        alignItems: hero ? "stretch" : "flex-start",
-        backgroundColor: hero ? palette.surface : "transparent",
-        borderRadius: hero ? radius.lg : 0,
-        borderWidth: hero ? StyleSheet.hairlineWidth : 0,
-        borderColor: hero ? palette.border : "transparent",
-        padding: hero ? spacing.lg : 0,
+        maxWidth: hero ? 480 : waiting ? 360 : undefined,
+        alignItems: hero || waiting ? "stretch" : "flex-start",
+        backgroundColor: hero ? palette.surface : waiting ? palette.surfaceAlt : "transparent",
+        borderRadius: hero ? radius.lg : waiting ? radius.md : 0,
+        borderWidth: hero || waiting ? StyleSheet.hairlineWidth : 0,
+        borderColor: hero || waiting ? palette.border : "transparent",
+        padding: hero ? spacing.lg : waiting ? spacing.md : 0,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: hero ? spacing.md : spacing.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: hero || waiting ? spacing.md : spacing.sm }}>
         <View
           style={{
-            width: hero ? 48 : 36,
-            height: hero ? 48 : 36,
+            width: hero ? 48 : waiting ? 40 : 36,
+            height: hero ? 48 : waiting ? 40 : 36,
             flexShrink: 0,
-            borderRadius: hero ? radius.md : 12,
+            borderRadius: hero || waiting ? radius.md : 12,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: color + "18",
@@ -114,12 +115,12 @@ export function OperationFlow({
             borderColor: color + "80",
           }}
         >
-          <Icon accessible={false} size={hero ? 28 : 17} color={color} strokeWidth={2.3} />
+          <Icon accessible={false} size={hero ? 28 : waiting ? 20 : 17} color={color} strokeWidth={2.3} />
         </View>
         <Text
           accessibilityLiveRegion="polite"
           style={[
-            hero ? type.label : type.small,
+            hero || waiting ? type.label : type.small,
             {
               color: destructive ? palette.errorText : palette.text,
               flexShrink: 1,
