@@ -37,7 +37,7 @@ import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { controlSize, radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
-import { useContentWidth } from "../../../ui/viewport";
+import { useClusterWidth, useContentWidth } from "../../../ui/viewport";
 import { categoryIcon } from "../../../data/category-icons";
 
 type MatrixModel = ReturnType<typeof buildCashFlowMatrixModel>;
@@ -109,6 +109,10 @@ function FlowStat({
   );
 }
 
+/** Edit, installments, analysis, bulk entry, opening balance. Named so the
+ *  cluster's bound and the row it bounds cannot disagree about the count. */
+const MATRIX_TOOL_COUNT = 5;
+
 /** The pivot's three orientations, named so the control and the wrapper that
  *  bounds it cannot disagree about how many segments there are. */
 const PIVOT_MODES = [
@@ -152,6 +156,7 @@ export default function CashflowScreen() {
   const { width } = useWindowDimensions();
   const contentWidth = useContentWidth();
   const wide = shouldUseWideWorkspace(contentWidth);
+  const toolClusterWidth = useClusterWidth(MATRIX_TOOL_COUNT);
   const router = useRouter();
   const { palette } = useTheme();
   // A phone needs the category-first scan of column mode; a wide workspace has
@@ -280,9 +285,14 @@ export default function CashflowScreen() {
             </Row>
           </View>
         ) : (
-          <View style={{ gap: spacing.xs }}>
+          <View style={{ gap: spacing.xs, maxWidth: toolClusterWidth, width: "100%" }}>
             <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-            <Row gap={2} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap" }}>
+            {/* Five icon tools are a cluster, not a band. Given the row they
+                spread one tool per 145px on a tablet, which reads as five
+                unrelated buttons pinned to the edges of a gap; bounded, they
+                stay a group whose width comes from its own items. A phone is
+                below the bound and keeps the full-width band it needs. */}
+            <Row gap={2} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap", maxWidth: toolClusterWidth, width: "100%" }}>
               <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} />
               <MatrixTool icon={CreditCard} caption={tr.cashflow.toolInstallments} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
               <MatrixTool icon={ChartNoAxesColumn} caption={tr.cashflow.toolAnalysis} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
@@ -297,10 +307,12 @@ export default function CashflowScreen() {
 
       {!bundle ? (
         dataStatus === "loading" || dataStatus === "error" ? null : (
-          <View style={{ gap: spacing.md }}>
-            <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} hint={tr.cashflow.emptyYearHint} />
-            <Button icon={PiggyBank} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />
-          </View>
+          <EmptyState
+            icon={Inbox}
+            title={tr.cashflow.emptyMonth}
+            hint={tr.cashflow.emptyYearHint}
+            action={<Button icon={PiggyBank} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />}
+          />
         )
       ) : (
         <View style={{ flex: 1 }}>

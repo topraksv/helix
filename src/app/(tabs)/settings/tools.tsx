@@ -1,7 +1,8 @@
 /** Settings tool workspace: calculator plus a live currency converter. */
 
 import React from "react";
-import { View, useWindowDimensions } from "react-native";
+import { View } from "react-native";
+import { useContentWidth } from "../../../ui/viewport";
 import { Card, Screen, Title } from "../../../ui/components";
 import { CalculatorPad } from "../../../ui/calculator";
 import { CurrencyConverter } from "../../../ui/currency-converter";
@@ -10,8 +11,7 @@ import { spacing } from "../../../ui/theme";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 
 export default function CalculatorScreen() {
-  const { width } = useWindowDimensions();
-  const wide = width >= 900;
+  const wide = useContentWidth() >= 900;
   return (
     <Screen width="workspace">
       <WorkspaceSplit

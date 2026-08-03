@@ -1,7 +1,8 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
 import React, { useRef, useState, type ReactNode } from "react";
-import { Platform, Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
+import { useContentWidth } from "../../../ui/viewport";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
@@ -315,7 +316,7 @@ export default function SettingsScreen() {
   const settings = settingsState.data;
   const sync = useSyncStatus();
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const contentWidth = useContentWidth();
   const { palette, paletteId, scheme } = useTheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
@@ -541,7 +542,7 @@ export default function SettingsScreen() {
       <Card>
         <SettingsDestinationGrid
           items={workspaceDestinations}
-          twoColumns={width >= 700}
+          twoColumns={contentWidth >= 700}
           testID="settings-workspace-link"
         />
       </Card>
@@ -605,7 +606,7 @@ export default function SettingsScreen() {
               swatch={PALETTES[id][scheme]}
               selected={paletteId === id}
               disabled={!localPreferencesLoaded}
-              stacked={width < 700}
+              stacked={contentWidth < 700}
               onPress={() => {
                 selectionTapIfChanged(paletteId, id);
                 setGlobalPalettePreference(id);

@@ -219,6 +219,10 @@ export function Screen({
     // Unconditional: below its cap the column simply fills, so there is no
     // second layout mode to reason about and no threshold to drift.
     { width: "100%", maxWidth, alignSelf: "center" },
+    // Lets a short page distribute its own height instead of stacking against
+    // the header — an empty state can then centre itself in what is left. It
+    // changes nothing once the content is taller than the viewport.
+    { flexGrow: 1 },
   ];
 
   // Nothing here adjusts a content inset, and that is the point.
@@ -256,7 +260,10 @@ export function Screen({
         scrollEnabled={scrollEnabled}
         automaticallyAdjustContentInsets={false}
       >
-        <FadeIn>
+        {/* Carries the container's grow through to the children, so a screen
+            with one short block can centre it rather than stack it at the top
+            of an empty page. */}
+        <FadeIn style={{ flexGrow: 1 }}>
           {header}
           {children}
         </FadeIn>
@@ -1419,7 +1426,7 @@ export function SelectionGrid({
   emptyMessage?: string;
 }) {
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
+  const contentWidth = useContentWidth();
   const [query, setQuery] = useState("");
   const selectedColor = tone === "plus" ? palette.primary : palette.negative;
   const selectedSoft = tone === "plus" ? palette.primarySoft : palette.negative + "18";
@@ -1486,7 +1493,7 @@ export function SelectionGrid({
                   onToggle(option.value);
                 }}
                 style={({ pressed }) => ({
-                  flexBasis: width >= 720 ? "31%" : "47%",
+                  flexBasis: contentWidth >= 720 ? "31%" : "47%",
                   flexGrow: 1,
                   minWidth: 0,
                   minHeight: 48,
@@ -1674,10 +1681,27 @@ export function StatusPill({ label, color, foreground = color }: { label: string
   );
 }
 
-export function EmptyState({ icon: IconCmp, title, hint }: { icon?: LucideIcon; title: string; hint?: string }) {
+export function EmptyState({
+  icon: IconCmp,
+  title,
+  hint,
+  action,
+}: {
+  icon?: LucideIcon;
+  title: string;
+  hint?: string;
+  /** The way out of the empty state. Belongs to the message, so it travels
+   *  with it when the block centres itself instead of being left at the foot
+   *  of the page a screen-height away from the sentence it answers. */
+  action?: ReactNode;
+}) {
   const { palette } = useTheme();
   return (
-    <View style={{ padding: spacing.xxl, alignItems: "center", gap: spacing.sm }}>
+    // `flexGrow` with a centred main axis, not a fixed block: on a phone there
+    // is no spare height and this is exactly the padded block it always was,
+    // while on a 900px desktop viewport the same message used to sit against
+    // the header with two thirds of the page empty beneath it.
+    <View style={{ flexGrow: 1, justifyContent: "center", padding: spacing.xxl, alignItems: "center", gap: spacing.sm }}>
       {IconCmp ? (
         <View
           style={{
@@ -1695,6 +1719,7 @@ export function EmptyState({ icon: IconCmp, title, hint }: { icon?: LucideIcon; 
       ) : null}
       <Text accessibilityRole="header" style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
       {hint ? <Text style={[type.body, { color: palette.textSecondary, textAlign: "center" }]}>{hint}</Text> : null}
+      {action ? <View style={{ marginTop: spacing.md }}>{action}</View> : null}
     </View>
   );
 }

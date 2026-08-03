@@ -30,14 +30,14 @@ import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, HeroCard, ListRow, MetricStrip, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
-import { Bars, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
+import { Bars, ChartFrame, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
 import { shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart, shouldUseSideNavigation } from "../../ui/responsive";
-import { useContentWidth } from "../../ui/viewport";
+import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
 import { font, heroSurface, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
@@ -123,9 +123,12 @@ function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number 
   );
 }
 
-function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; desktopColumns?: 2 | 3 }) {
+function MarketsCard({ desktopColumns = 2 }: { desktopColumns?: 2 | 3 }) {
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
+  // How many quote tiles fit is a question about this card, not about the
+  // window: the same card is a full-width strip on a phone and one column of a
+  // desktop pair, and only the card knows which.
+  const [cardWidth, onCardLayout] = useMeasuredWidth(320);
   const userId = useUserId();
   const { prices, status, lastEventAt } = useMarkets();
   useFxRates();
@@ -150,12 +153,16 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
       : status === "connecting"
         ? tr.markets.connecting
         : tr.markets.offline;
-  const marketColumns = width >= 960 ? desktopColumns : width >= 360 ? 2 : 1;
+  const marketColumns = cardWidth >= 620 ? desktopColumns : cardWidth >= 300 ? 2 : 1;
+  // A tile is cramped by how much of the card it actually gets, not by the
+  // window: two columns of a 358px phone card and two columns of a 500px
+  // desktop column are different tiles.
+  const crampedTile = cardWidth / marketColumns < 215;
 
   return (
     <>
       <SectionHeader>{tr.markets.title}</SectionHeader>
-      <Card style={fill ? { flex: 1 } : undefined}>
+      <Card onLayout={onCardLayout}>
         <Row
           gap={spacing.xs}
           style={{ justifyContent: "flex-end", marginBottom: spacing.xs }}
@@ -197,8 +204,8 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
                   }}
                 >
                   <Row gap={spacing.xs} style={{ alignItems: "center" }}>
-                    <View style={{ width: width < 430 ? 40 : 44, height: width < 430 ? 40 : 44, flexShrink: 0 }}>
-                      <MarketInstrumentArt code={code} size={width < 430 ? 40 : 44} />
+                    <View style={{ width: crampedTile ? 40 : 44, height: crampedTile ? 40 : 44, flexShrink: 0 }}>
+                      <MarketInstrumentArt code={code} size={crampedTile ? 40 : 44} />
                       {p.direction === "up" ? (
                         <View style={{ position: "absolute", right: -2, top: -2, borderRadius: 8, padding: 2, backgroundColor: palette.surface }}>
                           <TrendingUp accessible={false} size={12} color={palette.positive} />
@@ -214,8 +221,8 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
                         flex: 1,
                         minWidth: 0,
                         fontFamily: font.semibold,
-                        fontSize: width < 430 ? 13 : undefined,
-                        lineHeight: width < 430 ? 16 : undefined,
+                        fontSize: crampedTile ? 13 : undefined,
+                        lineHeight: crampedTile ? 16 : undefined,
                         textAlignVertical: "center",
                       }}
                     >
@@ -488,11 +495,9 @@ export default function DashboardScreen() {
                   size={shouldUseCompactChart(contentWidth) ? 152 : 236}
                 />
               ) : (
-                <Bars
-                  width={Math.max(240, Math.min(width - spacing.xxl * 2, 1040))}
-                  groups={monthBars}
-                  series={monthBarSeries}
-                />
+                <ChartFrame>
+                  {(chartWidth) => <Bars width={chartWidth} groups={monthBars} series={monthBarSeries} />}
+                </ChartFrame>
               )}
             </View>
           </>
@@ -668,21 +673,25 @@ export default function DashboardScreen() {
         </Card>
       ) : null}
 
-      {analysisSection}
+      {/* Desktop composition, not a stack of full-width cards.
+          The distribution card is a ring plus a legend — about 650px of
+          content. Given the whole column it kept that size and centred itself,
+          so a 1440 monitor drew 230px of empty card on either side of it while
+          the payments the owner has to act on sat below the fold. Paired, the
+          chart fills a column it can actually use and the task list comes up
+          into the first screen beside it. The market strip is ambient
+          reference, so it follows the task rather than claiming a column. */}
+      <View style={pairedDashboard ? { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg } : undefined}>
+        <View style={pairedDashboard ? { flex: 1.15, minWidth: 0 } : undefined}>
+          {analysisSection}
+        </View>
 
-      {/* These two are not peers, so they do not get equal halves. Upcoming
-          payments is the task — it carries the rows the owner acts on — while
-          the market strip is ambient reference that is frequently a single
-          status line. Split 50/50 they produced a tall, near-empty markets card
-          beside a list that had run out of room, so the task leads and takes
-          the larger share. */}
-      <View style={pairedDashboard ? { flexDirection: "row", alignItems: "stretch", gap: spacing.lg } : undefined}>
-        <View style={pairedDashboard ? { flex: 1.35, minWidth: 0 } : undefined}>
+        <View style={pairedDashboard ? { flex: 0.85, minWidth: 0 } : undefined}>
           {/* Upcoming payments */}
           <SectionHeader>{tr.dashboard.upcoming}</SectionHeader>
       {dataStatus === "loading" || dataStatus === "error" ? null : (late.length > 0 || upcoming.length > 0) && selfPersonId ? (
-        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
-          <View style={pairedDashboard ? { flexGrow: 1 } : undefined}>
+        <Card>
+          <View>
             {dashboardLate.map((e) => (
               <ListRow
                 key={e.id}
@@ -738,8 +747,8 @@ export default function DashboardScreen() {
       ) : (
         /* A compact calendar picture gives an otherwise empty equal-height
            desktop panel visual weight without inventing any future payment. */
-        <Card style={pairedDashboard ? { flex: 1 } : undefined}>
-          <View style={pairedDashboard ? { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing.sm } : { alignItems: "center", gap: spacing.sm }}>
+        <Card>
+          <View style={{ alignItems: "center", gap: spacing.sm }}>
             <View
               accessible={false}
               style={{
@@ -806,10 +815,7 @@ export default function DashboardScreen() {
           </View>
         </Card>
       )}
-        </View>
-
-        <View style={pairedDashboard ? { flex: 0.65, minWidth: 0 } : undefined}>
-          <MarketsCard fill={pairedDashboard} desktopColumns={marketDesktopColumns} />
+          <MarketsCard desktopColumns={marketDesktopColumns} />
         </View>
       </View>
 

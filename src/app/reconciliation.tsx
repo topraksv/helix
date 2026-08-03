@@ -166,7 +166,11 @@ export default function CatchUpScreen() {
       {lastEntry.at ? <Body muted style={{ marginBottom: spacing.md }}>{tr.catchup.subtitle(dateLabel(lastEntry.at))}</Body> : null}
 
       {items.length === 0 ? (
-        <EmptyState icon={CheckCircle2} title={tr.catchup.nothing} />
+        <EmptyState
+          icon={CheckCircle2}
+          title={tr.catchup.nothing}
+          action={<Button icon={Plus} label={tr.cashflow.addTransaction} variant="secondary" onPress={() => router.push("/transaction")} />}
+        />
       ) : (
         <WorkspaceGrid testID="reconciliation-grid" layout="stack">
         {items.map((e) => (
@@ -250,7 +254,12 @@ export default function CatchUpScreen() {
         </WorkspaceGrid>
       )}
 
-      <Button icon={Plus} label={tr.cashflow.addTransaction} variant="secondary" onPress={() => router.push("/transaction")} />
+      {/* Only once there is a list to add to: with nothing pending, the same
+          action is the empty state's own way out and repeating it here left it
+          stranded at the bottom of an otherwise empty page. */}
+      {items.length > 0 ? (
+        <Button icon={Plus} label={tr.cashflow.addTransaction} variant="secondary" onPress={() => router.push("/transaction")} />
+      ) : null}
     </Screen>
   );
 }

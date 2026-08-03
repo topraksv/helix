@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import {
   ArrowDownToLine,
@@ -54,7 +54,7 @@ import {
 } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
-import { useClusterWidth } from "../../../ui/viewport";
+import { useClusterWidth, useContentWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { scheduleSync } from "../../../sync/engine";
@@ -303,7 +303,7 @@ export default function InvestmentsScreen() {
   const router = useRouter();
   const userId = useUserId();
   const undo = useUndo();
-  const { width } = useWindowDimensions();
+  const width = useContentWidth();
   const actionBarWidth = useClusterWidth(5);
   const compact = width < 560;
   const desktop = width >= 900;

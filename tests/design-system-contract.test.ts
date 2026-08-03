@@ -16,6 +16,7 @@ import {
   type,
 } from "../src/ui/theme";
 import { modalAnimationType } from "../src/ui/modal-motion";
+import { shouldPairDashboardPanels, shouldPairFilterCards } from "../src/ui/responsive";
 
 const root = process.cwd();
 
@@ -206,6 +207,50 @@ describe("content width is a shared scale, not a per-route number", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  /**
+   * A chart is the one thing that cannot be laid out in percentages: `Bars` and
+   * `Lines` need a pixel number. Every caller used to derive that number from
+   * the window minus a guess at the chrome in between — `width - spacing.lg * 4`
+   * — and the guess broke twice over once a 220px rail and a second column
+   * appeared: at a 1024px window it asked for 928px inside a card that had 740.
+   * `ChartFrame` measures the box instead, so the arithmetic has no way back in.
+   */
+  it("sizes pixel-width charts from their own container, never from the window", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src")) {
+      if (path === "src/ui/charts.tsx") continue;
+      const source = readFileSync(join(root, path), "utf8");
+      for (const match of source.matchAll(/width=\{[^}]*\bwidth\s*[-*]/g)) {
+        offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length} ${match[0]}`);
+      }
+    }
+    expect(offenders, "wrap the chart in <ChartFrame> and use the measured width").toEqual([]);
+  });
+});
+
+/**
+ * The composition thresholds, ordered by how much content each one needs. They
+ * are separate numbers because they answer different questions, and a single
+ * shared `width >= 960` is what made the dashboard pair panels it had no room
+ * for while a tablet spent its whole first screen on filter cards.
+ */
+describe("composition thresholds are ordered by the content they need", () => {
+  it("pairs two filter cards long before it pairs two panels", () => {
+    // Two filter cards need about 350px each; a dashboard panel pair needs a
+    // ring, a legend and a payment list beside them.
+    expect(shouldPairFilterCards(699)).toBe(false);
+    expect(shouldPairFilterCards(700)).toBe(true);
+    expect(shouldPairFilterCards(880)).toBe(true);
+    expect(shouldPairDashboardPanels(880)).toBe(false);
+    expect(shouldPairDashboardPanels(900)).toBe(true);
+  });
+
+  it("keeps the tablet-portrait content column on the paired side of the filter rule", () => {
+    // 768px window, no rail, minus the page gutter: the width a tablet in
+    // portrait actually gives a row of cards.
+    expect(shouldPairFilterCards(768 - 24 * 2)).toBe(true);
   });
 });
 

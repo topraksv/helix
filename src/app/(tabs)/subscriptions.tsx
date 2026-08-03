@@ -1,7 +1,8 @@
 /** Subscriptions: one due-date overview, then active/passive rule lists. */
 
 import React from "react";
-import { Text, View, useWindowDimensions } from "react-native";
+import { Text, View } from "react-native";
+import { useContentWidth } from "../../ui/viewport";
 import { useRouter } from "expo-router";
 import { CalendarClock, MousePointerClick, Plus, RefreshCw, Repeat, Zap } from "lucide-react-native";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
@@ -28,8 +29,7 @@ function SubscriptionScheduleOverview({
   today: ISODate;
 }) {
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
-  const compact = width < 560;
+  const compact = useContentWidth() < 560;
   const horizonDays = 31;
   const horizonEnd = addDaysISO(today, horizonDays - 1);
   const upcoming = active
@@ -307,7 +307,10 @@ export default function SubscriptionsScreen() {
   return (
     <Screen
       title={tr.subs.title}
-      width="workspace"
+      // Same reason as the month detail: a subscription row is a name, a next
+      // date and an amount. A workspace column left 400px of nothing in the
+      // middle of every row.
+      width="form"
       right={<Button icon={Plus} size="sm" label={tr.subs.add} onPress={() => router.push("/subscription-form")} />}
     >
       <DataStateNotice status={dataStatus} retry={retryData} />

@@ -249,6 +249,44 @@ test("bar-chart amounts stay readable and contained on phone and desktop", async
   }
 });
 
+/**
+ * A chart is the only thing on a screen that is drawn at an explicit pixel
+ * width, so it is the only thing that can be wider than the box holding it.
+ * Every caller used to derive that width from the window minus a guess at the
+ * chrome in between; once a 220px rail and a two-column dashboard sat between
+ * the two, the guess asked for 928px inside a card that had 740. The measure
+ * that catches it is the container's own scroll width, at the widths where the
+ * rail exists.
+ */
+test("charts stay inside the box they are drawn in at every desktop width", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await onboard(page);
+  await addMarketExpense(page, "Grafik kutusu", "98.765,43");
+  await page.getByRole("tab", { name: "Durum" }).click();
+  await page.getByRole("radio", { name: "Sütun", exact: true }).click();
+  await expect(page.getByTestId("bar-value-label").first()).toBeVisible();
+
+  // 1024 is where the rail appears, 1180 is where the dashboard pairs its
+  // columns, 1440 is a real monitor. Each one gives the chart a different box.
+  for (const width of [1024, 1180, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(async () =>
+        page.getByTestId("bar-value-label").first().evaluate((label) => {
+          const wider: string[] = [];
+          // Up from the drawn label to the page: the card, the column and the
+          // screen all have to be wide enough for what the chart asked for.
+          for (let el: Element | null = label; el && el !== document.body; el = el.parentElement) {
+            if (!(el instanceof HTMLElement)) continue;
+            if (el.scrollWidth > el.clientWidth + 1) wider.push(`${el.scrollWidth}>${el.clientWidth}`);
+          }
+          return wider;
+        }),
+      )
+      .toEqual([]);
+  }
+});
+
 test("yearly subscriptions ask for a real renewal date", async ({ page }) => {
   await onboard(page);
   await page.goto("/helix/subscription-form");

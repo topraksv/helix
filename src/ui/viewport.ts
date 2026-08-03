@@ -13,7 +13,8 @@
  * `useContentWidth()` instead of `useWindowDimensions().width`.
  */
 
-import { Platform, useWindowDimensions } from "react-native";
+import { useCallback, useState } from "react";
+import { Platform, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { useSegments } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { shouldBoundIntrinsicControls, shouldUseSideNavigation } from "./responsive";
@@ -62,4 +63,27 @@ export function useContentWidth(): number {
 export function useClusterWidth(count: number): number | undefined {
   const contentWidth = useContentWidth();
   return shouldBoundIntrinsicControls(contentWidth) ? segmentedMaxWidth(count) : undefined;
+}
+
+/**
+ * The width of the box this content is actually in.
+ *
+ * The content width answers "how wide is the page column"; it cannot answer
+ * "how wide is the card I am inside, in the narrower of two desktop columns".
+ * Anything that has to be drawn at an explicit pixel width — an SVG chart — has
+ * to ask its own container, because every derivation from a viewport number
+ * guesses at the padding and columns between the two and eventually guesses
+ * wrong: the same expression that fitted a full-width card overflowed it by
+ * 220px once a rail stood beside the page.
+ *
+ * The fallback covers the frame before the first layout pass, so a chart never
+ * flashes empty.
+ */
+export function useMeasuredWidth(fallback: number): [number, (event: LayoutChangeEvent) => void] {
+  const [width, setWidth] = useState(fallback);
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const next = Math.round(event.nativeEvent.layout.width);
+    setWidth((current) => (Math.abs(current - next) > 1 ? next : current));
+  }, []);
+  return [width, onLayout];
 }

@@ -1,7 +1,8 @@
 /** Payment source management: cards / cash / bank, per-person, card cycle. */
 
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useContentWidth } from "../../../ui/viewport";
 import { useAllTransactionsState, useCreditCardStatementsState, usePersonsState, useSourcesState, useUserId } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import {
@@ -71,7 +72,7 @@ function SourceGlyph({ sourceType, size = 44 }: { sourceType: PaymentSourceType;
 
 function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onChange: (value: PaymentSourceType) => void }) {
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
+  const contentWidth = useContentWidth();
   return (
     <View
       role="radiogroup"
@@ -98,7 +99,7 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
               // accident of arithmetic. Giving the double width to the credit
               // card instead makes the most-reached-for option the easiest to
               // hit, and leaves an even six to fill the rows below it.
-              flexBasis: option.value === "credit_card" ? (width >= 720 ? "48%" : "100%") : width >= 720 ? "23%" : "47%",
+              flexBasis: option.value === "credit_card" ? (contentWidth >= 720 ? "48%" : "100%") : contentWidth >= 720 ? "23%" : "47%",
               flexGrow: 1,
               minWidth: 0,
               minHeight: 52,

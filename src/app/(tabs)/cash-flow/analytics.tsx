@@ -3,7 +3,7 @@
  *  transaction search. */
 
 import React, { useDeferredValue, useEffect, useState } from "react";
-import { FlatList, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, Inbox, SlidersHorizontal, Target } from "lucide-react-native";
 import { categoryRangeMatrix, distributionForRange, monthlySeries } from "../../../domain/analytics";
@@ -25,9 +25,9 @@ import {
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { categoryIcon, paymentSourceIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
-import { Bars, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
+import { Bars, ChartFrame, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { StickyTable } from "../../../ui/sticky-table";
-import { shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
+import { shouldPairFilterCards, shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 import { radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 
@@ -40,9 +40,9 @@ export default function AnalysisScreen() {
   const today = todayISO();
   const currentYear = yearOf(today);
   const currentMonth = monthKeyOf(today);
-  const { width } = useWindowDimensions();
   const contentWidth = useContentWidth();
   const compact = !shouldUseWideWorkspace(contentWidth);
+  const stackedFilters = !shouldPairFilterCards(contentWidth);
   const narrow = shouldUseNarrowAnalytics(contentWidth);
   // Phone starts with a useful comparison that fits the table in fewer
   // horizontal gestures; year and custom windows remain explicit choices.
@@ -179,7 +179,7 @@ export default function AnalysisScreen() {
   const trendEndMonth = monthKeys.at(-1);
 
   const periodDistribution = distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today);
-  const supportsTrend = width >= 720 && monthKeys.length >= 2 && !categoryFilter;
+  const supportsTrend = contentWidth >= 720 && monthKeys.length >= 2 && !categoryFilter;
   useEffect(() => {
     if (!supportsTrend && chartType === "trend") setChartType("bars");
   }, [supportsTrend, chartType]);
@@ -227,8 +227,8 @@ export default function AnalysisScreen() {
   const searchHeader = (
     <View>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <View style={{ flexDirection: compact ? "column" : "row", alignItems: "stretch", gap: compact ? 0 : spacing.lg }}>
-      <Card style={compact ? undefined : { flex: 1 }}>
+      <View style={{ flexDirection: stackedFilters ? "column" : "row", alignItems: "stretch", gap: stackedFilters ? 0 : spacing.lg }}>
+      <Card style={stackedFilters ? undefined : { flex: 1 }}>
       <SectionHeader>{tr.analysis.viewWindow}</SectionHeader>
       {/* The slicer owns its own row. It used to share one with the year
           switcher, which was affordable at four segments and is not at six —
@@ -293,7 +293,7 @@ export default function AnalysisScreen() {
       />
       </Card>
 
-      <Card style={compact ? undefined : { flex: 1 }}>
+      <Card style={stackedFilters ? undefined : { flex: 1 }}>
       <SectionHeader>{tr.analysis.findTransaction}</SectionHeader>
       <Field accessibilityLabel={tr.common.search} placeholder={tr.analysis.searchPlaceholder} value={query} onChangeText={setQuery} autoCapitalize="none" />
       <Segmented
@@ -469,10 +469,13 @@ export default function AnalysisScreen() {
           />
         </View>
       ) : null}
-      {/* The distribution follows the totals it explains. It used to sit
-          below the budget block, which put the whole first viewport of a
-          screen called Analysis under filters and limits with no chart in
-          sight. */}
+      {/* The distribution and the limits are the screen's two analysis
+          outputs, and on a desktop they are peers: stacked, each took a
+          full-width card for content worth about 650px, so the chart centred
+          itself between two dead margins and the limits it should be compared
+          against sat a scroll away. */}
+      <View style={compact ? undefined : { flexDirection: "row", alignItems: "flex-start", gap: spacing.lg }}>
+      <View style={compact ? undefined : { flex: 1.15, minWidth: 0 }}>
       {rows.length > 0 || pieSlices.length > 0 || pieSupplemental.length > 0 ? (
         <Card>
           <View
@@ -516,10 +519,14 @@ export default function AnalysisScreen() {
               <Body muted>{tr.analysis.noResults}</Body>
             )
           ) : chartType === "bars" ? (
-            <Bars width={Math.min(width - spacing.lg * 4, 1040)} groups={barGroups} series={barSeries} />
+            <ChartFrame>
+              {(chartWidth) => <Bars width={chartWidth} groups={barGroups} series={barSeries} />}
+            </ChartFrame>
           ) : (
+            <ChartFrame>
+              {(chartWidth) => (
             <Lines
-              width={Math.min(width - spacing.lg * 4, 1040)}
+              width={chartWidth}
               height={220}
               xLabels={monthKeys.map(shortMonthLabel)}
               series={[{
@@ -528,10 +535,14 @@ export default function AnalysisScreen() {
                 points: netTrendPoints,
               }]}
             />
+              )}
+            </ChartFrame>
           )}
         </Card>
       ) : null}
+      </View>
 
+      <View style={compact ? undefined : { flex: 0.85, minWidth: 0 }}>
       {activeBudgetRows.length === 0 ? (
         <Card>
           <ListRow
@@ -580,6 +591,8 @@ export default function AnalysisScreen() {
           )}
         />
       )}
+      </View>
+      </View>
 
       {rows.length === 0 ? (
         <EmptyState icon={Inbox} title={tr.cashflow.emptyMonth} />
@@ -623,19 +636,23 @@ export default function AnalysisScreen() {
       {trendRow && trendStartMonth && trendEndMonth && monthKeys.length > 1 ? (
         <Card>
           <Heading style={{ marginTop: 0 }}>{tr.analysis.trendOf(trendRow.category.name, monthKeys.length)}</Heading>
-          <Lines
-            width={Math.min(width - spacing.lg * 4, 1040)}
-            xLabels={monthKeys.map(shortMonthLabel)}
-            series={[
-              {
-                label: trendRow.category.name,
-                color: colors[0],
-                points: monthlySeries(trendRow.data, trendStartMonth, trendEndMonth).map(
-                  (p) => p.amountMinor,
-                ),
-              },
-            ]}
-          />
+          <ChartFrame>
+            {(chartWidth) => (
+              <Lines
+                width={chartWidth}
+                xLabels={monthKeys.map(shortMonthLabel)}
+                series={[
+                  {
+                    label: trendRow.category.name,
+                    color: colors[0],
+                    points: monthlySeries(trendRow.data, trendStartMonth, trendEndMonth).map(
+                      (p) => p.amountMinor,
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </ChartFrame>
         </Card>
       ) : null}
     </View>

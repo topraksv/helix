@@ -81,3 +81,18 @@ export function shouldUseWideImportGuide(viewportWidth: number): boolean {
 export function shouldUseWideWorkspace(viewportWidth: number): boolean {
   return viewportWidth >= WIDE_WORKSPACE_WIDTH;
 }
+
+/**
+ * Where two filter cards stop being a stack and become a row.
+ *
+ * They waited for the workspace width, so a tablet held in portrait spent its
+ * entire first screen on the range picker and the search box — on the screen
+ * called Analysis, with no chart in sight. Two cards need about 350px each to
+ * keep a six-option period control on one line, so they can pair a long way
+ * before a workspace can.
+ */
+const PAIRED_FILTER_WIDTH = 700;
+
+export function shouldPairFilterCards(contentWidth: number): boolean {
+  return contentWidth >= PAIRED_FILTER_WIDTH;
+}

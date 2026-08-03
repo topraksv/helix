@@ -369,7 +369,11 @@ export default function MonthDetailScreen() {
   }
 
   return (
-    <Screen scroll={false} width="workspace">
+    // A month is a summary and a list of single-line category rows: a name on
+    // the left and an amount on the right. Given a workspace column those two
+    // ends stood 500px apart with nothing between them, which is a phone row
+    // stretched, not a desktop layout. The reading measure is the honest width.
+    <Screen scroll={false} width="form">
       <Stack.Screen options={{ title: monthLabel(rangeMonth) }} />
       <FlatList
         data={items}

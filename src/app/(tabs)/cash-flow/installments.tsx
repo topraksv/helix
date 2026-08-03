@@ -4,7 +4,8 @@
  *  hidden — each month shows only its own live installments (spec §3.2, §2.8). */
 
 import React, { useState } from "react";
-import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { useContentWidth } from "../../../ui/viewport";
 import { useRouter } from "expo-router";
 import { ChevronRight, CreditCard, Landmark, Plus } from "lucide-react-native";
 import { installmentDisplayTitle, planProgress, type GeneratedInstallment } from "../../../domain/installments";
@@ -34,8 +35,7 @@ export default function InstallmentsScreen() {
   const allTx = transactionsState.data;
   const router = useRouter();
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
-  const compact = width < 560;
+  const compact = useContentWidth() < 560;
   const [viewMonth, setViewMonth] = useState(monthKeyOf(todayISO()));
   const [cardFilter, setCardFilter] = useState<string | null>(null);
   const liveStates = [plansState, sourcesState, personsState, transactionsState];

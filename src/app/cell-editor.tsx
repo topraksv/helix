@@ -255,7 +255,10 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   }
 
   return (
-    <Screen scroll={false} width="workspace">
+    // A single cell of the ledger: two small editors and the movements behind
+    // one number. That is a form, not a workspace — given the wide column the
+    // movement rows put their amount 350px from their own label.
+    <Screen scroll={false} width="form">
       <Stack.Screen options={{ title: `${category?.name ?? ""} · ${monthLabel(rangeMonth)}` }} />
       <FlatList
         data={cellTx}

@@ -205,7 +205,10 @@ function ItemBreakdown({
                   backgroundColor: isCurrent ? palette.primarySoft + "55" : pressed ? palette.surfaceAlt : "transparent",
                 })}
               >
-                <Text style={[type.body, { width: 88, flexShrink: 0, color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? font.bold : font.medium }]}>
+                {/* Intrinsic, not 88px: "Haziran 2026" is wider than that, so
+                    a third of the year wrapped onto two lines and those rows
+                    stood taller than the rest of the list. */}
+                <Text style={[type.body, { flexShrink: 0, color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? font.bold : font.medium }]}>
                   {monthLabel(r.month)}
                 </Text>
                 <View style={{ flex: 1, minWidth: 32, marginHorizontal: spacing.sm }}>

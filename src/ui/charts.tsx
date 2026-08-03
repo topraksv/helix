@@ -1,6 +1,6 @@
 /** Accessible SVG chart primitives shared by native and web. */
 
-import React from "react";
+import React, { type ReactNode } from "react";
 import { Text, View } from "react-native";
 import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import type { Distribution } from "../domain/analytics";
@@ -8,6 +8,38 @@ import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { resolveBarAxis } from "./chart-axis";
 import { chart, font, radius, spacing, type, useTheme } from "./theme";
+import { useMeasuredWidth } from "./viewport";
+
+/**
+ * The box a pixel-sized chart is drawn into.
+ *
+ * `Bars` and `Lines` need a number, and every caller used to compute one from
+ * the window: `Math.min(width - spacing.lg * 4, 1040)`. That expression encodes
+ * a guess about how much chrome sits between the window and the chart, and the
+ * guess broke the moment a 220px rail and a second column appeared — at a
+ * 1024px window it asked for 928px inside a card that had 740, which is a
+ * horizontal scrollbar on a screen that should not have one.
+ *
+ * So the frame measures itself and hands the chart the width it really has.
+ */
+export function ChartFrame({
+  children,
+  min = 240,
+  max = 1040,
+}: {
+  children: (width: number) => ReactNode;
+  min?: number;
+  max?: number;
+}) {
+  // Falls back to the floor, never the ceiling: growing into the measurement
+  // costs one frame, starting above it overflows the container for that frame.
+  const [measured, onLayout] = useMeasuredWidth(min);
+  return (
+    <View onLayout={onLayout} style={{ width: "100%" }}>
+      {children(Math.max(min, Math.min(measured, max)))}
+    </View>
+  );
+}
 
 type SeriesColors = readonly [string, string, string, string, string, string, string, string];
 
