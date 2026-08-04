@@ -196,6 +196,13 @@ function SubscriptionScheduleOverview({
                     </View>
                     <View style={{ paddingHorizontal: spacing.xs, alignItems: "center" }}>
                       <Text style={[type.label, { color: palette.textStrong, textAlign: "center" }]}>{shortDateLabel(stop.date)}</Text>
+                      {/* The three stops sit at equal distances because three
+                          labels need equal room, so the line cannot be read as
+                          a time axis — 8 days and 5 days were drawn the same
+                          length. The interval is stated instead of implied. */}
+                      <Text style={[type.small, { color: palette.textSecondary, textAlign: "center", marginTop: 1, fontSize: 11 }]}>
+                        {tr.dashboard.inDays(Math.max(0, daysBetweenISO(today, stop.date)))}
+                      </Text>
                       {index > 0 ? (
                         <Text
                           style={[type.small, { color: palette.textSecondary, textAlign: "center", marginTop: 2 }]}
@@ -320,7 +327,11 @@ export default function SubscriptionsScreen() {
       {active.length === 0 && watched.length === 0 && passive.length === 0 ? (
         <EmptyState icon={RefreshCw} title={tr.subs.emptyTitle} hint={tr.subs.emptyHint} />
       ) : null}
-      <WorkspaceGrid testID="subscription-groups" breakpoint={900}>
+      <WorkspaceGrid
+        testID="subscription-groups"
+        breakpoint={900}
+        masses={[active.length, watched.length, passive.length]}
+      >
         {active.length > 0 ? (
           <View>
             <SectionHeader>{tr.common.active}</SectionHeader>

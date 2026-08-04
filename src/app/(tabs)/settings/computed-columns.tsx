@@ -440,8 +440,8 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                             <Body style={{ flex: 1 }}>{column.name}</Body>
                           </View>
                           <Row gap={spacing.sm}>
-                            <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${column.name}`} onPress={() => startEdit(column)} />
-                            <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${column.name}`} haptic="none" onPress={() => void remove(column)} />
+                            <IconButton icon={Pencil} label={`${tr.common.edit} · ${column.name}`} onPress={() => startEdit(column)} />
+                            <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${column.name}`} haptic="none" onPress={() => void remove(column)} />
                           </Row>
                         </Spread>
                         <Spread style={{ marginTop: spacing.xs }}>

@@ -153,68 +153,69 @@ test("the footer keeps a restrained material in both themes", async ({ page }) =
 });
 
 /**
- * Navigation is one component with two orientations, so the contract is one
- * test: the bar belongs to the thumb, the rail belongs to the pointer, and
- * neither may sit on top of the content it navigates.
- *
- * The rail's width is a claim about the real rendered Turkish font — "Abonelikler"
- * beside a 22pt icon has to stay on one line — so it is measured from the
- * client rects a wrapped label would split into, not eyeballed.
+ * Navigation is one bar along the bottom at every width. A desktop rail was
+ * tried and removed by the owner: it took a column out of the window, so every
+ * page's content sat off centre, and the app asked its user to learn two
+ * navigations. The contract is that the bar keeps its position and its bounded
+ * width from a phone all the way to a wide monitor — and that its labels stay
+ * fully opaque over a glass surface, which is the difference between a
+ * translucent panel and a faded one.
  */
-test("navigation stands up into a rail on desktop and stays a bar on a phone", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("navigation stays a bounded bottom bar at every width", async ({ page }) => {
   await onboard(page);
   await openCashFlow(page);
 
   const geometry = () => page.getByRole("tablist").evaluate((element) => {
     const box = element.getBoundingClientRect();
-    return { x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+    const style = getComputedStyle(element);
+    return {
+      x: box.x,
+      bottom: box.bottom,
+      width: box.width,
+      height: box.height,
+      background: style.backgroundColor,
+      backdrop: style.backdropFilter || style.getPropertyValue("-webkit-backdrop-filter"),
+    };
   });
-  const labelLineCounts = () => page.getByRole("tab").evaluateAll((tabs) =>
-    tabs.map((tab) => {
-      const text = Array.from(tab.querySelectorAll("*")).find((node) => node.textContent?.trim().length);
-      return { text: text?.textContent?.trim() ?? "", rects: text ? text.getClientRects().length : 0 };
-    }));
 
-  const bar = await geometry();
-  expect(bar.width, "the phone bar runs across the bottom").toBeGreaterThan(bar.height);
-  expect(bar.bottom).toBeLessThanOrEqual(844);
-
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.getByRole("tab", { name: "Mali Tablo" })).toBeVisible();
-  // Poll rather than measure once: the bar and the rail are the same component
-  // re-laying itself out, so a single read can land mid-switch and see the
-  // orientation that is on its way out.
-  await expect.poll(async () => {
-    const box = await geometry();
-    return box.height > box.width;
-  }).toBe(true);
-  const rail = await geometry();
-  expect(rail.height, "the desktop rail stands up").toBeGreaterThan(rail.width);
-  expect(rail.x, "the rail sits against the leading edge").toBeLessThan(rail.width);
-
-  for (const label of await labelLineCounts()) {
-    expect(label.rects, `"${label.text}" must stay on one line in the rail`).toBe(1);
+  for (const [width, height] of [[390, 844], [768, 1024], [1024, 768], [1440, 900], [1920, 1080]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect(page.getByRole("tab", { name: "Mali Tablo" })).toBeVisible();
+    await expect.poll(async () => (await geometry()).width > 0).toBe(true);
+    const bar = await geometry();
+    expect(bar.width, `the bar runs across the bottom at ${width}`).toBeGreaterThan(bar.height);
+    expect(bar.bottom, `the bar stays inside the viewport at ${width}`).toBeLessThanOrEqual(height + 1);
+    expect(bar.width, `the bar stays bounded at ${width}`).toBeLessThanOrEqual(560);
+    // Content keeps the whole window: nothing stands beside it.
+    const heading = await page.getByRole("heading", { name: "Mali Tablo", exact: true }).boundingBox();
+    expect(heading!.x, `content is not pushed aside at ${width}`).toBeLessThan(width / 2);
   }
 
-  // The bar used to float over the very rows it navigates. The rail stands
-  // beside them, so the scene has to have given up the space.
-  const heading = await page.getByRole("heading", { name: "Mali Tablo", exact: true }).boundingBox();
-  expect(heading!.x, "content starts clear of the rail").toBeGreaterThanOrEqual(rail.right);
+  // Glass: an alpha surface under a blur, with the ink on top at full strength.
+  const bar = await geometry();
+  const alpha = Number(bar.background.match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1] ?? "1");
+  expect(alpha, "the navigation surface is translucent").toBeLessThan(0.85);
+  expect(bar.backdrop).toContain("blur");
+  const labelAlpha = await page.getByRole("tab").evaluateAll((tabs) =>
+    tabs.flatMap((tab) =>
+      Array.from(tab.querySelectorAll("*"))
+        .filter((node) => node.textContent?.trim().length && node.children.length === 0)
+        .map((node) => ({
+          text: node.textContent!.trim(),
+          color: getComputedStyle(node as HTMLElement).color,
+          opacity: getComputedStyle(node as HTMLElement).opacity,
+        })),
+    ));
+  expect(labelAlpha.length).toBeGreaterThanOrEqual(5);
+  for (const label of labelAlpha) {
+    expect(label.color, `"${label.text}" must be fully opaque`).not.toMatch(/rgba\([^)]*,\s*0?\.\d+\)/);
+    expect(Number(label.opacity), `"${label.text}" must be fully opaque`).toBe(1);
+  }
 
   // Clicking still routes through the library's cancellable tabPress contract.
   await page.getByRole("tab", { name: "Yatırımlar" }).click();
   await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
-
-  // Same instrument, so the same restrained material in either orientation.
-  const material = await page.getByRole("tablist").evaluate((element) => {
-    const style = getComputedStyle(element);
-    return { background: style.backgroundColor, backdrop: style.backdropFilter || style.getPropertyValue("-webkit-backdrop-filter") };
-  });
-  expect(material.background).toMatch(/^rgba\(/);
-  expect(material.backdrop).toContain("blur");
 });
-
 test("bar-chart amounts stay readable and contained on phone and desktop", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await onboard(page);
@@ -611,8 +612,12 @@ test("the phone financial-table tools stay in one compact row", async ({ page })
   await expect(page.getByTestId("screen-header").getByText(/^\d{4}$/)).toBeVisible();
   await expect(page.getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
+  // The compact captions name the same object as the desktop labels — the
+  // phone said "Düzenle" and "Geçmiş" where the wide row said "Kolonları
+  // Düzenle" and "Geçmiş Ay Girişi", so the same five tools had to be learned
+  // twice.
   const tools = page.getByRole("button").filter({
-    has: page.locator("text=/^(Düzenle|Taksitler|Analiz|Geçmiş|Başlangıç)$/"),
+    has: page.locator("text=/^(Kolonlar|Taksitler|Analiz|Geçmiş Ay|Başlangıç)$/"),
   });
   await expect(tools).toHaveCount(5);
   const boxes = await tools.evaluateAll((elements) =>
@@ -633,7 +638,9 @@ test("pivoting the financial table resets unrelated offsets and keeps complete c
   await expect(page.getByRole("radio", { name: "Kolon odaklı" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("link", { name: "Kredi Kartı", exact: true })).toBeVisible();
   const visibleMonths = await page.getByTestId("table-horizontal-header").getByRole("button").evaluateAll((buttons) => {
-    const viewport = buttons[0]?.parentElement?.parentElement?.getBoundingClientRect();
+    // The scroller itself is the viewport; walking up a fixed number of parents
+    // encoded the wrapper depth instead.
+    const viewport = buttons[0]?.closest('[data-testid="table-horizontal-header"]')?.getBoundingClientRect();
     if (!viewport) return [];
     return buttons
       .map((button) => {
@@ -1093,9 +1100,12 @@ test("financial-table labels and amounts stay inside their cells across widths a
           const parent = element.parentElement?.getBoundingClientRect();
           if (!parent) continue;
           const style = getComputedStyle(element);
+          // The ledger label is the one place allowed to shorten, and only
+          // past three lines — an item name is user-authored, and unbounded
+          // wrapping hands the table's geometry to whatever someone types.
           const deliberateTableClamp =
             element.dataset.testid !== "matrix-value" &&
-            style.webkitLineClamp === "2" &&
+            style.webkitLineClamp === "3" &&
             Boolean(element.getAttribute("aria-label"));
           const contained =
             box.left >= parent.left - 1 &&
@@ -1160,9 +1170,17 @@ test("financial-table labels and amounts stay inside their cells across widths a
     }),
   ]);
   expect(labelFlow[0].overflows).toBe(false);
-  expect(labelFlow[1].clamp).toBe("2");
+  // A real item name wraps and the row grows to hold it. It used to stop at two
+  // lines, so "Kredi Kartı Tek Çekim tek çekim" rendered as "Kredi Kartı Tek
+  // Çekim tek çe…" — the shortened part being exactly what separates it from
+  // the next item. Three lines is past every real name; the bound exists only
+  // so one pathological entry cannot take the table with it.
+  expect(labelFlow[1].clamp).toBe("3");
   expect(labelFlow[1].lines).toBeGreaterThan(1);
-  expect(labelFlow[1].lines).toBeLessThanOrEqual(2);
+  const fullyVisible = await longLabel.evaluate(
+    (element) => element.scrollHeight <= element.clientHeight + 1,
+  );
+  expect(fullyVisible).toBe(true);
 });
 
 test("settings workspace navigation reflows from one to two columns", async ({ page }) => {

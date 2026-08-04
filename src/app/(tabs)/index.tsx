@@ -2,7 +2,7 @@
  * one concise monthly insight. Detailed exploration belongs to Analysis. */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
 import { buildDashboardModel } from "../../domain/dashboard";
@@ -36,7 +36,7 @@ import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
-import { shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart, shouldUseSideNavigation } from "../../ui/responsive";
+import { shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart } from "../../ui/responsive";
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
 import { font, heroSurface, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
@@ -265,7 +265,15 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
             <Body muted style={{ marginTop: spacing.sm, fontSize: 12 }}>{tr.markets.offlineHint}</Body>
           </>
         ) : (
-          <Body muted>{tr.markets.noData}</Body>
+          // The card is stretched to its neighbour's height when the two share
+          // a desktop row, so a single sentence pinned to the top left leaves
+          // the column looking abandoned. One line of copy centres in the space
+          // it was given instead.
+          <View style={fill ? { flex: 1, justifyContent: "center", paddingVertical: spacing.lg } : undefined}>
+            <Body muted style={{ textAlign: fill ? "center" : "left", maxWidth: 380, alignSelf: fill ? "center" : "auto" }}>
+              {tr.markets.noData}
+            </Body>
+          </View>
         )}
       </Card>
     </>
@@ -328,7 +336,6 @@ export default function DashboardScreen() {
   const { palette, scheme } = useTheme();
   const hero = heroSurface(palette, scheme);
   const heroInk = hero.ink;
-  const { width } = useWindowDimensions();
   const contentWidth = useContentWidth();
   const chartColors = useSeriesColors();
   // Re-render when FX rates land so foreign-currency projections settle.
@@ -518,7 +525,7 @@ export default function DashboardScreen() {
       // The rail already carries the mark and the product name at desktop
       // widths; repeating it beside the greeting is the same identity twice on
       // one screen. Phones have no rail, so the greeting keeps it.
-      leading={shouldUseSideNavigation(width) ? undefined : <BrandMark size={40} />}
+      leading={<BrandMark size={40} />}
       width="workspace"
     >
       <FirstRunTour />
@@ -572,6 +579,9 @@ export default function DashboardScreen() {
               {projected != null ? (
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={`${tr.dashboard.forecastToggle} ${
+                    projectedDelta != null && projectedDelta >= 0 ? tr.dashboard.forecastRising : tr.dashboard.forecastFalling
+                  }`}
                   accessibilityState={{ expanded: showForecast }}
                   onPress={() => setShowForecast((v) => !v)}
                   style={({ pressed }) => ({
@@ -585,10 +595,17 @@ export default function DashboardScreen() {
                     opacity: pressed ? 0.72 : 1,
                   })}
                 >
+                  {/* Direction is carried by the glyph, never by colour. The
+                      arrow used to be painted from `projectedDelta` while the
+                      amount beside it was painted from its own sign, so a
+                      forecast that fell but stayed positive rendered a red
+                      arrow next to a green number — two contradictory readings
+                      of the same row, in the one vocabulary this app reserves
+                      for the sign of money. */}
                   {projectedDelta != null && projectedDelta >= 0 ? (
-                    <TrendingUp size={18} color={palette.positiveText} />
+                    <TrendingUp size={18} color={palette.textSecondary} />
                   ) : (
-                    <TrendingDown size={18} color={palette.negativeText} />
+                    <TrendingDown size={18} color={palette.textSecondary} />
                   )}
                   <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
                     <Text style={[type.label, { color: palette.textSecondary }]}>{tr.dashboard.forecastToggle}</Text>
@@ -619,21 +636,23 @@ export default function DashboardScreen() {
                 <MetricStrip
                   style={{ marginTop: spacing.md }}
                   items={[
-                    { label: tr.cashflow.income, value: <Amount minor={monthIncomeMinor} colorized={false} color={palette.positiveText} style={{ textAlign: "left" }} /> },
-                    { label: tr.dashboard.outflow, value: <Amount minor={-monthOutflowMinor} colorized={false} color={palette.negativeText} style={{ textAlign: "left" }} /> },
-                    { label: tr.dashboard.netChange, value: <Amount minor={monthNetMinor} colorized={false} color={palette.textStrong} style={{ textAlign: "left" }} /> },
+                    // The three figures share one line and shorten together:
+                    // the strip measures its own column and asks for ₺1,2 M
+                    // rather than dropping "Net değişim" onto a second row.
+                    { label: tr.cashflow.income, value: (compact: boolean) => <Amount minor={monthIncomeMinor} compact={compact} colorized={false} color={palette.positiveText} style={{ textAlign: "left" }} /> },
+                    { label: tr.dashboard.outflow, value: (compact: boolean) => <Amount minor={-monthOutflowMinor} compact={compact} colorized={false} color={palette.negativeText} style={{ textAlign: "left" }} /> },
+                    { label: tr.dashboard.netChange, value: (compact: boolean) => <Amount minor={monthNetMinor} compact={compact} colorized={false} color={palette.textStrong} style={{ textAlign: "left" }} /> },
                   ]}
                 />
               </View>
+              {/* One door per destination. The warning card directly above this
+                  hero already opens reconciliation, is the more visible of the
+                  two and carries the count; a second button 800px down the same
+                  screen only made the hero's primary action share its row. */}
               <Row style={{ marginTop: spacing.lg }}>
                 <View style={{ flex: 1 }}>
                   <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
                 </View>
-                {late.length > 0 ? (
-                  <View style={{ flex: 1 }}>
-                    <Button icon={History} label={tr.dashboard.catchupShort} variant="secondary" onPress={() => router.push("/reconciliation")} />
-                  </View>
-                ) : null}
               </Row>
             </View>
           </View>

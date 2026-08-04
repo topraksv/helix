@@ -2,6 +2,7 @@ import React, { type ReactNode } from "react";
 import { View } from "react-native";
 import { spacing } from "./theme";
 import { useContentWidth } from "./viewport";
+import { shouldPairByMass } from "./responsive";
 
 /**
  * Task pages use the same reading order on every device: the active editor
@@ -61,16 +62,21 @@ export function WorkspaceGrid({
   children,
   breakpoint = 900,
   layout = "grid",
+  masses,
   testID,
 }: {
   children: ReactNode;
   breakpoint?: number;
   /** Independent peers may share a desktop row; sequential work stays one stream. */
   layout?: "grid" | "stack";
+  /** Relative content weight per child (row counts, usually). Extreme
+   *  imbalance keeps the stream rather than pairing. */
+  masses?: number[];
   testID?: string;
 }) {
   const width = useContentWidth();
-  const wide = layout === "grid" && width >= breakpoint;
+  const balanced = masses == null || shouldPairByMass(masses);
+  const wide = layout === "grid" && balanced && width >= breakpoint;
   return (
     <View
       testID={testID}

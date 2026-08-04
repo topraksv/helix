@@ -62,13 +62,18 @@ describe("operation progress language", () => {
     expect(components).not.toContain("WaitingText");
     expect(frozenGate).not.toContain("WaitingText");
     expect(components.match(/<OperationFlow/g)).toHaveLength(1);
-    expect(rootLayout).toContain("<WaitingNotice kind={wait.kind} message={wait.message} />");
+    expect(rootLayout).toContain("<WaitingNotice kind={wait.kind} title={wait.title} message={wait.message} />");
     // Signing out, freezing and deleting all end the session and land on this
     // same view, so each one has to say what it is rather than borrowing the
-    // first-pull sentence.
+    // first-pull sentence — and each one names itself in a heading, because a
+    // sentence alone left three very different operations looking identical.
     for (const intent of ["sign-out", "local-sign-out", "delete", "freeze"]) {
       expect(rootLayout).toContain(`case "${intent}":`);
     }
+    const titles = new Set(
+      [...rootLayout.matchAll(/title: (tr\.[A-Za-z.]+)/g)].map((match) => match[1]),
+    );
+    expect(titles.size).toBeGreaterThanOrEqual(7);
     expect(settings).toContain("tr.operation.localSigningOut");
   });
 
@@ -97,8 +102,15 @@ describe("operation progress language", () => {
     expect(source).toContain('"sign-out": [LogOut, "secondary"]');
     expect(source).toContain('freeze: [Snowflake, "warning"]');
     expect(source).toContain('delete: [Trash2, "destructive"]');
-    expect(source).not.toContain("useWaitingPulse");
-    expect(source).not.toContain("<Animated.View");
+    // The signature explains an action BEFORE it starts and stays still; a
+    // pre-action surface that pulses reads as work already happening. Motion
+    // belongs to the waiting view, which is the one moment something really is
+    // running — and it honours Reduce Motion.
+    const signature = source.slice(source.indexOf("export function OperationSignature("));
+    expect(signature).not.toContain("Animated");
+    const waiting = source.slice(source.indexOf("if (waiting) {"), source.indexOf("export function OperationSignature("));
+    expect(waiting).toContain("<Animated.View");
+    expect(source).toContain("if (reducedMotion) {");
   });
 
   it("keeps lifecycle entry points quiet and routes cloud sign-out through confirmation", () => {

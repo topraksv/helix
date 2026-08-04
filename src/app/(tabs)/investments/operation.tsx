@@ -44,6 +44,7 @@ import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { controlSize, font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { useContentWidth } from "../../../ui/viewport";
 
 const VALID_KINDS = new Set<InvestmentOperationKind>(["existing", "buy", "sell", "contribution"]);
 type ContributionMode = "units" | "amount";
@@ -96,6 +97,9 @@ export default function InvestmentOperationScreen() {
   const router = useRouter();
   const userId = useUserId();
   const { palette } = useTheme();
+  // The impact chip only shares the heading row where a chip-sized column can
+  // still hold the sentence; below that it takes its own row.
+  const wideSummary = useContentWidth() >= 560;
   const productsState = useInvestmentProductsState();
   const operationsState = useInvestmentOperationsState();
   const profilesState = useInvestmentProfilesState();
@@ -235,16 +239,23 @@ export default function InvestmentOperationScreen() {
           accessible
           accessibilityRole="image"
           accessibilityLabel={`${pageTitle}. ${selected?.name ?? tr.investments.product}. ${date}. ${calculationTotal == null ? "—" : formatMinor(calculationTotal)}. ${tr.investments.operationImpact[kind]}`}
+          // The app paints a card as `surface` under a hairline; this one was
+          // `surfaceAlt` under a 4px bar with `surface` tiles inside it — the
+          // surface order inverted, so the one screen that explains a money
+          // movement looked like it came from another product. It carries the
+          // operation's colour as the same top accent a hero card uses.
           style={{
-            borderLeftWidth: 4,
-            borderLeftColor: impactColor,
+            borderTopWidth: 3,
+            borderTopColor: impactColor,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.border,
             padding: spacing.lg,
             borderRadius: radius.lg,
-            backgroundColor: palette.surfaceAlt,
+            backgroundColor: palette.surface,
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
-            <View style={{ width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "70" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+            <View style={{ width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: impactColor + "16", borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "70" }}>
               <ImpactIcon accessible={false} size={21} color={impactColor} strokeWidth={2.2} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -254,10 +265,22 @@ export default function InvestmentOperationScreen() {
                 {selected ? `${selected.name} · ${tr.investments.types[selected.assetType]}` : tr.investments.product}
               </Text>
             </View>
-            <View style={{ maxWidth: "34%", paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.full, backgroundColor: impactColor + "18", borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "70" }}>
-              <Text style={[type.small, { color: impactColor, fontFamily: font.semibold, textAlign: "center" }]}>{tr.investments.operationImpact[kind]}</Text>
-            </View>
+            {/* "Serbest bakiyeye eklenir" is the sentence that tells the user
+                where their money goes, and a 34%-wide column beside a heading
+                broke it across three lines on a phone. It gets the full width
+                below instead, and only shares the row when there is room. */}
+            {wideSummary ? (
+              <View style={{ maxWidth: "38%", paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 1, borderRadius: radius.full, backgroundColor: impactColor + "18", borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "70" }}>
+                <Text style={[type.small, { color: impactColor, fontFamily: font.semibold, textAlign: "center" }]}>{tr.investments.operationImpact[kind]}</Text>
+              </View>
+            ) : null}
           </View>
+          {!wideSummary ? (
+            <View style={{ marginTop: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: impactColor + "14", borderWidth: StyleSheet.hairlineWidth, borderColor: impactColor + "60" }}>
+              <ImpactIcon accessible={false} size={15} color={impactColor} strokeWidth={2.2} />
+              <Text style={[type.small, { color: impactColor, fontFamily: font.semibold, flex: 1, minWidth: 0 }]}>{tr.investments.operationImpact[kind]}</Text>
+            </View>
+          ) : null}
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.lg }}>
             <View style={{ flex: 1, minWidth: 110, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
               <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.operationDate}</Text>

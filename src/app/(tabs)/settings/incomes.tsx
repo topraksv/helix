@@ -13,7 +13,7 @@ import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { shortDateLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select } from "../../../ui/components";
+import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Select } from "../../../ui/components";
 import { categoryIcon } from "../../../data/category-icons";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
@@ -283,7 +283,7 @@ export default function IncomeRulesScreen() {
           anchorDate={anchorDate}
         />
         <Label>{tr.incomes.kindLabel}</Label>
-        <Segmented options={KINDS.map((k) => ({ value: k, label: tr.incomeKinds[k] }))} value={kind} onChange={setKind} />
+        <ChipPicker options={KINDS.map((k) => ({ value: k, label: tr.incomeKinds[k] }))} value={kind} onChange={setKind} />
         <Field
           label={tr.incomes.nameLabel}
           value={nameTouched ? name : ""}
@@ -302,7 +302,7 @@ export default function IncomeRulesScreen() {
           }}
         />
         <Label>{tr.incomes.recurrenceLabel}</Label>
-        <Segmented
+        <ChipPicker
           options={[
             { value: "monthly", label: tr.incomes.monthly },
             { value: "weekly", label: tr.incomes.weekly },

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View } from "react-native";
-import { PiggyBank, Pencil, Trash2 } from "lucide-react-native";
+import { Target, Pencil, Trash2 } from "lucide-react-native";
 import { useAllTransactionsState, useCategoryBudgetsState, useCategoriesState, usePersonsState, useUserId, toTxLike } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteCategoryBudget, restoreCategoryBudget, upsertCategoryBudget } from "../../../data/repo";
@@ -184,7 +184,7 @@ export default function BudgetsScreen() {
               only rewrite how a closed month scores itself. */}
           <MonthStepper value={month} onChange={changeMonth} min={currentMonth} />
           <Card>
-        <PanelHeader icon={PiggyBank} title={editing ? tr.budgets.editTitle : tr.budgets.add} description={tr.budgets.formHint} />
+        <PanelHeader icon={Target} title={editing ? tr.budgets.editTitle : tr.budgets.add} description={tr.budgets.formHint} />
         {editingProgress ? (
           <BudgetMeter spentMinor={editingProgress.spentMinor} limitMinor={editingProgress.amountMinor} />
         ) : null}
@@ -223,7 +223,7 @@ export default function BudgetsScreen() {
           <View>
             <SectionHeader description={tr.budgets.limitsHint}>{tr.budgets.limitsTitle}</SectionHeader>
             {monthBudgets.length === 0 ? (
-              <EmptyState icon={PiggyBank} title={tr.budgets.emptyTitle} hint={tr.budgets.emptyHint} />
+              <EmptyState icon={Target} title={tr.budgets.emptyTitle} hint={tr.budgets.emptyHint} />
             ) : (
               <CardList
               items={monthBudgets}
@@ -242,8 +242,8 @@ export default function BudgetsScreen() {
                     </Body>
                   </View>
                   <Row gap={spacing.sm}>
-                    <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${category?.name ?? tr.common.none}`} onPress={() => startEdit(budget)} />
-                    <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${category?.name ?? tr.common.none}`} haptic="none" onPress={() => void remove(budget)} />
+                    <IconButton icon={Pencil} label={`${tr.common.edit} · ${category?.name ?? tr.common.none}`} onPress={() => startEdit(budget)} />
+                    <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${category?.name ?? tr.common.none}`} haptic="none" onPress={() => void remove(budget)} />
                   </Row>
                 </Spread>
                 <View style={{ height: 7, borderRadius: 4, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>

@@ -12,7 +12,7 @@ import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
 import { ArrowDownLeft, ArrowUpRight, Columns3, LayoutTemplate, Pencil, Plus, Trash2 } from "lucide-react-native";
-import { Badge, Body, Button, Card, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Segmented, Spread, Toggle } from "../../../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -196,7 +196,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
               incomeCount={categories.filter((category) => category.kind === "income").length}
             />
             <Field label={tr.settings.addCategory} value={name} onChangeText={setName} placeholder={categoryPlaceholder} />
-            <Segmented
+            <ChipPicker
               options={[
                 { value: "expense", label: tr.settings.kindExpense },
                 { value: "income", label: tr.settings.kindIncome },
@@ -312,11 +312,10 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                             — "Düzenle" alone was ambiguous once per row. */}
                         <IconButton
                           icon={Pencil}
-                          size={32}
                           label={`${tr.common.edit} · ${c.name}`}
                           onPress={() => startEditing(c)}
                         />
-                        <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${c.name}`} haptic="none" onPress={() => void remove(c)} />
+                        <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${c.name}`} haptic="none" onPress={() => void remove(c)} />
                       </Row>
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>

@@ -1,5 +1,5 @@
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import {
   Check,
   CheckCircle2,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react-native";
 import { radius, spacing, type, useTheme, type Palette } from "./theme";
 import { tr } from "../i18n/tr";
+import { useReducedMotion } from "./motion";
 
 export type OperationFlowKind =
   | "sign-in"
@@ -71,10 +72,13 @@ function operationSupportIcon(kind: OperationFlowKind): LucideIcon {
 export function OperationFlow({
   kind,
   label,
+  title,
   presentation = "inline",
 }: {
   kind: OperationFlowKind;
   label: string;
+  /** Names the operation on the full-page waiting view. */
+  title?: string;
   presentation?: "inline" | "waiting" | "hero";
 }) {
   const { palette } = useTheme();
@@ -83,6 +87,85 @@ export function OperationFlow({
   const destructive = tone === "destructive";
   const hero = presentation === "hero";
   const waiting = presentation === "waiting";
+  const reducedMotion = useReducedMotion();
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!waiting) return;
+    if (reducedMotion) {
+      pulse.setValue(0.7);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [waiting, reducedMotion, pulse]);
+
+  if (waiting) {
+    // A whole-page composition: the operation's own mark, its name, and the
+    // sentence that says what is happening to the data. The medallion carries
+    // the running indicator so the page never shows a bare spinner with no
+    // subject, and the tone comes from the operation — a deletion is not the
+    // same event as a sign-out and must not look like one.
+    return (
+      <View
+        accessible
+        accessibilityRole="progressbar"
+        accessibilityLabel={title ? `${title}. ${label}` : label}
+        accessibilityValue={{ text: label }}
+        style={{ width: "100%", maxWidth: 440, alignItems: "center", gap: spacing.lg }}
+      >
+        <View accessible={false} style={{ width: 128, height: 128, alignItems: "center", justifyContent: "center" }}>
+          {/* One slow breath, in the operation's own colour. A bare spinner
+              says "something is happening"; this says which something, and it
+              is the only motion on the page so it cannot compete with
+              anything. Reduce Motion gets the same composition, still. */}
+          <Animated.View
+            style={{
+              position: "absolute",
+              width: 128,
+              height: 128,
+              borderRadius: 64,
+              backgroundColor: color + "12",
+              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.9] }),
+              transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
+            }}
+          />
+          <View
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 48,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: color + "1A",
+              borderWidth: 1,
+              borderColor: color + "3A",
+            }}
+          >
+            <Icon accessible={false} size={34} color={color} strokeWidth={2} />
+          </View>
+        </View>
+        <View style={{ gap: spacing.sm, alignItems: "center" }}>
+          {title ? (
+            <Text style={[type.heading, { color: destructive ? palette.errorText : palette.textStrong, textAlign: "center" }]}>
+              {title}
+            </Text>
+          ) : null}
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[type.body, { color: palette.textSecondary, textAlign: "center", maxWidth: 380 }]}
+          >
+            {label}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View
@@ -92,22 +175,22 @@ export function OperationFlow({
       accessibilityValue={{ text: label }}
       style={{
         width: "100%",
-        maxWidth: hero ? 480 : waiting ? 360 : undefined,
-        alignItems: hero || waiting ? "stretch" : "flex-start",
-        backgroundColor: hero ? palette.surface : waiting ? palette.surfaceAlt : "transparent",
-        borderRadius: hero ? radius.lg : waiting ? radius.md : 0,
-        borderWidth: hero || waiting ? StyleSheet.hairlineWidth : 0,
-        borderColor: hero || waiting ? palette.border : "transparent",
-        padding: hero ? spacing.lg : waiting ? spacing.md : 0,
+        maxWidth: hero ? 480 : undefined,
+        alignItems: hero ? "stretch" : "flex-start",
+        backgroundColor: hero ? palette.surface : "transparent",
+        borderRadius: hero ? radius.lg : 0,
+        borderWidth: hero ? StyleSheet.hairlineWidth : 0,
+        borderColor: hero ? palette.border : "transparent",
+        padding: hero ? spacing.lg : 0,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: hero || waiting ? spacing.md : spacing.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: hero ? spacing.md : spacing.sm }}>
         <View
           style={{
-            width: hero ? 48 : waiting ? 40 : 36,
-            height: hero ? 48 : waiting ? 40 : 36,
+            width: hero ? 48 : 36,
+            height: hero ? 48 : 36,
             flexShrink: 0,
-            borderRadius: hero || waiting ? radius.md : 12,
+            borderRadius: hero ? radius.md : 12,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: color + "18",
@@ -115,12 +198,12 @@ export function OperationFlow({
             borderColor: color + "80",
           }}
         >
-          <Icon accessible={false} size={hero ? 28 : waiting ? 20 : 17} color={color} strokeWidth={2.3} />
+          <Icon accessible={false} size={hero ? 28 : 17} color={color} strokeWidth={2.3} />
         </View>
         <Text
           accessibilityLiveRegion="polite"
           style={[
-            hero || waiting ? type.label : type.small,
+            hero ? type.label : type.small,
             {
               color: destructive ? palette.errorText : palette.text,
               flexShrink: 1,
@@ -202,7 +285,12 @@ export function OperationSignature({
             }),
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
+      {/* The compact signature is a two-line block beside one mark, so the mark
+          belongs on its centre line. Top-aligned it floated against the first
+          line and the row read as two unrelated things. The full form keeps the
+          top alignment: it carries an eyebrow, a heading and a paragraph, and
+          its mark belongs with the eyebrow. */}
+      <View style={{ flexDirection: "row", alignItems: compact ? "center" : "flex-start", gap: spacing.md }}>
         <View
           testID={testID ? `${testID}-icon` : undefined}
           style={{

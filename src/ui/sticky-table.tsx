@@ -46,13 +46,22 @@ function softWrapLabel(label: string, maxTokenLength = 12): string {
     .join("");
 }
 
+/**
+ * How many lines a user-authored item name may take before it is shortened.
+ *
+ * Unbounded wrapping was the first answer to the ellipsis ban and it hands the
+ * table's geometry to whatever someone types: one 400-character "category"
+ * pushes every row off the screen. Three lines is more than any real
+ * income-expense item needs — "Sağlık ve Özel Sigorta Katkı Payı" fits in two —
+ * and the full text stays in the accessible label either way.
+ */
+const LABEL_MAX_LINES = 3;
+
 export interface StickyColumn {
   key: string;
   /** Full spoken name when the compact visible label is abbreviated. */
   accessibilityLabel?: string;
   label: string;
-  /** Dense matrix item labels wrap twice, then shorten; spoken text stays full. */
-  truncateLabel?: boolean;
   /** Optional marker icon shown top-left of the header (e.g. a computed column). */
   icon?: LucideIcon;
 }
@@ -63,8 +72,6 @@ export interface StickyRow {
   label: string;
   /** Full spoken name when the visible label omits context such as the year. */
   accessibilityLabel?: string;
-  /** Dense matrix item labels wrap twice, then shorten; spoken text stays full. */
-  truncateLabel?: boolean;
   /** Optional marker icon shown top-left of the label (e.g. a computed row).
    *  Mirrors StickyColumn.icon so the two orientations look identical. */
   icon?: LucideIcon;
@@ -183,7 +190,7 @@ export function StickyTable({
   rows,
   headWidth = 116,
   headHorizontalPadding = spacing.sm,
-  cellWidth = 120,
+  cellWidth: requestedCellWidth = 120,
   rowHeight = STICKY_ROW_HEIGHT,
   headerHeight = STICKY_HEADER_HEIGHT,
   pinnedKey,
@@ -225,8 +232,20 @@ export function StickyTable({
   const vRef = scrollRef ?? ownVRef;
   const bodyHRef = useRef<ScrollView>(null);
   const headerHRef = useRef<ScrollView>(null);
-  useWebInteractions(vRef, bodyHRef, headerHRef, rowHeight, cellWidth);
   const [bodyW, setBodyW] = useState(0);
+  // The screen that owns this table sizes a cell so a whole number of them
+  // fits the width it *estimates* the body will get. That estimate is off by
+  // the container's own hairlines — measured at 320px it was 176 against a real
+  // 174 — and two pixels are enough to leave the last column clipped at the
+  // right edge for ever. The table measures its own body and corrects the cell
+  // by those few pixels; anything larger than a rounding error is a genuine
+  // overflow and is left alone to scroll.
+  const cellsAcross = bodyW > 0 ? Math.max(1, Math.round(bodyW / requestedCellWidth)) : 0;
+  const cellWidth = cellsAcross > 0 && Math.abs(bodyW - cellsAcross * requestedCellWidth) <= 8
+    ? Math.floor(bodyW / cellsAcross)
+    : requestedCellWidth;
+
+  useWebInteractions(vRef, bodyHRef, headerHRef, rowHeight, cellWidth);
   const [bodyViewH, setBodyViewH] = useState(0);
   const [labelHeights, setLabelHeights] = useState<Record<string, number>>({});
   const horizontalFocusSig = useRef("");
@@ -249,6 +268,22 @@ export function StickyTable({
 
   const scrollColumnsSignature = scrollCols.map((column) => column.key).join("|");
 
+  // A horizontally scrolled financial grid must never rest on a half-covered
+  // cell: the sticky label column hides the left part of an amount, and what
+  // is left reads as a smaller but perfectly valid figure. The viewport shows
+  // a whole number of cells, the trailing spacer makes the last cell reachable
+  // at a whole-cell offset, and `snapToInterval` keeps a dragged scroll on the
+  // same grid.
+  const visibleCells = bodyW > 0 ? Math.max(1, Math.floor(bodyW / cellWidth)) : 0;
+  // Absorbs the leftover so the far end is reachable on the cell grid. Clamping
+  // the viewport itself to whole cells was tried and rejected: at 320px only one
+  // 88px month fits, so it threw away up to 87px of a phone to avoid a partial
+  // cell at the right edge — where an amount is right-aligned and a clipped one
+  // ends mid-digit rather than reading as a smaller valid figure. The left edge
+  // is the dangerous one, and snapping keeps it exact.
+  const trailingSpacer = bodyW > 0 ? bodyW - visibleCells * cellWidth : 0;
+  const maxScrollX = Math.max(0, scrollCols.length * cellWidth - visibleCells * cellWidth);
+
   // Center the current month on open (clamped at the edges). When the pivot
   // changes back to row-focused mode there is no horizontal focus target, so
   // reset to the first category; otherwise the recycled ScrollView keeps the
@@ -261,15 +296,16 @@ export function StickyTable({
     if (focusColumnKey) {
       const idx = scrollCols.findIndex((c) => c.key === focusColumnKey);
       if (idx >= 0) {
-        const contentW = scrollCols.length * cellWidth;
         const centered = idx * cellWidth + cellWidth / 2 - bodyW / 2;
-        // The viewport is deliberately sized to complete cells. Snap the
-        // current-month focus to that same grid so an even visible count does
-        // not produce half a month at both edges.
-        target = Math.max(
-          0,
-          Math.min(Math.round(centered / cellWidth) * cellWidth, contentW - bodyW),
-        );
+        // Every resting offset is a whole number of cells, including the one at
+        // the far end. The clamp used to be `contentW - bodyW`, which is a
+        // fractional offset whenever the viewport is not an exact multiple of
+        // the cell — and focusing a month near the end hits that clamp. The
+        // sticky label column then covered the left part of a real amount, so
+        // `₺14.500,00` rendered as `4.500,00`: not a clipped number, a
+        // different and entirely plausible one. The trailing spacer below is
+        // what makes this maximum reachable.
+        target = Math.max(0, Math.min(Math.round(centered / cellWidth) * cellWidth, maxScrollX));
       }
     }
     bodyHRef.current?.scrollTo({ x: target, animated: false });
@@ -357,8 +393,8 @@ export function StickyTable({
           <Text
             testID="table-column-label"
             accessibilityLabel={c.accessibilityLabel ?? c.label}
-            numberOfLines={c.truncateLabel ? 2 : undefined}
-            ellipsizeMode={c.truncateLabel ? "tail" : undefined}
+            numberOfLines={LABEL_MAX_LINES}
+            ellipsizeMode="tail"
             style={[
               type.label,
               {
@@ -372,7 +408,7 @@ export function StickyTable({
             ]}
             onLayout={(event) => measureLabel(`header:${c.key}`, event.nativeEvent.layout.height)}
           >
-            {c.truncateLabel ? c.label : softWrapLabel(c.label, cellWidth < 80 ? 8 : cellWidth < 104 ? 10 : 12)}
+            {softWrapLabel(c.label, cellWidth < 80 ? 8 : cellWidth < 104 ? 10 : 12)}
           </Text>
         </Pressable>
         {hasMarker ? (
@@ -396,7 +432,12 @@ export function StickyTable({
                 hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.accessibilityLabel ?? c.label) : tr.a11y.pinColumn(c.accessibilityLabel ?? c.label)}
-                style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}
+                // The mark stays 12px; the box it can be hit in is the whole
+                // header band, which is 56pt tall. `hitSlop` used to carry that
+                // and does nothing on the web, where the pin really was a 24x24
+                // target sitting between two amounts. The width stays inside
+                // the marker strip — wider, it crossed its own column's edge.
+                style={{ width: STICKY_MARKER_W, alignSelf: "stretch", alignItems: "center", justifyContent: "center" }}
               >
                 <Pin
                   accessible={false}
@@ -428,7 +469,6 @@ export function StickyTable({
             <PinnedHeader
               label={pinnedCol.label}
               accessibilityLabel={pinnedCol.accessibilityLabel}
-              truncateLabel={pinnedCol.truncateLabel}
               width={cellWidth}
               onUnpin={onTogglePin ? () => onTogglePin(pinnedCol.key) : undefined}
               onHeight={(textHeight) => measureLabel(`header:${pinnedCol.key}`, textHeight)}
@@ -443,7 +483,10 @@ export function StickyTable({
           showsHorizontalScrollIndicator={false}
           style={{ flex: 1 }}
         >
-          <View style={{ flexDirection: "row" }}>{scrollCols.map(headerCell)}</View>
+          <View style={{ flexDirection: "row" }}>
+            {scrollCols.map(headerCell)}
+            {trailingSpacer > 0 ? <View style={{ width: trailingSpacer }} /> : null}
+          </View>
         </ScrollView>
       </View>
 
@@ -486,12 +529,12 @@ export function StickyTable({
                     testID="table-row-label"
                     accessible={!r.onLabelPress}
                     accessibilityLabel={r.accessibilityLabel ?? r.label}
-                    numberOfLines={r.truncateLabel ? 2 : undefined}
-                    ellipsizeMode={r.truncateLabel ? "tail" : undefined}
+                    numberOfLines={LABEL_MAX_LINES}
+                    ellipsizeMode="tail"
                     style={[type.label, { color: r.onLabelPress ? palette.primaryText : palette.text, textAlign: "left", fontFamily: r.labelHighlight ? font.bold : font.semibold }]}
                     onLayout={(event) => measureLabel(`row:${r.key}`, event.nativeEvent.layout.height)}
                   >
-                    {r.truncateLabel ? r.label : softWrapLabel(r.label, headWidth < 80 ? 8 : 12)}
+                    {softWrapLabel(r.label, headWidth < 80 ? 8 : 12)}
                   </Text>
                   {r.icon ? (
                     <View style={{ position: "absolute", bottom: 4, right: 4 }}>
@@ -512,6 +555,10 @@ export function StickyTable({
             scrollEventThrottle={16}
             onScroll={onBodyScroll}
             onLayout={(e: LayoutChangeEvent) => setBodyW(e.nativeEvent.layout.width)}
+            snapToInterval={cellWidth}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            disableIntervalMomentum
             style={{ flex: 1 }}
           >
             <View>
@@ -544,6 +591,7 @@ export function StickyTable({
                       </View>
                     );
                   })}
+                  {trailingSpacer > 0 ? <View style={{ width: trailingSpacer }} /> : null}
                 </View>
               ))}
             </View>
@@ -557,14 +605,12 @@ export function StickyTable({
 function PinnedHeader({
   label,
   accessibilityLabel,
-  truncateLabel,
   width,
   onUnpin,
   onHeight,
 }: {
   label: string;
   accessibilityLabel?: string;
-  truncateLabel?: boolean;
   width: number;
   onUnpin?: () => void;
   onHeight: (textHeight: number) => void;
@@ -589,8 +635,8 @@ function PinnedHeader({
       <Text
         testID="table-column-label"
         accessibilityLabel={accessibilityLabel ?? label}
-        numberOfLines={truncateLabel ? 2 : undefined}
-        ellipsizeMode={truncateLabel ? "tail" : undefined}
+        numberOfLines={LABEL_MAX_LINES}
+        ellipsizeMode="tail"
         style={[
           type.label,
           {
@@ -603,7 +649,7 @@ function PinnedHeader({
         ]}
         onLayout={(event) => onHeight(event.nativeEvent.layout.height)}
       >
-        {truncateLabel ? label : softWrapLabel(label, width < 80 ? 8 : width < 104 ? 10 : 12)}
+        {softWrapLabel(label, width < 80 ? 8 : width < 104 ? 10 : 12)}
       </Text>
       <View style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: STICKY_MARKER_W, alignItems: "center", justifyContent: "center" }}>
         <Pin accessible={false} size={11} color={palette.primary} fill={palette.primary} />

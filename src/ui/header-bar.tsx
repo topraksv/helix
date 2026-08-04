@@ -61,8 +61,9 @@ function HeaderBar({
           // suite's `getByRole("heading")` both depend on that.
           <Text
             accessibilityRole="header"
-            numberOfLines={1}
-            ellipsizeMode="tail"
+            // No `numberOfLines`: the row already grows past `HEADER_ROW_HEIGHT`,
+            // and a screen title that shortens to "Yatırım İşle…" tells the user
+            // less than a title on two lines does.
             style={[
               type.heading,
               {

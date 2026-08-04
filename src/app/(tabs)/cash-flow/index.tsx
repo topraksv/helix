@@ -9,7 +9,7 @@
 import React, { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Info, Pencil, PiggyBank, Plus, Sigma } from "lucide-react-native";
+import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Info, Pencil, Flag, Plus, Sigma } from "lucide-react-native";
 import { monthFlowTotals } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
@@ -37,7 +37,7 @@ import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
 import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { shouldUseWideWorkspace } from "../../../ui/responsive";
-import { useClusterWidth, useContentWidth } from "../../../ui/viewport";
+import { useContentWidth } from "../../../ui/viewport";
 import { categoryIcon } from "../../../data/category-icons";
 
 type MatrixModel = ReturnType<typeof buildCashFlowMatrixModel>;
@@ -109,10 +109,6 @@ function FlowStat({
   );
 }
 
-/** Edit, installments, analysis, bulk entry, opening balance. Named so the
- *  cluster's bound and the row it bounds cannot disagree about the count. */
-const MATRIX_TOOL_COUNT = 5;
-
 /** The pivot's three orientations, named so the control and the wrapper that
  *  bounds it cannot disagree about how many segments there are. */
 const PIVOT_MODES = [
@@ -156,7 +152,6 @@ export default function CashflowScreen() {
   const { width } = useWindowDimensions();
   const contentWidth = useContentWidth();
   const wide = shouldUseWideWorkspace(contentWidth);
-  const toolClusterWidth = useClusterWidth(MATRIX_TOOL_COUNT);
   const router = useRouter();
   const { palette } = useTheme();
   // A phone needs the category-first scan of column mode; a wide workspace has
@@ -234,9 +229,9 @@ export default function CashflowScreen() {
 
   const yearSwitcher = (
     <Row testID="cash-flow-year-control" gap={spacing.sm}>
-      <IconButton size={36} icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={year <= minYear} />
+      <IconButton icon={ChevronLeft} label={String(year - 1)} onPress={() => setYear(year - 1)} disabled={year <= minYear} />
       <Text style={[type.label, { color: palette.text, minWidth: 44, textAlign: "center" }]}>{year}</Text>
-      <IconButton size={36} icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= maxYear} />
+      <IconButton icon={ChevronRight} label={String(year + 1)} onPress={() => setYear(year + 1)} disabled={year >= maxYear} />
     </Row>
   );
 
@@ -253,7 +248,11 @@ export default function CashflowScreen() {
   const editColumns = () => router.push("/columns-editor");
 
   return (
-    <Screen title={tr.cashflow.title} right={yearSwitcher} width="workspace" scroll={false} padded>
+    // `wide`, not `workspace`: this is the one surface that is a dense grid all
+    // the way down. At 1920 the workspace cap left the ledger scrolling
+    // sideways with 350px of empty page beside it — the screen was asking to be
+    // used and the width refused.
+    <Screen title={tr.cashflow.title} right={yearSwitcher} width="wide" scroll={false} padded>
       <View
         style={{
           gap: spacing.sm,
@@ -281,23 +280,36 @@ export default function CashflowScreen() {
               <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
               <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
               <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} />
-              <Button icon={PiggyBank} size="sm" label={tr.cashflow.openingLink} variant="ghost" onPress={() => router.push("/opening-balance")} />
+              {/* Same row, same job, same control. This one was `ghost`, so a
+                  band of five bordered tools ended in a floating word. */}
+              <Button icon={Flag} size="sm" label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />
             </Row>
           </View>
         ) : (
-          <View style={{ gap: spacing.xs, maxWidth: toolClusterWidth, width: "100%" }}>
+          <View
+            testID="cash-flow-action-toolbar"
+            style={{
+              gap: spacing.xs,
+              width: "100%",
+              padding: spacing.xs,
+              borderRadius: radius.md,
+              backgroundColor: palette.surface,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: palette.border + "70",
+            }}
+          >
             <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-            {/* Five icon tools are a cluster, not a band. Given the row they
-                spread one tool per 145px on a tablet, which reads as five
-                unrelated buttons pinned to the edges of a gap; bounded, they
-                stay a group whose width comes from its own items. A phone is
-                below the bound and keeps the full-width band it needs. */}
-            <Row gap={2} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap", maxWidth: toolClusterWidth, width: "100%" }}>
+            {/* The band spans the page at every width and centres its own
+                items. It used to stop at the cluster's intrinsic width above a
+                phone, so the same five tools sat at a different place on a
+                tablet, on a laptop and at 200% zoom — three positions to learn
+                for one toolbar. */}
+            <Row gap={2} style={{ justifyContent: "center", alignItems: "center", flexWrap: "nowrap", width: "100%" }}>
               <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} />
               <MatrixTool icon={CreditCard} caption={tr.cashflow.toolInstallments} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
               <MatrixTool icon={ChartNoAxesColumn} caption={tr.cashflow.toolAnalysis} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
               <MatrixTool icon={CalendarPlus} caption={tr.cashflow.toolBulk} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
-              <MatrixTool icon={PiggyBank} caption={tr.cashflow.toolOpening} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
+              <MatrixTool icon={Flag} caption={tr.cashflow.toolOpening} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
             </Row>
           </View>
         )}
@@ -311,21 +323,19 @@ export default function CashflowScreen() {
             icon={Inbox}
             title={tr.cashflow.emptyMonth}
             hint={tr.cashflow.emptyYearHint}
-            action={<Button icon={PiggyBank} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />}
+            action={<Button icon={Flag} label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />}
           />
         )
       ) : (
         <View style={{ flex: 1 }}>
-          {/* The pivot fills the row on a phone so its month-orientation labels
-              never clip (web ignores adjustsFontSizeToFit), and stops at the
-              control's own bound above that. The wrapper carries the same bound:
-              left to stretch it parked the guide button a thousand pixels away
-              from the control it explains on a wide monitor. */}
-          {/* The guide toggle lives inside the pivot's own strip, so it shares
-              its height, its baseline and its selected treatment instead of
-              sitting beside it as a taller bordered square. */}
-          <View style={{ marginBottom: spacing.md }}>
+          {/* The pivot spans the page and centres its segments, so it sits in
+              the same place on a phone, a tablet and a zoomed desktop. The
+              guide toggle lives inside its strip, sharing the height, baseline
+              and selected treatment rather than standing beside it as a taller
+              bordered square. */}
+          <View style={{ marginBottom: spacing.md, width: "100%" }}>
             <Segmented
+              fill
               noMargin
               options={PIVOT_MODES}
               value={mode}
@@ -471,7 +481,6 @@ function MonthFocusTable({
       >
         <IconButton
           icon={ChevronLeft}
-          size={36}
           label={monthLabel(`${year}-${String(Math.max(1, monthNumber - 1)).padStart(2, "0")}`)}
           disabled={monthNumber <= 1}
           onPress={() => onMonthChange(monthNumber - 1)}
@@ -481,7 +490,6 @@ function MonthFocusTable({
         </Text>
         <IconButton
           icon={ChevronRight}
-          size={36}
           label={monthLabel(`${year}-${String(Math.min(12, monthNumber + 1)).padStart(2, "0")}`)}
           disabled={monthNumber >= 12}
           onPress={() => onMonthChange(monthNumber + 1)}
@@ -495,7 +503,7 @@ function MonthFocusTable({
               <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.closing}</Text>
               <Amount minor={flows.closingMinor} large />
             </View>
-            <IconButton icon={ChevronRight} size={36} label={tr.cashflow.openMonth} onPress={() => router.push(`/cash-flow/${month}`)} />
+            <IconButton icon={ChevronRight} label={tr.cashflow.openMonth} onPress={() => router.push(`/cash-flow/${month}`)} />
           </Spread>
           <View style={{ flexDirection: "row", gap: spacing.xs, marginTop: spacing.sm }}>
             <FlowStat icon={ArrowUpRight} label={tr.cashflow.income} amountMinor={flows.incomeMinor} color={palette.positive} foreground={palette.positiveText} />
@@ -568,7 +576,7 @@ function MonthFocusTable({
                 ) : iconText ? (
                   <Text style={{ fontSize: 14 }}>{iconText}</Text>
                 ) : (
-                  <PiggyBank accessible={false} size={15} color={palette.textSecondary} />
+                  <Flag accessible={false} size={15} color={palette.textSecondary} />
                 )}
               </View>
               <View style={{ flex: 1, minWidth: 0, paddingVertical: spacing.sm }}>
@@ -881,7 +889,6 @@ function MatrixTable({
     stickyColumns = columns.map((c) => ({
       key: c.key,
       label: c.label,
-      truncateLabel: true,
       icon: c.computed ? Sigma : undefined,
     }));
     stickyRows = months.map((slot) => ({
@@ -914,7 +921,6 @@ function MatrixTable({
     stickyRows = columns.map((c) => ({
       key: c.key,
       label: c.label,
-      truncateLabel: true,
       icon: c.computed ? Sigma : undefined,
       onLabelPress: breakdownFor(c.key),
       cells: months.map((slot) =>

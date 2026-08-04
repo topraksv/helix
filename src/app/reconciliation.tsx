@@ -216,8 +216,13 @@ export default function CatchUpScreen() {
                 </Row>
               </View>
             ) : (
-              <Row gap={spacing.xs} style={{ marginTop: spacing.md, maxWidth: actionClusterWidth }}>
-                <View style={{ flex: 1 }}>
+              // Three buttons, three widths taken from their own labels and one
+              // gap between them. They used to be stretched to 1 / 1.45 / 0.7
+              // of the row, so "Alındı", "Tutarı düzelt" and "Atla" sat at
+              // three arbitrary widths with a 4px gap: the cluster read as one
+              // squeezed block rather than as three choices.
+              <Row gap={spacing.sm} style={{ marginTop: spacing.md, maxWidth: actionClusterWidth, flexWrap: "wrap" }}>
+                <View>
                   <Button
                     size="sm"
                     label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
@@ -227,7 +232,7 @@ export default function CatchUpScreen() {
                     onPress={() => void confirm(e)}
                   />
                 </View>
-                <View style={{ flex: 1.45 }}>
+                <View>
                   <Button
                     size="sm"
                     label={tr.catchup.fixAmount}
@@ -239,7 +244,7 @@ export default function CatchUpScreen() {
                     })}
                   />
                 </View>
-                <View style={{ flex: 0.7 }}>
+                <View>
                   <Button
                     size="sm"
                     label={tr.common.skip}

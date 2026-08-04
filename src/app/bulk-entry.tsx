@@ -21,7 +21,6 @@ import { spacing } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
-import { useClusterWidth } from "../ui/viewport";
 import { WorkspaceGrid } from "../ui/workspace-layout";
 
 export default function BulkEntryModal() {
@@ -31,7 +30,6 @@ export default function BulkEntryModal() {
   const categories = categoriesState.data;
   const persons = personsState.data;
   const router = useRouter();
-  const saveClusterWidth = useClusterWidth(2);
   const [month, setMonth] = useState(addMonthsToKey(monthKeyOf(todayISO()), -1));
   const [values, setValues] = useState<Record<string, { raw: string; minor: number | null }>>({});
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
@@ -162,7 +160,7 @@ export default function BulkEntryModal() {
             {/* Two commit buttons are a cluster, like the transaction form's.
                 Left to fill the card they were a pair of 1100px bands under a
                 grid of 90px amount fields. */}
-            <View style={{ gap: spacing.sm, maxWidth: saveClusterWidth, width: "100%" }}>
+            <View style={{ gap: spacing.sm, width: "100%" }}>
               <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
               <Button label={tr.common.done} variant="secondary" onPress={() => confirmDiscard(() => navigateBack(router, "/(tabs)/cash-flow"))} />
             </View>

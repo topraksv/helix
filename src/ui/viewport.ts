@@ -17,7 +17,7 @@ import { useCallback, useState } from "react";
 import { Platform, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { useSegments } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { shouldBoundIntrinsicControls, shouldUseSideNavigation } from "./responsive";
+import { shouldBoundIntrinsicControls } from "./responsive";
 import { navigationInset, segmentedMaxWidth } from "./theme";
 
 export interface NavigationSpace {
@@ -38,11 +38,7 @@ export function useNavigationSpace(): NavigationSpace {
   // Root routes (a modal, the auth stack, onboarding) have no navigation
   // surface of their own, so nothing is taken from them.
   const inTabs = segments[0] === "(tabs)";
-  const inset = navigationInset({
-    bottomInset: insets.bottom,
-    isWeb: Platform.OS === "web",
-    side: shouldUseSideNavigation(width),
-  });
+  const inset = navigationInset({ bottomInset: insets.bottom, isWeb: Platform.OS === "web" });
   const left = inTabs ? inset.left : 0;
   return { bottom: inset.bottom, left, contentWidth: width - left, inTabs };
 }

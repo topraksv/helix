@@ -344,6 +344,8 @@ export const tr = {
     pendingConfirm: (n: number) => (n === 1 ? "1 ödeme onay bekliyor" : `${n} ödeme onay bekliyor`),
     catchUp: "Onay bekleyen ödemeleri gözden geçir",
     forecastToggle: "Ay sonu tahmini",
+    forecastRising: "yükseliyor",
+    forecastFalling: "düşüyor",
     catchupShort: "Bekleyenler",
     upcoming: "Yaklaşan Ödemeler",
     upcomingHint: "Otomatik ödeme olsun olmasın, önümüzdeki günlerde ödeyeceklerin: abonelikler, düzenli gelirler ve ileri tarihli işlemler.",
@@ -436,10 +438,14 @@ export const tr = {
     uncategorizedLegacy: "Kategorisiz eski kayıtlar",
     uncategorizedRepairHint: "Aylara göre açıp kayıtları düzenleyebilirsin.",
     // Phone toolbar mini captions (full names stay in accessibility labels).
-    toolEdit: "Düzenle",
+    // The compact captions name the same object as the full labels above,
+    // shortened rather than renamed: a phone said "Düzenle" and "Geçmiş"
+    // where the desktop said "Kolonları Düzenle" and "Geçmiş Ay Girişi", so
+    // the same five tools had to be learned twice.
+    toolEdit: "Kolonlar",
     toolInstallments: "Taksitler",
     toolAnalysis: "Analiz",
-    toolBulk: "Geçmiş",
+    toolBulk: "Geçmiş Ay",
     toolOpening: "Başlangıç",
   },
   tx: {
@@ -768,7 +774,14 @@ export const tr = {
     notificationPreview: "Telefonun kilit ekranında böyle görünür:",
     notificationSampleName: "Örnek abonelik",
     reminderDays: "Hatırlatma: Kaç Gün Önce",
-    biometric: "Face ID Kilidi",
+    // The lock is named after whatever the device in hand actually offers.
+    // A single "Face ID" string shipped to Android too, naming a technology
+    // that does not exist there — on a security control, of all places.
+    biometric: "Biyometrik Kilit",
+    biometricFaceId: "Face ID Kilidi",
+    biometricTouchId: "Touch ID Kilidi",
+    biometricFace: "Yüz Tanıma Kilidi",
+    biometricFingerprint: "Parmak İzi Kilidi",
     theme: "Tema", themeSystem: "Sistem", themeLight: "Açık", themeDark: "Koyu",
     palette: "Renk Paleti",
     paletteClay: "Amber",
@@ -1119,6 +1132,16 @@ export const tr = {
     signingIn: "E-posta ve şifren doğrulanıyor",
     creatingAccount: "Helix hesabın oluşturuluyor",
     requestingReset: "Güvenli şifre bağlantın hazırlanıyor",
+    // Every lifecycle wait names the operation it is: they all end the
+    // session on the same blank screen, so a shared caption made signing out,
+    // freezing and deleting indistinguishable at the one moment the user most
+    // wants to know which one is running.
+    signingInTitle: "Oturum açılıyor",
+    initializeTitle: "Çalışma alanın hazırlanıyor",
+    restoreTitle: "Verilerin getiriliyor",
+    localSigningOutTitle: "Cihazdan çıkılıyor",
+    freezingTitle: "Hesap donduruluyor",
+    reactivateTitle: "Hesap yeniden açılıyor",
     signingOutTitle: "Güvenli çıkış",
     signingOut: "Son değişikliklerin bulutla eşitleniyor; ardından oturumun kapanacak",
     localSigningOut: "Bu cihazdaki çalışma alanı kaldırılıyor",

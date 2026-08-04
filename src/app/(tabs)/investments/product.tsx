@@ -6,7 +6,7 @@ import {
   Coins,
   Landmark,
   PackagePlus,
-  PiggyBank,
+  Umbrella,
   Shapes,
   WalletCards,
   type LucideIcon,
@@ -58,7 +58,7 @@ const TYPE_ICONS: Record<InvestmentAssetType, LucideIcon> = {
   equity: ChartNoAxesCombined,
   fund: Landmark,
   crypto: Bitcoin,
-  pension: PiggyBank,
+  pension: Umbrella,
 };
 
 export default function InvestmentProductScreen() {

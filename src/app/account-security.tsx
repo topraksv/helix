@@ -173,6 +173,7 @@ function CloudAccountSecurityScreen() {
             : outcome.reason === "sync"
               ? tr.account.freezeSyncFailed
               : (outcome.message ?? tr.account.freezeSyncFailed);
+          clearLifecycleIntent();
           void appAlert(message, tr.errors.title);
         }
       } finally {
@@ -182,7 +183,8 @@ function CloudAccountSecurityScreen() {
         useSession.setState({ isFreezing: false });
         setFreezing(false);
         setFreezePhase(null);
-        clearLifecycleIntent();
+        // The intent survives a successful freeze: the app is signing out and
+        // the waiting screen has to say so. The failure path above clears it.
       }
     }).catch(() => {
       void appAlert(tr.errors.requestFailed, tr.errors.title);

@@ -32,28 +32,37 @@ function sourceFiles(directory: string, extensions: string[]): string[] {
   });
 }
 
-describe("truncation preserves the accessible full text", () => {
-  // Navigation titles are intentionally single-line at narrow widths so a
-  // long title cannot push the back control or header out of the viewport.
-  // Mali Tablo remains the only surface allowed to use a two-line label clamp:
-  // item names wrap naturally in the dense matrix and retain their full
-  // accessibility label when the visual label still needs shortening.
-  it("limits multi-line ellipsis to the shared table label primitive", () => {
-    const offenders = sourceFiles("src", [".tsx"]).filter((file) =>
-      /numberOfLines|ellipsizeMode/.test(source(file)),
+describe("text wraps before it is ever shortened", () => {
+  /**
+   * Ordinary data must never be shortened: the ledger used to clamp an item
+   * label to two lines, so the owner's own "Kredi Kartı Tek Çekim tek çekim"
+   * rendered as "Kredi Kartı Tek Çekim tek çe…" on both phones — the shortened
+   * part being exactly what separates it from the next item. Screen and header
+   * titles clamped to one line for the same reason and no longer do.
+   *
+   * The ledger keeps one bound, and only the ledger: a name is user-authored,
+   * and unbounded wrapping hands the table's geometry to whatever someone
+   * types. Three lines is past every real item name, `softWrapLabel` breaks a
+   * long single token so it wraps at all, and the full text stays in the
+   * accessible label.
+   */
+  it("only the ledger label may shorten, and only past three lines", () => {
+    const offenders = sourceFiles("src", [".tsx", ".ts"]).filter((file) =>
+      /(numberOfLines|ellipsizeMode)\s*=/.test(source(file)),
     );
-    expect(offenders).toEqual([
-      "src/ui/components.tsx",
-      "src/ui/header-bar.tsx",
-      "src/ui/sticky-table.tsx",
-    ]);
-    expect(source("src/ui/components.tsx")).toContain("numberOfLines={1}");
-    expect(source("src/ui/header-bar.tsx")).toContain("numberOfLines={1}");
+    expect(offenders).toEqual(["src/ui/sticky-table.tsx"]);
+    const table = source("src/ui/sticky-table.tsx");
+    expect(table).toContain("const LABEL_MAX_LINES = 3;");
+    // Every clamp reads the shared bound, so one file cannot drift to two.
+    expect(table.match(/numberOfLines=\{/g)).toHaveLength(3);
+    expect(table.match(/numberOfLines=\{LABEL_MAX_LINES\}/g)).toHaveLength(3);
+  });
+
+  it("the ledger still speaks the full label when the visible one is shortened", () => {
     const table = source("src/ui/sticky-table.tsx");
     expect(table).toContain("accessibilityLabel={accessibilityLabel ?? label}");
-    expect(table).toContain("numberOfLines={c.truncateLabel ? 2 : undefined}");
-    expect(table).toContain("numberOfLines={r.truncateLabel ? 2 : undefined}");
-    expect(table).toContain("numberOfLines={truncateLabel ? 2 : undefined}");
+    expect(table).toContain("accessibilityLabel={r.accessibilityLabel ?? r.label}");
+    expect(table).toContain("softWrapLabel(");
   });
 });
 

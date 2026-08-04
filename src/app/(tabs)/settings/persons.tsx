@@ -333,14 +333,13 @@ export default function PersonsScreen() {
               <Row gap={spacing.sm}>
                 <IconButton
                   icon={Pencil}
-                  size={32}
                   label={`${tr.common.edit} · ${p.name}`}
                   onPress={() => confirmDiscard(() => {
                     setEditingId(p.id);
                     setEditName(p.name);
                   }, editDraftDirty)}
                 />
-                {!p.isSelf ? <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${p.name}`} haptic="none" onPress={() => void remove(p)} /> : null}
+                {!p.isSelf ? <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${p.name}`} haptic="none" onPress={() => void remove(p)} /> : null}
               </Row>
             </Spread>
           )

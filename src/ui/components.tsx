@@ -25,7 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
 import { useScrollToTop } from "@react-navigation/native";
 import { AlertCircle, Calculator as CalculatorIcon, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, Minus, Plus, TriangleAlert, type LucideIcon } from "lucide-react-native";
-import { formatMinor, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
+import { formatMinor, formatMinorCompact, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { initialsBadgeColor } from "./badge-color";
 import { DelayedLoading, DelayedLoadingIndicator, LoadingIndicator } from "./loading-indicator";
@@ -57,7 +57,7 @@ import {
   type Palette,
 } from "./theme";
 import { shouldBoundIntrinsicControls, shouldStackListActions, shouldUseWideGutter } from "./responsive";
-import { useContentWidth, useNavigationSpace } from "./viewport";
+import { useContentWidth, useMeasuredWidth, useNavigationSpace } from "./viewport";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
@@ -206,8 +206,6 @@ export function Screen({
         <View style={{ flex: 1 }}>
           <Text
             accessibilityRole="header"
-            numberOfLines={1}
-            ellipsizeMode="tail"
             style={[type.title, { color: palette.textStrong, minWidth: 0, flexShrink: 1 }]}
           >
             {title}
@@ -265,6 +263,18 @@ export function Screen({
     // a scene-level inset also shortened the nested stack's header, which is
     // chrome that belongs to the whole window.
     <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
+      {/* The scroll edge. Content passes under the status bar on both phones,
+          and with nothing painted over that band a settings row's label ran
+          straight through the clock. An opaque strip the height of the inset is
+          what every native app puts there; it costs nothing on web, where the
+          inset is zero. */}
+      {insets.top > 0 ? (
+        <View
+          pointerEvents="none"
+          accessible={false}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, height: insets.top, backgroundColor: palette.background, zIndex: 2 }}
+        />
+      ) : null}
       <ScrollView
         ref={activeScrollRef}
         contentContainerStyle={inner}
@@ -335,10 +345,11 @@ export function Card({
 }
 
 /** Quiet balance instrument. The value, not decoration, carries the hierarchy. */
-export function HeroCard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+export function HeroCard({ children, style, onLayout }: { children: ReactNode; style?: StyleProp<ViewStyle>; onLayout?: (e: LayoutChangeEvent) => void }) {
   const { palette, scheme } = useTheme();
   return (
     <View
+      onLayout={onLayout}
       style={[
         {
           backgroundColor: heroSurface(palette, scheme).fill,
@@ -363,34 +374,52 @@ export function HeroCard({ children, style }: { children: ReactNode; style?: Sty
 /** Shared, unboxed metric rail. The values stay in a predictable row while
  * surrounding screens decide whether the rail belongs to a hero, chart or
  * portfolio surface. */
+/**
+ * A row of labelled figures that stays a row.
+ *
+ * It used to give each column a 112px basis and let the row wrap, so on a phone
+ * "Gelir" and "Çıkış" sat on one line and "Net değişim" dropped to a second —
+ * three peers reading as two-then-one. They share the row now, and a column too
+ * narrow for a full figure asks its value to render compactly (₺1,2 M) rather
+ * than shrinking the type until it cannot be read.
+ */
 export function MetricStrip({
   items,
   style,
   testID,
 }: {
-  items: { label: string; value: ReactNode }[];
+  items: { label: string; value: ReactNode | ((compact: boolean) => ReactNode) }[];
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
-  const compact = width < 360;
+  const [stripWidth, onStripLayout] = useMeasuredWidth(0);
+  // Measured, because the column is what has to hold the figure — not the
+  // window, which says nothing about how many columns share this card.
+  const columnWidth = stripWidth > 0 ? stripWidth / Math.max(items.length, 1) : 0;
+  const compactValues = columnWidth > 0 && columnWidth < 116;
   return (
-    <View testID={testID} style={[{ flexDirection: compact ? "column" : "row", flexWrap: compact ? "nowrap" : "wrap", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border, marginTop: spacing.lg }, style]}>
-      {items.map((item, index) => (
-        <View
-          key={item.label}
-          style={{
-            flex: compact ? undefined : 1,
-            flexBasis: compact ? undefined : 112,
-            width: compact ? "100%" : undefined,
-            minWidth: 0,
-            paddingTop: spacing.sm,
-            paddingRight: compact || index === items.length - 1 ? 0 : spacing.md,
-          }}
-        >
+    <View
+      testID={testID}
+      onLayout={onStripLayout}
+      style={[
+        {
+          flexDirection: "row",
+          flexWrap: "nowrap",
+          gap: spacing.md,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: palette.border,
+          marginTop: spacing.lg,
+        },
+        style,
+      ]}
+    >
+      {items.map((item) => (
+        <View key={item.label} style={{ flex: 1, flexBasis: 0, minWidth: 0, paddingTop: spacing.sm }}>
           <Text style={[type.small, { color: palette.textSecondary }]}>{item.label}</Text>
-          <View style={{ marginTop: 2 }}>{item.value}</View>
+          <View style={{ marginTop: 2 }}>
+            {typeof item.value === "function" ? item.value(compactValues) : item.value}
+          </View>
         </View>
       ))}
     </View>
@@ -542,6 +571,7 @@ export function Amount({
   hero,
   colorized = true,
   color,
+  compact = false,
   style,
 }: {
   minor: number;
@@ -550,12 +580,14 @@ export function Amount({
   hero?: boolean;
   colorized?: boolean;
   color?: string;
+  /** Render as ₺1,2 M when the column cannot hold the exact figure. */
+  compact?: boolean;
   style?: StyleProp<TextStyle>;
 }) {
   const { palette } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
-  const formatted = formatMinor(minor, currency);
+  const formatted = compact ? formatMinorCompact(minor, currency) : formatMinor(minor, currency);
   const scale: AmountScale = hero ? "hero" : large ? "large" : "regular";
   // Width/font-scale changes start a fresh fit pass so rotation and Dynamic
   // Type can shrink or grow without opting out of system font scaling.
@@ -661,9 +693,13 @@ export function Button({
       aria-expanded={expanded}
       accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading), expanded }}
       disabled={disabled || loading}
-      // A small button's visual height stays compact (36) to fit inline rows,
-      // but hitSlop lifts its effective touch target to the ~44pt minimum.
-      hitSlop={small ? 8 : undefined}
+      // `hitSlop` used to stand in for the missing height. It does nothing on
+      // the web, so a "small" button really was 36pt tall there. The box is the
+      // minimum target now and the type scale keeps it reading as the compact
+      // one; 44 against the regular 48 is a smaller step than 36 was, which
+      // also settles the button-next-to-field alignment this file used to
+      // work around per call site.
+      hitSlop={small ? 6 : undefined}
       onPress={() => {
         haptic(hapticKind);
         onPress();
@@ -675,13 +711,18 @@ export function Button({
           borderCurve: "continuous",
           paddingVertical: small ? spacing.sm : spacing.md + 1,
           paddingHorizontal: small ? spacing.md : spacing.lg,
-          minHeight: small ? controlSize.compact : controlSize.regular,
+          minHeight: small ? controlSize.minimumTarget : controlSize.regular,
           flexDirection: "row",
           gap: spacing.sm,
           alignItems: "center",
           justifyContent: "center",
-          borderWidth: variant === "secondary" || visuallyDisabled ? StyleSheet.hairlineWidth : 0,
-          borderColor: palette.border,
+          // Three weights that cannot be confused: primary is a brand fill,
+          // secondary is the same fill under a real outline, disabled is the
+          // fill alone. They used to differ only in text colour, so a disabled
+          // "Kaydet" and an enabled "Kaydet ve Yeni Ekle" rendered as the same
+          // beige block and the form's primary action was unfindable.
+          borderWidth: visuallyDisabled ? 0 : variant === "secondary" ? borderWidth.control : 0,
+          borderColor: palette.controlBorder,
           opacity: pressed && variant === "danger" ? stateOpacity.pressed : 1,
           transform: [{ translateY: pressed && !visuallyDisabled ? 1 : 0 }],
         },
@@ -744,20 +785,34 @@ export function IconButton({
         onPress();
       }}
       hitSlop={6}
-      style={({ pressed }) => [
-        {
-          width: size,
-          height: size,
-          borderRadius: radius.sm,
-          backgroundColor: tone === "primary" ? palette.primarySoft : pressed ? palette.surfaceHover : palette.surface,
-          alignItems: "center",
-          justifyContent: "center",
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: palette.border + "90",
-        },
-      ]}
+      // The pressable box is the platform minimum; the painted chip inside it
+      // is the compact one. `hitSlop` alone used to carry this, and it is a
+      // no-op in react-native-web — only the legacy `Touchable` implements it —
+      // so on the web every row's edit and delete control really was 32x32,
+      // measured, while the code claimed 44.
+      style={{
+        minWidth: controlSize.minimumTarget,
+        minHeight: controlSize.minimumTarget,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
     >
-      <IconCmp accessible={false} size={iconSizeValue ?? size * 0.5} color={color} strokeWidth={2.2} />
+      {({ pressed }) => (
+        <View
+          style={{
+            width: size,
+            height: size,
+            borderRadius: radius.sm,
+            backgroundColor: tone === "primary" ? palette.primarySoft : pressed ? palette.surfaceHover : palette.surface,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.border + "90",
+          }}
+        >
+          <IconCmp accessible={false} size={iconSizeValue ?? Math.round(size * 0.5)} color={color} strokeWidth={2.2} />
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -1315,13 +1370,19 @@ export function Select<T extends string>({
   );
 }
 
-/** Horizontal segmented selector. */
+/**
+ * Switches which view of the same data is shown — pie or bars, rows or
+ * columns, this range or that one. It is NOT the control for a form value the
+ * user will save; that is `ChipPicker`, and keeping the two apart is what
+ * stops one screen from asking three identical questions three different ways.
+ */
 export function Segmented<T extends string>({
   options,
   value,
   onChange,
   noMargin = false,
   disabled = false,
+  fill = false,
   action,
 }: {
   options: { value: T; label: string }[];
@@ -1329,6 +1390,14 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
   noMargin?: boolean;
   disabled?: boolean;
+  /**
+   * Span the container instead of stopping at the control's own width.
+   *
+   * For a strip that is a page's primary view switcher — the ledger's pivot —
+   * one fixed position beats an intrinsic width: bounded, the same control sat
+   * somewhere different on a phone, a tablet and a zoomed desktop.
+   */
+  fill?: boolean;
   /**
    * A companion toggle that belongs to the same strip — the ledger's reading
    * guide beside its pivot.
@@ -1351,7 +1420,7 @@ export function Segmented<T extends string>({
         // Bounded by its own options once the container stops being a bound —
         // see `shouldBoundIntrinsicControls`. A phone keeps the full-width
         // control it expects; capping there only left a ragged edge beside it.
-        maxWidth: bounded
+        maxWidth: bounded && !fill
           ? segmentedMaxWidth(options.length) + (action ? controlSize.minimumTarget : 0)
           : undefined,
         backgroundColor: palette.surface,
@@ -1590,6 +1659,16 @@ export function SelectionGrid({
   );
 }
 
+/**
+ * The single-choice control for a value the user is about to SAVE.
+ *
+ * The app has exactly two of these and the split is by job, not by taste:
+ * `ChipPicker` answers a form question (which cycle, which person, month or
+ * day), `Segmented` switches which view of the same data you are looking at
+ * (pie or bars, rows or columns). The transaction form used to show three
+ * languages at once — icon tiles, chips and underlined tabs — for three
+ * questions of the same kind.
+ */
 export function ChipPicker<T extends string>({
   options,
   value,
@@ -1886,11 +1965,19 @@ export function OperationStatusNotice({
 }
 
 /** The whole screen while the account's first data pull is still in flight. */
-export function WaitingNotice({ message, kind }: { message: string; kind: OperationFlowKind }) {
+/**
+ * The whole screen while an account operation runs.
+ *
+ * Signing out, freezing and deleting all end the session on this same blank
+ * page, so it has to say which one is running — and it is the only thing on
+ * that page, so a 360px bordered strip pinned in the middle of an empty window
+ * reads as a placeholder rather than as the app working. It takes the page.
+ */
+export function WaitingNotice({ message, title, kind }: { message: string; title: string; kind: OperationFlowKind }) {
   return (
     <DelayedLoading>
       <View testID="waiting-notice" style={{ width: "100%", alignItems: "center", paddingHorizontal: spacing.lg }}>
-        <OperationFlow kind={kind} label={message} presentation="waiting" />
+        <OperationFlow kind={kind} title={title} label={message} presentation="waiting" />
       </View>
     </DelayedLoading>
   );
@@ -2041,9 +2128,15 @@ export function Toggle({
     animation.start();
     return () => animation.stop();
   }, [value, progress, reducedMotion]);
+  // On is the filled state. It used to be the pale one while off was the
+  // darker `surfaceStrong`, so a settings list read back inverted: the switches
+  // that were OFF looked heavier than the ones that were ON. The brand fill is
+  // 5.3–7.2:1 against every surface it sits on, so the on state carries itself;
+  // the off state stays a quiet neutral and keeps the hairline that gives it a
+  // shape at all.
   const trackColor = disabled
     ? palette.surfaceAlt
-    : progress.interpolate({ inputRange: [0, 1], outputRange: [palette.surfaceStrong, palette.primarySoft] });
+    : progress.interpolate({ inputRange: [0, 1], outputRange: [palette.surfaceAlt, palette.primary] });
   const thumbX = progress.interpolate({ inputRange: [0, 1], outputRange: [TOGGLE_PAD, TOGGLE_W - TOGGLE_THUMB - TOGGLE_PAD] });
   return (
     <Pressable
@@ -2057,12 +2150,21 @@ export function Toggle({
         selectionTap();
         onValueChange(!value);
       }}
+      // The track is 28pt tall by design. Padding — not `hitSlop`, which the
+      // web ignores — gives the control the platform's minimum height without
+      // moving the track a pixel.
+      style={{
+        minHeight: controlSize.minimumTarget,
+        justifyContent: "center",
+        paddingHorizontal: (controlSize.minimumTarget - TOGGLE_W) / 2 > 0 ? (controlSize.minimumTarget - TOGGLE_W) / 2 : 0,
+      }}
     >
-      {/* The track carries its own boundary. Both fills are low-contrast warm
-          neutrals (1.1–1.9:1 against the app's surfaces), so without it the
-          control's shape depended entirely on what happened to be behind it —
-          and on the refund row, whose background is the same `primarySoft`,
-          the switch disappeared outright. */}
+      {/* The off fill is a low-contrast warm neutral (1.1–1.3:1 against the
+          app's surfaces), so the boundary is what gives it a shape at all —
+          on the refund row, whose background was the same token, the switch
+          once disappeared outright. The on fill needs no such help, and a
+          hairline in `controlBorder` would sit at 1.2:1 on it, so the on state
+          edges itself. */}
       <Animated.View
         style={{
           width: TOGGLE_W,
@@ -2070,7 +2172,7 @@ export function Toggle({
           borderRadius: TOGGLE_H / 2,
           backgroundColor: trackColor,
           borderWidth: borderWidth.toggle,
-          borderColor: palette.controlBorder,
+          borderColor: value && !disabled ? palette.primaryStrong : palette.controlBorder,
           justifyContent: "center",
         }}
       >
@@ -2088,8 +2190,8 @@ export function Toggle({
             justifyContent: "space-between",
           }}
         >
-          <Check size={11} color={value && !disabled ? palette.primaryText : "transparent"} strokeWidth={3} />
-          <Minus size={11} color={!value && !disabled ? palette.textStrong : "transparent"} strokeWidth={3} />
+          <Check size={11} color={value && !disabled ? palette.onPrimary : "transparent"} strokeWidth={3} />
+          <Minus size={11} color={!value && !disabled ? palette.textSecondary : "transparent"} strokeWidth={3} />
         </View>
         {/* The thumb carries the tab bar's material language — a crisp hairline
             edge over the shadow, so it reads as a lens sitting on the track
@@ -2102,7 +2204,7 @@ export function Toggle({
             width: TOGGLE_THUMB,
             height: TOGGLE_THUMB,
             borderRadius: TOGGLE_THUMB / 2,
-            backgroundColor: disabled ? palette.textSecondary : value ? palette.primary : palette.textSecondary,
+            backgroundColor: disabled ? palette.textSecondary : value ? palette.onPrimary : palette.textSecondary,
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: palette.surfaceTranslucent,
             transform: [{ translateX: thumbX }],

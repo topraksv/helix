@@ -16,7 +16,7 @@ import { formatMinor } from "../domain/money";
 import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { CurrencyPicker } from "../ui/currency-picker";
-import { Amount, Body, Button, Card, DataStateNotice, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, Segmented, Select, Spread, Toggle } from "../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -402,7 +402,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
           <Card>
             <PanelHeader icon={CalendarClock} title={tr.subs.formSchedule} description={tr.subs.formScheduleHint} />
             <Label>{tr.subs.cycle}</Label>
-            <Segmented
+            <ChipPicker
               options={[
                 { value: "monthly", label: tr.subs.monthly },
                 { value: "yearly", label: tr.subs.yearly },

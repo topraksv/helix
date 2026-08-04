@@ -463,8 +463,8 @@ export default function SourcesScreen() {
               </View>
             </Row>
             <Row gap={spacing.sm}>
-              <IconButton icon={Pencil} size={32} label={`${tr.common.edit} · ${s.name}`} onPress={() => startEdit(s)} />
-              <IconButton icon={Trash2} size={32} tone="danger" label={`${tr.common.delete} · ${s.name}`} haptic="none" onPress={() => void remove(s)} />
+              <IconButton icon={Pencil} label={`${tr.common.edit} · ${s.name}`} onPress={() => startEdit(s)} />
+              <IconButton icon={Trash2} tone="danger" label={`${tr.common.delete} · ${s.name}`} haptic="none" onPress={() => void remove(s)} />
             </Row>
           </Spread>
                 )}

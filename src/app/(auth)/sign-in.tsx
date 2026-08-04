@@ -5,6 +5,7 @@ import { useSession } from "../../auth/session";
 import { isSupabaseConfigured } from "../../sync/supabase";
 import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
+import { clearLifecycleIntent } from "../../ui/lifecycle-intent";
 import { BrandMark } from "../../ui/brand";
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
@@ -149,6 +150,11 @@ export default function SignInScreen() {
 
   const submit = async () => {
     if (!canSubmit) return;
+    // A lifecycle intent outlives the operation that set it — it is what the
+    // waiting screen reads while a session tears down. Starting a new session
+    // is what ends it; otherwise the first pull after signing back in would
+    // still announce the sign-out that came before it.
+    clearLifecycleIntent();
     await operationGuard.run(async () => {
       setBusy(true);
       setError(null);
@@ -221,23 +227,34 @@ export default function SignInScreen() {
         </View>
 
         <Card style={{ flex: wide ? 0.92 : undefined, justifyContent: "center", marginBottom: 0, padding: wide ? spacing.xl : spacing.lg }}>
+          {/* The signature and the form heading are two different things and
+              need to look like it: the signature names where you are going,
+              the heading opens the form. They used to sit flush against each
+              other, so the card read as four stacked sentences — two of which
+              said the same thing. The rule below drops the duplicate line and
+              the divider gives the pair a boundary. */}
           {mode === "signIn" ? (
-            <OperationSignature
-              kind="sign-in"
-              eyebrow={tr.auth.signInSignatureEyebrow}
-              title={tr.auth.signInSignatureTitle}
-              description={tr.auth.signInSignatureDescription}
-              detail={tr.auth.signInSignatureDetail}
-              compact
-              testID="sign-in-signature"
-            />
+            <View style={{ marginBottom: spacing.lg, paddingBottom: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.border }}>
+              <OperationSignature
+                kind="sign-in"
+                eyebrow={tr.auth.signInSignatureEyebrow}
+                title={tr.auth.signInSignatureTitle}
+                description={tr.auth.signInSignatureDescription}
+                detail={tr.auth.signInSignatureDetail}
+                compact
+                testID="sign-in-signature"
+              />
+            </View>
           ) : null}
           <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>
             {mode === "signIn" ? tr.auth.welcomeBack : mode === "signUp" ? tr.auth.signUpTitle : tr.auth.forgotTitle}
           </Text>
-          <Body muted style={{ marginBottom: spacing.lg }}>
-            {mode === "signIn" ? tr.auth.signInSubtitle : mode === "signUp" ? tr.auth.signUpSubtitle : tr.auth.forgotSubtitle}
-          </Body>
+          {mode === "signIn" ? null : (
+            <Body muted style={{ marginBottom: spacing.lg }}>
+              {mode === "signUp" ? tr.auth.signUpSubtitle : tr.auth.forgotSubtitle}
+            </Body>
+          )}
+          {mode === "signIn" ? <View style={{ height: spacing.lg }} /> : null}
 
           <Field
             label={tr.auth.email}
@@ -285,10 +302,25 @@ export default function SignInScreen() {
           ) : null}
 
           {busy ? (
-            <OperationFlow
-              kind={mode === "signIn" ? "sign-in" : mode === "signUp" ? "sign-up" : "reset"}
-              label={operationLabel}
-            />
+            // The running notice appears between the password field and the
+            // submit button, where nothing had reserved space for it: it was
+            // pressed against both neighbours the moment it appeared. Its own
+            // surface and margins keep the card's rhythm when it does.
+            <View
+              style={{
+                marginBottom: spacing.md,
+                padding: spacing.md,
+                borderRadius: radius.md,
+                backgroundColor: palette.surfaceAlt,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: palette.border,
+              }}
+            >
+              <OperationFlow
+                kind={mode === "signIn" ? "sign-in" : mode === "signUp" ? "sign-up" : "reset"}
+                label={operationLabel}
+              />
+            </View>
           ) : null}
           <Button
             label={primaryLabel}

@@ -10,7 +10,7 @@ import {
   Landmark,
   Pencil,
   PackagePlus,
-  PiggyBank,
+  Umbrella,
   Plus,
   Sparkles,
   Trash2,
@@ -53,8 +53,8 @@ import {
   IconButton,
 } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
-import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
-import { useContentWidth } from "../../../ui/viewport";
+import { density, font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { useContentWidth, useMeasuredWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { scheduleSync } from "../../../sync/engine";
@@ -68,7 +68,7 @@ const ASSET_ICONS: Record<InvestmentAssetType, LucideIcon> = {
   equity: ChartNoAxesCombined,
   fund: Landmark,
   crypto: Bitcoin,
-  pension: PiggyBank,
+  pension: Umbrella,
 };
 
 function Stat({
@@ -148,7 +148,11 @@ function TransferMetric({
         <Text style={[type.small, { color: palette.textSecondary }]}>{label}</Text>
         <Text
           accessibilityLabel={`${label}: ${formatMinor(minor)}`}
-          style={[type.amountSm, { color: direction === "in" ? palette.positiveText : palette.text, marginTop: 1 }]}
+          // Zero is not a gain. The inbound metric was painted green whatever
+          // it held, so a wallet that had never received a transfer still
+          // reported "₺0,00" in the colour this app reserves for money coming
+          // in.
+          style={[type.amountSm, { color: minor === 0 ? palette.textSecondary : direction === "in" ? palette.positiveText : palette.text, marginTop: 1 }]}
         >
           {compact ? formatMinorCompact(minor) : formatMinor(minor)}
         </Text>
@@ -193,6 +197,12 @@ function AllocationStrip({
         style={{
           height: 9,
           flexDirection: "row",
+          // The palette holds three clay tones that are categories, not a
+          // scale, and two of them side by side read as one segment. A gap in
+          // the track colour separates any pair, whatever the hues turn out to
+          // be — the boundary is structural instead of depending on contrast
+          // between two fills chosen for other reasons.
+          gap: 2,
           overflow: "hidden",
           borderRadius: radius.full,
           backgroundColor: palette.surfaceStrong,
@@ -204,6 +214,8 @@ function AllocationStrip({
             key={slice.label}
             style={{
               flex: totalMinor > 0 ? slice.valueMinor / totalMinor : 0,
+              // A one-percent holding still has to be visible as a holding.
+              minWidth: slice.valueMinor > 0 ? 4 : 0,
               backgroundColor: slice.color,
             }}
           />
@@ -303,9 +315,17 @@ export default function InvestmentsScreen() {
   const router = useRouter();
   const userId = useUserId();
   const undo = useUndo();
+  // The hero composes itself from the card it is actually in. Reading the page
+  // column instead was fine at 100% zoom and wrong everywhere else: at 175% the
+  // same 1920 monitor reports 1097 CSS px, the layout picked its widest
+  // arrangement, and a 204px ring sat in a column that no longer had room for
+  // it beside the balance. A measured box is right at every zoom, on a tablet,
+  // and inside whatever column the card ends up in.
+  const [heroWidth, onHeroLayout] = useMeasuredWidth(0);
   const width = useContentWidth();
-  const compact = width < 560;
-  const desktop = width >= 900;
+  const heroBox = heroWidth > 0 ? heroWidth - density.dashboard.cardPadding * 2 : width;
+  const compact = heroBox < 520;
+  const desktop = heroBox >= 860;
   const [productFilter, setProductFilter] = useState<"all" | InvestmentAssetType>("all");
   const { palette } = useTheme();
   const colors = useSeriesColors();
@@ -455,7 +475,7 @@ export default function InvestmentsScreen() {
         </Text>
       ) : (
         <View testID="investment-cash-amount">
-          <Amount minor={state.cashMinor} colorized={false} style={{ fontSize: width >= 760 ? 34 : 30, textAlign: "left", marginTop: spacing.sm }} />
+          <Amount minor={state.cashMinor} colorized={false} style={{ fontSize: heroBox >= 700 ? 34 : 30, textAlign: "left", marginTop: spacing.sm }} />
         </View>
       )}
       <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.xs }]}>
@@ -467,14 +487,19 @@ export default function InvestmentsScreen() {
     <Donut
       slices={slices}
       totalMinor={totalCapital}
-      size={desktop ? 204 : width >= 760 ? 148 : 112}
+      // The ring takes a share of the box it is in, so it grows and shrinks
+      // with the card instead of stepping between three fixed sizes.
+      size={Math.round(Math.min(232, Math.max(112, heroBox * (desktop ? 0.24 : 0.2))))}
     />
   );
   const transferSummary = (
     <View
       testID="investment-transfer-summary"
       style={{
-        flexDirection: desktop ? "column" : "row",
+        // Two transfer lines read as rows under the balance they belong to.
+        // Side by side they were a second, unrelated strip; only a phone, where
+        // a column would cost two more rows of height, keeps them paired.
+        flexDirection: compact ? "row" : "column",
         gap: compact ? spacing.sm : spacing.md,
         marginTop: spacing.lg,
         padding: spacing.md,
@@ -482,8 +507,8 @@ export default function InvestmentsScreen() {
         backgroundColor: palette.surfaceAlt,
       }}
     >
-      <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} compact={compact} stacked={desktop} />
-      <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} compact={compact} stacked={desktop} />
+      <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} compact={compact} stacked={!compact} />
+      <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} compact={compact} stacked={!compact} />
     </View>
   );
   const portfolioMetrics = (
@@ -505,7 +530,7 @@ export default function InvestmentsScreen() {
     >
       <DataStateNotice status={status} retry={retry} />
       <View testID="investment-wallet-summary">
-        <HeroCard style={{ marginBottom: spacing.lg }}>
+        <HeroCard style={{ marginBottom: spacing.lg }} onLayout={onHeroLayout}>
           {compact ? (
             <>
               {cashSummary}
@@ -526,13 +551,20 @@ export default function InvestmentsScreen() {
             </View>
           ) : (
             <>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
-                {cashSummary}
-                <View testID="investment-distribution-chart" style={{ flex: 1, minWidth: 0 }}>
+              {/* The middle band is the desktop arrangement at a smaller scale,
+                  not a third layout: balance and its transfer lines in one
+                  column, the ring in the other. The transfers used to sit in a
+                  full-width strip below both, which read as a separate section
+                  rather than as two facts about the balance above them. */}
+              <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.lg }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  {cashSummary}
+                  {transferSummary}
+                </View>
+                <View testID="investment-distribution-chart" style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
                   {distributionChart}
                 </View>
               </View>
-              {transferSummary}
               {portfolioMetrics}
             </>
           )}
@@ -545,6 +577,10 @@ export default function InvestmentsScreen() {
           card — the tiles themselves keep their own even share of the row. */}
       <View
         testID="investment-actions"
+        // The band spans the page and its four tiles share it evenly, the same
+        // rule the ledger's toolbar follows: a control that changes where it
+        // lives every time the window does is a control the user has to find
+        // again. Bounded, it read as a narrow island under a full-width card.
         style={{
           width: "100%",
           flexDirection: "row",

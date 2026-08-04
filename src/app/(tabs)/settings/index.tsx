@@ -24,7 +24,7 @@ import {
   LogOut,
   Monitor,
   Moon,
-  PiggyBank,
+  Flag,
   Target,
   ScanFace,
   Trash2,
@@ -48,9 +48,10 @@ import { setGlobalPalettePreference, setGlobalThemePreference } from "../../_lay
 import { userMessage } from "../../../domain/user-error";
 import { devError } from "../../../services/logger";
 import { TourModal } from "../../../ui/tour";
+import { useBiometricLabel } from "../../../ui/biometric-label";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
-import { dateLabel, tr } from "../../../i18n/tr";
+import { dateLabel, dateTimeLabel, tr } from "../../../i18n/tr";
 import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
@@ -322,6 +323,7 @@ export default function SettingsScreen() {
   const { palette, paletteId, scheme } = useTheme();
   const [themePref, setThemePref] = useState<ThemePreference>("system");
   const [biometric, setBiometric] = useState(false);
+  const biometricLabel = useBiometricLabel();
   const [localPreferencesLoaded, setLocalPreferencesLoaded] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const notifications = useDevicePreferences((state) => state.notifications);
@@ -372,7 +374,10 @@ export default function SettingsScreen() {
         setLifecycleIntent("local-sign-out");
         setSigningOut(true);
         const error = await signOut();
-        if (error) void appAlert(error, tr.errors.title);
+        if (error) {
+          clearLifecycleIntent();
+          void appAlert(error, tr.errors.title);
+        }
         return;
       }
       const proceed = await appConfirm(tr.auth.signOut, tr.auth.signOutSignatureDescription, {
@@ -389,23 +394,38 @@ export default function SettingsScreen() {
       if (error === SIGN_OUT_PENDING_CHANGES) {
         const pending = await pendingSyncChangeCount();
         setSigningOut(false);
+        clearLifecycleIntent();
         const proceed = await appConfirm(tr.auth.signOutPendingTitle, tr.auth.signOutPendingWarn(pending), {
           confirmLabel: tr.auth.signOutAnyway,
           danger: true,
           operation: "sign-out",
         });
         if (!proceed) return;
+        setLifecycleIntent("sign-out");
         setSigningOut(true);
         const forced = await signOut({ force: true });
-        if (forced) void appAlert(forced, tr.errors.title);
+        if (forced) {
+          clearLifecycleIntent();
+          void appAlert(forced, tr.errors.title);
+        }
         return;
       }
-      if (error) void appAlert(error, tr.errors.title);
+      if (error) {
+        clearLifecycleIntent();
+        void appAlert(error, tr.errors.title);
+      }
     } catch {
+      clearLifecycleIntent();
       void appAlert(tr.errors.requestFailed, tr.errors.title);
     } finally {
+      // The intent deliberately survives this block. It is what the waiting
+      // screen reads while the session tears down, and clearing it here — the
+      // instant the operation resolved, which is the instant the app
+      // transitions — is why signing out, freezing and deleting all showed the
+      // first-pull sentence instead of their own. The failure paths above clear
+      // it, because those leave the user on this screen; a new sign-in clears
+      // it too.
       setSigningOut(false);
-      clearLifecycleIntent();
       signOutLocked.current = false;
     }
   };
@@ -519,10 +539,14 @@ export default function SettingsScreen() {
     setDeleting(true);
     try {
       const err = await deleteAccount();
-      if (err) void appAlert(err, tr.errors.title);
+      if (err) {
+        clearLifecycleIntent();
+        void appAlert(err, tr.errors.title);
+      }
     } finally {
+      // Same rule as the sign-out above: the intent outlives the call so the
+      // waiting screen can name the operation the user actually confirmed.
       setDeleting(false);
-      clearLifecycleIntent();
     }
   };
 
@@ -542,7 +566,7 @@ export default function SettingsScreen() {
       <DataStateNotice status={combineLiveQueryStatus([settingsState])} retry={settingsState.retry} />
       <SectionHeader>{tr.settings.balanceSection}</SectionHeader>
       <Card>
-        <ListRow icon={PiggyBank} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />
+        <ListRow icon={Flag} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />
       </Card>
 
       <SectionHeader>{tr.settings.workspaceSection}</SectionHeader>
@@ -626,7 +650,11 @@ export default function SettingsScreen() {
             action. Beside the input it stays the smaller of the two and the row
             keeps its own bottom margin, which the field no longer carries. */}
         <Row gap={spacing.sm} style={{ alignItems: "flex-end", marginBottom: spacing.md }}>
-          <View style={{ flex: 1 }}>
+          {/* A box for at most two digits does not need 70% of a settings row.
+              It is bounded by what it holds and the label above it keeps its
+              full measure; the leftover goes back to the row instead of being
+              painted as an input the size of a name field. */}
+          <View style={{ flex: 1, maxWidth: 220 }}>
             <Field
               label={tr.settings.reminderDays}
               value={reminderStr}
@@ -661,10 +689,10 @@ export default function SettingsScreen() {
           <>
             <ListRow
               icon={ScanFace}
-              title={tr.settings.biometric}
+              title={biometricLabel}
               right={
                 <Toggle
-                  label={tr.settings.biometric}
+                  label={biometricLabel}
                   value={biometric}
                   disabled={!localPreferencesLoaded}
                   onValueChange={(v) => {
@@ -772,7 +800,7 @@ export default function SettingsScreen() {
           title={tr.settings.sync}
           subtitle={
             tr.settings.syncState[sync.state] +
-            (sync.lastSyncAt ? ` · ${tr.settings.lastSync(new Date(sync.lastSyncAt).toLocaleString("tr-TR"))}` : "") +
+            (sync.lastSyncAt ? ` · ${tr.settings.lastSync(dateTimeLabel(new Date(sync.lastSyncAt).toISOString()))}` : "") +
             (!isSupabaseConfigured ? ` · ${tr.settings.syncUnconfiguredHint}` : "")
           }
           iconColor={syncStateColor}

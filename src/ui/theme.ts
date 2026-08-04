@@ -615,53 +615,27 @@ export function tabBarClearance(bottomInset: number, isWeb: boolean): number {
 }
 
 /**
- * The same navigation surface, stood on its side.
- *
- * A bottom bar is a thumb affordance: it belongs at the edge a held hand can
- * reach. On a pointer-sized viewport that edge is nowhere near the pointer, the
- * bar spends vertical space the content wants, and it floats over the very rows
- * it is supposed to sit beside. The rail is the same five destinations, the same
- * material and the same semantics, on the axis desktop has to spare.
- *
- * It is an instrument, not a sidebar: a compact floating panel centred on its
- * own axis, holding the same icon-over-label item the bottom bar uses. Stood up
- * as a full-height 220px column with a wordmark it read as a page region that
- * happened to be mostly empty; five destinations do not fill a sidebar, and
- * pretending otherwise is what made it look unfinished. Centred and bounded to
- * the width its longest label needs, the emptiness around it belongs to the
- * page instead of to the navigation.
- *
- * `width` is what the page gives up (panel plus the air on both sides);
- * `panelWidth` is measured — the longest Turkish destination ("Abonelikler") at
- * the label size, which `e2e/ui-consistency.spec.ts` asserts against the real
- * rendered font.
- */
-export const SIDE_NAV = {
-  width: 108,
-  panelWidth: 84,
-  itemHeight: 54,
-  itemGap: 4,
-  /** Inner padding of the panel. */
-  padding: 6,
-} as const;
-
-/**
  * Navigation material.
  *
- * The bar and the rail float over the content they navigate, and the point of
- * floating is that the page keeps going underneath — so the fill is a veil, not
- * a lid. Web can afford a thinner one because a real backdrop blur removes the
- * detail that would otherwise compete with an 11px label; native has no blur in
- * this runtime, so its veil stays denser or the label would sit directly on
- * whatever text scrolls behind it.
+ * The bar floats over the content it navigates, and the point of floating is
+ * that the page keeps going underneath — so the fill is a veil, not a lid. The
+ * owner asked for as much glass as the label can survive, so both alphas are as
+ * low as the ink allows: web can afford the thinner one because a real backdrop
+ * blur removes the detail that would otherwise compete with an 11px label,
+ * while native has no blur in this runtime and keeps a denser veil rather than
+ * setting a label directly on whatever text scrolls behind it.
+ *
+ * The LABEL never takes any of this. Alpha belongs to the surface; the text on
+ * top is painted at full strength, which is the whole difference between a
+ * translucent panel and a faded one.
  *
  * Both are alpha over `surface`, so every contrast pair already proved against
  * `surface` still describes the ink on top.
  */
 export const NAV_GLASS = {
-  webAlpha: "B8",
-  nativeAlpha: "D6",
-  blur: "blur(24px) saturate(150%)",
+  webAlpha: "70",
+  nativeAlpha: "B0",
+  blur: "blur(30px) saturate(180%)",
 } as const;
 
 export function navigationMaterial(surface: string, { glass, isWeb }: { glass: boolean; isWeb: boolean }): string {
@@ -670,26 +644,21 @@ export function navigationMaterial(surface: string, { glass, isWeb }: { glass: b
 }
 
 /**
- * Space a tab scene must leave for navigation, on whichever axis the bar
- * currently occupies.
+ * Space a tab scene must leave for navigation.
  *
- * One function rather than two so a scene, the undo snackbar and the bar itself
- * cannot disagree about where navigation actually is — the bug the old
- * bottom-only `tabBarClearance` existed to prevent, kept intact while the bar
- * gained a second orientation.
+ * One function so a scene, the undo snackbar and the bar itself cannot disagree
+ * about where navigation is. It briefly returned a left inset too, for a
+ * desktop rail; the rail is gone — it pushed every page off centre and gave the
+ * app two navigations to learn — and the shape stays a single owner rather than
+ * scattering `tabBarClearance` back across three call sites.
  */
 export function navigationInset({
   bottomInset,
   isWeb,
-  side,
 }: {
   bottomInset: number;
   isWeb: boolean;
-  side: boolean;
 }): { bottom: number; left: number } {
-  // The rail floats clear of the page, so what the scene gives up is the panel
-  // plus the air on both sides of it — `SIDE_NAV.width`, not the panel width.
-  if (side) return { bottom: spacing.xl, left: SIDE_NAV.width };
   return { bottom: tabBarClearance(bottomInset, isWeb), left: 0 };
 }
 

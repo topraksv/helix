@@ -60,24 +60,24 @@ import {
 function waitingState(
   intent: LifecycleIntent | null,
   newSignup: boolean,
-): { kind: OperationFlowKind; message: string } {
+): { kind: OperationFlowKind; title: string; message: string } {
   switch (intent) {
     case "sign-out":
-      return { kind: "sign-out", message: tr.operation.signingOut };
+      return { kind: "sign-out", title: tr.operation.signingOutTitle, message: tr.operation.signingOut };
     case "local-sign-out":
-      return { kind: "local-sign-out", message: tr.operation.localSigningOut };
+      return { kind: "local-sign-out", title: tr.operation.localSigningOutTitle, message: tr.operation.localSigningOut };
     case "delete":
-      return { kind: "delete", message: tr.operation.deletingAccount };
+      return { kind: "delete", title: tr.operation.deletingAccountTitle, message: tr.operation.deletingAccount };
     case "freeze":
-      return { kind: "freeze", message: tr.operation.freezePhase.syncing };
+      return { kind: "freeze", title: tr.operation.freezingTitle, message: tr.operation.freezePhase.syncing };
     case "reactivate":
-      return { kind: "reactivate", message: tr.auth.restoringData };
+      return { kind: "reactivate", title: tr.operation.reactivateTitle, message: tr.auth.restoringData };
     default:
       // No lifecycle operation: this is the first pull after a sign-in, and a
       // brand-new account has nothing to pull.
       return newSignup
-        ? { kind: "initialize", message: tr.auth.restoringDataFresh }
-        : { kind: "restore", message: tr.auth.restoringData };
+        ? { kind: "initialize", title: tr.operation.initializeTitle, message: tr.auth.restoringDataFresh }
+        : { kind: "restore", title: tr.operation.restoreTitle, message: tr.auth.restoringData };
   }
 }
 
@@ -377,7 +377,7 @@ function RootLayoutInner() {
             // A silent spinner after a correct password reads as a stall. This
             // hold is the account's first pull, and a brand-new account has
             // nothing to pull — so the two say different things.
-            <WaitingNotice kind={wait.kind} message={wait.message} />
+            <WaitingNotice kind={wait.kind} title={wait.title} message={wait.message} />
           ) : !guard.redirect ? (
             <DelayedLoadingIndicator />
           ) : null}

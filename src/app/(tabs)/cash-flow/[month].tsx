@@ -32,7 +32,7 @@ import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Field, Heading
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
-import { radius, spacing, useTheme } from "../../../ui/theme";
+import { controlSize, radius, spacing, useTheme } from "../../../ui/theme";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { appAlert } from "../../../ui/dialog";
@@ -270,6 +270,11 @@ export default function MonthDetailScreen() {
                 selectionTapIfChanged(expanded, open ? "" : categoryId);
                 setExpanded(open ? null : categoryId);
               }}
+              // The row expands a category and is the main way into a month, so
+              // it owes the platform minimum. It measured 28pt tall — the exact
+              // height of its own heading — which on a phone is a target you
+              // have to aim at.
+              style={{ minHeight: controlSize.minimumTarget, justifyContent: "center" }}
             >
               <Spread style={{ alignItems: "flex-start" }}>
                 <View style={{ flex: 1, paddingRight: spacing.md }}>

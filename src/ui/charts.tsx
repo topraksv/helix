@@ -572,9 +572,19 @@ export function Bars({
   // pixels apart are unreadable whatever their values say. Zero is structural
   // and always survives — it is the line the signs are read against.
   const labelGap = axisFontSize + 3;
-  const referenceTicks = ticks.filter(
-    (tick) => tick === 0 || axis.valueTicks.every((value) => Math.abs(y(tick) - y(value)) >= labelGap),
-  );
+  // One pass over everything that wants a label, in priority order, keeping a
+  // tick only when it clears every label already placed. Filtering the ruler
+  // against the real figures alone was not enough: nothing stopped two rungs —
+  // or zero and a small negative extreme — from landing within a few pixels of
+  // each other on a short chart, which is exactly the "-7 B sitting on top of
+  // 0" the owner reported. The rules are still drawn for every tick; only the
+  // text yields, and the real figures never do.
+  const placed: number[] = [];
+  const clears = (value: number) => placed.every((other) => Math.abs(y(value) - y(other)) >= labelGap);
+  for (const value of axis.valueTicks) if (clears(value)) placed.push(value);
+  if (ticks.includes(0) && clears(0)) placed.push(0);
+  for (const tick of ticks) if (tick !== 0 && clears(tick)) placed.push(tick);
+  const labelled = new Set(placed);
   const everyN = groups.length <= 6 ? 1 : Math.ceil(groups.length / 6);
   const visibleValueCount = groups.reduce(
     (count, group) => count + group.values.filter((value) => value != null && value !== 0).length,
@@ -600,7 +610,7 @@ export function Bars({
             rx={chart.barRadius}
             fill={palette.surfaceAlt}
           />
-          {referenceTicks.map((value) => (
+          {ticks.map((value) => (
             <React.Fragment key={`tick-${value}`}>
               <SvgLine
                 x1={pad.left}
@@ -612,17 +622,19 @@ export function Bars({
                 opacity={Math.abs(value) < 1 ? chart.baselineOpacity : chart.gridOpacity + 0.04}
                 strokeDasharray={Math.abs(value) < 1 ? undefined : "3 5"}
               />
-              <SvgText
-                testID="bar-axis-label"
-                x={pad.left - 8}
-                y={y(value) + axisFontSize * 0.36}
-                fontFamily={font.semibold}
-                fontSize={axisFontSize}
-                fill={palette.textSecondary}
-                textAnchor="end"
-              >
-                {formatChartAxis(value)}
-              </SvgText>
+              {labelled.has(value) ? (
+                <SvgText
+                  testID="bar-axis-label"
+                  x={pad.left - 8}
+                  y={y(value) + axisFontSize * 0.36}
+                  fontFamily={font.semibold}
+                  fontSize={axisFontSize}
+                  fill={palette.textSecondary}
+                  textAnchor="end"
+                >
+                  {formatChartAxis(value)}
+                </SvgText>
+              ) : null}
             </React.Fragment>
           ))}
           {/* The real extremes, drawn over the ruler: a solid rule and the ink

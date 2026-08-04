@@ -30,8 +30,7 @@ import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, Card, DataStateNotice, Divider, Field, HeroCard, Label, MonthStepper, MoneyField, PanelHeader, Row, Screen, SectionHeader, Segmented, Select, Toggle } from "../ui/components";
-import { useClusterWidth } from "../ui/viewport";
+import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, HeroCard, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -258,7 +257,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
           <Text style={[type.small, { color: palette.primaryText }]}>{tr.investments.cash}</Text>
           <Text style={[type.amountLg, { color: palette.textStrong, marginTop: 2 }]}>{formatMinor(wallet?.cashMinor ?? 0)}</Text>
         </View>
-        <Segmented
+        <ChipPicker
           value={amountMode}
           onChange={setAmountMode}
           options={[
@@ -290,7 +289,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
           onCreate={{ label: tr.tx.addCategory, run: () => router.push("/columns-editor") }}
         />
         <Label>{tr.tx.whenLabel}</Label>
-        <Segmented
+        <ChipPicker
           value={dateMode}
           onChange={setDateMode}
           options={[
@@ -315,7 +314,6 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   const persons = personsState.data;
   const router = useRouter();
   const { palette } = useTheme();
-  const saveClusterWidth = useClusterWidth(2);
   const operationGuard = useOperationGuard();
   const undo = useUndo();
   const liveStates = [categoriesState, sourcesState, personsState];
@@ -735,7 +733,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       {!isCreditCardExpense ? (
         <>
           <Label>{tr.tx.whenLabel}</Label>
-          <Segmented
+          <ChipPicker
             options={[
               { value: "month", label: tr.tx.monthOnly },
               { value: "day", label: tr.tx.specificDay },
@@ -769,7 +767,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
 
       {!isEdit && entryType === "expense" && sources.find((s) => s.id === sourceId)?.type === "credit_card" ? (
         <View style={{ marginVertical: spacing.md }}>
-          <Segmented
+          <ChipPicker
             options={[
               { value: "single", label: tr.tx.singleCharge },
               { value: "installment", label: tr.tx.installmentToggle },
@@ -797,7 +795,10 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
       {/* The commit pair is a cluster, not a banner: across a desktop column
           each button ran to ~490px. */}
-      <View style={{ gap: spacing.sm, maxWidth: saveClusterWidth }}>
+      {/* The form's own width. Bounded to what two buttons need, the primary
+          action of a full-width form rendered as a small block under it — and
+          moved every time the window changed. */}
+      <View style={{ gap: spacing.sm, width: "100%" }}>
         <Button label={tr.common.save} onPress={() => void save(false)} disabled={!canSave} loading={busy} />
         {!isEdit ? (
           <Button label={tr.tx.saveAndNew} variant="secondary" onPress={() => void save(true)} disabled={!canSave || busy} />

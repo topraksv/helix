@@ -1,13 +1,12 @@
 /** Undo snackbar (approved feature): shown after deletes, restores tombstoned rows. */
 
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check, RotateCcw, TriangleAlert } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { FadeIn } from "./components";
 import { font, overlayShadow, radius, spacing, navigationInset, type, useTheme } from "./theme";
-import { shouldUseSideNavigation } from "./responsive";
 import { tr } from "../i18n/tr";
 import { haptic, selectionTap, type HapticKind } from "./haptics";
 import { runUndo } from "../domain/undo-outcome";
@@ -51,18 +50,12 @@ export function UndoSnackbar() {
   const { palette } = useTheme();
   const { message, onUndo, tone, clear } = useUndo();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const [undoing, setUndoing] = React.useState(false);
   if (!message) return null;
   // Clear the real navigation surface (shared tokens), not a hardcoded offset
   // that silently drifts when the bar changes. It floats, so the space it
-  // occupies is its clearance, not just its size — and when it is standing as a
-  // rail that space is on the left instead of below.
-  const nav = navigationInset({
-    bottomInset: insets.bottom,
-    isWeb: Platform.OS === "web",
-    side: shouldUseSideNavigation(width),
-  });
+  // occupies is its clearance, not just its size.
+  const nav = navigationInset({ bottomInset: insets.bottom, isWeb: Platform.OS === "web" });
   return (
     <View
       pointerEvents="box-none"

@@ -23,10 +23,6 @@ const WIDE_WORKSPACE_WIDTH = 900;
  */
 const DESKTOP_WIDTH = 768;
 
-export function shouldUseSideNavigation(viewportWidth: number): boolean {
-  return viewportWidth >= DESKTOP_WIDTH;
-}
-
 export function shouldUseWideGutter(viewportWidth: number): boolean {
   return viewportWidth >= DESKTOP_WIDTH;
 }
@@ -99,4 +95,22 @@ const PAIRED_FILTER_WIDTH = 640;
 
 export function shouldPairFilterCards(contentWidth: number): boolean {
   return contentWidth >= PAIRED_FILTER_WIDTH;
+}
+
+/**
+ * Two columns are only two columns when both of them have something to say.
+ *
+ * A five-row group beside a one-row group is not a layout, it is a five-row
+ * group with a hole next to it: on Abonelikler the short column ended 550px
+ * above the tall one and the page read as half-finished. When the caller can
+ * say how much each child weighs, an extreme imbalance keeps the single stream
+ * instead of buying a column with dead space.
+ */
+export function shouldPairByMass(masses: number[]): boolean {
+  const present = masses.filter((mass) => mass > 0);
+  if (present.length < 2) return false;
+  const heaviest = Math.max(...present);
+  const lightest = Math.min(...present);
+  // Three to one is the point where two columns stop looking like peers.
+  return heaviest <= lightest * 3;
 }

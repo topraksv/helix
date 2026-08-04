@@ -12,7 +12,6 @@ import {
   motion,
   radius,
   stateOpacity,
-  SIDE_NAV,
   toggleSize,
   type,
 } from "../src/ui/theme";
@@ -173,20 +172,18 @@ describe("content width is a shared scale, not a per-route number", () => {
   });
 
   /**
-   * A rail standing beside the content broke the equality every responsive rule
-   * silently relied on — that the window width and the content width are the
-   * same number. At a 1024px window the dashboard still paired its columns as
-   * if it had 1024 while laying out 784. Layout rules must therefore measure the
-   * content column, and `useWindowDimensions` inside a layout decision is how
-   * that regresses.
+   * A desktop rail once broke the equality every responsive rule silently
+   * relied on — that the window width and the content width are the same
+   * number. The rail is gone, but the discipline stays: a layout rule asks its
+   * column, not the window, so nothing that ever stands beside the content can
+   * make every page wrong at once again.
    */
   it("measures layout rules against the content column, not the window", () => {
-    // Two kinds of question, and only one of them may read the window.
-    // "What kind of window is this?" decides whether a rail exists at all and
-    // how far the page holds off its own edges — both are properties of the
-    // window itself. "How wide is my column?" is everything else, and after the
-    // rail those two numbers differ by 220px inside a tab scene.
-    const windowScoped = new Set(["shouldUseSideNavigation", "shouldUseWideGutter"]);
+    // Two kinds of question, and only one of them may read the window. "What
+    // kind of window is this?" decides how far the page holds off its own edges
+    // — a property of the window itself. "How wide is my column?" is everything
+    // else.
+    const windowScoped = new Set(["shouldUseWideGutter"]);
     const offenders: string[] = [];
     for (const path of sourceFiles("src")) {
       const source = readFileSync(join(root, path), "utf8");
@@ -251,9 +248,9 @@ describe("composition thresholds are ordered by the content they need", () => {
   });
 
   it("keeps the tablet-portrait content column on the paired side of both rules", () => {
-    // 768px window minus the rail: the width a tablet in portrait actually
-    // gives its content once navigation stands beside it.
-    const tabletContent = 768 - SIDE_NAV.width;
+    // Navigation floats over the bottom at every width, so a tablet in portrait
+    // gives its content the whole 768 minus the page gutter.
+    const tabletContent = 768 - 24 * 2;
     expect(shouldPairFilterCards(tabletContent)).toBe(true);
     expect(shouldPairDashboardPanels(tabletContent)).toBe(true);
   });
@@ -389,5 +386,61 @@ describe("centred icons resolve to whole pixels on every supported density", () 
     const source = readFileSync(join(root, "src/ui/header-back.tsx"), "utf8");
     expect(source).toContain("size={iconSize.headerBack}");
     expect(source).not.toMatch(/size=\{\d/);
+  });
+});
+
+/**
+ * `hitSlop` is implemented only by react-native-web's legacy `Touchable`, so on
+ * the web it does nothing at all. Every compact control in this app leaned on
+ * it: measured in a browser, a 32x32 row button's real hit area was 32x32, and
+ * points 4px above, 6px left and 8px below it hit nothing. The box carries the
+ * minimum now, and `hitSlop` is left only as the native courtesy it always was.
+ */
+describe("compact controls own a real minimum target", () => {
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+
+  it("gives the icon button a minimum-target pressable and a compact visual chip", () => {
+    const iconButton = components.slice(
+      components.indexOf("export function IconButton("),
+      components.indexOf("/** Bounded month navigator. */"),
+    );
+    expect(iconButton).toContain("minWidth: controlSize.minimumTarget");
+    expect(iconButton).toContain("minHeight: controlSize.minimumTarget");
+    // The painted chip is still the compact one, inside that box.
+    expect(iconButton).toContain("size = controlSize.compact");
+  });
+
+  it("sizes a small button by the minimum target, not by the compact visual", () => {
+    expect(components).toContain("minHeight: small ? controlSize.minimumTarget : controlSize.regular");
+  });
+
+  it("gives the switch the minimum height without moving its track", () => {
+    const toggle = components.slice(components.indexOf("export function Toggle("));
+    expect(toggle).toContain("minHeight: controlSize.minimumTarget");
+    expect(toggleSize.height).toBeLessThan(controlSize.minimumTarget);
+  });
+
+  it("keeps one icon-button size across the app", () => {
+    const callers = readdirSync(join(root, "src"), { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && /\.tsx$/.test(entry.name))
+      .map((entry) => readFileSync(join(entry.parentPath, entry.name), "utf8"))
+      .filter((text) => text.includes("<IconButton"));
+    expect(callers.length).toBeGreaterThan(4);
+    for (const text of callers) {
+      expect(text).not.toMatch(/<IconButton[^>]*\ssize=\{/);
+    }
+  });
+});
+
+describe("primary, secondary and disabled are three different weights", () => {
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+
+  it("outlines the secondary button and leaves the disabled one flat", () => {
+    // Both used to paint `surfaceAlt` with only the label colour between them,
+    // so a disabled "Kaydet" and an enabled "Kaydet ve Yeni Ekle" were the same
+    // beige block and the form's primary action could not be found.
+    expect(components).toContain(
+      'borderWidth: visuallyDisabled ? 0 : variant === "secondary" ? borderWidth.control : 0',
+    );
   });
 });

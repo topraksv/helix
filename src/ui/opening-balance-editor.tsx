@@ -271,7 +271,6 @@ export function OpeningBalanceEditor() {
                     <Amount minor={adjustment.amountMinor} />
                     <IconButton
                       icon={Trash2}
-                      size={32}
                       tone="danger"
                       label={`${tr.common.delete} · ${dateLabel(adjustment.date)}`}
                       haptic="none"
