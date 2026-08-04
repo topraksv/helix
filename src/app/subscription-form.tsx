@@ -24,7 +24,7 @@ import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { devError } from "../services/logger";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
-import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { MonthDayField } from "../ui/month-day-field";
 import { Logo } from "../ui/logo";
 import { font, radius, spacing, type, useTheme } from "../ui/theme";
@@ -234,8 +234,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     trialDate,
     note,
   });
-  const initialDraftSnapshot = React.useRef(draftSnapshot).current;
-  const { allowExit, confirmDiscard } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  const { allowExit, confirmDiscard } = useDirtyExitGuard(useDraftDirty(draftSnapshot, dataReady) && !busy);
 
   const billingDay = cycle === "yearly" && yearlyRenewalDate
     ? Number(yearlyRenewalDate.slice(8, 10))

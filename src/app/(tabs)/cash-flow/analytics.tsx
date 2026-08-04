@@ -397,10 +397,14 @@ export default function AnalysisScreen() {
       </View>
       <MetricStrip
         style={{ marginBottom: spacing.lg }}
+        // A year of a real ledger runs to hundreds of thousands, and three of
+        // those figures across one row wrapped the last one onto a second line.
+        // The strip measures its own column and asks for ₺868,9 B when the exact
+        // figure will not fit, so each total keeps its own line.
         items={[
-          { label: tr.cashflow.income, value: <Amount minor={periodDistribution.incomeTotalMinor} colorized={false} color={palette.positiveText} style={{ textAlign: "left" }} /> },
-          { label: tr.cashflow.expense, value: <Amount minor={-periodDistribution.expenseTotalMinor} colorized={false} color={palette.negativeText} style={{ textAlign: "left" }} /> },
-          { label: tr.cashflow.transfer, value: <Amount minor={-periodDistribution.transferTotalMinor} colorized={false} color={palette.secondaryText} style={{ textAlign: "left" }} /> },
+          { label: tr.cashflow.income, value: (compact: boolean) => <Amount minor={periodDistribution.incomeTotalMinor} compact={compact} colorized={false} color={palette.positiveText} style={{ textAlign: "left" }} /> },
+          { label: tr.cashflow.expense, value: (compact: boolean) => <Amount minor={-periodDistribution.expenseTotalMinor} compact={compact} colorized={false} color={palette.negativeText} style={{ textAlign: "left" }} /> },
+          { label: tr.cashflow.transfer, value: (compact: boolean) => <Amount minor={-periodDistribution.transferTotalMinor} compact={compact} colorized={false} color={palette.secondaryText} style={{ textAlign: "left" }} /> },
         ]}
       />
     </View>

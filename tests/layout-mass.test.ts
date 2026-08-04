@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { shouldPairByMass } from "../src/ui/responsive";
 import { biometricName } from "../src/ui/biometric-name";
 import { tr } from "../src/i18n/tr";
+import { balanceDeclarationDrift, parseBalanceDeclaration } from "../src/domain/balance-declaration";
 
 const root = process.cwd();
 
@@ -118,5 +119,39 @@ describe("the ledger never rests between columns", () => {
   it("snaps a dragged scroll to the same grid", () => {
     expect(table).toContain("snapToInterval={cellWidth}");
     expect(table).toContain('snapToAlignment="start"');
+  });
+});
+
+/**
+ * The balance the user last confirmed against a real account, and whether the
+ * ledger still agrees. Reconciling writes an adjustment so the table lands on
+ * the declared figure, and from that instant the app used to have no memory of
+ * what was actually checked.
+ */
+describe("a declared balance can be compared with the ledger later", () => {
+  it("reads back only a well-formed declaration", () => {
+    expect(parseBalanceDeclaration({ minor: 2_000_000, at: "2026-08-04" })).toEqual({ minor: 2_000_000, at: "2026-08-04" });
+    expect(parseBalanceDeclaration(null)).toBeNull();
+    expect(parseBalanceDeclaration({ minor: 10 })).toBeNull();
+    expect(parseBalanceDeclaration({ at: "2026-08-04" })).toBeNull();
+    expect(parseBalanceDeclaration({ minor: Number.NaN, at: "2026-08-04" })).toBeNull();
+    expect(parseBalanceDeclaration({ minor: 10, at: "" })).toBeNull();
+  });
+
+  it("reports the drift, and says nothing when there is none", () => {
+    const declared = { minor: 2_000_000, at: "2026-08-04" };
+    expect(balanceDeclarationDrift(declared, 3_000_000)).toBe(1_000_000);
+    expect(balanceDeclarationDrift(declared, 1_000_000)).toBe(-1_000_000);
+    expect(balanceDeclarationDrift(declared, 2_000_000)).toBeNull();
+    expect(balanceDeclarationDrift(null, 3_000_000)).toBeNull();
+    expect(balanceDeclarationDrift(declared, null)).toBeNull();
+  });
+
+  it("is written when a balance is confirmed, and read where it matters", () => {
+    const editor = readFileSync(join(root, "src/ui/opening-balance-editor.tsx"), "utf8");
+    expect(editor).toContain("setBalanceDeclaration(userId, effectiveTarget, todayISO())");
+    for (const path of ["src/app/(tabs)/index.tsx", "src/app/(tabs)/cash-flow/index.tsx"]) {
+      expect(readFileSync(join(root, path), "utf8")).toContain("balanceDeclarationDrift(");
+    }
   });
 });

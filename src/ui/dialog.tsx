@@ -229,7 +229,10 @@ export function PromptHost() {
           paddingVertical: spacing.sm + 2,
           color: palette.text,
           backgroundColor: palette.surfaceAlt,
-          marginBottom: spacing.lg,
+          // The field is the answer to the sentence above it, so it needs air
+          // between them: with an operation header the two were flush, and the
+          // gap underneath was doubled by the action block's own top margin.
+          marginTop: spacing.lg,
           fontFamily: font.regular,
           fontSize: 16,
         }}
@@ -241,12 +244,12 @@ export function PromptHost() {
               // second column, which is why iOS drew the two buttons side by
               // side and offset while the web build stacked them.
               gap: spacing.sm,
-              marginTop: spacing.xl,
+              marginTop: spacing.lg,
               paddingTop: spacing.md,
               borderTopWidth: StyleSheet.hairlineWidth,
               borderTopColor: palette.border,
             }
-          : { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap" }}
+          : { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, flexWrap: "wrap", marginTop: spacing.lg }}
       >
         <View style={current.operation ? { width: "100%" } : undefined}>
           <Button label={tr.common.cancel} variant="ghost" size="sm" onPress={() => close(null)} />

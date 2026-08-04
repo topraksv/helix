@@ -140,6 +140,7 @@ export {
   createRecordId,
   pendingSyncChangeCount,
   setAccountFrozen,
+  setBalanceDeclaration,
   setPendingTableVisibility,
   setReminderDays,
 } from "./repo/settings";

@@ -650,11 +650,10 @@ export default function SettingsScreen() {
             action. Beside the input it stays the smaller of the two and the row
             keeps its own bottom margin, which the field no longer carries. */}
         <Row gap={spacing.sm} style={{ alignItems: "flex-end", marginBottom: spacing.md }}>
-          {/* A box for at most two digits does not need 70% of a settings row.
-              It is bounded by what it holds and the label above it keeps its
-              full measure; the leftover goes back to the row instead of being
-              painted as an input the size of a name field. */}
-          <View style={{ flex: 1, maxWidth: 220 }}>
+          {/* The row spans its screen: field and button together fill the
+              width, so the pair sits in the same place whatever the window is
+              doing. */}
+          <View style={{ flex: 1 }}>
             <Field
               label={tr.settings.reminderDays}
               value={reminderStr}

@@ -269,16 +269,24 @@ test("dirty drafts guard browser unload and same-screen context changes", async 
   await expect(amount).toHaveValue("");
   await expect(monthHeading).not.toHaveText(monthBefore ?? "");
 
+  // Bulk entry has one way out — the back control. It used to carry a "Tamam"
+  // button beside it that did exactly the same thing, which is one more way to
+  // leave than there are ways to leave.
   await page.goto("/helix/bulk-entry");
   const bulkAmount = page.getByRole("textbox").first();
   await bulkAmount.fill("750");
-  await page.getByRole("button", { name: "Tamam", exact: true }).click();
+  const back = page.getByRole("button", { name: "Geri", exact: true });
+  await back.click();
   await expect(dialogTitle).toBeVisible();
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(page).toHaveURL(/\/helix\/bulk-entry$/);
   await expect(bulkAmount).toHaveValue("750");
-  await page.getByRole("button", { name: "Tamam", exact: true }).click();
-  await page.getByRole("button", { name: "Değişiklikleri sil", exact: true }).click();
+  // Clearing the field puts the form back where it started, so leaving is no
+  // longer a discard at all — the guard must not ask, and must never trap.
+  await bulkAmount.fill("");
+  await back.click();
+  await expect(dialogTitle).toHaveCount(0);
+  await expect(page).not.toHaveURL(/\/helix\/bulk-entry$/);
 
   await page.goto("/helix/settings/categories");
   const newCategory = page.getByRole("textbox", { name: "Kategori Ekle" });

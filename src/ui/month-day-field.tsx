@@ -14,14 +14,19 @@ export function MonthDayField({
   onChange,
   quickDays = [],
   error,
+  unavailableDay,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   quickDays?: readonly number[];
   error?: string | null;
+  /** A day the paired field already owns; offering it would only produce an
+   *  invalid cycle, so it is not offered. */
+  unavailableDay?: number | null;
 }) {
   const options = [...new Set([...quickDays.filter((day) => day < MONTH_END_DAY), MONTH_END_DAY])]
+    .filter((day) => day !== unavailableDay)
     .map((day) => ({ value: String(day), label: monthDayLabel(day) }));
   const selected = options.some((option) => option.value === value) ? value : null;
 

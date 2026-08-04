@@ -9,14 +9,15 @@
 import React, { useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Inbox, Info, Pencil, Flag, Plus, Sigma } from "lucide-react-native";
+import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Flag, Inbox, Info, Pencil, Plus, Sigma, TriangleAlert } from "lucide-react-native";
 import { monthFlowTotals } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { resolveMatrixMode, type MatrixMode } from "../../../domain/matrix-preferences";
 import { formatMinor, formatMinorCompact } from "../../../domain/money";
-import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
+import { dateLabel, monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
+import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../../domain/balance-declaration";
 import {
   settingValue,
   toTxLike,
@@ -62,25 +63,25 @@ function MatrixTool({
       accessibilityLabel={label}
       onPress={onPress}
       hitSlop={6}
-      style={{ flex: 1, flexBasis: 0, minWidth: 0, minHeight: controlSize.minimumTarget, alignItems: "center", justifyContent: "center", gap: 1 }}
+      // The press surface is the control's own box. It used to be a 30x28
+      // rectangle behind the icon while the pressable was the whole column,
+      // so holding the tool lit a small patch sitting above its own caption
+      // instead of the thing being pressed.
+      style={({ pressed }) => ({
+        flex: 1,
+        flexBasis: 0,
+        minWidth: 0,
+        minHeight: controlSize.minimumTarget,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 1,
+        paddingVertical: spacing.xs,
+        borderRadius: radius.sm,
+        backgroundColor: pressed ? palette.surfaceHover : "transparent",
+      })}
     >
-      {({ pressed }) => (
-        <>
-          <View
-            style={{
-              width: 30,
-              height: 28,
-              borderRadius: radius.sm,
-              backgroundColor: pressed ? palette.surfaceHover : "transparent",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <IconCmp accessible={false} size={15} color={palette.textSecondary} strokeWidth={2} />
-          </View>
-          <Text style={[type.small, { fontSize: 9, lineHeight: 11, color: palette.textSecondary, textAlign: "center" }]}>{caption}</Text>
-        </>
-      )}
+      <IconCmp accessible={false} size={15} color={palette.textSecondary} strokeWidth={2} />
+      <Text style={[type.small, { fontSize: 9, lineHeight: 11, color: palette.textSecondary, textAlign: "center" }]}>{caption}</Text>
     </Pressable>
   );
 }
@@ -133,6 +134,10 @@ export default function CashflowScreen() {
   const computed = computedState.data;
   const settings = settingsState.data;
   const hiddenComputed = settingValue<string[]>(settings, "computed_columns_hidden", []);
+  // "You told me X; this table says Y." The declaration is the last balance the
+  // user checked against a real account.
+  const balanceDeclaration = parseBalanceDeclaration(settingValue<unknown>(settings, "balance_declared", null));
+  const balanceDrift = balanceDeclarationDrift(balanceDeclaration, bundle?.actualBalanceMinor ?? null);
   const visibleComputed = computed.filter((c) => !hiddenComputed.includes(c.id));
   const sources = sourcesState.data;
   const persons = personsState.data;
@@ -316,6 +321,38 @@ export default function CashflowScreen() {
       </View>
 
       <DataStateNotice status={dataStatus} retry={retryData} />
+      {balanceDrift != null && balanceDeclaration ? (
+        // The ledger is where the mismatch is visible, so it is where the way
+        // out belongs: the figure the user confirmed against a real account
+        // against the one this table now computes.
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={tr.settings.balanceDriftTitle}
+          onPress={() => router.push("/opening-balance")}
+          style={({ pressed }) => ({
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+            marginBottom: spacing.sm,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            borderRadius: radius.md,
+            backgroundColor: pressed ? palette.warning + "2A" : palette.warning + "16",
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.warning + "70",
+          })}
+        >
+          <TriangleAlert accessible={false} size={15} color={palette.warningText} strokeWidth={2.3} />
+          <Text style={[type.small, { color: palette.warningText, flex: 1, minWidth: 0 }]}>
+            {tr.settings.balanceDriftBody(
+              formatMinor(balanceDeclaration.minor),
+              formatMinor(bundle?.actualBalanceMinor ?? 0),
+              dateLabel(balanceDeclaration.at),
+            )}
+          </Text>
+          <ChevronRight accessible={false} size={16} color={palette.warningText} />
+        </Pressable>
+      ) : null}
 
       {!bundle ? (
         dataStatus === "loading" || dataStatus === "error" ? null : (

@@ -444,3 +444,37 @@ describe("primary, secondary and disabled are three different weights", () => {
     );
   });
 });
+
+/**
+ * A press has to light the control, not a patch inside it.
+ *
+ * The ledger's tool row painted its pressed fill on a 30x28 box behind the
+ * icon while the pressable was the whole column, so holding a tool lit a small
+ * rectangle sitting above its own caption — the owner read that, correctly, as
+ * uneven padding. The fill belongs to the pressable's own style callback, which
+ * is the only box guaranteed to be the thing being pressed.
+ */
+describe("a press lights the control it is on", () => {
+  it("paints every pressed fill on the pressable's own box", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src")) {
+      // `IconButton` is the one deliberate exception: its painted chip is
+      // centred inside the minimum target, so the fill IS centred on the
+      // control that was pressed.
+      if (path === "src/ui/components.tsx") continue;
+      const source = readFileSync(join(root, path), "utf8");
+      // The children-render form only — `style={({ pressed }) => ({` is the
+      // correct one and looks almost identical, so it is excluded explicitly.
+      // Each block is bounded by the Pressable it belongs to.
+      for (const match of source.matchAll(/(?<!style=)\{\(\{ pressed \}\) => \(/g)) {
+        const start = match.index!;
+        const end = source.indexOf("</Pressable>", start);
+        const block = source.slice(start, end < 0 ? source.length : end);
+        if (/backgroundColor:[^\n]*\bpressed\b/.test(block)) {
+          offenders.push(`${path}:${source.slice(0, start).split("\n").length}`);
+        }
+      }
+    }
+    expect(offenders, "style the pressable itself, not a child of it").toEqual([]);
+  });
+});

@@ -101,3 +101,27 @@ export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
       askToDiscardRef.current(() => permitExit(action), contextDirty),
   };
 }
+
+/**
+ * The one rule for "has this form changed?".
+ *
+ * Every screen used to answer it differently: some compared a snapshot, some
+ * asked "is any field non-empty", some tracked whether a control had ever been
+ * touched. So the same gesture produced three behaviours — a discard prompt on
+ * a form nothing had been typed into, no prompt on one that had, and on a
+ * couple of screens a guard that refused to leave with nothing to answer.
+ *
+ * Dirty means the draft differs from what it held when the screen settled.
+ * Typing 150 over 100 and then typing 100 back is not a change, because the
+ * user is leaving with exactly what they arrived with.
+ *
+ * `ready` exists because a form's initial values arrive asynchronously: taking
+ * the baseline on the first render would compare a filled form against an empty
+ * one and call every screen dirty. The baseline is captured on the first render
+ * where the data has settled, and never again.
+ */
+export function useDraftDirty(snapshot: string, ready = true): boolean {
+  const baseline = useRef<string | null>(null);
+  if (baseline.current === null && ready) baseline.current = snapshot;
+  return baseline.current !== null && snapshot !== baseline.current;
+}

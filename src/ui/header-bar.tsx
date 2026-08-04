@@ -20,7 +20,7 @@
  */
 
 import React, { type ReactNode } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controlSize, font, spacing, type, useTheme, type Palette } from "./theme";
 import { PRESENTATION_TAXONOMY, type PresentationClass } from "./presentation";
@@ -31,15 +31,9 @@ const HEADER_ROW_HEIGHT = 64;
 function HeaderBar({
   title,
   left,
-  topInset = true,
 }: {
   title?: string;
   left?: ReactNode;
-  /**
-   * Clear the status bar. True for anything drawn against the top of the
-   * window; false for a sheet, which opens below it — see `sheetScreenOptions`.
-   */
-  topInset?: boolean;
 }) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
@@ -48,7 +42,7 @@ function HeaderBar({
       testID="navigation-header"
       style={{
         backgroundColor: palette.surface,
-        paddingTop: topInset ? insets.top : 0,
+        paddingTop: insets.top,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: palette.primary + "55",
       }}
@@ -61,9 +55,13 @@ function HeaderBar({
           // suite's `getByRole("heading")` both depend on that.
           <Text
             accessibilityRole="header"
-            // No `numberOfLines`: the row already grows past `HEADER_ROW_HEIGHT`,
-            // and a screen title that shortens to "Yatırım İşle…" tells the user
-            // less than a title on two lines does.
+            // Two lines, then shorten. A screen title is often a user-authored
+            // item name — the ledger passes the column's own label through —
+            // and an unbounded one pushed the back control's row down the page.
+            // Two lines clears every ordinary name; the full text stays in the
+            // heading's accessible name.
+            numberOfLines={2}
+            ellipsizeMode="tail"
             style={[
               type.heading,
               {
@@ -92,11 +90,10 @@ function HeaderBar({
 }
 
 export function stackScreenOptions(palette: Palette, presentationClass: PresentationClass = "drill-down") {
-  // Presentation taxonomy: full-page workspaces and drill-down routes share
-  // this stack contract; sheets use `sheetScreenOptions`; root card routes are
-  // bounded tools. Dialogs/overlays live in `ui/dialog` and never become a
-  // second navigation header. Keeping the taxonomy at the route boundary
-  // makes title, back, safe-area and dismissal behaviour predictable.
+  // Presentation taxonomy: every navigable route shares this stack contract —
+  // one header, one back rule, one safe-area rule. Short contextual choices
+  // live in `ui/dialog` and `ui/calendar` as real modals and never become a
+  // second navigation header.
   const presentation = PRESENTATION_TAXONOMY[presentationClass];
   return {
     headerStyle: { backgroundColor: palette.background },
@@ -123,35 +120,7 @@ export function drillDownScreenOptions(palette: Palette) {
   return stackScreenOptions(palette, "drill-down");
 }
 
-/**
- * Options for the routes that slide up as a sheet on iOS: add a transaction,
- * a past month's entries, an opening-balance correction, a subscription.
- *
- * A sheet starts below the status bar, so the window's top safe-area inset is
- * not something its header has to clear. `useSafeAreaInsets` reports the
- * window's inset regardless — the provider is mounted at the app root, outside
- * the presented card — so the shared header was adding ~59pt of empty space to
- * the top of every one of those flows. Full-screen presentations (Android, web,
- * and every card route) still clear the bar, which is why this is a separate
- * option set rather than a change to `stackScreenOptions`.
- */
-export function sheetScreenOptions(palette: Palette) {
-  const presentation = PRESENTATION_TAXONOMY["task-sheet"];
-  const presentsAsSheet = Platform.OS === "ios";
-  return {
-    presentation: (presentsAsSheet ? "modal" : "card") as "modal" | "card",
-    gestureEnabled: presentation.backAction === "close",
-    header: ({ options }: StackHeaderArgs) => (
-      <HeaderBar
-        title={options.title}
-        left={options.headerLeft?.({ canGoBack: true, tintColor: palette.accentText })}
-        topInset={!presentsAsSheet}
-      />
-    ),
-  };
-}
-
-/** Full-screen bounded tools keep the same header contract without a sheet gesture. */
+/** The one presentation: a full-screen page with the app's own header. */
 export function cardScreenOptions(palette: Palette) {
   const presentation = PRESENTATION_TAXONOMY["primary-page"];
   return {
@@ -159,6 +128,35 @@ export function cardScreenOptions(palette: Palette) {
     presentation: "card" as const,
     gestureEnabled: presentation.backAction === "back",
   };
+}
+
+/**
+ * The task routes: add a transaction, a past month's entries, an
+ * opening-balance correction, a subscription, a cell note.
+ *
+ * These used to slide up as a UIKit sheet on iOS and open as an ordinary card
+ * everywhere else, and that one difference cost more than it bought:
+ *
+ * 1. A sheet is a separate presented view controller. React Native's `Modal` —
+ *    which every confirmation, prompt and picker in this app is built on — is
+ *    presented from the root tree, and iOS will not present a second modal from
+ *    a controller that is already presenting one. So the "discard your
+ *    changes?" confirmation never appeared over a sheet, while the navigation
+ *    guard went on refusing to leave: the screen simply trapped the user, which
+ *    is exactly what the owner reported on Geçmiş Ay Girişi and Bakiye
+ *    Düzeltme.
+ * 2. A sheet begins below the status bar, so its header needed a different
+ *    inset rule from every other screen — a second geometry to keep correct.
+ * 3. The same task looked and dismissed differently depending on the device.
+ *
+ * One presentation on every platform fixes all three, and the back control,
+ * the header and the dismissal contract become one thing to reason about. A
+ * bottom sheet stays available for what it is actually good at — the short
+ * contextual choices in `ui/dialog` and `ui/calendar`, which are RN modals and
+ * therefore present correctly.
+ */
+export function sheetScreenOptions(palette: Palette) {
+  return cardScreenOptions(palette);
 }
 
 interface StackHeaderArgs {

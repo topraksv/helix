@@ -29,6 +29,7 @@ import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { isMonthDay } from "../../../domain/dates";
+import { isCardCycleDayConflict } from "../../../domain/card-statements";
 import { MonthDayField, monthDayLabel } from "../../../ui/month-day-field";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { PersonAssignment } from "../../../ui/person-assignment";
@@ -176,7 +177,11 @@ export default function SourcesScreen() {
     personsState.retry();
   };
   const validDay = (day: number | null) => day != null && isMonthDay(day);
-  const cycleValid = sourceType !== "credit_card" || (validDay(statementDay) && validDay(dueDay));
+  // A statement that closes on the day it is due has no period at all, and
+  // "ayın sonu" is day 31 — so typing 31 opposite the month-end chip is the
+  // same collision written a different way.
+  const cycleConflict = sourceType === "credit_card" && isCardCycleDayConflict(statementDay, dueDay);
+  const cycleValid = sourceType !== "credit_card" || (validDay(statementDay) && validDay(dueDay) && !cycleConflict);
   const formValid = Boolean(name.trim() && personId && cycleValid);
 
   const resetForm = () => {
@@ -349,10 +354,22 @@ export default function SourcesScreen() {
           <>
             <Row>
               <View style={{ flex: 1 }}>
-                <MonthDayField label={tr.sources.statementDay} value={statementDayStr} onChange={setStatementDayStr} />
+                <MonthDayField
+                  label={tr.sources.statementDay}
+                  value={statementDayStr}
+                  onChange={setStatementDayStr}
+                  unavailableDay={dueDay}
+                  error={cycleConflict ? tr.sources.cycleSameDay : null}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <MonthDayField label={tr.sources.dueDay} value={dueDayStr} onChange={setDueDayStr} />
+                <MonthDayField
+                  label={tr.sources.dueDay}
+                  value={dueDayStr}
+                  onChange={setDueDayStr}
+                  unavailableDay={statementDay}
+                  error={cycleConflict ? tr.sources.cycleSameDay : null}
+                />
               </View>
             </Row>
             <Body muted style={{ marginBottom: spacing.md }}>{tr.sources.cycleHint}</Body>

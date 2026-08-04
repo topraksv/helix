@@ -1,9 +1,9 @@
-/** First-run tour: six short slides explaining where everything lives.
+/** First-run tour: one short slide per place the app keeps something.
  *  Shown once (kv flag), reopenable from Settings. */
 
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { Banknote, CalendarCheck, ChartPie, CloudUpload, Plus, PlusCircle, Table2, type LucideIcon } from "lucide-react-native";
+import { Banknote, CalendarCheck, ChartPie, CloudUpload, Landmark, Plus, PlusCircle, Table2, type LucideIcon } from "lucide-react-native";
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
@@ -20,7 +20,8 @@ const SLIDES = [
   { icon: Table2, title: tr.tour.s3Title, body: tr.tour.s3Body },
   { icon: CalendarCheck, title: tr.tour.s4Title, body: tr.tour.s4Body },
   { icon: Banknote, title: tr.tour.s5Title, body: tr.tour.s5Body },
-  { icon: CloudUpload, title: tr.tour.s6Title, body: tr.tour.s6Body },
+  { icon: Landmark, title: tr.tour.s6Title, body: tr.tour.s6Body },
+  { icon: CloudUpload, title: tr.tour.s7Title, body: tr.tour.s7Body },
 ] as const satisfies readonly { icon: LucideIcon; title: string; body: string }[];
 
 function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }) {

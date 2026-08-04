@@ -18,7 +18,6 @@ import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
 import { devError } from "../services/logger";
 import { spacing } from "../ui/theme";
-import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { WorkspaceGrid } from "../ui/workspace-layout";
@@ -36,7 +35,17 @@ export default function BulkEntryModal() {
   const [committing, setCommitting] = useState(false);
   const operation = useTrackedOperation();
   const busy = operation.state.active;
-  const { confirmDiscard } = useDirtyExitGuard(Object.values(values).some((value) => value.raw.trim() !== "") && !busy);
+  // Dirty is "different from what was last saved", not "has anything in it".
+  // The amounts now stay in their fields after a save, so "is it non-empty"
+  // would have asked to discard the very figures it had just written.
+  const draftSnapshot = JSON.stringify(
+    Object.entries(values)
+      .map(([id, value]) => [id, value.raw.trim()] as const)
+      .filter(([, raw]) => raw !== "")
+      .sort(([a], [b]) => a.localeCompare(b)),
+  );
+  const [savedSnapshot, setSavedSnapshot] = useState("[]");
+  const { confirmDiscard } = useDirtyExitGuard(draftSnapshot !== savedSnapshot && !busy);
   const liveStates = [categoriesState, personsState];
   const dataStatus = combineLiveQueryStatus(liveStates);
   const dataReady = liveStates.every((state) => state.updatedAt != null);
@@ -58,6 +67,7 @@ export default function BulkEntryModal() {
   const changeMonth = (next: string) => {
     confirmDiscard(() => {
       setValues({});
+      setSavedSnapshot("[]");
       setSavedMsg(null);
       setMonth(next);
     });
@@ -81,8 +91,12 @@ export default function BulkEntryModal() {
         );
         scheduleSync(userId);
         setSavedMsg(tr.bulk.saved(monthLabel(month)));
-        setValues({});
-        setMonth(addMonthsToKey(month, -1)); // convenient: walk backwards month by month
+        setSavedSnapshot(draftSnapshot);
+        // The amounts stay in their fields. Clearing them made a correct save
+        // look like a lost one, and the month walks backwards on its own — so
+        // the next month opens with the previous one's figures visible, which
+        // is what a person filling a year in one sitting is comparing against.
+        setMonth(addMonthsToKey(month, -1));
       } catch (e) {
         if (e instanceof OperationCancelledError) return;
         devError("bulk-entry.save", e);
@@ -162,7 +176,6 @@ export default function BulkEntryModal() {
                 grid of 90px amount fields. */}
             <View style={{ gap: spacing.sm, width: "100%" }}>
               <Button label={tr.common.save} onPress={() => void save()} disabled={entries.length === 0 || invalid} loading={busy} />
-              <Button label={tr.common.done} variant="secondary" onPress={() => confirmDiscard(() => navigateBack(router, "/(tabs)/cash-flow"))} />
             </View>
           </>
         )}

@@ -15,6 +15,7 @@ export default function ColumnsEditorScreen() {
   const [section, setSection] = useState<"categories" | "computed">("categories");
   const tabs = (
     <Segmented
+      fill
       options={[
         { value: "categories", label: tr.settings.categories },
         { value: "computed", label: tr.settings.computed },

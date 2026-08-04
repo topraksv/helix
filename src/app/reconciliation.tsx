@@ -174,7 +174,10 @@ export default function CatchUpScreen() {
           action={<Button icon={Plus} label={tr.cashflow.addTransaction} variant="secondary" onPress={() => router.push("/transaction")} />}
         />
       ) : (
-        <WorkspaceGrid testID="reconciliation-grid">
+        // One column at every width. Two columns of confirmations put the same
+        // decision in two places on the screen and halved the room each row had
+        // for its own action cluster.
+        <WorkspaceGrid testID="reconciliation-grid" layout="stack">
         {items.map((e) => (
           <Card key={e.id}>
             <Spread>
@@ -184,7 +187,7 @@ export default function CatchUpScreen() {
                   {e.direction === "in" ? <Badge text={tr.dashboard.expectedIncome} tone="positive" /> : null}
                   <Body>{nameOf(e)}</Body>
                 </Row>
-                <Body muted>
+                <Body muted style={{ marginTop: spacing.xs }}>
                   {dateLabel(e.dueDate)} · {formatMinor(e.amountMinor, e.currency)}
                 </Body>
               </View>

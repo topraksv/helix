@@ -4,7 +4,8 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, Plus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, Plus, ShieldCheck, TrendingDown, TrendingUp, TriangleAlert } from "lucide-react-native";
+import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../domain/balance-declaration";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { daysBetweenISO, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinor } from "../../domain/money";
@@ -12,9 +13,11 @@ import { buildUpcomingTimeline } from "../../domain/upcoming";
 import { clockOrDateTimeLabel, dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
 import {
+  settingValue,
   useCategoriesState,
   useCreditCardStatementsState,
   useLedgerState,
+  useSettingsMapState,
   usePendingExpectedState,
   usePersonsState,
   useRecurringIncomesState,
@@ -291,10 +294,14 @@ function greeting(): string {
 export default function DashboardScreen() {
   const userId = useUserId();
   const previousLoginAt = useSession((state) => state.previousLoginAt);
+  // "You told me X; the table says Y" — computed here so the hero can mark it
+  // and the ledger's own closing row can mark the same thing.
+
   const today = todayISO();
   const year = yearOf(today);
   const month = monthKeyOf(today);
   const ledgerState = useLedgerState(year);
+  const settingsState = useSettingsMapState();
   const categoriesState = useCategoriesState();
   const personsState = usePersonsState();
   const expectedState = usePendingExpectedState();
@@ -457,6 +464,12 @@ export default function DashboardScreen() {
   };
 
   const projectedDelta = bundle && projected != null ? projected - bundle.actualBalanceMinor : null;
+  // "You told me X; the table says Y" — the ledger has moved away from the last
+  // figure the user confirmed against a real account.
+  const balanceDrift = balanceDeclarationDrift(
+    parseBalanceDeclaration(settingValue<unknown>(settingsState.data, "balance_declared", null)),
+    bundle?.actualBalanceMinor ?? null,
+  );
   const wideDashboard = shouldSplitDashboardHero(contentWidth);
   const pairedDashboard = shouldPairDashboardPanels(contentWidth);
   const dashboardUpcomingCount = late.length + upcoming.length;
@@ -566,9 +579,38 @@ export default function DashboardScreen() {
         <HeroCard>
           <View style={wideDashboard ? { flexDirection: "row", alignItems: "stretch" } : undefined}>
             <View style={wideDashboard ? { flex: 1, paddingRight: spacing.xl, justifyContent: "center" } : undefined}>
-              <Text style={[type.label, { color: heroInk, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
-                {tr.dashboard.actualBalance}
-              </Text>
+              <Row gap={spacing.sm} style={{ alignItems: "center" }}>
+                <Text style={[type.label, { color: heroInk, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
+                  {tr.dashboard.actualBalance}
+                </Text>
+                {/* The ledger has moved away from the last figure the user
+                    confirmed against a real account. The mark is the way to the
+                    screen that can say by how much and put it right. */}
+                {balanceDrift != null ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={tr.settings.balanceDriftTitle}
+                    onPress={() => router.push("/opening-balance")}
+                    hitSlop={8}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: 2,
+                      borderRadius: radius.full,
+                      backgroundColor: pressed ? palette.warning + "2E" : palette.warning + "1C",
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: palette.warning + "80",
+                    })}
+                  >
+                    <TriangleAlert accessible={false} size={12} color={palette.warningText} strokeWidth={2.4} />
+                    <Text style={[type.small, { color: palette.warningText, fontSize: 10, fontFamily: font.semibold }]}>
+                      {tr.settings.balanceDriftShort}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </Row>
               <Amount
                 minor={bundle.actualBalanceMinor}
                 hero

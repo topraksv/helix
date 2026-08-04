@@ -1,7 +1,7 @@
 import React from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { PartyPopper } from "lucide-react-native";
+import { ChevronRight, PartyPopper } from "lucide-react-native";
 import {
   toTxLike,
   useAllTransactionsState,
@@ -20,7 +20,7 @@ import { formatMinor } from "../domain/money";
 import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
 import { useSyncStatus } from "../sync/status";
 import { Body, Card, DataStateNotice, EmptyState, ListRow, Screen, SectionHeader, StatusPill } from "../ui/components";
-import { font, radius, type, useTheme } from "../ui/theme";
+import { font, iconSize, radius, spacing, type, useTheme } from "../ui/theme";
 
 export default function UpcomingScreen() {
   const router = useRouter();
@@ -132,17 +132,24 @@ export default function UpcomingScreen() {
                    the subtitle it left the middle of every row empty while the
                    figures it should be scanned against stayed unaligned. Same
                    string, same value — read down instead of across. */
+                /* The chevron belongs on the status line, not on the row's
+                   own centre: with the amount above and the pill below, a
+                   vertically centred chevron sat between the two and lined up
+                   with neither. The trailing cluster is rendered here so the
+                   affordance and the status share one baseline. */
                 right={(
                   <View style={{ alignItems: "flex-end", gap: 4 }}>
                     <Text style={[type.amountSm, { color: palette.text }]}>
                       {formatMinor(item.amountMinor, item.currency)}
                     </Text>
-                    {item.status === "late" ? (
-                      <StatusPill label={tr.dashboard.late} color={palette.error} foreground={palette.errorText} />
-                    ) : null}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                      {item.status === "late" ? (
+                        <StatusPill label={tr.dashboard.late} color={palette.error} foreground={palette.errorText} />
+                      ) : null}
+                      <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />
+                    </View>
                   </View>
                 )}
-                chevron
               />
             ))}
           </Card>

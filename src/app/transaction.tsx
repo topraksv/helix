@@ -42,7 +42,7 @@ import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useUndo } from "../ui/undo";
-import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { PersonAssignment } from "../ui/person-assignment";
 
@@ -195,17 +195,12 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
     && !busy;
   const draftSnapshot = JSON.stringify({ amountMode, amountRaw, categoryId, dateMode, monthKey, dateStr });
   // The baseline is the form as the DATA leaves it, not as the first render
-  // leaves it. The single transfer category is assigned by an effect once the
+  // leaves it: the single transfer category is assigned by an effect once the
   // categories load, so a snapshot taken on mount differed from the very next
   // one and the screen declared itself dirty before the user had touched
-  // anything: leaving it asked "discard your changes?" and then walked out to
-  // the discard fallback — a different tab — for a form nobody had edited.
-  const baseline = React.useRef<string | null>(null);
-  if (baseline.current === null && ready && (transferCategories.length !== 1 || categoryId != null)) {
-    baseline.current = draftSnapshot;
-  }
-  const dirty = baseline.current != null && draftSnapshot !== baseline.current && !busy;
-  const { allowExit } = useDirtyExitGuard(dirty);
+  // anything.
+  const settled = ready && (transferCategories.length !== 1 || categoryId != null);
+  const { allowExit } = useDirtyExitGuard(useDraftDirty(draftSnapshot, settled) && !busy);
   const close = () => navigateBack(router, "/(tabs)/investments");
 
   const save = async () => {
@@ -374,8 +369,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
     countStr,
     paidStr,
   });
-  const initialDraftSnapshot = React.useRef(draftSnapshot).current;
-  const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  const { allowExit } = useDirtyExitGuard(useDraftDirty(draftSnapshot, dataReady) && !busy);
 
   // Smart defaults (new entries only): remember last used category/source.
   React.useEffect(() => {

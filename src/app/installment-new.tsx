@@ -22,7 +22,7 @@ import { font, radius, spacing, type, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
-import { useDirtyExitGuard } from "../ui/dirty-exit";
+import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { PersonAssignment } from "../ui/person-assignment";
 
@@ -175,8 +175,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
   const [categoryId, setCategoryId] = useState<string | null>(existing?.categoryId ?? null);
   const [busy, setBusy] = useState(false);
   const draftSnapshot = JSON.stringify({ kind, title, amountRaw, countStr, paidStr, startMonth, sourceId, personChoice, categoryId });
-  const initialDraftSnapshot = React.useRef(draftSnapshot).current;
-  const { allowExit } = useDirtyExitGuard(draftSnapshot !== initialDraftSnapshot && !busy);
+  const { allowExit } = useDirtyExitGuard(useDraftDirty(draftSnapshot, dataReady) && !busy);
   const selectedSource = sources.find((source) => source.id === sourceId);
   const cardSourceValid = kind !== "card_installment" || Boolean(
     selectedSource?.type === "credit_card" &&

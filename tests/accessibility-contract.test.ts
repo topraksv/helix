@@ -46,16 +46,21 @@ describe("text wraps before it is ever shortened", () => {
    * long single token so it wraps at all, and the full text stays in the
    * accessible label.
    */
-  it("only the ledger label may shorten, and only past three lines", () => {
+  it("only user-authored names may shorten, and only where the row cannot grow", () => {
+    // Two places, both carrying a name the user typed: the ledger's own label
+    // and the screen title a drill-down inherits from it. Everything else
+    // wraps.
     const offenders = sourceFiles("src", [".tsx", ".ts"]).filter((file) =>
       /(numberOfLines|ellipsizeMode)\s*=/.test(source(file)),
     );
-    expect(offenders).toEqual(["src/ui/sticky-table.tsx"]);
+    expect(offenders).toEqual(["src/ui/header-bar.tsx", "src/ui/sticky-table.tsx"]);
     const table = source("src/ui/sticky-table.tsx");
     expect(table).toContain("const LABEL_MAX_LINES = 3;");
     // Every clamp reads the shared bound, so one file cannot drift to two.
     expect(table.match(/numberOfLines=\{/g)).toHaveLength(3);
     expect(table.match(/numberOfLines=\{LABEL_MAX_LINES\}/g)).toHaveLength(3);
+    // The header has one row, so it stops at two lines rather than three.
+    expect(source("src/ui/header-bar.tsx")).toContain("numberOfLines={2}");
   });
 
   it("the ledger still speaks the full label when the visible one is shortened", () => {

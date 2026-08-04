@@ -245,12 +245,15 @@ function AllocationStrip({
 function InvestmentQuickAction({
   icon: Icon,
   label,
+  caption,
   tone,
   disabled = false,
   onPress,
 }: {
   icon: React.ComponentType<{ size?: number; color?: string; accessible?: boolean; strokeWidth?: number }>;
   label: string;
+  /** What the action does to the money, in three words. */
+  caption: string;
   tone: "primary" | "secondary" | "quiet";
   disabled?: boolean;
   onPress: () => void;
@@ -269,14 +272,14 @@ function InvestmentQuickAction({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={`${label}. ${caption}`}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({
         flex: 1,
         minWidth: 0,
-        minHeight: 64,
+        minHeight: 78,
         alignItems: "center",
         justifyContent: "center",
         gap: 5,
@@ -303,9 +306,14 @@ function InvestmentQuickAction({
         <Icon accessible={false} size={15} color={foreground} strokeWidth={2.2} />
       </View>
       <Text
-        style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: 10, lineHeight: 12, textAlign: "center" }]}
+        style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: 10, lineHeight: 12, textAlign: "center", fontFamily: font.semibold }]}
       >
         {label}
+      </Text>
+      <Text
+        style={[type.small, { color: palette.textSecondary, fontSize: 9, lineHeight: 11, textAlign: "center" }]}
+      >
+        {caption}
       </Text>
     </Pressable>
   );
@@ -593,10 +601,10 @@ export default function InvestmentsScreen() {
           marginBottom: spacing.lg,
         }}
       >
-        <InvestmentQuickAction icon={PackagePlus} tone="primary" label={tr.investments.addProduct} onPress={() => router.push("/investments/product")} />
-        <InvestmentQuickAction icon={ArrowDownToLine} tone="secondary" label={tr.investments.addExisting} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "existing" } })} />
-        <InvestmentQuickAction icon={ArrowUpFromLine} tone="quiet" label={tr.investments.sell} disabled={active.length === 0} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "sell" } })} />
-        <InvestmentQuickAction icon={WalletCards} tone="secondary" label={tr.investments.refundShort} disabled={state.cashMinor <= 0} onPress={() => router.push({ pathname: "/transaction", params: { intent: "investment-refund" } })} />
+        <InvestmentQuickAction icon={PackagePlus} tone="primary" label={tr.investments.addProduct} caption={tr.investments.addProductCaption} onPress={() => router.push("/investments/product")} />
+        <InvestmentQuickAction icon={ArrowDownToLine} tone="secondary" label={tr.investments.addExisting} caption={tr.investments.addExistingCaption} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "existing" } })} />
+        <InvestmentQuickAction icon={ArrowUpFromLine} tone="quiet" label={tr.investments.sell} caption={tr.investments.sellCaption} disabled={active.length === 0} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "sell" } })} />
+        <InvestmentQuickAction icon={WalletCards} tone="secondary" label={tr.investments.refundShort} caption={tr.investments.refundCaption} disabled={state.cashMinor <= 0} onPress={() => router.push({ pathname: "/transaction", params: { intent: "investment-refund" } })} />
       </View>
 
       <SectionHeader>{tr.investments.activeProducts}</SectionHeader>

@@ -11,14 +11,15 @@
  */
 
 import React, { useState } from "react";
-import { View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowRight, ChevronLeft, ChevronRight, History, Info, Scale, Trash2 } from "lucide-react-native";
-import { deleteBalanceAdjustment, restoreBalanceAdjustment, setCurrentBalance, setOpeningBalance } from "../data/repo";
+import { deleteBalanceAdjustment, restoreBalanceAdjustment, setBalanceDeclaration, setCurrentBalance, setOpeningBalance } from "../data/repo";
 import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
+import { balanceDeclarationDrift, parseBalanceDeclaration } from "../domain/balance-declaration";
 import { formatMinor } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
@@ -26,7 +27,7 @@ import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
 import { devError } from "../services/logger";
-import { radius, spacing, useTheme } from "./theme";
+import { radius, spacing, type, useTheme } from "./theme";
 import { useUndo } from "./undo";
 import { navigateBack } from "./navigation";
 import { useDirtyExitGuard } from "./dirty-exit";
@@ -115,6 +116,10 @@ export function OpeningBalanceEditor() {
   const targetValue = targetRaw ?? (computed == null ? "" : (computed / 100).toFixed(2).replace(".", ","));
   const effectiveTarget = targetRaw === null ? computed : targetMinor;
   const balanceDirty = computed != null && effectiveTarget != null && effectiveTarget !== computed;
+  // What the user last confirmed against a real account, and how far the ledger
+  // has moved since. Every other surface links here when this is set.
+  const declaration = parseBalanceDeclaration(settingValue<unknown>(settings, "balance_declared", null));
+  const declarationDrift = balanceDeclarationDrift(declaration, computed);
 
   const saveCurrent = async () => {
     if (computed == null || effectiveTarget == null || !balanceDirty) return;
@@ -129,6 +134,9 @@ export function OpeningBalanceEditor() {
         computed,
         tr.settings.balanceAdjustmentNote(formatMinor(computed), formatMinor(effectiveTarget)),
       );
+      // Remember what was confirmed, not just the delta that made it true. It
+      // is the only way a later screen can say "you told me this on that day".
+      await setBalanceDeclaration(userId, effectiveTarget, todayISO());
       scheduleSync(userId);
       successNotice();
       // Stays put. Correcting a balance is usually followed by looking at what
@@ -219,11 +227,34 @@ export function OpeningBalanceEditor() {
           description={tr.settings.currentBalanceFormHint}
           right={(
             <Badge
-              text={balanceDirty ? tr.settings.balanceChangeReady : tr.settings.balanceMatchesShort}
-              tone={balanceDirty ? "warning" : "success"}
+              text={balanceDirty ? tr.settings.balanceChangeReady : declarationDrift != null ? tr.settings.balanceDriftShort : tr.settings.balanceMatchesShort}
+              tone={balanceDirty || declarationDrift != null ? "warning" : "success"}
             />
           )}
         />
+        {declarationDrift != null && declaration ? (
+          // The whole point of keeping the declaration: say the two numbers out
+          // loud, with the date the user confirmed one of them.
+          <View
+            style={{
+              marginBottom: spacing.md,
+              padding: spacing.md,
+              borderRadius: radius.md,
+              backgroundColor: palette.warning + "16",
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: palette.warning + "70",
+            }}
+          >
+            <Text style={[type.label, { color: palette.warningText }]}>{tr.settings.balanceDriftTitle}</Text>
+            <Body muted style={{ marginTop: spacing.xs }}>
+              {tr.settings.balanceDriftBody(
+                formatMinor(declaration.minor),
+                formatMinor(computed ?? 0),
+                dateLabel(declaration.at),
+              )}
+            </Body>
+          </View>
+        ) : null}
         <MoneyField
           label={tr.settings.realBalance}
           value={targetValue}

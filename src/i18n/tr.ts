@@ -749,6 +749,10 @@ export const tr = {
     balanceMatchesShort: "Bakiye eşleşiyor",
     balanceChangeReady: "Düzeltme hazır",
     balanceDifference: "Kaydedilecek fark",
+    balanceDriftShort: "Uyuşmuyor",
+    balanceDriftTitle: "Söylediğin bakiye ile tablon uyuşmuyor",
+    balanceDriftBody: (declared: string, computed: string, at: string) =>
+      `${at} tarihinde hesabında ${declared} olduğunu söylemiştin. Tablon şu an ${computed} gösteriyor. Hesabına bakıp aşağıdaki tutarı güncelleyebilir ya da eksik kaydı girebilirsin.`,
     balanceScopeHint: "Helix bakiyeyi ödeme yöntemlerine göre ayrı tutmadığı için bu düzeltme toplam bakiyene uygulanır.",
     balanceAdjustmentNote: (from: string, to: string) => `Bakiye ${from} → ${to} olarak düzeltildi`,
     balanceAdjustmentSaved: "Bakiye güncellendi",
@@ -843,9 +847,19 @@ export const tr = {
     noProductsHint: "Önce ürününü tanımla; ardından mevcut yatırımını veya yeni alışını ekle.",
     noFilteredProducts: "Bu türde aktif ürün yok",
     noFilteredProductsHint: "Başka bir ürün türü seçerek portföyünü görmeye devam edebilirsin.",
-    addProduct: "Ürün Ekle",
+    // The two used to read as the same offer. "Ürün Ekle" only defines the
+    // instrument — Gram Altın, a fund, a currency — and touches no money;
+    // "Mevcut Yatırım Ekle" records a holding you already own without spending
+    // free balance. The captions name the difference instead of leaving the
+    // user to discover it after tapping.
+    addProduct: "Yeni Ürün Tanımla",
+    addProductCaption: "Para hareketi yok",
+    saveProduct: "Ürünü Kaydet",
     sell: "Satış Yap",
-    addExisting: "Mevcut Yatırım Ekle",
+    sellCaption: "Bakiyene döner",
+    addExisting: "Sahip Olduğumu Ekle",
+    addExistingCaption: "Bakiyeden düşmez",
+    refundCaption: "Mali tabloya çıkar",
     refund: "Boş Bakiyeyi Mali Tabloya Aktar",
     refundShort: "Serbest Bakiyeyi Aktar",
     refundTitle: "Serbest Bakiyeyi Aktar",
@@ -1071,13 +1085,18 @@ export const tr = {
     s2Title: "İşlem Eklemek",
     s2Body: "Tutarı yaz, kategori seç, gün seç, bitti. Tarihi ileriye alırsan işlem o gün gelince bakiyene yansır. Taksitli bir harcamayı bir kez girersin, Helix aylara böler. Yanına küçük hesap makinesiyle tutarı hesaplayabilirsin.",
     s3Title: "Mali Tablo",
-    s3Body: "Tüm yılın tek tabloda: satırlar aylar, sütunlar kalemlerin. İçindeki bir kutucuğa dokun; o kalemin o aydaki hareketlerini görür, not düşer ya da hızlıca birden fazla tutarı tek seferde girersin. İstersen tabloyu dik/yatay çevirir, kolonlarını kendin belirlersin.",
+    s3Body: "Tüm yılın tek tabloda: satırlar aylar, sütunlar kalemlerin. İçindeki bir kutucuğa dokun; o kalemin o aydaki hareketlerini görür, not düşer ya da hızlıca birden fazla tutarı tek seferde girersin. Tabloyu dik/yatay çevirebilir, bir kolonu sabitleyip yanındakilerle karşılaştırabilir, kolonlarını kendin belirleyebilirsin.",
     s4Title: "Abonelikler ve Taksitler",
     s4Body: "Netflix'ten elektrik faturasına, ev kredisinden telefon taksidine tüm düzenli ödemelerini ekle. Vadesi gelince Helix hatırlatır; tek dokunuşla ödendi işaretlersin. Otomatik ödeme açıksa bunu senin yerine yapar.",
     s5Title: "Maaş ve Düzenli Gelirler",
     s5Body: "Maaş, kira geliri gibi her ay tekrar eden gelirlerini bir kez tanımla. Ödeme günü geldiğinde 'geldi mi?' diye sorar; onayladığında, çoğu ay değişebilen gerçek tutarıyla bakiyene ekler.",
-    s6Title: "Her Cihazda, Çevrimdışı da",
-    s6Body: "Her şey önce cihazına kaydedilir; internet olmasa da çalışır. Aynı hesapla girdiğin telefon ve bilgisayarında otomatik senkronlanır. Eski Excel'ini içe aktarabilir, verini istediğinde yedekleyebilirsin.",
+    // Yatırımlar shipped after this tour was written, so the app was
+    // explaining five of its six tabs. It is the sixth slide because it comes
+    // after the ledger it feeds, and before the sync slide that closes the tour.
+    s6Title: "Yatırımlar",
+    s6Body: "Altın, döviz, fon, hisse ve BES'i tek yerde topla. Önce ürününü tanımlarsın — bu adımda para hareket etmez. Zaten sahip olduğun bir yatırımı eklersen serbest bakiyenden düşmez; alış yaparsan düşer, satarsan geri döner. Ortalama maliyetini ve gerçekleşen kârını Helix hesaplar; serbest bakiyeni istediğinde Mali Tablo'ya aktarırsın.",
+    s7Title: "Her Cihazda, Çevrimdışı da",
+    s7Body: "Her şey önce cihazına kaydedilir; internet olmasa da çalışır. Aynı hesapla girdiğin telefon ve bilgisayarında otomatik senkronlanır. Eski Excel'ini içe aktarabilir, verini istediğinde yedekleyebilirsin. Bakiyen hesabınla tutmuyorsa Bakiye Düzeltme ile tek adımda eşitlersin.",
     next: "Devam",
     start: "Başlayalım",
     skip: "Geç",
@@ -1180,6 +1199,7 @@ export const tr = {
     dueDayShort: "Son ödeme",
     statementDayShort: "Kesim",
     cycleRequired: "Kredi kartı için ekstre kesim ve son ödeme günlerini 1–31 arasında girmelisin.",
+    cycleSameDay: "Ekstre kesim günü ile son ödeme günü aynı olamaz. \"Ayın sonu\" 31 demektir, bu yüzden 31 yazmak da aynı günü seçmektir.",
     cycleHint: "Ayın sonundan taşan günler kısa aylarda otomatik olarak ayın son gününe çekilir. Yeni harcamalar gerçek ekstrelerinin son ödeme tarihinde bakiyeye yansır.",
     cycleMissing: "Ekstre tarihleri eksik",
     statementHistory: "Ekstre Dönemleri",

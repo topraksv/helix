@@ -467,7 +467,7 @@ test("leaving the wallet transfer returns to Investments without inventing a dra
   await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("10.000");
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
 
-  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar", exact: true }).click();
+  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar" }).click();
   await expect(page.getByRole("heading", { name: "Serbest Bakiyeyi Aktar" })).toBeVisible();
 
   await page.getByRole("button", { name: "Geri", exact: true }).click();
@@ -489,10 +489,10 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await expect(page.getByText("Serbest nakit ve ürün maliyetleri", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await page.getByRole("radio", { name: "Borsa", exact: true }).click();
   await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("SASA");
-  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
 
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("10");
@@ -503,16 +503,16 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByRole("button", { name: "Alış ekle", exact: true }).click();
   await expect(page.getByText("SASA", { exact: true }).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Satış Yap", exact: true }).click();
+  await page.getByRole("button", { name: "Satış Yap" }).click();
   await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("4");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("150");
   await page.getByRole("button", { name: "Satış yap", exact: true }).click();
   await expect(page.getByText("₺200,00", { exact: true }).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await page.getByRole("radio", { name: "BES", exact: true }).click();
   await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Emeklilik Planım");
-  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Emeklilik Planım · BES");
   await page.getByRole("radio", { name: "Yalnız katkı tutarı", exact: true }).click();
@@ -520,7 +520,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByRole("button", { name: "BES katkısı ekle", exact: true }).click();
   await expect(page.getByText("Pay bilgisi yok", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar", exact: true }).click();
+  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar" }).click();
   await page.getByRole("radio", { name: "Bir kısmı", exact: true }).click();
   await page.getByRole("textbox", { name: "Aktarılacak tutar", exact: true }).fill("100");
   await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
@@ -768,10 +768,10 @@ test("investment summary keeps financial meaning grouped on phone and desktop", 
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
   await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("100000");
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await page.getByRole("radio", { name: "Borsa", exact: true }).click();
   await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Uzun Vadeli Büyüme Sepeti");
-  await page.getByRole("button", { name: "Ürün Ekle", exact: true }).click();
+  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Uzun Vadeli Büyüme Sepeti · Borsa");
   await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("12");

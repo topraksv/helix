@@ -263,12 +263,16 @@ export function Screen({
     // a scene-level inset also shortened the nested stack's header, which is
     // chrome that belongs to the whole window.
     <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
-      {/* The scroll edge. Content passes under the status bar on both phones,
-          and with nothing painted over that band a settings row's label ran
-          straight through the clock. An opaque strip the height of the inset is
-          what every native app puts there; it costs nothing on web, where the
-          inset is zero. */}
-      {insets.top > 0 ? (
+      {/* The scroll edge — only where this screen really does start at the top
+          of the window. Content passes under the status bar there, and with
+          nothing painted over that band a settings row's label ran straight
+          through the clock.
+          `needsTopInset` is the condition, not `insets.top > 0`: a screen under
+          a stack header begins below it, and the window's inset is still ~59pt,
+          so the strip painted an opaque band over the first 59pt of every form
+          — which is the "Tutar ve işlem türü is half hidden" the owner saw on
+          Yeni İşlem and on every editor like it. */}
+      {needsTopInset && insets.top > 0 ? (
         <View
           pointerEvents="none"
           accessible={false}
@@ -397,7 +401,10 @@ export function MetricStrip({
   // Measured, because the column is what has to hold the figure — not the
   // window, which says nothing about how many columns share this card.
   const columnWidth = stripWidth > 0 ? stripWidth / Math.max(items.length, 1) : 0;
-  const compactValues = columnWidth > 0 && columnWidth < 116;
+  // 140, not 116: a year of a real ledger reaches "₺868.952,23", and the
+  // threshold has to clear the widest figure these strips carry rather than the
+  // narrowest. Below it the value renders as ₺868,9 B and keeps its own line.
+  const compactValues = columnWidth > 0 && columnWidth < 140;
   return (
     <View
       testID={testID}

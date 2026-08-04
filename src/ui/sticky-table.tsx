@@ -290,7 +290,15 @@ export function StickyTable({
   // old July offset and opens halfway through an unrelated category list.
   useEffect(() => {
     if (bodyW <= 0) return;
-    const sig = `${focusColumnKey}|${bodyW}|${cellWidth}|${scrollColumnsSignature}`;
+    // The signature is what the user asked for — a focus target and a set of
+    // columns — not how wide the body measured. It used to include `bodyW` and
+    // `cellWidth`, and pinning a column changes both: the sticky side grows by
+    // one cell, the body shrinks, the fitted cell width recomputes, and each of
+    // those re-fired this effect and yanked the scroll back to the focused
+    // month. That is the shake, and it is why the table could not be dragged
+    // sideways while a column was pinned — every drag was overwritten on the
+    // next render.
+    const sig = `${focusColumnKey}|${scrollColumnsSignature}`;
     if (horizontalFocusSig.current === sig) return;
     let target = 0;
     if (focusColumnKey) {

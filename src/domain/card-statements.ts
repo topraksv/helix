@@ -70,3 +70,13 @@ export function statementForDueDate(dueDate: ISODate, cycle: CardCycle): CardSta
   const periodMonth = cycle.dueDay > cycle.statementDay ? dueMonth : addMonthsToKey(dueMonth, -1);
   return statementPeriod(periodMonth, cycle);
 }
+
+/**
+ * A statement that closes on the day it is due is not a cycle: the period would
+ * have no length, and "31" and "ayın sonu" are the same day in a 31-day month,
+ * so the two have to be compared after both are resolved to a day number.
+ */
+export function isCardCycleDayConflict(statementDay: number | null, dueDay: number | null): boolean {
+  if (statementDay == null || dueDay == null) return false;
+  return statementDay === dueDay;
+}

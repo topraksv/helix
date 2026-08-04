@@ -207,7 +207,7 @@ export default function InvestmentProductScreen() {
           <Body style={{ flex: 1 }}>{effectiveName} · {tr.investments.types[assetType]}</Body>
         </View>
       ) : null}
-      <Button icon={PackagePlus} label={tr.investments.addProduct} loading={busy} disabled={!effectiveName || busy} onPress={() => void save()} />
+      <Button icon={PackagePlus} label={tr.investments.saveProduct} loading={busy} disabled={!effectiveName || busy} onPress={() => void save()} />
     </Screen>
   );
 }

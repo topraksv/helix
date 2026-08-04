@@ -205,10 +205,12 @@ function ItemBreakdown({
                   backgroundColor: isCurrent ? palette.primarySoft + "55" : pressed ? palette.surfaceAlt : "transparent",
                 })}
               >
-                {/* Intrinsic, not 88px: "Haziran 2026" is wider than that, so
-                    a third of the year wrapped onto two lines and those rows
-                    stood taller than the rest of the list. */}
-                <Text style={[type.body, { flexShrink: 0, color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? font.bold : font.medium }]}>
+                {/* One measure for the label column, wide enough for the
+                    longest month ("Haziran 2026") plus its own breathing room.
+                    Intrinsic, each row's bar started at a different x and was a
+                    different length, so twelve bars that exist to be compared
+                    could not be. */}
+                <Text style={[type.body, { width: 116, paddingRight: spacing.sm, flexShrink: 0, color: isCurrent ? palette.primaryText : palette.text, fontFamily: isCurrent ? font.bold : font.medium }]}>
                   {monthLabel(r.month)}
                 </Text>
                 <View style={{ flex: 1, minWidth: 32, marginHorizontal: spacing.sm }}>

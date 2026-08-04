@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { MONTH_END_DAY } from "../src/domain/dates";
 import {
+  isCardCycleDayConflict,
   isValidCardCycle,
   statementForDueDate,
   statementForPurchase,
@@ -50,5 +52,25 @@ describe("credit-card statement periods", () => {
     expect(isValidCardCycle({ statementDay: 25, dueDay: 0 })).toBe(false);
     expect(isValidCardCycle({ statementDay: 32, dueDay: 5 })).toBe(false);
     expect(isValidCardCycle({ statementDay: 25, dueDay: 5 })).toBe(true);
+  });
+});
+
+/**
+ * A statement that closes on the day it is due has no period at all, and the
+ * app writes day 31 as "ayın sonu" — so the two spellings of the same day have
+ * to collide too.
+ */
+describe("a card cycle needs two different days", () => {
+  it("rejects the same day, however it was written", () => {
+    expect(isCardCycleDayConflict(15, 15)).toBe(true);
+    expect(isCardCycleDayConflict(MONTH_END_DAY, 31)).toBe(true);
+    expect(isCardCycleDayConflict(31, MONTH_END_DAY)).toBe(true);
+  });
+
+  it("accepts a real cycle and stays quiet while a field is empty", () => {
+    expect(isCardCycleDayConflict(15, 25)).toBe(false);
+    expect(isCardCycleDayConflict(null, 25)).toBe(false);
+    expect(isCardCycleDayConflict(15, null)).toBe(false);
+    expect(isCardCycleDayConflict(null, null)).toBe(false);
   });
 });
