@@ -1685,7 +1685,7 @@ export function ChipPicker<T extends string>({
   onToggle,
   compact = false,
 }: {
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; disabled?: boolean; hint?: string }[];
   value?: T | null;
   onChange?: (v: T) => void;
   multi?: boolean;
@@ -1705,9 +1705,19 @@ export function ChipPicker<T extends string>({
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: compact ? spacing.xs + 2 : spacing.sm, marginBottom: spacing.md }}>
       {options.map((option) => {
         const selected = multi ? (values ?? []).includes(option.value) : option.value === value;
+        const unavailable = option.disabled === true;
+        // Selecting a chip must not resize it. The border used to thicken and
+        // the label used to gain weight on selection, so every chip after it in
+        // this wrapping row moved — and a row that wraps could re-wrap, which is
+        // how choosing "Ayın sonu" shifted the field underneath it. One border
+        // weight and one font weight for both states; colour carries the choice,
+        // three times over. Paying for the thicker border out of the padding was
+        // tried first and measured 84px against 85: browsers snap a 1.5px border
+        // to a whole device pixel and the padding it was traded against is not.
         return (
           <Pressable
             key={option.value}
+            disabled={unavailable}
             onPress={() => {
               if (multi) {
                 selectionTap();
@@ -1718,8 +1728,9 @@ export function ChipPicker<T extends string>({
               }
             }}
             accessibilityRole={multi ? "checkbox" : "radio"}
+            accessibilityHint={unavailable ? option.hint : undefined}
             aria-checked={selected}
-            accessibilityState={{ checked: selected, selected }}
+            accessibilityState={{ checked: selected, selected, disabled: unavailable }}
             hitSlop={compact ? 8 : 4}
             // One selection language. This row used to be fully rounded pills
             // while the same question asked as a grid — pick your columns, pick
@@ -1732,11 +1743,12 @@ export function ChipPicker<T extends string>({
               paddingVertical: spacing.sm + 2,
               paddingHorizontal: compact ? spacing.sm + 2 : spacing.md + 2,
               borderRadius: radius.md,
-              borderWidth: selected ? borderWidth.control : StyleSheet.hairlineWidth,
+              borderWidth: borderWidth.control,
               borderColor: selected ? palette.primary : palette.border,
               backgroundColor: pressed
                 ? palette.surfaceHover
                 : selected ? palette.primarySoft : palette.surfaceAlt,
+              opacity: unavailable ? 0.45 : 1,
               minHeight: controlSize.minimumTarget,
               justifyContent: "center",
             })}
@@ -1746,7 +1758,7 @@ export function ChipPicker<T extends string>({
                 type.label,
                 {
                   color: selected ? palette.primaryText : palette.text,
-                  fontFamily: selected ? font.semibold : font.medium,
+                  fontFamily: font.semibold,
                 },
               ]}
             >
@@ -2089,7 +2101,19 @@ export function ListRow({
   return <PressableRow onPress={onPress}>{content}</PressableRow>;
 }
 
-/** List row wrapper with quiet, interruptible tonal press feedback. */
+/** How far a row's pressed fill reaches past its own content, each side. */
+const PRESS_BLEED = spacing.sm;
+
+/**
+ * List row wrapper with quiet, interruptible tonal press feedback.
+ *
+ * The fill reaches past the text on both sides. Painted on the bare content
+ * box it started exactly at the first glyph, so holding a settings row lit a
+ * rectangle that looked cropped against its own card — the row read as
+ * highlighted only where it had words. The negative margin borrows from the
+ * card's own padding and the matching inset gives it straight back, so nothing
+ * moves and only the lit area grows.
+ */
 function PressableRow({ children, onPress }: { children: ReactNode; onPress: () => void }) {
   const { palette } = useTheme();
   return (
@@ -2097,6 +2121,8 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => ({
+        marginHorizontal: -PRESS_BLEED,
+        paddingHorizontal: PRESS_BLEED,
         backgroundColor: pressed ? palette.surfaceHover : "transparent",
         borderRadius: radius.sm,
         transform: [{ translateY: pressed ? 1 : 0 }],

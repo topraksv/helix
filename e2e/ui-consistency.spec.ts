@@ -1374,3 +1374,73 @@ test("a short boot wait never flashes a loading indicator", async ({ page, conte
   await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Hemen Kullanmaya Başla/ })).toBeVisible();
 });
+
+/**
+ * A pair of fields in one row has to stay a pair.
+ *
+ * The statement and due day sit side by side and each hides the day the other
+ * already owns. While the unavailable day was deleted from the list, choosing
+ * "Ayın sonu" on the left emptied the right-hand chip row completely and its
+ * input rose a whole control height — two inputs on one line, on two different
+ * baselines. The day is disabled now, so both columns keep the same shape.
+ *
+ * The same render also proves the chip itself does not resize when chosen: it
+ * is the widest label in a row that wraps, so a few pixels of extra border or
+ * font weight re-flowed everything after it.
+ */
+test("paired month-day fields keep one baseline when a day is taken", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/settings/payment-sources");
+  await page.getByRole("radio", { name: "Kredi Kartı" }).click();
+
+  const statement = page.getByRole("textbox", { name: "Ekstre Kesim Günü" });
+  const due = page.getByRole("textbox", { name: "Son Ödeme Günü" });
+  await expect(statement).toBeVisible();
+  await expect(due).toBeVisible();
+
+  const baselines = async () => {
+    const [a, b] = await Promise.all([statement.boundingBox(), due.boundingBox()]);
+    return { statement: Math.round(a!.y), due: Math.round(b!.y) };
+  };
+  const chips = page.getByRole("radio", { name: "Ayın sonu" });
+  await expect(chips).toHaveCount(2);
+  const widths = async () =>
+    chips.evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().width)));
+
+  const before = await baselines();
+  expect(before.statement, "the paired inputs start on one line").toBe(before.due);
+  const widthsBefore = await widths();
+
+  await chips.first().click();
+  await expect(chips.first()).toHaveAttribute("aria-checked", "true");
+
+  const after = await baselines();
+  expect(after.statement, "choosing a day keeps both inputs on one line").toBe(after.due);
+  expect(await widths(), "a chosen chip is the same size as an unchosen one").toEqual(widthsBefore);
+
+  // The day the other field now owns is still on screen and still refused.
+  const taken = chips.nth(1);
+  await expect(taken).toHaveAttribute("aria-disabled", "true");
+});
+
+/**
+ * A pressed list row lights the row, not the words in it. Painted on the bare
+ * content box the fill began at the first glyph, so a held settings row looked
+ * cropped against the card it sits in.
+ */
+test("a held list row lights a surface wider than its own text", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/settings");
+
+  const row = page.getByRole("button", { name: /^Bakiye Düzeltme/ }).first();
+  await expect(row).toBeVisible();
+  const geometry = await row.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const label = el.querySelector("div")!.getBoundingClientRect();
+    return { left: box.left, right: box.right, textLeft: label.left, textRight: label.right };
+  });
+  expect(geometry.textLeft - geometry.left, "left inset").toBeGreaterThanOrEqual(8);
+  expect(geometry.right - geometry.textRight, "right inset").toBeGreaterThanOrEqual(8);
+});

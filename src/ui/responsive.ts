@@ -114,3 +114,28 @@ export function shouldPairByMass(masses: number[]): boolean {
   // Three to one is the point where two columns stop looking like peers.
   return heaviest <= lightest * 3;
 }
+
+/** Rounding error a measured grid may differ from its caller's estimate by. */
+const CELL_FIT_TOLERANCE = 8;
+
+/**
+ * Correct a caller's estimated cell width against the grid that was really
+ * measured, but only by a rounding error's worth.
+ *
+ * `gridWidth` must be the whole area the columns share — the table minus its
+ * fixed label rail — and never the scrolling body alone. A pinned column is
+ * drawn beside the labels, so the body is exactly one cell narrower whenever
+ * one is pinned; a width fitted to the body therefore reads a measurement its
+ * own previous answer produced. That recursion has no fixed point for most
+ * widths: iterated over the numbers the ledger really computes, 73 of the 121
+ * phone widths from 320 to 440 alternate between two cell widths for ever
+ * (390 settles, 389 flips 81/82, 425 flips 93/94). Taking the grid instead
+ * makes the answer independent of what the answer did.
+ */
+export function fittedCellWidth(gridWidth: number, requestedWidth: number): number {
+  if (gridWidth <= 0 || requestedWidth <= 0) return requestedWidth;
+  const cellsAcross = Math.max(1, Math.round(gridWidth / requestedWidth));
+  return Math.abs(gridWidth - cellsAcross * requestedWidth) <= CELL_FIT_TOLERANCE
+    ? Math.floor(gridWidth / cellsAcross)
+    : requestedWidth;
+}

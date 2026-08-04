@@ -21,14 +21,24 @@ export function MonthDayField({
   onChange: (value: string) => void;
   quickDays?: readonly number[];
   error?: string | null;
-  /** A day the paired field already owns; offering it would only produce an
-   *  invalid cycle, so it is not offered. */
+  /** A day the paired field already owns; choosing it would only produce an
+   *  invalid cycle, so it is shown but cannot be chosen. */
   unavailableDay?: number | null;
 }) {
+  // The unavailable day is disabled, never removed. These fields are used as a
+  // pair in one row, and dropping an option shortened one column's chip row
+  // while the other kept its own: picking "Ayın sonu" on the left deleted the
+  // only chip on the right and its input jumped a whole control height up the
+  // page. Same options, same wrap, same baseline — and the user can see why the
+  // day is refused instead of watching it disappear.
   const options = [...new Set([...quickDays.filter((day) => day < MONTH_END_DAY), MONTH_END_DAY])]
-    .filter((day) => day !== unavailableDay)
-    .map((day) => ({ value: String(day), label: monthDayLabel(day) }));
-  const selected = options.some((option) => option.value === value) ? value : null;
+    .map((day) => ({
+      value: String(day),
+      label: monthDayLabel(day),
+      disabled: day === unavailableDay,
+      hint: day === unavailableDay ? tr.dates.dayTakenByPair : undefined,
+    }));
+  const selected = options.some((option) => option.value === value && !option.disabled) ? value : null;
 
   return (
     <>

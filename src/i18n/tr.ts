@@ -49,6 +49,7 @@ export const tr = {
     monthEnd: "Ayın sonu",
     monthEndSelected: "Ayın sonu seçildi",
     monthDayPlaceholder: "1–30",
+    dayTakenByPair: "Bu gün eşleşen alanda seçili",
   },
   a11y: {
     showPassword: "Şifreyi göster",

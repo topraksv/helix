@@ -16,6 +16,7 @@ import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, ty
 import { Pin, type LucideIcon } from "lucide-react-native";
 import { selectionTap } from "./haptics";
 import { tr } from "../i18n/tr";
+import { fittedCellWidth } from "./responsive";
 import { font, spacing, type, useTheme } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
@@ -233,17 +234,18 @@ export function StickyTable({
   const bodyHRef = useRef<ScrollView>(null);
   const headerHRef = useRef<ScrollView>(null);
   const [bodyW, setBodyW] = useState(0);
-  // The screen that owns this table sizes a cell so a whole number of them
-  // fits the width it *estimates* the body will get. That estimate is off by
-  // the container's own hairlines — measured at 320px it was 176 against a real
-  // 174 — and two pixels are enough to leave the last column clipped at the
-  // right edge for ever. The table measures its own body and corrects the cell
-  // by those few pixels; anything larger than a rounding error is a genuine
-  // overflow and is left alone to scroll.
-  const cellsAcross = bodyW > 0 ? Math.max(1, Math.round(bodyW / requestedCellWidth)) : 0;
-  const cellWidth = cellsAcross > 0 && Math.abs(bodyW - cellsAcross * requestedCellWidth) <= 8
-    ? Math.floor(bodyW / cellsAcross)
-    : requestedCellWidth;
+  const [tableW, setTableW] = useState(0);
+  // The screen that owns this table sizes a cell so a whole number of them fits
+  // the width it *estimates*. That estimate is off by the container's own
+  // hairlines — measured at 320px it was 176 against a real 174 — and two pixels
+  // are enough to leave the last column clipped at the right edge for ever.
+  //
+  // What is measured is the whole table minus the label rail, never the body
+  // scroller: a pinned column is drawn beside the labels, so fitting to the body
+  // made the cell width depend on a measurement the cell width had just changed.
+  // `fittedCellWidth` carries the arithmetic and the evidence. `bodyW` is still
+  // measured below, but only for scroll geometry, which nothing lays out from.
+  const cellWidth = fittedCellWidth(Math.max(0, tableW - headWidth), requestedCellWidth);
 
   useWebInteractions(vRef, bodyHRef, headerHRef, rowHeight, cellWidth);
   const [bodyViewH, setBodyViewH] = useState(0);
@@ -461,7 +463,10 @@ export function StickyTable({
   };
 
   return (
-    <View style={height ? { height } : { flex: 1 }}>
+    <View
+      onLayout={(e: LayoutChangeEvent) => setTableW(e.nativeEvent.layout.width)}
+      style={height ? { height } : { flex: 1 }}
+    >
       {/* Sticky header: corner + column headers, mirrors the body's x offset. */}
       <View style={{ flexDirection: "row", height: resolvedHeaderHeight, borderBottomWidth: 1, borderColor: palette.border, backgroundColor: palette.surface }}>
         <View style={{ flexDirection: "row", width: leftWidth, borderRightWidth: 1, borderColor: palette.border }}>

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { shouldPairByMass } from "../src/ui/responsive";
+import { fittedCellWidth, shouldPairByMass } from "../src/ui/responsive";
 import { biometricName } from "../src/ui/biometric-name";
 import { tr } from "../src/i18n/tr";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../src/domain/balance-declaration";
@@ -119,6 +119,48 @@ describe("the ledger never rests between columns", () => {
   it("snaps a dragged scroll to the same grid", () => {
     expect(table).toContain("snapToInterval={cellWidth}");
     expect(table).toContain('snapToAlignment="start"');
+  });
+
+  /**
+   * Pinning a month must not resize the months beside it.
+   *
+   * The pinned column is drawn in the fixed left rail, so the scrolling body
+   * loses exactly one cell the moment one is pinned. While the cell width was
+   * fitted to that body, the width fed the rail, the rail fed the body and the
+   * body fed the width again — a loop with no fixed point at most widths. The
+   * columns alternated between two sizes for ever, which is what the owner saw
+   * as a shake. The fit reads the whole grid now, so pinning cannot move it.
+   */
+  it("is fed the grid the columns share, never the scrolling body", () => {
+    expect(table).toContain("fittedCellWidth(Math.max(0, tableW - headWidth), requestedCellWidth)");
+    // The body measurement may only reach scroll geometry.
+    const fit = table.slice(table.indexOf("const cellWidth ="), table.indexOf("useWebInteractions"));
+    expect(fit).not.toContain("bodyW");
+  });
+
+  it("has no fixed point when the pinned column is subtracted first", () => {
+    // Why the input contract above matters, stated as arithmetic rather than as
+    // a claim. Feeding the body — the grid minus the cell a pinned column takes
+    // — makes the answer an input to itself, and for most phone widths the two
+    // answers never agree, so the columns resize on every frame.
+    let unstable = 0;
+    for (let tableWidth = 320; tableWidth <= 440; tableWidth += 1) {
+      const grid = tableWidth - 112;
+      const requested = 82;
+      const settled = fittedCellWidth(grid, requested);
+      if (fittedCellWidth(grid - settled, requested) !== settled) unstable += 1;
+    }
+    expect(unstable).toBeGreaterThan(0);
+  });
+
+  it("only corrects by a rounding error, and leaves a real overflow to scroll", () => {
+    // 3 x 82 = 246 against a measured 244: two pixels, so the cell is trimmed.
+    expect(fittedCellWidth(244, 82)).toBe(81);
+    // 3 x 100 = 300 against 273: 27 pixels is a genuine overflow, not rounding.
+    expect(fittedCellWidth(273, 100)).toBe(100);
+    // Nothing measured yet, and degenerate input, keep the caller's number.
+    expect(fittedCellWidth(0, 88)).toBe(88);
+    expect(fittedCellWidth(-10, 88)).toBe(88);
   });
 });
 
