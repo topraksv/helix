@@ -109,12 +109,22 @@ describe("release contract", () => {
 
   it("splits the browser suite by risk and shards the full run", () => {
     expect(ci).toContain("npm run test:e2e:smoke");
-    expect(ci).toContain("--shard=${{ matrix.shard }}/2");
     expect(ci).toContain("npx playwright install chromium --with-deps");
     // Sharding across runners is the only parallelism: this suite drives one
     // browser against one static server and goes flaky with two workers.
     expect(ci).not.toMatch(/workers:\s*[2-9]/);
-    expect(nightly).toContain("--shard=${{ matrix.shard }}/2");
+    // The shard count is read from the workflow rather than pinned here, but
+    // the matrix and the flag have to agree — a matrix of three feeding
+    // `--shard=n/2` silently drops a third of the suite.
+    const shardCount = ci.match(/--shard=\${{ matrix\.shard }}\/(\d+)/)?.[1];
+    expect(shardCount, "ci declares a shard count").toBeDefined();
+    expect(ci).toContain(`shard: [${Array.from({ length: Number(shardCount) }, (_, i) => i + 1).join(", ")}]`);
+    expect(nightly).toContain(`--shard=\${{ matrix.shard }}/${shardCount}`);
+    expect(nightly).toContain(`shard: [${Array.from({ length: Number(shardCount) }, (_, i) => i + 1).join(", ")}]`);
+    // Playwright splits by FILE unless `fullyParallel` is set, and this suite's
+    // specs are very unevenly sized — measured, two shards took 65 and 10 of
+    // the 75 tests. Balance is what makes a shard count worth raising.
+    expect(read("playwright.config.ts")).toContain("fullyParallel: true");
     expect(nightly.split("npm run test:e2e:export").length - 1).toBe(1);
     expect(nightly).toContain("nightly-dist-e2e-${{ github.run_id }}");
     expect(nightly).toContain("actions/upload-artifact");

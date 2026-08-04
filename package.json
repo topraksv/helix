@@ -69,6 +69,7 @@
     "test:watch": "vitest",
     "test:e2e:export": "node scripts/export-e2e-web.mjs",
     "test:e2e": "npm run test:e2e:export && playwright test",
+    "test:e2e:only": "playwright test",
     "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm test && npx expo lint",
     "bundle:check": "node scripts/check-web-budget.mjs dist --require-supabase-config",
