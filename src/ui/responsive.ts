@@ -7,19 +7,17 @@ const WIDE_IMPORT_GUIDE_WIDTH = 820;
 const WIDE_WORKSPACE_WIDTH = 900;
 
 /**
- * The one desktop threshold. Above it the viewport is pointer-sized: navigation
- * stops being a thumb-reachable bar at the bottom of a held device and becomes a
- * rail beside the content, and a page keeps a real margin instead of the tight
- * gutter a phone needs to earn its width back.
+ * The one desktop threshold. Above it the viewport is pointer-sized and a page
+ * keeps a real margin instead of the tight gutter a phone needs to earn its
+ * width back.
  *
- * Both facts change together on purpose — two thresholds a few pixels apart is
- * how a layout starts looking accidental.
+ * A tablet in portrait belongs on the desktop side of it: paired columns and a
+ * real margin are what the device is for. It is a pointer-or-two-hand device,
+ * not a big phone.
  *
- * A tablet in portrait belongs on the desktop side of it. It was on the phone
- * side while the rail cost 220px, which a 768px window cannot spare; a compact
- * rail costs 108, and everything a tablet gains from that — a persistent
- * navigation instrument, a real page margin, paired columns — is what the
- * device is for. It is a pointer-or-two-hand device, not a big phone.
+ * Navigation does NOT change here. A side rail was built at this threshold and
+ * removed by the owner — it took a column out of the window and made the app
+ * teach two navigations. One bottom bar, every width.
  */
 const DESKTOP_WIDTH = 768;
 
@@ -138,4 +136,48 @@ export function fittedCellWidth(gridWidth: number, requestedWidth: number): numb
   return Math.abs(gridWidth - cellsAcross * requestedWidth) <= CELL_FIT_TOLERANCE
     ? Math.floor(gridWidth / cellsAcross)
     : requestedWidth;
+}
+
+/**
+ * How wide a ledger cell has to be before an amount can be read in it.
+ *
+ * This was sixty-five lines of arithmetic inside the ledger screen's render,
+ * which meant the one rule that decides whether `₺868.952,23` is legible could
+ * only be checked by opening the app. It is a pure function of four measured
+ * facts, so it belongs where a test can reach it.
+ *
+ * The two glyph constants are measured, not guessed: tabular figures at 11px
+ * cap at ~6.2px of advance and at 13px at ~7.2px. `headerChars` is bounded by
+ * the caller, because a user-authored column name may be a paragraph.
+ */
+export function ledgerCellWidth(input: {
+  /** Space the columns share: the content column minus the label rail. */
+  gridWidth: number;
+  /** Longest formatted amount the table will draw, in characters. */
+  valueChars: number;
+  /** Longest column heading, in characters. */
+  headerChars: number;
+  /** How many columns exist at all — never fit more cells than there are. */
+  columnCount: number;
+  /** Phone and tablet density, where headers may wrap and cells may not. */
+  compact: boolean;
+}): number {
+  const { gridWidth, valueChars, headerChars, columnCount, compact } = input;
+  // A financial figure never wraps and never clips, so the amount sets the
+  // floor whatever else wants the space.
+  const valueSafe = compact
+    ? Math.ceil(valueChars * 6.2 + 8)
+    : Math.ceil(valueChars * 7.2 + 16);
+  // Header markers reserve 48px between them; ordinary names get one or two
+  // balanced lines and longer ones wrap and grow the shared header height.
+  const headerSafe = Math.min(168, Math.max(112, Math.ceil(headerChars * 5.8 + 48)));
+  const natural = compact ? Math.max(70, valueSafe) : Math.max(112, valueSafe, headerSafe);
+  const body = Math.max(1, gridWidth);
+  // Complete columns only: a clipped half-header at the right edge signalled
+  // scrolling and looked broken.
+  const wholeCount = columnCount > 0
+    ? Math.min(columnCount, Math.max(1, Math.floor(body / natural)))
+    : 1;
+  const fitted = Math.floor(body / wholeCount);
+  return Math.max(natural, Math.min(compact ? 144 : 320, fitted));
 }

@@ -14,7 +14,7 @@ import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
 import { Body, Button, Card, Field, ListRow, PanelHeader, Screen } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
-import { spacing } from "../ui/theme";
+import { spacing, type } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
@@ -216,7 +216,7 @@ function CloudAccountSecurityScreen() {
           placeholder={tr.account.currentPasswordPlaceholder}
         />
         <Button label={tr.account.changeEmail} onPress={() => void submitEmail()} loading={emailBusy} disabled={!emailValid || emailPassword.length < 6} />
-        <Body muted style={{ fontSize: 12, marginTop: spacing.sm }}>{tr.account.emailChangeHint}</Body>
+        <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.account.emailChangeHint}</Body>
       </Card>
 
       <Card>

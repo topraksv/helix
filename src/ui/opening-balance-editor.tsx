@@ -27,7 +27,7 @@ import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
 import { devError } from "../services/logger";
-import { radius, spacing, type, useTheme } from "./theme";
+import { circle, radius, spacing, type, useTheme } from "./theme";
 import { useUndo } from "./undo";
 import { navigateBack } from "./navigation";
 import { useDirtyExitGuard } from "./dirty-exit";
@@ -56,8 +56,8 @@ function BalanceBridge({
       }}
     >
       <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
-        <Body muted style={{ fontSize: 10, marginBottom: spacing.xs }}>{tr.settings.computedBalance}</Body>
-        <Amount minor={computedMinor} colorized={false} style={{ fontSize: 13, textAlign: "left" }} />
+        <Body muted style={{ fontSize: type.micro.fontSize, marginBottom: spacing.xs }}>{tr.settings.computedBalance}</Body>
+        <Amount minor={computedMinor} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left" }} />
       </View>
       <View
         style={{
@@ -75,12 +75,12 @@ function BalanceBridge({
         <Amount
           minor={differenceMinor}
           color={differenceMinor > 0 ? palette.positiveText : differenceMinor < 0 ? palette.negativeText : palette.text}
-          style={{ fontSize: 11, marginTop: 2 }}
+          style={{ fontSize: type.caption.fontSize, marginTop: 2 }}
         />
       </View>
       <View style={{ flex: 1, minWidth: 0, justifyContent: "center", alignItems: "flex-end" }}>
-        <Body muted style={{ fontSize: 10, marginBottom: spacing.xs, textAlign: "right" }}>{tr.settings.realBalance}</Body>
-        <Amount minor={targetMinor} colorized={false} style={{ fontSize: 13 }} />
+        <Body muted style={{ fontSize: type.micro.fontSize, marginBottom: spacing.xs, textAlign: "right" }}>{tr.settings.realBalance}</Body>
+        <Amount minor={targetMinor} colorized={false} style={{ fontSize: type.label.fontSize }} />
       </View>
     </View>
   );
@@ -276,8 +276,8 @@ export function OpeningBalanceEditor() {
         >
           <Info accessible={false} size={17} color={palette.primaryText} style={{ marginTop: 2 }} />
           <View style={{ flex: 1, gap: spacing.xs }}>
-            <Body muted style={{ fontSize: 12 }}>{tr.settings.balanceScopeHint}</Body>
-            <Body muted style={{ fontSize: 12 }}>{tr.settings.balanceWillMark}</Body>
+            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceScopeHint}</Body>
+            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.balanceWillMark}</Body>
           </View>
         </Row>
         <Button label={tr.common.save} onPress={() => void saveCurrent()} disabled={!balanceDirty} loading={savingBalance} haptic="none" />
@@ -286,7 +286,7 @@ export function OpeningBalanceEditor() {
         secondary={(
           <View>
             <SectionHeader>{tr.settings.balanceAdjustmentsTitle}</SectionHeader>
-            <Body muted style={{ fontSize: 12, marginBottom: spacing.md }}>
+            <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>
               {tr.settings.balanceAdjustmentsHint}
             </Body>
             <CardList
@@ -296,7 +296,7 @@ export function OpeningBalanceEditor() {
                 <Spread>
                   <View style={{ flex: 1, paddingRight: spacing.md }}>
                     <Body>{dateLabel(adjustment.date)}</Body>
-                    <Body muted style={{ fontSize: 12 }}>{adjustment.note ?? tr.settings.balanceAdjustmentFallback}</Body>
+                    <Body muted style={{ fontSize: type.small.fontSize }}>{adjustment.note ?? tr.settings.balanceAdjustmentFallback}</Body>
                   </View>
                   <Row gap={spacing.sm}>
                     <Amount minor={adjustment.amountMinor} />
@@ -327,7 +327,7 @@ export function OpeningBalanceEditor() {
             style={{
               width: 36,
               height: 36,
-              borderRadius: 18,
+              borderRadius: circle(36),
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: palette.surfaceAlt,
@@ -343,7 +343,7 @@ export function OpeningBalanceEditor() {
             <Body muted style={{ marginBottom: spacing.sm }}>{tr.onboarding.startMonth}</Body>
             <Spread style={{ marginBottom: spacing.lg }}>
               <IconButton icon={ChevronLeft} label={tr.onboarding.startMonth} onPress={() => setDraftStart(addMonthsToKey(startMonth, -1))} />
-              <Body style={{ fontSize: 18 }}>{monthLabel(startMonth)}</Body>
+              <Body style={{ fontSize: type.heading.fontSize }}>{monthLabel(startMonth)}</Body>
               <IconButton
                 icon={ChevronRight}
                 label={tr.onboarding.startMonth}

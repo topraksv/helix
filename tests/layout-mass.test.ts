@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { fittedCellWidth, shouldPairByMass } from "../src/ui/responsive";
+import { fittedCellWidth, ledgerCellWidth, shouldPairByMass } from "../src/ui/responsive";
 import { biometricName } from "../src/ui/biometric-name";
 import { tr } from "../src/i18n/tr";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../src/domain/balance-declaration";
@@ -116,9 +116,24 @@ describe("the ledger never rests between columns", () => {
     expect(table).toContain("Math.min(Math.round(centered / cellWidth) * cellWidth, maxScrollX)");
   });
 
-  it("snaps a dragged scroll to the same grid", () => {
+  /**
+   * `snapToInterval` is the NATIVE half of the contract, and only the native
+   * half: react-native-web's `ScrollView` maps `pagingEnabled` onto
+   * `scroll-snap-type` and nothing else, so the prop does nothing at all in a
+   * browser (`node_modules/react-native-web/dist/exports/ScrollView/index.js`).
+   * Measured before the web half existed: a dragged scroll rested at 722px on
+   * an 87px grid. Asserting the prop's presence therefore proves the phone
+   * behaviour and NOTHING about the web — the browser half is a settle timer
+   * that rounds to the same grid, and `e2e/ui-consistency.spec.ts` drives it
+   * against a real render.
+   */
+  it("snaps a dragged scroll to the same grid on both platforms", () => {
     expect(table).toContain("snapToInterval={cellWidth}");
     expect(table).toContain('snapToAlignment="start"');
+    // The web half, which the prop above cannot provide.
+    expect(table).toContain("const snapToCell = ()");
+    expect(table).toContain("Math.round(bodyNode.scrollLeft / cellWidth) * cellWidth");
+    expect(table).toContain("WEB_SCROLL_SETTLE_MS");
   });
 
   /**
@@ -194,6 +209,51 @@ describe("a declared balance can be compared with the ledger later", () => {
     expect(editor).toContain("setBalanceDeclaration(userId, effectiveTarget, todayISO())");
     for (const path of ["src/app/(tabs)/index.tsx", "src/app/(tabs)/cash-flow/index.tsx"]) {
       expect(readFileSync(join(root, path), "utf8")).toContain("balanceDeclarationDrift(");
+    }
+  });
+});
+
+/**
+ * The rule that decides whether an amount can be read in a ledger cell.
+ *
+ * It used to be sixty-five lines inside the ledger screen's render, so the one
+ * thing standing between `₺868.952,23` and a wrapped or clipped figure could
+ * only be checked by opening the app at the right width with the right data.
+ */
+describe("a ledger cell is sized by the widest figure it must hold", () => {
+  const base = { gridWidth: 900, valueChars: 8, headerChars: 6, columnCount: 12, compact: false };
+
+  it("never returns less than the measured amount needs", () => {
+    for (const valueChars of [0, 4, 8, 12, 16, 20]) {
+      for (const compact of [true, false]) {
+        const width = ledgerCellWidth({ ...base, valueChars, compact });
+        const glyph = compact ? 6.2 : 7.2;
+        const inset = compact ? 8 : 16;
+        expect(width, `${valueChars} chars, compact=${compact}`).toBeGreaterThanOrEqual(
+          Math.ceil(valueChars * glyph + inset),
+        );
+      }
+    }
+  });
+
+  it("grows the cell for a longer amount rather than squeezing it", () => {
+    const narrow = ledgerCellWidth({ ...base, valueChars: 6, gridWidth: 320, compact: true });
+    const wide = ledgerCellWidth({ ...base, valueChars: 18, gridWidth: 320, compact: true });
+    expect(wide).toBeGreaterThan(narrow);
+  });
+
+  it("fits whole columns and stops at a readable ceiling", () => {
+    // One column in a wide workspace must not become a 900px block.
+    expect(ledgerCellWidth({ ...base, columnCount: 1, gridWidth: 900 })).toBeLessThanOrEqual(320);
+    expect(ledgerCellWidth({ ...base, columnCount: 1, gridWidth: 900, compact: true })).toBeLessThanOrEqual(144);
+    // Twelve months across 900px: complete cells, never a clipped remainder.
+    const width = ledgerCellWidth({ ...base, columnCount: 12, gridWidth: 900 });
+    expect(width * Math.floor(900 / width)).toBeLessThanOrEqual(900);
+  });
+
+  it("survives a degenerate width instead of returning zero", () => {
+    for (const gridWidth of [0, -50, 1]) {
+      expect(ledgerCellWidth({ ...base, gridWidth })).toBeGreaterThan(0);
     }
   });
 });

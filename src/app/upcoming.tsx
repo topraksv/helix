@@ -121,7 +121,7 @@ export default function UpcomingScreen() {
                     <Text style={[type.label, { color: item.status === "late" ? palette.errorText : palette.textStrong, fontFamily: font.semibold }]}>
                       {Number(item.date.slice(8, 10))}
                     </Text>
-                    <Text style={[type.small, { color: palette.textSecondary, fontFamily: font.semibold, fontSize: 10, textTransform: "uppercase" }]}>
+                    <Text style={[type.small, { color: palette.textSecondary, fontFamily: font.semibold, fontSize: type.micro.fontSize, textTransform: "uppercase" }]}>
                       {shortMonthLabel(monthKeyOf(item.date))}
                     </Text>
                   </View>

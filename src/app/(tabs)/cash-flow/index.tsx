@@ -34,10 +34,11 @@ import {
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
+import { Collapse } from "../../../ui/motion-primitives";
 import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
-import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
-import { shouldUseWideWorkspace } from "../../../ui/responsive";
+import { circle, controlSize, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { ledgerCellWidth, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 import { categoryIcon } from "../../../data/category-icons";
 
@@ -62,7 +63,6 @@ function MatrixTool({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      hitSlop={6}
       // The press surface is the control's own box. It used to be a 30x28
       // rectangle behind the icon while the pressable was the whole column,
       // so holding the tool lit a small patch sitting above its own caption
@@ -81,7 +81,7 @@ function MatrixTool({
       })}
     >
       <IconCmp accessible={false} size={15} color={palette.textSecondary} strokeWidth={2} />
-      <Text style={[type.small, { fontSize: 9, lineHeight: 11, color: palette.textSecondary, textAlign: "center" }]}>{caption}</Text>
+      <Text style={[type.caption, { color: palette.textSecondary, textAlign: "center" }]}>{caption}</Text>
     </Pressable>
   );
 }
@@ -103,9 +103,9 @@ function FlowStat({
     <View style={{ flex: 1, minWidth: 0, alignItems: "center", paddingHorizontal: 2 }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs }}>
         <Icon accessible={false} size={13} color={color} />
-        <Text style={[type.small, { color: foreground, textAlign: "center", fontSize: 11 }]}>{label}</Text>
+        <Text style={[type.small, { color: foreground, textAlign: "center", fontSize: type.caption.fontSize }]}>{label}</Text>
       </View>
-      <Text style={[type.amountSm, { color: foreground, textAlign: "center", fontSize: 12, marginTop: 2 }]}>{formatMinorCompact(amountMinor)}</Text>
+      <Text style={[type.amountSm, { color: foreground, textAlign: "center", fontSize: type.small.fontSize, marginTop: 2 }]}>{formatMinorCompact(amountMinor)}</Text>
     </View>
   );
 }
@@ -264,60 +264,35 @@ export default function CashflowScreen() {
           marginBottom: spacing.sm,
         }}
       >
-        {wide ? (
-          <View
-            testID="cash-flow-action-toolbar"
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: spacing.sm,
-              padding: spacing.xs,
-              borderRadius: radius.md,
-              backgroundColor: palette.surface,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: palette.border + "70",
-            }}
-          >
-            <Button icon={Plus} label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-            <Row gap={spacing.sm} style={{ flex: 1, minWidth: 0, flexWrap: "wrap" }}>
-              <Button icon={CreditCard} size="sm" label={tr.cashflow.installments} variant="secondary" onPress={() => router.push("/cash-flow/installments")} />
-              <Button icon={ChartNoAxesColumn} size="sm" label={tr.cashflow.analysis} variant="secondary" onPress={() => router.push("/cash-flow/analytics")} />
-              <Button icon={CalendarPlus} size="sm" label={tr.cashflow.bulkEntry} variant="secondary" onPress={() => router.push("/bulk-entry")} />
-              <Button icon={Pencil} size="sm" label={editLabel} variant="secondary" onPress={editColumns} />
-              {/* Same row, same job, same control. This one was `ghost`, so a
-                  band of five bordered tools ended in a floating word. */}
-              <Button icon={Flag} size="sm" label={tr.cashflow.openingLink} variant="secondary" onPress={() => router.push("/opening-balance")} />
-            </Row>
-          </View>
-        ) : (
-          <View
-            testID="cash-flow-action-toolbar"
-            style={{
-              gap: spacing.xs,
-              width: "100%",
-              padding: spacing.xs,
-              borderRadius: radius.md,
-              backgroundColor: palette.surface,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: palette.border + "70",
-            }}
-          >
-            <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
-            {/* The band spans the page at every width and centres its own
-                items. It used to stop at the cluster's intrinsic width above a
-                phone, so the same five tools sat at a different place on a
-                tablet, on a laptop and at 200% zoom — three positions to learn
-                for one toolbar. */}
-            <Row gap={2} style={{ justifyContent: "center", alignItems: "center", flexWrap: "nowrap", width: "100%" }}>
-              <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} />
-              <MatrixTool icon={CreditCard} caption={tr.cashflow.toolInstallments} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
-              <MatrixTool icon={ChartNoAxesColumn} caption={tr.cashflow.toolAnalysis} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
-              <MatrixTool icon={CalendarPlus} caption={tr.cashflow.toolBulk} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
-              <MatrixTool icon={Flag} caption={tr.cashflow.toolOpening} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
-            </Row>
-          </View>
-        )}
+        {/* ONE toolbar, at every width.
+            It used to be two: six labelled buttons in a row above a tablet, and
+            below it a small button over five icon tiles whose captions were 9px
+            — three sizes under the smallest role the type scale declares. Same
+            five destinations, two control languages and two label sets, so the
+            same screen had to be relearned when the window changed. The band
+            spans the page, the entry action leads it, and the five tools share
+            the row underneath at any size. */}
+        <View
+          testID="cash-flow-action-toolbar"
+          style={{
+            gap: spacing.xs,
+            width: "100%",
+            padding: spacing.xs,
+            borderRadius: radius.md,
+            backgroundColor: palette.surface,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: palette.border + "70",
+          }}
+        >
+          <Button icon={Plus} size="sm" label={tr.cashflow.addTransaction} onPress={() => router.push("/transaction")} />
+          <Row gap={2} style={{ justifyContent: "center", alignItems: "stretch", flexWrap: "nowrap", width: "100%" }}>
+            <MatrixTool icon={Pencil} caption={tr.cashflow.toolEdit} label={editLabel} onPress={editColumns} />
+            <MatrixTool icon={CreditCard} caption={tr.cashflow.toolInstallments} label={tr.cashflow.installments} onPress={() => router.push("/cash-flow/installments")} />
+            <MatrixTool icon={ChartNoAxesColumn} caption={tr.cashflow.toolAnalysis} label={tr.cashflow.analysis} onPress={() => router.push("/cash-flow/analytics")} />
+            <MatrixTool icon={CalendarPlus} caption={tr.cashflow.toolBulk} label={tr.cashflow.bulkEntry} onPress={() => router.push("/bulk-entry")} />
+            <MatrixTool icon={Flag} caption={tr.cashflow.toolOpening} label={tr.cashflow.openingLink} onPress={() => router.push("/opening-balance")} />
+          </Row>
+        </View>
       </View>
 
       <DataStateNotice status={dataStatus} retry={retryData} />
@@ -387,15 +362,20 @@ export default function CashflowScreen() {
                 : undefined}
             />
           </View>
-          {showTable && tableMatrix && showTableDetails ? (
-            <TableDetailsPanel
-              hasUncategorized={tableMatrix.hasUncategorized}
-              uncategorizedTotal={tableMatrix.uncategorizedTotal}
-              onOpenUncategorized={() => router.push({
-                pathname: "/cash-flow/item",
-                params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
-              })}
-            />
+          {/* The reading guide opens and closes rather than blinking: it sits
+              directly above the table, so an instant swap shoved the whole grid
+              up or down the page with nothing to follow. */}
+          {showTable && tableMatrix ? (
+            <Collapse open={showTableDetails}>
+              <TableDetailsPanel
+                hasUncategorized={tableMatrix.hasUncategorized}
+                uncategorizedTotal={tableMatrix.uncategorizedTotal}
+                onOpenUncategorized={() => router.push({
+                  pathname: "/cash-flow/item",
+                  params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
+                })}
+              />
+            </Collapse>
           ) : null}
           {showTable ? (
             <View style={{ flex: 1 }} onLayout={(e) => setTableAreaH(e.nativeEvent.layout.height)}>
@@ -601,7 +581,7 @@ function MonthFocusTable({
                   width: 30,
                   height: 30,
                   flexShrink: 0,
-                  borderRadius: 10,
+                  borderRadius: radius.md,
                   backgroundColor: column.computed ? palette.tertiarySoft : palette.surfaceAlt,
                   alignItems: "center",
                   justifyContent: "center",
@@ -611,7 +591,7 @@ function MonthFocusTable({
                 {column.computed ? (
                   <Sigma accessible={false} size={15} color={palette.tertiaryText} />
                 ) : iconText ? (
-                  <Text style={{ fontSize: 14 }}>{iconText}</Text>
+                  <Text style={{ fontSize: iconSize.emoji }}>{iconText}</Text>
                 ) : (
                   <Flag accessible={false} size={15} color={palette.textSecondary} />
                 )}
@@ -634,7 +614,7 @@ function MonthFocusTable({
                     width: 108,
                     textAlign: "right",
                     color: value < 0 ? palette.negativeText : value === 0 ? palette.textSecondary : palette.text,
-                    fontSize: 12,
+                    fontSize: type.small.fontSize,
                   },
                 ]}
               >
@@ -650,7 +630,7 @@ function MonthFocusTable({
               pathname: "/cash-flow/item",
               params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
             })}
-            style={{ padding: spacing.md, backgroundColor: palette.warning + "12" }}
+            style={({ pressed }) => ({ padding: spacing.md, backgroundColor: palette.warning + (pressed ? "26" : "12") })}
           >
             <Spread>
               <Text style={[type.label, { color: palette.warningText, flex: 1 }]}>{tr.cashflow.uncategorizedLegacy}</Text>
@@ -808,42 +788,20 @@ function MatrixTable({
     ),
     0,
   );
-  // Compact cells render tabular figures at 11px. Their widest measured glyph
-  // is ~6.2px; the 4px edge insets below make a ten-character TRY amount fit a
-  // 70px cell without wrapping. Wider real values still grow the cell rather
-  // than squeezing or clipping the amount.
-  const valueSafeCellWidth = compact
-    ? Math.ceil(longestValueChars * 6.2 + spacing.xs * 2)
-    : Math.ceil(longestValueChars * 7.2 + spacing.sm * 2);
+  // A user-authored column name may be a paragraph; the header only gets to
+  // ask for as much width as a reasonable one needs.
   const longestHeaderChars = orientation === "monthsAsRows"
     ? columns.reduce((longest, column) => Math.max(longest, Math.min(column.label.length, 24)), 0)
     : months.reduce((longest, month) => Math.max(longest, (compact ? shortMonthLabel(month.month) : monthName(month.month)).length), 0);
-  // Header markers reserve 48px at both sides together. Give ordinary names
-  // enough room for one or two balanced lines. Longer user-authored names keep
-  // wrapping and grow the shared header height.
-  const headerSafeCellWidth = Math.min(168, Math.max(112, Math.ceil(longestHeaderChars * 5.8 + 48)));
-  // Fit an integer number of complete columns in the desktop viewport. A
-  // clipped half-header at the right edge technically signalled scrolling but
-  // looked broken; the next column now starts beyond the edge as one unit.
   const bodyTableWidth = Math.max(1, availableTableWidth - HEAD_W);
-  const naturalCellWidth = Math.max(112, valueSafeCellWidth, headerSafeCellWidth);
-  const wholeColumnCount = visibleColumnCount > 0
-    ? Math.min(visibleColumnCount, Math.max(1, Math.floor(bodyTableWidth / naturalCellWidth)))
-    : 1;
-  const wholeColumnCellWidth = Math.floor(bodyTableWidth / wholeColumnCount);
-  // Phones/tablets favor complete columns too, but let ordinary headers wrap.
-  // The orientation-specific pinned column determines how many complete data
-  // cells fit. The measured value floor remains authoritative, so an unusually
-  // long amount widens the cells instead of wrapping a financial figure.
-  const compactNaturalCellWidth = Math.max(70, valueSafeCellWidth);
-  const compactWholeColumnCount = visibleColumnCount > 0
-    ? Math.min(visibleColumnCount, Math.max(1, Math.floor(bodyTableWidth / compactNaturalCellWidth)))
-    : 1;
-  const compactWholeColumnCellWidth = Math.floor(bodyTableWidth / compactWholeColumnCount);
-  const CELL_W = compact
-    ? Math.max(compactNaturalCellWidth, Math.min(144, compactWholeColumnCellWidth))
-    : Math.max(naturalCellWidth, Math.min(320, wholeColumnCellWidth));
-  const fontSize = compact ? 11 : 13;
+  const CELL_W = ledgerCellWidth({
+    gridWidth: bodyTableWidth,
+    valueChars: longestValueChars,
+    headerChars: longestHeaderChars,
+    columnCount: visibleColumnCount,
+    compact,
+  });
+  const fontSize = compact ? type.caption.fontSize : type.label.fontSize;
   // The optional details panel now lives above this flex area, so the table
   // receives all remaining height while the panel is hidden or open.
   // Size the table to its natural content (StickyTable's fixed header/row
@@ -1033,10 +991,11 @@ function MatrixCell({
       role={onPress ? "button" : "group"}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={note}
-      style={[
-        { flex: 1, justifyContent: "center", paddingHorizontal: fontSize <= 11 ? 2 : spacing.sm },
+      style={({ pressed }) => [
+        { flex: 1, justifyContent: "center", paddingHorizontal: fontSize <= type.caption.fontSize ? 2 : spacing.sm },
         highlighted && { backgroundColor: palette.primarySoft + "55" },
         hovered && onPress && { backgroundColor: palette.primarySoft },
+        pressed && onPress && { backgroundColor: palette.primary + "38" },
       ]}
     >
       <Text
@@ -1056,7 +1015,7 @@ function MatrixCell({
             right: 6,
             width: 6,
             height: 6,
-            borderRadius: 3,
+            borderRadius: circle(6),
             // A reconciled month is not a note, and wearing the note's amber
             // dot said it was — same mark, nothing behind it when tapped.
             backgroundColor: markerTone === "adjustment" ? palette.primary : palette.warning,

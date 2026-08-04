@@ -53,7 +53,7 @@ import {
   IconButton,
 } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
-import { density, font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { circle, density, font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useContentWidth, useMeasuredWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
@@ -100,7 +100,7 @@ function Stat({
           {
             color: palette.textSecondary,
             minHeight: compact ? 24 : 32,
-            ...(compact ? { fontSize: 10, lineHeight: 12 } : null),
+            ...(compact ? { fontSize: type.micro.fontSize, lineHeight: 12 } : null),
           },
         ]}
       >
@@ -227,12 +227,12 @@ function AllocationStrip({
             <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
               <View style={{ width: 7, height: 7, flexShrink: 0, borderRadius: 3, backgroundColor: slice.color }} />
               <Text
-                style={[type.small, { flex: 1, color: palette.textSecondary, fontSize: 10, lineHeight: 12 }]}
+                style={[type.small, { flex: 1, color: palette.textSecondary, fontSize: type.micro.fontSize, lineHeight: 12 }]}
               >
                 {slice.label}
               </Text>
             </View>
-            <Text style={[type.amountSm, { color: palette.text, fontSize: 11, marginTop: 2 }]}>
+            <Text style={[type.amountSm, { color: palette.text, fontSize: type.caption.fontSize, marginTop: 2 }]}>
               %{totalMinor > 0 ? Math.round((slice.valueMinor / totalMinor) * 100) : 0}
             </Text>
           </View>
@@ -306,12 +306,12 @@ function InvestmentQuickAction({
         <Icon accessible={false} size={15} color={foreground} strokeWidth={2.2} />
       </View>
       <Text
-        style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: 10, lineHeight: 12, textAlign: "center", fontFamily: font.semibold }]}
+        style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: type.micro.fontSize, lineHeight: 12, textAlign: "center", fontFamily: font.semibold }]}
       >
         {label}
       </Text>
       <Text
-        style={[type.small, { color: palette.textSecondary, fontSize: 9, lineHeight: 11, textAlign: "center" }]}
+        style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize, lineHeight: 13, textAlign: "center" }]}
       >
         {caption}
       </Text>
@@ -395,14 +395,14 @@ export default function InvestmentsScreen() {
             style={{
               width: 104,
               height: 104,
-              borderRadius: 52,
+              borderRadius: circle(104),
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: palette.primarySoft,
               marginBottom: spacing.lg,
             }}
           >
-            <View style={{ position: "absolute", width: 82, height: 82, borderRadius: 41, borderWidth: 1, borderColor: palette.primary + "65" }} />
+            <View style={{ position: "absolute", width: 82, height: 82, borderRadius: circle(82), borderWidth: 1, borderColor: palette.primary + "65" }} />
             <Landmark size={40} color={palette.primaryText} />
           </View>
           <Heading>{tr.investments.setupTitle}</Heading>
@@ -477,13 +477,13 @@ export default function InvestmentsScreen() {
         <Text
           testID="investment-cash-amount"
           accessibilityLabel={`${tr.investments.cash}: ${formatMinor(state.cashMinor)}`}
-          style={[type.amountLg, { color: palette.textStrong, fontSize: 30, textAlign: "left", marginTop: spacing.sm }]}
+          style={[type.amountMd, { color: palette.textStrong, textAlign: "left", marginTop: spacing.sm }]}
         >
           {formatMinorCompact(state.cashMinor)}
         </Text>
       ) : (
         <View testID="investment-cash-amount">
-          <Amount minor={state.cashMinor} colorized={false} style={{ fontSize: heroBox >= 700 ? 34 : 30, textAlign: "left", marginTop: spacing.sm }} />
+          <Amount minor={state.cashMinor} count colorized={false} style={{ fontSize: heroBox >= 700 ? type.amountLg.fontSize : type.amountMd.fontSize, textAlign: "left", marginTop: spacing.sm }} />
         </View>
       )}
       <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.xs }]}>
@@ -523,9 +523,9 @@ export default function InvestmentsScreen() {
     <MetricStrip
       testID="investment-portfolio-metrics"
       items={[
-        { label: tr.investments.investedCost, value: <Text style={[type.amountSm, { color: palette.text }]}>{formatMinorCompact(state.investedCostMinor)}</Text> },
-        { label: tr.investments.activeProducts, value: <Text style={[type.amountSm, { color: palette.text }]}>{active.length}</Text> },
-        { label: tr.investments.realizedResult, value: <Text style={[type.amountSm, { color: state.realizedProfitLossMinor >= 0 ? palette.positiveText : palette.negativeText }]}>{compact ? formatMinorCompact(state.realizedProfitLossMinor) : formatMinor(state.realizedProfitLossMinor)}</Text> },
+        { label: tr.investments.investedCost, minor: state.investedCostMinor, color: palette.text },
+        { label: tr.investments.activeProducts, node: <Text style={[type.amountSm, { color: palette.text }]}>{active.length}</Text> },
+        { label: tr.investments.realizedResult, minor: state.realizedProfitLossMinor, color: state.realizedProfitLossMinor >= 0 ? palette.positiveText : palette.negativeText },
       ]}
     />
   );
@@ -712,7 +712,7 @@ export default function InvestmentsScreen() {
                   </View>
                   {!compact ? (
                     <Text
-                      style={[type.amountSm, { color: movementTone.text, fontSize: 13 }]}
+                      style={[type.amountSm, { color: movementTone.text, fontSize: type.label.fontSize }]}
                     >
                       {formatMinor(operation.totalMinor)}
                     </Text>

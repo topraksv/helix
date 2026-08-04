@@ -22,7 +22,7 @@ import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type C
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
 import { Body, Button, Card, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader, SelectionGrid } from "../ui/components";
-import { font, radius, spacing, type, useTheme, type Palette } from "../ui/theme";
+import { circle, font, radius, spacing, type, type Palette, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
@@ -57,7 +57,7 @@ function ImportJourney({ stage }: { stage: 0 | 1 | 2 }) {
                 style={{
                   width: 38,
                   height: 38,
-                  borderRadius: 19,
+                  borderRadius: circle(38),
                   alignItems: "center",
                   justifyContent: "center",
                   borderWidth: 1,
@@ -103,7 +103,7 @@ function WorkbookArtwork({ ready }: { ready: boolean }) {
       >
         <View style={{ flexDirection: "row", gap: 3, marginBottom: 4 }}>
           {[palette.positive, palette.warning, palette.negative].map((color) => (
-            <View key={color} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
+            <View key={color} style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: color }} />
           ))}
         </View>
         {Array.from({ length: 4 }).map((_, row) => (
@@ -124,7 +124,7 @@ function WorkbookArtwork({ ready }: { ready: boolean }) {
           </View>
         ))}
       </View>
-      <View style={{ position: "absolute", left: 78, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: ready ? palette.positive : palette.primary }}>
+      <View style={{ position: "absolute", left: 78, width: 30, height: 30, borderRadius: circle(30), alignItems: "center", justifyContent: "center", backgroundColor: ready ? palette.positive : palette.primary }}>
         {ready ? <FileCheck2 accessible={false} size={17} color={palette.onPrimary} /> : <ArrowRight accessible={false} size={17} color={palette.onPrimary} />}
       </View>
       <View
@@ -164,7 +164,7 @@ function MiniCell({ text, tone, palette, big }: { text?: string; tone: "month" |
         backgroundColor: bg,
       }}
     >
-      <Text style={{ fontSize: big ? 13 : 10, color, fontFamily: font.semibold }}>
+      <Text style={{ fontSize: big ? type.label.fontSize : type.micro.fontSize, color, fontFamily: font.semibold }}>
         {text ?? "·"}
       </Text>
     </View>
@@ -623,7 +623,7 @@ export default function ImportWizardModal() {
                   </View>
                 </ScrollView>
               </Card>
-              <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
+              <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
                 {tr.importer.breakdownHint}
               </Body>
 

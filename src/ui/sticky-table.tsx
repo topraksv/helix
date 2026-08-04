@@ -87,9 +87,21 @@ function getNode(ref: React.RefObject<ScrollView | null>): HTMLElement | null {
   return (ref.current as unknown as { getScrollableNode?: () => HTMLElement } | null)?.getScrollableNode?.() ?? null;
 }
 
+/** How long after the last scroll event the web considers a drag finished. */
+const WEB_SCROLL_SETTLE_MS = 140;
+
 /**
- * Web-only: grab-to-pan (both axes) + arrow/Page keyboard scrolling. The header
- * mirrors the body's horizontal offset, so panning updates both.
+ * Web-only: grab-to-pan (both axes), arrow/Page keyboard scrolling, and the
+ * snap-to-cell that `snapToInterval` provides on native and nowhere else. The
+ * header mirrors the body's horizontal offset, so panning updates both.
+ *
+ * `snapToInterval` is not implemented in react-native-web at all — its
+ * `ScrollView` maps only `pagingEnabled` onto `scroll-snap-type`
+ * (`dist/exports/ScrollView/index.js`). So the rule this table exists to
+ * enforce — a financial grid never rests on a half-covered cell, because the
+ * sticky label column hides the left of an amount and `₺14.500,00` reads as
+ * `4.500,00` — held on the phone app and not in the browser, where a dragged
+ * scroll measured 722px on an 87px grid. One behaviour, both platforms.
  */
 function useWebInteractions(
   vRef: React.RefObject<ScrollView | null>,
@@ -114,6 +126,22 @@ function useWebInteractions(
 
     const syncHeader = () => {
       if (headerNode && bodyNode) headerNode.scrollLeft = bodyNode.scrollLeft;
+    };
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    const snapToCell = () => {
+      if (!bodyNode || cellWidth <= 0) return;
+      const maxLeft = Math.max(0, bodyNode.scrollWidth - bodyNode.clientWidth);
+      const target = Math.min(Math.round(bodyNode.scrollLeft / cellWidth) * cellWidth, maxLeft);
+      if (Math.abs(target - bodyNode.scrollLeft) < 1) return;
+      bodyNode.scrollTo({ left: target, behavior: "smooth" });
+    };
+    // The browser gives no momentum-end event that all of Helix's targets
+    // support, so the settle is measured: a scroll that has been quiet for
+    // longer than a frame budget has finished.
+    const onBodyScroll = () => {
+      if (dragging) return;
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(snapToCell, WEB_SCROLL_SETTLE_MS);
     };
     const onDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
@@ -140,8 +168,10 @@ function useWebInteractions(
       }
     };
     const onUp = () => {
+      if (!dragging) return;
       dragging = false;
       vNode.style.cursor = "grab";
+      snapToCell();
     };
     const onKey = (e: KeyboardEvent) => {
       // One row / one column per arrow press, whatever the table's real
@@ -173,11 +203,14 @@ function useWebInteractions(
     window.addEventListener("mousemove", onMove, { passive: false });
     window.addEventListener("mouseup", onUp);
     vNode.addEventListener("keydown", onKey);
+    bodyNode?.addEventListener("scroll", onBodyScroll, { passive: true });
     return () => {
       vNode.removeEventListener("mousedown", onDown);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       vNode.removeEventListener("keydown", onKey);
+      bodyNode?.removeEventListener("scroll", onBodyScroll);
+      if (settleTimer) clearTimeout(settleTimer);
       vNode.removeAttribute("tabindex");
       bodyNode?.removeAttribute("tabindex");
       vNode.style.cursor = "";
@@ -398,7 +431,11 @@ export function StickyTable({
           accessibilityLabel={labelAction ? c.accessibilityLabel ?? c.label : undefined}
           // Fill the header band: wrapping only the label left a full-width but
           // 16px-tall tap target on the app's primary financial surface.
-          style={{ flex: 1, justifyContent: "center" }}
+          style={({ pressed }) => ({
+            flex: 1,
+            justifyContent: "center",
+            backgroundColor: pressed ? palette.surfaceHover : "transparent",
+          })}
         >
           <Text
             testID="table-column-label"
@@ -409,7 +446,7 @@ export function StickyTable({
               type.label,
               {
                 color: isCurrent ? palette.primaryText : palette.textSecondary,
-                fontSize: compactHeader ? 12 : type.label.fontSize,
+                fontSize: compactHeader ? type.small.fontSize : type.label.fontSize,
                 textAlign: "center",
                 flexShrink: 1,
                 minWidth: 0,
@@ -439,7 +476,6 @@ export function StickyTable({
             {both ? (
               <Pressable
                 onPress={() => { selectionTap(); onTogglePin!(c.key); }}
-                hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.accessibilityLabel ?? c.label) : tr.a11y.pinColumn(c.accessibilityLabel ?? c.label)}
                 // The mark stays 12px; the box it can be hit in is the whole
@@ -447,7 +483,13 @@ export function StickyTable({
                 // and does nothing on the web, where the pin really was a 24x24
                 // target sitting between two amounts. The width stays inside
                 // the marker strip — wider, it crossed its own column's edge.
-                style={{ width: STICKY_MARKER_W, alignSelf: "stretch", alignItems: "center", justifyContent: "center" }}
+                style={({ pressed }) => ({
+                  width: STICKY_MARKER_W,
+                  alignSelf: "stretch",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed ? palette.surfaceHover : "transparent",
+                })}
               >
                 <Pin
                   accessible={false}
@@ -536,7 +578,11 @@ export function StickyTable({
                   onPress={r.onLabelPress}
                   accessibilityRole={r.onLabelPress ? "link" : undefined}
                   accessibilityLabel={r.accessibilityLabel ?? r.label}
-                  style={[{ width: headWidth, alignItems: "flex-start", paddingVertical: spacing.xs }, cellCenter]}
+                  style={({ pressed }) => [
+                    { width: headWidth, alignItems: "flex-start", paddingVertical: spacing.xs },
+                    cellCenter,
+                    pressed && r.onLabelPress ? { backgroundColor: palette.surfaceHover } : null,
+                  ]}
                 >
                   <Text
                     testID="table-row-label"
@@ -636,14 +682,15 @@ function PinnedHeader({
       onPress={onUnpin ? () => { selectionTap(); onUnpin(); } : undefined}
       accessibilityRole={onUnpin ? "button" : undefined}
       accessibilityLabel={onUnpin ? tr.a11y.unpinColumn(accessibilityLabel ?? label) : undefined}
-      style={{
+      style={({ pressed }) => ({
         width,
         justifyContent: "center",
         paddingLeft: compactHeader ? spacing.xs : STICKY_MARKER_W,
         paddingRight: compactHeader ? STICKY_MARKER_W - 6 : STICKY_MARKER_W,
         paddingVertical: spacing.xs,
         alignItems: "center",
-      }}
+        backgroundColor: pressed ? palette.surfaceHover : "transparent",
+      })}
     >
       <Text
         testID="table-column-label"
@@ -654,7 +701,7 @@ function PinnedHeader({
           type.label,
           {
             color: palette.primaryText,
-            fontSize: compactHeader ? 12 : type.label.fontSize,
+            fontSize: compactHeader ? type.small.fontSize : type.label.fontSize,
             textAlign: "center",
             minWidth: 0,
             maxWidth: "100%",

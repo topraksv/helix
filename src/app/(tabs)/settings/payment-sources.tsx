@@ -1,7 +1,7 @@
 /** Payment source management: cards / cash / bank, per-person, card cycle. */
 
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useContentWidth } from "../../../ui/viewport";
 import { useAllTransactionsState, useCreditCardStatementsState, usePersonsState, useSourcesState, useUserId } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
@@ -20,10 +20,10 @@ import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { Banknote, CreditCard, Landmark, Pencil, ReceiptText, Trash2, WalletCards, type LucideIcon } from "lucide-react-native";
-import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
-import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { spacing, useTheme } from "../../../ui/theme";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
@@ -84,41 +84,26 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
         const selected = option.value === value;
         const Icon = sourceIcon(option.value);
         return (
-          <Pressable
+          <ChoiceTile
             key={option.value}
-            accessibilityRole="radio"
-            aria-checked={selected}
-            accessibilityState={{ selected, checked: selected }}
+            label={option.label}
+            selected={selected}
+            layout="row"
+            minHeight={52}
+            // Seven tiles wrapped into two columns left the last one — EFT /
+            // Havale — alone on its row, where `flexGrow` stretched it to full
+            // width. The widest tile was therefore the least-used method, by
+            // accident of arithmetic. Giving the double width to the credit
+            // card instead makes the most-reached-for option the easiest to
+            // hit, and leaves an even six to fill the rows below it.
+            basis={option.value === "credit_card" ? (contentWidth >= 720 ? "48%" : "100%") : contentWidth >= 720 ? "23%" : "47%"}
             onPress={() => {
               selectionTapIfChanged(value, option.value);
               onChange(option.value);
             }}
-            style={({ pressed }) => ({
-              // Seven tiles wrapped into two columns left the last one — EFT /
-              // Havale — alone on its row, where `flexGrow` stretched it to full
-              // width. The widest tile was therefore the least-used method, by
-              // accident of arithmetic. Giving the double width to the credit
-              // card instead makes the most-reached-for option the easiest to
-              // hit, and leaves an even six to fill the rows below it.
-              flexBasis: option.value === "credit_card" ? (contentWidth >= 720 ? "48%" : "100%") : contentWidth >= 720 ? "23%" : "47%",
-              flexGrow: 1,
-              minWidth: 0,
-              minHeight: 52,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
-              padding: spacing.sm,
-              borderRadius: radius.md,
-              borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
-              borderColor: selected ? palette.primary : palette.border,
-              backgroundColor: pressed ? palette.surfaceHover : selected ? palette.primarySoft : palette.surfaceAlt,
-            })}
           >
             <Icon accessible={false} size={18} color={selected ? palette.primary : palette.textSecondary} />
-            <Text style={[type.small, { color: selected ? palette.primaryText : palette.text, fontFamily: font.semibold, flex: 1 }]}>
-              {option.label}
-            </Text>
-          </Pressable>
+          </ChoiceTile>
         );
       })}
     </View>

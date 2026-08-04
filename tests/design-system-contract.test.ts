@@ -12,6 +12,7 @@ import {
   motion,
   radius,
   stateOpacity,
+  staggerDelay,
   toggleSize,
   type,
 } from "../src/ui/theme";
@@ -78,8 +79,12 @@ describe("design-system metric contracts", () => {
     expect(controlSize.compact).toBeLessThan(controlSize.minimumTarget);
     expect(controlSize.minimumTarget).toBeLessThan(controlSize.regular);
     expect(controlSize.segmented).toBeGreaterThan(controlSize.regular);
-    expect(iconSize).toEqual({ compact: 15, control: 17, accessory: 18, headerBack: 24 });
-    expect(borderWidth).toEqual({ control: 1.5, toggle: 1 });
+    // `emoji` is a glyph standing in for an icon, so it is sized with the
+    // marks and not with the copy beside it.
+    expect(iconSize).toEqual({ compact: 15, control: 17, accessory: 18, headerBack: 24, emoji: 14 });
+    // `selected` replaces the `selected ? 2 : 1` written into five screens and
+    // the `selected ? 1.5 : hairline` written into two more.
+    expect(borderWidth).toEqual({ control: 1.5, toggle: 1, selected: 2 });
   });
 
   it("preserves exact geometry while replacing historical arithmetic aliases", () => {
@@ -92,6 +97,7 @@ describe("design-system metric contracts", () => {
   it("keeps distinct disabled and transient-state weights intentional", () => {
     expect(stateOpacity).toEqual({
       pressed: 0.85,
+      disabled: 0.45,
       dragActive: 0.96,
     });
   });
@@ -108,12 +114,59 @@ describe("design-system typography contracts", () => {
   it("maps semantic control text to the loaded font faces without changing metrics", () => {
     expect(type.button).toEqual({ fontSize: 15, fontFamily: font.medium });
     expect(type.buttonCompact).toEqual({ fontSize: 13, fontFamily: font.medium });
-    expect(type.field).toEqual({ fontSize: 15, fontFamily: font.regular });
     expect(type.moneyInput).toEqual({
       fontSize: 17,
       fontFamily: font.semibold,
       fontVariant: ["tabular-nums"],
     });
+  });
+
+  /**
+   * Mobile Safari zooms the viewport when a focused input renders below 16px
+   * and does not zoom back out on blur, so at 15 every text field in the app
+   * left the user on a magnified page they had to pinch out of. WebKit chose 16
+   * as the point where an input is legible without the enlarged viewport
+   * (https://webkit.org/blog/5610/more-responsive-tapping-on-ios/). Every role
+   * a `TextInput` can carry has to clear it.
+   */
+  it("never renders an input below the size that stops iOS zooming the page", () => {
+    for (const role of [type.field, type.moneyInput, type.sectionTitle]) {
+      expect(role.fontSize).toBeGreaterThanOrEqual(16);
+    }
+    const source = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+    expect(source).toContain("...type.field");
+  });
+
+  /**
+   * One scale, and nothing under it.
+   *
+   * 107 inline `fontSize:` literals used to sit against a 13-role scale, six of
+   * them at 9px — 25% below the smallest role the system declared. A size is a
+   * decision about hierarchy, so it is made once, in `theme.ts`, and every
+   * screen refers to it. Chart geometry is exempt: an SVG label's size is a
+   * drawing input, not a typographic role.
+   */
+  it("declares every text size in the scale, never at a call site", () => {
+    const offenders = sourceFiles("src")
+      .filter((path) => path !== "src/ui/theme.ts" && path !== "src/ui/charts.tsx")
+      .filter((path) => /fontSize:\s*\d/.test(readFileSync(join(root, path), "utf8")));
+    expect(offenders).toEqual([]);
+    const sizes = Object.values(type).map((role) => role.fontSize);
+    expect(Math.min(...sizes)).toBe(type.micro.fontSize);
+    expect(type.micro.fontSize).toBe(10);
+  });
+
+  /**
+   * A radius that reaches control size belongs to the scale. Below it the
+   * numbers are illustration and chart geometry — a 4px bar cap is a drawing,
+   * not a surface — and `circle()` says what a round box is instead of leaving
+   * half its own width written out beside it.
+   */
+  it("gives every surface-sized corner a name", () => {
+    const offenders = sourceFiles("src")
+      .filter((path) => path !== "src/ui/theme.ts")
+      .filter((path) => /borderRadius:\s*(?:[89]|[1-9]\d)\b/.test(readFileSync(join(root, path), "utf8")));
+    expect(offenders).toEqual([]);
   });
 
   it("keeps raw Inter face names inside the theme and font loader only", () => {
@@ -257,23 +310,25 @@ describe("composition thresholds are ordered by the content they need", () => {
 });
 
 describe("interaction feedback contracts", () => {
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+  // The leaf layer — text roles, `Button`, `IconButton`, `FadeIn`, `Amount`,
+  // the status marks — was split out of `components.tsx` so that nothing in it
+  // renders another Helix component and the calculator can take `Button`
+  // without closing an import cycle. Both halves are read here.
+  const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8") + primitives;
   const calendar = readFileSync(join(root, "src/ui/calendar.tsx"), "utf8");
   const stickyTable = readFileSync(join(root, "src/ui/sticky-table.tsx"), "utf8");
   const tabBar = readFileSync(join(root, "src/ui/tab-bar.tsx"), "utf8");
   const cashFlow = readFileSync(join(root, "src/app/(tabs)/cash-flow/index.tsx"), "utf8");
-  const button = components.slice(
-    components.indexOf("export function Button("),
-    components.indexOf("/** Circular icon-only button"),
+  const button = primitives.slice(
+    primitives.indexOf("export function Button("),
+    primitives.indexOf("/** Circular icon-only button"),
   );
   const card = components.slice(
     components.indexOf("export function Card("),
     components.indexOf("/** Quiet tonal hero container"),
   );
-  const iconButton = components.slice(
-    components.indexOf("export function IconButton("),
-    components.indexOf("/** Bounded month navigator"),
-  );
+  const iconButton = primitives.slice(primitives.indexOf("export function IconButton("));
   const select = components.slice(
     components.indexOf("export function Select<"),
     components.indexOf("/** Horizontal segmented selector"),
@@ -397,13 +452,11 @@ describe("centred icons resolve to whole pixels on every supported density", () 
  * minimum now, and `hitSlop` is left only as the native courtesy it always was.
  */
 describe("compact controls own a real minimum target", () => {
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+  const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8") + primitives;
 
   it("gives the icon button a minimum-target pressable and a compact visual chip", () => {
-    const iconButton = components.slice(
-      components.indexOf("export function IconButton("),
-      components.indexOf("/** Bounded month navigator. */"),
-    );
+    const iconButton = primitives.slice(primitives.indexOf("export function IconButton("));
     expect(iconButton).toContain("minWidth: controlSize.minimumTarget");
     expect(iconButton).toContain("minHeight: controlSize.minimumTarget");
     // The painted chip is still the compact one, inside that box.
@@ -433,7 +486,7 @@ describe("compact controls own a real minimum target", () => {
 });
 
 describe("primary, secondary and disabled are three different weights", () => {
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+  const components = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
 
   it("outlines the secondary button and leaves the disabled one flat", () => {
     // Both used to paint `surfaceAlt` with only the label colour between them,
@@ -458,10 +511,11 @@ describe("a press lights the control it is on", () => {
   it("paints every pressed fill on the pressable's own box", () => {
     const offenders: string[] = [];
     for (const path of sourceFiles("src")) {
-      // `IconButton` is the one deliberate exception: its painted chip is
-      // centred inside the minimum target, so the fill IS centred on the
-      // control that was pressed.
-      if (path === "src/ui/components.tsx") continue;
+      // Two deliberate exceptions, both for the same reason: the painted chip
+      // is centred inside a larger minimum-size target, so the fill IS the
+      // control that was pressed. `IconButton` in components.tsx, and the
+      // calendar's day, whose 34pt circle sits inside a 44pt cell.
+      if (path === "src/ui/components.tsx" || path === "src/ui/primitives.tsx" || path === "src/ui/calendar.tsx") continue;
       const source = readFileSync(join(root, path), "utf8");
       // The children-render form only — `style={({ pressed }) => ({` is the
       // correct one and looks almost identical, so it is excluded explicitly.
@@ -476,5 +530,220 @@ describe("a press lights the control it is on", () => {
       }
     }
     expect(offenders, "style the pressable itself, not a child of it").toEqual([]);
+  });
+
+  /**
+   * Every control answers a touch.
+   *
+   * 21 of the app's 50 interactive `Pressable`s used to give no visual response
+   * at all — including every control in the ledger (column header, pin, row
+   * label), every day in the calendar, the password eye and the segmented
+   * control. On a phone, where there is no hover to fall back on, a control
+   * that does not light is indistinguishable from a control that did not
+   * register, and the user taps it again.
+   */
+  it("gives every interactive pressable a pressed state", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src")) {
+      const source = readFileSync(join(root, path), "utf8");
+      let index = 0;
+      while ((index = source.indexOf("<Pressable", index)) !== -1) {
+        let cursor = index + "<Pressable".length;
+        // `<PressableRow` is a component of this file's own, not the primitive.
+        if (/[A-Za-z0-9_]/.test(source[cursor] ?? "")) {
+          index = cursor;
+          continue;
+        }
+        let depth = 0;
+        for (; cursor < source.length; cursor += 1) {
+          const character = source[cursor];
+          if (character === "{") depth += 1;
+          else if (character === "}") depth -= 1;
+          else if (character === ">" && depth === 0) break;
+        }
+        const tag = source.slice(index, cursor + 1);
+        const opening = source.slice(cursor, cursor + 200);
+        index = cursor + 1;
+        // A dismiss backdrop and a modal's own body are not controls; they
+        // carry `accessible={false}` and are not reachable by any user who is
+        // not already pointing at them.
+        if (!/onPress=/.test(tag) || /accessible=\{false\}/.test(tag)) continue;
+        // Either the style callback reads `pressed`, or the children do.
+        if (/\(\{ pressed \}\)/.test(tag) || /pressed \?/.test(tag)) continue;
+        if (/^\s*>?\s*\{\(\{ pressed \}\)/.test(opening)) continue;
+        // Shared helpers that return the pressed style for their caller.
+        if (/style=\{\w*[Pp]ressStyle\(/.test(tag)) continue;
+        offenders.push(`${path}:${source.slice(0, index).split("\n").length}`);
+      }
+    }
+    expect(offenders, "a control that cannot be seen to respond gets tapped twice").toEqual([]);
+  });
+
+  /**
+   * `hitSlop` is implemented by the legacy `Touchable` only, so on
+   * react-native-web it does nothing at all: measured, 4px above / 6px left /
+   * 8px below a 32x32 button hit empty page. Fifteen call sites relied on it,
+   * which means fifteen targets that were one size on a phone and another in a
+   * browser. Every box now carries its own minimum.
+   */
+  it("never buys a touch target with a prop the web ignores", () => {
+    const offenders = sourceFiles("src").filter((path) =>
+      /hitSlop=/.test(readFileSync(join(root, path), "utf8")),
+    );
+    expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * Turkish product copy has one casing rule per role, and it used to have two
+ * per role: "Varsayılan Tutar" sat beside "Aktarılacak tutar" and "İşlem Ekle"
+ * beside "Yeni kalem ekle", in the same forms.
+ *
+ * A button is a thing you do, so it is Title Case. A field label is a thing you
+ * fill in, so it is sentence case. Turkish keeps conjunctions lowercase inside
+ * a title, which is why the joiners are allowed through.
+ */
+describe("product copy keeps one casing rule per role", () => {
+  const JOINERS = new Set(["ve", "veya", "ile", "için", "·"]);
+  const isTitleCase = (value: string) =>
+    value.split(" ").every((word) => JOINERS.has(word) || /^[A-ZÇĞİÖŞÜ0-9(₺"“]/.test(word));
+
+  const FIELD_COMPONENTS = new Set([
+    "Field", "Select", "MoneyField", "MonthDayField", "DateField",
+    "MonthStepper", "Toggle", "ChipPicker", "SelectionGrid", "CurrencyPicker",
+  ]);
+
+  /**
+   * Each `label={tr.…}` is attributed to the component whose opening tag it is
+   * inside. Scanning backwards from the prop to the nearest unclosed `<Name`
+   * keeps this linear; matching forwards from the tag with a lazy group does
+   * not, and cost four seconds a call before it was rewritten.
+   */
+  const labels = (() => {
+    const strings = new Map<string, string>();
+    const translations = readFileSync(join(root, "src/i18n/tr.ts"), "utf8");
+    for (const match of translations.matchAll(/^\s*(\w+): "([^"\\]+)",?$/gm)) {
+      if (!strings.has(match[1]!)) strings.set(match[1]!, match[2]!);
+    }
+    const buttons: [string, string][] = [];
+    const fields: [string, string][] = [];
+    for (const path of sourceFiles("src").filter((file) => file.endsWith(".tsx"))) {
+      const file = readFileSync(join(root, path), "utf8");
+      for (const match of file.matchAll(/label=\{tr\.([a-zA-Z0-9_.]+)\}/g)) {
+        const before = file.slice(Math.max(0, match.index! - 1200), match.index!);
+        const open = before.lastIndexOf("<");
+        if (open < 0 || before.slice(open).includes(">")) continue;
+        const component = /^<([A-Z]\w+)/.exec(before.slice(open))?.[1];
+        if (!component) continue;
+        const key = match[1]!;
+        const value = strings.get(key.split(".").pop()!);
+        if (!value || value.split(" ").length < 2) continue;
+        if (component === "Button" || component === "IconButton") buttons.push([key, value]);
+        else if (FIELD_COMPONENTS.has(component)) fields.push([key, value]);
+      }
+    }
+    return { buttons, fields };
+  })();
+
+  it("puts every multi-word button label in Title Case", () => {
+    const offenders = labels.buttons.filter(([, value]) => !isTitleCase(value));
+    expect(offenders).toEqual([]);
+  });
+
+  it("puts every multi-word field label in sentence case", () => {
+    const offenders = labels.fields.filter(([, value]) => isTitleCase(value));
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * A field error is read while the user is stuck in the field. It says what is
+   * wrong; the rule behind it belongs to the hint under the control, which is
+   * read before anything goes wrong.
+   */
+  it("keeps validation errors to one short sentence", () => {
+    const strings = new Map<string, string>();
+    const source = readFileSync(join(root, "src/i18n/tr.ts"), "utf8");
+    for (const match of source.matchAll(/^\s*(\w+): "([^"\\]+)",?$/gm)) {
+      if (!strings.has(match[1]!)) strings.set(match[1]!, match[2]!);
+    }
+    // Only what really reaches a field's `error` prop. A dialog body explains
+    // itself somewhere calmer and is allowed the length.
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src").filter((file) => file.endsWith(".tsx"))) {
+      const file = readFileSync(join(root, path), "utf8");
+      for (const match of file.matchAll(/\berror=\{[^}]*?tr\.[a-zA-Z0-9_.]*?(\w+)[^}]*?\}/g)) {
+        const message = strings.get(match[1]!);
+        if (message && message.length > 90) offenders.push(`${match[1]} (${message.length})`);
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([]);
+  });
+});
+
+/**
+ * Motion is a system, not a set of screen-local tastes.
+ *
+ * Helix had five animated behaviours across forty-five screens; the durations
+ * were already right and almost nothing used them. What guards the new ones is
+ * not that they exist but that they obey the same three rules everywhere.
+ */
+describe("every animation obeys the same three rules", () => {
+  const animatedFiles = sourceFiles("src").filter((path) => {
+    if (!path.endsWith(".tsx") && !path.endsWith(".ts")) return false;
+    const source = readFileSync(join(root, path), "utf8");
+    return /Animated\.(timing|spring|loop|sequence)\(/.test(source);
+  });
+
+  it("short-circuits every family on Reduce Motion", () => {
+    const offenders = animatedFiles.filter((path) => {
+      const source = readFileSync(join(root, path), "utf8");
+      return !source.includes("useReducedMotion");
+    });
+    expect(offenders, "an animation that ignores Reduce Motion is an accessibility defect").toEqual([]);
+  });
+
+  it("never claims the native driver for a property it cannot drive", () => {
+    // Only `transform` and `opacity` can be driven off the JS thread. A height,
+    // a width, a colour, a dash offset and a percentage offset cannot, and
+    // asking for the native driver on those throws at runtime on native.
+    const offenders: string[] = [];
+    for (const path of animatedFiles) {
+      const source = readFileSync(join(root, path), "utf8");
+      for (const match of source.matchAll(/Animated\.(?:timing|spring)\((?:.|\n)*?\}\)/g)) {
+        const call = match[0]!;
+        if (!/useNativeDriver:\s*(true|Platform\.OS !== "web")/.test(call)) continue;
+        // The value is driven natively; the interpolations that consume it must
+        // land on transform or opacity only. Checked at the file level, since a
+        // driver and its consumer are rarely adjacent.
+        const line = source.slice(0, match.index!).split("\n").length;
+        if (/height:\s*\w+\.interpolate|width:\s*\w+\.interpolate|backgroundColor:\s*\w+\.interpolate|left:\s*\w+\.interpolate|strokeDashoffset=\{\w+\.interpolate/.test(source)) {
+          offenders.push(`${path}:${line}`);
+        }
+      }
+    }
+    expect(offenders, "layout and colour cannot use the native driver").toEqual([]);
+  });
+
+  it("takes every duration from the shared families", () => {
+    const offenders: string[] = [];
+    for (const path of animatedFiles) {
+      const source = readFileSync(join(root, path), "utf8");
+      for (const match of source.matchAll(/duration:\s*(\d+)/g)) {
+        offenders.push(`${path}: duration ${match[1]}`);
+      }
+    }
+    // `operation-flow.tsx` breathes at its own 1100ms because the medallion is
+    // a continuous ambient loop rather than a response to anything the user
+    // did — everything else names a family.
+    expect(offenders.filter((entry) => !entry.startsWith("src/ui/operation-flow.tsx"))).toEqual([]);
+  });
+
+  it("keeps the stagger inside its own budget however long the list is", () => {
+    expect(staggerDelay(0, 40)).toBe(0);
+    for (const count of [2, 5, 12, 40, 500]) {
+      const last = staggerDelay(count - 1, count);
+      expect(last, `${count} items`).toBeLessThanOrEqual(motion.stagger.budget);
+      expect(staggerDelay(1, count)).toBeLessThanOrEqual(motion.stagger.step);
+    }
   });
 });

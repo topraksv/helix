@@ -16,7 +16,7 @@ import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyS
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
-import { spacing, useTheme } from "../../../ui/theme";
+import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
@@ -26,7 +26,7 @@ function CategoryLedgerMap({ expenseCount, incomeCount }: { expenseCount: number
   const node = {
     width: 52,
     height: 52,
-    borderRadius: 19,
+    borderRadius: radius.xl,
     alignItems: "center" as const,
     justifyContent: "center" as const,
   };
@@ -43,21 +43,21 @@ function CategoryLedgerMap({ expenseCount, incomeCount }: { expenseCount: number
           <View style={[node, { backgroundColor: palette.negative + "14" }]}>
             <ArrowUpRight accessible={false} size={20} color={palette.negative} />
           </View>
-          <Body muted style={{ fontSize: 12 }}>{tr.settings.expenseCount(expenseCount)}</Body>
+          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.expenseCount(expenseCount)}</Body>
         </FadeIn>
         <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
         <FadeIn delay={70} style={{ alignItems: "center", gap: spacing.xs }}>
           <View style={[node, { backgroundColor: palette.primarySoft }]}>
             <Columns3 accessible={false} size={21} color={palette.primary} />
           </View>
-          <Body muted style={{ fontSize: 12 }}>{tr.cashflow.title}</Body>
+          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.cashflow.title}</Body>
         </FadeIn>
         <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
         <FadeIn delay={140} style={{ alignItems: "center", gap: spacing.xs }}>
           <View style={[node, { backgroundColor: palette.positive + "14" }]}>
             <ArrowDownLeft accessible={false} size={20} color={palette.positive} />
           </View>
-          <Body muted style={{ fontSize: 12 }}>{tr.settings.incomeCountShort(incomeCount)}</Body>
+          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.incomeCountShort(incomeCount)}</Body>
         </FadeIn>
       </View>
     </View>
@@ -211,7 +211,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
               <Spread style={{ marginBottom: spacing.md }}>
                 <View style={{ flex: 1, paddingRight: spacing.md }}>
                   <Body>{tr.settings.investmentCategory}</Body>
-                  <Body muted style={{ fontSize: 12 }}>{tr.settings.investmentCategoryDesc}</Body>
+                  <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.investmentCategoryDesc}</Body>
                 </View>
                 <Toggle label={tr.settings.investmentCategory} value={isInvestment} onValueChange={setIsInvestment} />
               </Spread>
@@ -277,8 +277,8 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                     {c.kind === "expense" ? (
                       <Spread style={{ paddingBottom: spacing.sm }}>
                         <View style={{ flex: 1, paddingRight: spacing.md }}>
-                          <Body style={{ fontSize: 12 }}>{tr.settings.investmentCategory}</Body>
-                          <Body muted style={{ fontSize: 12 }}>{tr.settings.investmentCategoryDesc}</Body>
+                          <Body style={{ fontSize: type.small.fontSize }}>{tr.settings.investmentCategory}</Body>
+                          <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.investmentCategoryDesc}</Body>
                         </View>
                         <Toggle
                           label={`${c.name} · ${tr.settings.investmentCategory}`}
@@ -319,7 +319,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
                       </Row>
                     </Spread>
                     <Spread style={{ marginTop: spacing.xs }}>
-                      <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.settings.columnVisible}</Body>
+                      <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>{tr.settings.columnVisible}</Body>
                       <Toggle label={`${c.name} · ${tr.settings.columnVisible}`} value={c.isColumn} onValueChange={(v) => void update(c, { isColumn: v })} />
                     </Spread>
                   </View>

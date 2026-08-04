@@ -289,7 +289,7 @@ test("dirty drafts guard browser unload and same-screen context changes", async 
   await expect(page).not.toHaveURL(/\/helix\/bulk-entry$/);
 
   await page.goto("/helix/settings/categories");
-  const newCategory = page.getByRole("textbox", { name: "Kategori Ekle" });
+  const newCategory = page.getByRole("textbox", { name: "Kategori adı" });
   await newCategory.fill("Yeni taslak");
   await page.getByRole("button", { name: "Düzenle · Market", exact: true }).click();
   await expect(dialogTitle).toHaveCount(0);

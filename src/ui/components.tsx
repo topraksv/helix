@@ -1,11 +1,31 @@
-/** Shared accessible UI primitives for native and web. */
+/**
+ * The composite layer of the design system: screens, cards, fields, pickers,
+ * lists and state notices.
+ *
+ * The leaves — text roles, `Button`, `IconButton`, `FadeIn`, `Amount`, the
+ * status marks — live in `./primitives` and are re-exported from here, so a
+ * screen keeps one import and the calculator can take `Button` without closing
+ * a cycle back through this module.
+ */
+
+
 
 import React, { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
-  ActivityIndicator,
+  Amount,
+  Body,
+  Button,
+  controlStateStyle,
+  Divider,
+  FadeIn,
+  Heading,
+  IconButton,
+  Label,
+} from "./primitives";
+import {
   Animated,
   Modal,
-  Platform,
+  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,8 +36,6 @@ import {
   type LayoutChangeEvent,
   type StyleProp,
   type TextInputProps,
-  type TextProps,
-  type TextStyle,
   type ViewProps,
   type ViewStyle,
 } from "react-native";
@@ -25,46 +43,42 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
 import { useScrollToTop } from "@react-navigation/native";
 import { AlertCircle, Calculator as CalculatorIcon, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, Minus, Plus, TriangleAlert, type LucideIcon } from "lucide-react-native";
-import { formatMinor, formatMinorCompact, formatMoneyInputLive, parseAmountExpression } from "../domain/money";
+import { formatMoneyInputLive, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
-import { initialsBadgeColor } from "./badge-color";
 import { DelayedLoading, DelayedLoadingIndicator, LoadingIndicator } from "./loading-indicator";
 import type { TrackedOperationState } from "./operation-guard";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
-import { haptic, selectionTap, selectionTapIfChanged, type HapticKind } from "./haptics";
-import {
-  borderWidth,
-  contentWidth,
-  controlSize,
-  density,
-  font,
-  generatedBadgeForeground,
-  heroSurface,
-  iconSize,
-  motion,
-  radius,
-  segmentedMaxWidth,
-  spacing,
-  stateOpacity,
-  toggleSize,
-  toggleThumbShadow,
-  themeShadow,
-  type,
-  useTheme,
-  type ContentWidth,
-  type Palette,
-} from "./theme";
+import { selectionTap, selectionTapIfChanged } from "./haptics";
+import { borderWidth, circle, contentWidth, controlSize, density, font, heroSurface, iconSize, motion, radius, segmentedMaxWidth, spacing, staggerDelay, stateOpacity, themeShadow, toggleSize, type, type ContentWidth, type Palette, useTheme } from "./theme";
 import { shouldBoundIntrinsicControls, shouldStackListActions, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useMeasuredWidth, useNavigationSpace } from "./viewport";
 import { useReducedMotion } from "./motion";
+import { useShake } from "./motion-primitives";
+import { CalculatorModal } from "./calculator";
 import { modalAnimationType } from "./modal-motion";
 import { useModalAccessibility } from "./accessibility";
-import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 import { filterSelectionOptions, type SelectionOption } from "./selection";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder";
+
+export {
+  Amount,
+  Badge,
+  Body,
+  Button,
+  controlStateStyle,
+  Divider,
+  FadeIn,
+  Heading,
+  IconButton,
+  InitialsBadge,
+  Label,
+  STATUS_W,
+  StatusPill,
+  Title,
+} from "./primitives";
 
 /**
  * The shared look of every control that accepts a value: text fields, selects
@@ -72,65 +86,6 @@ import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder
  * `calendar.tsx` and had grown its own `surfaceAlt` fill, which is why one
  * field on an investment form was grey while the two beside it were not.
  */
-export function controlStateStyle(palette: Palette, active: boolean, error = false) {
-  return {
-    backgroundColor: palette.surface,
-    borderWidth: active || error ? borderWidth.control : StyleSheet.hairlineWidth,
-    borderColor: error ? palette.error : active ? palette.focus : palette.controlBorder,
-  };
-}
-
-/** Shared reduced-motion-aware entrance. */
-export function FadeIn({
-  children,
-  delay = 0,
-  style,
-  accessibilityViewIsModal,
-  accessibilityRole,
-  accessibilityLiveRegion,
-}: {
-  children: ReactNode;
-  delay?: number;
-  style?: StyleProp<ViewStyle>;
-  accessibilityViewIsModal?: boolean;
-  accessibilityRole?: ViewProps["accessibilityRole"];
-  accessibilityLiveRegion?: ViewProps["accessibilityLiveRegion"];
-}) {
-  const [progress] = useState(() => new Animated.Value(0));
-  const reducedMotion = useReducedMotion();
-  useEffect(() => {
-    if (reducedMotion) {
-      progress.setValue(1);
-      return;
-    }
-    const anim = Animated.spring(progress, {
-      toValue: 1,
-      delay,
-      useNativeDriver: Platform.OS !== "web",
-      ...motion.spring.entrance,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [progress, delay, reducedMotion]);
-  return (
-    <Animated.View
-      accessibilityViewIsModal={accessibilityViewIsModal}
-      accessibilityRole={accessibilityRole}
-      accessibilityLiveRegion={accessibilityLiveRegion}
-      style={[
-        {
-          opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }),
-          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-        },
-        style,
-      ]}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
-/** Screen scaffold with safe areas and bounded wide-screen content. */
 export function Screen({
   children,
   scroll = true,
@@ -392,7 +347,26 @@ export function MetricStrip({
   style,
   testID,
 }: {
-  items: { label: string; value: ReactNode | ((compact: boolean) => ReactNode) }[];
+  /**
+   * One shape, not two.
+   *
+   * `value` used to be `ReactNode | ((compact: boolean) => ReactNode)`, so
+   * every call site had to know which of the two forms it was writing and six
+   * of the nine picked the function only to forward one boolean. A metric is
+   * either an amount — which the strip abbreviates itself when the column is
+   * too narrow for the exact figure — or something that is not money, which is
+   * given as a node and left alone.
+   */
+  items: {
+    label: string;
+    /** Money. Rendered as an `Amount` that compacts itself when the column is
+     *  narrower than the widest exact figure these strips carry. */
+    minor?: number;
+    /** Colour for the figure; defaults to the app's neutral ink. */
+    color?: string;
+    /** Anything that is not money — a count, a badge. */
+    node?: ReactNode;
+  }[];
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
@@ -425,7 +399,15 @@ export function MetricStrip({
         <View key={item.label} style={{ flex: 1, flexBasis: 0, minWidth: 0, paddingTop: spacing.sm }}>
           <Text style={[type.small, { color: palette.textSecondary }]}>{item.label}</Text>
           <View style={{ marginTop: 2 }}>
-            {typeof item.value === "function" ? item.value(compactValues) : item.value}
+            {item.minor != null ? (
+              <Amount
+                minor={item.minor}
+                compact={compactValues}
+                colorized={false}
+                color={item.color ?? palette.textStrong}
+                style={{ textAlign: "left" }}
+              />
+            ) : item.node}
           </View>
         </View>
       ))}
@@ -433,47 +415,6 @@ export function MetricStrip({
   );
 }
 
-export function Title({ children }: { children: ReactNode }) {
-  const { palette } = useTheme();
-  return <Text accessibilityRole="header" style={[type.title, { color: palette.textStrong, marginBottom: spacing.md }]}>{children}</Text>;
-}
-
-export function Heading({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
-  const { palette } = useTheme();
-  return <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginVertical: spacing.sm }, style]}>{children}</Text>;
-}
-
-export function Body({
-  children,
-  muted,
-  style,
-  ...props
-}: {
-  children: ReactNode;
-  muted?: boolean;
-  style?: StyleProp<TextStyle>;
-} & Omit<TextProps, "children" | "style">) {
-  const { palette } = useTheme();
-  return (
-    <Text {...props} style={[type.body, { color: muted ? palette.textSecondary : palette.text }, style]}>
-      {children}
-    </Text>
-  );
-}
-
-export function Label({
-  children,
-  style,
-  ...props
-}: {
-  children: ReactNode;
-  style?: StyleProp<TextStyle>;
-} & Omit<TextProps, "children" | "style">) {
-  const { palette } = useTheme();
-  return <Text {...props} style={[type.label, { color: palette.textSecondary, marginBottom: spacing.xs + 2 }, style]}>{children}</Text>;
-}
-
-/** Section title used between card groups. */
 export function SectionHeader({
   children,
   description,
@@ -494,7 +435,7 @@ export function SectionHeader({
             type.heading,
             {
               color: palette.textStrong,
-              fontSize: 16,
+              fontSize: type.sectionTitle.fontSize,
               flex: 1,
               minWidth: 0,
             },
@@ -571,68 +512,6 @@ export function PanelHeader({
 }
 
 /** Signed money text: red for negatives, tabular figures. */
-export function Amount({
-  minor,
-  currency = "TRY",
-  large,
-  hero,
-  colorized = true,
-  color,
-  compact = false,
-  style,
-}: {
-  minor: number;
-  currency?: string;
-  large?: boolean;
-  hero?: boolean;
-  colorized?: boolean;
-  color?: string;
-  /** Render as ₺1,2 M when the column cannot hold the exact figure. */
-  compact?: boolean;
-  style?: StyleProp<TextStyle>;
-}) {
-  const { palette } = useTheme();
-  const { width, fontScale } = useWindowDimensions();
-  const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
-  const formatted = compact ? formatMinorCompact(minor, currency) : formatMinor(minor, currency);
-  const scale: AmountScale = hero ? "hero" : large ? "large" : "regular";
-  // Width/font-scale changes start a fresh fit pass so rotation and Dynamic
-  // Type can shrink or grow without opting out of system font scaling.
-  const fitKey = `${formatted}|${scale}|${width}|${fontScale}`;
-  const initialSize = initialAmountFontSize(scale);
-  const [fit, setFit] = useState({ key: fitKey, size: initialSize });
-  const fittedSize = fit.key === fitKey ? fit.size : initialSize;
-  const shrinkToNextStep = () => {
-    const next = nextAmountFontSize(scale, fittedSize);
-    if (next !== fittedSize) setFit({ key: fitKey, size: next });
-  };
-  return (
-    <Text
-      selectable
-      accessibilityLabel={formatted}
-      onTextLayout={(event) => {
-        if (event.nativeEvent.lines.length <= 1) return;
-        shrinkToNextStep();
-      }}
-      onLayout={(event) => {
-        // RN Web does not consistently dispatch onTextLayout. A wrapped value
-        // is taller than one derived line box, so the platform-neutral layout
-        // event provides the same fit signal without clipping or font caps.
-        const singleLineBudget = fittedSize * fontScale * 1.7;
-        if (event.nativeEvent.layout.height > singleLineBudget) shrinkToNextStep();
-      }}
-      style={[
-        large || hero ? type.amountLg : type.amount,
-        { color: resolved, flexShrink: 1, textAlign: "right" },
-        { fontSize: fittedSize },
-        style,
-      ]}
-    >
-      {formatted}
-    </Text>
-  );
-}
-
 export function Row({ children, style, gap = spacing.md, ...props }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -648,183 +527,6 @@ export function Spread({ children, style, ...props }: {
   return <View {...props} style={[{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, style]}>{children}</View>;
 }
 
-export function Button({
-  label,
-  onPress,
-  variant = "primary",
-  disabled,
-  loading,
-  icon: IconCmp,
-  size = "md",
-  haptic: hapticKind = "none",
-  accessibilityHint,
-  expanded,
-}: {
-  label: string;
-  onPress: () => void;
-  variant?: "primary" | "secondary" | "danger" | "ghost";
-  disabled?: boolean;
-  loading?: boolean;
-  icon?: LucideIcon;
-  size?: "md" | "sm";
-  haptic?: HapticKind;
-  accessibilityHint?: string;
-  expanded?: boolean;
-}) {
-  const { palette } = useTheme();
-  const enabledColors = {
-    primary: { background: palette.primary, foreground: palette.onPrimary },
-    secondary: { background: palette.surfaceAlt, foreground: palette.text },
-    danger: { background: palette.destructive, foreground: palette.onDestructive },
-    ghost: { background: "transparent", foreground: palette.accentText },
-  }[variant];
-  const visuallyDisabled = Boolean(disabled && !loading);
-  const colors = visuallyDisabled
-    ? {
-        background: variant === "ghost" ? "transparent" : palette.surfaceAlt,
-        foreground: palette.textSecondary,
-      }
-    : enabledColors;
-  const pressedBackground = {
-    primary: palette.primaryStrong,
-    secondary: palette.surfaceHover,
-    danger: palette.destructive,
-    ghost: palette.surfaceHover,
-  }[variant];
-  const small = size === "sm";
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={accessibilityHint}
-      aria-expanded={expanded}
-      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading), expanded }}
-      disabled={disabled || loading}
-      // `hitSlop` used to stand in for the missing height. It does nothing on
-      // the web, so a "small" button really was 36pt tall there. The box is the
-      // minimum target now and the type scale keeps it reading as the compact
-      // one; 44 against the regular 48 is a smaller step than 36 was, which
-      // also settles the button-next-to-field alignment this file used to
-      // work around per call site.
-      hitSlop={small ? 6 : undefined}
-      onPress={() => {
-        haptic(hapticKind);
-        onPress();
-      }}
-      style={({ pressed }) => [
-        {
-          backgroundColor: pressed && !visuallyDisabled ? pressedBackground : colors.background,
-          borderRadius: radius.md,
-          borderCurve: "continuous",
-          paddingVertical: small ? spacing.sm : spacing.md + 1,
-          paddingHorizontal: small ? spacing.md : spacing.lg,
-          minHeight: small ? controlSize.minimumTarget : controlSize.regular,
-          flexDirection: "row",
-          gap: spacing.sm,
-          alignItems: "center",
-          justifyContent: "center",
-          // Three weights that cannot be confused: primary is a brand fill,
-          // secondary is the same fill under a real outline, disabled is the
-          // fill alone. They used to differ only in text colour, so a disabled
-          // "Kaydet" and an enabled "Kaydet ve Yeni Ekle" rendered as the same
-          // beige block and the form's primary action was unfindable.
-          borderWidth: visuallyDisabled ? 0 : variant === "secondary" ? borderWidth.control : 0,
-          borderColor: palette.controlBorder,
-          opacity: pressed && variant === "danger" ? stateOpacity.pressed : 1,
-          transform: [{ translateY: pressed && !visuallyDisabled ? 1 : 0 }],
-        },
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator accessibilityLabel={label} color={colors.foreground} />
-      ) : (
-        <>
-          {IconCmp ? <IconCmp accessible={false} size={small ? iconSize.compact : iconSize.control} color={colors.foreground} strokeWidth={2.2} /> : null}
-          <Text
-            style={[small ? type.buttonCompact : type.button, { color: colors.foreground, textAlign: "center", flexShrink: 1 }]}
-          >
-            {label}
-          </Text>
-        </>
-      )}
-    </Pressable>
-  );
-}
-
-/** Circular icon-only button (navigation arrows, close, inline actions). */
-export function IconButton({
-  icon: IconCmp,
-  onPress,
-  disabled,
-  expanded,
-  iconSize: iconSizeValue,
-  tone = "default",
-  size = controlSize.compact,
-  label,
-  haptic: hapticKind = "none",
-}: {
-  icon: LucideIcon;
-  onPress: () => void;
-  disabled?: boolean;
-  expanded?: boolean;
-  iconSize?: number;
-  tone?: "default" | "danger" | "primary";
-  size?: number;
-  label?: string;
-  haptic?: HapticKind;
-}) {
-  const { palette } = useTheme();
-  const color = disabled
-    ? palette.textSecondary
-    : tone === "danger"
-      ? palette.destructive
-      : tone === "primary"
-        ? palette.accentText
-        : palette.textSecondary;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: Boolean(disabled), ...(expanded == null ? {} : { expanded }) }}
-      disabled={disabled}
-      onPress={() => {
-        haptic(hapticKind);
-        onPress();
-      }}
-      hitSlop={6}
-      // The pressable box is the platform minimum; the painted chip inside it
-      // is the compact one. `hitSlop` alone used to carry this, and it is a
-      // no-op in react-native-web — only the legacy `Touchable` implements it —
-      // so on the web every row's edit and delete control really was 32x32,
-      // measured, while the code claimed 44.
-      style={{
-        minWidth: controlSize.minimumTarget,
-        minHeight: controlSize.minimumTarget,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      {({ pressed }) => (
-        <View
-          style={{
-            width: size,
-            height: size,
-            borderRadius: radius.sm,
-            backgroundColor: tone === "primary" ? palette.primarySoft : pressed ? palette.surfaceHover : palette.surface,
-            alignItems: "center",
-            justifyContent: "center",
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: palette.border + "90",
-          }}
-        >
-          <IconCmp accessible={false} size={iconSizeValue ?? Math.round(size * 0.5)} color={color} strokeWidth={2.2} />
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-/** Bounded month navigator. */
 export function MonthStepper({
   value,
   onChange,
@@ -857,19 +559,43 @@ const fieldAccessoryStyle = {
   justifyContent: "center",
 } as const;
 
+/**
+ * The accessory sitting inside a field's reserved right padding — the password
+ * eye, the calculator. `hitSlop` is a no-op on react-native-web, so the box is
+ * the target; the press has to light that same box or the only feedback the
+ * user gets is that nothing happened.
+ */
+function fieldAccessoryPressStyle(palette: Palette) {
+  return ({ pressed }: { pressed: boolean }) => [
+    fieldAccessoryStyle,
+    pressed ? { backgroundColor: palette.surfaceHover, borderTopRightRadius: radius.md, borderBottomRightRadius: radius.md } : null,
+  ];
+}
+
 /** One live-region contract for validation errors across shared fields. */
 function FieldError({ message }: { message?: string | null }) {
   const { palette } = useTheme();
+  const { style: shakeStyle, shake } = useShake();
+  // A refusal that only fades in is easy to miss on a long form: the message
+  // appears below the fold of the eye's attention while the caret is still in
+  // the field. Two oscillations point at the row. Nothing overshoots — an
+  // overshoot reads as playful, and a rejected amount is not.
+  useEffect(() => {
+    if (message) shake();
+  }, [message, shake]);
   if (!message) return null;
   return (
-    <FadeIn
+    <Animated.View
       accessibilityRole="alert"
       accessibilityLiveRegion="assertive"
-      style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.xs, marginTop: spacing.xs }}
+      style={[
+        { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs, marginTop: spacing.xs },
+        shakeStyle,
+      ]}
     >
       <AlertCircle accessible={false} size={14} color={palette.error} style={{ marginTop: 1 }} />
       <Text style={[type.small, { color: palette.errorText, flex: 1 }]}>{message}</Text>
-    </FadeIn>
+    </Animated.View>
   );
 }
 
@@ -948,12 +674,11 @@ export function Field({
             accessibilityLabel={hidden ? tr.a11y.showPassword : tr.a11y.hidePassword}
             accessibilityHint={label}
             onPress={() => setHidden(!hidden)}
-            hitSlop={8}
             // The icon is 18px and `hitSlop` does not enlarge the DOM box on
             // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
             // 24). The box now fills the input's reserved 44px right padding
             // with the icon centred, so the mark does not visibly move.
-            style={fieldAccessoryStyle}
+            style={fieldAccessoryPressStyle(palette)}
           >
             {hidden ? <Eye accessible={false} size={iconSize.accessory} color={palette.textSecondary} /> : <EyeOff accessible={false} size={iconSize.accessory} color={palette.textSecondary} />}
           </Pressable>
@@ -1059,12 +784,11 @@ export function MoneyField({
               accessibilityLabel={tr.a11y.openCalculator}
               accessibilityHint={accessibilityLabel ?? label}
               onPress={() => setCalcOpen(true)}
-              hitSlop={8}
               // The icon is 18px and `hitSlop` does not enlarge the DOM box on
               // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
               // 24). The box now fills the input's reserved 44px right padding
               // with the icon centred, so the mark does not visibly move.
-              style={fieldAccessoryStyle}
+              style={fieldAccessoryPressStyle(palette)}
             >
               <CalculatorIcon accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
             </Pressable>
@@ -1073,7 +797,7 @@ export function MoneyField({
       </View>
       <FieldError message={resolvedError} />
       {calcOpen ? (
-        <LazyCalculatorModal
+        <CalculatorModal
           returnFocusRef={calculatorTriggerRef}
           onClose={() => setCalcOpen(false)}
           onResult={(major) => {
@@ -1087,28 +811,14 @@ export function MoneyField({
 }
 
 /**
- * Deferred require for the calculator modal.
+ * The calculator modal, imported like anything else.
  *
- * This does NOT remove the `components ⇄ calculator` cycle — `madge --circular`
- * still reports it, because `calculator.tsx` statically imports `Button` and
- * `FadeIn` from here. What it removes is the STATIC back-edge at module scope:
- * `components.tsx` has no top-level reference to `calculator.tsx`, so whichever
- * module loads first finishes initializing before the other body runs and
- * neither order can observe a TDZ hole.
- *
- * The cycle is retained deliberately. Breaking it means moving
- * `FadeIn` and `Button` into a leaf module — a wide edit to a 1300-line shared
- * file whose only gains are a clean `madge` run and one fewer eslint
- * suppression. `require()` is synchronous: Metro cannot split on it, so
- * `calculator.tsx` ships in the same bundle either way. This defers module
- * EVALUATION, not bundling.
+ * This used to be a deferred `require()` because `calculator.tsx` reached back
+ * into this module for `Button` and `FadeIn`, and the comment here said the
+ * cycle would only go away if those two moved into a leaf module. They have:
+ * both now live in `./primitives`, the calculator imports them from there, and
+ * `madge --circular` has nothing left to report.
  */
-function LazyCalculatorModal(props: { onClose: () => void; onResult: (major: number) => void; returnFocusRef?: React.RefObject<View | null> }) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { CalculatorModal } = require("./calculator") as typeof import("./calculator");
-  return <CalculatorModal {...props} />;
-}
-
 /** Width of a select row's icon column, so every label starts at one x. */
 const SELECT_ICON_W = 22;
 type SelectOptionIcon = string | LucideIcon | React.ReactElement;
@@ -1419,10 +1129,30 @@ export function Segmented<T extends string>({
 }) {
   const { palette } = useTheme();
   const bounded = shouldBoundIntrinsicControls(useContentWidth());
+  const reducedMotion = useReducedMotion();
+  const optionCount = options.length + (action ? 1 : 0);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const indicator = useRef(new Animated.Value(selectedIndex)).current;
+  useEffect(() => {
+    if (reducedMotion) {
+      indicator.setValue(selectedIndex);
+      return;
+    }
+    const animation = Animated.timing(indicator, {
+      toValue: selectedIndex,
+      duration: motion.standard,
+      easing: Easing.out(Easing.cubic),
+      // A left offset expressed as a percentage is layout, not transform.
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [selectedIndex, indicator, reducedMotion]);
   return (
     <View
       role="radiogroup"
       style={{
+        position: "relative",
         flexDirection: "row",
         // Bounded by its own options once the container stops being a bound —
         // see `shouldBoundIntrinsicControls`. A phone keeps the full-width
@@ -1451,7 +1181,7 @@ export function Segmented<T extends string>({
             accessibilityRole="radio"
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected, disabled }}
-            style={[
+            style={({ pressed }) => [
               {
                 flex: 1,
                 minHeight: controlSize.minimumTarget,
@@ -1460,13 +1190,9 @@ export function Segmented<T extends string>({
                 borderRadius: 0,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: selected && disabled ? palette.surfaceAlt : "transparent",
-                borderBottomWidth: 3,
-                borderBottomColor: selected
-                  ? disabled
-                    ? palette.controlBorder
-                    : palette.primary
-                  : "transparent",
+                backgroundColor: pressed && !disabled
+                  ? palette.surfaceHover
+                  : selected && disabled ? palette.surfaceAlt : "transparent",
               },
             ]}
           >
@@ -1486,6 +1212,21 @@ export function Segmented<T extends string>({
           </Pressable>
         );
       })}
+      <Animated.View
+        accessible={false}
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          bottom: 0,
+          height: 3,
+          backgroundColor: disabled ? palette.controlBorder : palette.primary,
+          width: `${100 / optionCount}%`,
+          left: indicator.interpolate({
+            inputRange: [0, Math.max(1, optionCount - 1)],
+            outputRange: ["0%", `${(100 / optionCount) * Math.max(1, optionCount - 1)}%`],
+          }),
+        }}
+      />
       {action ? (
         <Pressable
           accessibilityRole="button"
@@ -1591,7 +1332,7 @@ export function SelectionGrid({
       ) : null}
       {countLabel ? (
         <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: spacing.xs }}>
-          <View style={{ borderRadius: 999, backgroundColor: selectedSoft, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
+          <View style={{ borderRadius: radius.full, backgroundColor: selectedSoft, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
             <Text style={[type.small, { color: selectedInk, fontFamily: font.semibold }]}>{countLabel}</Text>
           </View>
         </View>
@@ -1629,7 +1370,9 @@ export function SelectionGrid({
                   paddingHorizontal: spacing.sm,
                   paddingVertical: spacing.sm,
                   borderRadius: radius.md,
-                  borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
+                  // Constant weight, like every other chosen surface: a ring
+                  // that thickens moves the tiles that wrap after it.
+                  borderWidth: borderWidth.control,
                   borderColor: selected ? selectedColor : palette.border,
                   backgroundColor: pressed ? palette.surfaceHover : selected ? selectedSoft : palette.surfaceAlt,
                 })}
@@ -1638,7 +1381,7 @@ export function SelectionGrid({
                   style={{
                     width: 28,
                     height: 28,
-                    borderRadius: 10,
+                    borderRadius: radius.md,
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: selected ? selectedColor : palette.surface,
@@ -1647,7 +1390,7 @@ export function SelectionGrid({
                   {selected ? (
                     <Check accessible={false} size={15} color={tone === "plus" ? palette.onPrimary : palette.onDestructive} strokeWidth={2.4} />
                   ) : option.icon ? (
-                    <Text accessible={false} aria-hidden style={{ fontSize: 14 }}>{option.icon}</Text>
+                    <Text accessible={false} aria-hidden style={{ fontSize: iconSize.emoji }}>{option.icon}</Text>
                   ) : tone === "plus" ? (
                     <Plus accessible={false} size={14} color={palette.textSecondary} />
                   ) : (
@@ -1676,6 +1419,133 @@ export function SelectionGrid({
  * languages at once — icon tiles, chips and underlined tabs — for three
  * questions of the same kind.
  */
+/**
+ * One tile, one answer.
+ *
+ * Six screens drew their own: the theme and palette pickers, the entry-type
+ * row, the instalment kind, the investment asset type and the payment-source
+ * type. They agreed on what a tile is and on nothing else — 82 / 78 / 78 / 76
+ * tall, pressed at 0.8 / 0.78 / 0.76, `selected ? 2 : 1` in five of them and
+ * `selected ? 1.5 : hairline` in two more, some sinking a pixel on press and
+ * some not. The user meets four of them in one session.
+ *
+ * The shell is here; what goes inside stays with the screen, because a colour
+ * swatch, a theme preview and an icon are genuinely different content. Two
+ * rules the shell will not let a caller break: the box does not change size
+ * when it is chosen (a border that thickens re-wraps the row it sits in), and
+ * the label does not change weight for the same reason. Colour, fill and the
+ * accessible state carry the choice — three carriers, none of them geometry.
+ */
+export function ChoiceTile({
+  label,
+  description,
+  selected,
+  onPress,
+  disabled = false,
+  children,
+  layout = "stack",
+  minHeight = 78,
+  basis,
+  tone,
+  surface,
+  accessibilityRole = "radio",
+  accessibilityLabel,
+  testID,
+}: {
+  label: string;
+  /** A second line under the label. A tile that explains itself is a bigger
+   *  tile, so the label grows with it rather than being set twice. */
+  description?: string;
+  selected: boolean;
+  onPress: () => void;
+  disabled?: boolean;
+  /** Whatever the tile shows above (or beside) its label. */
+  children?: ReactNode;
+  /** `stack` puts the content over the label; `row` puts it beside. */
+  layout?: "stack" | "row";
+  minHeight?: number;
+  /** `flexBasis` for a wrapping grid; omit to share the row evenly. */
+  basis?: number | `${number}%`;
+  /** Accent for the chosen ring and fill. Defaults to the brand colour. */
+  tone?: string;
+  /** Render against a palette other than the active one — the theme and
+   *  palette pickers preview a scheme the app is not currently wearing. */
+  surface?: Palette;
+  accessibilityRole?: "radio" | "button";
+  accessibilityLabel?: string;
+  testID?: string;
+}) {
+  const { palette } = useTheme();
+  const p = surface ?? palette;
+  const accent = tone ?? p.primary;
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel ?? label}
+      aria-checked={accessibilityRole === "radio" ? selected : undefined}
+      accessibilityState={{ checked: selected, selected, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexGrow: 1,
+        flexBasis: basis ?? 0,
+        minWidth: 0,
+        minHeight,
+        padding: spacing.sm,
+        gap: layout === "row" ? spacing.md : spacing.xs,
+        flexDirection: layout === "row" ? "row" : "column",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: radius.md,
+        // Constant weight: a ring that thickens on selection moves everything
+        // after it in a wrapping row.
+        borderWidth: borderWidth.selected,
+        borderColor: disabled ? p.controlBorder : selected ? accent : p.border + "80",
+        // Disabled is said in colour, never by fading the tile: a control the
+        // user cannot use still has to be readable enough to explain itself.
+        backgroundColor: disabled
+          ? p.surfaceAlt
+          : pressed ? p.surfaceHover : selected ? accent + "14" : p.surface,
+        transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
+      })}
+    >
+      {children}
+      <View style={layout === "row" ? { flex: 1, minWidth: 0, justifyContent: "center" } : { minWidth: 0 }}>
+        <Text
+          style={[
+            description ? type.body : type.small,
+            {
+              color: selected ? p.textStrong : p.text,
+              fontFamily: font.semibold,
+              textAlign: layout === "row" ? "left" : "center",
+              flexShrink: 1,
+              minWidth: 0,
+            },
+          ]}
+        >
+          {label}
+        </Text>
+        {description ? (
+          <Text
+            style={[
+              type.small,
+              {
+                color: p.textSecondary,
+                marginTop: 3,
+                textAlign: layout === "row" ? "left" : "center",
+                flexShrink: 1,
+              },
+            ]}
+          >
+            {description}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
 export function ChipPicker<T extends string>({
   options,
   value,
@@ -1731,7 +1601,6 @@ export function ChipPicker<T extends string>({
             accessibilityHint={unavailable ? option.hint : undefined}
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected, disabled: unavailable }}
-            hitSlop={compact ? 8 : 4}
             // One selection language. This row used to be fully rounded pills
             // while the same question asked as a grid — pick your columns, pick
             // your categories — was answered with bordered tiles, so two
@@ -1757,7 +1626,7 @@ export function ChipPicker<T extends string>({
               style={[
                 type.label,
                 {
-                  color: selected ? palette.primaryText : palette.text,
+                  color: unavailable ? palette.textSecondary : selected ? palette.primaryText : palette.text,
                   fontFamily: font.semibold,
                 },
               ]}
@@ -1767,75 +1636,6 @@ export function ChipPicker<T extends string>({
           </Pressable>
         );
       })}
-    </View>
-  );
-}
-
-export function Badge({
-  text,
-  tone = "muted",
-  icon: IconCmp,
-}: {
-  text: string;
-  tone?: "muted" | "positive" | "negative" | "success" | "error" | "warning" | "primary";
-  icon?: LucideIcon;
-}) {
-  const { palette } = useTheme();
-  const colors = {
-    muted: { bg: palette.surfaceAlt, fg: palette.textSecondary },
-    positive: { bg: palette.positive + "1F", fg: palette.positiveText },
-    negative: { bg: palette.negative + "1F", fg: palette.negativeText },
-    success: { bg: palette.success + "1F", fg: palette.successText },
-    error: { bg: palette.error + "1F", fg: palette.errorText },
-    warning: { bg: palette.warning + "1F", fg: palette.warningText },
-    primary: { bg: palette.primarySoft, fg: palette.primaryText },
-  }[tone];
-  return (
-    <View
-      style={{
-        backgroundColor: colors.bg,
-        borderRadius: radius.full,
-        paddingHorizontal: spacing.sm + 2,
-        paddingVertical: 3,
-        // No `alignSelf`. It cannot be right for both axes: `flex-start` hung
-        // the badge from the top of a row whose label wrapped, and `center`
-        // then overrode `alignItems: flex-end` on the stacked budget rows and
-        // left their badges floating mid-row. The container knows which axis it
-        // is — rows already centre, and a COLUMN caller states its own
-        // alignment so the badge shrinks to its text instead of stretching.
-        flexDirection: "row",
-        alignItems: "center",
-        gap: spacing.xs,
-      }}
-    >
-      {IconCmp ? <IconCmp accessible={false} size={12} color={colors.fg} strokeWidth={2} /> : null}
-      <Text style={[type.small, { color: colors.fg, fontFamily: font.medium, flexShrink: 1 }]}>{text}</Text>
-    </View>
-  );
-}
-
-/** Shared width for matching status and action controls. */
-export const STATUS_W = 88;
-
-export function StatusPill({ label, color, foreground = color }: { label: string; color: string; foreground?: string }) {
-  return (
-    <View
-      style={{
-        width: STATUS_W,
-        minHeight: controlSize.compact,
-        borderRadius: radius.md,
-        backgroundColor: color + "1F",
-        alignItems: "center",
-        justifyContent: "center",
-        paddingHorizontal: spacing.xs,
-        paddingVertical: spacing.sm,
-      }}
-    >
-      <Text
-        style={[type.label, { color: foreground, fontSize: 13, textAlign: "center" }]}
-      >
-        {label}
-      </Text>
     </View>
   );
 }
@@ -1866,7 +1666,7 @@ export function EmptyState({
           style={{
             width: 56,
             height: 56,
-            borderRadius: 28,
+            borderRadius: circle(56),
             backgroundColor: palette.surfaceAlt,
             alignItems: "center",
             justifyContent: "center",
@@ -2002,12 +1802,6 @@ export function WaitingNotice({ message, title, kind }: { message: string; title
   );
 }
 
-export function Divider() {
-  const { palette } = useTheme();
-  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.sm }} />;
-}
-
-/** Card list with separators only between rows. */
 export function CardList<T>({
   items,
   keyExtractor,
@@ -2030,7 +1824,7 @@ export function CardList<T>({
       {items.map((item, i) => (
         <React.Fragment key={keyExtractor(item, i)}>
           {i > 0 ? <Divider /> : null}
-          {renderItem(item, i)}
+          <FadeIn delay={staggerDelay(i, items.length)}>{renderItem(item, i)}</FadeIn>
         </React.Fragment>
       ))}
     </Card>
@@ -2177,7 +1971,6 @@ export function Toggle({
       accessibilityLabel={label}
       aria-checked={value}
       accessibilityState={{ checked: value, disabled }}
-      hitSlop={10}
       disabled={disabled}
       onPress={() => {
         selectionTap();
@@ -2186,11 +1979,12 @@ export function Toggle({
       // The track is 28pt tall by design. Padding — not `hitSlop`, which the
       // web ignores — gives the control the platform's minimum height without
       // moving the track a pixel.
-      style={{
+      style={({ pressed }) => ({
         minHeight: controlSize.minimumTarget,
         justifyContent: "center",
         paddingHorizontal: (controlSize.minimumTarget - TOGGLE_W) / 2 > 0 ? (controlSize.minimumTarget - TOGGLE_W) / 2 : 0,
-      }}
+        opacity: pressed && !disabled ? stateOpacity.pressed : 1,
+      })}
     >
       {/* The off fill is a low-contrast warm neutral (1.1–1.3:1 against the
           app's surfaces), so the boundary is what gives it a shape at all —
@@ -2241,7 +2035,7 @@ export function Toggle({
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: palette.surfaceTranslucent,
             transform: [{ translateX: thumbX }],
-            ...toggleThumbShadow,
+            ...themeShadow.toggleThumb(palette),
           }}
         />
       </Animated.View>
@@ -2250,25 +2044,3 @@ export function Toggle({
 }
 
 /** Initials avatar with a deterministic hue from the name (logo fallback). */
-export function InitialsBadge({ name, size = 36 }: { name: string; size?: number }) {
-  const bg = initialsBadgeColor(name);
-  const initials = name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toLocaleUpperCase("tr-TR") ?? "")
-    .join("");
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 3,
-        backgroundColor: bg,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Text style={{ color: generatedBadgeForeground, fontSize: size * 0.38, fontFamily: font.semibold }}>{initials}</Text>
-    </View>
-  );
-}

@@ -435,7 +435,7 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
         await note.fill("Görsel kontrol");
         await note.evaluate((element) => (element as HTMLElement).blur());
       } else if (name === "payment-sources") {
-        const sourceName = page.getByRole("textbox", { name: "Yöntem Ekle", exact: true });
+        const sourceName = page.getByRole("textbox", { name: "Yöntem adı", exact: true });
         await sourceName.fill("Görsel yöntem");
         await sourceName.evaluate((element) => (element as HTMLElement).blur());
       }
@@ -538,7 +538,7 @@ test("modal actions stay reachable in a short landscape viewport @smoke", async 
   await expect(categoryTrigger).toBeFocused();
 
   await page.getByRole("radio", { name: "Belirli gün", exact: true }).click();
-  const dateTrigger = page.getByRole("button", { name: "Ödeme Günü", exact: true });
+  const dateTrigger = page.getByRole("button", { name: "Ödeme günü", exact: true });
   await dateTrigger.scrollIntoViewIfNeeded();
   await dateTrigger.click();
   const calendarModal = page.locator('[aria-modal="true"]');
@@ -578,7 +578,7 @@ test("RuleRow exposes three sibling controls, not nested interactives", async ({
 
   await page.goto("/helix/settings/incomes");
   await page.getByRole("textbox", { name: "Başlık" }).fill("Maaş");
-  await page.getByRole("textbox", { name: "Varsayılan Tutar" }).fill("42.500,00");
+  await page.getByRole("textbox", { name: "Varsayılan tutar" }).fill("42.500,00");
   await page.getByRole("button", { name: "Gelir Kuralı Ekle", exact: true }).click();
   const label = page.getByRole("button", { name: "Maaş", exact: true });
   await expect(label).toBeVisible();

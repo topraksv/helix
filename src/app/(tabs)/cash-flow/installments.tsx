@@ -154,7 +154,7 @@ export default function InstallmentsScreen() {
               <Text style={[type.small, { color: palette.textSecondary }]}>
                 {thisMonth ? tr.installments.thisMonthInstallment(thisMonth.installmentNo, progress.total) : tr.installments.progress(progress.paid, progress.total)}
               </Text>
-              {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} style={{ fontSize: compact ? 17 : 19, textAlign: "left", marginTop: 2 }} /> : null}
+              {thisMonth ? <Amount minor={thisMonth.amountMinor} colorized={false} style={{ fontSize: compact ? type.moneyInput.fontSize : type.heading.fontSize, textAlign: "left", marginTop: 2 }} /> : null}
             </View>
             <View style={{ alignItems: "flex-end", gap: spacing.xs }}>
               <Text style={[type.label, { color: finished ? palette.positiveText : palette.textStrong }]}>{progress.paid}/{progress.total}</Text>

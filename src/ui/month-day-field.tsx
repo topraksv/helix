@@ -44,12 +44,16 @@ export function MonthDayField({
     <>
       <Label>{label}</Label>
       <ChipPicker compact options={options} value={selected} onChange={onChange} />
+      {/* The input always holds the day. It used to blank itself when the
+          month end was chosen and put "Ayın sonu seçildi" in the placeholder,
+          which made a hint stand in for an answer — the field looked unfilled
+          and the value lived only in the chip above it. */}
       <Field
         accessibilityLabel={label}
-        value={value === String(MONTH_END_DAY) ? "" : value}
+        value={value}
         onChangeText={onChange}
         keyboardType="number-pad"
-        placeholder={value === String(MONTH_END_DAY) ? tr.dates.monthEndSelected : tr.dates.monthDayPlaceholder}
+        placeholder={tr.dates.monthDayPlaceholder}
         error={error}
       />
     </>

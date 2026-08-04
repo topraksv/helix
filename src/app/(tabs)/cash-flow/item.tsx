@@ -26,7 +26,7 @@ import {
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Card, DataStateNotice, EmptyState, Screen } from "../../../ui/components";
-import { font, spacing, type, useTheme } from "../../../ui/theme";
+import { controlSize, font, spacing, type, useTheme } from "../../../ui/theme";
 
 function MonthValueBar({
   value,
@@ -198,6 +198,11 @@ function ItemBreakdown({
                   flexDirection: "row",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  // The last row has no separator, so it measured one pixel
+                  // shorter than the eleven above it and was the only control
+                  // in the app under the platform minimum. The height is the
+                  // row's own, not a side effect of its border.
+                  minHeight: controlSize.minimumTarget,
                   paddingHorizontal: spacing.lg,
                   paddingVertical: spacing.md,
                   borderBottomWidth: i === rows.length - 1 ? 0 : 1,
@@ -221,7 +226,7 @@ function ItemBreakdown({
                 ) : r.value === 0 ? (
                   <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
                 ) : (
-                  <Amount minor={r.value} colorized={false} color={r.value < 0 ? palette.negativeText : palette.text} style={{ fontSize: 14 }} />
+                  <Amount minor={r.value} colorized={false} color={r.value < 0 ? palette.negativeText : palette.text} style={{ fontSize: type.amount.fontSize }} />
                 )}
               </Pressable>
             );

@@ -9,8 +9,8 @@ import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions
 import { Delete } from "lucide-react-native";
 import { formatMinor, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
 import { tr } from "../i18n/tr";
-import { cardShadow, font, radius, scrim, spacing, type, useTheme } from "./theme";
-import { Button, FadeIn } from "./components";
+import { radius, spacing, themeShadow, type, useTheme } from "./theme";
+import { Button, FadeIn } from "./primitives";
 import { calculatorKeyHaptic } from "./calculator-feedback";
 import { haptic } from "./haptics";
 import { useModalAccessibility } from "./accessibility";
@@ -261,13 +261,13 @@ export function CalculatorPad({
                       justifyContent: "center",
                       opacity: pressed ? 0.7 : 1,
                     },
-                    scheme === "light" && cardShadow,
+                    themeShadow.card(palette),
                   ]}
                 >
                   {key === "⌫" ? (
                     <Delete accessible={false} size={20} color={fg} />
                   ) : (
-                    <Text style={{ fontSize: 22, fontFamily: font.medium, color: fg }}>{key}</Text>
+                    <Text style={[type.keypad, { color: fg }]}>{key}</Text>
                   )}
                 </Pressable>
               );
@@ -321,7 +321,7 @@ export function CalculatorModal({
       <Pressable
         accessible={false}
         tabIndex={-1}
-        style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
+        style={{ flex: 1, backgroundColor: palette.scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
         {/* The scroller only exists so a short viewport can reach the whole pad;
@@ -339,7 +339,7 @@ export function CalculatorModal({
           bounces={false}
         >
           <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: shortLandscape ? 680 : 340 }}>
-            <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
+            <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, themeShadow.card(palette)]}>
               <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
                 <Text style={[type.heading, { color: palette.text, marginBottom: spacing.md }]}>{tr.a11y.calculatorTitle}</Text>
               </View>

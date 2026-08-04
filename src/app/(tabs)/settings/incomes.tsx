@@ -17,7 +17,7 @@ import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, 
 import { categoryIcon } from "../../../data/category-icons";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
-import { font, spacing, type, useTheme } from "../../../ui/theme";
+import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
@@ -86,20 +86,20 @@ function IncomeCadence({
               style={{
                 width: 48,
                 height: 32,
-                borderRadius: 12,
+                borderRadius: radius.lg,
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: index === 0 ? palette.positive + "14" : palette.surfaceAlt,
               }}
             >
-              <Text style={[type.small, { color: index === 0 ? palette.positiveText : palette.text, fontFamily: font.bold, fontSize: 10 }]}>
+              <Text style={[type.small, { color: index === 0 ? palette.positiveText : palette.text, fontFamily: font.bold, fontSize: type.micro.fontSize }]}>
                 {shortDateLabel(date).replace(/ \d{4}$/, "")}
               </Text>
             </FadeIn>
           </React.Fragment>
         ))}
       </View>
-      <Body muted style={{ fontSize: 11, textAlign: "center", marginTop: spacing.sm }}>{description}</Body>
+      <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "center", marginTop: spacing.sm }}>{description}</Body>
     </View>
   );
 }

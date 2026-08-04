@@ -64,7 +64,7 @@ function CalculationFlow({
   const result = preview ?? 0;
   const node = {
     height: 52,
-    borderRadius: 18,
+    borderRadius: radius.xl,
     alignItems: "center" as const,
     justifyContent: "center" as const,
   };
@@ -86,13 +86,13 @@ function CalculationFlow({
         </FadeIn>
         <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
         <FadeIn key={`result-${result}`} delay={120} style={[node, { width: 112, backgroundColor: palette.surfaceAlt, paddingHorizontal: spacing.xs }]}>
-          <Amount minor={result} colorized={false} style={{ fontSize: 13 }} />
+          <Amount minor={result} colorized={false} style={{ fontSize: type.label.fontSize }} />
         </FadeIn>
       </View>
       <View style={{ flexDirection: "row", marginTop: spacing.xs }}>
-        <Body muted style={{ width: 52, fontSize: 11, textAlign: "center" }}>{tr.computed.flowInput}</Body>
-        <Body muted style={{ flex: 1, fontSize: 11, textAlign: "center" }}>{tr.computed.flowOperation}</Body>
-        <Body muted style={{ width: 112, fontSize: 11, textAlign: "center" }}>{tr.computed.flowResult}</Body>
+        <Body muted style={{ width: 52, fontSize: type.caption.fontSize, textAlign: "center" }}>{tr.computed.flowInput}</Body>
+        <Body muted style={{ flex: 1, fontSize: type.caption.fontSize, textAlign: "center" }}>{tr.computed.flowOperation}</Body>
+        <Body muted style={{ width: 112, fontSize: type.caption.fontSize, textAlign: "center" }}>{tr.computed.flowResult}</Body>
       </View>
     </View>
   );
@@ -293,7 +293,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
           <View>
       {editingId ? (
         <View style={{ backgroundColor: palette.primarySoft, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.md }}>
-          <Body style={{ color: palette.primaryText, fontSize: 13 }}>{tr.computed.editing(name || tr.computed.nameLabel)}</Body>
+          <Body style={{ color: palette.primaryText, fontSize: type.label.fontSize }}>{tr.computed.editing(name || tr.computed.nameLabel)}</Body>
         </View>
       ) : null}
 
@@ -333,7 +333,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               selectionTapIfChanged(op, value);
               setOp(value);
             }}
-            style={{
+            style={({ pressed }) => ({
               flexBasis: "47%",
               flexGrow: 1,
               minWidth: 0,
@@ -346,8 +346,8 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               borderRadius: radius.md,
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: palette.border,
-              backgroundColor: selected ? palette.primarySoft : palette.surface,
-            }}
+              backgroundColor: pressed ? palette.surfaceHover : selected ? palette.primarySoft : palette.surface,
+            })}
           >
             <IconCmp accessible={false} size={20} color={selected ? palette.primary : palette.textSecondary} />
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -359,7 +359,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
         );
       })}
       </View>
-      <Body muted style={{ fontSize: 12, marginTop: spacing.xs, marginBottom: spacing.md }}>
+      <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs, marginBottom: spacing.md }}>
         {tr.computed.ops[op].description}
       </Body>
 
@@ -445,7 +445,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
                           </Row>
                         </Spread>
                         <Spread style={{ marginTop: spacing.xs }}>
-                          <Body muted style={{ fontSize: 12, flex: 1, paddingRight: spacing.sm }}>{tr.computed.showInTable}</Body>
+                          <Body muted style={{ fontSize: type.small.fontSize, flex: 1, paddingRight: spacing.sm }}>{tr.computed.showInTable}</Body>
                           <Toggle label={`${column.name} · ${tr.computed.showInTable}`} value={visible} onValueChange={(value) => void toggleVisible(column.id, value)} />
                         </Spread>
                       </View>

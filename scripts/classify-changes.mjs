@@ -61,8 +61,10 @@ const HIGH_RISK = [
   // Routing infrastructure (a layout, not a leaf screen).
   /^src\/app\/(\([^)]+\)\/)*_layout\.tsx$/,
   /^src\/app\/\+html\.tsx$/,
-  // Shared UI primitives every screen renders through.
-  /^src\/ui\/(components|theme|sticky-table|haptics)\.tsx?$/,
+  // Shared UI primitives every screen renders through. `primitives` is the
+  // leaf layer split out of `components`; splitting a file must not quietly
+  // downgrade what it renders.
+  /^src\/ui\/(components|primitives|motion-primitives|theme|sticky-table|haptics)\.tsx?$/,
   // The delivery machinery itself.
   /^\.github\//,
   /^scripts\//,

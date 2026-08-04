@@ -62,7 +62,7 @@ test("a card's trailing action leaves the same gap as its first row", async ({ p
   await page.getByRole("button", { name: "İşlem Ekle" }).first().click();
   await page.getByRole("textbox", { name: "Tutar · TRY" }).fill("750,00");
   await pickOption(page, "Kategori", /Market/);
-  await page.getByRole("button", { name: "Ödeme Günü" }).click();
+  await page.getByRole("button", { name: "Ödeme günü" }).click();
   const days = await page.getByRole("button").evaluateAll((els) =>
     els.map((e) => e.getAttribute("aria-label")).filter((l): l is string => !!l && /^\d{1,2} .+ \d{4}$/u.test(l)));
   expect(days.length).toBeGreaterThan(0);
@@ -292,7 +292,7 @@ test("yearly subscriptions ask for a real renewal date", async ({ page }) => {
   await onboard(page);
   await page.goto("/helix/subscription-form");
   await page.getByRole("radio", { name: "Yıllık", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Sonraki Yenileme Tarihi", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sonraki yenileme tarihi", exact: true })).toBeVisible();
   await expect(page.getByText("Ayın kaçında?", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Yıllık ücretin bir sonraki kez alınacağı tarihi seç.", { exact: true })).toBeVisible();
 });
@@ -526,7 +526,17 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
   await expect(page.getByText("₺9.000,00", { exact: true }).first()).toBeVisible();
 
+  // Expo Router keeps every tab mounted, so `getByTestId` can resolve inside a
+  // screen that is not on top — and a hidden screen never re-measures, so it
+  // answers geometry questions with its LAST layout. Landing on Investments
+  // explicitly, then resizing, is what makes the measurements below about the
+  // screen the user is actually looking at. Without it this test failed two
+  // full runs in three while passing in isolation, and CI's single retry hid
+  // it every time.
+  await page.getByRole("tab", { name: "Yatırımlar" }).click();
+  await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByTestId("investment-distribution-chart")).toBeVisible();
   const walletGeometry = await page.getByTestId("investment-wallet-summary").evaluate((wallet) => {
     const cash = wallet.querySelector<HTMLElement>('[data-testid="investment-cash-amount"]')!;
     const transfers = wallet.querySelector<HTMLElement>('[data-testid="investment-transfer-summary"]')!;
@@ -603,7 +613,7 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
-test("the phone financial-table tools stay in one compact row", async ({ page }) => {
+test("the financial-table tools are one control, one row, at every width", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await onboard(page);
   await page.goto("/helix/cash-flow");
@@ -612,22 +622,37 @@ test("the phone financial-table tools stay in one compact row", async ({ page })
   await expect(page.getByTestId("screen-header").getByText(/^\d{4}$/)).toBeVisible();
   await expect(page.getByRole("button", { name: "İşlem Ekle", exact: true })).toBeVisible();
 
-  // The compact captions name the same object as the desktop labels — the
-  // phone said "Düzenle" and "Geçmiş" where the wide row said "Kolonları
-  // Düzenle" and "Geçmiş Ay Girişi", so the same five tools had to be learned
-  // twice.
-  const tools = page.getByRole("button").filter({
-    has: page.locator("text=/^(Kolonlar|Taksitler|Analiz|Geçmiş Ay|Başlangıç)$/"),
-  });
-  await expect(tools).toHaveCount(5);
-  const boxes = await tools.evaluateAll((elements) =>
-    elements.map((element) => {
-      const box = element.getBoundingClientRect();
-      return { top: Math.round(box.top), height: Math.round(box.height) };
-    }),
-  );
-  expect(new Set(boxes.map(({ top }) => top)).size).toBe(1);
-  expect(boxes.every(({ height }) => height === 44)).toBe(true);
+  // ONE toolbar at every width. It used to be six labelled buttons above a
+  // tablet and five 9px-captioned icon tiles below it — same five
+  // destinations, two control languages, two label sets, so the screen had to
+  // be relearned when the window changed.
+  const toolRow = page.locator("text=/^(Kolonlar|Taksitler|Analiz|Geçmiş Ay|Başlangıç)$/");
+  const measure = async () => {
+    const tools = page.getByRole("button").filter({ has: toolRow });
+    await expect(tools).toHaveCount(5);
+    return tools.evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        const caption = element.querySelector("div:last-child") ?? element;
+        return {
+          top: Math.round(box.top),
+          height: Math.round(box.height),
+          captionSize: Math.round(Number.parseFloat(getComputedStyle(caption).fontSize)),
+        };
+      }),
+    );
+  };
+
+  for (const width of [320, 390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.waitForTimeout(150);
+    const boxes = await measure();
+    expect(new Set(boxes.map(({ top }) => top)).size, `${width}px: one row`).toBe(1);
+    expect(new Set(boxes.map(({ height }) => height)).size, `${width}px: one height`).toBe(1);
+    expect(boxes[0]!.height, `${width}px: platform minimum`).toBeGreaterThanOrEqual(44);
+    // The caption is a declared role, never a bespoke size under the scale.
+    expect(boxes.every((box) => box.captionSize >= 11), `${width}px: legible caption`).toBe(true);
+  }
 });
 
 test("pivoting the financial table resets unrelated offsets and keeps complete columns", async ({ page }) => {
@@ -681,8 +706,12 @@ test("supplementary financial-table details collapse without losing recovery", a
   await page.goto("/helix/cash-flow");
 
   const details = page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true });
+  const guide = page.getByTestId("cash-flow-table-details-content");
   await expect(details).toBeVisible();
-  await expect(page.getByTestId("cash-flow-table-details-content")).toHaveCount(0);
+  // Collapsed means unreachable, not absent: the panel stays mounted so it can
+  // open and close instead of blinking, and is hidden from assistive
+  // technology and from the pointer while it is closed.
+  await expect(guide).toBeHidden();
   const initialGeometry = await details.evaluate((element) => {
     const button = element.getBoundingClientRect();
     const segment = element.closest<HTMLElement>('[role="radiogroup"]')!.getBoundingClientRect();
@@ -692,12 +721,12 @@ test("supplementary financial-table details collapse without losing recovery", a
   const table = page.getByTestId("cash-flow-matrix-table");
   const collapsedHeight = (await table.boundingBox())!.height;
   await details.click();
-  await expect(page.getByTestId("cash-flow-table-details-content")).toBeVisible();
+  await expect(guide).toBeVisible();
   await expect.poll(async () => (await table.boundingBox())!.height).toBeLessThan(collapsedHeight - 20);
   const expandedHeight = (await table.boundingBox())!.height;
   expect(collapsedHeight - expandedHeight).toBeGreaterThan(20);
   await details.click();
-  await expect(page.getByTestId("cash-flow-table-details-content")).toHaveCount(0);
+  await expect(guide).toBeHidden();
   await expect.poll(async () => (await table.boundingBox())!.height).toBeGreaterThanOrEqual(collapsedHeight - 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 
@@ -705,14 +734,14 @@ test("supplementary financial-table details collapse without losing recovery", a
   await page.goto("/helix/cash-flow");
   const desktopDetails = page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true });
   await expect(desktopDetails).toBeVisible();
-  await expect(page.getByTestId("cash-flow-table-details-content")).toBeVisible();
+  await expect(guide).toBeVisible();
   const desktopTable = page.getByTestId("cash-flow-matrix-table");
   const desktopOpenHeight = (await desktopTable.boundingBox())!.height;
   await desktopDetails.click();
-  await expect(page.getByTestId("cash-flow-table-details-content")).toHaveCount(0);
+  await expect(guide).toBeHidden();
   await expect.poll(async () => (await desktopTable.boundingBox())!.height).toBeGreaterThan(desktopOpenHeight + 20);
   await desktopDetails.click();
-  await expect(page.getByTestId("cash-flow-table-details-content")).toBeVisible();
+  await expect(guide).toBeVisible();
 });
 
 test("desktop action systems use intentional full-width or single-stream geometry", async ({ page }) => {
@@ -803,7 +832,7 @@ test("month notes use the note content as their marker without a duplicate title
   const market = page.getByRole("button", { name: /Market/ }).first();
   await expect(market).toBeVisible();
   await market.click();
-  const note = page.getByRole("textbox", { name: "Hücre Notu", exact: true });
+  const note = page.getByRole("textbox", { name: "Hücre notu", exact: true });
   await note.fill("Bu içerik başlık yerine görünür.");
   await page.getByRole("button", { name: "Kaydet", exact: true }).last().click();
   await expect(market).toContainText("Bu içerik başlık yerine görünür.");
@@ -1030,7 +1059,7 @@ test("management forms keep their purpose, status and controls visible across th
   test.setTimeout(180_000);
   await onboard(page);
   const routes = [
-    { path: "/helix/settings/payment-sources", heading: "Yöntem bilgileri", control: "Yöntem Ekle" },
+    { path: "/helix/settings/payment-sources", heading: "Yöntem bilgileri", control: "Yöntem adı" },
     { path: "/helix/settings/incomes", heading: "Düzenli gelir ekle", control: "Başlık" },
     { path: "/helix/opening-balance", heading: "Gerçek güncel bakiyen", control: "Gerçek güncel bakiyen", status: "Bakiye eşleşiyor" },
   ];
@@ -1394,8 +1423,8 @@ test("paired month-day fields keep one baseline when a day is taken", async ({ p
   await page.goto("/helix/settings/payment-sources");
   await page.getByRole("radio", { name: "Kredi Kartı" }).click();
 
-  const statement = page.getByRole("textbox", { name: "Ekstre Kesim Günü" });
-  const due = page.getByRole("textbox", { name: "Son Ödeme Günü" });
+  const statement = page.getByRole("textbox", { name: "Ekstre kesim günü" });
+  const due = page.getByRole("textbox", { name: "Son ödeme günü" });
   await expect(statement).toBeVisible();
   await expect(due).toBeVisible();
 
@@ -1443,4 +1472,47 @@ test("a held list row lights a surface wider than its own text", async ({ page }
   });
   expect(geometry.textLeft - geometry.left, "left inset").toBeGreaterThanOrEqual(8);
   expect(geometry.right - geometry.textRight, "right inset").toBeGreaterThanOrEqual(8);
+});
+
+/**
+ * The browser rests on a whole cell, exactly as the phone does.
+ *
+ * `snapToInterval` is unimplemented in react-native-web — its `ScrollView`
+ * maps only `pagingEnabled` onto `scroll-snap-type` — so the rule this table
+ * exists to enforce held on the phone app and nowhere else. Measured before
+ * the web half existed: after a 200px drag the ledger rested at 722px on an
+ * 87px grid, which puts the sticky label column over the left of an amount and
+ * turns `₺14.500,00` into a smaller, entirely plausible `4.500,00`.
+ */
+test("a dragged ledger rests on a whole month in the browser too", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await openCashFlow(page);
+  await page.getByRole("radio", { name: "Kolon odaklı" }).click();
+  await expect(page.getByTestId("cash-flow-matrix-table")).toBeVisible();
+
+  const body = page.getByTestId("table-horizontal-body");
+  const cellWidth = await page
+    .getByTestId("table-column-label")
+    .first()
+    .evaluate((node) => Math.round((node.parentElement!.parentElement as HTMLElement).getBoundingClientRect().width));
+  expect(cellWidth).toBeGreaterThan(0);
+
+  for (const nudge of [37, 129, 214]) {
+    await body.evaluate((element, delta) => { element.scrollLeft += delta; }, nudge);
+    await expect
+      .poll(async () => body.evaluate((element, cell) => {
+        const left = Math.round(element.scrollLeft);
+        const max = Math.round(element.scrollWidth - element.clientWidth);
+        return left % cell === 0 || left === max;
+      }, cellWidth), { timeout: 3_000 })
+      .toBe(true);
+    const resting = await body.evaluate((element) => ({
+      left: Math.round(element.scrollLeft),
+      max: Math.round(element.scrollWidth - element.clientWidth),
+    }));
+    // Either exactly on the grid, or hard against the far end.
+    const onGrid = resting.left % cellWidth === 0 || resting.left === resting.max;
+    expect(onGrid, `rested at ${resting.left} on a ${cellWidth}px grid (max ${resting.max})`).toBe(true);
+  }
 });

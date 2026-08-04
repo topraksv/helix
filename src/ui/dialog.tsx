@@ -15,7 +15,7 @@ import React, { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
-import { cardShadow, font, radius, scrim, spacing, type, useTheme } from "./theme";
+import { font, radius, spacing, themeShadow, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { INPUT_LIMITS } from "../domain/input";
 import { useModalAccessibility } from "./accessibility";
@@ -143,14 +143,14 @@ function DialogShell({
   operation?: OperationFlowKind;
   children: React.ReactNode;
 }) {
-  const { palette, scheme } = useTheme();
+  const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
   return (
     <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onDismiss}>
       <Pressable
         accessible={false}
         tabIndex={-1}
-        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center" }}
+        style={{ flex: 1, backgroundColor: palette.scrim, justifyContent: "center" }}
         onPress={onDismiss}
       >
         <ScrollView
@@ -163,7 +163,7 @@ function DialogShell({
             <FadeIn
               style={[
                 { backgroundColor: palette.surface, borderRadius: radius.lg, padding: operation ? spacing.xl : spacing.lg },
-                scheme === "light" && cardShadow,
+                themeShadow.card(palette),
               ]}
             >
               <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
@@ -234,7 +234,7 @@ export function PromptHost() {
           // gap underneath was doubled by the action block's own top margin.
           marginTop: spacing.lg,
           fontFamily: font.regular,
-          fontSize: 16,
+          fontSize: type.field.fontSize,
         }}
       />
       <View

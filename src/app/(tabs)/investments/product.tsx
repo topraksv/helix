@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import {
   Bitcoin,
   ChartNoAxesCombined,
@@ -19,7 +19,7 @@ import type { InvestmentAssetType, InvestmentOperationKind } from "../../../doma
 import { userMessage } from "../../../domain/user-error";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
-import { Body, Button, Card, DataStateNotice, Field, PanelHeader, Screen, Select } from "../../../ui/components";
+import { Body, Button, Card, ChoiceTile, DataStateNotice, Field, PanelHeader, Screen, Select } from "../../../ui/components";
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
@@ -46,7 +46,7 @@ function metalMark(
         backgroundColor: colors.backgroundColor,
       }}
     >
-      <Text style={[type.small, { color: colors.color, fontFamily: font.bold, fontSize: 10, lineHeight: 12 }]}>{mark}</Text>
+      <Text style={[type.small, { color: colors.color, fontFamily: font.bold, fontSize: type.micro.fontSize, lineHeight: 12 }]}>{mark}</Text>
     </View>
   );
 }
@@ -131,36 +131,20 @@ export default function InvestmentProductScreen() {
             const selected = typeKey === assetType;
             const Icon = TYPE_ICONS[typeKey];
             return (
-              <Pressable
+              <ChoiceTile
                 key={typeKey}
-                accessibilityRole="radio"
-                accessibilityLabel={tr.investments.types[typeKey]}
-                accessibilityState={{ checked: selected, selected }}
+                label={tr.investments.types[typeKey]}
+                selected={selected}
+                basis={102}
+                minHeight={76}
                 onPress={() => {
                   setAssetType(typeKey);
                   setMarketCode(null);
                   setName("");
                 }}
-                style={({ pressed }) => ({
-                  flexGrow: 1,
-                  flexBasis: 102,
-                  minHeight: 76,
-                  padding: spacing.sm,
-                  borderRadius: radius.md,
-                  borderWidth: selected ? 2 : 1,
-                  borderColor: selected ? palette.primary : palette.border,
-                  backgroundColor: selected ? palette.primarySoft : palette.surface,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: spacing.xs,
-                  opacity: pressed ? 0.76 : 1,
-                })}
               >
                 <Icon accessible={false} size={22} color={selected ? palette.primaryText : palette.textSecondary} />
-                <Text style={[type.small, { color: selected ? palette.primaryText : palette.text, textAlign: "center" }]}>
-                  {tr.investments.types[typeKey]}
-                </Text>
-              </Pressable>
+              </ChoiceTile>
             );
           })}
         </View>

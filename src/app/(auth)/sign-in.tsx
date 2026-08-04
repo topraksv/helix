@@ -7,7 +7,7 @@ import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { clearLifecycleIntent } from "../../ui/lifecycle-intent";
 import { BrandMark } from "../../ui/brand";
-import { font, radius, spacing, type, useTheme } from "../../ui/theme";
+import { controlSize, font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { OperationFlow, OperationSignature } from "../../ui/operation-flow";
@@ -28,7 +28,7 @@ function JourneyNode({
         style={{
           width: 46,
           height: 46,
-          borderRadius: 16,
+          borderRadius: radius.xl,
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: active ? palette.primary : palette.surfaceAlt,
@@ -76,7 +76,7 @@ function AuthJourneyArtwork({ compact }: { compact: boolean }) {
           position: "absolute",
           width: compact ? 180 : 320,
           height: compact ? 180 : 320,
-          borderRadius: 999,
+          borderRadius: radius.full,
           backgroundColor: palette.primarySoft,
           opacity: 0.68,
           top: compact ? -105 : -175,
@@ -89,7 +89,7 @@ function AuthJourneyArtwork({ compact }: { compact: boolean }) {
           position: "absolute",
           width: compact ? 95 : 170,
           height: compact ? 95 : 170,
-          borderRadius: 999,
+          borderRadius: radius.full,
           backgroundColor: palette.secondarySoft,
           opacity: 0.72,
           bottom: compact ? -55 : -90,
@@ -215,10 +215,10 @@ export default function SignInScreen() {
           </View>
           {wide ? (
             <>
-              <Text accessibilityRole="header" style={[type.display, { color: palette.textStrong, fontSize: 40, lineHeight: 45 }]}>
+              <Text accessibilityRole="header" style={[type.display, { color: palette.textStrong, lineHeight: 45 }]}>
                 {tr.auth.journeyTitle}
               </Text>
-              <Body muted style={{ fontSize: 16, lineHeight: 23, marginTop: spacing.md, marginBottom: spacing.xl, maxWidth: 470 }}>
+              <Body muted style={{ fontSize: type.sectionTitle.fontSize, lineHeight: 23, marginTop: spacing.md, marginBottom: spacing.xl, maxWidth: 470 }}>
                 {tr.auth.journeySubtitle}
               </Body>
             </>
@@ -340,7 +340,18 @@ export default function SignInScreen() {
 
           <View style={{ flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.lg }}>
             <Body muted>{mode === "signIn" ? tr.auth.noAccount : mode === "signUp" ? tr.auth.haveAccount : tr.auth.rememberedPassword}</Body>
-            <Pressable accessibilityRole="button" onPress={switchMode} hitSlop={8}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={switchMode}
+              style={({ pressed }) => ({
+                minHeight: controlSize.minimumTarget,
+                justifyContent: "center",
+                paddingHorizontal: spacing.sm,
+                marginHorizontal: -spacing.sm,
+                borderRadius: radius.sm,
+                backgroundColor: pressed ? palette.surfaceHover : "transparent",
+              })}
+            >
               <Text style={[type.body, { color: palette.primaryText, fontFamily: font.semibold }]}>
                 {mode === "signIn" ? tr.auth.signUpAction : tr.auth.signInAction}
               </Text>

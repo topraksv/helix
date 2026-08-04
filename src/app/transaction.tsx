@@ -2,7 +2,7 @@
  *  future-dated payments (§2.7) and inline installment plan creation. */
 
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, SlidersHorizontal, TrendingUp, Undo2, WalletCards, type LucideIcon } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
@@ -30,13 +30,13 @@ import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, Field, HeroCard, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataStateNotice, Divider, Field, HeroCard, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
 import { kv } from "../services/kv";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
-import { font, radius, spacing, type, useTheme } from "../ui/theme";
+import { radius, spacing, type, useTheme } from "../ui/theme";
 import { selectionTapIfChanged } from "../ui/haptics";
 import { navigateBack } from "../ui/navigation";
 import { devError } from "../services/logger";
@@ -63,37 +63,12 @@ function EntryTypeChoice({
   selected: boolean;
   onPress: () => void;
 }) {
-  const { palette } = useTheme();
   return (
-    <Pressable
-      accessibilityRole="radio"
-      aria-checked={selected}
-      accessibilityState={{ checked: selected, selected }}
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        minWidth: 0,
-        minHeight: 78,
-        padding: spacing.sm,
-        alignItems: "center",
-        justifyContent: "center",
-        gap: spacing.xs,
-        borderRadius: radius.md,
-        borderWidth: selected ? 2 : 1,
-        borderColor: selected ? tone : palette.border + "80",
-        backgroundColor: selected ? tone + "14" : palette.surface,
-        opacity: pressed ? 0.78 : 1,
-        transform: [{ translateY: pressed ? 1 : 0 }],
-      })}
-    >
+    <ChoiceTile label={label} selected={selected} onPress={onPress} tone={tone}>
       <View style={{ width: 30, height: 30, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: tone + "1A" }}>
         <Icon accessible={false} size={17} color={tone} strokeWidth={2.2} />
       </View>
-      <Text style={[type.small, { color: selected ? palette.textStrong : palette.textSecondary, fontFamily: selected ? font.semibold : font.medium, textAlign: "center" }]}>
-        {label}
-      </Text>
-    </Pressable>
+    </ChoiceTile>
   );
 }
 
@@ -649,7 +624,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
         <Undo2 accessible={false} size={20} color={isReversal ? palette.primary : palette.textSecondary} />
         <View style={{ flex: 1 }}>
           <Body style={{ color: isReversal ? palette.primaryText : palette.text }}>{tr.tx.reversalLabel(entryType)}</Body>
-          <Body muted style={{ fontSize: 12, marginTop: 2 }}>
+          <Body muted style={{ fontSize: type.small.fontSize, marginTop: 2 }}>
             {isReversal ? tr.tx.reversalHint(entryType) : tr.tx.refundToggleHint(entryType)}
           </Body>
         </View>
@@ -740,14 +715,14 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       {dateless ? (
         <>
           <MonthStepper value={monthKey} onChange={setMonthKey} />
-          <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
+          <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
             {tr.tx.monthOnlyHint(monthLabel(monthKey))}
           </Body>
         </>
       ) : (
         <>
           <DateField label={isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
-          <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
+          <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
             {cardStatementPreview
               ? tr.tx.cardPurchaseHint(dateLabel(cardStatementPreview.statementDate), dateLabel(cardStatementPreview.dueDate))
               : isCreditCardExpense ? tr.tx.cardCycleMissing

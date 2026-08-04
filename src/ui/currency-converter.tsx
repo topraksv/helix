@@ -101,15 +101,14 @@ export function CurrencyConverter() {
           accessibilityRole="button"
           accessibilityLabel={tr.calc.swap}
           onPress={swap}
-          hitSlop={8}
-          style={{
+          style={({ pressed }) => ({
             width: controlSize.minimumTarget,
             height: controlSize.minimumTarget,
             borderRadius: radius.xl,
-            backgroundColor: palette.surfaceAlt,
+            backgroundColor: pressed ? palette.surfaceHover : palette.surfaceAlt,
             alignItems: "center",
             justifyContent: "center",
-          }}
+          })}
         >
           <ArrowDownUp accessible={false} size={iconSize.accessory} color={palette.primary} />
         </Pressable>

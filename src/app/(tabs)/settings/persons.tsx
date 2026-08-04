@@ -21,7 +21,7 @@ import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, FadeI
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
-import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { circle, font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
@@ -36,7 +36,7 @@ function PeopleOverview({ people }: { people: { id: string; name: string; isSelf
   const watched = people.filter((person) => !person.isSelf);
   if (watched.length === 0) {
     return (
-      <Body muted style={{ fontSize: 12, marginBottom: spacing.md }}>{tr.persons.soloOverview}</Body>
+      <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>{tr.persons.soloOverview}</Body>
     );
   }
   return (
@@ -58,14 +58,14 @@ function PeopleOverview({ people }: { people: { id: string; name: string; isSelf
             overflow: "hidden",
           }}
         >
-          <View style={{ position: "absolute", width: 78, height: 78, borderRadius: 39, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.secondary + "80" }} />
-          <View style={{ width: 42, height: 42, borderRadius: 16, backgroundColor: palette.primary, alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+          <View style={{ position: "absolute", width: 78, height: 78, borderRadius: circle(78), borderWidth: StyleSheet.hairlineWidth, borderColor: palette.secondary + "80" }} />
+          <View style={{ width: 42, height: 42, borderRadius: radius.xl, backgroundColor: palette.primary, alignItems: "center", justifyContent: "center", zIndex: 1 }}>
             <Text style={[type.heading, { color: palette.onPrimary, fontFamily: font.bold }]}>
               {initialOf(self?.name ?? tr.onboarding.me)}
             </Text>
           </View>
-          <View style={{ position: "absolute", bottom: 6, borderRadius: 999, backgroundColor: palette.surface, paddingHorizontal: 7, paddingVertical: 2, zIndex: 2 }}>
-            <Text style={[type.small, { color: palette.primaryText, fontFamily: font.bold, fontSize: 9 }]}>
+          <View style={{ position: "absolute", bottom: 6, borderRadius: radius.full, backgroundColor: palette.surface, paddingHorizontal: 7, paddingVertical: 2, zIndex: 2 }}>
+            <Text style={[type.small, { color: palette.primaryText, fontFamily: font.bold, fontSize: type.micro.fontSize }]}>
               {tr.persons.selfBadge}
             </Text>
           </View>
@@ -84,7 +84,7 @@ function PeopleOverview({ people }: { people: { id: string; name: string; isSelf
                     position: "absolute",
                     width: 25,
                     height: 25,
-                    borderRadius: 10,
+                    borderRadius: radius.md,
                     backgroundColor: palette.secondarySoft,
                     borderWidth: 2,
                     borderColor: palette.surfaceAlt,
@@ -94,7 +94,7 @@ function PeopleOverview({ people }: { people: { id: string; name: string; isSelf
                   positions[index],
                 ]}
               >
-                <Text style={[type.small, { color: palette.secondaryText, fontFamily: font.bold, fontSize: 10 }]}>
+                <Text style={[type.small, { color: palette.secondaryText, fontFamily: font.bold, fontSize: type.micro.fontSize }]}>
                   {initialOf(person.name)}
                 </Text>
               </FadeIn>
@@ -311,7 +311,7 @@ export default function PersonsScreen() {
                     width: 38,
                     height: 38,
                     flexShrink: 0,
-                    borderRadius: 14,
+                    borderRadius: radius.lg,
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: p.isSelf ? palette.primarySoft : palette.secondarySoft,

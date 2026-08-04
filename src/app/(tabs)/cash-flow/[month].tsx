@@ -32,7 +32,7 @@ import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Field, Heading
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
-import { controlSize, radius, spacing, useTheme } from "../../../ui/theme";
+import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { appAlert } from "../../../ui/dialog";
@@ -100,7 +100,7 @@ function MonthFlowSummary({
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Body muted style={{ fontSize: 11, marginBottom: spacing.xs }}>{tr.cashflow.opening}</Body>
+            <Body muted style={{ fontSize: type.caption.fontSize, marginBottom: spacing.xs }}>{tr.cashflow.opening}</Body>
             <Amount minor={flows.openingMinor} colorized={false} style={{ textAlign: "left" }} />
           </View>
           <View style={{ width: 52, alignItems: "center" }}>
@@ -108,7 +108,7 @@ function MonthFlowSummary({
             <ArrowRight accessible={false} size={17} color={palette.primary} />
           </View>
           <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
-            <Body muted style={{ fontSize: 11, marginBottom: spacing.xs, textAlign: "right" }}>{tr.cashflow.closing}</Body>
+            <Body muted style={{ fontSize: type.caption.fontSize, marginBottom: spacing.xs, textAlign: "right" }}>{tr.cashflow.closing}</Body>
             <Amount minor={flows.closingMinor} large style={{ textAlign: "right" }} />
           </View>
         </View>
@@ -133,8 +133,8 @@ function MonthFlowSummary({
                 paddingVertical: spacing.sm,
               }}
             >
-              <Body muted style={{ fontSize: 10, marginBottom: 2 }}>{delta.label}</Body>
-              <Amount minor={delta.minor} colorized={false} color={delta.color} style={{ fontSize: 13, textAlign: "left" }} />
+              <Body muted style={{ fontSize: type.micro.fontSize, marginBottom: 2 }}>{delta.label}</Body>
+              <Amount minor={delta.minor} colorized={false} color={delta.color} style={{ fontSize: type.label.fontSize, textAlign: "left" }} />
             </View>
           ))}
         </View>
@@ -274,7 +274,14 @@ export default function MonthDetailScreen() {
               // it owes the platform minimum. It measured 28pt tall — the exact
               // height of its own heading — which on a phone is a target you
               // have to aim at.
-              style={{ minHeight: controlSize.minimumTarget, justifyContent: "center" }}
+              style={({ pressed }) => ({
+                minHeight: controlSize.minimumTarget,
+                justifyContent: "center",
+                marginHorizontal: -spacing.sm,
+                paddingHorizontal: spacing.sm,
+                borderRadius: radius.sm,
+                backgroundColor: pressed ? palette.surfaceHover : "transparent",
+              })}
             >
               <Spread style={{ alignItems: "flex-start" }}>
                 <View style={{ flex: 1, paddingRight: spacing.md }}>
@@ -296,7 +303,7 @@ export default function MonthDetailScreen() {
                         borderLeftColor: palette.border,
                       }}
                     >
-                      <Body muted style={{ fontSize: 12 }}>{note.body}</Body>
+                      <Body muted style={{ fontSize: type.small.fontSize }}>{note.body}</Body>
                     </View>
                   ) : null}
                 </View>

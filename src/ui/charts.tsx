@@ -1,14 +1,39 @@
 /** Accessible SVG chart primitives shared by native and web. */
 
 import React, { type ReactNode } from "react";
-import { Text, View } from "react-native";
-import Svg, { Circle, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
+import { Animated, Text, View } from "react-native";
+import Svg, { Circle, ClipPath, Defs, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import type { Distribution } from "../domain/analytics";
 import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { resolveBarAxis } from "./chart-axis";
+import { useDrawIn } from "./motion-primitives";
 import { chart, font, radius, spacing, type, useTheme } from "./theme";
 import { useMeasuredWidth } from "./viewport";
+
+/**
+ * A chart draws itself in once.
+ *
+ * The marks are revealed; the axes, the ruled plot and every label are not,
+ * because those are the frame the data is read against and a frame that grows
+ * is just movement. `strokeDashoffset` and a clip rectangle are geometry, not
+ * transform, so these cannot use the native driver — one animated element per
+ * chart keeps that affordable.
+ */
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
+/** Length of a polyline through the given points, for a dash-based reveal. */
+function polylineLength(points: { x: number; y: number }[]): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    total += Math.hypot(points[i]!.x - points[i - 1]!.x, points[i]!.y - points[i - 1]!.y);
+  }
+  // A smoothed curve is a little longer than the straight run between its
+  // points; overshooting the dash length only means the reveal finishes early,
+  // while undershooting would leave a permanent gap.
+  return total * 1.25 + 1;
+}
 
 /**
  * The box a pixel-sized chart is drawn into.
@@ -156,6 +181,8 @@ export function Donut({
   const cx = fittedSize / 2;
   const cy = fittedSize / 2;
   const strokeWidth = chart.donutWidth;
+  const circumference = 2 * Math.PI * r;
+  const draw = useDrawIn();
 
   const arcs: (DonutSlice & { path: string; sweep: number; end: number })[] = [];
   let start = -90;
@@ -197,20 +224,24 @@ export function Donut({
             strokeWidth={strokeWidth}
             fill="none"
           />
-          {arcs.map((a, i) =>
-            a.sweep >= 359.9 ? (
-              <Circle key={i} cx={cx} cy={cy} r={r} stroke={a.color} strokeWidth={strokeWidth} fill="none" />
-            ) : (
-              <Path
+          {arcs.map((a, i) => {
+            if (a.sweep >= 359.9) {
+              return <Circle key={i} cx={cx} cy={cy} r={r} stroke={a.color} strokeWidth={strokeWidth} fill="none" />;
+            }
+            const arcLength = (a.sweep / 360) * circumference;
+            return (
+              <AnimatedPath
                 key={i}
                 d={a.path}
                 stroke={a.color}
                 strokeWidth={strokeWidth}
                 fill="none"
                 strokeLinecap="butt"
+                strokeDasharray={[arcLength, circumference]}
+                strokeDashoffset={draw.interpolate({ inputRange: [0, 1], outputRange: [arcLength, 0] })}
               />
-            ),
-          )}
+            );
+          })}
           {/* 2px surface gaps between segments */}
           {arcs.length > 1
             ? arcs.map((arc, i) => {
@@ -374,6 +405,8 @@ export function Lines({
   const { palette } = useTheme();
   // No right gutter: the only caller draws one series whose name is already the
   // card's heading, so an end label repeated it and cost a sixth of the plot.
+  const draw = useDrawIn();
+  const clipId = `line-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const padding = { left: 54, right: 12, top: 12, bottom: 24 };
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
@@ -399,6 +432,16 @@ export function Lines({
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
       <Svg accessible={false} width={width} height={height}>
+        <Defs>
+          <ClipPath id={clipId}>
+            <AnimatedRect
+              x={padding.left}
+              y={0}
+              height={height}
+              width={draw.interpolate({ inputRange: [0, 1], outputRange: [0, plotW] })}
+            />
+          </ClipPath>
+        </Defs>
         <Rect
           x={padding.left}
           y={padding.top}
@@ -452,10 +495,20 @@ export function Lines({
                 // The fill closes the same curve down to the zero rule, so the
                 // area and the line can never disagree about where a month sat.
                 const area = `${line} L${pts.at(-1)!.x},${y(0)} L${pts[0]!.x},${y(0)} Z`;
+                const length = polylineLength(pts);
                 return (
                   <React.Fragment key={run[0]}>
-                    <Path d={area} fill={s.color} opacity={0.12} />
-                    <Path d={line} stroke={s.color} strokeWidth={chart.lineWidth} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    <Path d={area} fill={s.color} opacity={0.12} clipPath={`url(#${clipId})`} />
+                    <AnimatedPath
+                      d={line}
+                      stroke={s.color}
+                      strokeWidth={chart.lineWidth}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray={[length, length]}
+                      strokeDashoffset={draw.interpolate({ inputRange: [0, 1], outputRange: [length, 0] })}
+                    />
                   </React.Fragment>
                 );
               })}
@@ -548,6 +601,8 @@ export function Bars({
   width?: number;
 }) {
   const { palette } = useTheme();
+  const draw = useDrawIn();
+  const clipId = `bar-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const axis = resolveBarAxis(groups.flatMap((g) => g.values));
   if (!axis || groups.length === 0) return null;
   const { min, max, ticks } = axis;
@@ -602,6 +657,19 @@ export function Bars({
     <View>
       <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
         <Svg accessible={false} width={width} height={height}>
+          <Defs>
+            <ClipPath id={clipId}>
+              {/* Anchored on zero, so a negative bar grows downward and a
+                  positive one upward — the reveal follows the sign rather than
+                  wiping the plot from one edge. */}
+              <AnimatedRect
+                x={0}
+                width={width}
+                y={draw.interpolate({ inputRange: [0, 1], outputRange: [zeroY, pad.top] })}
+                height={draw.interpolate({ inputRange: [0, 1], outputRange: [0, height] })}
+              />
+            </ClipPath>
+          </Defs>
           <Rect
             x={pad.left}
             y={pad.top}
@@ -675,7 +743,7 @@ export function Bars({
               const color = series[si]?.color ?? palette.primary;
               return (
                 <React.Fragment key={`${gi}-${si}`}>
-                  <Path d={barShape(bx, top, barW, Math.max(1, h), v > 0)} fill={color} />
+                  <Path d={barShape(bx, top, barW, Math.max(1, h), v > 0)} fill={color} clipPath={`url(#${clipId})`} />
                 </React.Fragment>
               );
             });

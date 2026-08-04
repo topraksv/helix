@@ -112,7 +112,7 @@ function SubscriptionFormArtwork({
                 borderColor: index === 0 ? palette.primary + "70" : palette.border,
               }}
             >
-              <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>
+              <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>
                 {index === 0 ? tr.subs.nextCharge : tr.subs.followingCharge}
               </Text>
               <Text style={[type.label, { color: index === 0 ? palette.primaryText : palette.text, marginTop: 2 }]}>
@@ -125,20 +125,20 @@ function SubscriptionFormArtwork({
 
       <View style={{ flexDirection: "row", alignItems: "stretch" }}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{tr.subs.monthlyEquivalent}</Text>
+          <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.monthlyEquivalent}</Text>
           {monthlyMinor == null ? (
             <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
           ) : (
-            <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: 13, textAlign: "left", marginTop: 2 }} />
+            <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
           )}
         </View>
         <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{tr.subs.annualEquivalent}</Text>
+          <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.annualEquivalent}</Text>
           {monthlyMinor == null ? (
             <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
           ) : (
-            <Amount minor={monthlyMinor * 12} currency={currency} colorized={false} style={{ fontSize: 13, textAlign: "left", marginTop: 2 }} />
+            <Amount minor={monthlyMinor * 12} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
           )}
         </View>
       </View>
@@ -413,7 +413,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
             {cycle === "custom" ? (
               <>
                 <Field label={tr.subs.intervalLabel} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
-                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>{tr.subs.intervalHint}</Body>
+                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>{tr.subs.intervalHint}</Body>
               </>
             ) : null}
 
@@ -428,7 +428,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                     setBillingDayStr(String(Number(date.slice(8, 10))));
                   }}
                 />
-                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
+                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
                   {tr.subs.yearlyRenewalHint}
                 </Body>
               </>
@@ -441,7 +441,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                   quickDays={QUICK_DAYS}
                   error={billingDayStr !== "" && !isMonthDay(billingDayStr) ? tr.incomes.dayError : null}
                 />
-                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: 12 }}>
+                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
                   {tr.subs.billingDayHint}
                 </Body>
               </>
@@ -505,7 +505,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         <Spread style={{ marginBottom: spacing.md }}>
           <View style={{ flex: 1, paddingRight: spacing.md }}>
             <Body>{tr.subs.trialToggle}</Body>
-            <Body muted style={{ fontSize: 12 }}>{tr.subs.trialToggleHint}</Body>
+            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.subs.trialToggleHint}</Body>
           </View>
           <Toggle label={tr.subs.trialToggle} value={isTrial} onValueChange={setIsTrial} />
         </Spread>

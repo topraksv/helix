@@ -8,7 +8,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
 import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { cardShadow, controlSize, radius, scrim, spacing, stateOpacity, type, useTheme } from "./theme";
+import { circle, controlSize, radius, spacing, stateOpacity, themeShadow, type, useTheme } from "./theme";
 import { Button, FadeIn, IconButton, Label, controlStateStyle } from "./components";
 import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
@@ -55,11 +55,11 @@ export function CalendarSheet({
       <Pressable
         accessible={false}
         tabIndex={-1}
-        style={{ flex: 1, backgroundColor: scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
+        style={{ flex: 1, backgroundColor: palette.scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
         <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 360 }}>
-          <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, cardShadow]}>
+          <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, themeShadow.card(palette)]}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md }}>
               <IconButton icon={ChevronLeft} label={tr.common.previous} haptic="selection" onPress={() => setMonth(addMonthsToKey(month, -1))} />
               <View ref={titleRef} accessible accessibilityRole="header" accessibilityLiveRegion="polite" tabIndex={-1}>
@@ -95,14 +95,15 @@ export function CalendarSheet({
                     }}
                     style={{ width: `${100 / 7}%`, height: controlSize.minimumTarget, alignItems: "center", justifyContent: "center" }}
                   >
+                    {({ pressed }) => (
                     <View
                       style={{
                         width: 34,
                         height: 34,
-                        borderRadius: 17,
+                        borderRadius: circle(34),
                         alignItems: "center",
                         justifyContent: "center",
-                        backgroundColor: selected ? palette.primarySoft : "transparent",
+                        backgroundColor: pressed ? palette.surfaceHover : selected ? palette.primarySoft : "transparent",
                         borderWidth: isToday && !selected ? StyleSheet.hairlineWidth : 0,
                         borderColor: palette.primaryText,
                       }}
@@ -119,6 +120,7 @@ export function CalendarSheet({
                         {day}
                       </Text>
                     </View>
+                    )}
                   </Pressable>
                 );
               })}

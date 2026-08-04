@@ -41,7 +41,7 @@ import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
 import { shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart } from "../../ui/responsive";
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
-import { font, heroSurface, radius, spacing, type, useTheme } from "../../ui/theme";
+import { circle, font, heroSurface, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
 
@@ -76,7 +76,7 @@ function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number 
         >
           <View style={{ position: "absolute", left: 3, top: 3, bottom: 3, width: 3, borderRadius: 2, backgroundColor: palette.primary + "90" }} />
           <View style={{ position: "absolute", right: 3, top: 3, bottom: 3, width: 3, borderRadius: 2, backgroundColor: palette.primary + "90" }} />
-          <Text style={[type.heading, { color: palette.primaryText, fontFamily: font.bold, fontSize: 15 }]}>{currency}</Text>
+          <Text style={[type.heading, { color: palette.primaryText, fontFamily: font.bold, fontSize: type.body.fontSize }]}>{currency}</Text>
         </View>
       </View>
     );
@@ -98,7 +98,7 @@ function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number 
           }}
         >
           <View style={{ position: "absolute", left: 4, right: 4, top: 4, height: 3, borderRadius: 2, backgroundColor: palette.tertiary + "A0" }} />
-          <Text style={[type.small, { color: palette.tertiaryText, fontFamily: font.bold, fontSize: 9, marginTop: 5 }]}>Au</Text>
+          <Text style={[type.small, { color: palette.tertiaryText, fontFamily: font.bold, fontSize: type.micro.fontSize, marginTop: 5 }]}>Au</Text>
         </View>
       </View>
     );
@@ -111,7 +111,7 @@ function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number 
         style={{
           width: 30,
           height: 30,
-          borderRadius: 15,
+          borderRadius: circle(30),
           alignItems: "center",
           justifyContent: "center",
           borderWidth: 1.5,
@@ -119,8 +119,8 @@ function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number 
           backgroundColor: palette.tertiarySoft,
         }}
       >
-        <View style={{ position: "absolute", inset: 3, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.tertiary + "80" }} />
-        <Text style={[type.small, { color: palette.tertiaryText, fontFamily: font.bold, fontSize: 11 }]}>{coinMark}</Text>
+        <View style={{ position: "absolute", inset: 3, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.tertiary + "80" }} />
+        <Text style={[type.small, { color: palette.tertiaryText, fontFamily: font.bold, fontSize: type.caption.fontSize }]}>{coinMark}</Text>
       </View>
     </View>
   );
@@ -210,11 +210,11 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
                     <View style={{ width: crampedTile ? 40 : 44, height: crampedTile ? 40 : 44, flexShrink: 0 }}>
                       <MarketInstrumentArt code={code} size={crampedTile ? 40 : 44} />
                       {p.direction === "up" ? (
-                        <View style={{ position: "absolute", right: -2, top: -2, borderRadius: 8, padding: 2, backgroundColor: palette.surface }}>
+                        <View style={{ position: "absolute", right: -2, top: -2, borderRadius: radius.sm, padding: 2, backgroundColor: palette.surface }}>
                           <TrendingUp accessible={false} size={12} color={palette.positive} />
                         </View>
                       ) : p.direction === "down" ? (
-                        <View style={{ position: "absolute", right: -2, top: -2, borderRadius: 8, padding: 2, backgroundColor: palette.surface }}>
+                        <View style={{ position: "absolute", right: -2, top: -2, borderRadius: radius.sm, padding: 2, backgroundColor: palette.surface }}>
                           <TrendingDown accessible={false} size={12} color={palette.negative} />
                         </View>
                       ) : null}
@@ -224,7 +224,7 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
                         flex: 1,
                         minWidth: 0,
                         fontFamily: font.semibold,
-                        fontSize: crampedTile ? 13 : undefined,
+                        fontSize: crampedTile ? type.label.fontSize : undefined,
                         lineHeight: crampedTile ? 16 : undefined,
                         textAlignVertical: "center",
                       }}
@@ -265,7 +265,7 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
                 <Text style={[type.amount, { color: palette.text }]}>{`${priceText(rate.rate.rateTry)} ₺`}</Text>
               </Spread>
             ))}
-            <Body muted style={{ marginTop: spacing.sm, fontSize: 12 }}>{tr.markets.offlineHint}</Body>
+            <Body muted style={{ marginTop: spacing.sm, fontSize: type.small.fontSize }}>{tr.markets.offlineHint}</Body>
           </>
         ) : (
           // The card is stretched to its neighbour's height when the two share
@@ -580,7 +580,7 @@ export default function DashboardScreen() {
           <View style={wideDashboard ? { flexDirection: "row", alignItems: "stretch" } : undefined}>
             <View style={wideDashboard ? { flex: 1, paddingRight: spacing.xl, justifyContent: "center" } : undefined}>
               <Row gap={spacing.sm} style={{ alignItems: "center" }}>
-                <Text style={[type.label, { color: heroInk, textTransform: "uppercase", letterSpacing: 1, fontSize: 11 }]}>
+                <Text style={[type.label, { color: heroInk, textTransform: "uppercase", letterSpacing: 1, fontSize: type.caption.fontSize }]}>
                   {tr.dashboard.actualBalance}
                 </Text>
                 {/* The ledger has moved away from the last figure the user
@@ -591,7 +591,6 @@ export default function DashboardScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={tr.settings.balanceDriftTitle}
                     onPress={() => router.push("/opening-balance")}
-                    hitSlop={8}
                     style={({ pressed }) => ({
                       flexDirection: "row",
                       alignItems: "center",
@@ -605,7 +604,7 @@ export default function DashboardScreen() {
                     })}
                   >
                     <TriangleAlert accessible={false} size={12} color={palette.warningText} strokeWidth={2.4} />
-                    <Text style={[type.small, { color: palette.warningText, fontSize: 10, fontFamily: font.semibold }]}>
+                    <Text style={[type.small, { color: palette.warningText, fontSize: type.micro.fontSize, fontFamily: font.semibold }]}>
                       {tr.settings.balanceDriftShort}
                     </Text>
                   </Pressable>
@@ -614,6 +613,7 @@ export default function DashboardScreen() {
               <Amount
                 minor={bundle.actualBalanceMinor}
                 hero
+                count
                 colorized={false}
                 color={heroInk}
                 style={{ marginTop: spacing.xs, textAlign: "left" }}
@@ -672,7 +672,7 @@ export default function DashboardScreen() {
 
             <View style={wideDashboard ? { flex: 1, paddingLeft: spacing.xl, justifyContent: "space-between" } : undefined}>
               <View>
-                <Text style={[type.label, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 1.1, fontSize: 11 }]}>
+                <Text style={[type.label, { color: palette.textSecondary, textTransform: "uppercase", letterSpacing: 1.1, fontSize: type.caption.fontSize }]}>
                   {monthName(month)}
                 </Text>
                 <MetricStrip
@@ -681,9 +681,9 @@ export default function DashboardScreen() {
                     // The three figures share one line and shorten together:
                     // the strip measures its own column and asks for ₺1,2 M
                     // rather than dropping "Net değişim" onto a second row.
-                    { label: tr.cashflow.income, value: (compact: boolean) => <Amount minor={monthIncomeMinor} compact={compact} colorized={false} color={palette.positiveText} style={{ textAlign: "left" }} /> },
-                    { label: tr.dashboard.outflow, value: (compact: boolean) => <Amount minor={-monthOutflowMinor} compact={compact} colorized={false} color={palette.negativeText} style={{ textAlign: "left" }} /> },
-                    { label: tr.dashboard.netChange, value: (compact: boolean) => <Amount minor={monthNetMinor} compact={compact} colorized={false} color={palette.textStrong} style={{ textAlign: "left" }} /> },
+                    { label: tr.cashflow.income, minor: monthIncomeMinor, color: palette.positiveText },
+                    { label: tr.dashboard.outflow, minor: -monthOutflowMinor, color: palette.negativeText },
+                    { label: tr.dashboard.netChange, minor: monthNetMinor },
                   ]}
                 />
               </View>
@@ -709,7 +709,7 @@ export default function DashboardScreen() {
 
       {bundle && showForecast && projected != null ? (
         <Card>
-          <Body muted style={{ fontSize: 12, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
+          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
           <Spread style={{ marginBottom: spacing.xs }}>
             <Body muted>{tr.dashboard.forecastCurrent}</Body>
             <Amount minor={bundle.actualBalanceMinor} />
@@ -838,9 +838,9 @@ export default function DashboardScreen() {
                   <Spread style={{ marginBottom: spacing.md }}>
                     <CalendarClock size={22} color={palette.accentText} strokeWidth={1.8} />
                     <View style={{ flexDirection: "row", gap: 4 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.surfaceStrong }} />
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.surfaceStrong }} />
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: palette.primary }} />
+                      <View style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: palette.surfaceStrong }} />
+                      <View style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: palette.surfaceStrong }} />
+                      <View style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: palette.primary }} />
                     </View>
                   </Spread>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>

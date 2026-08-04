@@ -1,7 +1,7 @@
 /** Settings hub: personalization, notifications, security, backup, sync state. */
 
 import React, { useRef, useState, type ReactNode } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Platform, View } from "react-native";
 import { useContentWidth } from "../../../ui/viewport";
 import { shouldPairFilterCards } from "../../../ui/responsive";
 import { useRouter, type Href } from "expo-router";
@@ -52,10 +52,10 @@ import { useBiometricLabel } from "../../../ui/biometric-label";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { dateLabel, dateTimeLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
+import { Body, Button, Card, ChoiceTile, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
-import { font, PALETTES, radius, spacing, type, useTheme, type Palette, type ThemePreference } from "../../../ui/theme";
+import { circle, font, PALETTES, radius, spacing, type, type Palette, type ThemePreference, useTheme } from "../../../ui/theme";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
@@ -86,27 +86,13 @@ function ThemeChoice({
   const Icon = value === "light" ? Sun : value === "dark" ? Moon : Monitor;
   const iconColor = value === "dark" ? dark.textStrong : light.textStrong;
   return (
-    <Pressable
-      accessibilityRole="radio"
-      aria-checked={selected}
-      accessibilityState={{ checked: selected, selected, disabled }}
+    <ChoiceTile
+      label={label}
+      selected={selected}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        minWidth: 0,
-        minHeight: 82,
-        padding: spacing.sm,
-        gap: spacing.sm,
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: radius.md,
-        borderWidth: selected ? 2 : 1,
-        borderColor: selected ? chrome.primary : chrome.border + "80",
-        backgroundColor: chrome.surface,
-        opacity: disabled ? 0.56 : pressed ? 0.78 : 1,
-        transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
-      })}
+      minHeight={82}
+      surface={chrome}
     >
       <View
         accessible={false}
@@ -126,10 +112,7 @@ function ThemeChoice({
           <Icon accessible={false} size={16} color={iconColor} strokeWidth={2} />
         </View>
       </View>
-      <Text style={[type.small, { color: chrome.text, fontFamily: selected ? font.semibold : font.medium, textAlign: "center" }]}>
-        {label}
-      </Text>
-    </Pressable>
+    </ChoiceTile>
   );
 }
 
@@ -151,29 +134,16 @@ function PaletteChoice({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityLabel={label}
-      aria-checked={selected}
-      accessibilityState={{ checked: selected, selected, disabled }}
+    <ChoiceTile
+      label={label}
+      description={description}
+      selected={selected}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => ({
-        flexGrow: 1,
-        flexBasis: stacked ? "100%" : 0,
-        minWidth: 0,
-        minHeight: stacked ? 92 : 150,
-        padding: spacing.sm,
-        flexDirection: stacked ? "row" : "column",
-        alignItems: stacked ? "center" : "stretch",
-        gap: spacing.md,
-        borderRadius: radius.lg,
-        borderWidth: selected ? 2 : 1,
-        borderColor: selected ? swatch.primary : swatch.border + "80",
-        backgroundColor: swatch.background,
-        opacity: disabled ? 0.56 : pressed ? 0.8 : 1,
-        transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
-      })}
+      layout={stacked ? "row" : "stack"}
+      basis={stacked ? "100%" : undefined}
+      minHeight={stacked ? 92 : 150}
+      surface={swatch}
     >
       <View
         accessible={false}
@@ -205,7 +175,7 @@ function PaletteChoice({
           <View style={{ width: "84%", height: 3, borderRadius: 2, backgroundColor: swatch.border }} />
           <View style={{ width: "70%", height: 3, borderRadius: 2, backgroundColor: swatch.surfaceStrong }} />
         </View>
-        <View style={{ position: "absolute", right: spacing.sm, top: spacing.sm, width: 24, height: 24, borderRadius: 12, backgroundColor: swatch.primary }} />
+        <View style={{ position: "absolute", right: spacing.sm, top: spacing.sm, width: 24, height: 24, borderRadius: circle(24), backgroundColor: swatch.primary }} />
         <View style={{ position: "absolute", right: spacing.sm, bottom: spacing.sm, flexDirection: "row", gap: 3 }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: swatch.positive }} />
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: swatch.negative }} />
@@ -218,7 +188,7 @@ function PaletteChoice({
               top: spacing.sm + 3,
               width: 18,
               height: 18,
-              borderRadius: 9,
+              borderRadius: circle(18),
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: swatch.primary,
@@ -228,11 +198,7 @@ function PaletteChoice({
           </View>
         ) : null}
       </View>
-      <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
-        <Text style={[type.body, { color: swatch.textStrong, fontFamily: font.semibold }]}>{label}</Text>
-        <Text style={[type.small, { color: swatch.textSecondary, marginTop: 3, flexShrink: 1 }]}>{description}</Text>
-      </View>
-    </Pressable>
+    </ChoiceTile>
   );
 }
 
@@ -759,12 +725,12 @@ export default function SettingsScreen() {
                 versions is what makes it a choice rather than a mystery. */}
             {notifications ? (
               <View style={{ paddingBottom: spacing.md, gap: spacing.xs }}>
-                <Body muted style={{ fontSize: 12 }}>{tr.settings.notificationPreview}</Body>
+                <Body muted style={{ fontSize: type.small.fontSize }}>{tr.settings.notificationPreview}</Body>
                 <View style={{ backgroundColor: palette.surfaceAlt, borderRadius: radius.md, padding: spacing.md, gap: 2 }}>
                   <Body style={{ fontFamily: font.medium }}>
                     {notificationDetails ? tr.notif.upcomingTitle : tr.notif.privateTitle}
                   </Body>
-                  <Body muted style={{ fontSize: 12 }}>
+                  <Body muted style={{ fontSize: type.small.fontSize }}>
                     {notificationDetails
                       ? tr.notif.upcoming(tr.settings.notificationSampleName, dateLabel(todayISO()), formatMinor(29_90))
                       : tr.notif.privateBody}
@@ -815,9 +781,9 @@ export default function SettingsScreen() {
           }
         />
         {sync.error ? (
-          <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ fontSize: 12, marginTop: spacing.xs, color: palette.errorText }}>{sync.error}</Body>
+          <Body accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ fontSize: type.small.fontSize, marginTop: spacing.xs, color: palette.errorText }}>{sync.error}</Body>
         ) : null}
-        <Body muted style={{ fontSize: 12, marginTop: spacing.xs, marginBottom: spacing.sm }}>
+        <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs, marginBottom: spacing.sm }}>
           {tr.settings.syncExplain}
         </Body>
       </Card>
@@ -914,7 +880,7 @@ export default function SettingsScreen() {
       {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}
 
       <View style={{ alignItems: "center", marginTop: spacing.md }}>
-        <Body muted style={{ fontSize: 12 }}>
+        <Body muted style={{ fontSize: type.small.fontSize }}>
           {tr.app.name} · {tr.app.tagline}
         </Body>
       </View>

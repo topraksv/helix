@@ -356,9 +356,6 @@ export function resolvePaletteId(value: string | null): PaletteId {
   return isPaletteId(value) ? value : DEFAULT_PALETTE_ID;
 }
 
-/** @deprecated Yeni kodda `palette.scrim` kullan. */
-export const scrim = lightPalette.scrim;
-
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
 /**
@@ -390,6 +387,18 @@ export type ContentWidth = keyof typeof contentWidth;
 // Crisp ledger geometry: enough softness for touch, never a stack of bubbles.
 export const radius = { sm: 8, md: 10, lg: 14, xl: 18, full: 999 } as const;
 
+/**
+ * A circle, said once.
+ *
+ * Ten places wrote half of their own box as a literal — 15, 17, 19, 21, 28, 39,
+ * 41, 48, 52, 64 — which is a circle only for as long as nobody edits the size
+ * without editing the radius. `radius.full` also works for a square box, but it
+ * says "pill" and reads as a guess next to a width; this says what it is.
+ */
+export function circle(size: number): number {
+  return size / 2;
+}
+
 /** Context-specific rhythm keeps a dashboard breathable without making a
  * financial table wasteful or turning settings into a dense control panel. */
 export const density = {
@@ -409,11 +418,37 @@ export const motion = {
   waiting: 1600,
   loading: 1200,
   loadingReveal: 350,
+  /** A figure counting to its new value. Long enough to be read as movement,
+   *  short enough that the number is legible before the user looks away. */
+  figure: 520,
+  /** A chart drawing itself in once, after its data has settled. */
+  draw: 620,
+  /** An error the user has to notice without being shouted at: three
+   *  oscillations inside the standard duration. */
+  shake: 320,
   spring: {
     entrance: { damping: 18, stiffness: 170, mass: 1 },
     toggle: { speed: 20, bounciness: 6 },
   },
+  /**
+   * A list arriving as a list rather than as a slab.
+   *
+   * `step` is the gap between neighbours and `budget` is the ceiling the whole
+   * cascade must finish inside — past about half a second a stagger stops
+   * reading as choreography and starts reading as lag, so a long list
+   * compresses its step instead of running longer.
+   */
+  stagger: { step: 28, budget: 320 },
 } as const;
+
+/** The delay an item at `index` waits before entering. */
+export function staggerDelay(index: number, count = 1): number {
+  if (index <= 0) return 0;
+  const step = count > 1
+    ? Math.min(motion.stagger.step, motion.stagger.budget / (count - 1))
+    : motion.stagger.step;
+  return Math.min(index * step, motion.stagger.budget);
+}
 
 /** Shared chart grammar: series meaning is chosen by the caller, geometry is
  * chosen here. The palette supplies semantic colors; charts never invent one. */
@@ -474,13 +509,27 @@ export function segmentedMaxWidth(optionCount: number): number {
  * circular target on native while the web header looked correct. An even size
  * halves to a whole point at 1x, 2x and 3x alike.
  */
-export const iconSize = { compact: 15, control: 17, accessory: 18, headerBack: 24 } as const;
-export const borderWidth = { control: 1.5, toggle: 1 } as const;
+/**
+ * `emoji` is a glyph used as an icon: a user-chosen category mark rendered by
+ * the text engine rather than by lucide. It sizes with the other marks, not
+ * with the copy beside it, so it belongs here and not in the type scale.
+ */
+export const iconSize = { compact: 15, control: 17, accessory: 18, headerBack: 24, emoji: 14 } as const;
+
+/**
+ * `selected` is the ring a chosen tile wears. It used to be written as
+ * `selected ? 2 : 1` in five screens and `selected ? 1.5 : hairline` in two
+ * more, so the same answer to the same question had three weights depending on
+ * which file you were in.
+ */
+export const borderWidth = { control: 1.5, toggle: 1, selected: 2 } as const;
 
 /** State opacity roles stay separate because their current perceptual weight is
  *  intentional. Naming them prevents near-duplicate feature-local values. */
 export const stateOpacity = {
   pressed: 0.85,
+  /** A control that is present, explained and refused. */
+  disabled: 0.45,
   dragActive: 0.96,
 } as const;
 
@@ -521,12 +570,30 @@ export const type = {
   display: { fontSize: 40, fontFamily: font.serifBold, letterSpacing: -0.8 },
   title: { fontSize: 26, fontFamily: font.serifBold, letterSpacing: -0.2 },
   heading: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.2 },
+  /** A group's name inside a card, below the screen's own heading. */
+  sectionTitle: { fontSize: 16, fontFamily: font.semibold, letterSpacing: -0.2 },
   body: { fontSize: 15, fontFamily: font.regular },
   label: { fontSize: 13, fontFamily: font.medium },
   small: { fontSize: 12, fontFamily: font.regular },
+  /** What a figure beside it is called. */
+  caption: { fontSize: 11, fontFamily: font.regular },
+  /** The smallest text the app is allowed to draw: markers, eyebrows, the
+   *  caption under a dense tile. Nothing may go below it — the sizes it
+   *  replaces reached 9, which is 25% under the old floor. */
+  micro: { fontSize: 10, fontFamily: font.medium },
   button: { fontSize: 15, fontFamily: font.medium },
   buttonCompact: { fontSize: 13, fontFamily: font.medium },
-  field: { fontSize: 15, fontFamily: font.regular },
+  /**
+   * 16 is not a taste. Mobile Safari zooms the whole viewport when a focused
+   * input renders below 16px, and it does not zoom back out on blur, so at 15
+   * every text field in the app left the user on a magnified page they had to
+   * pinch out of. WebKit picked 16 as the point where an input is legible
+   * without the enlarged viewport.
+   * https://webkit.org/blog/5610/more-responsive-tapping-on-ios/
+   */
+  field: { fontSize: 16, fontFamily: font.regular },
+  /** A calculator key's glyph, sized to the pad rather than to prose. */
+  keypad: { fontSize: 22, fontFamily: font.medium },
   moneyInput: { fontSize: 17, fontFamily: font.semibold, fontVariant: ["tabular-nums" as const] },
   amountLg: {
     fontSize: 38,
@@ -534,22 +601,32 @@ export const type = {
     letterSpacing: -0.4,
     fontVariant: ["tabular-nums" as const],
   },
+  /** The hero figure when the hero is a phone-width column. */
+  amountMd: {
+    fontSize: 30,
+    fontFamily: font.bold,
+    letterSpacing: -0.3,
+    fontVariant: ["tabular-nums" as const],
+  },
   amount: { fontSize: 15, fontFamily: font.semibold, fontVariant: ["tabular-nums" as const] },
   amountSm: { fontSize: 12, fontFamily: font.medium, fontVariant: ["tabular-nums" as const] },
 };
 
+/**
+ * Shadows take the live palette, always.
+ *
+ * There used to be `cardShadow` / `overlayShadow` / `toggleThumbShadow` /
+ * `scrim` constants beside these, each evaluated once against `lightPalette`.
+ * Four surfaces still imported them, so in dark mode the calculator, the
+ * calendar and the undo bar drew an 8%-alpha warm-brown shadow where the theme
+ * asks for 30% near-black — effectively no shadow at all — and every scrim in
+ * the app was the light theme's 52% instead of the dark theme's 68%.
+ */
 export const themeShadow = {
   card: (palette: Palette) => ({ boxShadow: `0 8px 24px ${palette.shadow}` } as const),
   overlay: (palette: Palette) => ({ boxShadow: `0 16px 40px ${palette.shadowStrong}` } as const),
   toggleThumb: (palette: Palette) => ({ boxShadow: `0 1px 3px ${palette.shadowStrong}` } as const),
 } as const;
-
-/** @deprecated Yeni kodda `themeShadow.card(palette)` kullan. */
-export const cardShadow = themeShadow.card(lightPalette);
-/** @deprecated Yeni kodda `themeShadow.overlay(palette)` kullan. */
-export const overlayShadow = themeShadow.overlay(lightPalette);
-/** @deprecated Yeni kodda `themeShadow.toggleThumb(palette)` kullan. */
-export const toggleThumbShadow = themeShadow.toggleThumb(lightPalette);
 
 /** The balance instrument stays neutral so the money outranks the theme. */
 export function heroSurface(

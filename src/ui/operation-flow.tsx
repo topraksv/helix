@@ -14,7 +14,7 @@ import {
   WalletCards,
   type LucideIcon,
 } from "lucide-react-native";
-import { radius, spacing, type, useTheme, type Palette } from "./theme";
+import { circle, radius, spacing, type, type Palette, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { useReducedMotion } from "./motion";
 
@@ -129,7 +129,7 @@ export function OperationFlow({
               position: "absolute",
               width: 128,
               height: 128,
-              borderRadius: 64,
+              borderRadius: circle(128),
               backgroundColor: color + "12",
               opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.9] }),
               transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }],
@@ -139,7 +139,7 @@ export function OperationFlow({
             style={{
               width: 96,
               height: 96,
-              borderRadius: 48,
+              borderRadius: circle(96),
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: color + "1A",

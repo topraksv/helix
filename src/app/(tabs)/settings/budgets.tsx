@@ -14,7 +14,7 @@ import { categoryIcon } from "../../../data/category-icons";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
-import { spacing, useTheme } from "../../../ui/theme";
+import { spacing, type, useTheme } from "../../../ui/theme";
 import { useUndo } from "../../../ui/undo";
 import { appAlert } from "../../../ui/dialog";
 
@@ -59,7 +59,7 @@ function BudgetMeter({ spentMinor, limitMinor }: { spentMinor: number; limitMino
           );
         })}
       </View>
-      <Body muted style={{ fontSize: 11, textAlign: "center", marginTop: spacing.sm }}>
+      <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "center", marginTop: spacing.sm }}>
         {tr.budgets.progress(formatMinor(spentMinor), formatMinor(limitMinor))}
       </Body>
     </View>
@@ -237,7 +237,7 @@ export default function BudgetsScreen() {
                 <Spread>
                   <View style={{ flex: 1, paddingRight: spacing.sm }}>
                     <Body>{category?.name ?? tr.common.none}</Body>
-                    <Body muted style={{ fontSize: 12 }}>
+                    <Body muted style={{ fontSize: type.small.fontSize }}>
                       {state ? tr.budgets.progress(formatMinor(state.spentMinor), formatMinor(budget.amountMinor)) : formatMinor(budget.amountMinor)}
                     </Body>
                   </View>
@@ -249,7 +249,7 @@ export default function BudgetsScreen() {
                 <View style={{ height: 7, borderRadius: 4, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
                   <View style={{ height: "100%", width: `${ratio * 100}%`, backgroundColor: (state?.remainingMinor ?? 0) < 0 ? palette.negative : palette.positive }} />
                 </View>
-                {state && state.remainingMinor < 0 ? <Body style={{ fontSize: 12, color: palette.negativeText, marginTop: spacing.xs }}>{tr.budgets.over(formatMinor(-state.remainingMinor))}</Body> : null}
+                {state && state.remainingMinor < 0 ? <Body style={{ fontSize: type.small.fontSize, color: palette.negativeText, marginTop: spacing.xs }}>{tr.budgets.over(formatMinor(-state.remainingMinor))}</Body> : null}
               </View>
             );
               }}

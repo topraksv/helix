@@ -17,7 +17,7 @@ import { Amount, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, Pa
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
-import { radius, spacing, type, useTheme } from "../../ui/theme";
+import { circle, radius, spacing, type, useTheme } from "../../ui/theme";
 import { appAlert } from "../../ui/dialog";
 import { WorkspaceGrid } from "../../ui/workspace-layout";
 
@@ -90,8 +90,8 @@ function SubscriptionScheduleOverview({
         description={tr.subs.scheduleOverviewHint}
         right={(
           <View style={{ alignItems: "flex-end", paddingLeft: spacing.sm }}>
-            <Text style={[type.small, { color: palette.textSecondary, fontSize: 10 }]}>{tr.subs.tryMonthlyLoad}</Text>
-            <Amount minor={monthlyTryMinor} colorized={false} style={{ fontSize: 13 }} />
+            <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.tryMonthlyLoad}</Text>
+            <Amount minor={monthlyTryMinor} colorized={false} style={{ fontSize: type.label.fontSize }} />
           </View>
         )}
       />
@@ -152,7 +152,7 @@ function SubscriptionScheduleOverview({
                       {nextDayOffset === 0 ? tr.subs.todayShort : nextDayOffset === 1 ? tr.subs.tomorrowShort : nextDayOffset}
                     </Text>
                     {nextDayOffset != null && nextDayOffset > 1 ? (
-                      <Text style={[type.small, { color: palette.primaryText, fontSize: 9 }]}>{tr.subs.daysShort}</Text>
+                      <Text style={[type.small, { color: palette.primaryText, fontSize: type.micro.fontSize }]}>{tr.subs.daysShort}</Text>
                     ) : null}
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -191,7 +191,7 @@ function SubscriptionScheduleOverview({
                   <FadeIn key={stop.date} delay={index * 90} style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ height: 18, flexDirection: "row", alignItems: "center" }}>
                       <View style={{ flex: 1, height: 2, backgroundColor: index === 0 ? "transparent" : palette.primary + "55" }} />
-                      <View style={{ width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: palette.primary, backgroundColor: palette.surface }} />
+                      <View style={{ width: 12, height: 12, borderRadius: circle(12), borderWidth: 3, borderColor: palette.primary, backgroundColor: palette.surface }} />
                       <View style={{ flex: 1, height: 2, backgroundColor: index === visibleStops.length - 1 ? "transparent" : palette.primary + "55" }} />
                     </View>
                     <View style={{ paddingHorizontal: spacing.xs, alignItems: "center" }}>
@@ -200,7 +200,7 @@ function SubscriptionScheduleOverview({
                           labels need equal room, so the line cannot be read as
                           a time axis — 8 days and 5 days were drawn the same
                           length. The interval is stated instead of implied. */}
-                      <Text style={[type.small, { color: palette.textSecondary, textAlign: "center", marginTop: 1, fontSize: 11 }]}>
+                      <Text style={[type.small, { color: palette.textSecondary, textAlign: "center", marginTop: 1, fontSize: type.caption.fontSize }]}>
                         {tr.dashboard.inDays(Math.max(0, daysBetweenISO(today, stop.date)))}
                       </Text>
                       {index > 0 ? (
@@ -211,7 +211,7 @@ function SubscriptionScheduleOverview({
                         </Text>
                       ) : null}
                       {stopAmount(stop.payments) ? (
-                        <Text style={[type.amountSm, { color: palette.text, fontSize: 11, textAlign: "center", marginTop: 2 }]}>{stopAmount(stop.payments)}</Text>
+                        <Text style={[type.amountSm, { color: palette.text, fontSize: type.caption.fontSize, textAlign: "center", marginTop: 2 }]}>{stopAmount(stop.payments)}</Text>
                       ) : null}
                     </View>
                   </FadeIn>

@@ -29,7 +29,7 @@ import { PanResponder, Platform, Pressable, Text, View, type ViewStyle } from "r
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReduceTransparency } from "./motion";
-import { font, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, useTheme } from "./theme";
+import { font, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type, useTheme } from "./theme";
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { palette, scheme } = useTheme();
@@ -162,7 +162,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         <Text
           style={{
             fontFamily: focused ? font.semibold : font.medium,
-            fontSize: 11,
+            fontSize: type.caption.fontSize,
             lineHeight: 14,
             textAlign: "center",
             color: focused ? palette.textStrong : palette.textSecondary,

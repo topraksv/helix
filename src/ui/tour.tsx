@@ -7,7 +7,7 @@ import { Banknote, CalendarCheck, ChartPie, CloudUpload, Landmark, Plus, PlusCir
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
-import { font, radius, scrim, spacing, type, useTheme } from "./theme";
+import { circle, font, radius, spacing, type, useTheme } from "./theme";
 import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
@@ -60,12 +60,12 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
           <View style={{ position: "absolute", left: 20, right: 20, top: 24, gap: 8 }}>
             {[0, 1, 2].map((row) => (
               <View key={row} style={{ height: 20, borderRadius: 6, backgroundColor: palette.surface, flexDirection: "row", alignItems: "center", paddingHorizontal: 8, gap: 7 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: row === 0 ? palette.negative : palette.border }} />
+                <View style={{ width: 8, height: 8, borderRadius: circle(8), backgroundColor: row === 0 ? palette.negative : palette.border }} />
                 <View style={{ width: `${55 + row * 8}%`, height: 4, borderRadius: 2, backgroundColor: palette.surfaceStrong }} />
               </View>
             ))}
           </View>
-          <View style={{ position: "absolute", right: 16, bottom: 12, width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: palette.primary }}>
+          <View style={{ position: "absolute", right: 16, bottom: 12, width: 34, height: 34, borderRadius: circle(34), alignItems: "center", justifyContent: "center", backgroundColor: palette.primary }}>
             <Plus size={18} color={palette.onPrimary} strokeWidth={2.5} />
           </View>
         </>
@@ -107,7 +107,7 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
               <View style={{ width: 58, height: 10, borderRadius: 4, backgroundColor: palette.textStrong, marginTop: 8 }} />
             </View>
           ))}
-          <View style={{ position: "absolute", left: 78, width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: palette.primary }}>
+          <View style={{ position: "absolute", left: 78, width: 26, height: 26, borderRadius: circle(26), alignItems: "center", justifyContent: "center", backgroundColor: palette.primary }}>
             <Banknote size={15} color={palette.onPrimary} />
           </View>
         </View>
@@ -119,13 +119,13 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
               {index === 0 ? <View style={{ alignSelf: "center", width: 14, height: 3, borderRadius: 2, backgroundColor: palette.textSecondary, marginTop: 4 }} /> : null}
             </View>
           ))}
-          <View style={{ position: "absolute", left: 59, top: 8, width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: palette.primary }}>
+          <View style={{ position: "absolute", left: 59, top: 8, width: 42, height: 42, borderRadius: circle(42), alignItems: "center", justifyContent: "center", backgroundColor: palette.primary }}>
             <IconCmp size={22} color={palette.onPrimary} />
           </View>
         </View>
       )}
       {step < 5 ? (
-        <View style={{ position: "absolute", right: 12, top: 13, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: palette.primarySoft }}>
+        <View style={{ position: "absolute", right: 12, top: 13, width: 30, height: 30, borderRadius: circle(30), alignItems: "center", justifyContent: "center", backgroundColor: palette.primarySoft }}>
           <IconCmp size={16} color={palette.primaryText} />
         </View>
       ) : null}
@@ -158,7 +158,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onClose}>
       <ScrollView
-        style={{ flex: 1, backgroundColor: scrim }}
+        style={{ flex: 1, backgroundColor: palette.scrim }}
         contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -191,7 +191,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
                 accessibilityLabel={tr.a11y.tourStep(step + 1, SLIDES.length, slide.title)}
                 tabIndex={-1}
               >
-                <Text style={[type.heading, { color: palette.text, textAlign: "left", fontSize: 20 }]}>{slide.title}</Text>
+                <Text style={[type.heading, { color: palette.text, textAlign: "left", fontSize: type.heading.fontSize }]}>{slide.title}</Text>
               </View>
               <Text style={[type.body, { color: palette.textSecondary, textAlign: "left", marginTop: spacing.sm, lineHeight: 21 }]}>
                 {slide.body}

@@ -346,7 +346,7 @@ export default function AnalysisScreen() {
           />
         </View>
       </Row>
-      <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: 12 }}>
+      <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
         {searchScope === "period" ? tr.analysis.selectedPeriodRange(searchPeriodLabel) : tr.analysis.allTimeHint}
       </Body>
       </>
@@ -402,9 +402,9 @@ export default function AnalysisScreen() {
         // The strip measures its own column and asks for ₺868,9 B when the exact
         // figure will not fit, so each total keeps its own line.
         items={[
-          { label: tr.cashflow.income, value: (compact: boolean) => <Amount minor={periodDistribution.incomeTotalMinor} compact={compact} colorized={false} color={palette.positiveText} style={{ textAlign: "left" }} /> },
-          { label: tr.cashflow.expense, value: (compact: boolean) => <Amount minor={-periodDistribution.expenseTotalMinor} compact={compact} colorized={false} color={palette.negativeText} style={{ textAlign: "left" }} /> },
-          { label: tr.cashflow.transfer, value: (compact: boolean) => <Amount minor={-periodDistribution.transferTotalMinor} compact={compact} colorized={false} color={palette.secondaryText} style={{ textAlign: "left" }} /> },
+          { label: tr.cashflow.income, minor: periodDistribution.incomeTotalMinor, color: palette.positiveText },
+          { label: tr.cashflow.expense, minor: -periodDistribution.expenseTotalMinor, color: palette.negativeText },
+          { label: tr.cashflow.transfer, minor: -periodDistribution.transferTotalMinor, color: palette.secondaryText },
         ]}
       />
     </View>
@@ -430,11 +430,17 @@ export default function AnalysisScreen() {
         accessibilityRole="button"
         accessibilityHint={tr.analysis.openTransaction}
         onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
+        style={({ pressed }) => ({
+          marginHorizontal: -spacing.sm,
+          paddingHorizontal: spacing.sm,
+          borderRadius: radius.sm,
+          backgroundColor: pressed ? palette.surfaceHover : "transparent",
+        })}
       >
         <Spread style={{ paddingVertical: spacing.xs }}>
           <View style={{ flex: 1, paddingRight: spacing.sm }}>
             <Body>{catName(t.categoryId) || tr.common.none}</Body>
-            <Body muted style={{ fontSize: 12 }}>
+            <Body muted style={{ fontSize: type.small.fontSize }}>
               {transactionDateText(t)}
               {t.paymentSourceId && sourceNameById.get(t.paymentSourceId) ? ` · ${sourceNameById.get(t.paymentSourceId)}` : ""}
               {t.note ? ` · ${t.note}` : ""}
@@ -592,7 +598,7 @@ export default function AnalysisScreen() {
                  it qualifies. */
               subtitle={
                 <View style={{ alignItems: "flex-start", gap: spacing.xs }}>
-                  <Body muted style={{ fontSize: 12 }}>
+                  <Body muted style={{ fontSize: type.small.fontSize }}>
                     {tr.budgets.progress(formatMinorCompact(budget.spentMinor), formatMinorCompact(budget.amountMinor))}
                   </Body>
                   <Badge

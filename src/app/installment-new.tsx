@@ -1,7 +1,7 @@
 /** New / edit installment plan or loan (also supports mid-progress "4/6 paid" entry). */
 
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
 import { useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
@@ -13,7 +13,7 @@ import { deriveStartMonth, isValidInstallmentCount } from "../domain/installment
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Landmark, Trash2, type LucideIcon } from "lucide-react-native";
-import { Body, Button, Card, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread } from "../ui/components";
+import { Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -50,17 +50,17 @@ function InstallmentTimeline({ count, startMonth }: { count: number; startMonth:
                   style={{
                     width: 32,
                     height: 32,
-                    borderRadius: 12,
+                    borderRadius: radius.lg,
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: index === 0 ? palette.primary : palette.surfaceAlt,
                   }}
                 >
-                  <Text style={[type.small, { color: index === 0 ? palette.onPrimary : palette.text, fontFamily: font.bold, fontSize: 10 }]}>
+                  <Text style={[type.small, { color: index === 0 ? palette.onPrimary : palette.text, fontFamily: font.bold, fontSize: type.micro.fontSize }]}>
                     {index + 1}
                   </Text>
                 </View>
-                <Text style={[type.small, { color: palette.textSecondary, fontSize: 9, marginTop: 3 }]}>
+                <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize, marginTop: 3 }]}>
                   {monthLabel(month).slice(0, 3)}
                 </Text>
               </FadeIn>
@@ -69,7 +69,7 @@ function InstallmentTimeline({ count, startMonth }: { count: number; startMonth:
         })}
       </View>
       {safeCount > visibleCount ? (
-        <Body muted style={{ fontSize: 11, marginTop: spacing.xs, textAlign: "right" }}>
+        <Body muted style={{ fontSize: type.caption.fontSize, marginTop: spacing.xs, textAlign: "right" }}>
           {tr.installments.timelineMore(safeCount - visibleCount)}
         </Body>
       ) : null}
@@ -90,29 +90,9 @@ function PlanKindChoice({
 }) {
   const { palette } = useTheme();
   return (
-    <Pressable
-      accessibilityRole="radio"
-      aria-checked={selected}
-      accessibilityState={{ checked: selected, selected }}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        minWidth: 0,
-        minHeight: 78,
-        alignItems: "center",
-        justifyContent: "center",
-        gap: spacing.xs,
-        padding: spacing.sm,
-        borderRadius: radius.md,
-        borderWidth: selected ? 2 : 1,
-        borderColor: selected ? palette.primary : palette.border,
-        backgroundColor: selected ? palette.primarySoft : palette.surface,
-        opacity: pressed ? 0.76 : 1,
-      })}
-    >
+    <ChoiceTile label={label} selected={selected} onPress={onPress}>
       <Icon accessible={false} size={22} color={selected ? palette.primaryText : palette.textSecondary} strokeWidth={2.2} />
-      <Text style={[type.small, { color: selected ? palette.primaryText : palette.text, fontFamily: selected ? font.semibold : font.medium, textAlign: "center" }]}>{label}</Text>
-    </Pressable>
+    </ChoiceTile>
   );
 }
 

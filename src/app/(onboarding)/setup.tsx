@@ -67,7 +67,7 @@ function OnboardingJourney() {
         return (
           <React.Fragment key={step.label}>
             <View style={{ flex: 1, minWidth: 0, alignItems: "center" }}>
-              <View style={{ width: 42, height: 42, borderRadius: 15, backgroundColor: step.soft, alignItems: "center", justifyContent: "center" }}>
+              <View style={{ width: 42, height: 42, borderRadius: radius.lg, backgroundColor: step.soft, alignItems: "center", justifyContent: "center" }}>
                 <Icon accessible={false} size={20} color={step.color} strokeWidth={1.9} />
               </View>
               <Text style={[type.small, { color: palette.text, fontFamily: font.semibold, textAlign: "center", marginTop: spacing.xs }]}>
@@ -358,7 +358,7 @@ export default function SetupScreen() {
                 setOpeningMinor(minor);
               }}
             />
-            <Body muted style={{ fontSize: 12, marginBottom: spacing.md }}>
+            <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>
               {hasImport ? tr.onboarding.importedOpeningNote : tr.onboarding.quickDefaults(selectedTemplate.length)}
             </Body>
             <Button label={tr.onboarding.quickStart} onPress={() => void commit()} loading={busy} />
@@ -404,7 +404,7 @@ export default function SetupScreen() {
             searchable
           />
           {selectedTemplate.length === 0 ? (
-            <Body muted style={{ fontSize: 12 }}>{tr.onboarding.templateBlankNote}</Body>
+            <Body muted style={{ fontSize: type.small.fontSize }}>{tr.onboarding.templateBlankNote}</Body>
           ) : null}
         </Card>
 
@@ -563,7 +563,7 @@ export default function SetupScreen() {
           <ListRow icon={CalendarPlus} title={tr.onboarding.historyManual} subtitle={tr.onboarding.historyManualDesc} chevron onPress={() => void openImporter("manual")} />
           <ListRow icon={FileSpreadsheet} title={tr.onboarding.historyExcel} subtitle={tr.onboarding.historyExcelDesc} chevron onPress={() => void openImporter("excel")} />
           <ListRow icon={FileUp} title={tr.onboarding.historyJson} subtitle={tr.onboarding.historyJsonDesc} chevron onPress={() => void openImporter("json")} />
-          {seeded ? <Body muted style={{ fontSize: 12, marginTop: spacing.sm }}>{tr.onboarding.historySeeded}</Body> : null}
+          {seeded ? <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.sm }}>{tr.onboarding.historySeeded}</Body> : null}
         </Card>
 
         <Button label={tr.onboarding.finishStart} onPress={() => void commit()} loading={busy} />

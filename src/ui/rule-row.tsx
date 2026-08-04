@@ -16,7 +16,7 @@ import { Pressable, View } from "react-native";
 import { Pencil, Trash2, type LucideIcon } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, IconButton, Row } from "./components";
-import { controlSize, font, spacing } from "./theme";
+import { controlSize, font, radius, spacing, type, useTheme } from "./theme";
 import { shouldStackListActions } from "./responsive";
 import { useContentWidth } from "./viewport";
 
@@ -68,7 +68,7 @@ export function RuleRow({
     <View style={{ flex: 1, minWidth: 0 }}>
       <Body style={{ fontFamily: font.medium }}>{title}</Body>
       {meta ? (
-        <Body muted style={{ fontSize: 12, marginTop: 1 }}>
+        <Body muted style={{ fontSize: type.small.fontSize, marginTop: 1 }}>
           {meta}
         </Body>
       ) : null}
@@ -83,6 +83,7 @@ export function RuleRow({
   );
 
   const stackActions = shouldStackListActions(useContentWidth());
+  const { palette } = useTheme();
 
   return (
     <View style={{ flexDirection: "row", gap: spacing.md, paddingVertical: spacing.sm, alignItems: "center" }}>
@@ -92,7 +93,14 @@ export function RuleRow({
           accessibilityRole="button"
           accessibilityLabel={title}
           onPress={onPress}
-          style={{ flex: 1, minWidth: 0, justifyContent: "center", minHeight: controlSize.minimumTarget }}
+          style={({ pressed }) => ({
+            flex: 1,
+            minWidth: 0,
+            justifyContent: "center",
+            minHeight: controlSize.minimumTarget,
+            borderRadius: radius.sm,
+            backgroundColor: pressed ? palette.surfaceHover : "transparent",
+          })}
         >
           {label}
         </Pressable>
@@ -111,7 +119,7 @@ export function RuleRow({
         <View style={stackActions ? { alignItems: "flex-end" } : { alignItems: "flex-end", gap: 1 }}>
           <Amount minor={amountMinor} currency={currency} colorized={false} />
           {amountNote ? (
-            <Body muted style={{ fontSize: 12 }}>
+            <Body muted style={{ fontSize: type.small.fontSize }}>
               {amountNote}
             </Body>
           ) : null}

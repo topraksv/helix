@@ -5,8 +5,8 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check, RotateCcw, TriangleAlert } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
-import { FadeIn } from "./components";
-import { font, overlayShadow, radius, spacing, navigationInset, type, useTheme } from "./theme";
+import { SlideUp, SuccessPop } from "./motion-primitives";
+import { controlSize, font, navigationInset, radius, spacing, stateOpacity, themeShadow, type, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { haptic, selectionTap, type HapticKind } from "./haptics";
 import { runUndo } from "../domain/undo-outcome";
@@ -60,7 +60,7 @@ export function UndoSnackbar() {
     <View
       pointerEvents="box-none"
       style={{ position: "absolute", left: nav.left + spacing.lg, right: spacing.lg, bottom: nav.bottom + spacing.md, alignItems: "center" }}
-    ><FadeIn>
+    ><SlideUp>
       {/* The bar is the only confirmation some actions get, so it is announced
           rather than left as silent decoration. Polite: it reports an outcome
           the user just caused and must not interrupt what they type next. */}
@@ -75,7 +75,7 @@ export function UndoSnackbar() {
           borderRadius: radius.md,
           paddingVertical: spacing.md,
           paddingHorizontal: spacing.lg,
-          ...overlayShadow,
+          ...themeShadow.overlay(palette),
         }}
       >
         <View
@@ -84,7 +84,7 @@ export function UndoSnackbar() {
             width: 26,
             height: 26,
             flexShrink: 0,
-            borderRadius: 10,
+            borderRadius: radius.md,
             alignItems: "center",
             justifyContent: "center",
             borderWidth: StyleSheet.hairlineWidth,
@@ -92,11 +92,15 @@ export function UndoSnackbar() {
             backgroundColor: palette.background + "18",
           }}
         >
-          {tone === "warning" ? (
-            <TriangleAlert size={14} color={palette.background} />
-          ) : (
-            <Check size={15} color={palette.background} strokeWidth={2.5} />
-          )}
+          {/* The mark lands rather than appears. For most deletes this bar is
+              the only confirmation the action happened at all. */}
+          <SuccessPop>
+            {tone === "warning" ? (
+              <TriangleAlert size={14} color={palette.background} />
+            ) : (
+              <Check size={15} color={palette.background} strokeWidth={2.5} />
+            )}
+          </SuccessPop>
         </View>
         <Text style={[type.body, { color: palette.background, flexShrink: 1 }]}>{message}</Text>
         {onUndo ? (
@@ -120,20 +124,27 @@ export function UndoSnackbar() {
               useUndo.getState().show(message, onUndo, "warning");
               void appAlert(tr.errors.undoFailed, tr.errors.title);
             }}
-            hitSlop={8}
+            style={({ pressed }) => ({
+              minHeight: controlSize.minimumTarget,
+              justifyContent: "center",
+              paddingHorizontal: spacing.sm,
+              marginHorizontal: -spacing.sm,
+              borderRadius: radius.sm,
+              opacity: pressed ? stateOpacity.pressed : 1,
+            })}
           >
             {/* Inverted surface: the action shares the message's ink (an accent
                 role would land near-invisible on `palette.text`) and is set
                 apart by weight instead of colour. */}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
               <RotateCcw accessible={false} size={14} color={palette.background} />
-              <Text style={[type.label, { color: palette.background, fontFamily: font.bold, fontSize: 15 }]}>
+              <Text style={[type.label, { color: palette.background, fontFamily: font.bold, fontSize: type.body.fontSize }]}>
                 {tr.common.undo}
               </Text>
             </View>
           </Pressable>
         ) : null}
       </View>
-    </FadeIn></View>
+    </SlideUp></View>
   );
 }

@@ -23,7 +23,6 @@ export function HeaderBackButton({ fallback }: { fallback: Href }) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={tr.common.back}
-      hitSlop={4}
       onPress={() => navigateBack(router, fallback)}
       style={({ pressed }) => ({
         width: controlSize.minimumTarget,

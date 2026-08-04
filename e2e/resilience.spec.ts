@@ -204,7 +204,7 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   // One real persisted payment source, so the source filter is exercised
   // against an actual option rather than mocked component state.
   await page.goto("/helix/settings/payment-sources");
-  await page.getByRole("textbox", { name: "Yöntem Ekle" }).fill("Günlük Hesap");
+  await page.getByRole("textbox", { name: "Yöntem adı" }).fill("Günlük Hesap");
   await page.getByRole("radio", { name: "Nakit", exact: true }).click();
   await page.getByRole("button", { name: "Ekle", exact: true }).click();
   await expect(page.getByText("Günlük Hesap", { exact: true })).toBeVisible();
@@ -243,13 +243,13 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
 
   await page.goto("/helix/settings/incomes");
   await page.getByRole("textbox", { name: "Başlık" }).fill("Uzun Açıklamalı Aylık Düzenli Maaş Geliri");
-  await page.getByRole("textbox", { name: "Varsayılan Tutar" }).fill("42.500,00");
+  await page.getByRole("textbox", { name: "Varsayılan tutar" }).fill("42.500,00");
   const monthEnd = page.getByRole("radio", { name: "Ayın sonu", exact: true });
   await monthEnd.click();
   await expect(monthEnd).toHaveAttribute("aria-checked", "true");
   // Keep the layout fixture inside the dashboard's three-day preview window;
   // month-end recurrence itself is covered by the domain leap/short-month test.
-  await page.getByRole("textbox", { name: "Ödeme Günü", exact: true }).fill("20");
+  await page.getByRole("textbox", { name: "Ödeme günü", exact: true }).fill("20");
   await page.getByRole("button", { name: "Gelir Kuralı Ekle", exact: true }).click();
   await expect(page.getByText("Uzun Açıklamalı Aylık Düzenli Maaş Geliri", { exact: true })).toBeVisible();
 
@@ -279,7 +279,7 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   await page.goto("/helix/cash-flow/analytics");
   await page.getByRole("textbox", { name: "Ara", exact: true }).fill("Arşivde olmayan işlem");
   await expect(page.getByText("Eşleşen işlem yok.", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Tüm zamanlarda ara", exact: true }).click();
+  await page.getByRole("button", { name: "Tüm Zamanlarda Ara", exact: true }).click();
   await expect(page.getByRole("button", { name: "Filtreleri gizle", exact: true })).toHaveAttribute("aria-expanded", "true");
   await page.getByRole("button", { name: "Arama dönemi", exact: true }).click();
   await expect(page.getByRole("radio", { name: "Tüm zamanlar", exact: true })).toHaveAttribute("aria-checked", "true");

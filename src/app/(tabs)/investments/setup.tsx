@@ -13,7 +13,7 @@ import { Body, Button, Card, DataStateNotice, MoneyField, PanelHeader, Screen } 
 import { appAlert } from "../../../ui/dialog";
 import { navigateBack } from "../../../ui/navigation";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
-import { radius, spacing, type, useTheme } from "../../../ui/theme";
+import { circle, radius, spacing, type, useTheme } from "../../../ui/theme";
 
 export default function InvestmentSetupScreen() {
   const router = useRouter();
@@ -72,7 +72,7 @@ export default function InvestmentSetupScreen() {
                     style={{
                       width: 48,
                       height: 48,
-                      borderRadius: 24,
+                      borderRadius: circle(48),
                       alignItems: "center",
                       justifyContent: "center",
                       backgroundColor: step.active ? palette.primary : palette.surfaceAlt,
@@ -80,7 +80,7 @@ export default function InvestmentSetupScreen() {
                   >
                     <Icon size={21} color={step.active ? palette.onPrimary : palette.textSecondary} />
                   </View>
-                  <Text style={[type.small, { color: step.active ? palette.primaryText : palette.textSecondary, textAlign: "center", fontSize: 10 }]}>
+                  <Text style={[type.small, { color: step.active ? palette.primaryText : palette.textSecondary, textAlign: "center", fontSize: type.micro.fontSize }]}>
                     {step.label}
                   </Text>
                 </View>

@@ -1,7 +1,7 @@
 import React from "react";
 import { tr } from "../i18n/tr";
 import { Body, ChipPicker, Label } from "./components";
-import { spacing } from "./theme";
+import { spacing, type } from "./theme";
 
 interface AssignablePerson {
   id: string;
@@ -36,7 +36,7 @@ export function PersonAssignment({
   }
 
   return (
-    <Body testID="person-assignment-hint" muted style={{ fontSize: 12, marginBottom: spacing.md }}>
+    <Body testID="person-assignment-hint" muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}>
       {tr.persons.soloAssignmentHint}
     </Body>
   );

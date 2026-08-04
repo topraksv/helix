@@ -25,6 +25,8 @@ import { kv } from "../services/kv";
 import {
   controlSize,
   darkPalette,
+  spacing,
+  stateOpacity,
   resolvePaletteId,
   lightPalette,
   PALETTES,
@@ -176,7 +178,12 @@ export default function RootLayout() {
                   setDbReady(false);
                   setAttempt((a) => a + 1);
                 }}
-                style={{ minHeight: controlSize.minimumTarget, paddingHorizontal: 16, justifyContent: "center" }}
+                style={({ pressed }) => ({
+                  minHeight: controlSize.minimumTarget,
+                  paddingHorizontal: spacing.lg,
+                  justifyContent: "center",
+                  opacity: pressed ? stateOpacity.pressed : 1,
+                })}
               >
                 <Text style={{ color: primaryForeground, fontWeight: "600" }}>{tr.common.retry}</Text>
               </Pressable>

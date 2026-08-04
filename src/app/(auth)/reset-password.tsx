@@ -9,7 +9,7 @@ import { tr } from "../../i18n/tr";
 import { DelayedLoadingIndicator } from "../../ui/loading-indicator";
 import { Body, Button, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
-import { radius, spacing, type, useTheme } from "../../ui/theme";
+import { circle, radius, spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
 
 type RecoveryState = "checking" | "ready" | "expired" | "invalid" | "success";
@@ -86,7 +86,7 @@ export default function ResetPasswordScreen() {
     return (
       <Screen scroll={false} width="focus">
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md }}>
-          <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: (success ? palette.success : palette.error) + "16" }}>
+          <View style={{ width: 56, height: 56, borderRadius: circle(56), alignItems: "center", justifyContent: "center", backgroundColor: (success ? palette.success : palette.error) + "16" }}>
             {success ? <CheckCircle2 accessible={false} size={28} color={palette.success} /> : <AlertCircle accessible={false} size={28} color={palette.error} />}
           </View>
           <Text
@@ -113,7 +113,7 @@ export default function ResetPasswordScreen() {
   return (
     <Screen width="focus">
       <View style={{ paddingVertical: spacing.xxl }}>
-        <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: palette.primary + "16", marginBottom: spacing.lg }}>
+        <View style={{ width: 56, height: 56, borderRadius: circle(56), alignItems: "center", justifyContent: "center", backgroundColor: palette.primary + "16", marginBottom: spacing.lg }}>
           <KeyRound accessible={false} size={27} color={palette.primary} />
         </View>
         <Text accessibilityRole="header" style={[type.heading, { color: palette.text, marginBottom: spacing.xs }]}>{tr.auth.resetTitle}</Text>
