@@ -868,8 +868,13 @@ test("lifecycle confirmations carry the operation context after the action", asy
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(page.getByTestId("operation-dialog-header")).toHaveCount(0);
 
-  const deleteCard = page.getByTestId("account-delete-card");
-  const deleteAction = deleteCard.getByTestId("account-delete-action");
+  // A CLOUD account ends on Account Security, beside the reversible version of
+  // the same decision — asserted in `tests/operation-guard.test.ts`, because
+  // this export runs local-only and that screen redirects away. What a
+  // local-only workspace has is this one row, here, and the dialog it opens is
+  // the same one.
+  const deleteAction = page.getByTestId("account-delete-action");
+  await expect(deleteAction).toBeVisible();
   expect((await deleteAction.boundingBox())!.height).toBeLessThan(90);
   await expect(deleteAction.getByRole("button", { name: /Hesabı sil/i })).toBeVisible();
   await deleteAction.getByRole("button", { name: /Hesabı sil/i }).click();
@@ -1439,25 +1444,30 @@ test("paired month-day fields keep one baseline when a day is taken", async ({ p
     const [a, b] = await Promise.all([statement.boundingBox(), due.boundingBox()]);
     return { statement: Math.round(a!.y), due: Math.round(b!.y) };
   };
-  const chips = page.getByRole("radio", { name: "Ayın sonu" });
-  await expect(chips).toHaveCount(2);
-  const widths = async () =>
-    chips.evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().width)));
+  // The month end is its own explained control per field, so each carries the
+  // field's name — which is also why there are no longer two radios sharing
+  // one label.
+  const statementEnd = page.getByRole("radio", { name: "Ekstre kesim günü · Ayın son günü", exact: true });
+  const dueEnd = page.getByRole("radio", { name: "Son ödeme günü · Ayın son günü", exact: true });
+  await expect(statementEnd).toHaveCount(1);
+  await expect(dueEnd).toHaveCount(1);
+  const widths = async () => Promise.all(
+    [statementEnd, dueEnd].map(async (chip) => Math.round((await chip.boundingBox())!.width)),
+  );
 
   const before = await baselines();
   expect(before.statement, "the paired inputs start on one line").toBe(before.due);
   const widthsBefore = await widths();
 
-  await chips.first().click();
-  await expect(chips.first()).toHaveAttribute("aria-checked", "true");
+  await statementEnd.click();
+  await expect(statementEnd).toHaveAttribute("aria-checked", "true");
 
   const after = await baselines();
   expect(after.statement, "choosing a day keeps both inputs on one line").toBe(after.due);
   expect(await widths(), "a chosen chip is the same size as an unchosen one").toEqual(widthsBefore);
 
   // The day the other field now owns is still on screen and still refused.
-  const taken = chips.nth(1);
-  await expect(taken).toHaveAttribute("aria-disabled", "true");
+  await expect(dueEnd).toHaveAttribute("aria-disabled", "true");
 });
 
 /**

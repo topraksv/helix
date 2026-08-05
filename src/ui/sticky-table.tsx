@@ -626,7 +626,14 @@ export function StickyTable({
                   key={r.key}
                   style={{
                     flexDirection: "row",
-                    minHeight: resolvedRowHeights[ri],
+                    // `height`, not `minHeight`: the label half owns the row's
+                    // size (it is the half that can wrap and the half that
+                    // measures itself), and the body half takes exactly that.
+                    // With both free to grow, a body cell a fraction taller than
+                    // the label's estimate made the two halves disagree by a
+                    // pixel — every row, so the first column and the months
+                    // beside it were very slightly out of step all the way down.
+                    height: resolvedRowHeights[ri],
                     backgroundColor: rowBg(ri, r.rowHighlight),
                     borderBottomWidth: ri === rows.length - 1 ? 0 : 1,
                     borderColor: palette.border,

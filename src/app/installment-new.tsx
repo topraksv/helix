@@ -4,16 +4,16 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
-import { useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
+import { useAllTransactionsState, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
-import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
+import { deriveStartMonth, isValidInstallmentCount, planProgress, type GeneratedInstallment } from "../domain/installments";
 import { formatMinor } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Landmark, Trash2, type LucideIcon } from "lucide-react-native";
-import { Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
@@ -115,6 +115,63 @@ export default function PlanModal() {
     return <Redirect href="/(tabs)/cash-flow/installments" />;
   }
   return <PlanForm key={existing?.id ?? "new"} existing={existing} />;
+}
+
+/**
+ * What the plan being edited has actually done so far.
+ *
+ * Opening "edit" on a running plan showed an empty form with the same words as
+ * "new": you could not see which month you were in, how many instalments had
+ * been paid or what was left, so there was nothing to edit AGAINST. The rows
+ * are the plan's own transactions, exactly as the list screen reads them.
+ */
+function PlanState({ planId }: { planId: string }) {
+  const transactionsState = useAllTransactionsState();
+  const items: GeneratedInstallment[] = transactionsState.data
+    .filter((t) => t.installmentPlanId === planId && t.installmentNo != null)
+    .map((t) => ({
+      installmentNo: t.installmentNo!,
+      month: monthKeyOf(t.effectiveDate),
+      amountMinor: t.amountTryMinor,
+      effectiveDate: t.effectiveDate,
+      status: t.status,
+    }))
+    .sort((a, b) => a.installmentNo - b.installmentNo);
+  if (items.length === 0) return null;
+  const progress = planProgress(items);
+  const finished = progress.remaining === 0;
+  const current = items.find((item) => item.status === "pending");
+  return (
+    <Card>
+      <PanelHeader
+        icon={CalendarRange}
+        tone={finished ? "success" : "primary"}
+        title={tr.installments.planStateTitle}
+        description={tr.installments.planStateHint}
+        right={<Badge tone={finished ? "success" : "muted"} text={tr.installments.progress(progress.paid, progress.total)} />}
+      />
+      <SegmentBar ratio={progress.paid / Math.max(progress.total, 1)} segments={progress.total} height={8} />
+      <MetricStrip
+        items={[
+          {
+            label: tr.installments.currentInstallment,
+            node: (
+              <Body style={{ fontFamily: font.semibold }}>
+                {current ? tr.installments.nthOfTotal(current.installmentNo, progress.total) : tr.installments.allPaid}
+              </Body>
+            ),
+          },
+          { label: tr.installments.monthlyAmount, minor: progress.monthlyMinor },
+          { label: tr.installments.remainingAmount, minor: progress.remainingMinor },
+        ]}
+      />
+      <Body muted style={{ marginTop: spacing.md }}>
+        {current
+          ? tr.installments.currentMonthLine(monthLabel(current.month), monthLabel(progress.endMonth))
+          : tr.installments.finishedLine(monthLabel(progress.endMonth))}
+      </Body>
+    </Card>
+  );
 }
 
 function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["data"][number] }) {
@@ -266,6 +323,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
     <Screen width="workspace">
       <Stack.Screen options={{ title: isEdit ? tr.installments.editTitle : tr.installments.newTitle }} />
       <DataStateNotice status={dataStatus} retry={retryData} />
+      {existing ? <PlanState planId={existing.id} /> : null}
       <WorkspaceSplit
         testID="installment-form-workspace"
         primary={(

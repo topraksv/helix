@@ -29,7 +29,7 @@ import {
 import { InitialsBadge } from "./components";
 import { font } from "./theme";
 import { BRAND, brandPlate } from "./brand-colors";
-import { normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
+import { foldForMatch, nameMentions, normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** One shared frameless tile: near-square, rounded, no border — every variant
  *  (favicon, utility icon, brand chip, initials) renders in this exact shape
@@ -60,18 +60,26 @@ function tileStyle(size: number) {
 const FAVICON_FILL = 0.82;
 
 /** Utility/service keywords → icon + accent (checked before brand lookup). */
+/**
+ * The things people subscribe to that are not brands.
+ *
+ * Patterns are matched against the FOLDED name (`foldForMatch`), so they are
+ * written in plain lowercase ASCII and still match "İnternet", "Doğalgaz" and
+ * "İSKİ". Any mention is enough: "internet aboneliği", "Ev interneti" and
+ * "İNTERNET" all resolve to the same icon, which is what the owner asked for.
+ */
 const UTILITY_ICONS: { match: RegExp; icon: LucideIcon; color: string }[] = [
-  { match: /elektrik|enerji/i, icon: Zap, color: "#eda100" },
-  { match: /\bsu\b|iski/i, icon: Droplets, color: "#2a78d6" },
-  { match: /do[gğ]algaz|\bgaz\b/i, icon: Flame, color: "#eb6834" },
-  { match: /internet|fiber|adsl/i, icon: Wifi, color: "#4a3aa7" },
-  { match: /telefon|gsm|hat\b/i, icon: Phone, color: "#1baf7a" },
-  { match: /aidat|site\b|apartman/i, icon: Building2, color: "#5d6579" },
-  { match: /sigorta|kasko|dask/i, icon: Shield, color: "#008300" },
-  { match: /okul|kurs|e[gğ]itim/i, icon: GraduationCap, color: "#d55181" },
-  { match: /spor|fitness|gym/i, icon: Dumbbell, color: "#e34948" },
-  { match: /araç|otopark|hgs|ogs/i, icon: Car, color: "#2a78d6" },
-  { match: /çöp|belediye/i, icon: Trash2, color: "#5d6579" },
+  { match: /elektrik|enerji|bedas|ayedas|enerjisa|ck enerji|aydem|uedas/, icon: Zap, color: "#eda100" },
+  { match: /\bsu\b|sular|iski|aski|baski|izsu|buski|mueski|musku/, icon: Droplets, color: "#2a78d6" },
+  { match: /dogalgaz|\bgaz\b|igdas|izmirgaz|baskentgaz|bursagaz|aksa gaz|palgaz/, icon: Flame, color: "#eb6834" },
+  { match: /internet|fiber|adsl|wifi|superonline|turknet|millenicom|vodafone net|d-smart net/, icon: Wifi, color: "#4a3aa7" },
+  { match: /telefon|gsm|\bhat\b|mobil hat|faturali hat/, icon: Phone, color: "#1baf7a" },
+  { match: /aidat|\bsite\b|apartman|yonetim/, icon: Building2, color: "#5d6579" },
+  { match: /sigorta|kasko|dask|bes\b|emeklilik/, icon: Shield, color: "#008300" },
+  { match: /okul|kurs|egitim|universite|yurt\b/, icon: GraduationCap, color: "#d55181" },
+  { match: /spor|fitness|gym|salon|pilates|yoga/, icon: Dumbbell, color: "#e34948" },
+  { match: /arac|otopark|hgs|ogs|kiralama|servis ucreti/, icon: Car, color: "#2a78d6" },
+  { match: /cop|belediye|temizlik/, icon: Trash2, color: "#5d6579" },
 ];
 
 /**
@@ -170,7 +178,7 @@ const BRAND_DOMAIN: Record<string, string> = {
   podimo: "podimo.com",
   turkcell: "turkcell.com.tr",
   vodafone: "vodafone.com.tr",
-  "türk telekom": "turktelekom.com.tr",
+  "turk telekom": "turktelekom.com.tr",
   turktelekom: "turktelekom.com.tr",
   strava: "strava.com",
   macfit: "macfit.com.tr",
@@ -189,15 +197,80 @@ const BRAND_DOMAIN: Record<string, string> = {
   hepsiburada: "hepsiburada.com",
   getir: "getir.com",
   yemeksepeti: "yemeksepeti.com",
+  "puhutv": "puhutv.com",
+  "d-smart": "dsmart.com.tr",
+  "dsmart": "dsmart.com.tr",
+  "digiturk": "digiturk.com.tr",
+  "tivibu": "tivibu.com.tr",
+  "superonline": "superonline.net",
+  "turknet": "turk.net",
+  "millenicom": "millenicom.com.tr",
+  "migros": "migros.com.tr",
+  "a101": "a101.com.tr",
+  "carrefoursa": "carrefoursa.com",
+  "bim": "bim.com.tr",
+  "sok": "sokmarket.com.tr",
+  "bip": "bip.com",
+  "papara": "papara.com",
+  "ininal": "ininal.com",
+  "marti": "marti.tech",
+  "bisu": "bisu.com.tr",
+  "spotify premium": "spotify.com",
+  "apple one": "apple.com",
+  "apple arcade": "apple.com",
+  "coursera": "coursera.org",
+  "udemy": "udemy.com",
+  "skillshare": "skillshare.com",
+  "grammarly": "grammarly.com",
+  "trello": "trello.com",
+  "atlassian": "atlassian.com",
+  "vercel": "vercel.com",
+  "cloudflare": "cloudflare.com",
+  "substack": "substack.com",
+  "headspace": "headspace.com",
+  "calm": "calm.com",
+  "proton": "proton.me",
+  "protonmail": "proton.me",
+  "mega": "mega.nz",
+  "lastpass": "lastpass.com",
+  "norton": "norton.com",
+  "kaspersky": "kaspersky.com",
+  "malwarebytes": "malwarebytes.com",
+  "wetransfer": "wetransfer.com",
+  "kindle": "amazon.com",
+  "shazam": "shazam.com",
+  "pinterest": "pinterest.com",
+  "meta": "meta.com",
+  "instagram": "instagram.com",
+  "whatsapp": "whatsapp.com",
+  "uber": "uber.com",
+  "bolt": "bolt.eu",
+  "booking": "booking.com",
 };
 
 /** Resolve the domain to fetch a favicon from (explicit override or a brand). */
+/**
+ * The catalogue entry a name refers to.
+ *
+ * Whole name, then first word, then any brand mentioned as a whole word inside
+ * it — "Ailem için Netflix" is a Netflix subscription, and "maximum" is not
+ * Max. Longest key first, so "youtube music" wins over "youtube".
+ */
+function catalogueKey<T>(name: string, table: Record<string, T>): T | null {
+  const key = foldForMatch(name);
+  if (table[key] != null) return table[key]!;
+  const firstWord = key.split(/\s+/)[0];
+  if (firstWord && table[firstWord] != null) return table[firstWord]!;
+  const mentioned = Object.keys(table)
+    .filter((entry) => entry.length >= 3 && nameMentions(name, entry))
+    .sort((a, b) => b.length - a.length)[0];
+  return mentioned != null ? table[mentioned]! : null;
+}
+
 function domainFor(name: string, override?: string | null): string | null {
   const normalizedOverride = normalizeLogoDomain(override);
   if (normalizedOverride) return normalizedOverride;
-  const key = name.trim().toLocaleLowerCase("tr-TR");
-  const firstWord = key.split(/\s+/)[0];
-  return BRAND_DOMAIN[key] ?? (firstWord ? BRAND_DOMAIN[firstWord] : undefined) ?? null;
+  return catalogueKey(name, BRAND_DOMAIN);
 }
 
 export function Logo({
@@ -211,10 +284,11 @@ export function Logo({
 }) {
   const [failedDomain, setFailedDomain] = useState<string | null>(null);
 
-  const utility = UTILITY_ICONS.find((u) => u.match.test(name));
-  const key = name.trim().toLocaleLowerCase("tr-TR");
-  const firstWord = key.split(/\s+/)[0];
-  const brand = BRAND[key] ?? (firstWord ? BRAND[firstWord] : undefined) ?? null;
+  const folded = foldForMatch(name);
+  const brand = catalogueKey(name, BRAND);
+  // A brand wins over a utility word: "Vodafone" is a brand chip even though
+  // its name mentions a phone line, and "Netflix" is not a "site" aidatı.
+  const utility = brand ? undefined : UTILITY_ICONS.find((u) => u.match.test(folded));
   // A utility (electricity/water/…) keeps its themed icon; other known public
   // domains load transparently and fall back locally on any network error.
   const faviconDomain = utility ? null : domainFor(name, domain);

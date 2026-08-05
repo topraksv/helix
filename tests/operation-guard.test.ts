@@ -120,7 +120,16 @@ describe("operation progress language", () => {
     expect(settings).not.toContain("ActionBadge");
     expect(settings).toContain('testID="account-sign-out-action"');
     expect(settings).toContain('operation: "sign-out"');
-    expect(settings).toContain('testID="account-delete-action"');
+    // Deleting a CLOUD account lives beside freezing it — the two ways an
+    // account ends belong together rather than a screen apart. A local-only
+    // workspace has no Account Security screen at all (no password, no e-mail,
+    // nothing to freeze), so its one ending stays in Settings and is gated on
+    // exactly that.
+    expect(accountSecurity).toContain('testID="account-delete-action"');
+    expect(accountSecurity).toContain('testID="account-freeze-action"');
+    expect(settings).toContain("{!isSupabaseConfigured ? (");
+    const localOnlyDelete = settings.slice(settings.indexOf("{!isSupabaseConfigured ? ("));
+    expect(localOnlyDelete).toContain('testID="account-delete-action"');
     expect(accountSecurity).not.toContain("ActionBadge");
     expect(accountSecurity).toContain("chevron={!freezing}");
     expect(accountSecurity).toContain("onPress={freezing ? undefined :");

@@ -244,7 +244,7 @@ test("follow-up controls stay understandable on a narrow phone", async ({ page }
   await page.goto("/helix/settings/incomes");
   await page.getByRole("textbox", { name: "Başlık" }).fill("Uzun Açıklamalı Aylık Düzenli Maaş Geliri");
   await page.getByRole("textbox", { name: "Varsayılan tutar" }).fill("42.500,00");
-  const monthEnd = page.getByRole("radio", { name: "Ayın sonu", exact: true });
+  const monthEnd = page.getByRole("radio", { name: "Ödeme günü · Ayın son günü", exact: true });
   await monthEnd.click();
   await expect(monthEnd).toHaveAttribute("aria-checked", "true");
   // Keep the layout fixture inside the dashboard's three-day preview window;

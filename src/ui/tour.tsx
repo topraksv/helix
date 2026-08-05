@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { Banknote, CalendarCheck, ChartPie, CloudUpload, Landmark, Plus, PlusCircle, Table2, type LucideIcon } from "lucide-react-native";
+import { Banknote, CalendarCheck, ChartPie, CloudUpload, Landmark, Plus, PlusCircle, Table2, TrendingUp, type LucideIcon } from "lucide-react-native";
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";
@@ -111,6 +111,27 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
             <Banknote size={15} color={palette.onPrimary} />
           </View>
         </View>
+      ) : step === 5 ? (
+        // Investments: holdings of different sizes and a total that moved.
+        // This used to fall through to the two-device frame below, so the
+        // portfolio slide and the sync slide were the same drawing with a
+        // different badge on it.
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 9 }}>
+          {[{ h: 30, tone: palette.secondary }, { h: 52, tone: palette.primary }, { h: 40, tone: palette.tertiary }, { h: 66, tone: palette.primary }].map(({ h, tone }, index) => (
+            <View key={index} style={{ alignItems: "center", gap: 5 }}>
+              <View style={{ width: 20, height: h, borderRadius: radius.sm, backgroundColor: tone }} />
+              <View style={{ width: 20, height: 3, borderRadius: 2, backgroundColor: palette.surfaceStrong }} />
+            </View>
+          ))}
+          <View style={{ marginLeft: spacing.sm, alignItems: "flex-start", gap: 5 }}>
+            <View style={{ width: 46, height: 5, borderRadius: 3, backgroundColor: palette.textSecondary }} />
+            <View style={{ width: 62, height: 12, borderRadius: 4, backgroundColor: palette.textStrong }} />
+            <Row gap={4}>
+              <TrendingUp size={13} color={palette.positiveText} strokeWidth={2.4} />
+              <View style={{ width: 30, height: 4, borderRadius: 2, backgroundColor: palette.positive }} />
+            </Row>
+          </View>
+        </View>
       ) : (
         <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.xl }}>
           {[{ w: 52, h: 76 }, { w: 92, h: 62 }].map(({ w, h }, index) => (
@@ -124,7 +145,7 @@ function TourArtwork({ step, icon: IconCmp }: { step: number; icon: LucideIcon }
           </View>
         </View>
       )}
-      {step < 5 ? (
+      {step < 6 ? (
         <View style={{ position: "absolute", right: 12, top: 13, width: 30, height: 30, borderRadius: circle(30), alignItems: "center", justifyContent: "center", backgroundColor: palette.primarySoft }}>
           <IconCmp size={16} color={palette.primaryText} />
         </View>
@@ -180,7 +201,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
               borderColor: palette.border + "70",
             }}
           >
-            <FadeIn key={step}>
+            <FadeIn key={step} rise={false}>
               <TourArtwork step={step} icon={IconCmp} />
             <View style={{ minHeight: 136, justifyContent: "flex-start", paddingTop: spacing.lg }}>
               <View

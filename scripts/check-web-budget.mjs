@@ -18,9 +18,18 @@ const root = process.argv[2] ?? "dist";
 // axis. That is +58k entry and +58k total against the line above, which the
 // entry ceiling still covered and the total ceiling missed by 1_632 bytes.
 // Both move once, together, keeping the same narrow headroom.
+//
+// The reported-defects pass measured 5_068_245 entry / 5_697_427 total: a live
+// plan-state panel on the instalment editor, the shared segmented progress bar,
+// the month-end control, the ranked allocation bars, the web view-transition
+// path and 49 more brands in the subscription catalogue. That left 2_573 bytes
+// under the total ceiling — narrow is the point, but a ceiling the next
+// one-line change trips is a ceiling that stops being read. Total moves to
+// 5_760_000, which is the measured figure plus the same ~1% of slack the entry
+// ceiling carries; entry stays where it is because it did not move much.
 const limits = {
   entryJavaScript: 5_090_000,
-  totalJavaScript: 5_700_000,
+  totalJavaScript: 5_760_000,
   totalExport: 10_000_000,
   fontFiles: 6,
   fontBytes: 1_600_000,

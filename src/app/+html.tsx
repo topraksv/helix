@@ -70,7 +70,15 @@ export default function Root({ children }: PropsWithChildren) {
               // was actually selectable. `#root *` outranks that class, and
               // `#root input` outranks `#root *` so fields keep their caret.
               "#root,#root *{-webkit-user-select:none;user-select:none;}" +
-              "#root input,#root textarea{-webkit-user-select:text;user-select:text;}",
+              "#root input,#root textarea{-webkit-user-select:text;user-select:text;}" +
+              // Theme and palette changes cross-fade the real pixels through
+              // the View Transitions API (see `ui/theme-transition.ts`). The
+              // browser default is a 250ms fade; half a second reads as a
+              // deliberate change of light rather than a repaint. Both layers
+              // are drawn at once — the default `-old` on top would darken the
+              // midpoint on a light-to-dark change.
+              "::view-transition-old(root),::view-transition-new(root){animation-duration:520ms;animation-timing-function:cubic-bezier(0.4,0,0.2,1);mix-blend-mode:normal;}" +
+              "@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation-duration:1ms;}}",
           }}
         />
         {/* Register the offline service worker only under the deployed /helix/

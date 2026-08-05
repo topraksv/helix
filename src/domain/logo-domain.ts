@@ -1,5 +1,40 @@
 /** Strict URL construction for optional remote subscription favicons. */
 
+const TURKISH_FOLD: Record<string, string> = {
+  "ı": "i", "İ": "i", "ş": "s", "Ş": "s", "ğ": "g", "Ğ": "g",
+  "ü": "u", "Ü": "u", "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
+};
+
+/**
+ * One spelling to match a subscription's name against.
+ *
+ * `/internet/i` returns FALSE for "İnternet aboneliği". Without the `u` flag a
+ * JavaScript regex canonicalises by `toUpperCase`, and dotted capital İ upper-
+ * cases to itself while `i` upper-cases to `I` — so every utility a Turkish
+ * user actually types with a capital was left without its icon. The accents go
+ * too, so a pattern can be written in plain ASCII once and still match
+ * "Doğalgaz", "İSKİ" and "Isıtma".
+ */
+export function foldForMatch(value: string): string {
+  return value
+    .trim()
+    .replace(/[ıİşŞğĞüÜöÖçÇ]/g, (character) => TURKISH_FOLD[character] ?? character)
+    .toLowerCase();
+}
+
+/** Whether `needle` appears in `name` as a whole word, both folded. */
+export function nameMentions(name: string, needle: string): boolean {
+  const folded = foldForMatch(name);
+  const target = foldForMatch(needle);
+  if (!target) return false;
+  const index = folded.indexOf(target);
+  if (index < 0) return false;
+  const before = folded[index - 1];
+  const after = folded[index + target.length];
+  const isWordCharacter = (character: string | undefined) => character != null && /[a-z0-9]/.test(character);
+  return !isWordCharacter(before) && !isWordCharacter(after);
+}
+
 const NON_PUBLIC_SUFFIXES = [
   ".home",
   ".internal",

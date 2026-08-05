@@ -855,6 +855,11 @@ export function Bars({
                         <Text style={[type.small, { color: palette.textSecondary }]}>
                           {item?.label ?? seriesIndex + 1}
                         </Text>
+                        {/* Reserved, so a figure that shrank to fit its column
+                            still occupies a full line. Without it the three
+                            totals under a filtered month ended at three
+                            slightly different heights — the smaller the figure
+                            the higher it sat. */}
                         {/* The one money primitive, not a bespoke `Text`.
                             It owns both answers to a figure that will not fit:
                             abbreviate to ₺868,9 B when the column is narrow,
@@ -862,6 +867,7 @@ export function Bars({
                             still wraps. Written by hand here, a three-column
                             month with kuruş broke onto a second line on a
                             phone. */}
+                        <View style={{ minHeight: Math.round(type.amount.fontSize * 1.4), justifyContent: "flex-end" }}>
                         <Amount
                           testID="bar-value-label"
                           minor={value}
@@ -870,6 +876,7 @@ export function Bars({
                           color={palette.text}
                           style={{ textAlign: groups.length === 1 ? "left" : "center" }}
                         />
+                        </View>
                       </View>
                     </View>
                   );

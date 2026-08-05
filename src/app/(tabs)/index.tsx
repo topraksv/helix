@@ -850,6 +850,7 @@ export default function DashboardScreen() {
                       size="sm"
                       label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                       variant="secondary"
+                      tone={e.direction === "in" ? "positive" : "primary"}
                       loading={confirmingId === e.id}
                       disabled={confirmingId != null}
                       onPress={() => setPaying(e)}
@@ -871,6 +872,7 @@ export default function DashboardScreen() {
                       size="sm"
                       label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                       variant="secondary"
+                      tone={u.direction === "in" ? "positive" : "primary"}
                       loading={confirmingId === u.expectedId}
                       disabled={confirmingId != null}
                       onPress={() => {

@@ -27,8 +27,8 @@ import {
   Flag,
   Target,
   ScanFace,
-  Trash2,
   Sun,
+  Trash2,
   Users,
   Wallet,
   Wrench,
@@ -53,7 +53,7 @@ import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { dateLabel, dateTimeLabel, tr } from "../../../i18n/tr";
 import { Body, Button, Card, ChoiceTile, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
-import { appAlert, appConfirm, appPrompt } from "../../../ui/dialog";
+import { appAlert, appConfirm } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
 import { circle, font, PALETTES, radius, spacing, type, type Palette, type ThemePreference, useTheme } from "../../../ui/theme";
 import { selectionTapIfChanged } from "../../../ui/haptics";
@@ -61,7 +61,7 @@ import { todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
-import { OperationFlow, type OperationFlowKind } from "../../../ui/operation-flow";
+import { OperationFlow } from "../../../ui/operation-flow";
 import { clearLifecycleIntent, setLifecycleIntent } from "../../../ui/lifecycle-intent";
 
 function ThemeChoice({
@@ -280,7 +280,7 @@ function AccountActionRow({
 
 export default function SettingsScreen() {
   const userId = useUserId();
-  const { signOut, deleteAccount, verifyPassword } = useSession();
+  const { signOut, deleteAccount } = useSession();
   const settingsState = useSettingsMapState();
   const settings = settingsState.data;
   const sync = useSyncStatus();
@@ -470,48 +470,24 @@ export default function SettingsScreen() {
     });
   };
 
-  // Re-auth gate for sensitive actions. Only meaningful with a cloud account;
-  // local-only mode has no password, so it passes through.
-  const confirmWithPassword = async (message: string, confirmLabel: string, operation: OperationFlowKind): Promise<boolean> => {
-    if (!isSupabaseConfigured) return true;
-    const pw = await appPrompt(tr.account.confirmPasswordTitle, message, {
-      secure: true,
-      placeholder: tr.auth.password,
-      confirmLabel,
-      danger: true,
-      operation,
-    });
-    if (pw == null) return false;
-    const verifyError = await verifyPassword(pw);
-    if (verifyError) {
-      void appAlert(verifyError, tr.errors.title);
-      return false;
-    }
-    return true;
-  };
-
   const [deleting, setDeleting] = useState(false);
   const handleDeleteAccount = async () => {
     if (deleting) return;
-    const ok1 = await appConfirm(tr.account.deleteConfirm1Title, tr.account.deleteConfirm1Body, {
+    const accepted = await appConfirm(tr.account.deleteConfirm1Title, tr.account.deleteConfirm1Body, {
       confirmLabel: tr.common.delete,
       danger: true,
       operation: "delete",
     });
-    if (!ok1) return;
-    // Final gate: verify the password (replaces the old "are you sure?" step).
-    if (!(await confirmWithPassword(tr.account.deletePasswordBody, tr.account.deleteConfirm, "delete"))) return;
+    if (!accepted) return;
     setLifecycleIntent("delete");
     setDeleting(true);
     try {
-      const err = await deleteAccount();
-      if (err) {
+      const error = await deleteAccount();
+      if (error) {
         clearLifecycleIntent();
-        void appAlert(err, tr.errors.title);
+        void appAlert(error, tr.errors.title);
       }
     } finally {
-      // Same rule as the sign-out above: the intent outlives the call so the
-      // waiting screen can name the operation the user actually confirmed.
       setDeleting(false);
     }
   };
@@ -860,23 +836,29 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
-      <Card testID="account-delete-card" padded={false}>
-        <View style={{ paddingHorizontal: spacing.md }}>
-          <AccountActionRow
-            testID="account-delete-action"
-            icon={Trash2}
-            title={tr.account.delete}
-            subtitle={tr.account.deleteSignatureDescription}
-            busy={deleting}
-            onPress={() => void handleDeleteAccount()}
-          />
-        </View>
-        {deleting ? (
-          <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.md }}>
-            <OperationFlow kind="delete" label={tr.operation.deletingAccount} />
+      {/* Cloud accounts end on Account Security, beside the reversible version
+          of the same decision. A local-only workspace has no such screen — no
+          password, no e-mail, nothing to freeze — so its one ending stays
+          here, which is also the only place it was ever reachable from. */}
+      {!isSupabaseConfigured ? (
+        <Card testID="account-delete-card" padded={false}>
+          <View style={{ paddingHorizontal: spacing.md }}>
+            <AccountActionRow
+              testID="account-delete-action"
+              icon={Trash2}
+              title={tr.account.delete}
+              subtitle={tr.account.deleteSignatureDescription}
+              busy={deleting}
+              onPress={() => void handleDeleteAccount()}
+            />
           </View>
-        ) : null}
-      </Card>
+          {deleting ? (
+            <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.md }}>
+              <OperationFlow kind="delete" label={tr.operation.deletingAccount} />
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
       {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}
 
       <View style={{ alignItems: "center", marginTop: spacing.md }}>

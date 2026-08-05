@@ -710,6 +710,7 @@ export function ChoiceTile({
   surface,
   accessibilityRole = "radio",
   accessibilityLabel,
+  accessibilityHint,
   testID,
 }: {
   label: string;
@@ -733,6 +734,9 @@ export function ChoiceTile({
   surface?: Palette;
   accessibilityRole?: "radio" | "button";
   accessibilityLabel?: string;
+  /** Why a refused tile is refused. The NAME must stay stable — it is what the
+   *  tile is, not what it is currently allowed to do. */
+  accessibilityHint?: string;
   testID?: string;
 }) {
   const { palette } = useTheme();
@@ -743,6 +747,7 @@ export function ChoiceTile({
       testID={testID}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityHint={accessibilityHint}
       aria-checked={accessibilityRole === "radio" ? selected : undefined}
       accessibilityState={{ checked: selected, selected, disabled }}
       disabled={disabled}

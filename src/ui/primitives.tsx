@@ -120,6 +120,7 @@ export function DisclosureChevron({
 export function FadeIn({
   children,
   delay = 0,
+  rise = true,
   style,
   accessibilityViewIsModal,
   accessibilityRole,
@@ -127,6 +128,15 @@ export function FadeIn({
 }: {
   children: ReactNode;
   delay?: number;
+  /**
+   * Whether it lifts into place as well as fading.
+   *
+   * A block that REPLACES another one in the same box must not: the tour's
+   * slides are keyed on the step, so each "next" restarted the rise and the
+   * whole card visibly hopped. Something arriving into empty space still
+   * lifts; something taking another's seat only fades.
+   */
+  rise?: boolean;
   style?: StyleProp<ViewStyle>;
   accessibilityViewIsModal?: boolean;
   accessibilityRole?: ViewProps["accessibilityRole"];
@@ -156,7 +166,7 @@ export function FadeIn({
       style={[
         {
           opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }),
-          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [rise ? 10 : 0, 0] }) }],
         },
         style,
       ]}
@@ -215,6 +225,12 @@ export function useLedeAlignment(markHeight: number) {
   return {
     /** Spread onto the mark's own container. */
     markStyle: { marginTop: Math.max(0, Math.round((effective - markHeight) / 2)) },
+    /**
+     * For a trailing cluster whose height is its own business — a button, a
+     * badge, a chevron. `markStyle` centres a KNOWN mark height; a 44pt action
+     * given the 17pt icon's offset sat well above the text it belongs to.
+     */
+    blockStyle: { minHeight: effective, justifyContent: "center" as const },
     /** `onLayout` for the whole text block. */
     onBlockLayout: (event: LayoutChangeEvent) => setBlockHeight(event.nativeEvent.layout.height),
     /** `onLayout` for the block's first line — its title. */
@@ -363,6 +379,7 @@ export function Button({
   label,
   onPress,
   variant = "primary",
+  tone,
   disabled,
   loading,
   icon: IconCmp,
@@ -374,6 +391,15 @@ export function Button({
   label: string;
   onPress: () => void;
   variant?: "primary" | "secondary" | "danger" | "ghost";
+  /**
+   * What the action does to the money, for the quiet variants only.
+   *
+   * A row of "Alındı" and "Ödendi" buttons rendered as identical beige blocks:
+   * the two opposite things you can confirm looked the same, and neither
+   * belonged to the app's colour language. The fill stays quiet — this is a
+   * list, not a call to action — and the outline and label carry the meaning.
+   */
+  tone?: "positive" | "primary";
   disabled?: boolean;
   loading?: boolean;
   icon?: LucideIcon;
@@ -402,6 +428,8 @@ export function Button({
     danger: palette.destructive,
     ghost: palette.surfaceHover,
   }[variant];
+  const toneColor = tone === "positive" ? palette.positiveText : tone === "primary" ? palette.primaryText : null;
+  const toned = toneColor != null && !visuallyDisabled && (variant === "secondary" || variant === "ghost");
   const small = size === "sm";
   return (
     <Pressable
@@ -439,7 +467,7 @@ export function Button({
           // "Kaydet" and an enabled "Kaydet ve Yeni Ekle" rendered as the same
           // beige block and the form's primary action was unfindable.
           borderWidth: visuallyDisabled ? 0 : variant === "secondary" ? borderWidth.control : 0,
-          borderColor: palette.controlBorder,
+          borderColor: toned ? toneColor + "8C" : palette.controlBorder,
           opacity: state.pressed && variant === "danger" ? stateOpacity.pressed : 1,
           transform: [{ translateY: state.pressed && !visuallyDisabled ? 1 : 0 }],
         },
@@ -449,9 +477,9 @@ export function Button({
         <ActivityIndicator accessibilityLabel={label} color={colors.foreground} />
       ) : (
         <>
-          {IconCmp ? <IconCmp accessible={false} size={small ? iconSize.compact : iconSize.control} color={colors.foreground} strokeWidth={2.2} /> : null}
+          {IconCmp ? <IconCmp accessible={false} size={small ? iconSize.compact : iconSize.control} color={toned ? toneColor : colors.foreground} strokeWidth={2.2} /> : null}
           <Text
-            style={[small ? type.buttonCompact : type.button, { color: colors.foreground, textAlign: "center", flexShrink: 1 }]}
+            style={[small ? type.buttonCompact : type.button, { color: toned ? toneColor : colors.foreground, textAlign: "center", flexShrink: 1 }]}
           >
             {label}
           </Text>

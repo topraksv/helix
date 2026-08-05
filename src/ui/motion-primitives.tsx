@@ -24,6 +24,7 @@ import { Animated, Easing, Platform, Text, View, type StyleProp, type TextStyle,
 import { NavigationContext } from "@react-navigation/native";
 import { useReducedMotion } from "./motion";
 import { motion, useTheme } from "./theme";
+import { crossFadesNatively } from "./theme-transition";
 
 /**
  * A value that runs 0 → 1 when `active` becomes true, and again whenever
@@ -41,13 +42,13 @@ import { motion, useTheme } from "./theme";
  */
 export function useDrawIn(active = true, duration = motion.draw, token?: string | number): Animated.Value {
   const reducedMotion = useReducedMotion();
-  const focused = useScreenFocus();
+  const visit = useScreenVisit();
   const progress = useRef(new Animated.Value(0)).current;
-  const wasFocused = useRef(false);
+  const lastVisit = useRef(0);
   useEffect(() => {
-    const arriving = focused && !wasFocused.current;
-    wasFocused.current = focused;
-    if (!active || !focused) return;
+    const arriving = visit !== lastVisit.current;
+    lastVisit.current = visit;
+    if (!active) return;
     if (reducedMotion) {
       progress.setValue(1);
       return;
@@ -65,7 +66,7 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
     });
     animation.start();
     return () => animation.stop();
-  }, [active, focused, duration, token, progress, reducedMotion]);
+  }, [active, visit, duration, token, progress, reducedMotion]);
   return progress;
 }
 
@@ -86,6 +87,43 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
  * its figure, Yatırımlar replayed neither. `isFocused()` already answers for
  * the whole chain; it is the notification that has to come from all of it.
  */
+/**
+ * How many times this screen has been arrived at.
+ *
+ * A boolean was tried and works on the web only. `react-native-screens` FREEZES
+ * an inactive screen, so a blurred tab never renders the `focused: false` in
+ * between — it wakes up already true, a "did it change?" comparison sees no
+ * change, and nothing replays. That is the whole reason Yatırımlar animated in
+ * a browser and never on a phone.
+ *
+ * A counter cannot be coalesced away: however many renders the freeze swallows,
+ * the number the effect last saw is not the number it sees now. The focus
+ * EVENT is the trigger rather than a rendered transition, and the parent chain
+ * is listened to because a screen inside a nested stack is never told when only
+ * its grandparent changed.
+ */
+export function useScreenVisit(): number {
+  const navigation = useContext(NavigationContext);
+  const [visit, setVisit] = useState(1);
+  useEffect(() => {
+    if (!navigation) return;
+    const unsubscribes: (() => void)[] = [];
+    const arrive = () => {
+      // A parent regaining focus does not mean THIS screen is the one on show:
+      // returning to Yatırımlar while its stack sits on a product page must not
+      // replay the index behind it.
+      if (navigation.isFocused()) setVisit((count) => count + 1);
+    };
+    for (let level = navigation; level; level = level.getParent()) {
+      unsubscribes.push(level.addListener("focus", arrive));
+    }
+    return () => {
+      for (const unsubscribe of unsubscribes) unsubscribe();
+    };
+  }, [navigation]);
+  return visit;
+}
+
 export function useScreenFocus(): boolean {
   const navigation = useContext(NavigationContext);
   return useSyncExternalStore(
@@ -155,16 +193,16 @@ export function useValueFlash(value: number, enabled = true): Animated.Value {
  */
 export function useCountUp(value: number, duration = motion.figure): number {
   const reducedMotion = useReducedMotion();
-  const focused = useScreenFocus();
+  const visit = useScreenVisit();
   const [shown, setShown] = useState(value);
   const previous = useRef(value);
-  const wasFocused = useRef(false);
+  const lastVisit = useRef(0);
   useEffect(() => {
-    const arriving = focused && !wasFocused.current;
-    wasFocused.current = focused;
+    const arriving = visit !== lastVisit.current;
+    lastVisit.current = visit;
     const from = arriving ? 0 : previous.current;
     previous.current = value;
-    if (reducedMotion || !focused || from === value) {
+    if (reducedMotion || from === value) {
       setShown(value);
       return;
     }
@@ -186,7 +224,7 @@ export function useCountUp(value: number, duration = motion.figure): number {
       driver.removeListener(listener);
       setShown(value);
     };
-  }, [value, focused, duration, reducedMotion]);
+  }, [value, visit, duration, reducedMotion]);
   return shown;
 }
 
@@ -383,18 +421,23 @@ export function SlideUp({
  * value behind every token in every component; this lays one veil over the top
  * and fades it out, which costs one view and one opacity.
  *
- * The veil is the background you are ARRIVING at, never the one you are
- * leaving. Leaving dark for light, a veil of the old dark background covered
- * the whole window at full strength for a moment — which is exactly the "black
- * flash" it was supposed to prevent. In the destination colour it is the new
- * theme settling in, and at 0.7 the interface stays visible right through it,
- * so nothing ever reads as the page being replaced.
+ * This is the NATIVE half only. The browser can cross-fade the rendered pixels
+ * itself — the old interface literally dissolving into the new one — so on the
+ * web `theme-transition.ts` hands the change to `startViewTransition` and this
+ * stays out of the way. No overlay can imitate that, and a full-screen veil is
+ * what a page replacement looks like, which is how the first two attempts were
+ * reported.
+ *
+ * What is left for iOS and Android is the softest version of the idea: the
+ * background you are ARRIVING at, briefly and lightly. Leaving dark for light,
+ * a veil of the OLD dark background covered the window at full strength for a
+ * moment — exactly the black flash it was supposed to prevent.
  *
  * The effect must land before the browser paints, or the new theme appears
  * un-veiled for a frame first — hence the layout effect, chosen once at module
  * scope so the hook order never changes and a static web render never calls it.
  */
-const VEIL_STRENGTH = 0.7;
+const VEIL_STRENGTH = 0.34;
 
 const useThemeChangeEffect = typeof window === "undefined" ? useEffect : React.useLayoutEffect;
 
@@ -403,12 +446,13 @@ export function ThemeDissolve() {
   const reducedMotion = useReducedMotion();
   const identity = `${paletteId}|${scheme}`;
   const previous = useRef(identity);
+  const browserCrossFades = crossFadesNatively();
   const progress = useRef(new Animated.Value(0)).current;
   const [veiling, setVeiling] = useState(false);
   useThemeChangeEffect(() => {
     const before = previous.current;
     previous.current = identity;
-    if (before === identity || reducedMotion) return;
+    if (before === identity || reducedMotion || browserCrossFades) return;
     progress.setValue(1);
     setVeiling(true);
     const animation = Animated.timing(progress, {
@@ -424,7 +468,7 @@ export function ThemeDissolve() {
       animation.stop();
       setVeiling(false);
     };
-  }, [identity, progress, reducedMotion]);
+  }, [identity, progress, reducedMotion, browserCrossFades]);
   if (!veiling) return null;
   return (
     <Animated.View

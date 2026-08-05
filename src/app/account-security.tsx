@@ -6,15 +6,15 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
-import { KeyRound, Mail, RotateCcw, Snowflake } from "lucide-react-native";
+import { KeyRound, Mail, RotateCcw, Snowflake, Trash2 } from "lucide-react-native";
 import { useSession } from "../auth/session";
 import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";
 import { pendingSyncChangeCount, setAccountFrozen } from "../data/repo";
 import { tr } from "../i18n/tr";
-import { Body, Button, Card, Field, ListRow, PanelHeader, Screen } from "../ui/components";
+import { Body, Button, Card, Divider, Field, ListRow, PanelHeader, Screen } from "../ui/components";
 import { appAlert, appConfirm, appPrompt } from "../ui/dialog";
-import { spacing, type } from "../ui/theme";
+import { spacing, type, useTheme } from "../ui/theme";
 import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
@@ -34,10 +34,11 @@ export default function AccountSecurityScreen() {
 }
 
 function CloudAccountSecurityScreen() {
-  const { email, verifyPassword, changeEmail, changePassword, requestPasswordReset, signOut } = useSession();
+  const { email, verifyPassword, changeEmail, changePassword, requestPasswordReset, signOut, deleteAccount } = useSession();
   const userId = useUserId();
   const router = useRouter();
   const operationGuard = useOperationGuard();
+  const { palette } = useTheme();
 
   const [newEmail, setNewEmail] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
@@ -49,6 +50,7 @@ function CloudAccountSecurityScreen() {
   const [resetBusy, setResetBusy] = useState(false);
   const [freezing, setFreezing] = useState(false);
   const [freezePhase, setFreezePhase] = useState<AccountFreezePhase | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { allowExit } = useDirtyExitGuard(Boolean(newEmail || emailPassword || currentPassword || newPassword));
 
   const emailValid = /.+@.+\..+/.test(newEmail.trim());
@@ -128,6 +130,47 @@ function CloudAccountSecurityScreen() {
   };
 
   // The confirmation and re-authentication run inside the shared guard too, so
+  const confirmWithPassword = async (message: string, confirmLabel: string): Promise<boolean> => {
+    const password = await appPrompt(tr.account.confirmPasswordTitle, message, {
+      secure: true,
+      placeholder: tr.auth.password,
+      confirmLabel,
+      danger: true,
+      operation: "delete",
+    });
+    if (password == null) return false;
+    const verifyError = await verifyPassword(password);
+    if (verifyError) {
+      void appAlert(verifyError, tr.errors.title);
+      return false;
+    }
+    return true;
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleting) return;
+    const accepted = await appConfirm(tr.account.deleteConfirm1Title, tr.account.deleteConfirm1Body, {
+      confirmLabel: tr.common.delete,
+      danger: true,
+      operation: "delete",
+    });
+    if (!accepted) return;
+    if (!(await confirmWithPassword(tr.account.deletePasswordBody, tr.account.deleteConfirm))) return;
+    setLifecycleIntent("delete");
+    setDeleting(true);
+    try {
+      const error = await deleteAccount();
+      if (error) {
+        clearLifecycleIntent();
+        void appAlert(error, tr.errors.title);
+      }
+    } finally {
+      // The intent outlives the call so the waiting screen can name the
+      // operation the user actually confirmed.
+      setDeleting(false);
+    }
+  };
+
   // a second press cannot arm a second freeze while the first is still asking
   // for the password.
   const freezeAccount = () =>
@@ -259,6 +302,9 @@ function CloudAccountSecurityScreen() {
         />
       </Card>
 
+      {/* The two ways an account ends, in order of severity and in one place.
+          Deleting used to live at the foot of Settings, a screen away from the
+          reversible version of the same decision. */}
       <Card>
         <View testID="account-freeze-action">
           <ListRow
@@ -273,6 +319,19 @@ function CloudAccountSecurityScreen() {
         {freezePhase ? (
           <OperationFlow kind="freeze" label={tr.operation.freezePhase[freezePhase]} />
         ) : null}
+        <Divider />
+        <View testID="account-delete-action">
+          <ListRow
+            icon={Trash2}
+            iconColor={palette.destructive}
+            title={tr.account.delete}
+            subtitle={tr.account.deleteSignatureDescription}
+            chevron={!deleting}
+            right={deleting ? <DelayedLoadingIndicator size={7} label={tr.account.delete} /> : undefined}
+            onPress={deleting ? undefined : () => void handleDeleteAccount()}
+          />
+        </View>
+        {deleting ? <OperationFlow kind="delete" label={tr.operation.deletingAccount} /> : null}
       </Card>
       </WorkspaceGrid>
     </Screen>

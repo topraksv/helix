@@ -775,9 +775,9 @@ export function ListRow({
           <View style={{ marginTop: 1 }}>{subtitle}</View>
         ) : null}
       </View>
-      {stackRight ? null : <View style={lede.markStyle}>{right}</View>}
+      {stackRight ? null : <View style={lede.blockStyle}>{right}</View>}
       {chevron ? (
-        <View style={lede.markStyle}>
+        <View style={lede.blockStyle}>
           <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />
         </View>
       ) : null}

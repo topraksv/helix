@@ -42,6 +42,7 @@ import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
 import { ThemeDissolve } from "../ui/motion-primitives";
+import { applyThemeChange } from "../ui/theme-transition";
 import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
@@ -92,12 +93,16 @@ const palettePrefListeners = new Set<(p: PaletteId) => void>();
 
 export function setGlobalThemePreference(pref: ThemePreference) {
   void kv.set("helix.theme", pref);
-  for (const listener of themePrefListeners) listener(pref);
+  applyThemeChange(() => {
+    for (const listener of themePrefListeners) listener(pref);
+  });
 }
 
 export function setGlobalPalettePreference(pref: PaletteId) {
   void kv.set("helix.palette", pref);
-  for (const listener of palettePrefListeners) listener(pref);
+  applyThemeChange(() => {
+    for (const listener of palettePrefListeners) listener(pref);
+  });
 }
 
 export default function RootLayout() {

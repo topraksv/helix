@@ -17,6 +17,8 @@ import {
   type,
 } from "../src/ui/theme";
 import { modalAnimationType } from "../src/ui/modal-motion";
+import { BRAND } from "../src/ui/brand-colors";
+import { foldForMatch, nameMentions } from "../src/domain/logo-domain";
 import { fittedQuickDays, shouldPairDashboardPanels, shouldPairFilterCards } from "../src/ui/responsive";
 
 const root = process.cwd();
@@ -901,11 +903,24 @@ describe("returning to a screen is not a reload", () => {
     expect([...screen.matchAll(/<FadeIn/g)]).toHaveLength(2);
   });
 
-  it("replays the content that has something to say, on the navigator's focus", () => {
-    expect(motionPrimitives).toContain("export function useScreenFocus()");
-    expect(motionPrimitives).toContain("const focused = useScreenFocus();");
-    // Nothing listens for blur: an outgoing screen keeps its finished state.
-    expect(motionPrimitives).not.toContain('addListener("blur", enter)');
+  /**
+   * A counter, not a boolean.
+   *
+   * `react-native-screens` freezes an inactive screen, so a blurred tab never
+   * renders the `focused: false` in between — it wakes up already true, a "did
+   * it change?" comparison sees no change, and nothing replays. Measured: the
+   * chart and the figure animated on every return in a browser and never on a
+   * phone. A count cannot be coalesced away.
+   */
+  it("counts arrivals rather than comparing a focus flag", () => {
+    expect(motionPrimitives).toContain("export function useScreenVisit()");
+    expect(motionPrimitives).toContain("setVisit((count) => count + 1)");
+    for (const hook of ["useDrawIn", "useCountUp"]) {
+      const body = motionPrimitives.slice(motionPrimitives.indexOf(`export function ${hook}(`));
+      expect(body.slice(0, 1_400), `${hook} replays per visit`).toContain("const visit = useScreenVisit();");
+    }
+    // A parent regaining focus is not this screen being on show.
+    expect(motionPrimitives).toContain("if (navigation.isFocused()) setVisit");
   });
 
   it("tolerates the surfaces that render above the navigator", () => {
@@ -1040,5 +1055,35 @@ describe("month-day shortcuts fit the box they are in", () => {
     // Measured on its own box: these are used as a pair inside a card, so each
     // gets about half a column and only the layout knows how much.
     expect(field).toContain("useMeasuredWidth");
+  });
+});
+
+/**
+ * A subscription's name is Turkish, and Turkish breaks the obvious matcher.
+ *
+ * `/internet/i.test("İnternet aboneliği")` is FALSE: without the `u` flag a
+ * regex canonicalises by `toUpperCase`, dotted capital İ upper-cases to itself
+ * and `i` upper-cases to `I`. Every utility a user typed with a capital was
+ * left without its icon.
+ */
+describe("brand and utility matching reads Turkish", () => {
+  it("folds the dotted capital and the accents before matching", () => {
+    expect(foldForMatch("İnternet Aboneliği")).toBe("internet aboneligi");
+    expect(foldForMatch("İGDAŞ Doğalgaz")).toBe("igdas dogalgaz");
+    expect(/internet/.test(foldForMatch("İNTERNET"))).toBe(true);
+  });
+
+  it("matches a mention as a whole word, not a fragment", () => {
+    expect(nameMentions("Ailem için Netflix", "netflix")).toBe(true);
+    expect(nameMentions("Ev interneti", "internet")).toBe(false);
+    expect(nameMentions("İnternet aboneliği", "internet")).toBe(true);
+    // "maximum" is not Max.
+    expect(nameMentions("Maximum kart", "max")).toBe(false);
+  });
+
+  it("keeps every catalogue key foldable to itself", () => {
+    for (const key of Object.keys(BRAND)) {
+      expect(foldForMatch(key), `${key} is already in matching form`).toBe(key);
+    }
   });
 });

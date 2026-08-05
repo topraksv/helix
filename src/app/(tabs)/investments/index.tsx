@@ -43,6 +43,7 @@ import {
   ChipPicker,
   DataStateNotice,
   EmptyState,
+  FadeIn,
   Heading,
   HeroCard,
   MetricStrip,
@@ -192,51 +193,52 @@ function AllocationStrip({
       style={{ marginTop: spacing.lg }}
     >
       <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.distribution}</Text>
-      <View
-        accessible={false}
-        style={{
-          height: 9,
-          flexDirection: "row",
-          // The palette holds three clay tones that are categories, not a
-          // scale, and two of them side by side read as one segment. A gap in
-          // the track colour separates any pair, whatever the hues turn out to
-          // be — the boundary is structural instead of depending on contrast
-          // between two fills chosen for other reasons.
-          gap: 2,
-          overflow: "hidden",
-          borderRadius: radius.full,
-          backgroundColor: palette.surfaceStrong,
-          marginTop: spacing.sm,
-        }}
-      >
-        {visible.map((slice) => (
-          <View
-            key={slice.label}
-            style={{
-              flex: totalMinor > 0 ? slice.valueMinor / totalMinor : 0,
-              // A one-percent holding still has to be visible as a holding.
-              minWidth: slice.valueMinor > 0 ? 4 : 0,
-              backgroundColor: slice.color,
-            }}
-          />
-        ))}
-      </View>
-      <View accessible={false} style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
-        {visible.map((slice) => (
-          <View key={slice.label} style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-              <View style={{ width: 7, height: 7, flexShrink: 0, borderRadius: 3, backgroundColor: slice.color }} />
-              <Text
-                style={[type.small, { flex: 1, color: palette.textSecondary, fontSize: type.micro.fontSize, lineHeight: 12 }]}
+      {/* A ranked bar per holding, not one stacked strip.
+          The strip answered "what is the split" and nothing else: three clay
+          tones in a 9pt track cannot be compared to each other, and the legend
+          under it repeated every label to say so. A row per holding compares
+          them directly — the longest bar IS the largest position — and costs
+          the same height, which is what keeps the actions under this card above
+          the fold on a phone. */}
+      <View accessible={false} style={{ marginTop: spacing.sm, gap: spacing.sm }}>
+        {visible.map((slice) => {
+          const share = totalMinor > 0 ? slice.valueMinor / totalMinor : 0;
+          return (
+            <View key={slice.label} style={{ gap: 3 }}>
+              <Row gap={spacing.sm}>
+                <Text
+                  style={[type.small, { flex: 1, minWidth: 0, color: palette.textSecondary, fontSize: type.caption.fontSize }]}
+                >
+                  {slice.label}
+                </Text>
+                <Text style={[type.amountSm, { color: palette.text, fontSize: type.caption.fontSize }]}>
+                  %{Math.round(share * 100)}
+                </Text>
+              </Row>
+              <View
+                style={{
+                  height: 7,
+                  borderRadius: radius.full,
+                  backgroundColor: palette.surfaceStrong,
+                  overflow: "hidden",
+                }}
               >
-                {slice.label}
-              </Text>
+                <FadeIn
+                  style={{
+                    // A holding under one percent is still a holding: it keeps
+                    // a visible stub rather than rounding away to nothing.
+                    width: `${Math.max(share * 100, slice.valueMinor > 0 ? 2 : 0)}%` as `${number}%`,
+                    height: "100%",
+                    borderRadius: radius.full,
+                    backgroundColor: slice.color,
+                  }}
+                >
+                  <View />
+                </FadeIn>
+              </View>
             </View>
-            <Text style={[type.amountSm, { color: palette.text, fontSize: type.caption.fontSize, marginTop: 2 }]}>
-              %{totalMinor > 0 ? Math.round((slice.valueMinor / totalMinor) * 100) : 0}
-            </Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </View>
   );

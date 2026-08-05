@@ -132,19 +132,22 @@ export default function UpcomingScreen() {
                    the subtitle it left the middle of every row empty while the
                    figures it should be scanned against stayed unaligned. Same
                    string, same value — read down instead of across. */
-                /* One line, in reading order: what it costs, whether it is
-                   late, and the way in. Stacked — the amount over a row that
-                   held the pill and the chevron — the three sat at three
-                   different heights and none of them lined up with the name
-                   they belong to. The lateness is a `Badge` rather than the
-                   fixed-width status pill for the same reason: 88pt of chip is
-                   most of a phone's trailing column. */
+                /* One line, in the order the eye needs it: the state that
+                   qualifies the figure, the figure, then the way in. The
+                   amount reads last because it is what you scan down the
+                   column, and it takes the warning colour when it is late so
+                   the state is not carried by a chip alone. */
                 right={(
                   <Row gap={spacing.sm}>
-                    <Text style={[type.amountSm, { color: palette.text }]}>
+                    {item.status === "late" ? <Badge tone="error" text={tr.dashboard.late} /> : null}
+                    <Text
+                      style={[
+                        type.amountSm,
+                        { color: item.status === "late" ? palette.errorText : palette.text, textAlign: "right" },
+                      ]}
+                    >
                       {formatMinor(item.amountMinor, item.currency)}
                     </Text>
-                    {item.status === "late" ? <Badge tone="error" text={tr.dashboard.late} /> : null}
                     <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />
                   </Row>
                 )}
