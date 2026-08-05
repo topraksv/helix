@@ -1,10 +1,10 @@
 /** Dashboard: current balance, action-needed payments, upcoming timeline and
  * one concise monthly insight. Detailed exploration belongs to Analysis. */
 
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useMemo } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronDown, ChevronRight, ChevronUp, History, Plus, ShieldCheck, TrendingDown, TrendingUp, TriangleAlert } from "lucide-react-native";
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronRight, History, Plus, ShieldCheck, TrendingDown, TrendingUp, TriangleAlert } from "lucide-react-native";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../domain/balance-declaration";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { daysBetweenISO, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
@@ -32,7 +32,8 @@ import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Badge, Body, Button, Card, DataStateNotice, Divider, HeroCard, ListRow, MetricStrip, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
+import { Amount, Badge, Body, Button, Card, DataStateNotice, DisclosureChevron, Divider, HeroCard, ListRow, MetricStrip, Row, STATUS_W, Screen, SectionHeader, Segmented, Spread } from "../../ui/components";
+import { Collapse, useScreenFocus, useValueFlash } from "../../ui/motion-primitives";
 import { Bars, ChartFrame, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
 import { BrandMark } from "../../ui/brand";
@@ -126,6 +127,121 @@ function MarketInstrumentArt({ code, size = 44 }: { code: string; size?: number 
   );
 }
 
+/**
+ * One live quote.
+ *
+ * Its own component because each tile owns a flash of its own: a feed tick is
+ * the one thing in this app that changes without the user doing anything, and
+ * the only sign it had happened was a number being different from the one
+ * nobody was looking at. The tint is an opacity over a resting tile, so it
+ * stays on the native driver, and it is armed only while the screen is the one
+ * on show — a background tab must not animate.
+ *
+ * The provider re-sends a symbol only when its price moves, and the store
+ * throttles to one apply every three seconds, so this is a punctuation mark
+ * rather than a pulse.
+ */
+function QuoteTile({
+  code,
+  label,
+  price,
+  columns,
+  cramped,
+  live,
+}: {
+  code: string;
+  label: string;
+  price: { buyTry: number; sellTry: number; direction: "up" | "down" | "" };
+  columns: number;
+  cramped: boolean;
+  live: boolean;
+}) {
+  const { palette } = useTheme();
+  const flash = useValueFlash(price.sellTry, live);
+  const priceText = (v: number) =>
+    new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+  const direction = price.direction === "up"
+    ? tr.markets.rising
+    : price.direction === "down"
+      ? tr.markets.falling
+      : tr.markets.unchanged;
+  const size = cramped ? 40 : 44;
+  return (
+    <View
+      accessible
+      role="group"
+      accessibilityLabel={tr.markets.quote(label, priceText(price.buyTry), `${priceText(price.sellTry)}\u00A0₺`, direction)}
+      style={{
+        flexGrow: 1,
+        flexBasis: columns === 3 ? "29%" : columns === 2 ? "46%" : "100%",
+        minWidth: 0,
+        minHeight: columns === 3 ? 102 : 112,
+        justifyContent: "space-between",
+        padding: spacing.md,
+        borderRadius: radius.md,
+        backgroundColor: palette.surfaceAlt,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: palette.border + "70",
+        overflow: "hidden",
+      }}
+    >
+      {price.direction !== "" ? (
+        <Animated.View
+          pointerEvents="none"
+          accessible={false}
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            opacity: flash,
+            backgroundColor: (price.direction === "up" ? palette.positive : palette.negative) + "24",
+          }}
+        />
+      ) : null}
+      <Row gap={spacing.xs} style={{ alignItems: "center" }}>
+        <View style={{ width: size, height: size, flexShrink: 0 }}>
+          <MarketInstrumentArt code={code} size={size} />
+          {price.direction === "up" ? (
+            <View style={{ position: "absolute", right: -2, top: -2, borderRadius: radius.sm, padding: 2, backgroundColor: palette.surface }}>
+              <TrendingUp accessible={false} size={12} color={palette.positive} />
+            </View>
+          ) : price.direction === "down" ? (
+            <View style={{ position: "absolute", right: -2, top: -2, borderRadius: radius.sm, padding: 2, backgroundColor: palette.surface }}>
+              <TrendingDown accessible={false} size={12} color={palette.negative} />
+            </View>
+          ) : null}
+        </View>
+        <Body
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontFamily: font.semibold,
+            fontSize: cramped ? type.label.fontSize : undefined,
+            lineHeight: cramped ? 16 : undefined,
+            textAlignVertical: "center",
+          }}
+        >
+          {label}
+        </Body>
+      </Row>
+      <View style={{ marginTop: spacing.sm, gap: 3 }}>
+        <Spread>
+          <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.buy}</Text>
+          <Text style={[type.amountSm, { color: palette.textSecondary, textAlign: "right" }]}>{priceText(price.buyTry)}</Text>
+        </Spread>
+        <Spread>
+          <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.sell}</Text>
+          <Text style={[type.amount, { color: palette.text, textAlign: "right" }]}>
+            {`${priceText(price.sellTry)}\u00A0₺`}
+          </Text>
+        </Spread>
+      </View>
+    </View>
+  );
+}
+
 function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; desktopColumns?: 2 | 3 }) {
   const { palette } = useTheme();
   // How many quote tiles fit is a question about this card, not about the
@@ -134,6 +250,8 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
   const [cardWidth, onCardLayout] = useMeasuredWidth(320);
   const userId = useUserId();
   const { prices, status, lastEventAt } = useMarkets();
+  // A feed tick must not animate a card nobody is looking at.
+  const focused = useScreenFocus();
   useFxRates();
   if (status === "idle") return null;
 
@@ -180,73 +298,17 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
         </Row>
         {quoted.length > 0 ? (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
-            {quoted.map(({ code, label }) => {
-              const p = prices[code]!;
-              const direction = p.direction === "up"
-                ? tr.markets.rising
-                : p.direction === "down"
-                  ? tr.markets.falling
-                  : tr.markets.unchanged;
-              return (
-                <View
-                  key={code}
-                  accessible
-                  role="group"
-                  accessibilityLabel={tr.markets.quote(label, priceText(p.buyTry), `${priceText(p.sellTry)}\u00A0₺`, direction)}
-                  style={{
-                    flexGrow: 1,
-                    flexBasis: marketColumns === 3 ? "29%" : marketColumns === 2 ? "46%" : "100%",
-                    minWidth: 0,
-                    minHeight: marketColumns === 3 ? 102 : 112,
-                    justifyContent: "space-between",
-                    padding: spacing.md,
-                    borderRadius: radius.md,
-                    backgroundColor: palette.surfaceAlt,
-                    borderWidth: StyleSheet.hairlineWidth,
-                    borderColor: palette.border + "70",
-                  }}
-                >
-                  <Row gap={spacing.xs} style={{ alignItems: "center" }}>
-                    <View style={{ width: crampedTile ? 40 : 44, height: crampedTile ? 40 : 44, flexShrink: 0 }}>
-                      <MarketInstrumentArt code={code} size={crampedTile ? 40 : 44} />
-                      {p.direction === "up" ? (
-                        <View style={{ position: "absolute", right: -2, top: -2, borderRadius: radius.sm, padding: 2, backgroundColor: palette.surface }}>
-                          <TrendingUp accessible={false} size={12} color={palette.positive} />
-                        </View>
-                      ) : p.direction === "down" ? (
-                        <View style={{ position: "absolute", right: -2, top: -2, borderRadius: radius.sm, padding: 2, backgroundColor: palette.surface }}>
-                          <TrendingDown accessible={false} size={12} color={palette.negative} />
-                        </View>
-                      ) : null}
-                    </View>
-                    <Body
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        fontFamily: font.semibold,
-                        fontSize: crampedTile ? type.label.fontSize : undefined,
-                        lineHeight: crampedTile ? 16 : undefined,
-                        textAlignVertical: "center",
-                      }}
-                    >
-                      {label}
-                    </Body>
-                  </Row>
-                  <View style={{ marginTop: spacing.sm, gap: 3 }}>
-                    <Spread>
-                      <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.buy}</Text>
-                      <Text style={[type.amountSm, { color: palette.textSecondary, textAlign: "right" }]}>{priceText(p.buyTry)}</Text>
-                    </Spread>
-                    <Spread>
-                      <Text style={[type.small, { color: palette.textSecondary }]}>{tr.markets.sell}</Text>
-                      <Text style={[type.amount, { color: palette.text, textAlign: "right" }]}>
-                        {`${priceText(p.sellTry)}\u00A0₺`}
-                      </Text>
-                    </Spread>
-                  </View>
-                </View>
-              );
-            })}
+            {quoted.map(({ code, label }) => (
+              <QuoteTile
+                key={code}
+                code={code}
+                label={label}
+                price={prices[code]!}
+                columns={marketColumns}
+                cramped={crampedTile}
+                live={focused}
+              />
+            ))}
           </View>
         ) : referenceRows.length > 0 ? (
           <>
@@ -348,13 +410,18 @@ export default function DashboardScreen() {
   // Re-render when FX rates land so foreign-currency projections settle.
   useFxRates();
 
-  const txLike = bundle?.txLike ?? [];
+  // Its own memo, so the empty-ledger fallback is one stable array rather than
+  // a new one per render feeding everything derived from it.
+  const txLike = useMemo(() => bundle?.txLike ?? [], [bundle]);
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
-  const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
-  const incomeById = new Map(incomes.map((income) => [income.id, income]));
+  const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
+  const subscriptionById = useMemo(() => new Map(subscriptions.map((s) => [s.id, s])), [subscriptions]);
+  const incomeById = useMemo(() => new Map(incomes.map((income) => [income.id, income])), [incomes]);
 
-  const catName = (id: string | null) => (id ? categoryById.get(id)?.name : undefined);
+  const catName = React.useCallback(
+    (id: string | null) => (id ? categoryById.get(id)?.name : undefined),
+    [categoryById],
+  );
   const nameOf = (e: (typeof expected)[number]) =>
     subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
   // Missing FX stays missing; a foreign amount is never treated as TRY.
@@ -377,7 +444,12 @@ export default function DashboardScreen() {
     expectedTryMinor,
   });
   const { lateItems: late, incomingMinor, outgoingMinor: remainingFixedMinor } = model;
-  const upcoming = buildUpcomingTimeline({
+  // Derived from every transaction the account has, so it is derived from the
+  // data and not from the render. `buildDashboardModel` above deliberately is
+  // NOT memoized: its `expectedTryMinor` reads the live market store, which
+  // this screen does not subscribe to, so pinning it to a dependency list would
+  // pin an exchange rate.
+  const upcoming = useMemo(() => buildUpcomingTimeline({
     expected,
     transactions: txLike,
     expectedSources: [
@@ -399,7 +471,8 @@ export default function DashboardScreen() {
     statements: cardStatements,
     today,
     horizonDays: 31,
-  }).filter((item) => item.status === "upcoming");
+  }).filter((item) => item.status === "upcoming"),
+  [expected, txLike, subscriptions, incomes, categories, sources, cardStatements, today, catName]);
   const dashboardLate = late.slice(0, 5);
   const dashboardUpcoming = upcoming.slice(0, Math.max(0, 5 - dashboardLate.length));
   const timelineTypeLabel = (sourceType: (typeof upcoming)[number]["sourceType"]) => ({
@@ -658,7 +731,7 @@ export default function DashboardScreen() {
                       style={{ textAlign: "left" }}
                     />
                   </View>
-                  {showForecast ? <ChevronUp size={18} color={palette.accentText} /> : <ChevronDown size={18} color={palette.accentText} />}
+                  <DisclosureChevron open={showForecast} size={18} color={palette.accentText} />
                 </Pressable>
               ) : null}
             </View>
@@ -707,7 +780,10 @@ export default function DashboardScreen() {
         </HeroCard>
       )}
 
-      {bundle && showForecast && projected != null ? (
+      {/* Collapses rather than blinking: the toggle that opens it sits directly
+          above, so the panel has to be seen to come out of it. */}
+      <Collapse open={Boolean(bundle) && showForecast && projected != null}>
+        {bundle && projected != null ? (
         <Card>
           <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
           <Spread style={{ marginBottom: spacing.xs }}>
@@ -736,7 +812,8 @@ export default function DashboardScreen() {
             />
           </Spread>
         </Card>
-      ) : null}
+        ) : null}
+      </Collapse>
 
       {/* The month owns its own row, the two panels share the one under it.
           The distribution is the screen's one piece of analysis and it reads

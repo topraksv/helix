@@ -2,7 +2,7 @@
  *  or a calendar year), a category filter, per-category cumulative trend and
  *  transaction search. */
 
-import React, { useDeferredValue, useEffect, useState } from "react";
+import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, Inbox, SlidersHorizontal, Target } from "lucide-react-native";
@@ -106,14 +106,20 @@ export default function AnalysisScreen() {
   const monthKeys = monthRange(startMonth, endMonth);
   const searchPeriodLabel = `${monthLabel(startMonth)} – ${monthLabel(endMonth)}`;
 
-  const txLike = toTxLike(allTx, persons, categories);
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  // Both of these walk the whole transaction list, and both used to do it on
+  // every render — including every keystroke in the search box, every filter
+  // chip and every layout measurement. Derived from the data, not the render.
+  const txLike = useMemo(() => toTxLike(allTx, persons, categories), [allTx, persons, categories]);
+  const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   // Legacy type/category mismatches are normalized by the shared domain flow,
   // so category details and aggregate charts use one financial rule.
   // The analysis matrix is an all-flow view: transfer/investment categories
   // stay visibly separate from expense totals, but must not disappear from the
   // user's category-by-month history.
-  const matrix = categoryRangeMatrix(txLike, startMonth, endMonth, today, { includeTransfers: true });
+  const matrix = useMemo(
+    () => categoryRangeMatrix(txLike, startMonth, endMonth, today, { includeTransfers: true }),
+    [txLike, startMonth, endMonth, today],
+  );
 
   // Year navigation is bounded to where data exists (mirrors Mali Tablo) so the
   // back arrow can't wander into empty years forever.

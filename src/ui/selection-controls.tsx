@@ -23,8 +23,10 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
-import { Check, ChevronDown, Minus, Plus, type LucideIcon } from "lucide-react-native";
+import { Check, Minus, Plus, type LucideIcon } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { tr } from "../i18n/tr";
 import { filterSelectionOptions, type SelectionOption } from "./selection";
@@ -33,7 +35,8 @@ import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { DelayedLoadingIndicator } from "./loading-indicator";
-import { Body, FadeIn, Label, Row, controlStateStyle } from "./primitives";
+import { SlideUp } from "./motion-primitives";
+import { Body, DisclosureChevron, FadeIn, Label, Row, controlStateStyle } from "./primitives";
 import { Field } from "./fields";
 import { shouldBoundIntrinsicControls } from "./responsive";
 import { useContentWidth } from "./viewport";
@@ -118,7 +121,14 @@ export function Select<T extends string>({
     ?? (selectedOption?.value === value ? selectedOption : undefined);
   const modalVerticalInset = width < 640 ? spacing.lg : spacing.lg * 2;
   const modalMaxHeight = Math.max(0, Math.min(width < 640 ? 560 : 460, height - modalVerticalInset));
-  const optionsModal = (
+  // On a phone this is a sheet pulled up off the bottom edge; on a pointer
+  // viewport it is a dialog in the middle of the window. The scrim fades either
+  // way — sliding the scrim with the sheet would drag the whole screen.
+  const sheet = width < 640;
+  // A function, not a value. Built eagerly, this element tree — one `Pressable`
+  // per option — was constructed on every render of every closed picker on the
+  // screen, and a category picker carries hundreds of options.
+  const optionsModal = () => (
           <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={() => setOpen(false)}>
             <Pressable
               accessible={false}
@@ -138,16 +148,17 @@ export function Select<T extends string>({
                 tabIndex={-1}
                 accessibilityViewIsModal
                 onPress={() => {}}
-                style={{ alignSelf: "center", width: "100%", maxWidth: width < 640 ? 520 : 400 }}
+                style={{ alignSelf: "center", width: "100%", maxWidth: sheet ? 520 : 400 }}
               >
-                <FadeIn
+                <SheetSurface
+                  sheet={sheet}
                   style={[
                     {
                       backgroundColor: palette.surface,
                       borderTopLeftRadius: radius.xl,
                       borderTopRightRadius: radius.xl,
-                      borderBottomLeftRadius: width < 640 ? 0 : radius.xl,
-                      borderBottomRightRadius: width < 640 ? 0 : radius.xl,
+                      borderBottomLeftRadius: sheet ? 0 : radius.xl,
+                      borderBottomRightRadius: sheet ? 0 : radius.xl,
                       maxHeight: modalMaxHeight,
                       overflow: "hidden",
                       borderWidth: StyleSheet.hairlineWidth,
@@ -248,10 +259,10 @@ export function Select<T extends string>({
                       </Row>
                     </Pressable>
                   ) : null}
-                  {width < 640 && insets.bottom > 0 ? (
+                  {sheet && insets.bottom > 0 ? (
                     <View accessible={false} style={{ height: insets.bottom, backgroundColor: palette.surface }} />
                   ) : null}
-                </FadeIn>
+                </SheetSurface>
               </Pressable>
             </Pressable>
           </Modal>
@@ -261,7 +272,7 @@ export function Select<T extends string>({
     return (
       <>
         <View ref={triggerRef}>{trigger(() => setOpen(true), current?.label ?? null)}</View>
-        {open ? optionsModal : null}
+        {open ? optionsModal() : null}
       </>
     );
   }
@@ -300,11 +311,29 @@ export function Select<T extends string>({
         >
           {current?.label ?? placeholder ?? ""}
         </Text>
-        <ChevronDown accessible={false} size={iconSize.control} color={palette.textSecondary} />
+        <DisclosureChevron open={open} />
       </Pressable>
-      {open ? optionsModal : null}
+      {open ? optionsModal() : null}
     </View>
   );
+}
+
+/**
+ * The picker's own surface: a sheet off the bottom edge on a phone, a dialog in
+ * the middle of the window on a pointer viewport. Written once here because the
+ * two differ only in where they come from, and a component boundary is what
+ * lets each keep its own animated value across a resize.
+ */
+function SheetSurface({
+  sheet,
+  style,
+  children,
+}: {
+  sheet: boolean;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  return sheet ? <SlideUp distance={40} style={style}>{children}</SlideUp> : <FadeIn style={style}>{children}</FadeIn>;
 }
 
 /**
@@ -351,7 +380,6 @@ export function Segmented<T extends string>({
   const { palette } = useTheme();
   const bounded = shouldBoundIntrinsicControls(useContentWidth());
   const reducedMotion = useReducedMotion();
-  const optionCount = options.length + (action ? 1 : 0);
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
   const indicator = useRef(new Animated.Value(selectedIndex)).current;
   useEffect(() => {
@@ -389,6 +417,14 @@ export function Segmented<T extends string>({
         borderBottomColor: palette.border,
       }}
     >
+      {/* The options own their own track.
+          The indicator is a percentage, and the guide toggle beside it is a
+          fixed 44pt — so measuring the indicator against the whole strip made
+          it both too narrow and progressively too far left, which is why the
+          underline sat off the third segment in the table view and looked
+          correct in the two views that have no toggle. The track is what the
+          flexing options actually share; the toggle is outside it. */}
+      <View style={{ position: "relative", flexDirection: "row", flex: 1, minWidth: 0 }}>
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -441,13 +477,14 @@ export function Segmented<T extends string>({
           bottom: 0,
           height: 3,
           backgroundColor: disabled ? palette.controlBorder : palette.primary,
-          width: `${100 / optionCount}%`,
+          width: `${100 / options.length}%`,
           left: indicator.interpolate({
-            inputRange: [0, Math.max(1, optionCount - 1)],
-            outputRange: ["0%", `${(100 / optionCount) * Math.max(1, optionCount - 1)}%`],
+            inputRange: [0, Math.max(1, options.length - 1)],
+            outputRange: ["0%", `${(100 / options.length) * Math.max(1, options.length - 1)}%`],
           }),
         }}
       />
+      </View>
       {action ? (
         <Pressable
           accessibilityRole="button"

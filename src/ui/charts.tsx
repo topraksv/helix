@@ -10,7 +10,7 @@ import { resolveBarAxis } from "./chart-axis";
 import { Amount } from "./primitives";
 import { shouldCompactAmount } from "./responsive";
 import { useDrawIn } from "./motion-primitives";
-import { chart, font, radius, spacing, type, useTheme } from "./theme";
+import { chart, font, motion, radius, spacing, type, useTheme } from "./theme";
 import { useMeasuredWidth } from "./viewport";
 
 /**
@@ -24,6 +24,7 @@ import { useMeasuredWidth } from "./viewport";
  */
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 /** Length of a polyline through the given points, for a dash-based reveal. */
 function polylineLength(points: { x: number; y: number }[]): number {
@@ -184,7 +185,11 @@ export function Donut({
   const cy = fittedSize / 2;
   const strokeWidth = chart.donutWidth;
   const circumference = 2 * Math.PI * r;
-  const draw = useDrawIn();
+  // Redrawn whenever the arcs themselves change — a different period, a
+  // different filter, an edited amount. Without a token the reveal was a
+  // first-render-only affair and every later answer replaced the previous
+  // picture in a single frame.
+  const draw = useDrawIn(true, motion.draw, slices.map((s) => `${s.label}:${s.valueMinor}`).join("|"));
 
   const arcs: (DonutSlice & { path: string; sweep: number; end: number })[] = [];
   let start = -90;
@@ -228,7 +233,23 @@ export function Donut({
           />
           {arcs.map((a, i) => {
             if (a.sweep >= 359.9) {
-              return <Circle key={i} cx={cx} cy={cy} r={r} stroke={a.color} strokeWidth={strokeWidth} fill="none" />;
+              // A ring that is one category is still a ring being drawn. This
+              // used to be a plain circle, so the single-category case — which
+              // is every new account, and any month with one dominant
+              // category — was the one donut in the app that simply appeared.
+              return (
+                <AnimatedCircle
+                  key={i}
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  stroke={a.color}
+                  strokeWidth={strokeWidth}
+                  fill="none"
+                  strokeDasharray={[circumference, circumference]}
+                  strokeDashoffset={draw.interpolate({ inputRange: [0, 1], outputRange: [circumference, 0] })}
+                />
+              );
             }
             const arcLength = (a.sweep / 360) * circumference;
             return (
@@ -407,7 +428,7 @@ export function Lines({
   const { palette } = useTheme();
   // No right gutter: the only caller draws one series whose name is already the
   // card's heading, so an end label repeated it and cost a sixth of the plot.
-  const draw = useDrawIn();
+  const draw = useDrawIn(true, motion.draw, series.map((s) => `${s.label}:${s.points.join(",")}`).join("|"));
   const clipId = `line-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const padding = { left: 54, right: 12, top: 12, bottom: 24 };
   const plotW = width - padding.left - padding.right;
@@ -603,7 +624,7 @@ export function Bars({
   width?: number;
 }) {
   const { palette } = useTheme();
-  const draw = useDrawIn();
+  const draw = useDrawIn(true, motion.draw, groups.map((g) => `${g.label}:${g.values.join(",")}`).join("|"));
   const clipId = `bar-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const axis = resolveBarAxis(groups.flatMap((g) => g.values));
   if (!axis || groups.length === 0) return null;

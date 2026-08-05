@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowRight, ChevronDown, ChevronUp, Inbox } from "lucide-react-native";
+import { ArrowRight, Inbox } from "lucide-react-native";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
 import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
@@ -28,7 +28,7 @@ import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
 import { monthLabel, tr } from "../../../i18n/tr";
-import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
@@ -309,7 +309,7 @@ export default function MonthDetailScreen() {
                 </View>
                 <Row gap={spacing.sm}>
                   <Amount minor={selfSum} />
-                  {open ? <ChevronUp accessible={false} size={16} color={palette.textSecondary} /> : <ChevronDown accessible={false} size={16} color={palette.textSecondary} />}
+                  <DisclosureChevron open={open} size={16} />
                 </Row>
               </Spread>
             </Pressable>

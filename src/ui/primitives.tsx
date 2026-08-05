@@ -11,10 +11,11 @@
  * to know the split happened.
  */
 
-import React, { useEffect, useState, type ReactNode } from "react";
+import React, { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   Platform,
   Pressable,
   StyleSheet,
@@ -22,13 +23,14 @@ import {
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
+  type PressableStateCallbackType,
   type StyleProp,
   type TextProps,
   type TextStyle,
   type ViewProps,
   type ViewStyle,
 } from "react-native";
-import { type LucideIcon } from "lucide-react-native";
+import { ChevronDown, type LucideIcon } from "lucide-react-native";
 import { formatMinor, formatMinorCompact } from "../domain/money";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 import { initialsBadgeColor } from "./badge-color";
@@ -43,6 +45,74 @@ export function controlStateStyle(palette: Palette, active: boolean, error = fal
     borderWidth: active || error ? borderWidth.control : StyleSheet.hairlineWidth,
     borderColor: error ? palette.error : active ? palette.focus : palette.controlBorder,
   };
+}
+
+/**
+ * Whether a pointer is resting on this control.
+ *
+ * react-native-web's `Pressable` already tracks hover and hands it to the style
+ * callback — it re-renders on enter and leave whether or not anyone reads it —
+ * so taking the flag from there costs nothing, while adding
+ * `onHoverIn`/`onHoverOut` state of our own would have paid for the same render
+ * twice. React Native's types only declare `pressed` (iOS and Android have no
+ * pointer to hover with), which is why the read is written once here instead of
+ * being cast at every control.
+ *
+ * Hover lands on the same fill as the press. A pointer gets the fill on
+ * approach and the 1pt depression on contact; a finger, which cannot hover,
+ * gets both at once and loses nothing.
+ */
+export function isHovered(state: PressableStateCallbackType): boolean {
+  return (state as { hovered?: boolean }).hovered === true;
+}
+
+/**
+ * The chevron on anything that opens and closes.
+ *
+ * Every disclosure in the app swapped one glyph for another — `ChevronUp` for
+ * `ChevronDown` — which is a cut, and a cut in the one control whose entire job
+ * is to say that something is about to move. One glyph, rotated, is also one
+ * icon import instead of two at each call site.
+ */
+export function DisclosureChevron({
+  open,
+  size = iconSize.control,
+  color,
+}: {
+  open: boolean;
+  size?: number;
+  color?: string;
+}) {
+  const { palette } = useTheme();
+  const reducedMotion = useReducedMotion();
+  const progress = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const settled = useRef(open);
+  useEffect(() => {
+    // A list of thirty closed disclosures should not run thirty 120ms
+    // animations from a value to itself just because they mounted.
+    if (settled.current === open) return;
+    settled.current = open;
+    if (reducedMotion) {
+      progress.setValue(open ? 1 : 0);
+      return;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: open ? 1 : 0,
+      duration: motion.feedback,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: Platform.OS !== "web",
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [open, progress, reducedMotion]);
+  return (
+    <Animated.View
+      accessible={false}
+      style={{ transform: [{ rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }) }] }}
+    >
+      <ChevronDown accessible={false} size={size} color={color ?? palette.textSecondary} strokeWidth={2} />
+    </Animated.View>
+  );
 }
 
 /** Shared reduced-motion-aware entrance. */
@@ -333,9 +403,9 @@ export function Button({
         haptic(hapticKind);
         onPress();
       }}
-      style={({ pressed }) => [
+      style={(state) => [
         {
-          backgroundColor: pressed && !visuallyDisabled ? pressedBackground : colors.background,
+          backgroundColor: (state.pressed || isHovered(state)) && !visuallyDisabled ? pressedBackground : colors.background,
           borderRadius: radius.md,
           borderCurve: "continuous",
           paddingVertical: small ? spacing.sm : spacing.md + 1,
@@ -352,8 +422,8 @@ export function Button({
           // beige block and the form's primary action was unfindable.
           borderWidth: visuallyDisabled ? 0 : variant === "secondary" ? borderWidth.control : 0,
           borderColor: palette.controlBorder,
-          opacity: pressed && variant === "danger" ? stateOpacity.pressed : 1,
-          transform: [{ translateY: pressed && !visuallyDisabled ? 1 : 0 }],
+          opacity: state.pressed && variant === "danger" ? stateOpacity.pressed : 1,
+          transform: [{ translateY: state.pressed && !visuallyDisabled ? 1 : 0 }],
         },
       ]}
     >
@@ -426,17 +496,22 @@ export function IconButton({
         justifyContent: "center",
       }}
     >
-      {({ pressed }) => (
+      {(state) => (
         <View
           style={{
             width: size,
             height: size,
             borderRadius: radius.sm,
-            backgroundColor: tone === "primary" ? palette.primarySoft : pressed ? palette.surfaceHover : palette.surface,
+            backgroundColor: tone === "primary"
+              ? palette.primarySoft
+              : state.pressed || isHovered(state)
+                ? palette.surfaceHover
+                : palette.surface,
             alignItems: "center",
             justifyContent: "center",
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: palette.border + "90",
+            transform: [{ translateY: state.pressed && !disabled ? 1 : 0 }],
           }}
         >
           <IconCmp accessible={false} size={iconSizeValue ?? Math.round(size * 0.5)} color={color} strokeWidth={2.2} />

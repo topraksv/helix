@@ -6,8 +6,8 @@
  * Phones can also switch to a no-horizontal-scroll, month-focused table.
  */
 
-import React, { useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Flag, Inbox, Info, Pencil, Plus, Sigma, TriangleAlert } from "lucide-react-native";
 import { monthFlowTotals } from "../../../domain/balance";
@@ -37,7 +37,7 @@ import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Scr
 import { Collapse } from "../../../ui/motion-primitives";
 import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
-import { circle, controlSize, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { circle, controlSize, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { ledgerCellWidth, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 import { categoryIcon } from "../../../data/category-icons";
@@ -112,6 +112,21 @@ function FlowStat({
 
 /** The pivot's three orientations, named so the control and the wrapper that
  *  bounds it cannot disagree about how many segments there are. */
+/** Device-local, beside `helix.matrix.mode` and `helix.matrix.pinned`. */
+const GUIDE_KEY = "helix.matrix.guide";
+
+/**
+ * How long the table's box must hold still before the grid is rebuilt at it.
+ *
+ * The reading guide above the table opens over a measured height, and the
+ * table's own container reported a new height on every frame of that — which
+ * re-rendered a twelve-column grid a dozen times inside one 220ms animation,
+ * and is the stutter the owner felt on that button. The first measurement is
+ * taken immediately, so the table still paints as soon as it has a box; after
+ * that only the height it settles at is worth a rebuild.
+ */
+const LAYOUT_SETTLE_MS = motion.feedback;
+
 const PIVOT_MODES = [
   { value: "rows" as MatrixMode, label: tr.cashflow.monthsAsRows },
   { value: "columns" as MatrixMode, label: tr.cashflow.monthsAsColumns },
@@ -133,12 +148,12 @@ export default function CashflowScreen() {
   const categories = categoriesState.data;
   const computed = computedState.data;
   const settings = settingsState.data;
-  const hiddenComputed = settingValue<string[]>(settings, "computed_columns_hidden", []);
+  const hiddenComputed = useMemo(() => settingValue<string[]>(settings, "computed_columns_hidden", []), [settings]);
   // "You told me X; this table says Y." The declaration is the last balance the
   // user checked against a real account.
   const balanceDeclaration = parseBalanceDeclaration(settingValue<unknown>(settings, "balance_declared", null));
   const balanceDrift = balanceDeclarationDrift(balanceDeclaration, bundle?.actualBalanceMinor ?? null);
-  const visibleComputed = computed.filter((c) => !hiddenComputed.includes(c.id));
+  const visibleComputed = useMemo(() => computed.filter((c) => !hiddenComputed.includes(c.id)), [computed, hiddenComputed]);
   const sources = sourcesState.data;
   const persons = personsState.data;
   const allTx = allTxState.data;
@@ -168,8 +183,29 @@ export default function CashflowScreen() {
   const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [tableAreaH, setTableAreaH] = useState(0);
+  const measuredTableArea = useRef(0);
+  const tableSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onTableAreaLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const height = Math.round(event.nativeEvent.layout.height);
+    if (height === measuredTableArea.current) return;
+    measuredTableArea.current = height;
+    if (tableSettleTimer.current) clearTimeout(tableSettleTimer.current);
+    // Nothing is on screen yet, so there is nothing to stutter: paint at once.
+    if (tableAreaH === 0) {
+      setTableAreaH(height);
+      return;
+    }
+    tableSettleTimer.current = setTimeout(() => setTableAreaH(measuredTableArea.current), LAYOUT_SETTLE_MS);
+  }, [tableAreaH]);
+  React.useEffect(() => () => {
+    if (tableSettleTimer.current) clearTimeout(tableSettleTimer.current);
+  }, []);
   // Desktop starts with the reading guide open so the table explains itself;
-  // every viewport can collapse it once the user knows the grammar.
+  // every viewport can collapse it once the user knows the grammar. Closing it
+  // is remembered — it is a statement about what the user already knows, and
+  // re-teaching them the grammar on every visit is exactly what they asked to
+  // stop. Device-local, beside the pivot and pin: a phone and a desktop are
+  // allowed to disagree about it.
   const [showTableDetails, setShowTableDetails] = useState(() => width >= 600);
   // The tab's repeat-press behavior needs the active month-focused scroller.
   const monthFocusScrollRef = React.useRef<ScrollView>(null);
@@ -181,6 +217,9 @@ export default function CashflowScreen() {
     });
     void kv.get("helix.matrix.pinned").then((v) => {
       if (v) setPinnedKey(v);
+    });
+    void kv.get(GUIDE_KEY).then((v) => {
+      if (v) setShowTableDetails(v === "true");
     });
   }, [defaultMode]);
   React.useEffect(() => {
@@ -199,8 +238,19 @@ export default function CashflowScreen() {
   };
   const focusMonth = `${year}-${String(focusMonthNumber).padStart(2, "0")}` as MonthKey;
 
-  const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
-  const txLike = toTxLike(allTx, persons, categories);
+  // Everything from here to `tableMatrix` is derived from the whole ledger, and
+  // all of it used to be recomputed on EVERY render of this screen — including
+  // the ones caused by a pin, a layout measurement, a resize, or the router
+  // re-rendering the scaffold on navigation. On a real workbook that is the
+  // entire transaction list mapped, grouped and totalled before React can paint
+  // anything, which is the stutter felt when arriving at Mali Tablo and when
+  // opening the reading guide. It is derived from the data now, not from the
+  // render.
+  const creditCardIds = useMemo(
+    () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
+    [sources],
+  );
+  const txLike = useMemo(() => toTxLike(allTx, persons, categories), [allTx, persons, categories]);
 
   // Year switcher bounds: back to the earliest data, forward only while there
   // is actual data (e.g. installments spilling into next year).
@@ -210,27 +260,42 @@ export default function CashflowScreen() {
   const maxYear = Math.max(currentYear, lastDataYear);
 
   // Per-year columns (see domain/year-columns.ts for the resolution rules).
-  const columnYears = settingValue<Record<string, string[]>>(settings, "column_years", {});
-  const dataCats = new Set<string>();
-  bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) dataCats.add(cid); }));
-  const columnCategories = resolveYearColumns(categories, columnYears, year, maxYear, dataCats);
+  // `settingValue` parses JSON, so an unmemoized read hands a brand-new object
+  // to every consumer below it on every render.
+  const columnYears = useMemo(
+    () => settingValue<Record<string, string[]>>(settings, "column_years", {}),
+    [settings],
+  );
+  const dataCats = useMemo(() => {
+    const used = new Set<string>();
+    bundle?.yearMonths.forEach((m) => m.byCategory.forEach((v, cid) => { if (v !== 0) used.add(cid); }));
+    return used;
+  }, [bundle]);
+  const columnCategories = useMemo(
+    () => resolveYearColumns(categories, columnYears, year, maxYear, dataCats),
+    [categories, columnYears, year, maxYear, dataCats],
+  );
   // Every live category id — used to expose a repair link for legacy rows whose
   // category is missing, without inventing a special non-editable table column.
-  const liveCategoryIds = new Set(categories.map((c) => c.id));
-  const tableMatrix = bundle
-    ? buildCashFlowMatrixModel({
-        year,
-        yearMonths: bundle.yearMonths,
-        categories: columnCategories,
-        computedColumns: visibleComputed,
-        transactions: txLike,
-        creditCardIds,
-        liveCategoryIds,
-        today: todayISO(),
-        openingLabel: tr.cashflow.opening,
-        closingLabel: tr.cashflow.closing,
-      })
-    : null;
+  const liveCategoryIds = useMemo(() => new Set(categories.map((c) => c.id)), [categories]);
+  const today = todayISO();
+  const tableMatrix = useMemo(
+    () => bundle
+      ? buildCashFlowMatrixModel({
+          year,
+          yearMonths: bundle.yearMonths,
+          categories: columnCategories,
+          computedColumns: visibleComputed,
+          transactions: txLike,
+          creditCardIds,
+          liveCategoryIds,
+          today,
+          openingLabel: tr.cashflow.opening,
+          closingLabel: tr.cashflow.closing,
+        })
+      : null,
+    [bundle, year, columnCategories, visibleComputed, txLike, creditCardIds, liveCategoryIds, today],
+  );
 
   const yearSwitcher = (
     <Row testID="cash-flow-year-control" gap={spacing.sm}>
@@ -357,7 +422,10 @@ export default function CashflowScreen() {
                     icon: Info,
                     label: tr.cashflow.tableGuide,
                     active: showTableDetails,
-                    onPress: () => setShowTableDetails((visible) => !visible),
+                    onPress: () => setShowTableDetails((visible) => {
+                      void kv.set(GUIDE_KEY, String(!visible));
+                      return !visible;
+                    }),
                   }
                 : undefined}
             />
@@ -378,7 +446,7 @@ export default function CashflowScreen() {
             </Collapse>
           ) : null}
           {showTable ? (
-            <View style={{ flex: 1 }} onLayout={(e) => setTableAreaH(e.nativeEvent.layout.height)}>
+            <View style={{ flex: 1 }} onLayout={onTableAreaLayout}>
               {tableAreaH > 0 ? (
                 <MatrixTable
                   scrollRef={tableRef}

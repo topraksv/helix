@@ -76,6 +76,28 @@ export function LoadingIndicator({
     ? Math.min(Math.max(progress.completed, 0), Math.max(progress.total, 1))
     : 0;
   const total = progress ? Math.max(progress.total, 1) : 1;
+  // The bar used to jump from phase to phase, which reads as a stall between
+  // steps and then a lurch. A width is layout, so this one is off the native
+  // driver by necessity — it runs at most once per completed phase.
+  const ratio = completed / total;
+  const fill = useRef(new Animated.Value(ratio)).current;
+  const settledRatio = useRef(ratio);
+  useEffect(() => {
+    if (settledRatio.current === ratio) return;
+    settledRatio.current = ratio;
+    if (reducedMotion) {
+      fill.setValue(ratio);
+      return;
+    }
+    const animation = Animated.timing(fill, {
+      toValue: ratio,
+      duration: motion.standard,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [ratio, fill, reducedMotion]);
   return (
     <View
       accessible
@@ -95,9 +117,9 @@ export function LoadingIndicator({
             overflow: "hidden",
           }}
         >
-          <View
+          <Animated.View
             style={{
-              width: `${Math.round((completed / total) * 100)}%`,
+              width: fill.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }),
               height: "100%",
               borderRadius: radius.full,
               backgroundColor: palette.primary,

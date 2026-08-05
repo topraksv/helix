@@ -23,6 +23,7 @@ import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
 import { Body, Button, Card, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader, SelectionGrid } from "../ui/components";
 import { circle, font, radius, spacing, type, type Palette, useTheme } from "../ui/theme";
+import { SuccessPop } from "../ui/motion-primitives";
 import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
@@ -53,6 +54,12 @@ function ImportJourney({ stage }: { stage: 0 | 1 | 2 }) {
         return (
           <React.Fragment key={item.label}>
             <View style={{ flex: 1, minWidth: 0, alignItems: "center", gap: 5 }}>
+              {/* Keyed on the stage that owns it, so the step the wizard has
+                  just reached lands rather than simply being a different
+                  colour from the one before. An import is the longest thing
+                  this app asks anyone to sit through and it needs to be seen
+                  to advance. */}
+              <SuccessPop key={index === stage ? `at-${stage}` : `step-${index}`}>
               <View
                 style={{
                   width: 38,
@@ -67,6 +74,7 @@ function ImportJourney({ stage }: { stage: 0 | 1 | 2 }) {
               >
                 <Icon accessible={false} size={18} color={active ? palette.primaryText : palette.textSecondary} />
               </View>
+              </SuccessPop>
               <Text style={[type.small, { color: active ? palette.text : palette.textSecondary, fontFamily: active ? font.semibold : font.regular, textAlign: "center" }]}>
                 {item.label}
               </Text>

@@ -60,7 +60,10 @@ export function UndoSnackbar() {
     <View
       pointerEvents="box-none"
       style={{ position: "absolute", left: nav.left + spacing.lg, right: spacing.lg, bottom: nav.bottom + spacing.md, alignItems: "center" }}
-    ><SlideUp>
+    >{/* Keyed on the message: a second confirmation arriving while the first
+         is still up replaced its words in place and looked like a typo. It
+         re-enters, and its mark pops again, because it is a different event. */}
+      <SlideUp key={message}>
       {/* The bar is the only confirmation some actions get, so it is announced
           rather than left as silent decoration. Polite: it reports an outcome
           the user just caused and must not interrupt what they type next. */}

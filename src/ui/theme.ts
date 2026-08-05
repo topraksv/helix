@@ -423,6 +423,10 @@ export const motion = {
   figure: 520,
   /** A chart drawing itself in once, after its data has settled. */
   draw: 620,
+  /** Light to dark. Long, because it is the only moment the whole window
+   *  changes at once and a snap of that size reads as a fault rather than as a
+   *  choice — and because nothing is waiting on it. */
+  theme: 600,
   /** An error the user has to notice without being shouted at: three
    *  oscillations inside the standard duration. */
   shake: 320,

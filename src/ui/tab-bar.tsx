@@ -24,17 +24,21 @@
  * working.
  */
 
-import React, { useMemo, useRef } from "react";
-import { PanResponder, Platform, Pressable, Text, View, type ViewStyle } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, PanResponder, Platform, Pressable, Text, View, type ViewStyle } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useReduceTransparency } from "./motion";
-import { font, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type, useTheme } from "./theme";
+import { useReducedMotion, useReduceTransparency } from "./motion";
+import { font, motion, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type, useTheme } from "./theme";
+
+/** The bar's own inset. The selection slides inside it, not over its edge. */
+const BAR_PADDING = 2;
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { palette, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const reduceTransparency = useReduceTransparency();
+  const reducedMotion = useReducedMotion();
   const isWeb = Platform.OS === "web";
   const glass = !reduceTransparency;
   const webMaterial = isWeb
@@ -68,6 +72,30 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       barBox.current = { x, y, width, height };
     });
   };
+
+  // The selection is one shape that travels, not five that light up in turn.
+  // Choosing a tab was a hard swap of fill and outline, which said which tab is
+  // current but never that you had moved between them — and this bar is also
+  // draggable, where a jumping highlight reads as five separate flickers rather
+  // than one thing being scrubbed.
+  const [barWidth, setBarWidth] = useState(0);
+  const slotWidth = state.routes.length > 0 && barWidth > 0
+    ? (barWidth - BAR_PADDING * 2) / state.routes.length
+    : 0;
+  const selection = useRef(new Animated.Value(state.index)).current;
+  useEffect(() => {
+    if (reducedMotion) {
+      selection.setValue(state.index);
+      return;
+    }
+    const animation = Animated.spring(selection, {
+      toValue: state.index,
+      useNativeDriver: Platform.OS !== "web",
+      ...motion.spring.entrance,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [state.index, selection, reducedMotion]);
 
   const pan = useMemo(
     () =>
@@ -130,6 +158,8 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             navigation.navigate(route.name, route.params);
           }
         }}
+        // Fill and outline belong to the travelling selection below; a tab owns
+        // only its own ink, its weight and its answer to a press.
         style={({ pressed }) => ({
           flex: 1,
           alignSelf: "stretch",
@@ -138,11 +168,6 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           justifyContent: "center",
           gap: 1,
           borderRadius: radius.sm,
-          borderWidth: focused ? 1 : 0,
-          borderColor: focused ? palette.primary : "transparent",
-          borderBottomWidth: focused ? 2 : 0,
-          borderBottomColor: focused ? palette.primary : "transparent",
-          backgroundColor: focused ? palette.primarySoft : "transparent",
           opacity: pressed ? stateOpacity.pressed : 1,
         })}
       >
@@ -194,19 +219,41 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     <View
       ref={barRef}
       accessibilityRole="tablist"
-      onLayout={measureBar}
+      onLayout={(event) => {
+        setBarWidth(event.nativeEvent.layout.width);
+        measureBar();
+      }}
       {...pan.panHandlers}
       style={{
         width: "100%",
         maxWidth: TAB_BAR.maxWidth,
         height: tabBarHeight(isWeb),
-        padding: 2,
+        padding: BAR_PADDING,
         flexDirection: "row",
         alignItems: "center",
         borderRadius: radius.md,
         ...material,
       }}
     >
+      {slotWidth > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          accessible={false}
+          style={{
+            position: "absolute",
+            top: BAR_PADDING,
+            bottom: BAR_PADDING,
+            left: BAR_PADDING,
+            width: slotWidth,
+            borderRadius: radius.sm,
+            backgroundColor: palette.primarySoft,
+            borderWidth: 1,
+            borderColor: palette.primary,
+            borderBottomWidth: 2,
+            transform: [{ translateX: Animated.multiply(selection, slotWidth) }],
+          }}
+        />
+      ) : null}
       <View
         pointerEvents="none"
         accessible={false}

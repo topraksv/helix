@@ -41,6 +41,7 @@ import type { OperationFlowKind } from "../ui/operation-flow";
 import { DialogHost, PromptHost } from "../ui/dialog";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { FrozenGate } from "../ui/frozen-gate";
+import { ThemeDissolve } from "../ui/motion-primitives";
 import { UndoSnackbar, useUndo } from "../ui/undo";
 import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
@@ -438,6 +439,9 @@ function RootLayoutInner() {
         <DialogHost />
         <PromptHost />
         <PrivacyCover enabled={Boolean(userId)} />
+        {/* Last child, so the palette being left covers everything under it
+            while it fades. */}
+        <ThemeDissolve />
       </View>
     </ThemeContext.Provider>
   );

@@ -575,9 +575,12 @@ describe("a press lights the control it is on", () => {
         // carry `accessible={false}` and are not reachable by any user who is
         // not already pointing at them.
         if (!/onPress=/.test(tag) || /accessible=\{false\}/.test(tag)) continue;
-        // Either the style callback reads `pressed`, or the children do.
-        if (/\(\{ pressed \}\)/.test(tag) || /pressed \?/.test(tag)) continue;
-        if (/^\s*>?\s*\{\(\{ pressed \}\)/.test(opening)) continue;
+        // Either the style callback reads `pressed`, or the children do. The
+        // whole-state form — `(state) => … state.pressed` — is the one a
+        // control that also answers a hovering pointer has to use, because
+        // `hovered` is not in React Native's own callback type.
+        if (/\(\{ pressed \}\)/.test(tag) || /pressed \?/.test(tag) || /state\.pressed/.test(tag)) continue;
+        if (/^\s*>?\s*\{\(\{ pressed \}\)/.test(opening) || /^\s*>?\s*\{\(state\) =>/.test(opening)) continue;
         // Shared helpers that return the pressed style for their caller.
         if (/style=\{\w*[Pp]ressStyle\(/.test(tag)) continue;
         offenders.push(`${path}:${source.slice(0, index).split("\n").length}`);
@@ -713,18 +716,51 @@ describe("every animation obeys the same three rules", () => {
     // Only `transform` and `opacity` can be driven off the JS thread. A height,
     // a width, a colour, a dash offset and a percentage offset cannot, and
     // asking for the native driver on those throws at runtime on native.
+    //
+    // Matched per animated VALUE, not per file. The file-level version of this
+    // check could not tell a natively driven dot apart from the JS-driven
+    // progress bar beside it, so one module was allowed only one kind of
+    // animation — which is not the rule, and the rule is what is worth
+    // enforcing.
+    const layoutConsumers = ["height", "width", "backgroundColor", "borderColor", "left", "top"];
+    const consumerPattern = new RegExp(`(?:\\b(?:${layoutConsumers.join("|")})\\s*:|strokeDashoffset=\\{)`, "g");
+
+    /** The one declaration that starts here, to its own end — not 200 bytes of
+     *  whatever follows, which caught a dot's `width: size` sitting beside the
+     *  transform it actually drives. */
+    const declaredExpression = (source: string, from: number): string => {
+      let depth = 0;
+      let cursor = from;
+      for (; cursor < source.length; cursor += 1) {
+        const character = source[cursor]!;
+        if ("([{".includes(character)) depth += 1;
+        else if (")]}".includes(character)) {
+          if (depth === 0) break;
+          depth -= 1;
+        } else if (character === "," && depth === 0) break;
+      }
+      return source.slice(from, cursor);
+    };
+
     const offenders: string[] = [];
     for (const path of animatedFiles) {
       const source = readFileSync(join(root, path), "utf8");
-      for (const match of source.matchAll(/Animated\.(?:timing|spring)\((?:.|\n)*?\}\)/g)) {
-        const call = match[0]!;
-        if (!/useNativeDriver:\s*(true|Platform\.OS !== "web")/.test(call)) continue;
-        // The value is driven natively; the interpolations that consume it must
-        // land on transform or opacity only. Checked at the file level, since a
-        // driver and its consumer are rarely adjacent.
-        const line = source.slice(0, match.index!).split("\n").length;
-        if (/height:\s*\w+\.interpolate|width:\s*\w+\.interpolate|backgroundColor:\s*\w+\.interpolate|left:\s*\w+\.interpolate|strokeDashoffset=\{\w+\.interpolate/.test(source)) {
-          offenders.push(`${path}:${line}`);
+      // Per component, because an animated value called `progress` in one is a
+      // different value from `progress` in the next — and this file holds both
+      // the natively driven entrances and the height that cannot be one.
+      const starts = [...source.matchAll(/^(?:export )?function /gm)].map((match) => match.index!);
+      const blocks = starts.map((start, index) => ({ start, body: source.slice(start, starts[index + 1] ?? source.length) }));
+      for (const { start, body } of blocks) {
+        for (const match of body.matchAll(/Animated\.(?:timing|spring)\(\s*([A-Za-z_$][\w$.]*)\s*,(?:.|\n)*?\}\)/g)) {
+          if (!/useNativeDriver:\s*(true|Platform\.OS !== "web")/.test(match[0]!)) continue;
+          const value = match[1]!;
+          const line = source.slice(0, start + match.index!).split("\n").length;
+          for (const consumer of body.matchAll(consumerPattern)) {
+            const expression = declaredExpression(body, consumer.index! + consumer[0]!.length);
+            if (!expression.includes(`${value}.interpolate`) && expression.trim() !== value) continue;
+            offenders.push(`${path}:${line} (${value})`);
+            break;
+          }
         }
       }
     }
@@ -838,5 +874,115 @@ describe("only a hero figure counts", () => {
       "src/app/(tabs)/index.tsx",
       "src/app/(tabs)/investments/index.tsx",
     ]);
+  });
+});
+
+/**
+ * An entrance is a thing that happens on arrival, not once per session.
+ *
+ * Expo Router keeps a tab's screen mounted after you leave it, so the screen
+ * scaffold's mount-only fade played exactly once: the first time you opened
+ * Yatırımlar it arrived, and every return afterwards was a repaint. The
+ * navigator's own `focus` event is the trigger, and it fires while the
+ * navigation state is still being dispatched — before the incoming scene is
+ * rendered, let alone painted — which is what stops the reset to zero from
+ * flashing.
+ */
+describe("a screen arrives every time it is visited", () => {
+  const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+
+  it("replays the entrance on focus rather than on mount", () => {
+    expect(motionPrimitives).toContain("export function useScreenEntrance()");
+    expect(motionPrimitives).toContain('navigation?.addListener("focus", enter)');
+    // Nothing listens for blur: the outgoing screen keeps its finished state
+    // while the navigator fades it out.
+    expect(motionPrimitives).not.toContain('addListener("blur", enter)');
+  });
+
+  it("tolerates the surfaces that render above the navigator", () => {
+    // The lock gate, the frozen gate and the first-pull wait all render before
+    // the router's `Stack`, so there is no navigation object at all. `useIsFocused`
+    // throws there; this reads the context directly and treats absent as focused.
+    expect(motionPrimitives).toContain("useContext(NavigationContext)");
+    expect(motionPrimitives).toContain("navigation?.isFocused() ?? true");
+    expect(motionPrimitives).not.toMatch(/\buseIsFocused\(/);
+  });
+
+  it("is what the screen scaffold uses, in both of its shapes", () => {
+    const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
+    expect([...screen.matchAll(/<ScreenEntrance/g)]).toHaveLength(2);
+    expect(screen).not.toContain("<FadeIn");
+  });
+});
+
+/**
+ * The remaining hard cuts, closed at their shared owner.
+ *
+ * Each of these was one component swapping one finished state for another in a
+ * single frame, in a place where the whole point was that something moved.
+ */
+describe("nothing changes state by cutting to it", () => {
+  const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+  const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
+  const tabBar = readFileSync(join(root, "src/ui/tab-bar.tsx"), "utf8");
+  const charts = readFileSync(join(root, "src/ui/charts.tsx"), "utf8");
+  const selectionControls = readFileSync(join(root, "src/ui/selection-controls.tsx"), "utf8");
+
+  it("moves one selection across the tab bar instead of lighting five in turn", () => {
+    expect(tabBar).toContain("Animated.multiply(selection, slotWidth)");
+    // The fill and outline belong to the travelling shape; a tab keeps only its
+    // ink, its weight and its answer to a press.
+    const destination = tabBar.slice(tabBar.indexOf("const destinations ="), tabBar.indexOf("return ("));
+    expect(destination).not.toMatch(/backgroundColor: focused \?/);
+    expect(destination).not.toMatch(/borderWidth: focused \?/);
+  });
+
+  it("rotates one chevron rather than swapping two glyphs", () => {
+    expect(primitives).toContain("export function DisclosureChevron(");
+    expect(primitives).toContain('outputRange: ["0deg", "180deg"]');
+    const swappers = sourceFiles("src")
+      .filter((path) => path.endsWith(".tsx"))
+      .filter((path) => {
+        const source = readFileSync(join(root, path), "utf8");
+        return source.includes("<ChevronUp") && source.includes("<ChevronDown");
+      });
+    expect(swappers, "a disclosure that owns both glyphs is a cut").toEqual([]);
+  });
+
+  /**
+   * An animated modal EXIT is deliberately absent, and this is what keeps it
+   * absent.
+   *
+   * Driving `visible` instead of unmounting is the only way either platform can
+   * animate a modal out — and measured in the browser, react-native-web keeps
+   * `ModalFocusTrap` armed for the whole exit: focusing a field on the screen
+   * underneath during those ~300ms lands back on a button inside the dialog
+   * that is leaving. A confirmation is usually followed immediately by the next
+   * action, so the cost is the app ignoring the user, and the gain is a fade.
+   */
+  it("does not buy a modal exit with the focus of the screen underneath", () => {
+    for (const path of ["src/ui/selection-controls.tsx", "src/ui/calendar.tsx", "src/ui/calculator.tsx", "src/ui/dialog.tsx"]) {
+      const source = readFileSync(join(root, path), "utf8");
+      expect(source, `${path} unmounts its modal rather than animating it out`).not.toMatch(/<Modal[^>]*visible=\{/);
+    }
+  });
+
+  it("redraws a chart when its own data changes, not only on first render", () => {
+    // A token, not a mount: switching period or filter used to replace one
+    // finished picture with another in a single frame.
+    expect(motionPrimitives).toContain("token?: string | number");
+    expect([...charts.matchAll(/useDrawIn\(true, motion\.draw, /g)]).toHaveLength(3);
+    expect(charts).not.toMatch(/useDrawIn\(\)/);
+  });
+
+  it("measures the segmented indicator against the track its options share", () => {
+    // The guide toggle beside the options is a fixed 44pt while the indicator
+    // is a percentage, so measuring it against the whole strip made it too
+    // narrow and progressively too far left — visible on the third segment of
+    // the only view that has a toggle.
+    const segmented = selectionControls.slice(selectionControls.indexOf("export function Segmented<"));
+    expect(segmented).toContain("width: `${100 / options.length}%`");
+    expect(segmented).not.toContain("optionCount");
   });
 });

@@ -730,18 +730,25 @@ test("supplementary financial-table details collapse without losing recovery", a
   await expect.poll(async () => (await table.boundingBox())!.height).toBeGreaterThanOrEqual(collapsedHeight - 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 
+  // Closing it is a statement about what this reader already knows, so it
+  // survives a reload and a change of width. Re-teaching the grammar on every
+  // visit is what the owner asked to stop.
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true })).toBeVisible();
+  await expect(guide).toBeHidden();
+
   await page.setViewportSize({ width: 768, height: 844 });
   await page.goto("/helix/cash-flow");
   const desktopDetails = page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true });
   await expect(desktopDetails).toBeVisible();
-  await expect(guide).toBeVisible();
+  await expect(guide).toBeHidden();
   const desktopTable = page.getByTestId("cash-flow-matrix-table");
-  const desktopOpenHeight = (await desktopTable.boundingBox())!.height;
+  const desktopClosedHeight = (await desktopTable.boundingBox())!.height;
+  await desktopDetails.click();
+  await expect(guide).toBeVisible();
+  await expect.poll(async () => (await desktopTable.boundingBox())!.height).toBeLessThan(desktopClosedHeight - 20);
   await desktopDetails.click();
   await expect(guide).toBeHidden();
-  await expect.poll(async () => (await desktopTable.boundingBox())!.height).toBeGreaterThan(desktopOpenHeight + 20);
-  await desktopDetails.click();
-  await expect(guide).toBeVisible();
 });
 
 test("desktop action systems use intentional full-width or single-stream geometry", async ({ page }) => {
@@ -1514,5 +1521,43 @@ test("a dragged ledger rests on a whole month in the browser too", async ({ page
     // Either exactly on the grid, or hard against the far end.
     const onGrid = resting.left % cellWidth === 0 || resting.left === resting.max;
     expect(onGrid, `rested at ${resting.left} on a ${cellWidth}px grid (max ${resting.max})`).toBe(true);
+  }
+});
+
+/**
+ * The pivot's underline sits under the option it belongs to.
+ *
+ * The indicator is a percentage of its track and the reading-guide toggle
+ * beside it is a fixed 44pt, so measuring the indicator against the whole strip
+ * made it both too narrow and progressively too far left — correct on the first
+ * segment, visibly wrong on the third, and only in the view that has a toggle.
+ */
+test("the financial-table pivot underlines the option it belongs to", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await onboard(page);
+  await openCashFlow(page);
+
+  for (const name of ["Satır odaklı", "Kolon odaklı", "Ay odaklı"]) {
+    const option = page.getByRole("radio", { name, exact: true });
+    await expect(option, `the pivot offers "${name}"`).toHaveCount(1);
+    await option.click();
+    await expect(option).toHaveAttribute("aria-checked", "true");
+    await expect
+      .poll(async () =>
+        option.evaluate((element) => {
+          const strip = element.closest<HTMLElement>('[role="radiogroup"]')!;
+          const indicator = Array.from(strip.querySelectorAll<HTMLElement>("div")).find((node) => {
+            const style = getComputedStyle(node);
+            return style.position === "absolute" && node.getBoundingClientRect().height <= 4 && node.getBoundingClientRect().width > 20;
+          });
+          if (!indicator) return "no indicator";
+          const bar = indicator.getBoundingClientRect();
+          const seg = element.getBoundingClientRect();
+          return Math.round(Math.abs(bar.left - seg.left)) <= 2 && Math.round(Math.abs(bar.width - seg.width)) <= 2
+            ? "aligned"
+            : `left ${Math.round(bar.left - seg.left)} width ${Math.round(bar.width - seg.width)}`;
+        }),
+      )
+      .toBe("aligned");
   }
 });

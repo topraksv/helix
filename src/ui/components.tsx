@@ -36,9 +36,11 @@ import {
   Button,
   Divider,
   FadeIn,
+  isHovered,
   Row,
   useLedeAlignment,
 } from "./primitives";
+import { ScreenEntrance } from "./motion-primitives";
 import { circle, contentWidth, density, font, heroSurface, iconSize, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
 import { shouldCompactAmount, shouldStackListActions, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useMeasuredWidth, useNavigationSpace } from "./viewport";
@@ -50,11 +52,13 @@ export {
   Body,
   Button,
   controlStateStyle,
+  DisclosureChevron,
   Divider,
   FadeIn,
   Heading,
   IconButton,
   InitialsBadge,
+  isHovered,
   Label,
   Row,
   Spread,
@@ -192,10 +196,14 @@ export function Screen({
     // a scene-level inset also shortened the nested stack's header, which is
     // chrome that belongs to the whole window.
     <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
-        <FadeIn style={[{ flex: 1 }, inner]}>
+        {/* Not `FadeIn`: a tab's screen stays mounted after you leave it, so a
+            mount-only entrance played once per session and every return to
+            Yatırımlar was a repaint. `ScreenEntrance` re-runs on the
+            navigator's own focus event. */}
+        <ScreenEntrance style={[{ flex: 1 }, inner]}>
           {header}
           {children}
-        </FadeIn>
+        </ScreenEntrance>
       </View>
     );
   }
@@ -230,10 +238,10 @@ export function Screen({
         {/* Carries the container's grow through to the children, so a screen
             with one short block can centre it rather than stack it at the top
             of an empty page. */}
-        <FadeIn style={{ flexGrow: 1 }}>
+        <ScreenEntrance style={{ flexGrow: 1 }}>
           {header}
           {children}
-        </FadeIn>
+        </ScreenEntrance>
       </ScrollView>
     </View>
   );
@@ -280,7 +288,12 @@ export function Card({
         testID={testID}
         onPress={onPress}
         onLayout={onLayout}
-        style={({ pressed }) => [base, style, pressed && { backgroundColor: palette.surfaceHover }]}
+        style={(state) => [
+          base,
+          style,
+          (state.pressed || isHovered(state)) && { backgroundColor: palette.surfaceHover },
+          state.pressed && { transform: [{ translateY: 1 }] },
+        ]}
       >
         {children}
       </Pressable>
@@ -792,12 +805,12 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => ({
+      style={(state) => ({
         marginHorizontal: -PRESS_BLEED,
         paddingHorizontal: PRESS_BLEED,
-        backgroundColor: pressed ? palette.surfaceHover : "transparent",
+        backgroundColor: state.pressed || isHovered(state) ? palette.surfaceHover : "transparent",
         borderRadius: radius.sm,
-        transform: [{ translateY: pressed ? 1 : 0 }],
+        transform: [{ translateY: state.pressed ? 1 : 0 }],
       })}
     >
       {children}
