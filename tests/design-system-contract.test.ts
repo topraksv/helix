@@ -133,8 +133,7 @@ describe("design-system typography contracts", () => {
     for (const role of [type.field, type.moneyInput, type.sectionTitle]) {
       expect(role.fontSize).toBeGreaterThanOrEqual(16);
     }
-    const source = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
-    expect(source).toContain("...type.field");
+    expect(readFileSync(join(root, "src/ui/fields.tsx"), "utf8")).toContain("...type.field");
   });
 
   /**
@@ -178,24 +177,29 @@ describe("design-system typography contracts", () => {
   });
 
   /**
-   * The shipped `Fraunces_700Bold` exposes no `tnum` feature and its digit
-   * advances span 978–1404 units at 2000 upem. A serif figure would jump as a
-   * balance updated and would never align down a column, so the brand face is
-   * allowed on voice — the sign-in hero and screen titles — and nowhere near a
-   * number.
+   * Measured from the shipped TTFs, not assumed.
+   *
+   * The old display face (Fraunces_700Bold) advanced its digits 978–1404 units
+   * at 2000 upem — a 43.6% spread with no `tnum` to correct it — so a serif
+   * figure would jump as a balance updated and would never align down a column.
+   * IBM Plex Serif advances every digit exactly 600 at 1000 upem: tabular by
+   * construction. The ban is nonetheless kept, because the reason a table stays
+   * on one face is legibility at 11–13px and not only alignment, and because
+   * Inter is the face every measured width in this app is calibrated against
+   * (`ledgerCellWidth`, `compactMonthHeadWidth`, `amount-layout`).
    */
   it("keeps every figure role on the tabular Inter faces, never the brand serif", () => {
     for (const [name, role] of Object.entries(type)) {
       const carriesFigures = "fontVariant" in role || /^amount|^money/.test(name);
       if (!carriesFigures) continue;
-      expect(role.fontFamily, `${name} must not use the serif`).not.toBe(font.serifBold);
+      expect(role.fontFamily, `${name} must not use the serif`).not.toBe(font.serif);
       expect(
         (role as { fontVariant?: readonly string[] }).fontVariant,
         `${name} must request tabular figures`,
       ).toEqual(["tabular-nums"]);
     }
-    expect(type.title.fontFamily, "screen titles carry the brand voice").toBe(font.serifBold);
-    expect(type.display.fontFamily).toBe(font.serifBold);
+    expect(type.title.fontFamily, "screen titles carry the brand voice").toBe(font.serif);
+    expect(type.display.fontFamily).toBe(font.serif);
   });
 });
 
@@ -315,7 +319,10 @@ describe("interaction feedback contracts", () => {
   // renders another Helix component and the calculator can take `Button`
   // without closing an import cycle. Both halves are read here.
   const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8") + primitives;
+  const fields = readFileSync(join(root, "src/ui/fields.tsx"), "utf8");
+  const selectionControls = readFileSync(join(root, "src/ui/selection-controls.tsx"), "utf8");
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8")
+    + primitives + fields + selectionControls;
   const calendar = readFileSync(join(root, "src/ui/calendar.tsx"), "utf8");
   const stickyTable = readFileSync(join(root, "src/ui/sticky-table.tsx"), "utf8");
   const tabBar = readFileSync(join(root, "src/ui/tab-bar.tsx"), "utf8");
@@ -329,14 +336,11 @@ describe("interaction feedback contracts", () => {
     components.indexOf("/** Quiet tonal hero container"),
   );
   const iconButton = primitives.slice(primitives.indexOf("export function IconButton("));
-  const select = components.slice(
-    components.indexOf("export function Select<"),
-    components.indexOf("/** Horizontal segmented selector"),
+  const select = selectionControls.slice(
+    selectionControls.indexOf("export function Select<"),
+    selectionControls.indexOf("/** Horizontal segmented selector"),
   );
-  const toggle = components.slice(
-    components.indexOf("export function Toggle("),
-    components.indexOf("/** Initials avatar"),
-  );
+  const toggle = fields.slice(fields.indexOf("export function Toggle("));
 
   it("keeps generic actions quiet and uses a tonal pressed state instead of universal scale motion", () => {
     expect(button).toContain('haptic: hapticKind = "none"');
@@ -453,7 +457,10 @@ describe("centred icons resolve to whole pixels on every supported density", () 
  */
 describe("compact controls own a real minimum target", () => {
   const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
-  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8") + primitives;
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8")
+    + primitives
+    + readFileSync(join(root, "src/ui/fields.tsx"), "utf8")
+    + readFileSync(join(root, "src/ui/selection-controls.tsx"), "utf8");
 
   it("gives the icon button a minimum-target pressable and a compact visual chip", () => {
     const iconButton = primitives.slice(primitives.indexOf("export function IconButton("));
@@ -468,7 +475,7 @@ describe("compact controls own a real minimum target", () => {
   });
 
   it("gives the switch the minimum height without moving its track", () => {
-    const toggle = components.slice(components.indexOf("export function Toggle("));
+    const toggle = readFileSync(join(root, "src/ui/fields.tsx"), "utf8");
     expect(toggle).toContain("minHeight: controlSize.minimumTarget");
     expect(toggleSize.height).toBeLessThan(controlSize.minimumTarget);
   });
@@ -745,5 +752,91 @@ describe("every animation obeys the same three rules", () => {
       expect(last, `${count} items`).toBeLessThanOrEqual(motion.stagger.budget);
       expect(staggerDelay(1, count)).toBeLessThanOrEqual(motion.stagger.step);
     }
+  });
+});
+
+/**
+ * A mark that leads a block of text centres against it — and stops.
+ *
+ * Pinned to the top of the block it sat level with the first line's cap height
+ * and read as dropped in from above; centred against the whole block, a long
+ * description dragged it into the middle of a paragraph it does not belong to.
+ * Three lines is the compromise: honest centring while the text is short, and a
+ * fixed resting place past that.
+ */
+describe("a leading mark centres against its own text", () => {
+  const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+
+  it("caps the centring at three lines", () => {
+    expect(primitives).toContain("export const LEDE_CENTRE_LINES = 3;");
+    expect(primitives).toContain("Math.min(blockHeight, cap)");
+    // Measured, not assumed: the type scale sets `fontSize` only and each
+    // platform derives its own line box.
+    expect(primitives).toContain("onLineLayout");
+    expect(primitives).toContain("onBlockLayout");
+  });
+
+  it("is the rule both marked surfaces use, rather than a per-screen guess", () => {
+    for (const owner of ["PanelHeader", "ListRow"]) {
+      const start = components.indexOf(`export function ${owner}(`);
+      expect(start, `${owner} exists`).toBeGreaterThan(-1);
+      const body = components.slice(start, start + 3_000);
+      expect(body, `${owner} uses the shared alignment`).toContain("lede.markStyle");
+      expect(body, `${owner} measures its text block`).toContain("lede.onBlockLayout");
+    }
+    // Nothing may pin a mark to the top of a text block by hand any more.
+    expect(components).not.toContain('alignItems: description ? "flex-start" : "center"');
+  });
+});
+
+/**
+ * Navigation is movement, so it moves.
+ *
+ * A tab change and a pushed page were both hard cuts — on the web by default,
+ * because neither navigator animates there unless told to. The same page
+ * furniture with different words in it reads as a repaint rather than as
+ * arriving somewhere.
+ */
+describe("navigation says that it moved", () => {
+  it("crossfades between tabs rather than cutting", () => {
+    const tabs = readFileSync(join(root, "src/app/(tabs)/_layout.tsx"), "utf8");
+    // `fade`, not `shift`: five peers, so nothing should imply a direction.
+    expect(tabs).toContain('animation: "fade" as const');
+  });
+
+  it("slides a pushed page in the direction its back gesture already implies", () => {
+    const header = readFileSync(join(root, "src/ui/header-bar.tsx"), "utf8");
+    expect(header).toContain('const STACK_ANIMATION = "slide_from_right" as const;');
+    expect(header).toContain("animation: STACK_ANIMATION");
+  });
+});
+
+/**
+ * The ledger does not animate its numbers.
+ *
+ * `Amount` is rendered hundreds of times on the financial table, so the
+ * counting animation is opt-in and the opt-in is enforced here: without the
+ * guard every cell would run a per-frame `setState` whenever its value
+ * changed, which is both the wrong behaviour — twelve numbers moving at once
+ * is noise on a surface whose whole job is to be read — and the wrong cost.
+ */
+describe("only a hero figure counts", () => {
+  it("gates the counting animation behind an explicit flag", () => {
+    const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
+    expect(motionPrimitives).toContain("export function useCountUp(value: number, enabled = true");
+    expect(motionPrimitives).toContain("if (!enabled || reducedMotion");
+    expect(readFileSync(join(root, "src/ui/primitives.tsx"), "utf8"))
+      .toContain("useCountUp(minor, count)");
+  });
+
+  it("is asked for on exactly the two hero figures and nowhere else", () => {
+    const askers = sourceFiles("src")
+      .filter((path) => path.endsWith(".tsx"))
+      .filter((path) => /<Amount[^>]*\scount(\s|\n|\/|>)/.test(readFileSync(join(root, path), "utf8")));
+    expect(askers.sort()).toEqual([
+      "src/app/(tabs)/index.tsx",
+      "src/app/(tabs)/investments/index.tsx",
+    ]);
   });
 });

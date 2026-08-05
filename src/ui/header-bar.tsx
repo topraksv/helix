@@ -89,6 +89,21 @@ function HeaderBar({
   );
 }
 
+/**
+ * How a pushed page arrives.
+ *
+ * Every route in this app is a `card`, so the transition is the only thing that
+ * says a page was pushed rather than repainted — and the default on web is no
+ * transition at all. `slide_from_right` matches the direction the back gesture
+ * already implies on iOS, so the motion and the gesture agree about which way
+ * the stack runs. iOS keeps its own native curve; the option only names it.
+ *
+ * Reduce Motion is handled below the navigator: the platform honours it for
+ * native-stack transitions, and `react-native-screens` degrades to no animation
+ * rather than to a broken one.
+ */
+const STACK_ANIMATION = "slide_from_right" as const;
+
 export function stackScreenOptions(palette: Palette, presentationClass: PresentationClass = "drill-down") {
   // Presentation taxonomy: every navigable route shares this stack contract —
   // one header, one back rule, one safe-area rule. Short contextual choices
@@ -96,6 +111,7 @@ export function stackScreenOptions(palette: Palette, presentationClass: Presenta
   // second navigation header.
   const presentation = PRESENTATION_TAXONOMY[presentationClass];
   return {
+    animation: STACK_ANIMATION,
     headerStyle: { backgroundColor: palette.background },
     headerTintColor: palette.accentText,
     headerTitleStyle: { color: palette.textStrong, fontFamily: font.semibold },

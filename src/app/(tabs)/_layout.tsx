@@ -23,6 +23,13 @@ export default function TabsLayout() {
       screenOptions={{
         // Screens draw their own large titles; a native header would repeat them.
         headerShown: false,
+        // A tab change is a change of place, and it used to be a hard cut —
+        // the same page furniture with different words in it, which reads as a
+        // repaint rather than as arriving somewhere. `fade` rather than
+        // `shift`: the five tabs are peers, not a sequence, so nothing should
+        // imply a direction between them. The navigator honours Reduce Motion
+        // through the platform's own accessibility settings.
+        animation: "fade" as const,
         // No left inset here. The rail is a floating panel centred on its own
         // axis, not a column the scene stands beside, so a nested stack's header
         // spans the whole window as a header should; padding the scene cut that

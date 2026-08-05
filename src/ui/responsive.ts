@@ -181,3 +181,17 @@ export function ledgerCellWidth(input: {
   const fitted = Math.floor(body / wholeCount);
   return Math.max(natural, Math.min(compact ? 144 : 320, fitted));
 }
+
+/**
+ * Whether a column is too narrow to hold an exact amount.
+ *
+ * 140, not 116: a year of a real ledger reaches `₺868.952,23`, and the
+ * threshold has to clear the widest figure these surfaces carry rather than
+ * the narrowest. Below it the figure renders as `₺868,9 B` and keeps its own
+ * line. The rule lives here because two surfaces need the same answer — the
+ * metric strip under a hero, and the value ledger under a bar chart, where a
+ * three-column month with kuruş wrapped onto a second line on a phone.
+ */
+export function shouldCompactAmount(columnWidth: number): boolean {
+  return columnWidth > 0 && columnWidth < 140;
+}

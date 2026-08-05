@@ -7,6 +7,8 @@ import type { Distribution } from "../domain/analytics";
 import { formatMinorCompact } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { resolveBarAxis } from "./chart-axis";
+import { Amount } from "./primitives";
+import { shouldCompactAmount } from "./responsive";
 import { useDrawIn } from "./motion-primitives";
 import { chart, font, radius, spacing, type, useTheme } from "./theme";
 import { useMeasuredWidth } from "./viewport";
@@ -646,6 +648,10 @@ export function Bars({
     0,
   );
   const showValueLedger = groups.length <= 3 && visibleValueCount <= 9;
+  // Each group owns a share of the frame, minus its own padding and the colour
+  // rule beside every figure.
+  const ledgerColumnWidth = groups.length > 0 ? width / groups.length - spacing.sm * 2 - 10 : 0;
+  const compactLedgerValues = shouldCompactAmount(ledgerColumnWidth);
   const chartSummary = tr.a11y.barChart(groups.map((group) => {
     const groupValues = group.values.map((value, index) =>
       `${series[index]?.label ?? index + 1}: ${formatMinorCompact(value ?? 0)}`,
@@ -828,19 +834,21 @@ export function Bars({
                         <Text style={[type.small, { color: palette.textSecondary }]}>
                           {item?.label ?? seriesIndex + 1}
                         </Text>
-                        <Text
-                          selectable
+                        {/* The one money primitive, not a bespoke `Text`.
+                            It owns both answers to a figure that will not fit:
+                            abbreviate to ₺868,9 B when the column is narrow,
+                            and walk down the size ladder if the exact figure
+                            still wraps. Written by hand here, a three-column
+                            month with kuruş broke onto a second line on a
+                            phone. */}
+                        <Amount
                           testID="bar-value-label"
-                          style={[
-                            type.amount,
-                            {
-                              color: palette.text,
-                              fontSize: width >= 480 ? 15 : 14,
-                            },
-                          ]}
-                        >
-                          {formatMinorCompact(value)}
-                        </Text>
+                          minor={value}
+                          compact={compactLedgerValues}
+                          colorized={false}
+                          color={palette.text}
+                          style={{ textAlign: groups.length === 1 ? "left" : "center" }}
+                        />
                       </View>
                     </View>
                   );

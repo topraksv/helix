@@ -21,6 +21,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
   type StyleProp,
   type TextProps,
   type TextStyle,
@@ -97,6 +98,60 @@ export function FadeIn({
 
 /** Screen scaffold with safe areas and bounded wide-screen content. */
 
+export function Row({ children, style, gap = spacing.md, ...props }: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  gap?: number;
+} & Omit<ViewProps, "children" | "style">) {
+  return <View {...props} style={[{ flexDirection: "row", alignItems: "center", gap }, style]}>{children}</View>;
+}
+
+export function Spread({ children, style, ...props }: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+} & Omit<ViewProps, "children" | "style">) {
+  return <View {...props} style={[{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, style]}>{children}</View>;
+}
+
+
+/**
+ * How many lines of text a leading mark still centres itself against.
+ *
+ * A mark beside a title-and-description block used to pin itself to the top of
+ * that block, which put it level with the first line's cap height and left it
+ * looking dropped in from above. Centring against the whole block is wrong the
+ * other way: a five-line description drags the mark to the middle of a
+ * paragraph it does not belong to.
+ *
+ * Three is the compromise the owner asked for — centre honestly while the text
+ * is short, and past that behave as though the block were three lines, so the
+ * mark keeps a little air above it and stops travelling.
+ */
+export const LEDE_CENTRE_LINES = 3;
+
+/**
+ * Vertical alignment for a mark that leads a block of text.
+ *
+ * Measures the block and one line of it rather than assuming a line height:
+ * the type scale sets `fontSize` only and lets each platform derive the line
+ * box, so the number is different on iOS, Android and the web and only the
+ * layout knows it.
+ */
+export function useLedeAlignment(markHeight: number) {
+  const [blockHeight, setBlockHeight] = useState(0);
+  const [lineHeight, setLineHeight] = useState(0);
+  const cap = lineHeight > 0 ? lineHeight * LEDE_CENTRE_LINES : 0;
+  const effective = cap > 0 ? Math.min(blockHeight, cap) : blockHeight;
+  return {
+    /** Spread onto the mark's own container. */
+    markStyle: { marginTop: Math.max(0, Math.round((effective - markHeight) / 2)) },
+    /** `onLayout` for the whole text block. */
+    onBlockLayout: (event: LayoutChangeEvent) => setBlockHeight(event.nativeEvent.layout.height),
+    /** `onLayout` for the block's first line — its title. */
+    onLineLayout: (event: LayoutChangeEvent) => setLineHeight(event.nativeEvent.layout.height),
+  };
+}
+
 export function Title({ children }: { children: ReactNode }) {
   const { palette } = useTheme();
   return <Text accessibilityRole="header" style={[type.title, { color: palette.textStrong, marginBottom: spacing.md }]}>{children}</Text>;
@@ -149,6 +204,7 @@ export function Amount({
   compact = false,
   count = false,
   style,
+  testID,
 }: {
   minor: number;
   currency?: string;
@@ -168,11 +224,11 @@ export function Amount({
    */
   count?: boolean;
   style?: StyleProp<TextStyle>;
+  testID?: string;
 }) {
   const { palette } = useTheme();
   const { width, fontScale } = useWindowDimensions();
-  const counted = useCountUp(count ? minor : minor);
-  const shown = count ? counted : minor;
+  const shown = useCountUp(minor, count);
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
   const formatted = compact ? formatMinorCompact(shown, currency) : formatMinor(shown, currency);
   const settled = compact ? formatMinorCompact(minor, currency) : formatMinor(minor, currency);
@@ -189,6 +245,7 @@ export function Amount({
   };
   return (
     <Text
+      testID={testID}
       selectable
       accessibilityLabel={settled}
       onTextLayout={(event) => {

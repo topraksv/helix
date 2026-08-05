@@ -64,7 +64,7 @@ const HIGH_RISK = [
   // Shared UI primitives every screen renders through. `primitives` is the
   // leaf layer split out of `components`; splitting a file must not quietly
   // downgrade what it renders.
-  /^src\/ui\/(components|primitives|motion-primitives|theme|sticky-table|haptics)\.tsx?$/,
+  /^src\/ui\/(components|primitives|fields|selection-controls|motion-primitives|theme|sticky-table|haptics)\.tsx?$/,
   // The delivery machinery itself.
   /^\.github\//,
   /^scripts\//,

@@ -65,7 +65,7 @@ export function useDrawIn(active = true, duration = motion.draw): Animated.Value
  * cheap. Reduce Motion, and the very first render, show the value outright —
  * counting up from zero on open would be a lie about what changed.
  */
-export function useCountUp(value: number, duration = motion.figure): number {
+export function useCountUp(value: number, enabled = true, duration = motion.figure): number {
   const reducedMotion = useReducedMotion();
   const [shown, setShown] = useState(value);
   const previous = useRef(value);
@@ -73,7 +73,12 @@ export function useCountUp(value: number, duration = motion.figure): number {
   useEffect(() => {
     const from = previous.current;
     previous.current = value;
-    if (reducedMotion || !settled.current || from === value) {
+    // `enabled` is what keeps this off the ledger. Hooks cannot be called
+    // conditionally, so every `Amount` runs this one — but only the two hero
+    // figures ask it to animate. Without the guard a table of amounts would
+    // re-render per frame whenever any of its cells changed, which is both the
+    // wrong behaviour and the wrong cost.
+    if (!enabled || reducedMotion || !settled.current || from === value) {
       settled.current = true;
       setShown(value);
       return;
@@ -96,7 +101,7 @@ export function useCountUp(value: number, duration = motion.figure): number {
       driver.removeListener(listener);
       setShown(value);
     };
-  }, [value, duration, reducedMotion]);
+  }, [value, enabled, duration, reducedMotion]);
   return shown;
 }
 

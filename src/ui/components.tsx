@@ -10,58 +10,39 @@
 
 
 
-import React, { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import React, { useRef, type ReactNode } from "react";
 import {
-  Amount,
-  Body,
-  Button,
-  controlStateStyle,
-  Divider,
-  FadeIn,
-  Heading,
-  IconButton,
-  Label,
-} from "./primitives";
-import {
-  Animated,
-  Modal,
-  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
   type StyleProp,
-  type TextInputProps,
-  type ViewProps,
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
 import { useScrollToTop } from "@react-navigation/native";
-import { AlertCircle, Calculator as CalculatorIcon, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, Minus, Plus, TriangleAlert, type LucideIcon } from "lucide-react-native";
-import { formatMoneyInputLive, parseAmountExpression } from "../domain/money";
-import { INPUT_LIMITS } from "../domain/input";
-import { DelayedLoading, DelayedLoadingIndicator, LoadingIndicator } from "./loading-indicator";
+import { ChevronRight, TriangleAlert, type LucideIcon } from "lucide-react-native";
+import { DelayedLoading, LoadingIndicator } from "./loading-indicator";
 import type { TrackedOperationState } from "./operation-guard";
-import { addMonthsToKey, type MonthKey } from "../domain/dates";
-import { monthLabel, tr } from "../i18n/tr";
+import { tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
-import { selectionTap, selectionTapIfChanged } from "./haptics";
-import { borderWidth, circle, contentWidth, controlSize, density, font, heroSurface, iconSize, motion, radius, segmentedMaxWidth, spacing, staggerDelay, stateOpacity, themeShadow, toggleSize, type, type ContentWidth, type Palette, useTheme } from "./theme";
-import { shouldBoundIntrinsicControls, shouldStackListActions, shouldUseWideGutter } from "./responsive";
+import {
+  Amount,
+  Body,
+  Button,
+  Divider,
+  FadeIn,
+  Row,
+  useLedeAlignment,
+} from "./primitives";
+import { circle, contentWidth, density, font, heroSurface, iconSize, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
+import { shouldCompactAmount, shouldStackListActions, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useMeasuredWidth, useNavigationSpace } from "./viewport";
-import { useReducedMotion } from "./motion";
-import { useShake } from "./motion-primitives";
-import { CalculatorModal } from "./calculator";
-import { modalAnimationType } from "./modal-motion";
-import { useModalAccessibility } from "./accessibility";
-import { filterSelectionOptions, type SelectionOption } from "./selection";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
-import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder";
 
 export {
   Amount,
@@ -75,10 +56,15 @@ export {
   IconButton,
   InitialsBadge,
   Label,
+  Row,
+  Spread,
   STATUS_W,
   StatusPill,
   Title,
 } from "./primitives";
+
+export { Field, FieldError, MoneyField, MonthStepper, Toggle } from "./fields";
+export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./selection-controls";
 
 /**
  * The shared look of every control that accepts a value: text fields, selects
@@ -375,10 +361,7 @@ export function MetricStrip({
   // Measured, because the column is what has to hold the figure — not the
   // window, which says nothing about how many columns share this card.
   const columnWidth = stripWidth > 0 ? stripWidth / Math.max(items.length, 1) : 0;
-  // 140, not 116: a year of a real ledger reaches "₺868.952,23", and the
-  // threshold has to clear the widest figure these strips carry rather than the
-  // narrowest. Below it the value renders as ₺868,9 B and keeps its own line.
-  const compactValues = columnWidth > 0 && columnWidth < 140;
+  const compactValues = shouldCompactAmount(columnWidth);
   return (
     <View
       testID={testID}
@@ -453,6 +436,9 @@ export function SectionHeader({
 }
 
 /** Compact title and explanation inside a functional card or pane. */
+/** The square a panel's mark is drawn in. */
+const PANEL_MARK = 36;
+
 export function PanelHeader({
   icon: IconCmp,
   title,
@@ -469,6 +455,7 @@ export function PanelHeader({
   const { palette } = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
   const stackRight = Boolean(right) && viewportWidth < 360;
+  const lede = useLedeAlignment(PANEL_MARK);
   const toneColor = tone === "warning"
     ? palette.warning
     : tone === "error"
@@ -480,1166 +467,50 @@ export function PanelHeader({
           : palette.primary;
   return (
     <View style={{ gap: stackRight ? spacing.xs : spacing.md, marginBottom: spacing.md }}>
-      <View style={{ flexDirection: "row", alignItems: description ? "flex-start" : "center", gap: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
         <View
           accessible={false}
           style={{
-            width: 36,
-            height: 36,
+            width: PANEL_MARK,
+            height: PANEL_MARK,
             borderRadius: radius.sm,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: tone === "primary" ? palette.primarySoft : toneColor + "18",
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: toneColor + "72",
+            ...lede.markStyle,
           }}
         >
           <IconCmp accessible={false} size={17} color={tone === "primary" ? palette.accentText : toneColor} strokeWidth={2} />
         </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text accessibilityRole="header" style={[type.body, { color: palette.textStrong, fontFamily: font.semibold }]}>
-            {title}
-          </Text>
-          {description ? (
-            <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{description}</Text>
-          ) : null}
-        </View>
+        {/* Keyed on the title, so the entrance re-runs whenever the panel
+            changes subject. This is the one editor in each settings screen and
+            it switches between "add" and "editing X" in place — without the
+            re-entrance, the only sign that pressing edit did anything was one
+            word changing several lines above the button that was pressed. */}
+        <FadeIn key={title} style={{ flex: 1, minWidth: 0 }}>
+          <View onLayout={lede.onBlockLayout}>
+            <Text
+              accessibilityRole="header"
+              onLayout={lede.onLineLayout}
+              style={[type.body, { color: palette.textStrong, fontFamily: font.semibold }]}
+            >
+              {title}
+            </Text>
+            {description ? (
+              <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{description}</Text>
+            ) : null}
+          </View>
+        </FadeIn>
         {!stackRight ? right : null}
       </View>
-      {stackRight ? <View style={{ marginLeft: 48 }}>{right}</View> : null}
+      {stackRight ? <View style={{ marginLeft: PANEL_MARK + spacing.md }}>{right}</View> : null}
     </View>
   );
 }
 
 /** Signed money text: red for negatives, tabular figures. */
-export function Row({ children, style, gap = spacing.md, ...props }: {
-  children: ReactNode;
-  style?: StyleProp<ViewStyle>;
-  gap?: number;
-} & Omit<ViewProps, "children" | "style">) {
-  return <View {...props} style={[{ flexDirection: "row", alignItems: "center", gap }, style]}>{children}</View>;
-}
-
-export function Spread({ children, style, ...props }: {
-  children: ReactNode;
-  style?: StyleProp<ViewStyle>;
-} & Omit<ViewProps, "children" | "style">) {
-  return <View {...props} style={[{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, style]}>{children}</View>;
-}
-
-export function MonthStepper({
-  value,
-  onChange,
-  min,
-  max,
-}: {
-  value: MonthKey;
-  onChange: (m: MonthKey) => void;
-  min?: MonthKey;
-  max?: MonthKey;
-}) {
-  const canPrev = !min || value > min;
-  const canNext = !max || value < max;
-  return (
-    <Spread style={{ marginBottom: spacing.md }}>
-      <IconButton icon={ChevronLeft} label={tr.common.previous} haptic="selection" disabled={!canPrev} onPress={() => onChange(addMonthsToKey(value, -1))} />
-      <Heading style={{ marginVertical: 0 }}>{monthLabel(value)}</Heading>
-      <IconButton icon={ChevronRight} label={tr.common.next} haptic="selection" disabled={!canNext} onPress={() => onChange(addMonthsToKey(value, 1))} />
-    </Spread>
-  );
-}
-
-const fieldAccessoryStyle = {
-  position: "absolute",
-  right: 0,
-  top: 0,
-  bottom: 0,
-  width: controlSize.inputAccessoryWidth,
-  alignItems: "center",
-  justifyContent: "center",
-} as const;
-
-/**
- * The accessory sitting inside a field's reserved right padding — the password
- * eye, the calculator. `hitSlop` is a no-op on react-native-web, so the box is
- * the target; the press has to light that same box or the only feedback the
- * user gets is that nothing happened.
- */
-function fieldAccessoryPressStyle(palette: Palette) {
-  return ({ pressed }: { pressed: boolean }) => [
-    fieldAccessoryStyle,
-    pressed ? { backgroundColor: palette.surfaceHover, borderTopRightRadius: radius.md, borderBottomRightRadius: radius.md } : null,
-  ];
-}
-
-/** One live-region contract for validation errors across shared fields. */
-function FieldError({ message }: { message?: string | null }) {
-  const { palette } = useTheme();
-  const { style: shakeStyle, shake } = useShake();
-  // A refusal that only fades in is easy to miss on a long form: the message
-  // appears below the fold of the eye's attention while the caret is still in
-  // the field. Two oscillations point at the row. Nothing overshoots — an
-  // overshoot reads as playful, and a rejected amount is not.
-  useEffect(() => {
-    if (message) shake();
-  }, [message, shake]);
-  if (!message) return null;
-  return (
-    <Animated.View
-      accessibilityRole="alert"
-      accessibilityLiveRegion="assertive"
-      style={[
-        { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs, marginTop: spacing.xs },
-        shakeStyle,
-      ]}
-    >
-      <AlertCircle accessible={false} size={14} color={palette.error} style={{ marginTop: 1 }} />
-      <Text style={[type.small, { color: palette.errorText, flex: 1 }]}>{message}</Text>
-    </Animated.View>
-  );
-}
-
-export function Field({
-  label,
-  error,
-  secure,
-  style,
-  noMargin = false,
-  ...props
-}: TextInputProps & { label?: string; error?: string | null; secure?: boolean; noMargin?: boolean }) {
-  const { palette } = useTheme();
-  const fieldId = useId();
-  const labelId = `${fieldId}-label`;
-  const [focused, setFocused] = useState(false);
-  const [hidden, setHidden] = useState(secure === true);
-  const numericPlaceholder = props.keyboardType === "number-pad"
-    || props.keyboardType === "numeric"
-    || props.keyboardType === "decimal-pad"
-    || props.inputMode === "numeric"
-    || props.inputMode === "decimal";
-  const maxLength = props.maxLength ?? (
-    props.multiline
-      ? INPUT_LIMITS.note
-      : secure || props.secureTextEntry
-        ? INPUT_LIMITS.password
-        : props.keyboardType === "email-address" || props.inputMode === "email"
-          ? INPUT_LIMITS.email
-          : props.keyboardType === "number-pad" || props.keyboardType === "numeric"
-            ? INPUT_LIMITS.numeric
-            : INPUT_LIMITS.text
-  );
-  return (
-    <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
-      {label ? <Label nativeID={labelId}>{label}</Label> : null}
-      <View>
-        <TextInput
-          {...props}
-          placeholder={examplePlaceholder(props.placeholder)}
-          placeholderTextColor={numericPlaceholder ? numericPlaceholderColor(palette.textSecondary) : palette.textSecondary}
-          accessibilityLabel={props.accessibilityLabel ?? label}
-          accessibilityLabelledBy={label ? labelId : props.accessibilityLabelledBy}
-          accessibilityHint={error ? [props.accessibilityHint, tr.a11y.fieldError(error)].filter(Boolean).join(". ") : props.accessibilityHint}
-          accessibilityState={{ ...props.accessibilityState, disabled: props.editable === false }}
-          maxLength={maxLength}
-          secureTextEntry={secure ? hidden : props.secureTextEntry}
-          onFocus={(e) => {
-            setFocused(true);
-            props.onFocus?.(e);
-          }}
-          onBlur={(e) => {
-            setFocused(false);
-            props.onBlur?.(e);
-          }}
-          style={[
-            {
-              ...controlStateStyle(palette, focused, Boolean(error)),
-              color: props.editable === false ? palette.textSecondary : palette.text,
-              ...(props.editable === false ? { borderColor: palette.border } : null),
-              borderRadius: radius.sm,
-              paddingHorizontal: spacing.md,
-              paddingRight: secure ? controlSize.inputAccessoryInset : spacing.md,
-              minHeight: controlSize.regular,
-              ...type.field,
-            },
-            // Multiline reads as an intentional text area: taller, top-aligned.
-            props.multiline
-              ? { minHeight: 88, paddingTop: spacing.md, paddingBottom: spacing.md, textAlignVertical: "top" as const }
-              : null,
-            style,
-          ]}
-        />
-        {secure ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={hidden ? tr.a11y.showPassword : tr.a11y.hidePassword}
-            accessibilityHint={label}
-            onPress={() => setHidden(!hidden)}
-            // The icon is 18px and `hitSlop` does not enlarge the DOM box on
-            // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
-            // 24). The box now fills the input's reserved 44px right padding
-            // with the icon centred, so the mark does not visibly move.
-            style={fieldAccessoryPressStyle(palette)}
-          >
-            {hidden ? <Eye accessible={false} size={iconSize.accessory} color={palette.textSecondary} /> : <EyeOff accessible={false} size={iconSize.accessory} color={palette.textSecondary} />}
-          </Pressable>
-        ) : null}
-      </View>
-      <FieldError message={error} />
-    </View>
-  );
-}
-
-/** TR money input ("1.234,56") with a popup calculator; reports minor units.
- *  Parses sum expressions too ("400+500" → 900); pass `expression` to surface a
- *  keyboard with +/- operators (otherwise a clean decimal pad). */
-export function MoneyField({
-  label,
-  value,
-  onChangeMinor,
-  placeholder = "0,00",
-  expression = false,
-  disabled = false,
-  accessibilityLabel,
-  inline = false,
-  error,
-}: {
-  label?: string;
-  value: string;
-  onChangeMinor: (raw: string, minor: number | null) => void;
-  placeholder?: string;
-  expression?: boolean;
-  disabled?: boolean;
-  /** Screen-reader label when a nearby visible section heading labels the field. */
-  accessibilityLabel?: string;
-  /** Keeps repeated amount rows compact without reducing the input target. */
-  inline?: boolean;
-  /** Domain validation message shown in addition to the input parser's own error. */
-  error?: string | null;
-}) {
-  const { palette } = useTheme();
-  const fieldId = useId();
-  const labelId = `${fieldId}-label`;
-  const [focused, setFocused] = useState(false);
-  const [calcOpen, setCalcOpen] = useState(false);
-  const calculatorTriggerRef = useRef<View>(null);
-  const display = formatMoneyInputLive(value);
-  const minor = value.trim() === "" ? null : parseAmountExpression(display);
-  const invalid = value.trim() !== "" && minor === null;
-  const resolvedError = invalid ? tr.common.amountLimit : error;
-  return (
-    <View style={{ marginBottom: inline ? spacing.sm : spacing.md }}>
-      <View style={inline ? { flexDirection: "row", alignItems: "center", gap: spacing.sm } : undefined}>
-        {label ? (
-          <View style={inline ? { flex: 1, minWidth: 0 } : undefined}>
-            <Label nativeID={labelId} style={inline ? { marginBottom: 0 } : undefined}>{label}</Label>
-          </View>
-        ) : null}
-        <View
-          style={inline
-            ? {
-                // Repeated amount rows need their descriptive label more than
-                // a half-width amount box. TRY entry is bounded and the
-                // native TextInput scrolls its value, so keep that control
-                // predictable while returning the remaining width to context.
-                width: "42%",
-                maxWidth: 156,
-                minWidth: 120,
-                flexShrink: 1,
-              }
-            : undefined}
-        >
-          <TextInput
-            value={display}
-            accessibilityLabel={accessibilityLabel ?? label}
-            accessibilityLabelledBy={label ? labelId : undefined}
-            accessibilityHint={resolvedError ? tr.a11y.fieldError(resolvedError) : undefined}
-            accessibilityState={{ disabled }}
-            maxLength={INPUT_LIMITS.money}
-            editable={!disabled}
-            onChangeText={(raw) => {
-              const formatted = formatMoneyInputLive(raw);
-              onChangeMinor(formatted, formatted.trim() === "" ? null : parseAmountExpression(formatted));
-            }}
-            keyboardType={expression ? "numbers-and-punctuation" : "decimal-pad"}
-            inputMode={expression ? "text" : "decimal"}
-            placeholder={examplePlaceholder(placeholder)}
-            placeholderTextColor={numericPlaceholderColor(palette.textSecondary)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            style={{
-              ...controlStateStyle(palette, focused, Boolean(resolvedError)),
-              color: resolvedError ? palette.errorText : disabled ? palette.textSecondary : palette.text,
-              borderRadius: radius.sm,
-              paddingHorizontal: spacing.md,
-              paddingRight: controlSize.inputAccessoryInset,
-              minHeight: controlSize.regular,
-              ...type.moneyInput,
-              ...(disabled ? { borderColor: palette.border } : null),
-            }}
-          />
-          {disabled ? null : (
-            <Pressable
-              ref={calculatorTriggerRef}
-              accessibilityRole="button"
-              accessibilityLabel={tr.a11y.openCalculator}
-              accessibilityHint={accessibilityLabel ?? label}
-              onPress={() => setCalcOpen(true)}
-              // The icon is 18px and `hitSlop` does not enlarge the DOM box on
-              // web, which left an 18px-wide target (WCAG 2.2 SC 2.5.8 asks for
-              // 24). The box now fills the input's reserved 44px right padding
-              // with the icon centred, so the mark does not visibly move.
-              style={fieldAccessoryPressStyle(palette)}
-            >
-              <CalculatorIcon accessible={false} size={iconSize.accessory} color={palette.textSecondary} />
-            </Pressable>
-          )}
-        </View>
-      </View>
-      <FieldError message={resolvedError} />
-      {calcOpen ? (
-        <CalculatorModal
-          returnFocusRef={calculatorTriggerRef}
-          onClose={() => setCalcOpen(false)}
-          onResult={(major) => {
-            const raw = (Math.round(major * 100) / 100).toFixed(2).replace(".", ",");
-            onChangeMinor(raw, parseAmountExpression(raw));
-          }}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-/**
- * The calculator modal, imported like anything else.
- *
- * This used to be a deferred `require()` because `calculator.tsx` reached back
- * into this module for `Button` and `FadeIn`, and the comment here said the
- * cycle would only go away if those two moved into a leaf module. They have:
- * both now live in `./primitives`, the calculator imports them from there, and
- * `madge --circular` has nothing left to report.
- */
-/** Width of a select row's icon column, so every label starts at one x. */
-const SELECT_ICON_W = 22;
-type SelectOptionIcon = string | LucideIcon | React.ReactElement;
-
-function SelectOptionMark({ icon, color }: { icon: SelectOptionIcon; color: string }) {
-  if (typeof icon === "string") {
-    return (
-      <Text accessible={false} aria-hidden style={[type.body, { width: SELECT_ICON_W, textAlign: "center" }]}>
-        {icon}
-      </Text>
-    );
-  }
-  if (React.isValidElement(icon)) {
-    return <View accessible={false} style={{ width: SELECT_ICON_W, alignItems: "center" }}>{icon}</View>;
-  }
-  const Icon = icon;
-  return (
-    <View accessible={false} style={{ width: SELECT_ICON_W, alignItems: "center" }}>
-      <Icon size={iconSize.control} color={color} strokeWidth={2} />
-    </View>
-  );
-}
-
-/** Dropdown select: field-styled trigger opening a modal option list. */
-export function Select<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-  placeholder,
-  disabled = false,
-  onCreate,
-  selectedOption,
-  trigger,
-}: {
-  label?: string;
-  /**
-   * `icon` is separate from `label` on purpose. Packing an emoji into the
-   * label string left every name starting at a different x — emoji advance
-   * widths differ — so a list of categories read as a ragged left edge. Its
-   * own fixed column makes the names line up.
-   */
-  options: { value: T; label: string; icon?: SelectOptionIcon }[];
-  value: T | null;
-  onChange: (v: T) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  /**
-   * A create action pinned under the options.
-   *
-   * An empty list used to be handled by standing a "manage payment sources"
-   * button beside the field, which said the right thing in the wrong place —
-   * you learn you have nothing to pick only after opening the picker. Living
-   * here it is also there when the list is NOT empty, which is when "none of
-   * these" actually happens.
-   */
-  onCreate?: { label: string; run: () => void };
-  /** A value chosen through the pinned create action can remain visible in the
-   * trigger without becoming a duplicate ordinary option in the list. */
-  selectedOption?: { value: T; label: string; icon?: SelectOptionIcon };
-  /**
-   * Render the control that opens the list. A caller whose control already
-   * exists in another shape — a chip in a row of chips — uses this instead of
-   * standing a second field next to it, and the modal, its focus trap and its
-   * keyboard behaviour stay here rather than being written again.
-   */
-  trigger?: (open: () => void, selected: string | null) => ReactNode;
-}) {
-  const { palette, scheme } = useTheme();
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const reducedMotion = useReducedMotion();
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<View>(null);
-  const modalTitleRef = useModalAccessibility(open, triggerRef);
-  const current = options.find((o) => o.value === value)
-    ?? (selectedOption?.value === value ? selectedOption : undefined);
-  const modalVerticalInset = width < 640 ? spacing.lg : spacing.lg * 2;
-  const modalMaxHeight = Math.max(0, Math.min(width < 640 ? 560 : 460, height - modalVerticalInset));
-  const optionsModal = (
-          <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={() => setOpen(false)}>
-            <Pressable
-              accessible={false}
-              tabIndex={-1}
-              style={{
-                flex: 1,
-                backgroundColor: palette.scrim,
-                justifyContent: width < 640 ? "flex-end" : "center",
-                paddingHorizontal: width < 640 ? spacing.sm : spacing.lg,
-                paddingTop: spacing.lg,
-                paddingBottom: width < 640 ? 0 : spacing.lg,
-              }}
-              onPress={() => setOpen(false)}
-            >
-              <Pressable
-                accessible={false}
-                tabIndex={-1}
-                accessibilityViewIsModal
-                onPress={() => {}}
-                style={{ alignSelf: "center", width: "100%", maxWidth: width < 640 ? 520 : 400 }}
-              >
-                <FadeIn
-                  style={[
-                    {
-                      backgroundColor: palette.surface,
-                      borderTopLeftRadius: radius.xl,
-                      borderTopRightRadius: radius.xl,
-                      borderBottomLeftRadius: width < 640 ? 0 : radius.xl,
-                      borderBottomRightRadius: width < 640 ? 0 : radius.xl,
-                      maxHeight: modalMaxHeight,
-                      overflow: "hidden",
-                      borderWidth: StyleSheet.hairlineWidth,
-                      borderColor: palette.border + "90",
-                    },
-                    scheme === "light" && themeShadow.overlay(palette),
-                  ]}
-                >
-                  {width < 640 ? (
-                    <View accessible={false} style={{ alignItems: "center", paddingTop: spacing.sm }}>
-                      <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: palette.surfaceStrong }} />
-                    </View>
-                  ) : null}
-                  <View ref={modalTitleRef} accessible accessibilityRole="header" tabIndex={-1}>
-                    <Text style={[type.heading, { color: palette.textStrong, paddingHorizontal: spacing.lg, paddingVertical: spacing.md }]}>
-                      {label ?? tr.a11y.selectOption}
-                    </Text>
-                  </View>
-                  <ScrollView
-                    role="radiogroup"
-                    accessibilityLabel={label ?? tr.a11y.selectOption}
-                    style={{ flexShrink: 1 }}
-                  >
-                    {options.map((option, index) => {
-                      const selected = option.value === value;
-                      return (
-                        <Pressable
-                          key={option.value}
-                          accessibilityRole="radio"
-                          aria-checked={selected}
-                          accessibilityState={{ checked: selected, selected }}
-                          onPress={() => {
-                            selectionTapIfChanged(value, option.value);
-                            onChange(option.value);
-                            setOpen(false);
-                          }}
-                          style={({ pressed }) => [
-                            {
-                              paddingHorizontal: spacing.lg,
-                              paddingVertical: spacing.md,
-                              borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
-                              borderTopColor: palette.border + "70",
-                              backgroundColor: selected
-                                ? palette.primarySoft
-                                : pressed
-                                  ? palette.surfaceHover
-                                  : "transparent",
-                            },
-                          ]}
-                        >
-                          <Row gap={spacing.sm}>
-                            {option.icon ? (
-                              // Decorative: the mark repeats the adjacent name,
-                              // so it stays out of the accessible option label.
-                              <SelectOptionMark
-                                icon={option.icon}
-                                color={selected ? palette.primaryText : palette.textSecondary}
-                              />
-                            ) : null}
-                            <Text
-                              style={[
-                                type.body,
-                                {
-                                  flex: 1,
-                                  color: selected ? palette.primaryText : palette.text,
-                                  fontFamily: selected ? font.semibold : font.regular,
-                                },
-                              ]}
-                            >
-                              {option.label}
-                            </Text>
-                          </Row>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                  {onCreate ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={onCreate.label}
-                      onPress={() => {
-                        setOpen(false);
-                        onCreate.run();
-                      }}
-                      style={({ pressed }) => ({
-                        paddingHorizontal: spacing.lg,
-                        paddingVertical: spacing.md,
-                        borderTopWidth: StyleSheet.hairlineWidth,
-                        borderTopColor: palette.border,
-                        backgroundColor: pressed ? palette.surfaceHover : palette.surface,
-                      })}
-                    >
-                      <Row gap={spacing.sm}>
-                        <Plus accessible={false} size={iconSize.control} color={palette.primary} style={{ width: SELECT_ICON_W }} />
-                        <Text style={[type.body, { flex: 1, color: palette.primaryText, fontFamily: font.medium }]}>
-                          {onCreate.label}
-                        </Text>
-                      </Row>
-                    </Pressable>
-                  ) : null}
-                  {width < 640 && insets.bottom > 0 ? (
-                    <View accessible={false} style={{ height: insets.bottom, backgroundColor: palette.surface }} />
-                  ) : null}
-                </FadeIn>
-              </Pressable>
-            </Pressable>
-          </Modal>
-  );
-
-  if (trigger) {
-    return (
-      <>
-        <View ref={triggerRef}>{trigger(() => setOpen(true), current?.label ?? null)}</View>
-        {open ? optionsModal : null}
-      </>
-    );
-  }
-  return (
-    <View style={{ marginBottom: spacing.md }}>
-      {label ? <Label>{label}</Label> : null}
-      <Pressable
-        ref={triggerRef}
-        accessibilityRole="button"
-        accessibilityLabel={label ?? placeholder ?? current?.label}
-        accessibilityState={{ disabled, expanded: open }}
-        disabled={disabled}
-        onPress={() => setOpen(true)}
-        style={({ pressed }) => [
-          {
-            ...controlStateStyle(palette, open),
-            borderRadius: radius.sm,
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm,
-            minHeight: controlSize.regular,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            ...(disabled ? { borderColor: palette.border } : null),
-            ...(pressed && !disabled ? { backgroundColor: palette.surfaceHover } : null),
-          },
-        ]}
-      >
-        {current?.icon ? (
-          <View style={{ marginRight: spacing.sm }}>
-            <SelectOptionMark icon={current.icon} color={disabled ? palette.textSecondary : palette.text} />
-          </View>
-        ) : null}
-        <Text
-          style={[type.body, { color: disabled || !current ? palette.textSecondary : palette.text, flex: 1 }]}
-        >
-          {current?.label ?? placeholder ?? ""}
-        </Text>
-        <ChevronDown accessible={false} size={iconSize.control} color={palette.textSecondary} />
-      </Pressable>
-      {open ? optionsModal : null}
-    </View>
-  );
-}
-
-/**
- * Switches which view of the same data is shown — pie or bars, rows or
- * columns, this range or that one. It is NOT the control for a form value the
- * user will save; that is `ChipPicker`, and keeping the two apart is what
- * stops one screen from asking three identical questions three different ways.
- */
-export function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-  noMargin = false,
-  disabled = false,
-  fill = false,
-  action,
-}: {
-  options: { value: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
-  noMargin?: boolean;
-  disabled?: boolean;
-  /**
-   * Span the container instead of stopping at the control's own width.
-   *
-   * For a strip that is a page's primary view switcher — the ledger's pivot —
-   * one fixed position beats an intrinsic width: bounded, the same control sat
-   * somewhere different on a phone, a tablet and a zoomed desktop.
-   */
-  fill?: boolean;
-  /**
-   * A companion toggle that belongs to the same strip — the ledger's reading
-   * guide beside its pivot.
-   *
-   * It used to be an `IconButton` parked next to the control: a bordered 52pt
-   * square beside a 44pt underlined strip, which is two control languages and
-   * two heights on one row. Rendered as part of the strip it cannot drift from
-   * it, and it keeps its own button role rather than pretending to be a fourth
-   * choice.
-   */
-  action?: { icon: LucideIcon; label: string; active: boolean; onPress: () => void };
-}) {
-  const { palette } = useTheme();
-  const bounded = shouldBoundIntrinsicControls(useContentWidth());
-  const reducedMotion = useReducedMotion();
-  const optionCount = options.length + (action ? 1 : 0);
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
-  const indicator = useRef(new Animated.Value(selectedIndex)).current;
-  useEffect(() => {
-    if (reducedMotion) {
-      indicator.setValue(selectedIndex);
-      return;
-    }
-    const animation = Animated.timing(indicator, {
-      toValue: selectedIndex,
-      duration: motion.standard,
-      easing: Easing.out(Easing.cubic),
-      // A left offset expressed as a percentage is layout, not transform.
-      useNativeDriver: false,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [selectedIndex, indicator, reducedMotion]);
-  return (
-    <View
-      role="radiogroup"
-      style={{
-        position: "relative",
-        flexDirection: "row",
-        // Bounded by its own options once the container stops being a bound —
-        // see `shouldBoundIntrinsicControls`. A phone keeps the full-width
-        // control it expects; capping there only left a ragged edge beside it.
-        maxWidth: bounded && !fill
-          ? segmentedMaxWidth(options.length) + (action ? controlSize.minimumTarget : 0)
-          : undefined,
-        backgroundColor: palette.surface,
-        borderRadius: radius.sm,
-        padding: 0,
-        marginBottom: noMargin ? 0 : spacing.md,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: palette.border,
-      }}
-    >
-      {options.map((option) => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            disabled={disabled}
-            onPress={() => {
-              selectionTapIfChanged(value, option.value);
-              if (!disabled) onChange(option.value);
-            }}
-            accessibilityRole="radio"
-            aria-checked={selected}
-            accessibilityState={{ checked: selected, selected, disabled }}
-            style={({ pressed }) => [
-              {
-                flex: 1,
-                minHeight: controlSize.minimumTarget,
-                paddingVertical: spacing.sm,
-                paddingHorizontal: 2,
-                borderRadius: 0,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: pressed && !disabled
-                  ? palette.surfaceHover
-                  : selected && disabled ? palette.surfaceAlt : "transparent",
-              },
-            ]}
-          >
-            <Text
-              style={[
-                type.label,
-                {
-                  color: disabled ? palette.textSecondary : selected ? palette.textStrong : palette.textSecondary,
-                  fontFamily: font.semibold,
-                  textAlign: "center",
-                  width: "100%",
-                },
-              ]}
-            >
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-      <Animated.View
-        accessible={false}
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          bottom: 0,
-          height: 3,
-          backgroundColor: disabled ? palette.controlBorder : palette.primary,
-          width: `${100 / optionCount}%`,
-          left: indicator.interpolate({
-            inputRange: [0, Math.max(1, optionCount - 1)],
-            outputRange: ["0%", `${(100 / optionCount) * Math.max(1, optionCount - 1)}%`],
-          }),
-        }}
-      />
-      {action ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={action.label}
-          aria-expanded={action.active}
-          accessibilityState={{ expanded: action.active }}
-          onPress={action.onPress}
-          style={({ pressed }) => ({
-            width: controlSize.minimumTarget,
-            minHeight: controlSize.minimumTarget,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: pressed ? palette.surfaceHover : "transparent",
-            borderBottomWidth: 3,
-            borderBottomColor: action.active ? palette.primary : "transparent",
-          })}
-        >
-          <action.icon
-            accessible={false}
-            size={iconSize.accessory}
-            color={action.active ? palette.primaryText : palette.textSecondary}
-          />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
-/** Simple chip-row picker (categories, sources, persons); `multi` toggles a set. */
-/**
- * A wrapping grid of multi-select tiles: icon column, label, check when picked.
- *
- * Built for the computed-column buckets, then reused for the suggested-items
- * template — the two screens ask the same question ("which of these do you
- * want?") of the same kind of thing, so they read as one control instead of a
- * grid on one screen and a chip row on the other. `tone` only chooses the accent
- * pair; the geometry is identical in every use, which is the point.
- */
-export function SelectionGrid({
-  options,
-  values,
-  onToggle,
-  tone = "plus",
-  countLabel,
-  readOnly = false,
-  disabled = false,
-  searchable = false,
-  status = "ready",
-  errorMessage,
-  emptyMessage,
-}: {
-  options: SelectionOption[];
-  values: string[];
-  onToggle: (value: string) => void;
-  tone?: "plus" | "minus";
-  /** Optional pill above the grid, e.g. "3 selected". */
-  countLabel?: string;
-  /** Render the same tiles as a non-interactive summary. */
-  readOnly?: boolean;
-  disabled?: boolean;
-  searchable?: boolean;
-  status?: "ready" | "loading" | "error";
-  errorMessage?: string;
-  emptyMessage?: string;
-}) {
-  const { palette } = useTheme();
-  const contentWidth = useContentWidth();
-  const [query, setQuery] = useState("");
-  const selectedColor = tone === "plus" ? palette.primary : palette.negative;
-  const selectedSoft = tone === "plus" ? palette.primarySoft : palette.negative + "18";
-  const selectedInk = tone === "plus" ? palette.primaryText : palette.negativeText;
-  const inactive = readOnly || disabled || status !== "ready";
-  const filtered = filterSelectionOptions(options, query);
-
-  if (status === "loading") {
-    return (
-      <View accessibilityLiveRegion="polite" style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md }}>
-        <DelayedLoadingIndicator size={6} label={tr.selection.loading} />
-        <Body muted>{tr.selection.loading}</Body>
-      </View>
-    );
-  }
-  if (status === "error") {
-    return (
-      <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ backgroundColor: palette.error + "14", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
-        <Body style={{ color: palette.errorText }}>{errorMessage ?? tr.selection.error}</Body>
-      </View>
-    );
-  }
-
-  return (
-    <View>
-      {searchable && options.length > 0 ? (
-        <Field
-          label={tr.selection.searchLabel}
-          value={query}
-          onChangeText={setQuery}
-          placeholder={tr.selection.searchPlaceholder}
-          autoCapitalize="none"
-          returnKeyType="search"
-          editable={!inactive}
-        />
-      ) : null}
-      {countLabel ? (
-        <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: spacing.xs }}>
-          <View style={{ borderRadius: radius.full, backgroundColor: selectedSoft, paddingHorizontal: spacing.sm, paddingVertical: 3 }}>
-            <Text style={[type.small, { color: selectedInk, fontFamily: font.semibold }]}>{countLabel}</Text>
-          </View>
-        </View>
-      ) : null}
-      {options.length === 0 || filtered.length === 0 ? (
-        <View accessibilityLiveRegion="polite" style={{ backgroundColor: palette.surfaceAlt, borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
-          <Body muted>{options.length === 0 ? (emptyMessage ?? tr.selection.empty) : tr.selection.noResults}</Body>
-        </View>
-      ) : (
-        <View
-          role="group"
-          style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}
-        >
-          {filtered.map((option) => {
-            const selected = values.includes(option.value);
-            return (
-              <Pressable
-                key={option.value}
-                accessibilityRole="checkbox"
-                aria-checked={selected}
-                accessibilityState={{ checked: selected, selected, disabled: inactive }}
-                disabled={inactive}
-                onPress={() => {
-                  selectionTap();
-                  onToggle(option.value);
-                }}
-                style={({ pressed }) => ({
-                  flexBasis: contentWidth >= 720 ? "31%" : "47%",
-                  flexGrow: 1,
-                  minWidth: 0,
-                  minHeight: 48,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                  paddingHorizontal: spacing.sm,
-                  paddingVertical: spacing.sm,
-                  borderRadius: radius.md,
-                  // Constant weight, like every other chosen surface: a ring
-                  // that thickens moves the tiles that wrap after it.
-                  borderWidth: borderWidth.control,
-                  borderColor: selected ? selectedColor : palette.border,
-                  backgroundColor: pressed ? palette.surfaceHover : selected ? selectedSoft : palette.surfaceAlt,
-                })}
-              >
-                <View
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: radius.md,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: selected ? selectedColor : palette.surface,
-                  }}
-                >
-                  {selected ? (
-                    <Check accessible={false} size={15} color={tone === "plus" ? palette.onPrimary : palette.onDestructive} strokeWidth={2.4} />
-                  ) : option.icon ? (
-                    <Text accessible={false} aria-hidden style={{ fontSize: iconSize.emoji }}>{option.icon}</Text>
-                  ) : tone === "plus" ? (
-                    <Plus accessible={false} size={14} color={palette.textSecondary} />
-                  ) : (
-                    <Minus accessible={false} size={14} color={palette.textSecondary} />
-                  )}
-                </View>
-                <Text style={[type.small, { flex: 1, minWidth: 0, color: selected ? selectedInk : palette.text, fontFamily: font.semibold }]}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
-    </View>
-  );
-}
-
-/**
- * The single-choice control for a value the user is about to SAVE.
- *
- * The app has exactly two of these and the split is by job, not by taste:
- * `ChipPicker` answers a form question (which cycle, which person, month or
- * day), `Segmented` switches which view of the same data you are looking at
- * (pie or bars, rows or columns). The transaction form used to show three
- * languages at once — icon tiles, chips and underlined tabs — for three
- * questions of the same kind.
- */
-/**
- * One tile, one answer.
- *
- * Six screens drew their own: the theme and palette pickers, the entry-type
- * row, the instalment kind, the investment asset type and the payment-source
- * type. They agreed on what a tile is and on nothing else — 82 / 78 / 78 / 76
- * tall, pressed at 0.8 / 0.78 / 0.76, `selected ? 2 : 1` in five of them and
- * `selected ? 1.5 : hairline` in two more, some sinking a pixel on press and
- * some not. The user meets four of them in one session.
- *
- * The shell is here; what goes inside stays with the screen, because a colour
- * swatch, a theme preview and an icon are genuinely different content. Two
- * rules the shell will not let a caller break: the box does not change size
- * when it is chosen (a border that thickens re-wraps the row it sits in), and
- * the label does not change weight for the same reason. Colour, fill and the
- * accessible state carry the choice — three carriers, none of them geometry.
- */
-export function ChoiceTile({
-  label,
-  description,
-  selected,
-  onPress,
-  disabled = false,
-  children,
-  layout = "stack",
-  minHeight = 78,
-  basis,
-  tone,
-  surface,
-  accessibilityRole = "radio",
-  accessibilityLabel,
-  testID,
-}: {
-  label: string;
-  /** A second line under the label. A tile that explains itself is a bigger
-   *  tile, so the label grows with it rather than being set twice. */
-  description?: string;
-  selected: boolean;
-  onPress: () => void;
-  disabled?: boolean;
-  /** Whatever the tile shows above (or beside) its label. */
-  children?: ReactNode;
-  /** `stack` puts the content over the label; `row` puts it beside. */
-  layout?: "stack" | "row";
-  minHeight?: number;
-  /** `flexBasis` for a wrapping grid; omit to share the row evenly. */
-  basis?: number | `${number}%`;
-  /** Accent for the chosen ring and fill. Defaults to the brand colour. */
-  tone?: string;
-  /** Render against a palette other than the active one — the theme and
-   *  palette pickers preview a scheme the app is not currently wearing. */
-  surface?: Palette;
-  accessibilityRole?: "radio" | "button";
-  accessibilityLabel?: string;
-  testID?: string;
-}) {
-  const { palette } = useTheme();
-  const p = surface ?? palette;
-  const accent = tone ?? p.primary;
-  return (
-    <Pressable
-      testID={testID}
-      accessibilityRole={accessibilityRole}
-      accessibilityLabel={accessibilityLabel ?? label}
-      aria-checked={accessibilityRole === "radio" ? selected : undefined}
-      accessibilityState={{ checked: selected, selected, disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexGrow: 1,
-        flexBasis: basis ?? 0,
-        minWidth: 0,
-        minHeight,
-        padding: spacing.sm,
-        gap: layout === "row" ? spacing.md : spacing.xs,
-        flexDirection: layout === "row" ? "row" : "column",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: radius.md,
-        // Constant weight: a ring that thickens on selection moves everything
-        // after it in a wrapping row.
-        borderWidth: borderWidth.selected,
-        borderColor: disabled ? p.controlBorder : selected ? accent : p.border + "80",
-        // Disabled is said in colour, never by fading the tile: a control the
-        // user cannot use still has to be readable enough to explain itself.
-        backgroundColor: disabled
-          ? p.surfaceAlt
-          : pressed ? p.surfaceHover : selected ? accent + "14" : p.surface,
-        transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
-      })}
-    >
-      {children}
-      <View style={layout === "row" ? { flex: 1, minWidth: 0, justifyContent: "center" } : { minWidth: 0 }}>
-        <Text
-          style={[
-            description ? type.body : type.small,
-            {
-              color: selected ? p.textStrong : p.text,
-              fontFamily: font.semibold,
-              textAlign: layout === "row" ? "left" : "center",
-              flexShrink: 1,
-              minWidth: 0,
-            },
-          ]}
-        >
-          {label}
-        </Text>
-        {description ? (
-          <Text
-            style={[
-              type.small,
-              {
-                color: p.textSecondary,
-                marginTop: 3,
-                textAlign: layout === "row" ? "left" : "center",
-                flexShrink: 1,
-              },
-            ]}
-          >
-            {description}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
-export function ChipPicker<T extends string>({
-  options,
-  value,
-  onChange,
-  multi,
-  values,
-  onToggle,
-  compact = false,
-}: {
-  options: { value: T; label: string; disabled?: boolean; hint?: string }[];
-  value?: T | null;
-  onChange?: (v: T) => void;
-  multi?: boolean;
-  values?: T[];
-  onToggle?: (v: T) => void;
-  /**
-   * Tighter side padding, for a row whose labels are one or two characters.
-   * A month-day row is six numbers and the words "Ayın sonu": at the default
-   * padding the six numbers cost more in padding than in text and pushed the
-   * words onto a second line. The touch target keeps its full height and gains
-   * hit slop to make up the width.
-   */
-  compact?: boolean;
-}) {
-  const { palette } = useTheme();
-  return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: compact ? spacing.xs + 2 : spacing.sm, marginBottom: spacing.md }}>
-      {options.map((option) => {
-        const selected = multi ? (values ?? []).includes(option.value) : option.value === value;
-        const unavailable = option.disabled === true;
-        // Selecting a chip must not resize it. The border used to thicken and
-        // the label used to gain weight on selection, so every chip after it in
-        // this wrapping row moved — and a row that wraps could re-wrap, which is
-        // how choosing "Ayın sonu" shifted the field underneath it. One border
-        // weight and one font weight for both states; colour carries the choice,
-        // three times over. Paying for the thicker border out of the padding was
-        // tried first and measured 84px against 85: browsers snap a 1.5px border
-        // to a whole device pixel and the padding it was traded against is not.
-        return (
-          <Pressable
-            key={option.value}
-            disabled={unavailable}
-            onPress={() => {
-              if (multi) {
-                selectionTap();
-                onToggle?.(option.value);
-              } else {
-                selectionTapIfChanged(value, option.value);
-                onChange?.(option.value);
-              }
-            }}
-            accessibilityRole={multi ? "checkbox" : "radio"}
-            accessibilityHint={unavailable ? option.hint : undefined}
-            aria-checked={selected}
-            accessibilityState={{ checked: selected, selected, disabled: unavailable }}
-            // One selection language. This row used to be fully rounded pills
-            // while the same question asked as a grid — pick your columns, pick
-            // your categories — was answered with bordered tiles, so two
-            // controls doing the same job on adjacent screens looked unrelated.
-            // The tile's shape, border and selected treatment win because they
-            // survive a long label and read as chosen without relying on fill
-            // alone; the pill's geometry and touch target are unchanged.
-            style={({ pressed }) => ({
-              paddingVertical: spacing.sm + 2,
-              paddingHorizontal: compact ? spacing.sm + 2 : spacing.md + 2,
-              borderRadius: radius.md,
-              borderWidth: borderWidth.control,
-              borderColor: selected ? palette.primary : palette.border,
-              backgroundColor: pressed
-                ? palette.surfaceHover
-                : selected ? palette.primarySoft : palette.surfaceAlt,
-              opacity: unavailable ? 0.45 : 1,
-              minHeight: controlSize.minimumTarget,
-              justifyContent: "center",
-            })}
-          >
-            <Text
-              style={[
-                type.label,
-                {
-                  color: unavailable ? palette.textSecondary : selected ? palette.primaryText : palette.text,
-                  fontFamily: font.semibold,
-                },
-              ]}
-            >
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 export function EmptyState({
   icon: IconCmp,
   title,
@@ -1660,7 +531,7 @@ export function EmptyState({
     // is no spare height and this is exactly the padded block it always was,
     // while on a 900px desktop viewport the same message used to sit against
     // the header with two thirds of the page empty beneath it.
-    <View style={{ flexGrow: 1, justifyContent: "center", padding: spacing.xxl, alignItems: "center", gap: spacing.sm }}>
+    <FadeIn style={{ flexGrow: 1, justifyContent: "center", padding: spacing.xxl, alignItems: "center", gap: spacing.sm }}>
       {IconCmp ? (
         <View
           style={{
@@ -1679,7 +550,7 @@ export function EmptyState({
       <Text accessibilityRole="header" style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
       {hint ? <Text style={[type.body, { color: palette.textSecondary, textAlign: "center" }]}>{hint}</Text> : null}
       {action ? <View style={{ marginTop: spacing.md }}>{action}</View> : null}
-    </View>
+    </FadeIn>
   );
 }
 
@@ -1860,17 +731,20 @@ export function ListRow({
   // column — not the window the rail also takes a share of.
   const contentWidth = useContentWidth();
   const stackRight = Boolean(right && stackRightOnNarrow && shouldStackListActions(contentWidth));
+  // Same rule as `PanelHeader`: the mark centres against its own text and
+  // stops travelling once that text is three lines long.
+  const lede = useLedeAlignment(iconSize.control);
   const content = (
     <View style={{ paddingVertical: spacing.md - 2 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
       {leading}
       {IconCmp ? (
-        <View style={{ width: 24, height: controlSize.compact, alignItems: "flex-start", justifyContent: "center" }}>
-          <IconCmp accessible={false} size={17} color={iconColor ?? palette.accentText} strokeWidth={2} />
+        <View style={{ width: 24, alignItems: "flex-start", ...lede.markStyle }}>
+          <IconCmp accessible={false} size={iconSize.control} color={iconColor ?? palette.accentText} strokeWidth={2} />
         </View>
       ) : null}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[type.body, { color: palette.text, fontFamily: font.medium, flexShrink: 1 }]}>
+      <View style={{ flex: 1, minWidth: 0 }} onLayout={lede.onBlockLayout}>
+        <Text onLayout={lede.onLineLayout} style={[type.body, { color: palette.text, fontFamily: font.medium, flexShrink: 1 }]}>
           {title}
         </Text>
         {typeof subtitle === "string" ? (
@@ -1881,11 +755,15 @@ export function ListRow({
           <View style={{ marginTop: 1 }}>{subtitle}</View>
         ) : null}
       </View>
-      {stackRight ? null : right}
-      {chevron ? <ChevronRight accessible={false} size={17} color={palette.textSecondary} /> : null}
+      {stackRight ? null : <View style={lede.markStyle}>{right}</View>}
+      {chevron ? (
+        <View style={lede.markStyle}>
+          <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />
+        </View>
+      ) : null}
       </View>
       {stackRight ? (
-        <View style={{ marginTop: spacing.sm, marginLeft: IconCmp || leading ? 28 + spacing.md : 0, alignItems: "flex-end" }}>
+        <View style={{ marginTop: spacing.sm, marginLeft: IconCmp || leading ? 24 + spacing.md : 0, alignItems: "flex-end" }}>
           {right}
         </View>
       ) : null}
@@ -1928,119 +806,3 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
 }
 
 /** Cross-platform toggle with one theme-aware geometry. */
-const TOGGLE_W = toggleSize.width;
-const TOGGLE_H = toggleSize.height;
-const TOGGLE_PAD = toggleSize.padding;
-const TOGGLE_THUMB = TOGGLE_H - TOGGLE_PAD * 2;
-export function Toggle({
-  value,
-  onValueChange,
-  label,
-  disabled,
-}: {
-  value: boolean;
-  onValueChange: (v: boolean) => void;
-  label: string;
-  disabled?: boolean;
-}) {
-  const { palette } = useTheme();
-  const reducedMotion = useReducedMotion();
-  const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
-  useEffect(() => {
-    if (reducedMotion) {
-      progress.setValue(value ? 1 : 0);
-      return;
-    }
-    const animation = Animated.spring(progress, { toValue: value ? 1 : 0, useNativeDriver: false, ...motion.spring.toggle });
-    animation.start();
-    return () => animation.stop();
-  }, [value, progress, reducedMotion]);
-  // On is the filled state. It used to be the pale one while off was the
-  // darker `surfaceStrong`, so a settings list read back inverted: the switches
-  // that were OFF looked heavier than the ones that were ON. The brand fill is
-  // 5.3–7.2:1 against every surface it sits on, so the on state carries itself;
-  // the off state stays a quiet neutral and keeps the hairline that gives it a
-  // shape at all.
-  const trackColor = disabled
-    ? palette.surfaceAlt
-    : progress.interpolate({ inputRange: [0, 1], outputRange: [palette.surfaceAlt, palette.primary] });
-  const thumbX = progress.interpolate({ inputRange: [0, 1], outputRange: [TOGGLE_PAD, TOGGLE_W - TOGGLE_THUMB - TOGGLE_PAD] });
-  return (
-    <Pressable
-      accessibilityRole="switch"
-      accessibilityLabel={label}
-      aria-checked={value}
-      accessibilityState={{ checked: value, disabled }}
-      disabled={disabled}
-      onPress={() => {
-        selectionTap();
-        onValueChange(!value);
-      }}
-      // The track is 28pt tall by design. Padding — not `hitSlop`, which the
-      // web ignores — gives the control the platform's minimum height without
-      // moving the track a pixel.
-      style={({ pressed }) => ({
-        minHeight: controlSize.minimumTarget,
-        justifyContent: "center",
-        paddingHorizontal: (controlSize.minimumTarget - TOGGLE_W) / 2 > 0 ? (controlSize.minimumTarget - TOGGLE_W) / 2 : 0,
-        opacity: pressed && !disabled ? stateOpacity.pressed : 1,
-      })}
-    >
-      {/* The off fill is a low-contrast warm neutral (1.1–1.3:1 against the
-          app's surfaces), so the boundary is what gives it a shape at all —
-          on the refund row, whose background was the same token, the switch
-          once disappeared outright. The on fill needs no such help, and a
-          hairline in `controlBorder` would sit at 1.2:1 on it, so the on state
-          edges itself. */}
-      <Animated.View
-        style={{
-          width: TOGGLE_W,
-          height: TOGGLE_H,
-          borderRadius: TOGGLE_H / 2,
-          backgroundColor: trackColor,
-          borderWidth: borderWidth.toggle,
-          borderColor: value && !disabled ? palette.primaryStrong : palette.controlBorder,
-          justifyContent: "center",
-        }}
-      >
-        <View
-          pointerEvents="none"
-          accessible={false}
-          style={{
-            position: "absolute",
-            left: 7,
-            right: 7,
-            top: 0,
-            bottom: 0,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Check size={11} color={value && !disabled ? palette.onPrimary : "transparent"} strokeWidth={3} />
-          <Minus size={11} color={!value && !disabled ? palette.textSecondary : "transparent"} strokeWidth={3} />
-        </View>
-        {/* The thumb carries the tab bar's material language — a crisp hairline
-            edge over the shadow, so it reads as a lens sitting on the track
-            rather than a flat dot. The TRACK deliberately stays opaque: its two
-            fills are what `theme-contrast.test.ts` measures, and letting the
-            row behind show through is how this control once vanished
-            completely on the refund row. */}
-        <Animated.View
-          style={{
-            width: TOGGLE_THUMB,
-            height: TOGGLE_THUMB,
-            borderRadius: TOGGLE_THUMB / 2,
-            backgroundColor: disabled ? palette.textSecondary : value ? palette.onPrimary : palette.textSecondary,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: palette.surfaceTranslucent,
-            transform: [{ translateX: thumbX }],
-            ...themeShadow.toggleThumb(palette),
-          }}
-        />
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-/** Initials avatar with a deterministic hue from the name (logo fallback). */

@@ -548,27 +548,35 @@ export const font = {
   medium: "Inter_500Medium",
   semibold: "Inter_600SemiBold",
   bold: "Inter_700Bold",
-  // Editorial serif is reserved for the one figure that benefits from it.
-  serifBold: "Fraunces_700Bold",
+  // The brand voice. IBM Plex Serif is drawn for technical and financial
+  // documents, and unlike the display serif it replaces its digits are
+  // monospaced by construction — see the note below.
+  serif: "IBMPlexSerif_600SemiBold",
 } as const;
 
 /**
  * Static font files carry one weight each, so tokens set fontFamily only —
  * never fontWeight (iOS would try to synthesize a second face).
  *
- * Fraunces carries the brand voice: the sign-in hero and every screen title.
- * It is verified to cover ₺ (U+20BA) and the full Turkish alphabet, so a title
- * never falls back mid-word.
+ * The serif carries the brand voice: the sign-in hero and every screen title.
+ * It was Fraunces, a display face whose digit advances measured 978–1404 units
+ * at 2000 upem — a **43.6% spread**, with no `tnum` feature to correct it — so
+ * the rule was that it could never touch a figure: a balance updating in place
+ * would visibly jump and a column of amounts would never align.
  *
- * It carries NO figure, ever. The shipped `Fraunces_700Bold` exposes no `tnum`
- * feature and its digit advances span 978–1404 units at 2000 upem — a 43%
- * spread. A balance that updates in place would visibly jump, and a column of
- * amounts would never align. Every amount, table cell, label and input stays
- * Inter, whose `tnum` the amount roles below already request.
+ * IBM Plex Serif is drawn for technical and financial documents and does not
+ * have that problem. Measured from the shipped `600SemiBold` TTF: every digit
+ * advances exactly 600 units at 1000 upem — **0% spread, tabular by
+ * construction**, no feature to request. Turkish is complete and ₺ (U+20BA) is
+ * present, so a title never falls back mid-word.
+ *
+ * Dense numerics still stay Inter, whose `tnum` the amount roles below request:
+ * Inter's own default spread is 58.8% and the feature is what corrects it.
+ * A serif figure is for a hero, not for a table.
  */
 export const type = {
-  display: { fontSize: 40, fontFamily: font.serifBold, letterSpacing: -0.8 },
-  title: { fontSize: 26, fontFamily: font.serifBold, letterSpacing: -0.2 },
+  display: { fontSize: 40, fontFamily: font.serif, letterSpacing: -0.8 },
+  title: { fontSize: 26, fontFamily: font.serif, letterSpacing: -0.2 },
   heading: { fontSize: 18, fontFamily: font.semibold, letterSpacing: -0.2 },
   /** A group's name inside a card, below the screen's own heading. */
   sectionTitle: { fontSize: 16, fontFamily: font.semibold, letterSpacing: -0.2 },

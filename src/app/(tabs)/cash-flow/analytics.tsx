@@ -26,6 +26,7 @@ import { combineLiveQueryStatus } from "../../../data/live-state";
 import { categoryIcon, paymentSourceIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, ChartFrame, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
+import { Collapse } from "../../../ui/motion-primitives";
 import { StickyTable } from "../../../ui/sticky-table";
 import { shouldPairFilterCards, shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
@@ -323,8 +324,7 @@ export default function AnalysisScreen() {
           half-width column and left it taller than the field beside it. The
           range is the same for the whole search, so it belongs in the hint
           below rather than inside a collapsed dropdown. */}
-      {!compact || showSearchDetails ? (
-      <>
+      <Collapse open={!compact || showSearchDetails}>
       <Row style={{ alignItems: "flex-start" }}>
         <View style={{ flex: 1 }}>
           <Select
@@ -349,8 +349,7 @@ export default function AnalysisScreen() {
       <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
         {searchScope === "period" ? tr.analysis.selectedPeriodRange(searchPeriodLabel) : tr.analysis.allTimeHint}
       </Body>
-      </>
-      ) : null}
+      </Collapse>
       {searchActive && sortedResults.length > 1 ? (
         <Select
           label={tr.analysis.sortLabel}

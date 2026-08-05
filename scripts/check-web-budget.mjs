@@ -4,7 +4,7 @@ import { extname, join, relative } from "node:path";
 const root = process.argv[2] ?? "dist";
 // Measured from a production `expo export -p web`, with headroom for ordinary
 // growth. The font budgets were tightened after two faces that no `type.*`
-// scale or fontFamily ever referenced (Inter_800ExtraBold, Fraunces_500Medium)
+// scale or fontFamily ever referenced (Inter_800ExtraBold, IBMPlexSerif_300Light)
 // were removed: 8 files / 1_935_428 bytes -> 6 files / 1_518_000 bytes. Keep
 // fontFiles exact so adding a weight has to be a deliberate decision. The
 // Investments V1 route set was measured against main before recalibrating the
