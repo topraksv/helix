@@ -340,10 +340,13 @@ function Figure({
   const formatted = compact ? formatMinorCompact(shown, currency) : formatMinor(shown, currency);
   const settled = compact ? formatMinorCompact(minor, currency) : formatMinor(minor, currency);
   const scale: AmountScale = hero ? "hero" : large ? "large" : "regular";
+  const requestedFontSize = StyleSheet.flatten(style)?.fontSize;
+  const initialSize = typeof requestedFontSize === "number"
+    ? Math.min(initialAmountFontSize(scale), requestedFontSize)
+    : initialAmountFontSize(scale);
   // Width/font-scale changes start a fresh fit pass so rotation and Dynamic
   // Type can shrink or grow without opting out of system font scaling.
-  const fitKey = `${settled}|${scale}|${width}|${fontScale}`;
-  const initialSize = initialAmountFontSize(scale);
+  const fitKey = `${settled}|${scale}|${width}|${fontScale}|${initialSize}`;
   const [fit, setFit] = useState({ key: fitKey, size: initialSize });
   const fittedSize = fit.key === fitKey ? fit.size : initialSize;
   const shrinkToNextStep = () => {
@@ -369,8 +372,12 @@ function Figure({
       style={[
         large || hero ? type.amountLg : type.amount,
         { color: resolved, flexShrink: 1, textAlign: "right" },
-        { fontSize: fittedSize },
         style,
+        // A caller may request a smaller starting role, but never gets to
+        // override a measured fit on the final style layer. That override was
+        // why a long negative figure could wrap again after Amount had already
+        // walked down its font ladder.
+        { fontSize: fittedSize },
       ]}
     >
       {formatted}

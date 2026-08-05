@@ -8,7 +8,7 @@ import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronR
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../domain/balance-declaration";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { daysBetweenISO, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
-import { formatMinor } from "../../domain/money";
+import { formatMinorCompact } from "../../domain/money";
 import { buildUpcomingTimeline } from "../../domain/upcoming";
 import { clockOrDateTimeLabel, dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
@@ -553,8 +553,8 @@ export default function DashboardScreen() {
       <Card>
         <ListRow
           icon={ChartNoAxesColumn}
-          title={tr.dashboard.monthNet(formatMinor(monthNetMinor))}
-          subtitle={tr.dashboard.monthFlowSummary(formatMinor(monthIncomeMinor), formatMinor(monthOutflowMinor))}
+          title={tr.dashboard.monthNet(formatMinorCompact(monthNetMinor))}
+          subtitle={tr.dashboard.monthFlowSummary(formatMinorCompact(monthIncomeMinor), formatMinorCompact(monthOutflowMinor))}
           chevron
           // Root-level route, not the tab's own. Pushing into the Cash Flow
           // stack from here would mount that tab's index underneath, and the
@@ -843,7 +843,7 @@ export default function DashboardScreen() {
                 icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
                 iconColor={palette.error}
                 title={nameOf(e)}
-                subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinor(e.amountMinor, e.currency)}`}
+                subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinorCompact(e.amountMinor, e.currency)}`}
                 right={(
                   <View style={{ width: STATUS_W }}>
                     <Button
@@ -865,7 +865,7 @@ export default function DashboardScreen() {
                 icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
                 iconColor={u.direction === "in" ? palette.positive : undefined}
                 title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${formatMinor(u.amountMinor, u.currency)}`}
+                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${formatMinorCompact(u.amountMinor, u.currency)}`}
                 right={u.kind === "expected" && u.expectedId ? (
                   <View style={{ width: STATUS_W }}>
                     <Button

@@ -20,7 +20,7 @@ import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { formatMinor } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { Banknote, CreditCard, Landmark, Pencil, ReceiptText, Trash2, WalletCards, type LucideIcon } from "lucide-react-native";
-import { Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
 import { spacing, useTheme } from "../../../ui/theme";
@@ -383,7 +383,13 @@ export default function SourcesScreen() {
                   <Body>{monthLabel(statement.periodMonth)}</Body>
                   <Body muted>{tr.sources.statementDates(dateLabel(statement.statementDate), dateLabel(statement.dueDate))}</Body>
                 </View>
-                <Body>{formatMinor(amount)}</Body>
+                <Amount
+                  minor={amount}
+                  compact
+                  colorized={false}
+                  accessibilityLabel={formatMinor(amount)}
+                  style={{ textAlign: "right" }}
+                />
               </Spread>
             );
           })}

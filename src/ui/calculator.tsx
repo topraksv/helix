@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { Delete } from "lucide-react-native";
-import { formatMinor, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
+import { formatMinorCompact, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { radius, spacing, themeShadow, type, useTheme } from "./theme";
 import { Button, FadeIn } from "./primitives";
@@ -279,7 +279,7 @@ export function CalculatorPad({
   const resultNode = onResult ? (
     <View style={{ marginTop: landscape ? spacing.md : spacing.lg }}>
       <Button
-        label={resultMinor == null ? tr.calc.resultUnavailable : `${resultLabel ?? tr.calc.useResult} · ${formatMinor(resultMinor)}`}
+        label={resultMinor == null ? tr.calc.resultUnavailable : `${resultLabel ?? tr.calc.useResult} · ${formatMinorCompact(resultMinor)}`}
         onPress={() => onResult(value)}
         disabled={resultMinor == null}
         haptic="success"

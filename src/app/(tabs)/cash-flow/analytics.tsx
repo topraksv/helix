@@ -639,17 +639,24 @@ export default function AnalysisScreen() {
                 ...monthKeys.map((m) => {
                   const v = data.monthly.get(m) ?? 0;
                   return (
-                    <Text
+                    <Amount
                       key={m}
-                      style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"], color: v === 0 ? palette.textSecondary : palette.text }]}
-                    >
-                      {v === 0 ? "" : formatMinorCompact(v)}
-                    </Text>
+                      minor={v}
+                      compact
+                      colorized={false}
+                      color={v === 0 ? palette.textSecondary : palette.text}
+                      style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"] }]}
+                    />
                   );
                 }),
-                <Text key="__total" style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, color: palette.text }]}>
-                  {formatMinorCompact(data.ytdMinor)}
-                </Text>,
+                <Amount
+                  key="__total"
+                  minor={data.ytdMinor}
+                  compact
+                  colorized={false}
+                  color={palette.text}
+                  style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13 }]}
+                />,
               ],
             }))}
           />

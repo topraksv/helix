@@ -77,7 +77,7 @@ test("month balance transition stays between its amounts on a phone", async ({ p
   await expect(transition).toBeVisible();
   const geometry = await transition.evaluate((element) => {
     const box = (selector: string) => {
-      const node = element.parentElement?.querySelector<HTMLElement>(selector);
+      const node = element.parentElement?.parentElement?.querySelector<HTMLElement>(selector);
       if (!node) throw new Error(`Missing month balance geometry: ${selector}`);
       const rect = node.getBoundingClientRect();
       return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
@@ -85,8 +85,8 @@ test("month balance transition stays between its amounts on a phone", async ({ p
     const bridge = element.getBoundingClientRect();
     return {
       bridge: { left: bridge.left, right: bridge.right, top: bridge.top, bottom: bridge.bottom },
-      opening: box('[data-testid="month-opening-balance"]'),
-      closing: box('[data-testid="month-closing-balance"]'),
+      opening: box('[data-testid="month-opening-amount"]'),
+      closing: box('[data-testid="month-closing-amount"]'),
     };
   });
 
@@ -94,6 +94,21 @@ test("month balance transition stays between its amounts on a phone", async ({ p
   expect(geometry.bridge.right).toBeLessThanOrEqual(geometry.closing.left + 1);
   expect(geometry.bridge.top).toBeLessThan(geometry.opening.bottom);
   expect(geometry.bridge.bottom).toBeGreaterThan(geometry.opening.top);
+});
+
+test("month opening and current balances share a visual baseline on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await onboard(page);
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+
+  const opening = page.getByTestId("month-opening-amount");
+  const closing = page.getByTestId("month-closing-amount");
+  await expect(opening).toBeVisible();
+  await expect(closing).toBeVisible();
+  const geometry = await Promise.all([opening.boundingBox(), closing.boundingBox()]);
+  expect(geometry[0]).not.toBeNull();
+  expect(geometry[1]).not.toBeNull();
+  expect(Math.abs((geometry[0]!.y + geometry[0]!.height) - (geometry[1]!.y + geometry[1]!.height))).toBeLessThanOrEqual(1);
 });
 
 test("the transfer classification appears once, in the row being edited", async ({ page }) => {

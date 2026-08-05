@@ -20,7 +20,7 @@ import { combineLiveQueryStatus } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../domain/balance-declaration";
-import { formatMinor } from "../domain/money";
+import { formatMinor, formatMinorCompact } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
 import { appAlert } from "./dialog";
@@ -248,8 +248,8 @@ export function OpeningBalanceEditor() {
             <Text style={[type.label, { color: palette.warningText }]}>{tr.settings.balanceDriftTitle}</Text>
             <Body muted style={{ marginTop: spacing.xs }}>
               {tr.settings.balanceDriftBody(
-                formatMinor(declaration.minor),
-                formatMinor(computed ?? 0),
+                formatMinorCompact(declaration.minor),
+                formatMinorCompact(computed ?? 0),
                 dateLabel(declaration.at),
               )}
             </Body>

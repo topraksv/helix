@@ -21,7 +21,7 @@ import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
-import { Body, Button, Card, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader, SelectionGrid } from "../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader, SelectionGrid } from "../ui/components";
 import { circle, font, radius, spacing, type, type Palette, useTheme } from "../ui/theme";
 import { SuccessPop } from "../ui/motion-primitives";
 import { navigateBack } from "../ui/navigation";
@@ -620,10 +620,19 @@ export default function ImportWizardModal() {
                           const cell = preview.cells[r]?.[i];
                           if (!cell) return null;
                           return (
-                            <Text key={c.label} style={[type.amountSm, { color: palette.textSecondary, width: 108, textAlign: "right" }]}>
+                            <View key={c.label} style={{ width: 108, flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
                               {hasBreakdown(cell) ? <Text style={{ color: palette.primaryText }}>• </Text> : null}
-                              {cell.valueMinor != null ? formatMinor(cell.valueMinor) : ""}
-                            </Text>
+                              {cell.valueMinor != null ? (
+                                <Amount
+                                  minor={cell.valueMinor}
+                                  compact
+                                  colorized={false}
+                                  color={palette.textSecondary}
+                                  accessibilityLabel={formatMinor(cell.valueMinor)}
+                                  style={[type.amountSm, { textAlign: "right" }]}
+                                />
+                              ) : null}
+                            </View>
                           );
                         })}
                       </View>

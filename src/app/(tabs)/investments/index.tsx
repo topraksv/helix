@@ -147,16 +147,18 @@ function TransferMetric({
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[type.small, { color: palette.textSecondary }]}>{label}</Text>
-        <Text
+        <Amount
+          minor={minor}
+          compact={compact}
+          colorized={false}
+          color={minor === 0 ? palette.textSecondary : direction === "in" ? palette.positiveText : palette.text}
           accessibilityLabel={`${label}: ${formatMinor(minor)}`}
           // Zero is not a gain. The inbound metric was painted green whatever
           // it held, so a wallet that had never received a transfer still
           // reported "₺0,00" in the colour this app reserves for money coming
           // in.
-          style={[type.amountSm, { color: minor === 0 ? palette.textSecondary : direction === "in" ? palette.positiveText : palette.text, marginTop: 1 }]}
-        >
-          {compact ? formatMinorCompact(minor) : formatMinor(minor)}
-        </Text>
+          style={[type.amountSm, { marginTop: 1, textAlign: "left" }]}
+        />
       </View>
     </View>
   );
@@ -317,16 +319,20 @@ function InvestmentQuickAction({
       >
         <Icon accessible={false} size={15} color={foreground} strokeWidth={2.2} />
       </View>
-      <Text
-        style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: type.micro.fontSize, lineHeight: 12, textAlign: "center", fontFamily: font.semibold }]}
-      >
-        {label}
-      </Text>
-      <Text
-        style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize, lineHeight: 13, textAlign: "center" }]}
-      >
-        {caption}
-      </Text>
+      <View style={{ width: "100%", minHeight: 36, justifyContent: "flex-start" }}>
+        <Text
+          style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: type.micro.fontSize, lineHeight: 12, textAlign: "center", fontFamily: font.semibold }]}
+        >
+          {label}
+        </Text>
+      </View>
+      <View style={{ width: "100%", minHeight: 26, justifyContent: "flex-start" }}>
+        <Text
+          style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize, lineHeight: 13, textAlign: "center" }]}
+        >
+          {caption}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -494,7 +500,7 @@ export default function InvestmentsScreen() {
           colorized={false}
           testID="investment-cash-amount"
           accessibilityLabel={`${tr.investments.cash}: ${formatMinor(state.cashMinor)}`}
-          style={{ fontSize: type.amountMd.fontSize, color: palette.textStrong, textAlign: "left", marginTop: spacing.sm }}
+          style={{ color: palette.textStrong, textAlign: "left", marginTop: spacing.sm }}
         />
       ) : (
         <View testID="investment-cash-amount">
@@ -546,7 +552,7 @@ export default function InvestmentsScreen() {
       testID="investment-portfolio-metrics"
       items={[
         { label: tr.investments.investedCost, minor: state.investedCostMinor, color: palette.text },
-        { label: tr.investments.activeProducts, node: <Text style={[type.amountSm, { color: palette.text }]}>{active.length}</Text> },
+        { label: tr.investments.activeProducts, node: <Text style={[type.amount, { color: palette.text }]}>{active.length}</Text> },
         { label: tr.investments.realizedResult, minor: state.realizedProfitLossMinor, color: state.realizedProfitLossMinor >= 0 ? palette.positiveText : palette.negativeText },
       ]}
     />
@@ -674,13 +680,54 @@ export default function InvestmentsScreen() {
                   </View>
                 </Spread>
                 <Row style={{ marginTop: spacing.lg, alignItems: "stretch", justifyContent: "center" }}>
-                  <Stat compact={compact} label={tr.investments.averageCost} accent={palette.border} value={<Text style={[type.amountSm, { color: palette.text }]}>{product.averageCostMinor == null ? "—" : formatMinorCompact(product.averageCostMinor)}</Text>} />
-                  <Stat compact={compact} label={tr.investments.totalCost} accent={palette.primary} value={<Text style={[type.amountSm, { color: palette.text }]}>{formatMinorCompact(product.costMinor)}</Text>} />
+                  <Stat
+                    compact={compact}
+                    label={tr.investments.averageCost}
+                    accent={palette.border}
+                    value={product.averageCostMinor == null ? (
+                      <Text style={[type.amountSm, { color: palette.text }]}>—</Text>
+                    ) : (
+                      <Amount
+                        minor={product.averageCostMinor}
+                        compact
+                        colorized={false}
+                        color={palette.text}
+                        accessibilityLabel={formatMinor(product.averageCostMinor)}
+                        style={[type.amountSm, { textAlign: "left" }]}
+                      />
+                    )}
+                  />
+                  <Stat
+                    compact={compact}
+                    label={tr.investments.totalCost}
+                    accent={palette.primary}
+                    value={(
+                      <Amount
+                        minor={product.costMinor}
+                        compact
+                        colorized={false}
+                        color={palette.text}
+                        accessibilityLabel={formatMinor(product.costMinor)}
+                        style={[type.amountSm, { textAlign: "left" }]}
+                      />
+                    )}
+                  />
                   <Stat
                     compact={compact}
                     label={product.realizedProfitLossMinor === 0 ? tr.investments.realizedResult : resultPositive ? tr.investments.realizedProfit : tr.investments.realizedLoss}
                     accent={product.realizedProfitLossMinor === 0 ? palette.border : resultPositive ? palette.positive : palette.negative}
-                    value={<Text style={[type.amountSm, { color: product.realizedProfitLossMinor === 0 ? palette.textSecondary : resultPositive ? palette.positiveText : palette.negativeText }]}>{product.realizedProfitLossMinor === 0 ? "—" : compact ? formatMinorCompact(product.realizedProfitLossMinor) : formatMinor(product.realizedProfitLossMinor)}</Text>}
+                    value={product.realizedProfitLossMinor === 0 ? (
+                      <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
+                    ) : (
+                      <Amount
+                        minor={product.realizedProfitLossMinor}
+                        compact={compact}
+                        colorized={false}
+                        color={resultPositive ? palette.positiveText : palette.negativeText}
+                        accessibilityLabel={formatMinor(product.realizedProfitLossMinor)}
+                        style={[type.amountSm, { textAlign: "left" }]}
+                      />
+                    )}
                   />
                 </Row>
               </Card>
@@ -725,19 +772,24 @@ export default function InvestmentsScreen() {
                     <Text style={[type.label, { color: palette.text }]}>{product?.name ?? tr.investments.product}</Text>
                     <Text style={[type.small, { color: palette.textSecondary }]}>{labels[operation.kind]} · {operation.operationDate}</Text>
                     {compact ? (
-                      <Text
-                        style={[type.amountSm, { color: movementTone.text, marginTop: 3 }]}
-                      >
-                        {formatMinorCompact(operation.totalMinor)}
-                      </Text>
+                      <Amount
+                        minor={operation.totalMinor}
+                        compact
+                        colorized={false}
+                        color={movementTone.text}
+                        accessibilityLabel={formatMinor(operation.totalMinor)}
+                        style={[type.amountSm, { marginTop: 3, textAlign: "left" }]}
+                      />
                     ) : null}
                   </View>
                   {!compact ? (
-                    <Text
-                      style={[type.amountSm, { color: movementTone.text, fontSize: type.label.fontSize }]}
-                    >
-                      {formatMinor(operation.totalMinor)}
-                    </Text>
+                    <Amount
+                      minor={operation.totalMinor}
+                      colorized={false}
+                      color={movementTone.text}
+                      accessibilityLabel={formatMinor(operation.totalMinor)}
+                      style={[type.amountSm, { fontSize: type.label.fontSize, textAlign: "right" }]}
+                    />
                   ) : null}
                   <IconButton label={tr.common.edit} icon={Pencil} onPress={() => router.push({ pathname: "/investments/operation", params: { id: operation.id, kind: operation.kind } })} />
                   <IconButton label={tr.common.delete} icon={Trash2} tone="danger" onPress={() => void deleteOperation(operation.id)} />

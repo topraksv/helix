@@ -22,7 +22,7 @@ import { combineLiveQueryStatus } from "../data/live-state";
 import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
 import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
-import { formatMinor, parseAmountExpression } from "../domain/money";
+import { formatMinorCompact, parseAmountExpression } from "../domain/money";
 import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transactions";
 import { transactionDateText } from "../ui/transaction-date";
 import { monthLabel, tr } from "../i18n/tr";
@@ -198,7 +198,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
           />
           {entryMinor != null && (entryRaw.includes("+") || entryRaw.includes("-")) ? (
             <Body muted style={{ marginBottom: spacing.sm }}>
-              = {formatMinor(entryMinor)}
+              = {formatMinorCompact(entryMinor)}
             </Body>
           ) : null}
           <Button

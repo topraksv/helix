@@ -394,7 +394,22 @@ export function MetricStrip({
     >
       {items.map((item) => (
         <View key={item.label} style={{ flex: 1, flexBasis: 0, minWidth: 0, paddingTop: spacing.sm }}>
-          <Text style={[type.small, { color: palette.textSecondary }]}>{item.label}</Text>
+          <Text
+            style={[
+              type.small,
+              {
+                color: palette.textSecondary,
+                // A short label such as "Aktif ürünler" used to leave its
+                // value one line higher than the two-line money labels beside
+                // it. Reserve the shared two-line label slot so every metric
+                // reaches the same value floor at phone widths.
+                minHeight: Math.round(type.small.fontSize * 2.2),
+                lineHeight: type.small.fontSize * 1.1,
+              },
+            ]}
+          >
+            {item.label}
+          </Text>
           {/* One bottom edge for all three figures. Each one fits itself to its
               own column, so a long amount beside a short one ends up a step
               smaller — and a smaller line box sits higher, which is the "not

@@ -16,7 +16,7 @@ import {
 } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { todayISO } from "../domain/dates";
-import { formatMinor } from "../domain/money";
+import { formatMinor, formatMinorCompact } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
@@ -188,7 +188,7 @@ export default function CatchUpScreen() {
                   <Body>{nameOf(e)}</Body>
                 </Row>
                 <Body muted style={{ marginTop: spacing.xs }}>
-                  {dateLabel(e.dueDate)} · {formatMinor(e.amountMinor, e.currency)}
+                  {dateLabel(e.dueDate)} · {formatMinorCompact(e.amountMinor, e.currency)}
                 </Body>
               </View>
             </Spread>

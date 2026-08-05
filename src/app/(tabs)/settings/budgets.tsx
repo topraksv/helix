@@ -6,7 +6,7 @@ import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteCategoryBudget, restoreCategoryBudget, upsertCategoryBudget } from "../../../data/repo";
 import { budgetProgress } from "../../../domain/budgets";
 import { monthKeyOf, todayISO } from "../../../domain/dates";
-import { formatMinor } from "../../../domain/money";
+import { formatMinor, formatMinorCompact } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { Body, Button, Card, CardList, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread } from "../../../ui/components";
@@ -31,7 +31,7 @@ function BudgetMeter({ spentMinor, limitMinor }: { spentMinor: number; limitMino
     >
       <SegmentBar ratio={ratio} tone={over ? palette.negative : palette.positive} />
       <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "center", marginTop: spacing.sm }}>
-        {tr.budgets.progress(formatMinor(spentMinor), formatMinor(limitMinor))}
+        {tr.budgets.progress(formatMinorCompact(spentMinor), formatMinorCompact(limitMinor))}
       </Body>
     </View>
   );
@@ -209,7 +209,7 @@ export default function BudgetsScreen() {
                   <View style={{ flex: 1, paddingRight: spacing.sm }}>
                     <Body>{category?.name ?? tr.common.none}</Body>
                     <Body muted style={{ fontSize: type.small.fontSize }}>
-                      {state ? tr.budgets.progress(formatMinor(state.spentMinor), formatMinor(budget.amountMinor)) : formatMinor(budget.amountMinor)}
+                      {state ? tr.budgets.progress(formatMinorCompact(state.spentMinor), formatMinorCompact(budget.amountMinor)) : formatMinorCompact(budget.amountMinor)}
                     </Body>
                   </View>
                   <Row gap={spacing.sm}>
@@ -220,7 +220,7 @@ export default function BudgetsScreen() {
                 <View style={{ height: 7, borderRadius: 4, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
                   <View style={{ height: "100%", width: `${ratio * 100}%`, backgroundColor: (state?.remainingMinor ?? 0) < 0 ? palette.negative : palette.positive }} />
                 </View>
-                {state && state.remainingMinor < 0 ? <Body style={{ fontSize: type.small.fontSize, color: palette.negativeText, marginTop: spacing.xs }}>{tr.budgets.over(formatMinor(-state.remainingMinor))}</Body> : null}
+                {state && state.remainingMinor < 0 ? <Body style={{ fontSize: type.small.fontSize, color: palette.negativeText, marginTop: spacing.xs }}>{tr.budgets.over(formatMinorCompact(-state.remainingMinor))}</Body> : null}
               </View>
             );
               }}

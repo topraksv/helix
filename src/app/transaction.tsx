@@ -23,14 +23,14 @@ import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
-import { formatMinor, isSupportedMinorAmount } from "../domain/money";
+import { formatMinor, formatMinorCompact, isSupportedMinorAmount } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { projectInvestmentState } from "../domain/investment-projection";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataStateNotice, Divider, Field, HeroCard, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
+import { Amount, Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataStateNotice, Divider, Field, HeroCard, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -225,7 +225,15 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
         <PanelHeader icon={WalletCards} title={tr.investments.refundAmountTitle} description={tr.investments.refundAmountHint} />
         <View style={{ padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.primarySoft, marginBottom: spacing.md }}>
           <Text style={[type.small, { color: palette.primaryText }]}>{tr.investments.cash}</Text>
-          <Text style={[type.amountLg, { color: palette.textStrong, marginTop: 2 }]}>{formatMinor(wallet?.cashMinor ?? 0)}</Text>
+          <Amount
+            testID="investment-refund-cash-amount"
+            minor={wallet?.cashMinor ?? 0}
+            large
+            compact
+            colorized={false}
+            accessibilityLabel={formatMinor(wallet?.cashMinor ?? 0)}
+            style={{ color: palette.textStrong, marginTop: 2 }}
+          />
         </View>
         <ChipPicker
           value={amountMode}
@@ -650,7 +658,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       )}
       {currency !== "TRY" ? (
         <View style={{ marginBottom: spacing.md, alignItems: "flex-start" }}>
-          {tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinor(tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
+          {tryMinor != null ? <Body muted>{tr.tx.tryEquivalent(formatMinorCompact(tryMinor))}</Body> : <Body muted>{tr.tx.rateNotFound}</Body>}
           {!historicalRateTry && rate?.isStale ? <Badge text={`⚠ ${tr.tx.staleRate}`} tone="warning" /> : null}
         </View>
       ) : null}
@@ -755,7 +763,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
             </Row>
           ) : null}
           {installment && installmentValid && amountMinor ? (
-            <Body muted>{tr.tx.installmentInfo(formatMinor(Math.trunc(amountMinor / count), currency), count)}</Body>
+            <Body muted>{tr.tx.installmentInfo(formatMinorCompact(Math.trunc(amountMinor / count), currency), count)}</Body>
           ) : null}
         </View>
       ) : null}

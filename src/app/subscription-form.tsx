@@ -12,7 +12,7 @@ import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { normalizedMonthlyLoadMinor } from "../domain/analytics";
 import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";
-import { formatMinor } from "../domain/money";
+import { formatMinor, formatMinorCompact } from "../domain/money";
 import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { CurrencyPicker } from "../ui/currency-picker";
@@ -526,7 +526,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
 
         {existing && amountMinor != null && amountMinor !== existing.amountMinor ? (
           <Body muted style={{ marginBottom: spacing.md }}>
-            {tr.subs.priceHistory}: {formatMinor(existing.amountMinor, existing.currency)} → {formatMinor(amountMinor, currency)}
+            {tr.subs.priceHistory}: {formatMinorCompact(existing.amountMinor, existing.currency)} → {formatMinorCompact(amountMinor, currency)}
           </Body>
         ) : null}
       </Card>

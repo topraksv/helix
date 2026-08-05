@@ -104,7 +104,13 @@ function FlowStat({
         <Icon accessible={false} size={13} color={color} />
         <Text style={[type.small, { color: foreground, textAlign: "center", fontSize: type.caption.fontSize }]}>{label}</Text>
       </View>
-      <Text style={[type.amountSm, { color: foreground, textAlign: "center", fontSize: type.small.fontSize, marginTop: 2 }]}>{formatMinorCompact(amountMinor)}</Text>
+      <Amount
+        minor={amountMinor}
+        compact
+        colorized={false}
+        color={foreground}
+        style={[type.amountSm, { textAlign: "center", fontSize: type.small.fontSize, marginTop: 2 }]}
+      />
     </View>
   );
 }
@@ -360,8 +366,8 @@ export default function CashflowScreen() {
           <TriangleAlert accessible={false} size={15} color={palette.warningText} strokeWidth={2.3} />
           <Text style={[type.small, { color: palette.warningText, flex: 1, minWidth: 0 }]}>
             {tr.settings.balanceDriftBody(
-              formatMinor(balanceDeclaration.minor),
-              formatMinor(bundle?.actualBalanceMinor ?? 0),
+              formatMinorCompact(balanceDeclaration.minor),
+              formatMinorCompact(bundle?.actualBalanceMinor ?? 0),
               dateLabel(balanceDeclaration.at),
             )}
           </Text>
@@ -507,7 +513,7 @@ function MonthFocusTable({
     cellNotes.filter((note) => note.month === month).map((note) => [note.categoryId, note.body]),
   );
   const adjustmentNote = monthData?.adjustmentMinor
-    ? tr.cashflow.adjustedCell(formatMinor(monthData.adjustmentMinor))
+    ? tr.cashflow.adjustedCell(formatMinorCompact(monthData.adjustmentMinor))
     : undefined;
 
   const actionFor = (column: CashFlowMatrixColumn): (() => void) | undefined => {
@@ -652,20 +658,14 @@ function MonthFocusTable({
                   </Text>
                 ) : null}
               </View>
-              <Text
+              <Amount
                 testID="matrix-value"
-                style={[
-                  type.amountSm,
-                  {
-                    width: 108,
-                    textAlign: "right",
-                    color: value < 0 ? palette.negativeText : value === 0 ? palette.textSecondary : palette.text,
-                    fontSize: type.small.fontSize,
-                  },
-                ]}
-              >
-                {formatMinorCompact(value)}
-              </Text>
+                minor={value}
+                compact
+                colorized={false}
+                color={value < 0 ? palette.negativeText : value === 0 ? palette.textSecondary : palette.text}
+                style={[type.amountSm, { width: 108, textAlign: "right", fontSize: type.small.fontSize }]}
+              />
             </Pressable>
           );
         })}
@@ -680,7 +680,13 @@ function MonthFocusTable({
           >
             <Spread>
               <Text style={[type.label, { color: palette.warningText, flex: 1 }]}>{tr.cashflow.uncategorizedLegacy}</Text>
-              <Text style={[type.amountSm, { color: palette.warningText }]}>{formatMinorCompact(matrix.uncategorizedTotal)}</Text>
+              <Amount
+                minor={matrix.uncategorizedTotal}
+                compact
+                colorized={false}
+                color={palette.warningText}
+                style={{ textAlign: "right" }}
+              />
             </Spread>
             <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
           </Pressable>
@@ -738,9 +744,13 @@ function TableDetailsPanel({
             <Text style={[type.label, { color: palette.warningText }]}>{tr.cashflow.uncategorizedLegacy}</Text>
             <Text style={[type.small, { color: palette.textSecondary }]}>{tr.cashflow.uncategorizedRepairHint}</Text>
           </View>
-          <Text style={[type.amountSm, { color: uncategorizedTotal < 0 ? palette.negativeText : palette.text }]}>
-            {formatMinorCompact(uncategorizedTotal)}
-          </Text>
+          <Amount
+            minor={uncategorizedTotal}
+            compact
+            colorized={false}
+            color={uncategorizedTotal < 0 ? palette.negativeText : palette.text}
+            style={{ textAlign: "right" }}
+          />
           <ChevronRight accessible={false} size={16} color={palette.textSecondary} />
         </Pressable>
       ) : null}
@@ -1044,15 +1054,16 @@ function MatrixCell({
         pressed && onPress && { backgroundColor: palette.primary + "38" },
       ]}
     >
-      <Text
-        testID="matrix-value"
-        style={[
-          type.amountSm,
-          { fontSize, color: value == null || value === 0 ? palette.textSecondary : value < 0 ? palette.negativeText : palette.text, textAlign: "right" },
-        ]}
-      >
-        {value == null || value === 0 ? "" : formatMinorCompact(value)}
-      </Text>
+      {value == null || value === 0 ? null : (
+        <Amount
+          testID="matrix-value"
+          minor={value}
+          compact
+          colorized={false}
+          color={value < 0 ? palette.negativeText : palette.text}
+          style={[type.amountSm, { fontSize, textAlign: "right" }]}
+        />
+      )}
       {note ? (
         <View
           style={{

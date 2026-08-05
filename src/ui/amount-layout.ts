@@ -18,7 +18,8 @@ export function initialAmountFontSize(scale: AmountScale): number {
  */
 export function nextAmountFontSize(scale: AmountScale, current: number): number {
   const steps = FONT_STEPS[scale];
-  const index = steps.indexOf(current);
-  if (index < 0) return steps[0]!;
-  return steps[Math.min(index + 1, steps.length - 1)]!;
+  const last = steps[steps.length - 1]!;
+  if (current > steps[0]!) return steps[0]!;
+  if (current <= last) return current;
+  return steps.find((step) => step < current) ?? last;
 }

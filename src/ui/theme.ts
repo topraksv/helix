@@ -723,13 +723,14 @@ export function tabBarClearance(bottomInset: number, isWeb: boolean): number {
  */
 export const NAV_GLASS = {
   webAlpha: "70",
-  nativeAlpha: "B0",
+  mobileWebAlpha: "80",
+  nativeAlpha: "C0",
   blur: "blur(30px) saturate(180%)",
 } as const;
 
-export function navigationMaterial(surface: string, { glass, isWeb }: { glass: boolean; isWeb: boolean }): string {
+export function navigationMaterial(surface: string, { glass, isWeb, compact = false }: { glass: boolean; isWeb: boolean; compact?: boolean }): string {
   if (!glass) return surface;
-  return surface + (isWeb ? NAV_GLASS.webAlpha : NAV_GLASS.nativeAlpha);
+  return surface + (isWeb ? compact ? NAV_GLASS.mobileWebAlpha : NAV_GLASS.webAlpha : NAV_GLASS.nativeAlpha);
 }
 
 /**

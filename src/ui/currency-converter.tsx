@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { ArrowDownUp } from "lucide-react-native";
 import { formatMinor, roundHalfAwayFromZero } from "../domain/money";
@@ -17,8 +17,8 @@ import { CurrencyPicker } from "./currency-picker";
 import { marketLastKnownRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
 import { clockOrDateTimeLabel, dateLabel, tr } from "../i18n/tr";
-import { Badge, Body, Label, MoneyField } from "./components";
-import { controlSize, iconSize, radius, spacing, type, useTheme } from "./theme";
+import { Amount, Badge, Body, Label, MoneyField } from "./components";
+import { controlSize, iconSize, radius, spacing, useTheme } from "./theme";
 
 export function CurrencyConverter() {
   const { palette } = useTheme();
@@ -134,7 +134,15 @@ export function CurrencyConverter() {
             style={{ alignSelf: "stretch" }}
             contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", alignItems: "flex-end" }}
           >
-            <Text style={[type.amountLg, { color: palette.text, textAlign: "right" }]}>{formatMinor(resultMinor, to)}</Text>
+            <Amount
+              minor={resultMinor}
+              currency={to}
+              large
+              compact
+              colorized={false}
+              accessibilityLabel={formatMinor(resultMinor, to)}
+              style={{ color: palette.text, textAlign: "right" }}
+            />
           </ScrollView>
         ) : (
           <Body muted>{resultOutOfRange ? tr.calc.resultUnavailable : ready ? tr.calc.enterAmount : tr.calc.rateMissing}</Body>

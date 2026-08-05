@@ -19,7 +19,7 @@ import { buildUpcomingTimeline, type UpcomingTimelineItem } from "../domain/upco
 import { formatMinor } from "../domain/money";
 import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
 import { useSyncStatus } from "../sync/status";
-import { Badge, Body, Card, DataStateNotice, EmptyState, ListRow, Row, Screen, SectionHeader } from "../ui/components";
+import { Amount, Badge, Body, Card, DataStateNotice, EmptyState, ListRow, Row, Screen, SectionHeader } from "../ui/components";
 import { font, iconSize, radius, spacing, type, useTheme } from "../ui/theme";
 
 export default function UpcomingScreen() {
@@ -140,14 +140,15 @@ export default function UpcomingScreen() {
                 right={(
                   <Row gap={spacing.sm}>
                     {item.status === "late" ? <Badge tone="error" text={tr.dashboard.late} /> : null}
-                    <Text
-                      style={[
-                        type.amountSm,
-                        { color: item.status === "late" ? palette.errorText : palette.text, textAlign: "right" },
-                      ]}
-                    >
-                      {formatMinor(item.amountMinor, item.currency)}
-                    </Text>
+                    <Amount
+                      minor={item.amountMinor}
+                      currency={item.currency}
+                      compact
+                      colorized={false}
+                      color={item.status === "late" ? palette.errorText : palette.text}
+                      accessibilityLabel={formatMinor(item.amountMinor, item.currency)}
+                      style={[type.amountSm, { textAlign: "right" }]}
+                    />
                     <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />
                   </Row>
                 )}

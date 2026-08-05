@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { Animated, FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowRight, Inbox } from "lucide-react-native";
+import { Inbox } from "lucide-react-native";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
 import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
@@ -49,62 +49,67 @@ type MonthListItem =
   | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
 
 /**
- * A contained balance bridge: the direction is drawn inside its own lane,
- * instead of a rule running through the two amounts and reading as `--->--`
- * when a phone has to shrink either side. The track is structural; the moving
- * ink says that the opening figure became the closing figure.
+ * A contained balance bridge: two endpoints and a moving pulse show the
+ * direction without an arrow glyph or a rule that looks like `--->--` when a
+ * phone has to shrink either side.
  */
 function BalanceBridge({ token }: { token: string }) {
   const { palette } = useTheme();
   const draw = useDrawIn(true, motion.draw, token);
-  const arrowOpacity = draw.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, 1, 1] });
-  const arrowScale = draw.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] });
+  const pulseX = draw.interpolate({ inputRange: [0, 1], outputRange: [0, 28] });
   return (
     <View
       testID="month-balance-transition"
       accessible={false}
       style={{
-        width: 44,
-        height: 32,
+        width: 48,
+        height: 28,
         flexShrink: 0,
         justifyContent: "center",
+        alignItems: "center",
       }}
     >
       <View
         accessible={false}
         style={{
-          height: 4,
+          width: 36,
+          height: 2,
           borderRadius: radius.full,
           overflow: "hidden",
-          backgroundColor: palette.surfaceAlt,
+          backgroundColor: palette.surfaceStrong,
         }}
       >
-        <Animated.View
-          style={{
-            width: "100%",
-            height: "100%",
-            borderRadius: radius.full,
-            backgroundColor: palette.primary,
-            transform: [{ scaleX: draw }],
-          }}
-        />
+        <View style={{ width: "100%", height: "100%", backgroundColor: palette.primary, opacity: 0.35 }} />
       </View>
       <Animated.View
         accessible={false}
         style={{
           position: "absolute",
-          left: 13,
-          right: 13,
-          top: 7,
-          bottom: 7,
+          left: 6,
+          top: 10,
+          width: 8,
+          height: 8,
+          borderRadius: radius.full,
+          backgroundColor: palette.primary,
+          transform: [{ translateX: pulseX }],
+        }}
+      />
+      <View
+        accessible={false}
+        style={{
+          position: "absolute",
+          left: 6,
+          top: 10,
+          width: 36,
+          height: 8,
+          flexDirection: "row",
+          justifyContent: "space-between",
           alignItems: "center",
-          justifyContent: "center",
-          opacity: arrowOpacity,
-          transform: [{ scale: arrowScale }],
         }}
       >
-        <ArrowRight accessible={false} size={17} color={palette.primaryText} strokeWidth={2.4} />
-      </Animated.View>
+        <View style={{ width: 6, height: 6, borderRadius: radius.full, backgroundColor: palette.primary }} />
+        <View style={{ width: 8, height: 8, borderRadius: radius.full, borderWidth: 2, borderColor: palette.primary }} />
+      </View>
     </View>
   );
 }
@@ -160,15 +165,24 @@ function MonthFlowSummary({
           `${tr.cashflow.closing}: ${formatMinor(flows.closingMinor)}`,
         ].join(". ")}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <View testID="month-opening-balance" style={{ flex: 1, minWidth: 0 }}>
-            <Body muted style={{ fontSize: type.caption.fontSize, marginBottom: spacing.xs }}>{tr.cashflow.opening}</Body>
-            <Amount minor={flows.openingMinor} colorized={false} style={{ textAlign: "left" }} />
+        <View>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
+            <View testID="month-opening-balance" style={{ flex: 1, minWidth: 0 }}>
+              <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "left" }}>{tr.cashflow.opening}</Body>
+            </View>
+            <View style={{ width: 48, flexShrink: 0 }} />
+            <View testID="month-closing-balance" style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
+              <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "right" }}>{tr.cashflow.closing}</Body>
+            </View>
           </View>
-          <BalanceBridge token={`${flows.openingMinor}|${flows.closingMinor}`} />
-          <View testID="month-closing-balance" style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
-            <Body muted style={{ fontSize: type.caption.fontSize, marginBottom: spacing.xs, textAlign: "right" }}>{tr.cashflow.closing}</Body>
-            <Amount minor={flows.closingMinor} large style={{ textAlign: "right" }} />
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, marginTop: spacing.xs }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Amount testID="month-opening-amount" minor={flows.openingMinor} colorized={false} style={{ textAlign: "left" }} />
+            </View>
+            <BalanceBridge token={`${flows.openingMinor}|${flows.closingMinor}`} />
+            <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
+              <Amount testID="month-closing-amount" minor={flows.closingMinor} large style={{ textAlign: "right" }} />
+            </View>
           </View>
         </View>
         <View

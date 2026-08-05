@@ -10,7 +10,7 @@ import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount, planProgress, type GeneratedInstallment } from "../domain/installments";
-import { formatMinor } from "../domain/money";
+import { formatMinorCompact } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Landmark, Trash2, type LucideIcon } from "lucide-react-native";
 import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Select, Spread } from "../ui/components";
@@ -374,8 +374,8 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
             {valid && amountMinor ? (
               <Body muted>
                 {kind === "card_installment"
-                  ? tr.tx.installmentInfo(formatMinor(Math.trunc(amountMinor / count)), count)
-                  : tr.tx.installmentInfo(formatMinor(amountMinor), count)}
+                  ? tr.tx.installmentInfo(formatMinorCompact(Math.trunc(amountMinor / count)), count)
+                  : tr.tx.installmentInfo(formatMinorCompact(amountMinor), count)}
               </Body>
             ) : null}
           </Card>

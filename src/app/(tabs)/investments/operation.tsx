@@ -28,6 +28,7 @@ import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { DateField } from "../../../ui/calendar";
 import {
+  Amount,
   Button,
   Card,
   DataStateNotice,
@@ -299,7 +300,17 @@ export default function InvestmentOperationScreen() {
               </View>
               <View style={{ flex: 1, minWidth: 0, padding: spacing.sm, borderRadius: radius.md, backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border }}>
                 <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.unitPrice}</Text>
-                <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2 }]}>{unitMinor == null ? "—" : formatMinor(unitMinor)}</Text>
+                {unitMinor == null ? (
+                  <Text style={[type.amountSm, { color: palette.textStrong, marginTop: 2 }]}>—</Text>
+                ) : (
+                  <Amount
+                    minor={unitMinor}
+                    compact
+                    colorized={false}
+                    accessibilityLabel={formatMinor(unitMinor)}
+                    style={[type.amountSm, { color: palette.textStrong, marginTop: 2, textAlign: "left" }]}
+                  />
+                )}
               </View>
             </View>
           ) : null}
@@ -309,9 +320,18 @@ export default function InvestmentOperationScreen() {
               <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.calculatedTotal}</Text>
               <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.investments.operationHint[kind]}</Text>
             </View>
-            <Text style={[type.amount, { color: calculationTotal == null ? palette.textSecondary : impactColor, textAlign: "right" }]}>
-              {calculationTotal == null ? "—" : formatMinor(calculationTotal)}
-            </Text>
+            {calculationTotal == null ? (
+              <Text style={[type.amount, { color: palette.textSecondary, textAlign: "right" }]}>—</Text>
+            ) : (
+              <Amount
+                minor={calculationTotal}
+                compact
+                colorized={false}
+                color={impactColor}
+                accessibilityLabel={formatMinor(calculationTotal)}
+                style={{ textAlign: "right" }}
+              />
+            )}
           </View>
         </View>
       </FadeIn>

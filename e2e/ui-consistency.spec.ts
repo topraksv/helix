@@ -156,6 +156,8 @@ test("the footer keeps a restrained material in both themes", async ({ page }) =
 
   const light = await readMaterial();
   expect(light.background).toMatch(/^rgba\(/);
+  const lightAlpha = Number(light.background.match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1] ?? "1");
+  expect(lightAlpha, "mobile footer keeps a solid enough reading surface").toBeGreaterThanOrEqual(0.5);
   expect(light.backdrop).toContain("blur");
   expect(light.bottom).toBeLessThanOrEqual(light.viewportHeight + 1);
 
@@ -618,6 +620,7 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(geometry.amountFontSize).toBeGreaterThanOrEqual(24);
   expect(geometry.descendantsFit).toBe(true);
   await expect(page.getByTestId("investment-mobile-allocation")).toBeVisible();
+
   const fill = page.getByTestId("investment-allocation-fill").first();
   await expect(fill).toBeVisible();
   const widths = await fill.evaluate(async (element) => {
@@ -639,6 +642,52 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(new Set(actionGeometry.map(({ top }) => top)).size).toBe(1);
   expect(Math.max(...actionGeometry.map(({ width }) => width)) - Math.min(...actionGeometry.map(({ width }) => width))).toBeLessThanOrEqual(1);
   expect(Math.max(...actionGeometry.map(({ right }) => right))).toBeLessThanOrEqual(320 - 16);
+
+  const actionTextGeometry = await actions.evaluateAll((elements) => elements.map((element) => {
+    const textNodes = Array.from(element.querySelectorAll<HTMLElement>("*"))
+      .filter((node) => node.children.length === 0 && node.textContent?.trim())
+      .map((node) => ({ text: node.textContent!.trim(), box: node.getBoundingClientRect() }));
+    const label = textNodes.find(({ text }) => !text.includes("döner") && !text.includes("düşmez") && !text.includes("yok") && !text.includes("çıkar"));
+    const caption = textNodes.find(({ text }) => text.includes("döner") || text.includes("düşmez") || text.includes("yok") || text.includes("çıkar"));
+    if (!label || !caption) throw new Error(`Missing investment action text in ${element.getAttribute("aria-label")}`);
+    return {
+      labelTop: Math.round(label.box.top),
+      captionTop: Math.round(caption.box.top),
+    };
+  }));
+  expect(new Set(actionTextGeometry.map(({ labelTop }) => labelTop)).size).toBe(1);
+  expect(new Set(actionTextGeometry.map(({ captionTop }) => captionTop)).size).toBe(1);
+
+  const metricTextGeometry = await page.getByTestId("investment-portfolio-metrics").evaluate((element) => {
+    const columns = Array.from(element.children) as HTMLElement[];
+    return columns.map((column) => {
+      const valueWrapper = column.lastElementChild as HTMLElement | null;
+      const value = valueWrapper?.firstElementChild as HTMLElement | null;
+      if (!value) throw new Error("Missing investment portfolio metric value");
+      const box = value.getBoundingClientRect();
+      const wrapperBox = valueWrapper!.getBoundingClientRect();
+      return {
+        fontSize: Number.parseFloat(getComputedStyle(value).fontSize),
+        bottom: Math.round(box.bottom),
+        valueHeight: Math.round(box.height),
+        wrapperBottom: Math.round(wrapperBox.bottom),
+      };
+    });
+  });
+  expect(metricTextGeometry.length).toBeGreaterThanOrEqual(2);
+  expect(Math.max(...metricTextGeometry.map(({ fontSize }) => fontSize)) - Math.min(...metricTextGeometry.map(({ fontSize }) => fontSize))).toBeLessThanOrEqual(0.5);
+  expect(new Set(metricTextGeometry.map(({ bottom }) => bottom)).size).toBe(1);
+
+  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar. Mali tabloya çıkar", exact: true }).click();
+  const refundAmount = page.getByTestId("investment-refund-cash-amount");
+  await expect(refundAmount).toBeVisible();
+  const refundGeometry = await refundAmount.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const parent = element.parentElement!.getBoundingClientRect();
+    return { left: box.left, right: box.right, parentLeft: parent.left, parentRight: parent.right };
+  });
+  expect(refundGeometry.left).toBeGreaterThanOrEqual(refundGeometry.parentLeft - 1);
+  expect(refundGeometry.right).toBeLessThanOrEqual(refundGeometry.parentRight + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 

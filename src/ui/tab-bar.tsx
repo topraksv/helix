@@ -25,7 +25,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, PanResponder, Platform, Pressable, Text, View, type ViewStyle } from "react-native";
+import { Animated, PanResponder, Platform, Pressable, Text, View, useWindowDimensions, type ViewStyle } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion, useReduceTransparency } from "./motion";
@@ -37,6 +37,7 @@ const BAR_PADDING = 2;
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { palette, scheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const reduceTransparency = useReduceTransparency();
   const reducedMotion = useReducedMotion();
   const isWeb = Platform.OS === "web";
@@ -47,7 +48,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         WebkitBackdropFilter: glass ? NAV_GLASS.blur : "none",
       } as unknown as ViewStyle)
     : null;
-  const materialFill = navigationMaterial(palette.surface, { glass, isWeb });
+  const materialFill = navigationMaterial(palette.surface, { glass, isWeb, compact: width < 600 });
 
   // Dragging across the bar scrubs through the tabs. The geometry and the
   // current index are read from refs so the responder can be created once:

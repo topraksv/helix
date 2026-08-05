@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import { CalendarClock, MousePointerClick, Plus, RefreshCw, Repeat, Zap } from "lucide-react-native";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
 import { addDaysISO, daysBetweenISO, todayISO, type ISODate } from "../../domain/dates";
-import { formatMinor, formatMinorCompact } from "../../domain/money";
+import { formatMinorCompact } from "../../domain/money";
 import { shortDateLabel, tr } from "../../i18n/tr";
 import { usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
 import { combineLiveQueryStatus } from "../../data/live-state";
@@ -56,7 +56,7 @@ function SubscriptionScheduleOverview({
   const nextPayments = nextStop?.payments ?? [];
   const nextCurrencies = new Set(nextPayments.map((subscription) => subscription.currency));
   const nextAmount = nextCurrencies.size === 1 && nextPayments.length > 0
-    ? formatMinor(
+    ? formatMinorCompact(
         nextPayments.reduce((total, subscription) => total + subscription.amountMinor, 0),
         nextPayments[0]!.currency,
       )
@@ -301,7 +301,7 @@ export default function SubscriptionsScreen() {
         currency={s.currency}
         amountNote={
           s.intervalMonths > 1
-            ? tr.subs.perMonth(formatMinor(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))
+            ? tr.subs.perMonth(formatMinorCompact(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))
             : undefined
         }
         onPress={openEdit}
