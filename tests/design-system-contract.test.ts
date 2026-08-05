@@ -17,7 +17,7 @@ import {
   type,
 } from "../src/ui/theme";
 import { modalAnimationType } from "../src/ui/modal-motion";
-import { shouldPairDashboardPanels, shouldPairFilterCards } from "../src/ui/responsive";
+import { fittedQuickDays, shouldPairDashboardPanels, shouldPairFilterCards } from "../src/ui/responsive";
 
 const root = process.cwd();
 
@@ -858,12 +858,16 @@ describe("navigation says that it moved", () => {
  * is noise on a surface whose whole job is to be read — and the wrong cost.
  */
 describe("only a hero figure counts", () => {
-  it("gates the counting animation behind an explicit flag", () => {
+  it("keeps the counting hook off every cell that never counts", () => {
     const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
-    expect(motionPrimitives).toContain("export function useCountUp(value: number, enabled = true");
-    expect(motionPrimitives).toContain("if (!enabled || reducedMotion");
-    expect(readFileSync(join(root, "src/ui/primitives.tsx"), "utf8"))
-      .toContain("useCountUp(minor, count)");
+    const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+    expect(motionPrimitives).toContain("export function useCountUp(value: number");
+    // A separate component owns the hook AND the navigation subscription that
+    // feeds it, so a ledger of six hundred figures runs neither.
+    expect(primitives).toContain("props.count ? <CountingAmount {...props} /> : <Figure {...props} />");
+    expect(primitives).toContain("useCountUp(props.minor)");
+    const figure = primitives.slice(primitives.indexOf("function Figure("));
+    expect(figure).not.toContain("useCountUp");
   });
 
   it("is asked for on exactly the two hero figures and nowhere else", () => {
@@ -878,25 +882,29 @@ describe("only a hero figure counts", () => {
 });
 
 /**
- * An entrance is a thing that happens on arrival, not once per session.
+ * What arrives again is the content, not the page.
  *
- * Expo Router keeps a tab's screen mounted after you leave it, so the screen
- * scaffold's mount-only fade played exactly once: the first time you opened
- * Yatırımlar it arrived, and every return afterwards was a repaint. The
- * navigator's own `focus` event is the trigger, and it fires while the
- * navigation state is still being dispatched — before the incoming scene is
- * rendered, let alone painted — which is what stops the reset to zero from
- * flashing.
+ * A focus-driven entrance on the whole screen scaffold was tried and removed:
+ * on a phone, every return from a pushed page faded and lifted the entire
+ * screen, which reads as the app reloading rather than as you coming back. The
+ * replay belongs to the things that have something to say — a chart drawing
+ * itself, a hero figure counting — and the page furniture around them simply
+ * stays where it was.
  */
-describe("a screen arrives every time it is visited", () => {
+describe("returning to a screen is not a reload", () => {
   const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
   const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
 
-  it("replays the entrance on focus rather than on mount", () => {
-    expect(motionPrimitives).toContain("export function useScreenEntrance()");
-    expect(motionPrimitives).toContain('navigation?.addListener("focus", enter)');
-    // Nothing listens for blur: the outgoing screen keeps its finished state
-    // while the navigator fades it out.
+  it("never re-runs the screen scaffold's own entrance", () => {
+    expect(motionPrimitives).not.toContain("ScreenEntrance");
+    const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
+    expect([...screen.matchAll(/<FadeIn/g)]).toHaveLength(2);
+  });
+
+  it("replays the content that has something to say, on the navigator's focus", () => {
+    expect(motionPrimitives).toContain("export function useScreenFocus()");
+    expect(motionPrimitives).toContain("const focused = useScreenFocus();");
+    // Nothing listens for blur: an outgoing screen keeps its finished state.
     expect(motionPrimitives).not.toContain('addListener("blur", enter)');
   });
 
@@ -907,12 +915,6 @@ describe("a screen arrives every time it is visited", () => {
     expect(motionPrimitives).toContain("useContext(NavigationContext)");
     expect(motionPrimitives).toContain("navigation?.isFocused() ?? true");
     expect(motionPrimitives).not.toMatch(/\buseIsFocused\(/);
-  });
-
-  it("is what the screen scaffold uses, in both of its shapes", () => {
-    const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
-    expect([...screen.matchAll(/<ScreenEntrance/g)]).toHaveLength(2);
-    expect(screen).not.toContain("<FadeIn");
   });
 });
 
@@ -984,5 +986,59 @@ describe("nothing changes state by cutting to it", () => {
     const segmented = selectionControls.slice(selectionControls.indexOf("export function Segmented<"));
     expect(segmented).toContain("width: `${100 / options.length}%`");
     expect(segmented).not.toContain("optionCount");
+  });
+});
+
+/**
+ * Progress that can be counted is drawn as steps.
+ *
+ * The budget card and an instalment plan were two different pictures of the
+ * same idea — one a ten-segment strip, one a smooth bar — so the plan's bar
+ * could not say which instalment you were on. One primitive, and the caller
+ * says how many steps there are.
+ */
+describe("progress is one shape", () => {
+  it("is drawn by one primitive, with a countable number of steps", () => {
+    const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
+    expect(primitives).toContain("export function SegmentBar(");
+    expect(primitives).toContain("export const MAX_SEGMENTS = 12;");
+    for (const path of ["src/app/(tabs)/settings/budgets.tsx", "src/app/(tabs)/cash-flow/installments.tsx"]) {
+      expect(readFileSync(join(root, path), "utf8"), path).toContain("<SegmentBar");
+    }
+    // No screen paints its own proportional fill any more.
+    const offenders = sourceFiles("src/app").filter((path) =>
+      /width: `\$\{(?:Math\.round\()?\(?[\w.]+ \/ /.test(readFileSync(join(root, path), "utf8")),
+    );
+    expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * A row of shortcuts stays a row.
+ *
+ * Six quick days plus "Ayın sonu" need about 315px and a paired month-day field
+ * inside a card on a phone gets roughly 120, so the row wrapped and left "Ayın
+ * sonu" alone on a second line — which reads as a different question from the
+ * numbers above it. Every day is still typeable in the field below.
+ */
+describe("month-day shortcuts fit the box they are in", () => {
+  it("thins the middle and keeps the ends", () => {
+    const days = [1, 5, 10, 15, 25, 28];
+    expect(fittedQuickDays(400, days)).toEqual(days);
+    const narrow = fittedQuickDays(160, days);
+    expect(narrow.length).toBeLessThan(days.length);
+    expect(narrow[0]).toBe(1);
+    expect(narrow.at(-1)).toBe(28);
+    // Never empty, however little room there is.
+    expect(fittedQuickDays(1, days).length).toBeGreaterThan(0);
+    expect(fittedQuickDays(0, days)).toEqual(days);
+  });
+
+  it("is what the field uses, rather than a per-screen guess", () => {
+    const field = readFileSync(join(root, "src/ui/month-day-field.tsx"), "utf8");
+    expect(field).toContain("fittedQuickDays(boxWidth");
+    // Measured on its own box: these are used as a pair inside a card, so each
+    // gets about half a column and only the layout knows how much.
+    expect(field).toContain("useMeasuredWidth");
   });
 });

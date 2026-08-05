@@ -1,7 +1,10 @@
 import React from "react";
+import { View } from "react-native";
 import { MONTH_END_DAY } from "../domain/dates";
 import { tr } from "../i18n/tr";
 import { ChipPicker, Field, Label } from "./components";
+import { fittedQuickDays } from "./responsive";
+import { useMeasuredWidth } from "./viewport";
 
 export function monthDayLabel(day: number): string {
   return day === MONTH_END_DAY ? tr.dates.monthEnd : String(day);
@@ -31,7 +34,12 @@ export function MonthDayField({
   // only chip on the right and its input jumped a whole control height up the
   // page. Same options, same wrap, same baseline — and the user can see why the
   // day is refused instead of watching it disappear.
-  const options = [...new Set([...quickDays.filter((day) => day < MONTH_END_DAY), MONTH_END_DAY])]
+  // Measured on this field's own box, not the window: these are used as a pair
+  // inside a card, so each one gets about half a column and only the layout
+  // knows how much.
+  const [boxWidth, onBoxLayout] = useMeasuredWidth(0);
+  const shortcuts = fittedQuickDays(boxWidth, quickDays.filter((day) => day < MONTH_END_DAY));
+  const options = [...new Set([...shortcuts, MONTH_END_DAY])]
     .map((day) => ({
       value: String(day),
       label: monthDayLabel(day),
@@ -41,7 +49,7 @@ export function MonthDayField({
   const selected = options.some((option) => option.value === value && !option.disabled) ? value : null;
 
   return (
-    <>
+    <View onLayout={onBoxLayout}>
       <Label>{label}</Label>
       <ChipPicker compact options={options} value={selected} onChange={onChange} />
       {/* The input always holds the day. It used to blank itself when the
@@ -56,6 +64,6 @@ export function MonthDayField({
         placeholder={tr.dates.monthDayPlaceholder}
         error={error}
       />
-    </>
+    </View>
   );
 }

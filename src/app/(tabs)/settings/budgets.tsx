@@ -9,7 +9,7 @@ import { monthKeyOf, todayISO } from "../../../domain/dates";
 import { formatMinor } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
-import { Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Spread } from "../../../ui/components";
+import { Body, Button, Card, CardList, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread } from "../../../ui/components";
 import { categoryIcon } from "../../../data/category-icons";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
@@ -29,36 +29,7 @@ function BudgetMeter({ spentMinor, limitMinor }: { spentMinor: number; limitMino
       accessibilityLabel={tr.budgets.progress(formatMinor(spentMinor), formatMinor(limitMinor))}
       style={{ marginBottom: spacing.lg }}
     >
-      <View style={{ flexDirection: "row", gap: spacing.xs }}>
-        {Array.from({ length: 10 }, (_, index) => {
-          const segmentRatio = Math.max(0, Math.min(1, ratio * 10 - index));
-          return (
-            <View
-              key={index}
-              style={{
-                flex: 1,
-                height: 12,
-                borderRadius: 4,
-                backgroundColor: palette.surfaceAlt,
-                overflow: "hidden",
-              }}
-            >
-              {segmentRatio > 0 ? (
-                <FadeIn
-                  delay={index * 32}
-                  style={{
-                    width: `${segmentRatio * 100}%` as `${number}%`,
-                    height: "100%",
-                    backgroundColor: over ? palette.negative : palette.positive,
-                  }}
-                >
-                  <View />
-                </FadeIn>
-              ) : null}
-            </View>
-          );
-        })}
-      </View>
+      <SegmentBar ratio={ratio} tone={over ? palette.negative : palette.positive} />
       <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "center", marginTop: spacing.sm }}>
         {tr.budgets.progress(formatMinor(spentMinor), formatMinor(limitMinor))}
       </Body>

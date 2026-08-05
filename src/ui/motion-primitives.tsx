@@ -78,92 +78,31 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
  * the frozen gate, the first-pull wait) render above the router's `Stack` with
  * no navigation object at all. Absent one, a screen is always "focused", which
  * is exactly the mount-only behaviour those surfaces had before.
+ *
+ * The whole PARENT CHAIN is subscribed to, not just this screen. Yatırımlar is
+ * a stack inside a tab, and leaving that tab does not change which screen the
+ * inner stack has active — so the inner stack never re-emits, and its screen
+ * was never told the user had come back. Measured: Durum replayed its ring and
+ * its figure, Yatırımlar replayed neither. `isFocused()` already answers for
+ * the whole chain; it is the notification that has to come from all of it.
  */
-export function useScreenFocus(active = true): boolean {
+export function useScreenFocus(): boolean {
   const navigation = useContext(NavigationContext);
   return useSyncExternalStore(
     React.useCallback(
       (notify) => {
-        // `active` is what keeps this off the ledger: `Amount` calls it for
-        // every cell, and a table of six hundred figures must not attach twelve
-        // hundred navigation listeners to answer a question none of them ask.
-        if (!navigation || !active) return () => {};
-        const unsubscribeFocus = navigation.addListener("focus", notify);
-        const unsubscribeBlur = navigation.addListener("blur", notify);
+        const unsubscribes: (() => void)[] = [];
+        for (let level = navigation; level; level = level.getParent()) {
+          unsubscribes.push(level.addListener("focus", notify), level.addListener("blur", notify));
+        }
         return () => {
-          unsubscribeFocus();
-          unsubscribeBlur();
+          for (const unsubscribe of unsubscribes) unsubscribe();
         };
       },
-      [navigation, active],
+      [navigation],
     ),
-    () => (active ? navigation?.isFocused() ?? true : true),
+    () => navigation?.isFocused() ?? true,
     () => true,
-  );
-}
-
-/**
- * The entrance every screen runs — again on every visit, not once per mount.
- *
- * Expo Router keeps a tab's screen mounted after you leave it, so a mount-only
- * entrance played exactly once per session: the first time you opened
- * Yatırımlar it arrived, and every return after that was a repaint. The
- * navigator's own `focus` event is the trigger because it fires while the
- * navigation state is being dispatched — before the incoming scene is
- * rendered, let alone painted — so resetting to 0 there can never flash.
- *
- * Nothing listens for `blur`: the outgoing screen keeps its finished state
- * while the navigator fades it out, which is what stops a tab change from
- * looking like the old screen being deleted.
- */
-export function useScreenEntrance(): Animated.Value {
-  const reducedMotion = useReducedMotion();
-  const navigation = useContext(NavigationContext);
-  const progress = useRef(new Animated.Value(0)).current;
-  const running = useRef<Animated.CompositeAnimation | null>(null);
-  useEffect(() => {
-    const enter = () => {
-      running.current?.stop();
-      if (reducedMotion) {
-        progress.setValue(1);
-        running.current = null;
-        return;
-      }
-      progress.setValue(0);
-      const animation = Animated.spring(progress, {
-        toValue: 1,
-        useNativeDriver: Platform.OS !== "web",
-        ...motion.spring.entrance,
-      });
-      running.current = animation;
-      animation.start();
-    };
-    enter();
-    const unsubscribe = navigation?.addListener("focus", enter);
-    return () => {
-      unsubscribe?.();
-      running.current?.stop();
-      running.current = null;
-    };
-  }, [navigation, progress, reducedMotion]);
-  return progress;
-}
-
-/** The screen scaffold's entrance. Re-runs every time the screen is focused. */
-export function ScreenEntrance({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  const progress = useScreenEntrance();
-  return (
-    <Animated.View
-      style={[
-        {
-          opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }),
-          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-        },
-        style,
-      ]}
-    >
-      {children}
-    </Animated.View>
   );
 }
 
@@ -198,27 +137,25 @@ export function useValueFlash(value: number, enabled = true): Animated.Value {
 }
 
 /**
- * A figure that counts to its new value instead of swapping to it.
+ * A figure that counts to its value instead of appearing at it.
  *
- * Only the app's hero figures use this — the balance on Durum, the free cash
- * on Yatırımlar. A table of amounts must never animate: twelve numbers moving
- * at once is noise, and the ledger's whole job is to be read. `enabled` is what
- * keeps it off the table; hooks cannot be called conditionally, so every
- * `Amount` runs this one and only the heroes ask it to move.
+ * Only a surface's ONE hero figure uses this — the balance on Durum, the free
+ * cash on Yatırımlar — and `Amount` reaches it through a separate component, so
+ * a table of six hundred cells neither runs this hook nor subscribes to
+ * navigation to feed it.
  *
- * It runs on every ARRIVAL, not once per mount. Expo Router keeps a tab's
+ * It runs on every ARRIVAL, not once per mount: Expo Router keeps a tab's
  * screen alive, so a figure that counted only when it first appeared spent the
- * rest of the session as a static number — the owner asked for the reveal each
- * time, so arriving counts up from zero and a value that changes while you are
- * watching counts from what it was.
+ * rest of the session static. Arriving counts up from zero; a value that
+ * changes while you are watching counts from what it was.
  *
  * The animation is on a plain number, not on a native driver, because the text
  * content itself changes; `format` is called on every frame, so it must stay
  * cheap. Reduce Motion shows the value outright.
  */
-export function useCountUp(value: number, enabled = true, duration = motion.figure): number {
+export function useCountUp(value: number, duration = motion.figure): number {
   const reducedMotion = useReducedMotion();
-  const focused = useScreenFocus(enabled);
+  const focused = useScreenFocus();
   const [shown, setShown] = useState(value);
   const previous = useRef(value);
   const wasFocused = useRef(false);
@@ -227,7 +164,7 @@ export function useCountUp(value: number, enabled = true, duration = motion.figu
     wasFocused.current = focused;
     const from = arriving ? 0 : previous.current;
     previous.current = value;
-    if (!enabled || reducedMotion || !focused || from === value) {
+    if (reducedMotion || !focused || from === value) {
       setShown(value);
       return;
     }
@@ -249,7 +186,7 @@ export function useCountUp(value: number, enabled = true, duration = motion.figu
       driver.removeListener(listener);
       setShown(value);
     };
-  }, [value, enabled, focused, duration, reducedMotion]);
+  }, [value, focused, duration, reducedMotion]);
   return shown;
 }
 
@@ -438,50 +375,57 @@ export function SlideUp({
 }
 
 /**
- * The window changing colour, as a dissolve rather than a snap.
+ * The window changing colour, as a wash rather than a snap.
  *
  * Every colour in the app comes from one palette object, so switching theme
  * repaints the entire window in a single frame — the one change big enough to
  * read as a glitch. Animating the colours themselves would mean an animated
- * value behind every token in every component; this paints the palette you are
- * LEAVING over the top and fades it out, which costs one view and one opacity
- * and is indistinguishable from the expensive version.
+ * value behind every token in every component; this lays one veil over the top
+ * and fades it out, which costs one view and one opacity.
  *
- * The effect must land before the browser paints, or the new theme flashes at
- * full strength for a frame before the old one covers it — hence the layout
- * effect, chosen once at module scope so the hook order never changes and a
- * static web render never calls it.
+ * The veil is the background you are ARRIVING at, never the one you are
+ * leaving. Leaving dark for light, a veil of the old dark background covered
+ * the whole window at full strength for a moment — which is exactly the "black
+ * flash" it was supposed to prevent. In the destination colour it is the new
+ * theme settling in, and at 0.7 the interface stays visible right through it,
+ * so nothing ever reads as the page being replaced.
+ *
+ * The effect must land before the browser paints, or the new theme appears
+ * un-veiled for a frame first — hence the layout effect, chosen once at module
+ * scope so the hook order never changes and a static web render never calls it.
  */
+const VEIL_STRENGTH = 0.7;
+
 const useThemeChangeEffect = typeof window === "undefined" ? useEffect : React.useLayoutEffect;
 
 export function ThemeDissolve() {
   const { palette, scheme, paletteId } = useTheme();
   const reducedMotion = useReducedMotion();
   const identity = `${paletteId}|${scheme}`;
-  const previous = useRef({ identity, background: palette.background });
+  const previous = useRef(identity);
   const progress = useRef(new Animated.Value(0)).current;
-  const [leaving, setLeaving] = useState<string | null>(null);
+  const [veiling, setVeiling] = useState(false);
   useThemeChangeEffect(() => {
     const before = previous.current;
-    previous.current = { identity, background: palette.background };
-    if (before.identity === identity || reducedMotion) return;
+    previous.current = identity;
+    if (before === identity || reducedMotion) return;
     progress.setValue(1);
-    setLeaving(before.background);
+    setVeiling(true);
     const animation = Animated.timing(progress, {
       toValue: 0,
       duration: motion.theme,
-      easing: Easing.inOut(Easing.cubic),
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: Platform.OS !== "web",
     });
     animation.start(({ finished }) => {
-      if (finished) setLeaving(null);
+      if (finished) setVeiling(false);
     });
     return () => {
       animation.stop();
-      setLeaving(null);
+      setVeiling(false);
     };
-  }, [identity, palette.background, progress, reducedMotion]);
-  if (leaving == null) return null;
+  }, [identity, progress, reducedMotion]);
+  if (!veiling) return null;
   return (
     <Animated.View
       pointerEvents="none"
@@ -494,8 +438,8 @@ export function ThemeDissolve() {
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: leaving,
-        opacity: progress,
+        backgroundColor: palette.background,
+        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, VEIL_STRENGTH] }),
       }}
     />
   );

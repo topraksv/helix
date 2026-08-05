@@ -281,7 +281,12 @@ function InvestmentQuickAction({
         minWidth: 0,
         minHeight: 78,
         alignItems: "center",
-        justifyContent: "center",
+        // Top, not centre. Four of these share a row and their captions are
+        // two, three or four words: centring each tile's own column put the
+        // mark of a tile whose caption wrapped higher than the mark beside it,
+        // so the row of marks stepped up and down. Anchored to the top they
+        // line up, and the captions still centre on their own axis.
+        justifyContent: "flex-start",
         gap: 5,
         paddingHorizontal: spacing.xs,
         paddingVertical: spacing.sm,

@@ -289,13 +289,16 @@ export default function PersonsScreen() {
             keyExtractor={(p) => p.id}
             renderItem={(p) =>
           editingId === p.id ? (
-            <Row style={{ paddingVertical: spacing.sm }}>
-              <View style={{ flex: 1 }}>
-                <Field accessibilityLabel={`${tr.common.edit} · ${p.name}`} noMargin value={editName} onChangeText={setEditName} autoFocus />
-              </View>
-              <Button label={tr.common.save} variant="secondary" disabled={!editName.trim()} onPress={() => void rename(p, editName)} />
-              <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
-            </Row>
+            // The name is the point of this row, so it gets the whole width.
+            // Sharing one line with two full-size actions left it about a third
+            // of a phone — you could not read the thing you were renaming.
+            <View style={{ paddingVertical: spacing.sm, gap: spacing.sm }}>
+              <Field accessibilityLabel={`${tr.common.edit} · ${p.name}`} noMargin value={editName} onChangeText={setEditName} />
+              <Row gap={spacing.sm} style={{ justifyContent: "flex-end" }}>
+                <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={() => setEditingId(null)} />
+                <Button label={tr.common.save} size="sm" variant="secondary" disabled={!editName.trim()} onPress={() => void rename(p, editName)} />
+              </Row>
+            </View>
           ) : (
             <Spread
               style={{

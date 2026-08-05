@@ -24,10 +24,25 @@ describe("dirty form navigation contract", () => {
     },
   );
 
-  it("registers dirty routes with the native stack instead of disabling dismissal gestures", () => {
+  /**
+   * `usePreventRemove` stays — it is what actually refuses the exit, and it is
+   * the only thing the back control and the browser's own Back both go
+   * through. What changed is that a dirty form no longer OFFERS the native
+   * dismissal gesture.
+   *
+   * The original note here said `preventNativeDismiss` cancels a dirty
+   * dismissal natively, so the gesture could stay available. On a device it
+   * does not cancel it invisibly: the screen slides away, snaps back, and only
+   * then does the confirmation appear — reported as "it leaves, comes back,
+   * and then asks". A gesture that is going to be refused should not be there.
+   */
+  it("refuses a dirty exit before the screen moves", () => {
     const source = readFileSync(join(process.cwd(), "src/ui/dirty-exit.ts"), "utf8");
     expect(source).toContain("usePreventRemove");
-    expect(source).not.toContain("navigation.setOptions({ gestureEnabled:");
+    expect(source).toContain("navigation.setOptions({ gestureEnabled: !dirty || exitAllowed })");
+    // Web has no dismissal gesture, and setting the option there would fight
+    // the history integration.
+    expect(source).toContain('if (Platform.OS === "web") return;');
   });
 
   // Two booleans have exactly four states; asserting three of them left the

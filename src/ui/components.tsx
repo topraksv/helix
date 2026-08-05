@@ -40,7 +40,6 @@ import {
   Row,
   useLedeAlignment,
 } from "./primitives";
-import { ScreenEntrance } from "./motion-primitives";
 import { circle, contentWidth, density, font, heroSurface, iconSize, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
 import { shouldCompactAmount, shouldStackListActions, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useMeasuredWidth, useNavigationSpace } from "./viewport";
@@ -61,9 +60,9 @@ export {
   isHovered,
   Label,
   Row,
+  SegmentBar,
   Spread,
   STATUS_W,
-  StatusPill,
   Title,
 } from "./primitives";
 
@@ -196,14 +195,16 @@ export function Screen({
     // a scene-level inset also shortened the nested stack's header, which is
     // chrome that belongs to the whole window.
     <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
-        {/* Not `FadeIn`: a tab's screen stays mounted after you leave it, so a
-            mount-only entrance played once per session and every return to
-            Yatırımlar was a repaint. `ScreenEntrance` re-runs on the
-            navigator's own focus event. */}
-        <ScreenEntrance style={[{ flex: 1 }, inner]}>
+        {/* Mount-only, and deliberately. Replaying this on every focus made a
+            whole screen fade and rise each time you came back from a pushed
+            page, which on a phone reads as the app reloading rather than as you
+            returning. What arrives again is the CONTENT that has something to
+            say — a chart drawing itself, a hero figure counting — never the
+            page furniture around it. */}
+        <FadeIn style={[{ flex: 1 }, inner]}>
           {header}
           {children}
-        </ScreenEntrance>
+        </FadeIn>
       </View>
     );
   }
@@ -238,10 +239,10 @@ export function Screen({
         {/* Carries the container's grow through to the children, so a screen
             with one short block can centre it rather than stack it at the top
             of an empty page. */}
-        <ScreenEntrance style={{ flexGrow: 1 }}>
+        <FadeIn style={{ flexGrow: 1 }}>
           {header}
           {children}
-        </ScreenEntrance>
+        </FadeIn>
       </ScrollView>
     </View>
   );
@@ -394,7 +395,13 @@ export function MetricStrip({
       {items.map((item) => (
         <View key={item.label} style={{ flex: 1, flexBasis: 0, minWidth: 0, paddingTop: spacing.sm }}>
           <Text style={[type.small, { color: palette.textSecondary }]}>{item.label}</Text>
-          <View style={{ marginTop: 2 }}>
+          {/* One bottom edge for all three figures. Each one fits itself to its
+              own column, so a long amount beside a short one ends up a step
+              smaller — and a smaller line box sits higher, which is the "not
+              quite on the same line" the owner saw with three columns of
+              filtered totals. The row is as tall as the largest figure and they
+              hang from its floor. */}
+          <View style={{ marginTop: 2, minHeight: Math.round(type.amount.fontSize * 1.4), justifyContent: "flex-end" }}>
             {item.minor != null ? (
               <Amount
                 minor={item.minor}

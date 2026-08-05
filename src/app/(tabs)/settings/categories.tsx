@@ -253,27 +253,31 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
               renderRow={(c, handle, index) =>
                 editingId === c.id ? (
                   <View>
-                    <Row style={{ paddingVertical: spacing.sm }}>
-                      <View style={{ flex: 1 }}>
-                        <Field accessibilityLabel={`${tr.common.edit} · ${c.name}`} noMargin value={editName} onChangeText={setEditName} autoFocus />
-                      </View>
-                      <Button
-                        label={tr.common.save}
-                        variant="secondary"
-                        disabled={!editName.trim()}
-                        onPress={() => {
-                          void update(
-                            c,
-                            c.kind === "expense"
-                              ? { name: editName.trim(), isTransfer: editInvestment }
-                              : { name: editName.trim() },
-                          ).then((saved) => {
-                            if (saved) setEditingId(null);
-                          });
-                        }}
-                      />
-                      <Button label={tr.common.cancel} variant="ghost" onPress={() => setEditingId(null)} />
-                    </Row>
+                    <View style={{ paddingVertical: spacing.sm, gap: spacing.sm }}>
+                      {/* The name is the point of this row, so it gets the
+                          whole width; two full-size actions beside it left
+                          about a third of a phone for what was renamed. */}
+                      <Field accessibilityLabel={`${tr.common.edit} · ${c.name}`} noMargin value={editName} onChangeText={setEditName} />
+                      <Row gap={spacing.sm} style={{ justifyContent: "flex-end" }}>
+                        <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={() => setEditingId(null)} />
+                        <Button
+                          label={tr.common.save}
+                          size="sm"
+                          variant="secondary"
+                          disabled={!editName.trim()}
+                          onPress={() => {
+                            void update(
+                              c,
+                              c.kind === "expense"
+                                ? { name: editName.trim(), isTransfer: editInvestment }
+                                : { name: editName.trim() },
+                            ).then((saved) => {
+                              if (saved) setEditingId(null);
+                            });
+                          }}
+                        />
+                      </Row>
+                    </View>
                     {c.kind === "expense" ? (
                       <Spread style={{ paddingBottom: spacing.sm }}>
                         <View style={{ flex: 1, paddingRight: spacing.md }}>

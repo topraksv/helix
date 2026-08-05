@@ -33,11 +33,10 @@ import {
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { kv } from "../../../services/kv";
-import { Amount, Button, Card, DataStateNotice, EmptyState, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
-import { Collapse } from "../../../ui/motion-primitives";
+import { Amount, Button, Card, DataStateNotice, EmptyState, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
-import { circle, controlSize, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { circle, controlSize, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { ledgerCellWidth, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 import { categoryIcon } from "../../../data/category-icons";
@@ -115,18 +114,6 @@ function FlowStat({
 /** Device-local, beside `helix.matrix.mode` and `helix.matrix.pinned`. */
 const GUIDE_KEY = "helix.matrix.guide";
 
-/**
- * How long the table's box must hold still before the grid is rebuilt at it.
- *
- * The reading guide above the table opens over a measured height, and the
- * table's own container reported a new height on every frame of that — which
- * re-rendered a twelve-column grid a dozen times inside one 220ms animation,
- * and is the stutter the owner felt on that button. The first measurement is
- * taken immediately, so the table still paints as soon as it has a box; after
- * that only the height it settles at is worth a rebuild.
- */
-const LAYOUT_SETTLE_MS = motion.feedback;
-
 const PIVOT_MODES = [
   { value: "rows" as MatrixMode, label: tr.cashflow.monthsAsRows },
   { value: "columns" as MatrixMode, label: tr.cashflow.monthsAsColumns },
@@ -183,22 +170,10 @@ export default function CashflowScreen() {
   const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [tableAreaH, setTableAreaH] = useState(0);
-  const measuredTableArea = useRef(0);
-  const tableSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Rounded, so a sub-pixel layout report cannot rebuild the grid.
   const onTableAreaLayout = React.useCallback((event: LayoutChangeEvent) => {
     const height = Math.round(event.nativeEvent.layout.height);
-    if (height === measuredTableArea.current) return;
-    measuredTableArea.current = height;
-    if (tableSettleTimer.current) clearTimeout(tableSettleTimer.current);
-    // Nothing is on screen yet, so there is nothing to stutter: paint at once.
-    if (tableAreaH === 0) {
-      setTableAreaH(height);
-      return;
-    }
-    tableSettleTimer.current = setTimeout(() => setTableAreaH(measuredTableArea.current), LAYOUT_SETTLE_MS);
-  }, [tableAreaH]);
-  React.useEffect(() => () => {
-    if (tableSettleTimer.current) clearTimeout(tableSettleTimer.current);
+    setTableAreaH((current) => (current === height ? current : height));
   }, []);
   // Desktop starts with the reading guide open so the table explains itself;
   // every viewport can collapse it once the user knows the grammar. Closing it
@@ -430,11 +405,14 @@ export default function CashflowScreen() {
                 : undefined}
             />
           </View>
-          {/* The reading guide opens and closes rather than blinking: it sits
-              directly above the table, so an instant swap shoved the whole grid
-              up or down the page with nothing to follow. */}
-          {showTable && tableMatrix ? (
-            <Collapse open={showTableDetails}>
+          {/* It fades in, and its height changes in one step.
+              Animating the height meant the table underneath was re-laid out on
+              every frame of it — a twelve-column grid rebuilt a dozen times
+              inside one 220ms transition, which is the stutter the owner felt
+              on this button. Opacity is composited, so the panel still arrives
+              rather than blinking, and the grid moves exactly once. */}
+          {showTable && tableMatrix && showTableDetails ? (
+            <FadeIn>
               <TableDetailsPanel
                 hasUncategorized={tableMatrix.hasUncategorized}
                 uncategorizedTotal={tableMatrix.uncategorizedTotal}
@@ -443,7 +421,7 @@ export default function CashflowScreen() {
                   params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
                 })}
               />
-            </Collapse>
+            </FadeIn>
           ) : null}
           {showTable ? (
             <View style={{ flex: 1 }} onLayout={onTableAreaLayout}>

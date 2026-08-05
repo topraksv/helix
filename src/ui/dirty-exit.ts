@@ -53,6 +53,19 @@ export function useDirtyExitGuard(dirty: boolean): DirtyExitGuard {
     return () => clearTimeout(timer);
   }, [exitAllowed]);
 
+  // A dirty form does not offer a gesture it is going to refuse.
+  //
+  // `usePreventRemove` cancels the dismissal, but on iOS it cancels it AFTER
+  // the native stack has already begun the pop: the screen slides away, snaps
+  // back, and only then does the confirmation appear — which reads as the app
+  // having lost the draft and then changed its mind. Taking the gesture away
+  // while the draft is dirty leaves one way out, the back control, and that one
+  // asks before anything moves.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    navigation.setOptions({ gestureEnabled: !dirty || exitAllowed });
+  }, [navigation, dirty, exitAllowed]);
+
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {

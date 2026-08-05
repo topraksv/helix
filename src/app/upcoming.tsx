@@ -19,7 +19,7 @@ import { buildUpcomingTimeline, type UpcomingTimelineItem } from "../domain/upco
 import { formatMinor } from "../domain/money";
 import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
 import { useSyncStatus } from "../sync/status";
-import { Body, Card, DataStateNotice, EmptyState, ListRow, Screen, SectionHeader, StatusPill } from "../ui/components";
+import { Badge, Body, Card, DataStateNotice, EmptyState, ListRow, Row, Screen, SectionHeader } from "../ui/components";
 import { font, iconSize, radius, spacing, type, useTheme } from "../ui/theme";
 
 export default function UpcomingScreen() {
@@ -132,23 +132,21 @@ export default function UpcomingScreen() {
                    the subtitle it left the middle of every row empty while the
                    figures it should be scanned against stayed unaligned. Same
                    string, same value — read down instead of across. */
-                /* The chevron belongs on the status line, not on the row's
-                   own centre: with the amount above and the pill below, a
-                   vertically centred chevron sat between the two and lined up
-                   with neither. The trailing cluster is rendered here so the
-                   affordance and the status share one baseline. */
+                /* One line, in reading order: what it costs, whether it is
+                   late, and the way in. Stacked — the amount over a row that
+                   held the pill and the chevron — the three sat at three
+                   different heights and none of them lined up with the name
+                   they belong to. The lateness is a `Badge` rather than the
+                   fixed-width status pill for the same reason: 88pt of chip is
+                   most of a phone's trailing column. */
                 right={(
-                  <View style={{ alignItems: "flex-end", gap: 4 }}>
+                  <Row gap={spacing.sm}>
                     <Text style={[type.amountSm, { color: palette.text }]}>
                       {formatMinor(item.amountMinor, item.currency)}
                     </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-                      {item.status === "late" ? (
-                        <StatusPill label={tr.dashboard.late} color={palette.error} foreground={palette.errorText} />
-                      ) : null}
-                      <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />
-                    </View>
-                  </View>
+                    {item.status === "late" ? <Badge tone="error" text={tr.dashboard.late} /> : null}
+                    <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />
+                  </Row>
                 )}
               />
             ))}

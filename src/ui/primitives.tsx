@@ -37,7 +37,7 @@ import { initialsBadgeColor } from "./badge-color";
 import { haptic, type HapticKind } from "./haptics";
 import { useReducedMotion } from "./motion";
 import { useCountUp } from "./motion-primitives";
-import { borderWidth, controlSize, font, generatedBadgeForeground, iconSize, motion, radius, spacing, stateOpacity, type, useTheme, type Palette } from "./theme";
+import { borderWidth, controlSize, font, generatedBadgeForeground, iconSize, motion, radius, spacing, staggerDelay, stateOpacity, type, useTheme, type Palette } from "./theme";
 
 export function controlStateStyle(palette: Palette, active: boolean, error = false) {
   return {
@@ -264,18 +264,7 @@ export function Label({
 
 /** Section title used between card groups. */
 
-export function Amount({
-  minor,
-  currency = "TRY",
-  large,
-  hero,
-  colorized = true,
-  color,
-  compact = false,
-  count = false,
-  style,
-  testID,
-}: {
+interface AmountProps {
   minor: number;
   currency?: string;
   large?: boolean;
@@ -285,7 +274,7 @@ export function Amount({
   /** Render as ₺1,2 M when the column cannot hold the exact figure. */
   compact?: boolean;
   /**
-   * Count to a changed value instead of swapping to it.
+   * Count to its value instead of appearing at it, on every arrival.
    *
    * Opt-in, and only for a surface's ONE hero figure. A table of amounts must
    * never do this: twelve numbers moving at once is noise, and the ledger's
@@ -295,10 +284,39 @@ export function Amount({
   count?: boolean;
   style?: StyleProp<TextStyle>;
   testID?: string;
-}) {
+}
+
+/**
+ * Money.
+ *
+ * Two components, one prop, and the split is the point: the ledger renders
+ * hundreds of these, so the counting hook — and the navigation subscription it
+ * needs to know when the screen was re-entered — must not exist on a cell that
+ * never counts. Only the figure that asked for it pays for it.
+ */
+export function Amount(props: AmountProps) {
+  return props.count ? <CountingAmount {...props} /> : <Figure {...props} />;
+}
+
+function CountingAmount(props: AmountProps) {
+  return <Figure {...props} shownMinor={useCountUp(props.minor)} />;
+}
+
+function Figure({
+  minor,
+  currency = "TRY",
+  large,
+  hero,
+  colorized = true,
+  color,
+  compact = false,
+  style,
+  testID,
+  shownMinor,
+}: AmountProps & { shownMinor?: number }) {
   const { palette } = useTheme();
   const { width, fontScale } = useWindowDimensions();
-  const shown = useCountUp(minor, count);
+  const shown = shownMinor ?? minor;
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
   const formatted = compact ? formatMinorCompact(shown, currency) : formatMinor(shown, currency);
   const settled = compact ? formatMinorCompact(minor, currency) : formatMinor(minor, currency);
@@ -521,32 +539,8 @@ export function IconButton({
   );
 }
 
-/** Bounded month navigator. */
-
+/** Shared width for a status column and the control that replaces it. */
 export const STATUS_W = 88;
-
-export function StatusPill({ label, color, foreground = color }: { label: string; color: string; foreground?: string }) {
-  return (
-    <View
-      style={{
-        width: STATUS_W,
-        minHeight: controlSize.compact,
-        borderRadius: radius.md,
-        backgroundColor: color + "1F",
-        alignItems: "center",
-        justifyContent: "center",
-        paddingHorizontal: spacing.xs,
-        paddingVertical: spacing.sm,
-      }}
-    >
-      <Text
-        style={[type.label, { color: foreground, fontSize: type.label.fontSize, textAlign: "center" }]}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
 
 export function Badge({
   text,
@@ -607,6 +601,69 @@ export function Divider() {
  * moment the app can show that these are separate things. Reduce Motion drops
  * every delay, so the list is simply present.
  */
+
+/**
+ * Progress as countable steps, not as a smear.
+ *
+ * The budget card already read this way and the owner liked it: ten segments
+ * filling left to right says how much of the month is gone at a glance, and the
+ * cascade says the figure was computed rather than painted. An instalment plan
+ * has a natural step — 2 of 6 — so it takes one segment per instalment and the
+ * bar answers "how many are left" without reading the label.
+ *
+ * `segments` is capped because past about a dozen the steps stop being
+ * countable and a plain proportion is the honest picture.
+ */
+export const MAX_SEGMENTS = 12;
+
+export function SegmentBar({
+  ratio,
+  segments = 10,
+  tone,
+  height = 12,
+}: {
+  /** 0…1. Values outside are clamped, so an overspent budget fills completely. */
+  ratio: number;
+  segments?: number;
+  tone?: string;
+  height?: number;
+}) {
+  const { palette } = useTheme();
+  const count = Math.max(1, Math.min(Math.round(segments), MAX_SEGMENTS));
+  const filled = Math.max(0, Math.min(1, ratio));
+  return (
+    <View style={{ flexDirection: "row", gap: spacing.xs }}>
+      {Array.from({ length: count }, (_, index) => {
+        const segmentRatio = Math.max(0, Math.min(1, filled * count - index));
+        return (
+          <View
+            key={index}
+            style={{
+              flex: 1,
+              height,
+              borderRadius: radius.sm - 2,
+              backgroundColor: palette.surfaceAlt,
+              overflow: "hidden",
+            }}
+          >
+            {segmentRatio > 0 ? (
+              <FadeIn
+                delay={staggerDelay(index, count)}
+                style={{
+                  width: `${segmentRatio * 100}%` as `${number}%`,
+                  height: "100%",
+                  backgroundColor: tone ?? palette.positive,
+                }}
+              >
+                <View />
+              </FadeIn>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
 
 export function InitialsBadge({ name, size = 36 }: { name: string; size?: number }) {
   const bg = initialsBadgeColor(name);

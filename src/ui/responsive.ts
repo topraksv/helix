@@ -195,3 +195,28 @@ export function ledgerCellWidth(input: {
 export function shouldCompactAmount(columnWidth: number): boolean {
   return columnWidth > 0 && columnWidth < 140;
 }
+
+/** Width a compact chip needs, measured at the widest label these rows carry. */
+const CHIP_WIDTH = 34;
+const MONTH_END_CHIP_WIDTH = 84;
+
+/**
+ * How many quick days a month-day row can offer on one line.
+ *
+ * Six numbers plus "Ayın sonu" need about 315px; a paired field inside a card
+ * on a 320px phone gets roughly 120. The row used to wrap, which left "Ayın
+ * sonu" alone on a second line — a choice that reads as a different question
+ * from the numbers above it. Every day is still typeable in the field below, so
+ * thinning the shortcuts costs nothing but a tap.
+ */
+export function fittedQuickDays<T>(boxWidth: number, days: readonly T[]): T[] {
+  if (boxWidth <= 0 || days.length === 0) return [...days];
+  const room = boxWidth - MONTH_END_CHIP_WIDTH;
+  const fits = Math.max(1, Math.floor(room / CHIP_WIDTH));
+  if (fits >= days.length) return [...days];
+  // Keep the ends and thin the middle, so the row still spans the month.
+  const step = (days.length - 1) / (fits - 1 || 1);
+  const kept = new Set<number>();
+  for (let i = 0; i < fits; i += 1) kept.add(Math.round(i * step));
+  return days.filter((_, index) => kept.has(index));
+}

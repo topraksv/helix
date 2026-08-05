@@ -20,7 +20,7 @@ import {
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { paymentSourceIcon } from "../../../data/category-icons";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, Select } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, SegmentBar, Select } from "../../../ui/components";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 
@@ -162,14 +162,15 @@ export default function InstallmentsScreen() {
             </View>
           </View>
 
-          <View style={{ height: 6, borderRadius: 3, backgroundColor: palette.surfaceAlt, marginTop: spacing.sm, overflow: "hidden" }}>
-            <View
-              style={{
-                height: 6,
-                borderRadius: 3,
-                width: `${Math.round((progress.paid / Math.max(progress.total, 1)) * 100)}%`,
-                backgroundColor: finished ? palette.success : palette.primary,
-              }}
+          {/* One segment per instalment, the same shape the monthly limit uses:
+              a plan is a countable number of steps, and a smooth bar hid which
+              one you are on. */}
+          <View style={{ marginTop: spacing.sm }}>
+            <SegmentBar
+              ratio={progress.paid / Math.max(progress.total, 1)}
+              segments={progress.total}
+              tone={finished ? palette.success : palette.primary}
+              height={8}
             />
           </View>
         </View>
