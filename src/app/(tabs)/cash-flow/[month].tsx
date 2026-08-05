@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { FlatList, Pressable, View } from "react-native";
+import { Animated, FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowRight, Inbox } from "lucide-react-native";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
@@ -29,10 +29,11 @@ import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
+import { useDrawIn } from "../../../ui/motion-primitives";
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
-import { controlSize, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { controlSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { appAlert } from "../../../ui/dialog";
@@ -46,6 +47,67 @@ type MonthListItem =
   | { kind: "group-header"; categoryId: string; category: Categories[number] | undefined; txs: MonthTransactions; open: boolean }
   | { kind: "tx"; categoryId: string; category: Categories[number] | undefined; tx: MonthTransactions[number]; last: boolean }
   | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
+
+/**
+ * A contained balance bridge: the direction is drawn inside its own lane,
+ * instead of a rule running through the two amounts and reading as `--->--`
+ * when a phone has to shrink either side. The track is structural; the moving
+ * ink says that the opening figure became the closing figure.
+ */
+function BalanceBridge({ token }: { token: string }) {
+  const { palette } = useTheme();
+  const draw = useDrawIn(true, motion.draw, token);
+  const arrowOpacity = draw.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, 1, 1] });
+  const arrowScale = draw.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] });
+  return (
+    <View
+      testID="month-balance-transition"
+      accessible={false}
+      style={{
+        width: 44,
+        height: 32,
+        flexShrink: 0,
+        justifyContent: "center",
+      }}
+    >
+      <View
+        accessible={false}
+        style={{
+          height: 4,
+          borderRadius: radius.full,
+          overflow: "hidden",
+          backgroundColor: palette.surfaceAlt,
+        }}
+      >
+        <Animated.View
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: radius.full,
+            backgroundColor: palette.primary,
+            transform: [{ scaleX: draw }],
+          }}
+        />
+      </View>
+      <Animated.View
+        accessible={false}
+        style={{
+          position: "absolute",
+          left: 13,
+          right: 13,
+          top: 7,
+          bottom: 7,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: arrowOpacity,
+          transform: [{ scale: arrowScale }],
+        }}
+      >
+        <ArrowRight accessible={false} size={17} color={palette.primaryText} strokeWidth={2.4} />
+      </Animated.View>
+    </View>
+  );
+}
 
 function MonthFlowSummary({
   flows,
@@ -99,15 +161,12 @@ function MonthFlowSummary({
         ].join(". ")}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
+          <View testID="month-opening-balance" style={{ flex: 1, minWidth: 0 }}>
             <Body muted style={{ fontSize: type.caption.fontSize, marginBottom: spacing.xs }}>{tr.cashflow.opening}</Body>
             <Amount minor={flows.openingMinor} colorized={false} style={{ textAlign: "left" }} />
           </View>
-          <View style={{ width: 52, alignItems: "center" }}>
-            <View style={{ position: "absolute", left: 0, right: 0, top: 8, height: 1, backgroundColor: palette.border }} />
-            <ArrowRight accessible={false} size={17} color={palette.primary} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
+          <BalanceBridge token={`${flows.openingMinor}|${flows.closingMinor}`} />
+          <View testID="month-closing-balance" style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
             <Body muted style={{ fontSize: type.caption.fontSize, marginBottom: spacing.xs, textAlign: "right" }}>{tr.cashflow.closing}</Body>
             <Amount minor={flows.closingMinor} large style={{ textAlign: "right" }} />
           </View>

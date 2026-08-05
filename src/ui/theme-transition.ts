@@ -29,18 +29,36 @@
 
 type ViewTransitionStarter = { startViewTransition?: (callback: () => void) => unknown };
 
+function viewTransitionDocument(): ViewTransitionStarter | null {
+  return typeof document === "undefined" ? null : (document as unknown as ViewTransitionStarter);
+}
+
 export function applyThemeChange(commit: () => void): void {
-  const doc = typeof document === "undefined" ? null : (document as unknown as ViewTransitionStarter);
-  if (!doc?.startViewTransition) {
+  const doc = viewTransitionDocument();
+  if (!doc || typeof doc.startViewTransition !== "function") {
     commit();
     return;
   }
-  doc.startViewTransition(() => {
+
+  let committed = false;
+  const commitOnce = () => {
+    if (committed) return;
+    committed = true;
     commit();
-  });
+  };
+
+  try {
+    doc.startViewTransition(commitOnce);
+  } catch {
+    // A browser can expose the method while refusing a transition during a
+    // backgrounded or partially restored document. The preference must still
+    // apply; the motion is optional.
+    commitOnce();
+  }
 }
 
 /** True when the browser will cross-fade the change itself. */
 export function crossFadesNatively(): boolean {
-  return typeof document !== "undefined" && "startViewTransition" in document;
+  const doc = viewTransitionDocument();
+  return Boolean(doc && typeof doc.startViewTransition === "function");
 }

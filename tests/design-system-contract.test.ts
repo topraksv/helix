@@ -883,6 +883,43 @@ describe("only a hero figure counts", () => {
   });
 });
 
+describe("investment hero keeps one motion path at every width", () => {
+  const investments = readFileSync(join(root, "src/app/(tabs)/investments/index.tsx"), "utf8");
+
+  it("animates the compact balance instead of replacing the counted figure with text", () => {
+    const cashSummary = investments.slice(
+      investments.indexOf("const cashSummary ="),
+      investments.indexOf("const distributionChart ="),
+    );
+    const compactStart = cashSummary.indexOf("{compact ? (");
+    const compactBranch = cashSummary.slice(compactStart, cashSummary.indexOf(") : (", compactStart));
+    expect(compactBranch).toContain("<Amount");
+    expect(compactBranch).toContain("count");
+  });
+
+  it("redraws the compact allocation bars on arrival and data changes", () => {
+    const allocation = investments.slice(
+      investments.indexOf("function AllocationStrip("),
+      investments.indexOf("function InvestmentQuickAction("),
+    );
+    expect(allocation).toContain("useDrawIn(true, motion.draw");
+    expect(allocation).toContain("<Animated.View");
+  });
+});
+
+describe("theme transition fallback stays active on partial browser APIs", () => {
+  it("only suppresses the veil when View Transitions is actually callable", () => {
+    const transition = readFileSync(join(root, "src/ui/theme-transition.ts"), "utf8");
+    expect(transition).toContain('typeof doc.startViewTransition === "function"');
+  });
+
+  it("keeps the previous palette available to the native and mobile-web veil", () => {
+    const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
+    expect(motionPrimitives).toContain("previousPalette");
+    expect(motionPrimitives).toContain("transitionFrom");
+  });
+});
+
 /**
  * What arrives again is the content, not the page.
  *

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import {
   ArrowDownToLine,
@@ -43,7 +43,6 @@ import {
   ChipPicker,
   DataStateNotice,
   EmptyState,
-  FadeIn,
   Heading,
   HeroCard,
   MetricStrip,
@@ -54,7 +53,8 @@ import {
   IconButton,
 } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
-import { circle, density, font, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { useDrawIn } from "../../../ui/motion-primitives";
+import { circle, density, font, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useContentWidth, useMeasuredWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
@@ -184,6 +184,7 @@ function AllocationStrip({
   const summary = ordered.length === 0
     ? `${tr.investments.distribution}. ${tr.investments.distributionEmpty}`
     : `${tr.investments.distribution}. ${ordered.map((slice) => `${slice.label}: ${formatMinor(slice.valueMinor)}`).join(", ")}.`;
+  const draw = useDrawIn(true, motion.draw, visible.map((slice) => `${slice.label}:${slice.valueMinor}`).join("|"));
   return (
     <View
       testID="investment-mobile-allocation"
@@ -223,18 +224,22 @@ function AllocationStrip({
                   overflow: "hidden",
                 }}
               >
-                <FadeIn
+                <Animated.View
+                  testID="investment-allocation-fill"
                   style={{
                     // A holding under one percent is still a holding: it keeps
                     // a visible stub rather than rounding away to nothing.
-                    width: `${Math.max(share * 100, slice.valueMinor > 0 ? 2 : 0)}%` as `${number}%`,
+                    width: draw.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ["0%", `${Math.max(share * 100, slice.valueMinor > 0 ? 2 : 0)}%`],
+                    }),
                     height: "100%",
                     borderRadius: radius.full,
                     backgroundColor: slice.color,
                   }}
                 >
                   <View />
-                </FadeIn>
+                </Animated.View>
               </View>
             </View>
           );
@@ -481,16 +486,26 @@ export default function InvestmentsScreen() {
         </View>
       </View>
       {compact ? (
-        <Text
+        <Amount
+          minor={state.cashMinor}
+          large
+          compact
+          count
+          colorized={false}
           testID="investment-cash-amount"
           accessibilityLabel={`${tr.investments.cash}: ${formatMinor(state.cashMinor)}`}
-          style={[type.amountMd, { color: palette.textStrong, textAlign: "left", marginTop: spacing.sm }]}
-        >
-          {formatMinorCompact(state.cashMinor)}
-        </Text>
+          style={{ fontSize: type.amountMd.fontSize, color: palette.textStrong, textAlign: "left", marginTop: spacing.sm }}
+        />
       ) : (
         <View testID="investment-cash-amount">
-          <Amount minor={state.cashMinor} count colorized={false} style={{ fontSize: heroBox >= 700 ? type.amountLg.fontSize : type.amountMd.fontSize, textAlign: "left", marginTop: spacing.sm }} />
+          <Amount
+            minor={state.cashMinor}
+            large
+            count
+            colorized={false}
+            accessibilityLabel={`${tr.investments.cash}: ${formatMinor(state.cashMinor)}`}
+            style={{ fontSize: heroBox >= 700 ? type.amountLg.fontSize : type.amountMd.fontSize, textAlign: "left", marginTop: spacing.sm }}
+          />
         </View>
       )}
       <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.xs }]}>

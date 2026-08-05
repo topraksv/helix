@@ -298,6 +298,8 @@ interface AmountProps {
    * figure, so assistive technology never hears the intermediate frames.
    */
   count?: boolean;
+  /** Spoken settled figure when the visible text intentionally uses compact notation. */
+  accessibilityLabel?: string;
   style?: StyleProp<TextStyle>;
   testID?: string;
 }
@@ -326,6 +328,7 @@ function Figure({
   colorized = true,
   color,
   compact = false,
+  accessibilityLabel,
   style,
   testID,
   shownMinor,
@@ -351,7 +354,7 @@ function Figure({
     <Text
       testID={testID}
       selectable
-      accessibilityLabel={settled}
+      accessibilityLabel={accessibilityLabel ?? settled}
       onTextLayout={(event) => {
         if (event.nativeEvent.lines.length <= 1) return;
         shrinkToNextStep();

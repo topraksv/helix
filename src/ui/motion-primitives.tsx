@@ -428,16 +428,17 @@ export function SlideUp({
  * what a page replacement looks like, which is how the first two attempts were
  * reported.
  *
- * What is left for iOS and Android is the softest version of the idea: the
- * background you are ARRIVING at, briefly and lightly. Leaving dark for light,
- * a veil of the OLD dark background covered the window at full strength for a
- * moment — exactly the black flash it was supposed to prevent.
+ * What is left for iOS, Android and browsers without View Transitions is a
+ * measured crossfade of the previous root background over the freshly-painted
+ * theme. The previous colour matters: a destination-colour veil over a new
+ * light screen cannot soften the dark-to-light edge, while the old dark colour
+ * can. It is light enough to keep the interface legible through the change.
  *
  * The effect must land before the browser paints, or the new theme appears
  * un-veiled for a frame first — hence the layout effect, chosen once at module
  * scope so the hook order never changes and a static web render never calls it.
  */
-const VEIL_STRENGTH = 0.34;
+const VEIL_STRENGTH = 0.42;
 
 const useThemeChangeEffect = typeof window === "undefined" ? useEffect : React.useLayoutEffect;
 
@@ -446,32 +447,39 @@ export function ThemeDissolve() {
   const reducedMotion = useReducedMotion();
   const identity = `${paletteId}|${scheme}`;
   const previous = useRef(identity);
+  const previousPalette = useRef(palette.background);
   const browserCrossFades = crossFadesNatively();
   const progress = useRef(new Animated.Value(0)).current;
-  const [veiling, setVeiling] = useState(false);
+  const [transitionFrom, setTransitionFrom] = useState<string | null>(null);
   useThemeChangeEffect(() => {
     const before = previous.current;
+    const from = previousPalette.current;
     previous.current = identity;
-    if (before === identity || reducedMotion || browserCrossFades) return;
-    progress.setValue(1);
-    setVeiling(true);
+    previousPalette.current = palette.background;
+    if (before === identity || reducedMotion || browserCrossFades) {
+      setTransitionFrom(null);
+      return;
+    }
+    progress.setValue(0);
+    setTransitionFrom(from);
     const animation = Animated.timing(progress, {
-      toValue: 0,
+      toValue: 1,
       duration: motion.theme,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: Platform.OS !== "web",
     });
     animation.start(({ finished }) => {
-      if (finished) setVeiling(false);
+      if (finished) setTransitionFrom(null);
     });
     return () => {
       animation.stop();
-      setVeiling(false);
+      setTransitionFrom(null);
     };
-  }, [identity, progress, reducedMotion, browserCrossFades]);
-  if (!veiling) return null;
+  }, [identity, palette.background, progress, reducedMotion, browserCrossFades]);
+  if (!transitionFrom) return null;
   return (
     <Animated.View
+      testID="theme-dissolve"
       pointerEvents="none"
       aria-hidden
       accessibilityElementsHidden
@@ -482,8 +490,8 @@ export function ThemeDissolve() {
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: palette.background,
-        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, VEIL_STRENGTH] }),
+        backgroundColor: transitionFrom,
+        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [VEIL_STRENGTH, 0] }),
       }}
     />
   );

@@ -104,6 +104,23 @@ test("palette preference repaints immediately and survives a reload", async ({ p
   await expect(page.getByRole("radio", { name: "Amber", exact: true })).toHaveAttribute("aria-checked", "true");
 });
 
+test("theme fallback begins with the palette that is leaving", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(document, "startViewTransition", { configurable: true, value: undefined });
+  });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await onboard(page);
+  await page.goto("/helix/settings");
+
+  await page.getByRole("radio", { name: "Petrol", exact: true }).click();
+  const veil = page.getByTestId("theme-dissolve");
+  await expect(veil).toBeVisible();
+  // The default Amber page background must sit over the fresh Petrol paint at
+  // the first frame; using the destination colour here makes a dark/light
+  // change snap before the fallback has a chance to soften it.
+  await expect.poll(() => veil.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(241, 237, 232)");
+});
+
 test("dragging across the footer still changes tabs", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -569,6 +586,7 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
 test("the investment wallet keeps large balances readable at the narrowest phone width", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
   await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
@@ -600,6 +618,17 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(geometry.amountFontSize).toBeGreaterThanOrEqual(24);
   expect(geometry.descendantsFit).toBe(true);
   await expect(page.getByTestId("investment-mobile-allocation")).toBeVisible();
+  const fill = page.getByTestId("investment-allocation-fill").first();
+  await expect(fill).toBeVisible();
+  const widths = await fill.evaluate(async (element) => {
+    const samples: number[] = [];
+    for (let frame = 0; frame < 6; frame += 1) {
+      samples.push(element.getBoundingClientRect().width);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    return samples;
+  });
+  expect(new Set(widths.map((width) => Math.round(width * 10) / 10)).size).toBeGreaterThan(1);
   const actions = page.getByTestId("investment-actions").getByRole("button");
   await expect(actions).toHaveCount(4);
   const actionGeometry = await actions.evaluateAll((elements) => elements.map((element) => {

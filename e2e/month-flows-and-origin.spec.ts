@@ -68,6 +68,34 @@ test("an untouched month still reads zero rather than a borrowed number", async 
   await expect(expenseRow).not.toContainText("-₺0,00");
 });
 
+test("month balance transition stays between its amounts on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await onboard(page);
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+
+  const transition = page.getByTestId("month-balance-transition");
+  await expect(transition).toBeVisible();
+  const geometry = await transition.evaluate((element) => {
+    const box = (selector: string) => {
+      const node = element.parentElement?.querySelector<HTMLElement>(selector);
+      if (!node) throw new Error(`Missing month balance geometry: ${selector}`);
+      const rect = node.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+    };
+    const bridge = element.getBoundingClientRect();
+    return {
+      bridge: { left: bridge.left, right: bridge.right, top: bridge.top, bottom: bridge.bottom },
+      opening: box('[data-testid="month-opening-balance"]'),
+      closing: box('[data-testid="month-closing-balance"]'),
+    };
+  });
+
+  expect(geometry.bridge.left).toBeGreaterThanOrEqual(geometry.opening.right - 1);
+  expect(geometry.bridge.right).toBeLessThanOrEqual(geometry.closing.left + 1);
+  expect(geometry.bridge.top).toBeLessThan(geometry.opening.bottom);
+  expect(geometry.bridge.bottom).toBeGreaterThan(geometry.opening.top);
+});
+
 test("the transfer classification appears once, in the row being edited", async ({ page }) => {
   await onboard(page);
   await page.goto("/helix/columns-editor");
