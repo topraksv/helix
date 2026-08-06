@@ -250,6 +250,16 @@ jobs:
       # rebuild here could serve bytes nothing in this run ever checked.
       - id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        with:
+          # The action's 10-minute default is below what the Pages backend
+          # actually takes. On `8ac62ab` it sat in `deployment_in_progress`
+          # past the limit, the action aborted the run red — and Pages then
+          # published the very same artifact anyway. So the default buys no
+          # safety: it only converts a slow deploy into a false failure that
+          # also skips the live smoke below. Prior runs took 3m51s, 4m05s and
+          # 5m57s for identical bytes, so the ceiling has to clear that spread
+          # by a wide margin, not track it.
+          timeout: "1800000"
       - name: Smoke the live deployment
         env:
           BASE: ${{ steps.deployment.outputs.page_url }}
