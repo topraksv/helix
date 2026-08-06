@@ -684,6 +684,7 @@ export default function DashboardScreen() {
                 ) : null}
               </Row>
               <Amount
+                testID="dashboard-current-balance"
                 minor={bundle.actualBalanceMinor}
                 hero
                 count
@@ -749,10 +750,11 @@ export default function DashboardScreen() {
                   {monthName(month)}
                 </Text>
                 <MetricStrip
+                  testID="dashboard-month-metrics"
                   style={{ marginTop: spacing.md }}
                   items={[
                     // The three figures share one line and shorten together:
-                    // the strip measures its own column and asks for ₺1,2 M
+                    // the strip uses the shared compact scale, e.g. ₺1.2 Mn,
                     // rather than dropping "Net değişim" onto a second row.
                     { label: tr.cashflow.income, minor: monthIncomeMinor, color: palette.positiveText },
                     { label: tr.dashboard.outflow, minor: -monthOutflowMinor, color: palette.negativeText },

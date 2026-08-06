@@ -10,7 +10,7 @@ import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount, planProgress, type GeneratedInstallment } from "../domain/installments";
-import { formatMinorCompact } from "../domain/money";
+import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Landmark, Trash2, type LucideIcon } from "lucide-react-native";
 import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Select, Spread } from "../ui/components";
@@ -198,7 +198,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
   const [kind, setKind] = useState<"card_installment" | "loan">(existing?.kind ?? "card_installment");
   const existingAmountMinor = existing ? (existing.kind === "loan" ? existing.monthlyAmountMinor : existing.totalAmountMinor) : null;
   const [title, setTitle] = useState(existing?.title ?? "");
-  const [amountRaw, setAmountRaw] = useState(existingAmountMinor != null ? (existingAmountMinor / 100).toFixed(2).replace(".", ",") : "");
+  const [amountRaw, setAmountRaw] = useState(existingAmountMinor != null ? formatMinorInput(existingAmountMinor) : "");
   const [amountMinor, setAmountMinor] = useState<number | null>(existingAmountMinor ?? null);
   const [countStr, setCountStr] = useState(String(existing?.installmentCount ?? 6));
   const [paidStr, setPaidStr] = useState("0");

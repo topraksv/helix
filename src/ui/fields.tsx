@@ -22,7 +22,7 @@ import {
   } from "react-native";
 import { AlertCircle, Calculator as CalculatorIcon, Check, ChevronLeft, ChevronRight, Eye, EyeOff, Minus } from "lucide-react-native";
 import { CalculatorModal } from "./calculator";
-import { formatMoneyInputLive, parseAmountExpression } from "../domain/money";
+import { formatMinorInput, formatMoneyInputLive, majorToMinor, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
@@ -288,8 +288,10 @@ export function MoneyField({
           returnFocusRef={calculatorTriggerRef}
           onClose={() => setCalcOpen(false)}
           onResult={(major) => {
-            const raw = (Math.round(major * 100) / 100).toFixed(2).replace(".", ",");
-            onChangeMinor(raw, parseAmountExpression(raw));
+            const resultMinor = majorToMinor(major);
+            if (resultMinor == null) return;
+            const raw = formatMinorInput(resultMinor);
+            onChangeMinor(raw, resultMinor);
           }}
         />
       ) : null}

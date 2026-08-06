@@ -16,7 +16,7 @@ import { ImportBatchUnreadableError, importSheets, importedYears } from "../data
 import { usePersonsState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { isMonthDay, yearOf } from "../domain/dates";
-import { formatMinor } from "../domain/money";
+import { formatMinorCompact } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
@@ -625,10 +625,9 @@ export default function ImportWizardModal() {
                               {cell.valueMinor != null ? (
                                 <Amount
                                   minor={cell.valueMinor}
-                                  compact
                                   colorized={false}
                                   color={palette.textSecondary}
-                                  accessibilityLabel={formatMinor(cell.valueMinor)}
+                                  accessibilityLabel={formatMinorCompact(cell.valueMinor)}
                                   style={[type.amountSm, { textAlign: "right" }]}
                                 />
                               ) : null}

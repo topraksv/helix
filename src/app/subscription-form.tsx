@@ -12,7 +12,7 @@ import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { normalizedMonthlyLoadMinor } from "../domain/analytics";
 import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";
-import { formatMinor, formatMinorCompact } from "../domain/money";
+import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { CurrencyPicker } from "../ui/currency-picker";
@@ -66,7 +66,7 @@ function SubscriptionFormArtwork({
         name || tr.subs.formIdentity,
         cycleLabel,
         schedule || tr.common.none,
-        monthlyMinor == null ? tr.common.none : formatMinor(monthlyMinor, currency),
+        monthlyMinor == null ? tr.common.none : formatMinorCompact(monthlyMinor, currency),
       )}
       style={{
         marginBottom: spacing.lg,
@@ -181,7 +181,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const close = () => navigateBack(router, "/(tabs)/subscriptions");
 
   const [name, setName] = useState(existing?.name ?? "");
-  const [amountRaw, setAmountRaw] = useState(existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "");
+  const [amountRaw, setAmountRaw] = useState(existing ? formatMinorInput(existing.amountMinor) : "");
   const [amountMinor, setAmountMinor] = useState<number | null>(existing?.amountMinor ?? null);
   const [currency, setCurrency] = useState(existing?.currency ?? "TRY");
   const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");

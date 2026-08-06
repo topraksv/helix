@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { ArrowDownUp } from "lucide-react-native";
-import { formatMinor, roundHalfAwayFromZero } from "../domain/money";
+import { formatMinorCompact, roundHalfAwayFromZero } from "../domain/money";
 import { todayISO } from "../domain/dates";
 import { ensureFreshRates, loadRateCache, lookupRate, useFxRates, type Currency } from "../services/fx-fetch";
 import { CurrencyPicker } from "./currency-picker";
@@ -138,9 +138,8 @@ export function CurrencyConverter() {
               minor={resultMinor}
               currency={to}
               large
-              compact
               colorized={false}
-              accessibilityLabel={formatMinor(resultMinor, to)}
+              accessibilityLabel={formatMinorCompact(resultMinor, to)}
               style={{ color: palette.text, textAlign: "right" }}
             />
           </ScrollView>

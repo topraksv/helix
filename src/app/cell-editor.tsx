@@ -22,7 +22,7 @@ import { combineLiveQueryStatus } from "../data/live-state";
 import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
 import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
-import { formatMinor, formatMinorCompact, parseAmountExpression } from "../domain/money";
+import { formatMinorCompact, parseAmountExpression } from "../domain/money";
 import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transactions";
 import { transactionDateText } from "../ui/transaction-date";
 import { monthLabel, tr } from "../i18n/tr";
@@ -189,8 +189,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
             testID="cell-total-amount"
             minor={selfSum}
             large
-            compact
-            accessibilityLabel={formatMinor(selfSum)}
+            accessibilityLabel={formatMinorCompact(selfSum)}
             style={{ maxWidth: "100%" }}
           />
         </View>

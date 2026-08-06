@@ -22,7 +22,7 @@ import {
   resolveInvestmentQuote,
   type InvestmentOperationKind,
 } from "../../../domain/investments";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact, formatMinorInput } from "../../../domain/money";
 import { userMessage } from "../../../domain/user-error";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
@@ -86,10 +86,6 @@ function holdingQuantities(
   return quantities;
 }
 
-function moneyInputValue(minor: number): string {
-  return (minor / 100).toFixed(2).replace(".", ",");
-}
-
 export default function InvestmentOperationScreen() {
   const params = useLocalSearchParams<{ kind?: string; productId?: string; id?: string }>();
   const requestedKind: InvestmentOperationKind = VALID_KINDS.has(params.kind as InvestmentOperationKind)
@@ -139,9 +135,9 @@ export default function InvestmentOperationScreen() {
     setDate(editing.operationDate);
     setQuantity(editing.quantity ?? "");
     setUnitMinor(editing.unitPriceMinor);
-    setUnitRaw(editing.unitPriceMinor == null ? "" : moneyInputValue(editing.unitPriceMinor));
+    setUnitRaw(editing.unitPriceMinor == null ? "" : formatMinorInput(editing.unitPriceMinor));
     setTotalMinor(editing.totalMinor);
-    setTotalRaw(moneyInputValue(editing.totalMinor));
+    setTotalRaw(formatMinorInput(editing.totalMinor));
     setContributionMode(editing.kind === "contribution" && editing.quantity == null ? "amount" : "units");
     setNote(editing.note ?? "");
   }, [editing]);
@@ -239,7 +235,7 @@ export default function InvestmentOperationScreen() {
           testID="investment-operation-summary"
           accessible
           accessibilityRole="image"
-          accessibilityLabel={`${pageTitle}. ${selected?.name ?? tr.investments.product}. ${date}. ${calculationTotal == null ? "—" : formatMinor(calculationTotal)}. ${tr.investments.operationImpact[kind]}`}
+          accessibilityLabel={`${pageTitle}. ${selected?.name ?? tr.investments.product}. ${date}. ${calculationTotal == null ? "—" : formatMinorCompact(calculationTotal)}. ${tr.investments.operationImpact[kind]}`}
           // The app paints a card as `surface` under a hairline; this one was
           // `surfaceAlt` under a 4px bar with `surface` tiles inside it — the
           // surface order inverted, so the one screen that explains a money
@@ -305,9 +301,8 @@ export default function InvestmentOperationScreen() {
                 ) : (
                   <Amount
                     minor={unitMinor}
-                    compact
                     colorized={false}
-                    accessibilityLabel={formatMinor(unitMinor)}
+                    accessibilityLabel={formatMinorCompact(unitMinor)}
                     style={[type.amountSm, { color: palette.textStrong, marginTop: 2, textAlign: "left" }]}
                   />
                 )}
@@ -325,10 +320,9 @@ export default function InvestmentOperationScreen() {
             ) : (
               <Amount
                 minor={calculationTotal}
-                compact
                 colorized={false}
                 color={impactColor}
-                accessibilityLabel={formatMinor(calculationTotal)}
+                accessibilityLabel={formatMinorCompact(calculationTotal)}
                 style={{ textAlign: "right" }}
               />
             )}
@@ -437,7 +431,7 @@ export default function InvestmentOperationScreen() {
               label={tr.investments.optionalTotal}
               value={totalRaw}
               error={totalError}
-              placeholder={calculatedQuote ? moneyInputValue(calculatedQuote.totalMinor) : tr.common.optionalHint}
+              placeholder={calculatedQuote ? formatMinorInput(calculatedQuote.totalMinor) : tr.common.optionalHint}
               onChangeMinor={(raw, minor) => {
                 setTotalRaw(raw);
                 setTotalMinor(minor);

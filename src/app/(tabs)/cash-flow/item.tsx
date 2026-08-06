@@ -13,7 +13,7 @@ import { monthColumnBasis } from "../../../domain/balance";
 import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
 import { makeMonthKey, monthKeyOf, todayISO } from "../../../domain/dates";
 import { isValidItemParams, singleParam, type ItemKind } from "../../../domain/route-params";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import {
   toTxLike,
   useAllTransactionsState,
@@ -185,7 +185,7 @@ function ItemBreakdown({
         <Card padded={false}>
           <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderColor: palette.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={[type.label, { color: palette.textSecondary }]}>{tr.cashflow.yearTotal(year)}</Text>
-            <Amount minor={total} compact style={{ maxWidth: "100%" }} />
+            <Amount minor={total} style={{ maxWidth: "100%" }} />
           </View>
           {rows.map((r, i) => {
             const isCurrent = r.month === currentMonth;
@@ -193,7 +193,7 @@ function ItemBreakdown({
               <Pressable
                 key={r.month}
                 accessibilityRole="button"
-                accessibilityLabel={`${monthLabel(r.month)} · ${r.value == null ? tr.common.none : formatMinor(r.value)}`}
+                accessibilityLabel={`${monthLabel(r.month)} · ${r.value == null ? tr.common.none : formatMinorCompact(r.value)}`}
                 onPress={() => router.push(`/cash-flow/${r.month}`)}
                 style={({ pressed }) => ({
                   flexDirection: "row",
@@ -232,7 +232,6 @@ function ItemBreakdown({
                     <Amount
                       testID="month-value-amount"
                       minor={r.value}
-                      compact
                       colorized={false}
                       color={r.value < 0 ? palette.negativeText : palette.text}
                       style={{ maxWidth: "100%", fontSize: type.amount.fontSize }}

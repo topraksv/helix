@@ -15,7 +15,7 @@ import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../do
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { resolveMatrixMode, type MatrixMode } from "../../../domain/matrix-preferences";
-import { formatMinor, formatMinorCompact } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { dateLabel, monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../../domain/balance-declaration";
 import {
@@ -106,7 +106,6 @@ function FlowStat({
       </View>
       <Amount
         minor={amountMinor}
-        compact
         colorized={false}
         color={foreground}
         style={[type.amountSm, { textAlign: "center", fontSize: type.small.fontSize, marginTop: 2 }]}
@@ -615,7 +614,7 @@ function MonthFocusTable({
               disabled={!onPress}
               onPress={onPress}
               role={onPress ? "button" : "group"}
-              accessibilityLabel={tr.a11y.matrixCell(monthLabel(month), column.label, formatMinor(value), Boolean(note))}
+              accessibilityLabel={tr.a11y.matrixCell(monthLabel(month), column.label, formatMinorCompact(value), Boolean(note))}
               accessibilityHint={note}
               style={({ pressed }) => ({
                 minHeight: 48,
@@ -661,7 +660,6 @@ function MonthFocusTable({
               <Amount
                 testID="matrix-value"
                 minor={value}
-                compact
                 colorized={false}
                 color={value < 0 ? palette.negativeText : value === 0 ? palette.textSecondary : palette.text}
                 style={[type.amountSm, { width: 108, textAlign: "right", fontSize: type.small.fontSize }]}
@@ -682,7 +680,6 @@ function MonthFocusTable({
               <Text style={[type.label, { color: palette.warningText, flex: 1 }]}>{tr.cashflow.uncategorizedLegacy}</Text>
               <Amount
                 minor={matrix.uncategorizedTotal}
-                compact
                 colorized={false}
                 color={palette.warningText}
                 style={{ textAlign: "right" }}
@@ -746,7 +743,6 @@ function TableDetailsPanel({
           </View>
           <Amount
             minor={uncategorizedTotal}
-            compact
             colorized={false}
             color={uncategorizedTotal < 0 ? palette.negativeText : palette.text}
             style={{ textAlign: "right" }}
@@ -793,7 +789,7 @@ function MatrixTable({
   const adjustmentByMonth = new Map(
     bundle.yearMonths
       .filter((month) => month.adjustmentMinor !== 0)
-      .map((month) => [month.month, tr.cashflow.adjustedCell(formatMinor(month.adjustmentMinor))]),
+      .map((month) => [month.month, tr.cashflow.adjustedCell(formatMinorCompact(month.adjustmentMinor))]),
   );
   const noteFor = (column: { key: string; categoryId?: string | null }, month: MonthKey): string | undefined =>
     column.key === "closing"
@@ -922,7 +918,7 @@ function MatrixTable({
       accessibilityLabel={tr.a11y.matrixCell(
         monthLabel(month),
         columnLabel,
-        value == null ? tr.a11y.emptyValue : formatMinor(value),
+        value == null ? tr.a11y.emptyValue : formatMinorCompact(value),
         Boolean(note),
       )}
     />
@@ -1064,7 +1060,6 @@ function MatrixCell({
           <Amount
             testID="matrix-value"
             minor={value}
-            compact
             colorized={false}
             color={value < 0 ? palette.negativeText : palette.text}
             style={[type.amountSm, { maxWidth: "100%", fontSize, textAlign: "right" }]}

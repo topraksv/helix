@@ -9,7 +9,7 @@ import * as Notifications from "expo-notifications";
 import { getSqliteAsync } from "../db/client";
 import { readSetting } from "../db/mutations";
 import { addDaysISO, todayISO } from "../domain/dates";
-import { formatMinor } from "../domain/money";
+import { formatMinorCompact } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { loadDevicePreferences, notificationsEnabled, setNotificationDetailsEnabled, setNotificationsEnabled } from "./device-preferences";
 import { boundedScheduledNotifications, createNotificationReplacementQueue, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../domain/notifications";
@@ -142,7 +142,7 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
 
   for (const e of expected) {
     const name = subNames.get(e.ref_id) ?? incomeNames.get(e.ref_id) ?? tr.common.paymentFallback;
-    const amount = formatMinor(e.amount_minor, e.currency);
+    const amount = formatMinorCompact(e.amount_minor, e.currency);
     if (e.direction === "in") {
       if (e.due_date >= today) planned.push({ date: e.due_date, title: tr.notif.salaryTitle, body: tr.notif.salaryBody(name, amount) });
       continue;

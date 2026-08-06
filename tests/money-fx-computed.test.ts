@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  COMPACT_MONEY_THRESHOLD_MINOR,
   MAX_ABS_AMOUNT_MINOR,
   formatMinor,
   formatMinorCompact,
+  formatMinorCompactAtScale,
+  formatMinorInput,
   formatMoneyInputLive,
   formatTRInputLive,
   majorToMinor,
   parseAmountExpression,
   parseTRAmountToMinor,
+  usesCompactMoneyScale,
 } from "../src/domain/money";
 import { convertToTryMinor, pickRate } from "../src/domain/fx";
 import {
@@ -78,16 +82,27 @@ describe("TR money formatting/parsing", () => {
   });
 
   it("abbreviates only very large values for fixed-width table cells", () => {
+    expect(usesCompactMoneyScale(COMPACT_MONEY_THRESHOLD_MINOR - 1)).toBe(false);
+    expect(usesCompactMoneyScale(COMPACT_MONEY_THRESHOLD_MINOR)).toBe(true);
     expect(formatMinorCompact(1882292)).toBe("₺18.822,92"); // everyday amount stays full
-    expect(formatMinorCompact(-1877303)).toBe("-₺18.773,03");
+    expect(formatMinorCompact(-1877303)).toBe("-\u2060₺18.773,03");
     // 999.999,99 TL — just below the 1.000.000 TL threshold, still written in full
     // (fits a narrow matrix cell, so no truncation/wrap is ever needed).
     expect(formatMinorCompact(99_999_999)).toBe(formatMinor(99_999_999));
-    // 1.000.000 TL and up use deterministic M/B labels on Hermes and web.
-    expect(formatMinorCompact(100_000_000)).toBe("₺1 M");
-    expect(formatMinorCompact(150_000_000)).toBe("₺1,5 M");
-    expect(formatMinorCompact(230_000_000_000)).toBe("₺2,3 B");
-    expect(formatMinorCompact(-230_000_000_000)).toBe("-₺2,3 B");
+    // 1.000.000 TL and up use deterministic Turkish scale labels on Hermes and web.
+    expect(formatMinorCompact(100_000_000)).toBe("₺1 Mn");
+    expect(formatMinorCompact(150_000_000)).toBe("₺1.5 Mn");
+    expect(formatMinorCompact(230_000_000_000)).toBe("₺2.3 Mr");
+    expect(formatMinorCompact(-230_000_000_000)).toBe("-\u2060₺2.3 Mr");
+    expect(formatMinorCompact(-99_999_995_999_900)).toBe("-\u2060₺1 Tr");
+  });
+
+  it("formats a selected compact scale consistently for chart rulers", () => {
+    expect(formatMinorCompactAtScale(134_500_000, "Mn")).toBe("₺1.345 Mn");
+    expect(formatMinorCompactAtScale(345_600_000_000, "Mr")).toBe("₺3.456 Mr");
+    expect(formatMinorCompactAtScale(1_250_000_000_000_00, "Tr")).toBe("₺1.25 Tr");
+    expect(formatMinorCompactAtScale(-230_000_000_000, "Mr")).toBe("-\u2060₺2.3 Mr");
+    expect(formatMinorCompactAtScale(0, "Mn")).toBe("₺0 Mn");
   });
 
   it("live-formats input with TR thousands separators, kuruş optional", () => {
@@ -102,6 +117,11 @@ describe("TR money formatting/parsing", () => {
     expect(formatTRInputLive("0,5")).toBe("0,5"); // keep a lone zero
     expect(formatTRInputLive(",5")).toBe("0,5");
     expect(formatTRInputLive("₺ 1.250,50")).toBe("1.250,50"); // idempotent on formatted
+  });
+
+  it("loads saved values into the one exact editable input format", () => {
+    expect(formatMinorInput(123_456_789)).toBe("1.234.567,89");
+    expect(formatMinorInput(-230_000_000_000)).toBe("-2.300.000.000,00");
   });
 
   it("live-format output is always parseable back to minor units", () => {

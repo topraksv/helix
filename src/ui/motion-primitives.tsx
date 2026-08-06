@@ -23,8 +23,8 @@ import React, { useContext, useEffect, useRef, useState, useSyncExternalStore } 
 import { Animated, Easing, Platform, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { NavigationContext } from "@react-navigation/native";
 import { useReducedMotion } from "./motion";
-import { motion, useTheme } from "./theme";
-import { crossFadesNatively } from "./theme-transition";
+import { motion, spacing, useTheme } from "./theme";
+import { crossFadesNatively, peekThemeTransitionBackground, takeThemeTransitionBackground } from "./theme-transition";
 
 /**
  * A value that runs 0 → 1 when `active` becomes true, and again whenever
@@ -254,15 +254,23 @@ export function useShake(): { style: { transform: { translateX: Animated.Value }
   return { style: { transform: [{ translateX: offset }] }, shake };
 }
 
-/**
- * A block that opens and closes instead of blinking in and out.
- *
- * Height cannot be driven natively, so this measures its content once and
- * animates the measured height. Closed content stays mounted but is hidden
- * from assistive technology and from the tab order, because a collapsed
- * section is not content the user can reach.
- */
+/** A block that opens and closes instead of blinking in and out. */
 export function Collapse({
+  open,
+  children,
+  style,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return Platform.OS === "web"
+    ? <MeasuredCollapse open={open} style={style}>{children}</MeasuredCollapse>
+    : <NativeCollapse open={open} style={style}>{children}</NativeCollapse>;
+}
+
+/** Web needs a measured height because CSS cannot animate the native driver. */
+function MeasuredCollapse({
   open,
   children,
   style,
@@ -320,6 +328,80 @@ export function Collapse({
       ]}
     >
       <View onLayout={(event) => setContentHeight(event.nativeEvent.layout.height)}>{children}</View>
+    </Animated.View>
+  );
+}
+
+/**
+ * Native collapse deliberately animates only compositor properties.
+ *
+ * Driving height on the JS thread made a fast open/close sequence compete
+ * with the forecast's chart and scroll layout. The content now mounts at its
+ * natural height and uses a native opacity/translation transition; the stale
+ * callback that used to leave the measured panel stuck cannot win a reversal.
+ */
+function NativeCollapse({
+  open,
+  children,
+  style,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const reducedMotion = useReducedMotion();
+  const [mounted, setMounted] = useState(open);
+  const mountedRef = useRef(open);
+  const progress = useRef(new Animated.Value(open ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (open && !mountedRef.current) {
+      mountedRef.current = true;
+      setMounted(true);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (reducedMotion) {
+      progress.stopAnimation();
+      progress.setValue(open ? 1 : 0);
+      if (!open) {
+        mountedRef.current = false;
+        setMounted(false);
+      }
+      return;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: open ? 1 : 0,
+      duration: motion.standard,
+      easing: open ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start(({ finished }) => {
+      if (finished && !open) {
+        mountedRef.current = false;
+        setMounted(false);
+      }
+    });
+    return () => animation.stop();
+  }, [open, mounted, progress, reducedMotion]);
+
+  if (!mounted) return null;
+  return (
+    <Animated.View
+      pointerEvents={open ? "auto" : "none"}
+      accessibilityElementsHidden={!open}
+      importantForAccessibility={open ? "auto" : "no-hide-descendants"}
+      style={[
+        {
+          opacity: progress,
+          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-spacing.xs, 0] }) }],
+        },
+        style,
+      ]}
+    >
+      {children}
     </Animated.View>
   );
 }
@@ -452,9 +534,11 @@ export function ThemeDissolve() {
   const progress = useRef(new Animated.Value(0)).current;
   const [transitionFrom, setTransitionFrom] = useState<string | null>(null);
   const [webFade, setWebFade] = useState<"visible" | "fading">("fading");
+  const preparedFrom = peekThemeTransitionBackground();
+  const activeTransitionFrom = transitionFrom ?? preparedFrom;
   useThemeChangeEffect(() => {
     const before = previous.current;
-    const from = previousPalette.current;
+    const from = takeThemeTransitionBackground() ?? previousPalette.current;
     previous.current = identity;
     previousPalette.current = palette.background;
     if (before === identity || reducedMotion || browserCrossFades) {
@@ -492,7 +576,7 @@ export function ThemeDissolve() {
       setTransitionFrom(null);
     };
   }, [identity, palette.background, progress, reducedMotion, browserCrossFades]);
-  if (!transitionFrom) return null;
+  if (!activeTransitionFrom) return null;
   return (
     <Animated.View
       testID="theme-dissolve"
@@ -507,17 +591,21 @@ export function ThemeDissolve() {
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: transitionFrom,
+          backgroundColor: activeTransitionFrom,
         },
         Platform.OS === "web"
           ? ({
-              opacity: webFade === "visible" ? VEIL_STRENGTH : 0,
+              opacity: webFade === "visible" || Boolean(preparedFrom) ? VEIL_STRENGTH : 0,
               transitionProperty: "opacity",
               transitionDuration: `${motion.theme}ms`,
               transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
               willChange: "opacity",
             } as unknown as ViewStyle)
-          : { opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [VEIL_STRENGTH, 0] }) },
+          : {
+              opacity: preparedFrom
+                ? VEIL_STRENGTH
+                : progress.interpolate({ inputRange: [0, 1], outputRange: [VEIL_STRENGTH, 0] }),
+            },
       ]}
     />
   );

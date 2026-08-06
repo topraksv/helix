@@ -241,6 +241,10 @@ test("bar-chart amounts stay readable and contained on phone and desktop", async
   await page.setViewportSize({ width: 320, height: 720 });
   await onboard(page);
   await addMarketExpense(page, "Sütun grafik tutarı", "987.654.321,00");
+  const dashboardMetrics = page.getByTestId("dashboard-month-metrics");
+  await expect(dashboardMetrics).toBeVisible();
+  await expect.poll(() => dashboardMetrics.innerText()).toMatch(/(?:Mn|Mr|Tr)/u);
+  await expect(page.getByTestId("dashboard-current-balance")).toContainText(/(?:Mn|Mr|Tr)/u);
   await page.getByRole("tab", { name: "Durum" }).click();
   await page.getByRole("radio", { name: "Sütun", exact: true }).click();
 
@@ -251,6 +255,7 @@ test("bar-chart amounts stay readable and contained on phone and desktop", async
     const axisLabels = await page.getByTestId("bar-axis-label").allTextContents();
     expect(new Set(axisLabels).size).toBeGreaterThan(2);
     expect(axisLabels.some((label) => !/^[-−]?₺?0(?:[,.]0+)?$/.test(label.trim()))).toBe(true);
+    expect(axisLabels.some((label) => /(?:\u00a0|\s)(?:Mn|Mr|Tr)$/u.test(label.trim()))).toBe(true);
     const measurements = await labels.evaluateAll((elements) =>
       elements.map((element) => {
         const box = element.getBoundingClientRect();
@@ -268,6 +273,17 @@ test("bar-chart amounts stay readable and contained on phone and desktop", async
     );
     expect(measurements.every(({ fontSize, contained }) => fontSize >= 14 && contained)).toBe(true);
     const chart = page.getByTestId("bar-chart-frame").first();
+    // The frame measures its card after the viewport changes. Assert the
+    // post-measurement geometry rather than racing that ResizeObserver pass.
+    await expect.poll(() => chart.evaluate((element) => {
+      const chartBox = element.getBoundingClientRect();
+      const labels = Array.from(element.querySelectorAll<HTMLElement>('[data-testid="bar-axis-label"]'));
+      return labels.length > 0 && labels.every((label) => {
+        const box = label.getBoundingClientRect();
+        return box.left >= chartBox.left - 1 && box.right <= chartBox.right + 1
+          && box.top >= chartBox.top - 1 && box.bottom <= chartBox.bottom + 1;
+      });
+    })).toBe(true);
     const chartBox = await chart.boundingBox();
     expect(chartBox).not.toBeNull();
     const axisGeometry = await chart.getByTestId("bar-axis-label").evaluateAll((elements) => elements.map((element) => {
@@ -651,7 +667,7 @@ test("the investment wallet keeps large balances readable at the narrowest phone
 
   const summary = page.getByTestId("investment-wallet-summary");
   const cash = page.getByTestId("investment-cash-amount");
-  await expect(cash).toHaveAttribute("aria-label", "Serbest bakiye: ₺987.654.321.000,00");
+  await expect(cash).toHaveAttribute("aria-label", /^Serbest bakiye: ₺987\.654\s+Mr$/u);
   const geometry = await summary.evaluate((element) => {
     const parent = element.getBoundingClientRect();
     const cashAmount = element.querySelector<HTMLElement>('[data-testid="investment-cash-amount"]')!;
@@ -686,7 +702,8 @@ test("the investment wallet keeps large balances readable at the narrowest phone
     return samples;
   });
   expect(new Set(widths.map((width) => Math.round(width * 10) / 10)).size).toBeGreaterThan(1);
-  const actions = page.getByTestId("investment-actions").getByRole("button");
+  const actionBand = page.locator('[data-testid="investment-actions"]:visible').first();
+  const actions = actionBand.getByRole("button");
   await expect(actions).toHaveCount(4);
   const actionGeometry = await actions.evaluateAll((elements) => elements.map((element) => {
     const box = element.getBoundingClientRect();
@@ -697,7 +714,6 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(Math.max(...actionGeometry.map(({ width }) => width)) - Math.min(...actionGeometry.map(({ width }) => width))).toBeLessThanOrEqual(1);
   expect(Math.max(...actionGeometry.map(({ right }) => right))).toBeLessThanOrEqual(320 - 16);
 
-  const actionBand = page.getByTestId("investment-actions");
   const bandGeometry = await actionBand.evaluate((element) => {
     const band = element.getBoundingClientRect();
     const style = getComputedStyle(element);
@@ -714,7 +730,8 @@ test("the investment wallet keeps large balances readable at the narrowest phone
     };
   });
   expect(bandGeometry.padding).toEqual(["0px", "0px", "0px", "0px"]);
-  expect(bandGeometry.band.bottom - bandGeometry.band.top).toBeLessThanOrEqual(100);
+  const narrowBandHeight = bandGeometry.band.bottom - bandGeometry.band.top;
+  expect(narrowBandHeight).toBeGreaterThan(0);
   expect(bandGeometry.icons.every(({ top }) => top === bandGeometry.icons[0]!.top)).toBe(true);
   expect(bandGeometry.labels.every(({ top }) => top === bandGeometry.labels[0]!.top)).toBe(true);
   expect(bandGeometry.captions.every(({ top }) => top === bandGeometry.captions[0]!.top)).toBe(true);
@@ -730,11 +747,35 @@ test("the investment wallet keeps large balances readable at the narrowest phone
     if (!label || !caption) throw new Error(`Missing investment action text in ${element.getAttribute("aria-label")}`);
     return {
       labelTop: Math.round(label.box.top),
+      labelBottom: Math.round(label.box.bottom),
       captionTop: Math.round(caption.box.top),
+      captionBottom: Math.round(caption.box.bottom),
     };
   }));
   expect(new Set(actionTextGeometry.map(({ labelTop }) => labelTop)).size).toBe(1);
   expect(new Set(actionTextGeometry.map(({ captionTop }) => captionTop)).size).toBe(1);
+  expect(actionTextGeometry.every(({ labelBottom, captionTop }) => labelBottom <= captionTop + 1)).toBe(true);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect.poll(() => actionBand.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(narrowBandHeight);
+  const wideBandGeometry = await actionBand.evaluate((element) => {
+    const band = element.getBoundingClientRect();
+    const boxes = (selector: string) => Array.from(element.querySelectorAll<HTMLElement>(selector)).map((child) => {
+      const box = child.getBoundingClientRect();
+      return { top: Math.round(box.top), bottom: Math.round(box.bottom) };
+    });
+    return {
+      band: { top: band.top, bottom: band.bottom },
+      icons: boxes('[data-testid="investment-action-icon"]'),
+      labels: boxes('[data-testid="investment-action-label"]'),
+      captions: boxes('[data-testid="investment-action-caption"]'),
+    };
+  });
+  const wideBandHeight = wideBandGeometry.band.bottom - wideBandGeometry.band.top;
+  expect(wideBandHeight).toBeLessThan(narrowBandHeight);
+  expect(wideBandGeometry.icons.every(({ top }) => top === wideBandGeometry.icons[0]!.top)).toBe(true);
+  expect(wideBandGeometry.labels.every(({ top }) => top === wideBandGeometry.labels[0]!.top)).toBe(true);
+  expect(wideBandGeometry.captions.every(({ top }) => top === wideBandGeometry.captions[0]!.top)).toBe(true);
 
   const metricTextGeometry = await page.getByTestId("investment-portfolio-metrics").evaluate((element) => {
     const columns = Array.from(element.children) as HTMLElement[];

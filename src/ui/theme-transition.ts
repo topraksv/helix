@@ -24,21 +24,37 @@
  * Native has no equivalent that does not mean a new dependency
  * (`react-native-view-shot` and a screenshot per toggle), so it keeps the veil
  * in `ThemeDissolve` — short and light, softening the edge without covering the
- * app.
+ * app. The old root background is armed before the preference is committed so
+ * the veil is already present in the first native frame of the new palette.
  */
 
 type ViewTransitionStarter = { startViewTransition?: (callback: () => void) => unknown };
+
+let pendingThemeTransitionBackground: string | null = null;
 
 function viewTransitionDocument(): ViewTransitionStarter | null {
   return typeof document === "undefined" ? null : (document as unknown as ViewTransitionStarter);
 }
 
-export function applyThemeChange(commit: () => void): void {
+export function peekThemeTransitionBackground(): string | null {
+  return pendingThemeTransitionBackground;
+}
+
+export function takeThemeTransitionBackground(): string | null {
+  const background = pendingThemeTransitionBackground;
+  pendingThemeTransitionBackground = null;
+  return background;
+}
+
+export function applyThemeChange(commit: () => void, fromBackground?: string): void {
   const doc = viewTransitionDocument();
   if (!doc || typeof doc.startViewTransition !== "function") {
+    pendingThemeTransitionBackground = fromBackground ?? null;
     commit();
     return;
   }
+
+  pendingThemeTransitionBackground = null;
 
   let committed = false;
   const commitOnce = () => {

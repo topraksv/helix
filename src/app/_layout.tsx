@@ -91,18 +91,18 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 const themePrefListeners = new Set<(p: ThemePreference) => void>();
 const palettePrefListeners = new Set<(p: PaletteId) => void>();
 
-export function setGlobalThemePreference(pref: ThemePreference) {
+export function setGlobalThemePreference(pref: ThemePreference, fromBackground?: string) {
   void kv.set("helix.theme", pref);
   applyThemeChange(() => {
     for (const listener of themePrefListeners) listener(pref);
-  });
+  }, fromBackground);
 }
 
-export function setGlobalPalettePreference(pref: PaletteId) {
+export function setGlobalPalettePreference(pref: PaletteId, fromBackground?: string) {
   void kv.set("helix.palette", pref);
   applyThemeChange(() => {
     for (const listener of palettePrefListeners) listener(pref);
-  });
+  }, fromBackground);
 }
 
 export default function RootLayout() {

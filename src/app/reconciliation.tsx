@@ -16,7 +16,7 @@ import {
 } from "../data/hooks";
 import { combineLiveQueryStatus } from "../data/live-state";
 import { todayISO } from "../domain/dates";
-import { formatMinor, formatMinorCompact } from "../domain/money";
+import { formatMinorCompact } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
@@ -201,7 +201,7 @@ export default function CatchUpScreen() {
                     setAmountRaw(raw);
                     setAmountMinor(minor);
                   }}
-                  placeholder={formatMinor(e.amountMinor, e.currency)}
+                  placeholder={formatMinorCompact(e.amountMinor, e.currency)}
                 />
                 <Row>
                   <View style={{ flex: 1 }}>

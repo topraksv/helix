@@ -17,7 +17,7 @@ import {
 } from "../../../data/repo";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../../domain/types";
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { Banknote, CreditCard, Landmark, Pencil, ReceiptText, Trash2, WalletCards, type LucideIcon } from "lucide-react-native";
 import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
@@ -385,9 +385,8 @@ export default function SourcesScreen() {
                 </View>
                 <Amount
                   minor={amount}
-                  compact
                   colorized={false}
-                  accessibilityLabel={formatMinor(amount)}
+                  accessibilityLabel={formatMinorCompact(amount)}
                   style={{ textAlign: "right" }}
                 />
               </Spread>

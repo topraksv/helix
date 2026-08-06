@@ -20,7 +20,7 @@ import { combineLiveQueryStatus } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../domain/balance-declaration";
-import { formatMinor, formatMinorCompact } from "../domain/money";
+import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
 import { appAlert } from "./dialog";
@@ -47,7 +47,7 @@ function BalanceBridge({
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={`${tr.settings.computedBalance}: ${formatMinor(computedMinor)}. ${tr.settings.balanceDifference}: ${formatMinor(differenceMinor)}. ${tr.settings.realBalance}: ${formatMinor(targetMinor)}.`}
+      accessibilityLabel={`${tr.settings.computedBalance}: ${formatMinorCompact(computedMinor)}. ${tr.settings.balanceDifference}: ${formatMinorCompact(differenceMinor)}. ${tr.settings.realBalance}: ${formatMinorCompact(targetMinor)}.`}
       style={{
         flexDirection: "row",
         alignItems: "stretch",
@@ -113,7 +113,7 @@ export function OpeningBalanceEditor() {
   const [targetRaw, setTargetRaw] = useState<string | null>(null);
   const [targetMinor, setTargetMinor] = useState<number | null>(null);
   const [savingBalance, setSavingBalance] = useState(false);
-  const targetValue = targetRaw ?? (computed == null ? "" : (computed / 100).toFixed(2).replace(".", ","));
+  const targetValue = targetRaw ?? (computed == null ? "" : formatMinorInput(computed));
   const effectiveTarget = targetRaw === null ? computed : targetMinor;
   const balanceDirty = computed != null && effectiveTarget != null && effectiveTarget !== computed;
   // What the user last confirmed against a real account, and how far the ledger
@@ -132,7 +132,7 @@ export function OpeningBalanceEditor() {
         userId,
         effectiveTarget,
         computed,
-        tr.settings.balanceAdjustmentNote(formatMinor(computed), formatMinor(effectiveTarget)),
+        tr.settings.balanceAdjustmentNote(formatMinorCompact(computed), formatMinorCompact(effectiveTarget)),
       );
       // Remember what was confirmed, not just the delta that made it true. It
       // is the only way a later screen can say "you told me this on that day".
@@ -165,7 +165,7 @@ export function OpeningBalanceEditor() {
   const [draftMinor, setDraftMinor] = useState<number | null>(null);
   const [savingOpening, setSavingOpening] = useState(false);
   const startMonth = draftStart ?? currentStart;
-  const openingRaw = draftRaw ?? (currentOpening / 100).toFixed(2).replace(".", ",");
+  const openingRaw = draftRaw ?? formatMinorInput(currentOpening);
   const openingMinor = draftRaw === null ? currentOpening : draftMinor;
   const openingDirty = openingMinor !== currentOpening || startMonth !== currentStart;
 

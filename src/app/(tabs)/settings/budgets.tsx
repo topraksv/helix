@@ -6,7 +6,7 @@ import { combineLiveQueryStatus } from "../../../data/live-state";
 import { deleteCategoryBudget, restoreCategoryBudget, upsertCategoryBudget } from "../../../data/repo";
 import { budgetProgress } from "../../../domain/budgets";
 import { monthKeyOf, todayISO } from "../../../domain/dates";
-import { formatMinor, formatMinorCompact } from "../../../domain/money";
+import { formatMinorCompact, formatMinorInput } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { Body, Button, Card, CardList, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread } from "../../../ui/components";
@@ -26,7 +26,7 @@ function BudgetMeter({ spentMinor, limitMinor }: { spentMinor: number; limitMino
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={tr.budgets.progress(formatMinor(spentMinor), formatMinor(limitMinor))}
+      accessibilityLabel={tr.budgets.progress(formatMinorCompact(spentMinor), formatMinorCompact(limitMinor))}
       style={{ marginBottom: spacing.lg }}
     >
       <SegmentBar ratio={ratio} tone={over ? palette.negative : palette.positive} />
@@ -100,7 +100,7 @@ export default function BudgetsScreen() {
   };
   const startEdit = (budget: (typeof budgets)[number]) => {
     confirmDiscard(() => {
-      const loaded = (budget.amountMinor / 100).toFixed(2).replace(".", ",");
+      const loaded = formatMinorInput(budget.amountMinor);
       setCategoryChoice(budget.categoryId);
       setAmountRaw(loaded);
       setLoadedAmountRaw(loaded);
@@ -167,7 +167,7 @@ export default function BudgetsScreen() {
           onChange={(value) => confirmDiscard(() => {
             setCategoryChoice(value);
             const existing = monthBudgets.find((budget) => budget.categoryId === value);
-            const loaded = existing ? (existing.amountMinor / 100).toFixed(2).replace(".", ",") : "";
+            const loaded = existing ? formatMinorInput(existing.amountMinor) : "";
             setAmountRaw(loaded);
             setLoadedAmountRaw(loaded);
             setAmountMinor(existing?.amountMinor ?? null);

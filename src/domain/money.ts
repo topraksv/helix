@@ -9,7 +9,7 @@ export type Minor = number;
 /** Largest single user-entered amount: 999,999,999,999.99 major units (~1
  * trillion). Comfortably exact in integer minor units (< 2^53) so a big but
  * legitimate figure — someone tracking a business or a portfolio in the
- * billions — is accepted; the table falls back to compact "M/B" display
+ * billions — is accepted; the table falls back to compact "Mn/Mr/Tr" display
  * (see `formatMinorCompact`) so a large value never overflows a fixed cell. */
 export const MAX_ABS_AMOUNT_MINOR = 99_999_999_999_999;
 export const MAX_AMOUNT_MAJOR_DIGITS = 12;
@@ -87,35 +87,79 @@ export function formatMinor(amountMinor: Minor, currency = "TRY"): string {
   return formatterFor(currency).format(value === 0 ? 0 : value);
 }
 
-// One-decimal grouped number formatter for the compact scale (e.g. "1,5").
-// Deliberately NOT Intl's `notation:"compact"`: Hermes builds that formatter
-// but may ignore the option on some devices, which would silently print the
-// full number back into a cell it can't fit. Basic grouping IS supported (it
-// backs formatMinor), so a hand-rolled scale + TR suffix is the safe path.
-const COMPACT_NUMBER = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 });
+// Compact scale values use the product's `1.345 Mn` vocabulary rather than
+// locale decimal commas. The currency itself remains Turkish-formatted when
+// the value is below the compact threshold.
+const COMPACT_NUMBER = new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 });
+export type CompactMoneyScale = "Mn" | "Mr" | "Tr";
+const NO_BREAK_AFTER_SIGN = "\u2060";
 
-/** Amount below which table cells show the value in full; at or above it they
- * switch to compact notation. 1.000.000 TL keeps everyday figures fully written
- * out while guaranteeing the full string still fits a narrow matrix cell (the
- * widest full value, "₺999.999,99", is ~11 chars) — so cells never need
- * truncation (`numberOfLines`) or wrapping, which the design rules forbid. */
-const COMPACT_THRESHOLD_MINOR = 100_000_000;
+function glueNegativeSign(value: string): string {
+  return value.startsWith("-") ? `-${NO_BREAK_AFTER_SIGN}${value.slice(1)}` : value;
+}
+
+function roundsToNextCompactScale(value: number): boolean {
+  return Math.round(value * 1_000) >= 1_000_000;
+}
+
+/** Select the one compact unit for an amount, including rounding promotion. */
+export function compactMoneyScale(amountMinor: Minor): CompactMoneyScale {
+  assertMinor(amountMinor);
+  const major = Math.abs(amountMinor) / 100;
+  if (major >= 1e12) return "Tr";
+  if (major >= 1e9) return roundsToNextCompactScale(major / 1e9) ? "Tr" : "Mr";
+  if (major >= 1e6) return roundsToNextCompactScale(major / 1e6) ? "Mr" : "Mn";
+  return "Mn";
+}
+
+/** Amount below which the shared UI display stays fully written; at or above
+ * it the same display policy switches to a compact scale. 1.000.000 TL keeps
+ * everyday figures fully written out while guaranteeing the full string still
+ * fits a narrow matrix cell (the widest full value, "₺999.999,99", is ~11
+ * chars) — so cells never need truncation (`numberOfLines`) or wrapping. */
+export const COMPACT_MONEY_THRESHOLD_MINOR = 100_000_000;
+
+export function usesCompactMoneyScale(amountMinor: Minor): boolean {
+  assertMinor(amountMinor);
+  return Math.abs(amountMinor) >= COMPACT_MONEY_THRESHOLD_MINOR;
+}
 
 /**
- * Table-cell money: full `₺1.234.567,89` for everyday amounts, but a compact
- * `₺1,5 M` / `₺2,3 B` (million / billion) once the value would overflow a
- * fixed-width matrix cell. TR-only by design (the app's single locale). Use
- * `formatMinor` for hero/detail figures that have room to render in full.
+ * Shared UI money: full `₺1.234.567,89` for everyday amounts, but a compact
+ * `₺1.5 Mn` / `₺2.3 Mr` (million / billion) once the value reaches the large
+ * number threshold. TR-only by design (the app's single locale). `formatMinor`
+ * remains available as the exact domain formatter; UI text uses this shared
+ * compact policy so a new surface cannot silently choose a different unit.
  */
 export function formatMinorCompact(amountMinor: Minor, currency = "TRY"): string {
   assertMinor(amountMinor);
-  if (Math.abs(amountMinor) < COMPACT_THRESHOLD_MINOR) return formatMinor(amountMinor, currency);
+  if (!usesCompactMoneyScale(amountMinor)) return glueNegativeSign(formatMinor(amountMinor, currency));
+  return formatMinorCompactAtScale(amountMinor, compactMoneyScale(amountMinor), currency);
+}
+
+/**
+ * Compact money at a caller-selected scale.
+ *
+ * A chart axis is one ruler: if its largest value is in millions, a smaller
+ * tick must still read ₺0.5 Mn rather than switching back to a long exact
+ * amount in the middle of that ruler. The scale decision belongs to the chart;
+ * this function remains the one place that formats the number and suffix.
+ */
+export function formatMinorCompactAtScale(
+  amountMinor: Minor,
+  scale: CompactMoneyScale,
+  currency = "TRY",
+): string {
+  assertMinor(amountMinor);
   const major = amountMinor / 100;
-  // Reached only at ≥ 1.000.000 TL, so the scale is always milyon or milyar.
-  const [scaled, suffix]: [number, string] = Math.abs(major) >= 1e9 ? [major / 1e9, " B"] : [major / 1e6, " M"];
-  const sign = scaled < 0 ? "-" : "";
-  const symbol = currency === "TRY" ? "₺" : `${currency} `;
-  return `${sign}${symbol}${COMPACT_NUMBER.format(Math.abs(scaled))}${suffix}`;
+  const [scaled, suffix]: [number, string] = scale === "Tr"
+    ? [major / 1e12, " Tr"]
+    : scale === "Mr"
+      ? [major / 1e9, " Mr"]
+      : [major / 1e6, " Mn"];
+  const sign = scaled < 0 ? `-${NO_BREAK_AFTER_SIGN}` : "";
+  const symbol = currency === "TRY" ? "₺" : currency + " ";
+  return sign + symbol + COMPACT_NUMBER.format(Math.abs(scaled)) + suffix;
 }
 
 /**
@@ -158,6 +202,14 @@ export function formatTRInputLive(raw: string): string {
   let out = frac === null ? grouped : `${grouped === "" ? "0" : grouped},${frac}`;
   if (out === "") return negative ? "-" : "";
   return negative ? `-${out}` : out;
+}
+
+/** Exact, grouped value used when a saved amount is loaded into an editable
+ * field. Inputs stay fully writable; compact Mn/Mr/Tr labels belong to output.
+ */
+export function formatMinorInput(amountMinor: Minor): string {
+  assertMinor(amountMinor);
+  return formatTRInputLive((amountMinor / 100).toFixed(2).replace(".", ","));
 }
 
 /**

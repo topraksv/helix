@@ -23,7 +23,7 @@ import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { convertToTryMinor } from "../domain/fx";
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
-import { formatMinor, formatMinorCompact, isSupportedMinorAmount } from "../domain/money";
+import { formatMinorCompact, formatMinorInput, isSupportedMinorAmount } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { projectInvestmentState } from "../domain/investment-projection";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
@@ -154,7 +154,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   }, [categoryId, transferCategories]);
   const selectedAmount = amountMode === "all" ? wallet?.cashMinor ?? null : amountMinor;
   const amountError = amountMode === "partial" && selectedAmount != null && wallet && selectedAmount > wallet.cashMinor
-    ? tr.investments.refundExceedsCash(formatMinor(wallet.cashMinor))
+    ? tr.investments.refundExceedsCash(formatMinorCompact(wallet.cashMinor))
     : null;
   const dateless = dateMode === "month";
   const effectiveDate = dateless ? `${monthKey}-01` : dateStr;
@@ -229,9 +229,8 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
             testID="investment-refund-cash-amount"
             minor={wallet?.cashMinor ?? 0}
             large
-            compact
             colorized={false}
-            accessibilityLabel={formatMinor(wallet?.cashMinor ?? 0)}
+            accessibilityLabel={formatMinorCompact(wallet?.cashMinor ?? 0)}
             style={{ color: palette.textStrong, marginTop: 2 }}
           />
         </View>
@@ -308,7 +307,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   const close = () => navigateBack(router, investmentRefund ? "/(tabs)/investments" : "/(tabs)/cash-flow");
 
   const [entryType, setEntryType] = useState<EntryType>((existing?.type as EntryType) ?? (investmentRefund ? "transfer" : "expense"));
-  const [amountRaw, setAmountRaw] = useState(existing ? (Math.abs(existing.amountMinor) / 100).toFixed(2).replace(".", ",") : "");
+  const [amountRaw, setAmountRaw] = useState(existing ? formatMinorInput(Math.abs(existing.amountMinor)) : "");
   const [amountMinor, setAmountMinor] = useState<number | null>(existing ? Math.abs(existing.amountMinor) : null);
   const [isReversal, setIsReversal] = useState((existing?.amountMinor ?? 0) < 0 || investmentRefund);
   const [currency, setCurrency] = useState<string>(existing?.currency ?? "TRY");
@@ -466,7 +465,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
         if (installment) {
           const person = persons.find((p) => p.id === personId)!;
           await createInstallmentPlan(userId, {
-            title: note.trim() || tr.installments.defaultTitle(formatMinor(amountMinor!, currency)),
+            title: note.trim() || tr.installments.defaultTitle(formatMinorCompact(amountMinor!, currency)),
             kind: "card_installment",
             totalAmountMinor: amountMinor!,
             monthlyAmountMinor: null,

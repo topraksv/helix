@@ -10,7 +10,7 @@ import { useRouter } from "expo-router";
 import { ChevronRight, CreditCard, Landmark, Plus } from "lucide-react-native";
 import { installmentDisplayTitle, planProgress, type GeneratedInstallment } from "../../../domain/installments";
 import { monthKeyOf, todayISO } from "../../../domain/dates";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { monthLabel, tr } from "../../../i18n/tr";
 import {
   usePersonsState,
@@ -120,7 +120,7 @@ export default function InstallmentsScreen() {
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}. ${thisMonth ? formatMinor(thisMonth.amountMinor) : ""}. ${tr.installments.progress(progress.paid, progress.total)}`}
+        accessibilityLabel={`${installmentDisplayTitle(plan.title, noteByPlan.get(plan.id), tr.installments.plan)}. ${thisMonth ? formatMinorCompact(thisMonth.amountMinor) : ""}. ${tr.installments.progress(progress.paid, progress.total)}`}
         onPress={() => router.push({ pathname: "/installment-new", params: { id: plan.id } })}
         style={({ pressed }) => [pressed && { opacity: 0.6 }]}
       >

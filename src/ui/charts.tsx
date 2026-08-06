@@ -4,11 +4,10 @@ import React, { type ReactNode } from "react";
 import { Animated, Text, View } from "react-native";
 import Svg, { Circle, ClipPath, Defs, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import type { Distribution } from "../domain/analytics";
-import { formatMinorCompact } from "../domain/money";
+import { compactMoneyScale, formatMinorCompact, formatMinorCompactAtScale, type CompactMoneyScale, usesCompactMoneyScale } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { resolveBarAxis } from "./chart-axis";
 import { Amount } from "./primitives";
-import { shouldCompactAmount } from "./responsive";
 import { useDrawIn } from "./motion-primitives";
 import { chart, font, motion, radius, spacing, type, useTheme } from "./theme";
 import { useMeasuredWidth } from "./viewport";
@@ -430,13 +429,19 @@ export function Lines({
   // card's heading, so an end label repeated it and cost a sixth of the plot.
   const draw = useDrawIn(true, motion.draw, series.map((s) => `${s.label}:${s.points.join(",")}`).join("|"));
   const clipId = `line-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const padding = { left: 54, right: 12, top: 12, bottom: 24 };
-  const plotW = width - padding.left - padding.right;
-  const plotH = height - padding.top - padding.bottom;
   const values = series.flatMap((s) => s.points.filter((p): p is number => p != null));
   if (values.length === 0) return null;
   const min = Math.min(0, ...values);
   const max = Math.max(...values, 1);
+  // One chart is one ruler. Including the rounded ticks prevents a value just
+  // below the compact threshold from producing a rounded million tick in the
+  // long exact format.
+  const TICKS = 5;
+  const ticks = Array.from({ length: TICKS }, (_, i) => max - ((max - min) / (TICKS - 1)) * i);
+  const axisScale = chartAxisScale([...values, ...ticks]);
+  const padding = { left: chartAxisLabelGutter(ticks, 9, 54, axisScale), right: 12, top: 12, bottom: 24 };
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
   const x = (i: number) => padding.left + (xLabels.length <= 1 ? plotW / 2 : (i / (xLabels.length - 1)) * plotW);
   const y = (v: number) => padding.top + plotH - ((v - min) / (max - min)) * plotH;
   const chartSummary = tr.a11y.lineChart(series.map((item) => {
@@ -446,11 +451,6 @@ export function Lines({
       .join(", ");
     return `${item.label}: ${itemValues}`;
   }).join(". "));
-
-  // Five rules divide the range into quarters — enough to judge a height
-  // against, few enough that the labels never touch at this size.
-  const TICKS = 5;
-  const ticks = Array.from({ length: TICKS }, (_, i) => max - ((max - min) / (TICKS - 1)) * i);
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
@@ -491,7 +491,7 @@ export function Lines({
               fill={palette.textSecondary}
               textAnchor="end"
             >
-              {formatMinorCompact(Math.round(value))}
+              {formatChartAxis(Math.round(value), axisScale)}
             </SvgText>
           </React.Fragment>
         ))}
@@ -559,19 +559,25 @@ interface BarGroup {
   values: (number | null)[];
 }
 
-/** Axis labels communicate scale, not ledger precision. Keep the exact amount
- * in the value strip and use Turkish compact notation where a full TRY figure
- * would be clipped into a row of zeroes. */
-function formatChartAxis(valueMinor: number): string {
-  const major = valueMinor / 100;
-  const compact = Math.abs(major) >= 1_000;
-  return new Intl.NumberFormat("tr-TR", {
-    style: "currency",
-    currency: "TRY",
-    notation: compact ? "compact" : "standard",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: compact ? 1 : Math.abs(major) < 10 ? 2 : 0,
-  }).format(major);
+/** Axis labels communicate scale, not ledger precision. Keep the shared money
+ * formatter in the value strip and use the app's own Mn/Mr/Tr vocabulary on a
+ * large chart. */
+export type ChartAxisScale = "full" | CompactMoneyScale;
+
+export function chartAxisScale(values: readonly (number | null)[]): ChartAxisScale {
+  const largestMinor = values.reduce<number>(
+    (largest, value) => value == null || !Number.isFinite(value) ? largest : Math.max(largest, Math.abs(value)),
+    0,
+  );
+  const roundedLargestMinor = Math.round(largestMinor);
+  return usesCompactMoneyScale(roundedLargestMinor) ? compactMoneyScale(roundedLargestMinor) : "full";
+}
+
+export function formatChartAxis(valueMinor: number, scale: ChartAxisScale = "full"): string {
+  const roundedMinor = Math.round(valueMinor);
+  return scale === "full"
+    ? formatMinorCompact(roundedMinor)
+    : formatMinorCompactAtScale(roundedMinor, scale);
 }
 
 /**
@@ -583,8 +589,8 @@ function formatChartAxis(valueMinor: number): string {
  * the web font and the native face without giving the axis a permanent empty
  * desktop rail.
  */
-function barAxisLabelGutter(values: number[], fontSize: number, minimum: number): number {
-  const longest = values.reduce((width, value) => Math.max(width, formatChartAxis(value).length), 0);
+function chartAxisLabelGutter(values: number[], fontSize: number, minimum: number, scale: ChartAxisScale): number {
+  const longest = values.reduce((width, value) => Math.max(width, formatChartAxis(value, scale).length), 0);
   return Math.ceil(Math.max(minimum, longest * fontSize * 0.72 + 12));
 }
 
@@ -619,7 +625,7 @@ function barShape(x: number, top: number, width: number, height: number, positiv
  * Grouped vertical bars — one cluster per x slot, one bar per series. Signed
  * values dip below a shared zero line.
  *
- * Exact amounts do not sit inside the SVG. Those labels used to hang above
+ * Full-precision amounts do not sit inside the SVG. Those labels used to hang above
  * each bar on leader lines: passable for one month, but cramped at three and
  * unreadable under Dynamic Type. The plot now uses a rounded monetary ruler
  * for comparison, while short ranges get a real-text ledger directly below
@@ -645,8 +651,13 @@ export function Bars({
   const { min, max, ticks } = axis;
   const span = Math.max(axis.step, max - min);
   const axisFontSize = width >= 480 ? 11 : 10;
+  const axisScale = chartAxisScale([
+    ...groups.flatMap((group) => group.values),
+    ...ticks,
+    ...axis.valueTicks,
+  ]);
   const pad = {
-    left: barAxisLabelGutter([...ticks, ...axis.valueTicks], axisFontSize, width >= 480 ? 64 : 58),
+    left: chartAxisLabelGutter([...ticks, ...axis.valueTicks], axisFontSize, width >= 480 ? 64 : 58, axisScale),
     right: 10,
     top: 14,
     bottom: 28,
@@ -673,7 +684,7 @@ export function Bars({
   // tick only when it clears every label already placed. Filtering the ruler
   // against the real figures alone was not enough: nothing stopped two rungs —
   // or zero and a small negative extreme — from landing within a few pixels of
-  // each other on a short chart, which is exactly the "-7 B sitting on top of
+  // each other on a short chart, which is exactly the "-7 Mr sitting on top of
   // 0" the owner reported. The rules are still drawn for every tick; only the
   // text yields, and the real figures never do.
   const placed: number[] = [];
@@ -688,10 +699,6 @@ export function Bars({
     0,
   );
   const showValueLedger = groups.length <= 3 && visibleValueCount <= 9;
-  // Each group owns a share of the frame, minus its own padding and the colour
-  // rule beside every figure.
-  const ledgerColumnWidth = groups.length > 0 ? width / groups.length - spacing.sm * 2 - 10 : 0;
-  const compactLedgerValues = shouldCompactAmount(ledgerColumnWidth);
   const chartSummary = tr.a11y.barChart(groups.map((group) => {
     const groupValues = group.values.map((value, index) =>
       `${series[index]?.label ?? index + 1}: ${formatMinorCompact(value ?? 0)}`,
@@ -746,7 +753,7 @@ export function Bars({
                   fill={palette.textSecondary}
                   textAnchor="end"
                 >
-                  {formatChartAxis(value)}
+                  {formatChartAxis(value, axisScale)}
                 </SvgText>
               ) : null}
             </React.Fragment>
@@ -775,7 +782,7 @@ export function Bars({
                 fill={palette.text}
                 textAnchor="end"
               >
-                {formatChartAxis(value)}
+                {formatChartAxis(value, axisScale)}
               </SvgText>
             </React.Fragment>
           ))}
@@ -874,23 +881,13 @@ export function Bars({
                         <Text style={[type.small, { color: palette.textSecondary }]}>
                           {item?.label ?? seriesIndex + 1}
                         </Text>
-                        {/* Reserved, so a figure that shrank to fit its column
-                            still occupies a full line. Without it the three
-                            totals under a filtered month ended at three
-                            slightly different heights — the smaller the figure
-                            the higher it sat. */}
-                        {/* The one money primitive, not a bespoke `Text`.
-                            It owns both answers to a figure that will not fit:
-                            abbreviate to ₺868,9 B when the column is narrow,
-                            and walk down the size ladder if the exact figure
-                            still wraps. Written by hand here, a three-column
-                            month with kuruş broke onto a second line on a
-                            phone. */}
+                        {/* The one money primitive owns the shared compact unit
+                            and the size ladder; the chart does not choose a
+                            second format for its value ledger. */}
                         <View style={{ minHeight: Math.round(type.amount.fontSize * 1.4), justifyContent: "flex-end" }}>
                         <Amount
                           testID="bar-value-label"
                           minor={value}
-                          compact={compactLedgerValues}
                           colorized={false}
                           color={palette.text}
                           style={{ textAlign: groups.length === 1 ? "left" : "center" }}

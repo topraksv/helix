@@ -22,6 +22,7 @@ import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { addDaysISO, addMonthsToKey, clampDayToMonth, daysBetweenISO, isISODate, isMonthDay, monthKeyOf, monthOf, todayISO, yearOf, type ISODate } from "../../../domain/dates";
+import { formatMinorInput } from "../../../domain/money";
 import { DateField } from "../../../ui/calendar";
 import { MonthDayField } from "../../../ui/month-day-field";
 import { appAlert } from "../../../ui/dialog";
@@ -143,7 +144,7 @@ export default function IncomeRulesScreen() {
   const effectiveName = nameTouched && name.trim() !== "" ? name : tr.incomeKinds[kind];
   const editingIncome = editingId ? incomes.find((income) => income.id === editingId) : null;
   const editingAmountRaw = editingIncome
-    ? (editingIncome.defaultAmountMinor / 100).toFixed(2).replace(".", ",")
+    ? formatMinorInput(editingIncome.defaultAmountMinor)
     : "";
   const incomeDraftDirty = editingIncome
     ? kind !== editingIncome.kind ||
@@ -202,7 +203,7 @@ export default function IncomeRulesScreen() {
       setKind(r.kind as IncomeKind);
       setName(r.name);
       setNameTouched(true);
-      setAmountRaw((r.defaultAmountMinor / 100).toFixed(2).replace(".", ","));
+      setAmountRaw(formatMinorInput(r.defaultAmountMinor));
       setAmountMinor(r.defaultAmountMinor);
       setPayDayStr(String(r.payDay));
       setRecurrence(r.recurrence);

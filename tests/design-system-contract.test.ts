@@ -7,10 +7,13 @@ import {
   controlSize,
   elevation,
   font,
+  actionTile,
+  actionTileMetrics,
   iconSize,
   layer,
   motion,
   radius,
+  spacing,
   stateOpacity,
   staggerDelay,
   toggleSize,
@@ -64,6 +67,16 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe("design-system metric contracts", () => {
+  it("keeps displayed money on the shared compact formatter", () => {
+    const displaySources = [...sourceFiles("src/app"), ...sourceFiles("src/ui"), ...sourceFiles("src/services")];
+    const offenders = displaySources.filter((path) => /\bformatMinor\s*\(/.test(readFileSync(join(root, path), "utf8")));
+    expect(offenders).toEqual([]);
+    const localInputFormatters = displaySources
+      .filter((path) => path !== "src/services/export-import.ts")
+      .filter((path) => /\.toFixed\(\s*2\s*\)/.test(readFileSync(join(root, path), "utf8")));
+    expect(localInputFormatters).toEqual([]);
+  });
+
   it("removes modal transitions when the operating system requests reduced motion", () => {
     expect(modalAnimationType(true)).toBe("none");
     expect(modalAnimationType(false)).toBe("fade");
@@ -87,6 +100,22 @@ describe("design-system metric contracts", () => {
     // `selected` replaces the `selected ? 2 : 1` written into five screens and
     // the `selected ? 1.5 : hairline` written into two more.
     expect(borderWidth).toEqual({ control: 1.5, toggle: 1, selected: 2 });
+  });
+
+  it("derives dense action rails from the shared type and spacing scale", () => {
+    const wide = actionTileMetrics(false);
+    const narrow = actionTileMetrics(true);
+    expect(actionTile.padding).toBe(spacing.sm);
+    expect(actionTile.gap).toBe(spacing.xs);
+    expect(wide.height).toBeGreaterThan(0);
+    expect(narrow.height).toBeGreaterThan(wide.height);
+    expect(wide.height).toBe(
+      actionTile.padding * 2
+        + actionTile.iconSize
+        + actionTile.gap * 2
+        + wide.labelHeight
+        + wide.captionHeight,
+    );
   });
 
   it("preserves exact geometry while replacing historical arithmetic aliases", () => {
@@ -767,6 +796,17 @@ describe("every animation obeys the same three rules", () => {
       }
     }
     expect(offenders, "layout and colour cannot use the native driver").toEqual([]);
+  });
+
+  it("keeps the native forecast collapse on the compositor path", () => {
+    const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
+    const nativeCollapse = motionPrimitives.slice(
+      motionPrimitives.indexOf("function NativeCollapse("),
+      motionPrimitives.indexOf("/**\n * A confirmation that lands", motionPrimitives.indexOf("function NativeCollapse(")),
+    );
+    expect(nativeCollapse).toContain("useNativeDriver: true");
+    expect(nativeCollapse).not.toMatch(/\bheight\s*:/);
+    expect(nativeCollapse).toContain("spacing.xs");
   });
 
   it("takes every duration from the shared families", () => {

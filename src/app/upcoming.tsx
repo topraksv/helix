@@ -16,7 +16,7 @@ import {
 import { combineLiveQueryStatus } from "../data/live-state";
 import { monthKeyOf, todayISO } from "../domain/dates";
 import { buildUpcomingTimeline, type UpcomingTimelineItem } from "../domain/upcoming";
-import { formatMinor } from "../domain/money";
+import { formatMinorCompact } from "../domain/money";
 import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
 import { useSyncStatus } from "../sync/status";
 import { Amount, Badge, Body, Card, DataStateNotice, EmptyState, ListRow, Row, Screen, SectionHeader } from "../ui/components";
@@ -143,10 +143,9 @@ export default function UpcomingScreen() {
                     <Amount
                       minor={item.amountMinor}
                       currency={item.currency}
-                      compact
                       colorized={false}
                       color={item.status === "late" ? palette.errorText : palette.text}
-                      accessibilityLabel={formatMinor(item.amountMinor, item.currency)}
+                      accessibilityLabel={formatMinorCompact(item.amountMinor, item.currency)}
                       style={[type.amountSm, { textAlign: "right" }]}
                     />
                     <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />

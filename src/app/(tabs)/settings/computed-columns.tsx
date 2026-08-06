@@ -26,7 +26,7 @@ import { creditCardSplit } from "../../../domain/analytics";
 import { monthColumnBasis } from "../../../domain/balance";
 import { evaluateComputedColumn, parseDefinition, type ComputedColumnDefinition } from "../../../domain/computed-columns";
 import { monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
@@ -73,7 +73,7 @@ function CalculationFlow({
       testID="calculation-flow"
       accessible
       accessibilityRole="image"
-      accessibilityLabel={tr.computed.flowA11y(inputCount, tr.computed.ops[op].title, formatMinor(result))}
+      accessibilityLabel={tr.computed.flowA11y(inputCount, tr.computed.ops[op].title, formatMinorCompact(result))}
       style={{ marginBottom: spacing.lg }}
     >
       <View style={{ flexDirection: "row", alignItems: "center" }}>

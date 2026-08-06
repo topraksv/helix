@@ -58,7 +58,7 @@ import { OperationCancelledError, useTrackedOperation, type TrackedOperationCont
 import { circle, font, PALETTES, radius, spacing, type, type Palette, type ThemePreference, useTheme } from "../../../ui/theme";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { todayISO } from "../../../domain/dates";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { readPickedText } from "../../../services/picked-file";
 import { DelayedLoadingIndicator } from "../../../ui/loading-indicator";
 import { OperationFlow } from "../../../ui/operation-flow";
@@ -556,7 +556,7 @@ export default function SettingsScreen() {
               onPress={() => {
                 selectionTapIfChanged(themePref, value);
                 setThemePref(value);
-                setGlobalThemePreference(value);
+                setGlobalThemePreference(value, palette.background);
               }}
             />
           ))}
@@ -582,7 +582,7 @@ export default function SettingsScreen() {
               stacked={!shouldPairFilterCards(contentWidth)}
               onPress={() => {
                 selectionTapIfChanged(paletteId, id);
-                setGlobalPalettePreference(id);
+                setGlobalPalettePreference(id, palette.background);
               }}
             />
           ))}
@@ -708,7 +708,7 @@ export default function SettingsScreen() {
                   </Body>
                   <Body muted style={{ fontSize: type.small.fontSize }}>
                     {notificationDetails
-                      ? tr.notif.upcoming(tr.settings.notificationSampleName, dateLabel(todayISO()), formatMinor(29_90))
+                      ? tr.notif.upcoming(tr.settings.notificationSampleName, dateLabel(todayISO()), formatMinorCompact(29_90))
                       : tr.notif.privateBody}
                   </Body>
                 </View>

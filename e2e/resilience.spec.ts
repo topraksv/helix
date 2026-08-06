@@ -179,7 +179,18 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
   await addMarketExpense(page, "Aylık grafik", "820,00");
 
   await page.getByRole("tab", { name: "Durum" }).click();
-  await expect(page.getByRole("button", { name: /Ay sonu tahmini/ })).toBeVisible();
+  const forecastToggle = page.getByRole("button", { name: /Ay sonu tahmini/ }).first();
+  await expect(forecastToggle).toBeVisible();
+  const forecastDetails = page.getByText("Ay sonunda tahmini", { exact: true });
+  await expect(forecastDetails).toHaveCount(0);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await forecastToggle.click();
+    await expect(forecastDetails).toBeVisible();
+    await forecastToggle.click();
+    await expect(forecastDetails).toHaveCount(0);
+  }
+  await forecastToggle.click();
+  await expect(forecastDetails).toBeVisible();
   await expect(page.getByRole("img", { name: /Halka grafik/ })).toBeVisible();
   await page.getByRole("radio", { name: "Sütun", exact: true }).click();
   await expect(page.getByRole("img", { name: /Sütun grafik/ })).toBeVisible();

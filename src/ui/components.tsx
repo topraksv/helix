@@ -41,8 +41,8 @@ import {
   useLedeAlignment,
 } from "./primitives";
 import { circle, contentWidth, density, font, heroSurface, iconSize, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
-import { shouldCompactAmount, shouldStackListActions, shouldUseWideGutter } from "./responsive";
-import { useContentWidth, useMeasuredWidth, useNavigationSpace } from "./viewport";
+import { shouldStackListActions, shouldUseWideGutter } from "./responsive";
+import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 
 export {
@@ -338,9 +338,9 @@ export function HeroCard({ children, style, onLayout }: { children: ReactNode; s
  *
  * It used to give each column a 112px basis and let the row wrap, so on a phone
  * "Gelir" and "Çıkış" sat on one line and "Net değişim" dropped to a second —
- * three peers reading as two-then-one. They share the row now, and a column too
- * narrow for a full figure asks its value to render compactly (₺1,2 M) rather
- * than shrinking the type until it cannot be read.
+ * three peers reading as two-then-one. They share the row now, and every money
+ * value uses the global compact formatter once it reaches the large-number
+ * threshold, rather than asking each strip to decide its own unit.
  */
 export function MetricStrip({
   items,
@@ -353,14 +353,12 @@ export function MetricStrip({
    * `value` used to be `ReactNode | ((compact: boolean) => ReactNode)`, so
    * every call site had to know which of the two forms it was writing and six
    * of the nine picked the function only to forward one boolean. A metric is
-   * either an amount — which the strip abbreviates itself when the column is
-   * too narrow for the exact figure — or something that is not money, which is
-   * given as a node and left alone.
+   * either an amount — which the shared `Amount` primitive formats and fits —
+   * or something that is not money, which is given as a node and left alone.
    */
   items: {
     label: string;
-    /** Money. Rendered as an `Amount` that compacts itself when the column is
-     *  narrower than the widest exact figure these strips carry. */
+    /** Money. Rendered through the shared `Amount` display policy. */
     minor?: number;
     /** Colour for the figure; defaults to the app's neutral ink. */
     color?: string;
@@ -371,15 +369,9 @@ export function MetricStrip({
   testID?: string;
 }) {
   const { palette } = useTheme();
-  const [stripWidth, onStripLayout] = useMeasuredWidth(0);
-  // Measured, because the column is what has to hold the figure — not the
-  // window, which says nothing about how many columns share this card.
-  const columnWidth = stripWidth > 0 ? stripWidth / Math.max(items.length, 1) : 0;
-  const compactValues = shouldCompactAmount(columnWidth);
   return (
     <View
       testID={testID}
-      onLayout={onStripLayout}
       style={[
         {
           flexDirection: "row",
@@ -420,7 +412,6 @@ export function MetricStrip({
             {item.minor != null ? (
               <Amount
                 minor={item.minor}
-                compact={compactValues}
                 colorized={false}
                 color={item.color ?? palette.textStrong}
                 style={{ textAlign: "left" }}

@@ -23,7 +23,7 @@ import {
 } from "../../../data/hooks";
 import { combineLiveQueryStatus } from "../../../data/live-state";
 import { installmentDisplayTitle } from "../../../domain/installments";
-import { formatMinor } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { categoryIcon } from "../../../data/category-icons";
@@ -155,9 +155,9 @@ function MonthFlowSummary({
         accessible
         accessibilityRole="image"
         accessibilityLabel={[
-          `${tr.cashflow.opening}: ${formatMinor(flows.openingMinor)}`,
-          ...deltas.map((delta) => `${delta.label}: ${formatMinor(delta.minor)}`),
-          `${tr.cashflow.closing}: ${formatMinor(flows.closingMinor)}`,
+          `${tr.cashflow.opening}: ${formatMinorCompact(flows.openingMinor)}`,
+          ...deltas.map((delta) => `${delta.label}: ${formatMinorCompact(delta.minor)}`),
+          `${tr.cashflow.closing}: ${formatMinorCompact(flows.closingMinor)}`,
         ].join(". ")}
       >
         <View>
@@ -172,11 +172,11 @@ function MonthFlowSummary({
           </View>
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, marginTop: spacing.xs }}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Amount testID="month-opening-amount" minor={flows.openingMinor} large compact colorized={false} style={{ maxWidth: "100%", textAlign: "left" }} />
+              <Amount testID="month-opening-amount" minor={flows.openingMinor} large colorized={false} style={{ maxWidth: "100%", textAlign: "left" }} />
             </View>
             <BalanceBridge token={`${flows.openingMinor}|${flows.closingMinor}`} deltaMinor={flows.closingMinor - flows.openingMinor} />
             <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
-              <Amount testID="month-closing-amount" minor={flows.closingMinor} large compact style={{ maxWidth: "100%", textAlign: "right" }} />
+              <Amount testID="month-closing-amount" minor={flows.closingMinor} large style={{ maxWidth: "100%", textAlign: "right" }} />
             </View>
           </View>
         </View>
@@ -333,7 +333,7 @@ export default function MonthDetailScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ expanded: open }}
-              accessibilityLabel={tr.a11y.categorySummary(title, formatMinor(selfSum), Boolean(note))}
+              accessibilityLabel={tr.a11y.categorySummary(title, formatMinorCompact(selfSum), Boolean(note))}
               onPress={() => {
                 selectionTapIfChanged(expanded, open ? "" : categoryId);
                 setExpanded(open ? null : categoryId);

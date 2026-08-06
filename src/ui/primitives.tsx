@@ -31,7 +31,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { ChevronDown, type LucideIcon } from "lucide-react-native";
-import { formatMinor, formatMinorCompact } from "../domain/money";
+import { formatMinorCompact } from "../domain/money";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 import { initialsBadgeColor } from "./badge-color";
 import { haptic, type HapticKind } from "./haptics";
@@ -287,8 +287,6 @@ interface AmountProps {
   hero?: boolean;
   colorized?: boolean;
   color?: string;
-  /** Render as ₺1,2 M when the column cannot hold the exact figure. */
-  compact?: boolean;
   /**
    * Count to its value instead of appearing at it, on every arrival.
    *
@@ -327,7 +325,6 @@ function Figure({
   hero,
   colorized = true,
   color,
-  compact = false,
   accessibilityLabel,
   style,
   testID,
@@ -337,8 +334,8 @@ function Figure({
   const { width, fontScale } = useWindowDimensions();
   const shown = shownMinor ?? minor;
   const resolved = color ?? (colorized && minor < 0 ? palette.negativeText : palette.text);
-  const formatted = compact ? formatMinorCompact(shown, currency) : formatMinor(shown, currency);
-  const settled = compact ? formatMinorCompact(minor, currency) : formatMinor(minor, currency);
+  const formatted = formatMinorCompact(shown, currency);
+  const settled = formatMinorCompact(minor, currency);
   const scale: AmountScale = hero ? "hero" : large ? "large" : "regular";
   const requestedFontSize = StyleSheet.flatten(style)?.fontSize;
   const initialSize = typeof requestedFontSize === "number"
@@ -349,33 +346,50 @@ function Figure({
   const fitKey = `${settled}|${scale}|${width}|${fontScale}|${initialSize}`;
   const [fit, setFit] = useState({ key: fitKey, size: initialSize });
   const fittedSize = fit.key === fitKey ? fit.size : initialSize;
+  const textRef = useRef<Text>(null);
+  const availableWidth = useRef(0);
+  const intrinsicWidth = useRef(0);
+  const shouldProbeOverflow = scale !== "regular" || formatted.length > 10;
   const shrinkToNextStep = () => {
     const next = nextAmountFontSize(scale, fittedSize);
     if (next !== fittedSize) setFit({ key: fitKey, size: next });
   };
-  // A plain ASCII minus is a legal line-break opportunity on several text
-  // engines. Keep the sign glued to the currency glyph while leaving the
-  // spoken/accessibility value untouched.
-  const rendered = formatted.startsWith("-") ? `-\u2060${formatted.slice(1)}` : formatted;
+  useEffect(() => {
+    if (Platform.OS !== "web" || !shouldProbeOverflow) return;
+    const webNode = textRef.current as unknown as { scrollWidth?: number; clientWidth?: number } | null;
+    if ((webNode?.scrollWidth ?? 0) <= (webNode?.clientWidth ?? 0) + 1) return;
+    const next = nextAmountFontSize(scale, fittedSize);
+    if (next !== fittedSize) setFit({ key: fitKey, size: next });
+  }, [fitKey, fittedSize, formatted, scale, shouldProbeOverflow]);
   return (
     <Text
+      ref={textRef}
       testID={testID}
       selectable
       accessibilityLabel={accessibilityLabel ?? settled}
       onTextLayout={(event) => {
-        if (event.nativeEvent.lines.length <= 1) return;
+        const widestLine = Math.max(...event.nativeEvent.lines.map((line) => line.width), 0);
+        intrinsicWidth.current = widestLine;
+        if (
+          event.nativeEvent.lines.length <= 1
+          && (availableWidth.current <= 0 || widestLine <= availableWidth.current + 1)
+        ) return;
         shrinkToNextStep();
       }}
       onLayout={(event) => {
-        // RN Web does not consistently dispatch onTextLayout. A wrapped value
-        // is taller than one derived line box, so the platform-neutral layout
-        // event provides the same fit signal without clipping or font caps.
+        // RN Web does not consistently dispatch onTextLayout. The DOM overflow
+        // probe below catches a nowrap value whose glyphs are wider than its
+        // flexed box; native still uses the line width and height signals.
+        const layout = event.nativeEvent.layout;
+        availableWidth.current = layout.width;
+        const webNode = textRef.current as unknown as { scrollWidth?: number } | null;
+        if (typeof webNode?.scrollWidth === "number") intrinsicWidth.current = webNode.scrollWidth;
         const singleLineBudget = fittedSize * fontScale * 1.7;
-        if (event.nativeEvent.layout.height > singleLineBudget) shrinkToNextStep();
+        if (layout.height > singleLineBudget || (shouldProbeOverflow && intrinsicWidth.current > layout.width + 1)) shrinkToNextStep();
       }}
       style={[
         large || hero ? type.amountLg : type.amount,
-        { color: resolved, flexShrink: 1, minWidth: 0, maxWidth: "100%", textAlign: "right" },
+        { color: resolved, ...(large || hero ? { alignSelf: "stretch" as const } : null), flexShrink: 1, minWidth: 0, maxWidth: "100%", textAlign: "right" },
         style,
         // A caller may request a smaller starting role, but never gets to
         // override a measured fit on the final style layer. That override was
@@ -389,7 +403,7 @@ function Figure({
         },
       ]}
     >
-      {rendered}
+      {formatted}
     </Text>
   );
 }

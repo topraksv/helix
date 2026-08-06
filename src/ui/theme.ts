@@ -625,6 +625,44 @@ export const type = {
 };
 
 /**
+ * The dense action tile used by equal-width action rails.
+ *
+ * The rail has one row for an icon, one for its title and one for its
+ * explanation. Its height therefore belongs to the same token contract as
+ * the spacing and type it contains; a screen must not guess a pixel height
+ * when a Turkish title wraps on a narrow column.
+ */
+export const actionTile = {
+  padding: spacing.sm,
+  gap: spacing.xs,
+  iconSize: controlSize.compact,
+  lineBox: type.micro.fontSize * 1.2,
+  lines: {
+    wide: { label: 1, caption: 1 },
+    compact: { label: 3, caption: 2 },
+  },
+} as const;
+
+export function actionTileMetrics(compact: boolean) {
+  const lines = compact ? actionTile.lines.compact : actionTile.lines.wide;
+  const labelHeight = actionTile.lineBox * lines.label;
+  const captionHeight = actionTile.lineBox * lines.caption;
+  return {
+    padding: actionTile.padding,
+    gap: actionTile.gap,
+    iconSize: actionTile.iconSize,
+    lineBox: actionTile.lineBox,
+    labelHeight,
+    captionHeight,
+    height: actionTile.padding * 2
+      + actionTile.iconSize
+      + actionTile.gap * 2
+      + labelHeight
+      + captionHeight,
+  } as const;
+}
+
+/**
  * Shadows take the live palette, always.
  *
  * There used to be `cardShadow` / `overlayShadow` / `toggleThumbShadow` /

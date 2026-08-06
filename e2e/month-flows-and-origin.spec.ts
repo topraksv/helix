@@ -120,7 +120,11 @@ test("a large cell total stays inside its row after a narrow resize", async ({ p
   await expect(page.getByTestId("cell-total-row")).toBeVisible();
 
   await page.setViewportSize({ width: 320, height: 844 });
-  const geometry = await page.getByTestId("cell-total-row").evaluate((row) => {
+  const row = page.getByTestId("cell-total-row");
+  // A viewport resize commits through the browser's layout observer. Wait for
+  // the shared amount fit pass to settle before reading the real geometry.
+  await expect.poll(() => row.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  const geometry = await row.evaluate((row) => {
     const amount = row.querySelector<HTMLElement>('[data-testid="cell-total-amount"]');
     if (!amount) throw new Error("Missing cell total amount");
     const rowBox = row.getBoundingClientRect();
@@ -144,7 +148,7 @@ test("a large cell total stays inside its row after a narrow resize", async ({ p
   expect(geometry.amountRight).toBeLessThanOrEqual(geometry.rowRight + 1);
   expect(geometry.amountTop).toBeGreaterThanOrEqual(geometry.rowTop - 1);
   expect(geometry.amountBottom).toBeLessThanOrEqual(geometry.rowBottom + 1);
-  expect(geometry.ariaLabel).toBe("-₺987.654.321,00");
+  expect(geometry.ariaLabel).toMatch(/^-.*₺987\.654\s+Mn$/u);
 });
 
 test("the transfer classification appears once, in the row being edited", async ({ page }) => {

@@ -158,7 +158,9 @@ export default function AnalysisScreen() {
               monthName(mk),
               String(yearOf(transaction.effectiveDate)),
               String(Math.round(transaction.amountTryMinor / 100)),
-              (transaction.amountTryMinor / 100).toFixed(2).replace(".", ","),
+              // The plain major number is a non-rendered search token; every
+              // spoken or painted amount below uses the shared formatter.
+              formatMinorCompact(transaction.amountTryMinor),
             ].join(" "),
           };
         }),
@@ -402,10 +404,10 @@ export default function AnalysisScreen() {
       </View>
       <MetricStrip
         style={{ marginBottom: spacing.lg }}
-        // A year of a real ledger runs to hundreds of thousands, and three of
-        // those figures across one row wrapped the last one onto a second line.
-        // The strip measures its own column and asks for ₺868,9 B when the exact
-        // figure will not fit, so each total keeps its own line.
+        // A year of a real ledger can reach the compact scale, and three of
+        // those figures across one row must still share the same display rule.
+        // The Amount primitive owns the fit ladder, so each total keeps its own
+        // line without a screen-specific unit decision.
         items={[
           { label: tr.cashflow.income, minor: periodDistribution.incomeTotalMinor, color: palette.positiveText },
           { label: tr.cashflow.expense, minor: -periodDistribution.expenseTotalMinor, color: palette.negativeText },
@@ -642,7 +644,6 @@ export default function AnalysisScreen() {
                     <Amount
                       key={m}
                       minor={v}
-                      compact
                       colorized={false}
                       color={v === 0 ? palette.textSecondary : palette.text}
                       style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13, fontVariant: ["tabular-nums"] }]}
@@ -652,7 +653,6 @@ export default function AnalysisScreen() {
                 <Amount
                   key="__total"
                   minor={data.ytdMinor}
-                  compact
                   colorized={false}
                   color={palette.text}
                   style={[type.amountSm, { textAlign: "right", paddingHorizontal: spacing.md, fontSize: compact ? 12 : 13 }]}

@@ -32,7 +32,7 @@ import {
   type InvestmentAssetType,
 } from "../../../domain/investments";
 import { projectInvestmentState } from "../../../domain/investment-projection";
-import { formatMinor, formatMinorCompact } from "../../../domain/money";
+import { formatMinorCompact } from "../../../domain/money";
 import { todayISO } from "../../../domain/dates";
 import { tr } from "../../../i18n/tr";
 import {
@@ -54,7 +54,7 @@ import {
 } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
 import { useDrawIn } from "../../../ui/motion-primitives";
-import { circle, density, font, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { actionTileMetrics, circle, density, font, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useContentWidth, useMeasuredWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
 import { appAlert, appConfirm } from "../../../ui/dialog";
@@ -116,13 +116,11 @@ function TransferMetric({
   direction,
   label,
   minor,
-  compact,
   stacked = false,
 }: {
   direction: "in" | "out";
   label: string;
   minor: number;
-  compact: boolean;
   stacked?: boolean;
 }) {
   const { palette } = useTheme();
@@ -149,10 +147,9 @@ function TransferMetric({
         <Text style={[type.small, { color: palette.textSecondary }]}>{label}</Text>
         <Amount
           minor={minor}
-          compact={compact}
           colorized={false}
           color={minor === 0 ? palette.textSecondary : direction === "in" ? palette.positiveText : palette.text}
-          accessibilityLabel={`${label}: ${formatMinor(minor)}`}
+          accessibilityLabel={`${label}: ${formatMinorCompact(minor)}`}
           // Zero is not a gain. The inbound metric was painted green whatever
           // it held, so a wallet that had never received a transfer still
           // reported "₺0,00" in the colour this app reserves for money coming
@@ -185,7 +182,7 @@ function AllocationStrip({
       ];
   const summary = ordered.length === 0
     ? `${tr.investments.distribution}. ${tr.investments.distributionEmpty}`
-    : `${tr.investments.distribution}. ${ordered.map((slice) => `${slice.label}: ${formatMinor(slice.valueMinor)}`).join(", ")}.`;
+    : `${tr.investments.distribution}. ${ordered.map((slice) => `${slice.label}: ${formatMinorCompact(slice.valueMinor)}`).join(", ")}.`;
   const draw = useDrawIn(true, motion.draw, visible.map((slice) => `${slice.label}:${slice.valueMinor}`).join("|"));
   return (
     <View
@@ -256,6 +253,7 @@ function InvestmentQuickAction({
   label,
   caption,
   tone,
+  compact,
   disabled = false,
   onPress,
 }: {
@@ -264,10 +262,12 @@ function InvestmentQuickAction({
   /** What the action does to the money, in three words. */
   caption: string;
   tone: "primary" | "secondary" | "quiet";
+  compact: boolean;
   disabled?: boolean;
   onPress: () => void;
 }) {
   const { palette } = useTheme();
+  const metrics = actionTileMetrics(compact);
   const foreground = tone === "primary"
     ? palette.primaryText
     : tone === "secondary"
@@ -289,7 +289,9 @@ function InvestmentQuickAction({
         flex: 1,
         minWidth: 0,
         alignItems: "center",
-        height: 82,
+        height: metrics.height,
+        padding: metrics.padding,
+        gap: metrics.gap,
         justifyContent: "flex-start",
         borderRadius: radius.md,
         backgroundColor: pressed ? palette.surfaceHover : "transparent",
@@ -301,8 +303,8 @@ function InvestmentQuickAction({
         testID="investment-action-icon"
         accessible={false}
         style={{
-          width: 30,
-          height: 30,
+          width: metrics.iconSize,
+          height: metrics.iconSize,
           flexShrink: 0,
           borderRadius: radius.full,
           alignItems: "center",
@@ -310,24 +312,24 @@ function InvestmentQuickAction({
           backgroundColor: iconBackground,
         }}
       >
-        <Icon accessible={false} size={15} color={foreground} strokeWidth={2.2} />
+        <Icon accessible={false} size={iconSize.compact} color={foreground} strokeWidth={2.2} />
       </View>
       <View
         testID="investment-action-label"
-        style={{ width: "100%", height: 26, alignItems: "center", justifyContent: "flex-start" }}
+        style={{ width: "100%", height: metrics.labelHeight, alignItems: "center", justifyContent: "flex-start" }}
       >
         <Text
-          style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: type.micro.fontSize, lineHeight: 12, textAlign: "center", fontFamily: font.semibold }]}
+          style={[type.micro, { color: disabled ? palette.textMuted : palette.text, lineHeight: metrics.lineBox, textAlign: "center", fontFamily: font.semibold }]}
         >
           {label}
         </Text>
       </View>
       <View
         testID="investment-action-caption"
-        style={{ width: "100%", height: 26, alignItems: "center", justifyContent: "flex-start" }}
+        style={{ width: "100%", height: metrics.captionHeight, alignItems: "center", justifyContent: "flex-start" }}
       >
         <Text
-          style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize, lineHeight: 13, textAlign: "center" }]}
+          style={[type.micro, { color: palette.textSecondary, lineHeight: metrics.lineBox, textAlign: "center" }]}
         >
           {caption}
         </Text>
@@ -494,11 +496,10 @@ export default function InvestmentsScreen() {
         <Amount
           minor={state.cashMinor}
           large
-          compact
           count
           colorized={false}
           testID="investment-cash-amount"
-          accessibilityLabel={`${tr.investments.cash}: ${formatMinor(state.cashMinor)}`}
+          accessibilityLabel={`${tr.investments.cash}: ${formatMinorCompact(state.cashMinor)}`}
           style={{ color: palette.textStrong, textAlign: "left", marginTop: spacing.sm }}
         />
       ) : (
@@ -508,13 +509,13 @@ export default function InvestmentsScreen() {
             large
             count
             colorized={false}
-            accessibilityLabel={`${tr.investments.cash}: ${formatMinor(state.cashMinor)}`}
+            accessibilityLabel={`${tr.investments.cash}: ${formatMinorCompact(state.cashMinor)}`}
             style={{ fontSize: heroBox >= 700 ? type.amountLg.fontSize : type.amountMd.fontSize, textAlign: "left", marginTop: spacing.sm }}
           />
         </View>
       )}
       <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.xs }]}>
-        {tr.investments.portfolioTotal}: {compact ? formatMinorCompact(totalCapital) : formatMinor(totalCapital)}
+        {tr.investments.portfolioTotal}: {formatMinorCompact(totalCapital)}
       </Text>
     </View>
   );
@@ -542,8 +543,8 @@ export default function InvestmentsScreen() {
         backgroundColor: palette.surfaceAlt,
       }}
     >
-      <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} compact={compact} stacked={!compact} />
-      <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} compact={compact} stacked={!compact} />
+      <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} stacked={!compact} />
+      <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} stacked={!compact} />
     </View>
   );
   const portfolioMetrics = (
@@ -627,10 +628,10 @@ export default function InvestmentsScreen() {
           marginBottom: spacing.lg,
         }}
       >
-        <InvestmentQuickAction icon={PackagePlus} tone="primary" label={tr.investments.addProduct} caption={tr.investments.addProductCaption} onPress={() => router.push("/investments/product")} />
-        <InvestmentQuickAction icon={ArrowDownToLine} tone="secondary" label={tr.investments.addExisting} caption={tr.investments.addExistingCaption} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "existing" } })} />
-        <InvestmentQuickAction icon={ArrowUpFromLine} tone="quiet" label={tr.investments.sell} caption={tr.investments.sellCaption} disabled={active.length === 0} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "sell" } })} />
-        <InvestmentQuickAction icon={WalletCards} tone="secondary" label={tr.investments.refundShort} caption={tr.investments.refundCaption} disabled={state.cashMinor <= 0} onPress={() => router.push({ pathname: "/transaction", params: { intent: "investment-refund" } })} />
+        <InvestmentQuickAction compact={compact} icon={PackagePlus} tone="primary" label={tr.investments.addProduct} caption={tr.investments.addProductCaption} onPress={() => router.push("/investments/product")} />
+        <InvestmentQuickAction compact={compact} icon={ArrowDownToLine} tone="secondary" label={tr.investments.addExisting} caption={tr.investments.addExistingCaption} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "existing" } })} />
+        <InvestmentQuickAction compact={compact} icon={ArrowUpFromLine} tone="quiet" label={tr.investments.sell} caption={tr.investments.sellCaption} disabled={active.length === 0} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "sell" } })} />
+        <InvestmentQuickAction compact={compact} icon={WalletCards} tone="secondary" label={tr.investments.refundShort} caption={tr.investments.refundCaption} disabled={state.cashMinor <= 0} onPress={() => router.push({ pathname: "/transaction", params: { intent: "investment-refund" } })} />
       </View>
 
       <SectionHeader>{tr.investments.activeProducts}</SectionHeader>
@@ -687,10 +688,9 @@ export default function InvestmentsScreen() {
                     ) : (
                       <Amount
                         minor={product.averageCostMinor}
-                        compact
                         colorized={false}
                         color={palette.text}
-                        accessibilityLabel={formatMinor(product.averageCostMinor)}
+                        accessibilityLabel={formatMinorCompact(product.averageCostMinor)}
                         style={[type.amountSm, { textAlign: "left" }]}
                       />
                     )}
@@ -702,10 +702,9 @@ export default function InvestmentsScreen() {
                     value={(
                       <Amount
                         minor={product.costMinor}
-                        compact
                         colorized={false}
                         color={palette.text}
-                        accessibilityLabel={formatMinor(product.costMinor)}
+                        accessibilityLabel={formatMinorCompact(product.costMinor)}
                         style={[type.amountSm, { textAlign: "left" }]}
                       />
                     )}
@@ -719,10 +718,9 @@ export default function InvestmentsScreen() {
                     ) : (
                       <Amount
                         minor={product.realizedProfitLossMinor}
-                        compact={compact}
                         colorized={false}
                         color={resultPositive ? palette.positiveText : palette.negativeText}
-                        accessibilityLabel={formatMinor(product.realizedProfitLossMinor)}
+                        accessibilityLabel={formatMinorCompact(product.realizedProfitLossMinor)}
                         style={[type.amountSm, { textAlign: "left" }]}
                       />
                     )}
@@ -772,10 +770,9 @@ export default function InvestmentsScreen() {
                     {compact ? (
                       <Amount
                         minor={operation.totalMinor}
-                        compact
                         colorized={false}
                         color={movementTone.text}
-                        accessibilityLabel={formatMinor(operation.totalMinor)}
+                        accessibilityLabel={formatMinorCompact(operation.totalMinor)}
                         style={[type.amountSm, { marginTop: 3, textAlign: "left" }]}
                       />
                     ) : null}
@@ -785,7 +782,7 @@ export default function InvestmentsScreen() {
                       minor={operation.totalMinor}
                       colorized={false}
                       color={movementTone.text}
-                      accessibilityLabel={formatMinor(operation.totalMinor)}
+                      accessibilityLabel={formatMinorCompact(operation.totalMinor)}
                       style={[type.amountSm, { fontSize: type.label.fontSize, textAlign: "right" }]}
                     />
                   ) : null}

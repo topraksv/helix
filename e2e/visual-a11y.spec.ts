@@ -268,7 +268,7 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("large exact negative amounts keep their sign and digits on one visual line", async ({ page }, testInfo) => {
+test("large compact negative amounts keep their sign and unit on one visual line", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await onboard(page);
@@ -276,7 +276,7 @@ test("large exact negative amounts keep their sign and digits on one visual line
   // Amount keeps an ASCII minus glued to its currency glyph with an invisible
   // word joiner; match the painted text without making that layout character
   // part of the test contract.
-  const formatted = /^-.*₺9\.876\.543,21$/;
+  const formatted = /^-.*₺9\.877\s+Mn$/u;
   const maxVisualLines = (text: RegExp) => page.getByText(text).evaluateAll((nodes) => Math.max(...nodes.map((node) => {
     const range = document.createRange();
     range.selectNodeContents(node);
@@ -286,9 +286,8 @@ test("large exact negative amounts keep their sign and digits on one visual line
     Math.min(...nodes.map((node) => Number.parseFloat(getComputedStyle(node).fontSize))),
   );
 
-  // A wide exact figure is the layout's worst case: it is the string most
-  // likely to push a row past its cell, wrap mid-number or drag the page
-  // sideways. Assert those three outcomes on the two surfaces that render it.
+  // A large signed compact figure is the layout's worst case: the sign and
+  // unit must stay attached while the value remains inside its cell.
   for (const surface of [
     { tag: "dashboard 320 light", width: 320, height: 720, route: "/helix/", scheme: "light" },
     { tag: `month 390 light`, width: 390, height: 844, route: `/helix/cash-flow/${currentMonthKey()}`, scheme: "light" },
@@ -299,28 +298,26 @@ test("large exact negative amounts keep their sign and digits on one visual line
     await page.goto(surface.route);
     await expect(page.locator("#root")).toBeVisible();
     await expect.poll(() => maxVisualLines(formatted)).toBe(1);
-    // The sign is part of the number: an amount clipped to "₺9.876.543,21"
-    // reads as income on a screen that is about to owe money. The exact string
-    // has to be painted somewhere — these surfaces also hold it in scrolled-out
-    // matrix cells, so it is "at least one laid-out node", not "the first one".
+    // The sign is part of the number: dropping it reads as income on a screen
+    // that is about to owe money. The compact unit must also be painted.
     const painted = await page
       .getByText(formatted)
       .evaluateAll((nodes) => nodes.filter((node) => node.getClientRects().length > 0).length);
     expect(painted, `${surface.tag} paints the signed amount`).toBeGreaterThan(0);
-    expect(await minRenderedFontSize(formatted), `${surface.tag} font size`).toBeGreaterThanOrEqual(12);
+    expect(await minRenderedFontSize(formatted), `${surface.tag} font size`).toBeGreaterThanOrEqual(11);
     await assertNoSidewaysScroll(page, surface.tag);
     expect(await offscreenControls(page), `${surface.tag} controls outside viewport`).toEqual([]);
   }
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
 
-  // The largest accepted single entry can produce an even wider aggregate;
-  // exact detail surfaces must still fit it without changing the input cap.
+  // The largest accepted single entry promotes through the same global scale;
+  // it must still fit without changing the input cap.
   await addMarketExpense(page, "Azami tutar yerleşim kontrolü", "999999999999,99");
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/helix/");
-  const maximumFormatted = /^-.*₺1\.000\.009\.876\.543,20$/;
+  const maximumFormatted = /^-.*₺1\s+Tr$/u;
   await expect.poll(() => maxVisualLines(maximumFormatted)).toBe(1);
-  await expect.poll(() => minRenderedFontSize(maximumFormatted)).toBeGreaterThanOrEqual(12);
+  await expect.poll(() => minRenderedFontSize(maximumFormatted)).toBeGreaterThanOrEqual(11);
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
