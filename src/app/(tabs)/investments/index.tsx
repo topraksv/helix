@@ -289,13 +289,8 @@ function InvestmentQuickAction({
         flex: 1,
         minWidth: 0,
         alignItems: "center",
-        // Top, not centre. Four of these share a row and their captions are
-        // two, three or four words: centring each tile's own column put the
-        // mark of a tile whose caption wrapped higher than the mark beside it,
-        // so the row of marks stepped up and down. Anchored to the top they
-        // line up, and the captions still centre on their own axis.
+        height: 82,
         justifyContent: "flex-start",
-        gap: 5,
         borderRadius: radius.md,
         backgroundColor: pressed ? palette.surfaceHover : "transparent",
         opacity: disabled ? 0.45 : 1,
@@ -317,14 +312,20 @@ function InvestmentQuickAction({
       >
         <Icon accessible={false} size={15} color={foreground} strokeWidth={2.2} />
       </View>
-      <View testID="investment-action-label" style={{ width: "100%", minHeight: 36, justifyContent: "flex-start" }}>
+      <View
+        testID="investment-action-label"
+        style={{ width: "100%", height: 26, alignItems: "center", justifyContent: "flex-start" }}
+      >
         <Text
           style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: type.micro.fontSize, lineHeight: 12, textAlign: "center", fontFamily: font.semibold }]}
         >
           {label}
         </Text>
       </View>
-      <View testID="investment-action-caption" style={{ width: "100%", minHeight: 26, justifyContent: "flex-start" }}>
+      <View
+        testID="investment-action-caption"
+        style={{ width: "100%", height: 26, alignItems: "center", justifyContent: "flex-start" }}
+      >
         <Text
           style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize, lineHeight: 13, textAlign: "center" }]}
         >

@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { Animated, FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowDownRight, ArrowRightLeft, ArrowUpRight, Inbox } from "lucide-react-native";
+import { Inbox, Minus, TrendingDown, TrendingUp } from "lucide-react-native";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
 import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
@@ -49,17 +49,25 @@ type MonthListItem =
   | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
 
 /**
- * A contained balance bridge: the two balances keep their own columns while
- * this small transfer badge gives the eye a clear, animated hand-off point.
- * It has enough structure to read as a component rather than a stretched
- * `--->--` rule, and its arrow changes with the actual balance delta.
+ * A balance-change marker: the trend is the meaning, not a decorative rule
+ * between two figures. It enters in the same direction as the month's net
+ * change, so the motion reinforces what the icon already says.
  */
 function BalanceBridge({ token, deltaMinor }: { token: string; deltaMinor: number }) {
   const { palette } = useTheme();
   const draw = useDrawIn(true, motion.draw, token);
-  const DirectionIcon = deltaMinor > 0 ? ArrowUpRight : deltaMinor < 0 ? ArrowDownRight : ArrowRightLeft;
-  const haloOpacity = draw.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.08, 0.3, 0.08] });
-  const haloScale = draw.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1.04] });
+  const DirectionIcon = deltaMinor > 0 ? TrendingUp : deltaMinor < 0 ? TrendingDown : Minus;
+  const directionColor = deltaMinor > 0
+    ? palette.positiveText
+    : deltaMinor < 0
+      ? palette.negativeText
+      : palette.textSecondary;
+  const opacity = draw.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] });
+  const scale = draw.interpolate({ inputRange: [0, 1], outputRange: [0.84, 1] });
+  const directionOffset = draw.interpolate({
+    inputRange: [0, 1],
+    outputRange: [deltaMinor > 0 ? 5 : deltaMinor < 0 ? -5 : 0, 0],
+  });
   return (
     <View
       testID="month-balance-transition"
@@ -75,50 +83,28 @@ function BalanceBridge({ token, deltaMinor }: { token: string; deltaMinor: numbe
       <Animated.View
         accessible={false}
         style={{
-          position: "absolute",
-          width: 56,
-          height: 30,
-          borderRadius: radius.full,
-          borderWidth: 1,
-          borderColor: palette.primary,
-          opacity: haloOpacity,
-          transform: [{ scale: haloScale }],
-        }}
-      />
-      <View
-        accessible={false}
-        style={{
-          width: 56,
-          height: 30,
-          borderRadius: radius.full,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 5,
-          backgroundColor: palette.surfaceAlt,
-          borderWidth: 1,
-          borderColor: palette.border,
+          opacity,
+          transform: [{ scale }],
         }}
       >
-        <View style={{ width: 6, height: 6, borderRadius: radius.full, backgroundColor: palette.primary }} />
-        <View style={{ width: 10, height: 2, borderRadius: radius.full, backgroundColor: palette.primary, opacity: 0.65 }} />
         <View
+          accessible={false}
           style={{
-            width: 24,
-            height: 24,
-            borderRadius: radius.full,
+            width: 38,
+            height: 38,
+            borderRadius: radius.md,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: palette.primarySoft,
+            backgroundColor: directionColor + "18",
             borderWidth: 1,
-            borderColor: palette.primary + "75",
+            borderColor: directionColor + "75",
           }}
         >
-          <DirectionIcon accessible={false} size={14} color={palette.primaryText} strokeWidth={2.4} />
+          <Animated.View style={{ transform: [{ translateY: directionOffset }] }}>
+            <DirectionIcon accessible={false} size={19} color={directionColor} strokeWidth={2.35} />
+          </Animated.View>
         </View>
-        <View style={{ width: 10, height: 2, borderRadius: radius.full, backgroundColor: palette.primary, opacity: 0.65 }} />
-        <View style={{ width: 6, height: 6, borderRadius: radius.full, backgroundColor: palette.primary }} />
-      </View>
+      </Animated.View>
     </View>
   );
 }

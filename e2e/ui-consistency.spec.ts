@@ -706,7 +706,7 @@ test("the investment wallet keeps large balances readable at the narrowest phone
       return { top: box.top, left: box.left, right: box.right, bottom: box.bottom };
     });
     return {
-      band: { left: band.left, right: band.right },
+      band: { left: band.left, right: band.right, top: band.top, bottom: band.bottom },
       padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
       icons: boxes('[data-testid="investment-action-icon"]'),
       labels: boxes('[data-testid="investment-action-label"]'),
@@ -714,6 +714,7 @@ test("the investment wallet keeps large balances readable at the narrowest phone
     };
   });
   expect(bandGeometry.padding).toEqual(["0px", "0px", "0px", "0px"]);
+  expect(bandGeometry.band.bottom - bandGeometry.band.top).toBeLessThanOrEqual(100);
   expect(bandGeometry.icons.every(({ top }) => top === bandGeometry.icons[0]!.top)).toBe(true);
   expect(bandGeometry.labels.every(({ top }) => top === bandGeometry.labels[0]!.top)).toBe(true);
   expect(bandGeometry.captions.every(({ top }) => top === bandGeometry.captions[0]!.top)).toBe(true);
