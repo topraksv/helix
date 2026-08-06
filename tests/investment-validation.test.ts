@@ -76,6 +76,26 @@ describe("investment owner-graph validation", () => {
     expect(state?.cashMinor).toBe(1_200);
   });
 
+  it("rejects a pending batch that would overdraw investment cash", async () => {
+    const writes = [{
+      table: "transactions" as const,
+      row: {
+        id: "imported-withdrawal", type: "transfer", status: "realized",
+        categoryId: "transfer", personId: "self", effectiveDate: "2026-07-03",
+        amountTryMinor: -2_000, deletedAt: null,
+      },
+    }];
+
+    await expect(assertInvestmentWrites(database({
+      investment_profiles: [{
+        id: "profile", user_id: USER, started_on: "2026-07-01",
+        opening_cash_minor: 1_000, deleted_at: null,
+      }],
+      persons: [{ id: "self", user_id: USER, is_self: 1, deleted_at: null }],
+      categories: [{ id: "transfer", user_id: USER, is_transfer: 1, deleted_at: null }],
+    }), USER, writes)).rejects.toThrow("insufficient investment cash");
+  });
+
   it("refuses live products without the account's single wallet profile", async () => {
     await expect(assertInvestmentWrites(database({
       investment_products: [{

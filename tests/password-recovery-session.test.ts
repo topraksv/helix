@@ -2,14 +2,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tr } from "../src/i18n/tr";
 
 const harness = vi.hoisted(() => {
+  let authEventListener: ((event: string) => void) | null = null;
   const supabase = {
     auth: {
-      getSession: vi.fn(async () => ({ data: { session: { user: { id: "user-b", email: "b@example.com" } } } })),
-      signOut: vi.fn(async () => ({ error: null })),
+      getSession: vi.fn(async (): Promise<{
+        data: { session: { user: { id: string; email: string } } | null };
+      }> => ({ data: { session: { user: { id: "user-b", email: "b@example.com" } } } })),
+      setSession: vi.fn(async () => ({ data: { session: { user: { id: "user-b", email: "b@example.com" } } }, error: null })),
+      signOut: vi.fn(async () => {
+        authEventListener?.("SIGNED_OUT");
+        return { error: null };
+      }),
       updateUser: vi.fn(async () => ({ error: null })),
     },
   };
-  return { supabase, resetLocalWorkspace: vi.fn() };
+  return {
+    supabase,
+    resetLocalWorkspace: vi.fn(),
+    subscribeAuthEvents: (listener: (event: string) => void) => {
+      authEventListener = listener;
+    },
+    emitAuthEvent: (event: string) => authEventListener?.(event),
+  };
 });
 
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
@@ -18,7 +32,7 @@ vi.mock("../src/sync/supabase", () => ({
   getSupabase: () => harness.supabase,
   isSupabaseConfigured: true,
   markPasswordRecoverySession: vi.fn(),
-  subscribeSupabaseAuthEvents: vi.fn(),
+  subscribeSupabaseAuthEvents: harness.subscribeAuthEvents,
   wasPasswordRecoveryDetected: vi.fn(() => true),
 }));
 vi.mock("../src/db/mutations", () => ({
@@ -58,11 +72,16 @@ vi.mock("../src/services/kv", () => ({
 const { useSession } = await import("../src/auth/session");
 
 describe("password recovery account binding", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    harness.supabase.auth.getSession.mockResolvedValueOnce({ data: { session: null } });
+    await useSession.getState().bootstrap();
     harness.supabase.auth.getSession.mockResolvedValue({
       data: { session: { user: { id: "user-b", email: "b@example.com" } } },
     });
-    harness.supabase.auth.signOut.mockResolvedValue({ error: null });
+    harness.supabase.auth.signOut.mockImplementation(async () => {
+      harness.emitAuthEvent("SIGNED_OUT");
+      return { error: null };
+    });
     harness.supabase.auth.updateUser.mockClear();
     harness.resetLocalWorkspace.mockReset();
     useSession.setState({
@@ -81,6 +100,16 @@ describe("password recovery account binding", () => {
 
     expect(harness.supabase.auth.updateUser).not.toHaveBeenCalled();
     expect(harness.supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(harness.resetLocalWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("rejects a foreign recovery session before exposing the password form", async () => {
+    await expect(useSession.getState().preparePasswordRecovery(
+      "helix://reset-password#access_token=access&refresh_token=refresh&type=recovery",
+    )).resolves.toBe("invalid");
+
+    expect(harness.supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(useSession.getState().userId).toBe("user-a");
     expect(harness.resetLocalWorkspace).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,9 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import { type PropsWithChildren } from "react";
 import { tr } from "../i18n/tr";
+import { trustedSupabaseOrigin } from "../domain/web-security";
+
+const supabaseOrigin = trustedSupabaseOrigin(process.env.EXPO_PUBLIC_SUPABASE_URL);
 
 /**
  * Root HTML shell for web (dev + static export).
@@ -12,6 +15,9 @@ export default function Root({ children }: PropsWithChildren) {
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+        {/* Recovery codes must not be repeated in same-origin asset request
+            referrers before supabase-js exchanges and removes them. */}
+        <meta name="referrer" content="no-referrer" />
         {/* Defense-in-depth for the static Pages deployment (no server headers
             there). connect-src pins the only legitimate network peers, which
             blocks XSS exfiltration targets even though script-src must stay
@@ -29,8 +35,9 @@ export default function Root({ children }: PropsWithChildren) {
             // every logo silently falls back to the local chip.
             "img-src 'self' data: blob: https://www.google.com https://*.gstatic.com",
             "font-src 'self' data:",
-            "connect-src 'self' https://*.supabase.co https://open.er-api.com wss://hrmsocketonly.haremaltin.com",
+            `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""} https://open.er-api.com wss://hrmsocketonly.haremaltin.com`,
             "worker-src 'self' blob:",
+            "frame-src 'none'",
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self'",

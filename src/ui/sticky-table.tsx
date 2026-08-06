@@ -34,15 +34,20 @@ function softWrapLabel(label: string, maxTokenLength = 12): string {
   return label
     .split(/(\s+)/)
     .map((part) => {
-      if (!part.trim() || part.length <= maxTokenLength) return part;
+      const characters = Array.from(part);
+      if (!part.trim() || characters.length <= maxTokenLength) return part;
       // Preserve a natural Turkish plural boundary where one exists. For all
       // other long tokens, balance the chunks instead of leaving an orphaned
       // final letter (`Faturala / r`, `Cumhuriy / et`).
       const plural = part.match(/^(.{4,}?)(lar|ler)$/iu);
       if (plural) return `${plural[1]}\u200B${plural[2]}`;
-      const chunkCount = Math.ceil(part.length / maxTokenLength);
-      const chunkLength = Math.ceil(part.length / chunkCount);
-      return part.match(new RegExp(`.{1,${chunkLength}}`, "gu"))?.join("\u200B") ?? part;
+      const chunkCount = Math.ceil(characters.length / maxTokenLength);
+      const chunkLength = Math.ceil(characters.length / chunkCount);
+      const chunks: string[] = [];
+      for (let start = 0; start < characters.length; start += chunkLength) {
+        chunks.push(characters.slice(start, start + chunkLength).join(""));
+      }
+      return chunks.join("\u200B");
     })
     .join("");
 }

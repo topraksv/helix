@@ -395,6 +395,60 @@ describe("repository compatibility contract", () => {
     expect(dependencies.getSqliteAsync).not.toHaveBeenCalled();
   });
 
+  it("refuses a person reassignment that would overdraw investment cash", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("is_self = 0")) return { id: "watch", user_id: "user-1", is_self: 0, deleted_at: null };
+        if (sql.includes("FROM persons")) return { id: "self" };
+        return null;
+      },
+      getAllAsync: async (sql: string) => {
+        if (sql.includes("FROM investment_profiles")) {
+          return [{
+            id: "profile", user_id: "user-1", started_on: "2026-01-01",
+            opening_cash_minor: 10_000, deleted_at: null,
+          }];
+        }
+        if (sql.includes("FROM transactions")) {
+          return [{
+            id: "watch-withdrawal", user_id: "user-1", type: "transfer", status: "realized",
+            category_id: "transfer", person_id: "watch", effective_date: "2026-07-03",
+            amount_try_minor: -20_000, deleted_at: null,
+          }];
+        }
+        if (sql.includes("FROM categories")) {
+          return [{ id: "transfer", user_id: "user-1", is_transfer: 1, deleted_at: null }];
+        }
+        if (sql.includes("FROM persons")) {
+          return [
+            { id: "self", user_id: "user-1", is_self: 1, deleted_at: null },
+            { id: "watch", user_id: "user-1", is_self: 0, deleted_at: null },
+          ];
+        }
+        return [];
+      },
+    });
+    dependencies.writeRows.mockImplementationOnce(() => {
+      throw new Error("unsafe unvalidated write");
+    });
+    dependencies.writeRowsValidated.mockImplementationOnce(async (
+      _userId: string,
+      writes: { table: string; row: Record<string, unknown> }[],
+      validate: (sqlite: unknown) => Promise<void>,
+    ) => {
+      expect(writes.find((write) => write.table === "transactions")?.row.personId).toBe("self");
+      await validate(await dependencies.getSqliteAsync());
+    });
+
+    try {
+      await expect(repository.reassignAndDeletePerson("user-1", "watch", "self"))
+        .rejects.toThrow("insufficient investment cash");
+    } finally {
+      dependencies.writeRows.mockReset();
+      dependencies.writeRowsValidated.mockReset();
+    }
+  });
+
   it("rejects expected confirmations for a person outside the current account", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) => sql.includes("FROM expected_payments")
@@ -817,6 +871,8 @@ describe("repository compatibility contract", () => {
 
     await expect(repository.upsertSubscription("user-1", { ...input, intervalMonths: 0 }))
       .rejects.toThrow("Invalid subscription interval");
+    await expect(repository.upsertSubscription("user-1", { ...input, intervalMonths: 13 }))
+      .rejects.toThrow("Invalid subscription interval");
     await expect(repository.upsertSubscription("user-1", { ...input, amountMinor: -1 }))
       .rejects.toThrow("Subscription amount must be positive");
     await expect(repository.upsertSubscription("user-1", { ...input, billingDay: 0 }))
@@ -1021,5 +1077,61 @@ describe("replace-mode import with an unreadable batch", () => {
       personId: "person-self",
       isAggregate: true,
     });
+  });
+
+  it("refuses an offline import that would overdraw the investment wallet", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM persons") ? { id: "person-self" } : null,
+      getAllAsync: async (sql: string) => {
+        if (sql.includes("FROM investment_profiles")) {
+          return [{
+            id: "profile", user_id: "user-1", started_on: "2026-01-01",
+            opening_cash_minor: 10_000, deleted_at: null,
+          }];
+        }
+        if (sql.includes("FROM categories")) {
+          return [{
+            id: "investment-category", user_id: "user-1", name: "Yatırım",
+            kind: "expense", sort_order: 0, is_transfer: 1, deleted_at: null,
+          }];
+        }
+        if (sql.includes("FROM persons")) {
+          return [{ id: "person-self", user_id: "user-1", is_self: 1, deleted_at: null }];
+        }
+        return [];
+      },
+    });
+    dependencies.readSetting.mockResolvedValue(null);
+    dependencies.writeRowsValidated.mockImplementationOnce(async (
+      userId: string,
+      writes: { table: string; row: Record<string, unknown> }[],
+      validate: (sqlite: unknown) => Promise<void>,
+    ) => {
+      expect(userId).toBe("user-1");
+      expect(writes.find((write) => write.table === "transactions")?.row).toMatchObject({
+        type: "transfer",
+        amountTryMinor: -20_000,
+        personId: "person-self",
+      });
+      await validate(await dependencies.getSqliteAsync());
+      dependencies.writeRows(userId, writes);
+    });
+
+    await expect(repository.importSheets("user-1", {
+      sheets: [{
+        sheetName: "2026",
+        year: 2026,
+        months: ["2026-07"],
+        columns: [{ label: "Yatırım", kindGuess: "expense", isInvestment: true, dueDay: null }],
+        cells: [[{ valueMinor: -20_000, formulaParts: null, comment: null, commentParts: null }]],
+        skippedColumns: [],
+        openingBalance: null,
+      }],
+      excludedLabels: [],
+      selfId: "person-self",
+      mode: "add",
+    })).rejects.toThrow("insufficient investment cash");
+
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 });

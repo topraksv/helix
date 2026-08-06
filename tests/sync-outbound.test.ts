@@ -5,14 +5,44 @@ import { fileURLToPath } from "node:url";
 import { convertOutboundRow, prepareOutboundBatch } from "../src/sync/outbound-validation";
 import { SYNCED_TABLES, type SyncedTableName } from "../src/db/schema";
 
-const base = {
+const common = {
   id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b1",
   user_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b2",
+  created_at: "2026-07-01T00:00:00.000Z",
+  updated_at: "2026-07-01T00:00:00.000Z",
+  deleted_at: null,
+  tombstone_version: 0,
+};
+const base = {
+  ...common,
+  name: "Net değişim",
   definition: JSON.stringify({ op: "income_minus_expense" }),
+  sort_order: 0,
 };
 const policy = {
   allowedColumns: new Set(Object.keys(base)),
   booleanColumns: new Set<string>(),
+};
+const transaction = {
+  ...common,
+  type: "expense",
+  amount_minor: 10_000,
+  currency: "TRY",
+  fx_rate: null as string | null,
+  amount_try_minor: 10_000,
+  entry_date: "2026-07-03",
+  purchase_date: null,
+  effective_date: "2026-07-03",
+  status: "realized",
+  category_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b3",
+  payment_source_id: null,
+  person_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b4",
+  installment_plan_id: null,
+  installment_no: null,
+  card_statement_id: null,
+  subscription_id: null,
+  is_aggregate: false,
+  note: null,
 };
 
 describe("outbound row conversion", () => {
@@ -28,33 +58,49 @@ describe("outbound row conversion", () => {
     expect(convertOutboundRow("computed_columns", { ...base, injected: true }, policy)).toEqual({ ok: false, reason: "invalid_row" });
   });
 
+  it("keeps a legacy over-limit row pushable when it is a tombstone", () => {
+    const legacy = { ...base, name: "x".repeat(121) };
+    expect(convertOutboundRow("computed_columns", legacy, policy))
+      .toEqual({ ok: false, reason: "invalid_row" });
+
+    const tombstone = {
+      ...legacy,
+      deleted_at: "2026-07-04T00:00:00.000Z",
+      tombstone_version: 1,
+    };
+    expect(convertOutboundRow("computed_columns", tombstone, policy)).toEqual({
+      ok: true,
+      row: { ...tombstone, definition: { op: "income_minus_expense" } },
+    });
+  });
+
   it("rejects non-finite numeric payloads before PostgREST", () => {
     const numericPolicy = {
-      allowedColumns: new Set(["id", "user_id", "fx_rate"]),
-      booleanColumns: new Set<string>(),
+      allowedColumns: new Set(Object.keys(transaction)),
+      booleanColumns: new Set(["is_aggregate"]),
     };
-    expect(convertOutboundRow("transactions", { id: base.id, user_id: base.user_id, fx_rate: "NaN" }, numericPolicy)).toEqual({ ok: false, reason: "invalid_row" });
-    expect(convertOutboundRow("transactions", { id: base.id, user_id: base.user_id, fx_rate: "32.5" }, numericPolicy)).toEqual({
+    expect(convertOutboundRow("transactions", { ...transaction, fx_rate: "NaN" }, numericPolicy)).toEqual({ ok: false, reason: "invalid_row" });
+    expect(convertOutboundRow("transactions", { ...transaction, fx_rate: "32.5" }, numericPolicy)).toEqual({
       ok: true,
-      row: { id: base.id, user_id: base.user_id, fx_rate: 32.5 },
+      row: { ...transaction, fx_rate: 32.5 },
     });
   });
 
   it("quarantines unsupported currencies before PostgREST", () => {
     const currencyPolicy = {
-      allowedColumns: new Set(["id", "user_id", "currency"]),
-      booleanColumns: new Set<string>(),
+      allowedColumns: new Set(Object.keys(transaction)),
+      booleanColumns: new Set(["is_aggregate"]),
     };
-    expect(convertOutboundRow("transactions", { id: base.id, user_id: base.user_id, currency: "NOT-A-CURRENCY" }, currencyPolicy))
+    expect(convertOutboundRow("transactions", { ...transaction, currency: "NOT-A-CURRENCY" }, currencyPolicy))
       .toEqual({ ok: false, reason: "invalid_row" });
-    expect(convertOutboundRow("transactions", { id: base.id, user_id: base.user_id, currency: "USD" }, currencyPolicy))
-      .toEqual({ ok: true, row: { id: base.id, user_id: base.user_id, currency: "USD" } });
+    expect(convertOutboundRow("transactions", { ...transaction, currency: "USD" }, currencyPolicy))
+      .toEqual({ ok: true, row: { ...transaction, currency: "USD" } });
   });
 
   it("quarantines contradictory investment quotes before PostgREST", () => {
     const investment = {
-      id: base.id,
-      user_id: base.user_id,
+      ...common,
+      product_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b5",
       kind: "buy",
       operation_date: "2026-07-03",
       quantity: "2",
@@ -62,6 +108,8 @@ describe("outbound row conversion", () => {
       total_minor: 20_000,
       cost_basis_minor: 0,
       realized_profit_loss_minor: 0,
+      note: null,
+      import_key: null,
     };
     const investmentPolicy = {
       allowedColumns: new Set(Object.keys(investment)),
@@ -80,10 +128,10 @@ describe("outbound row conversion", () => {
 
   it("quarantines impossible or future investment dates before PostgREST", () => {
     const profile = {
-      id: base.id,
-      user_id: base.user_id,
+      ...common,
       started_on: "2026-07-01",
       opening_cash_minor: 1_000,
+      setup_completed: true,
     };
     const profilePolicy = {
       allowedColumns: new Set(Object.keys(profile)),
@@ -95,8 +143,8 @@ describe("outbound row conversion", () => {
       .toEqual({ ok: false, reason: "invalid_row" });
 
     const operation = {
-      id: base.id,
-      user_id: base.user_id,
+      ...common,
+      product_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b5",
       kind: "buy",
       operation_date: "2026-07-03",
       quantity: "2",
@@ -104,6 +152,8 @@ describe("outbound row conversion", () => {
       total_minor: 20_000,
       cost_basis_minor: 0,
       realized_profit_loss_minor: 0,
+      note: null,
+      import_key: null,
     };
     const operationPolicy = {
       allowedColumns: new Set(Object.keys(operation)),
@@ -116,9 +166,13 @@ describe("outbound row conversion", () => {
   });
 
   it("pushes an offline investment journal in deterministic replay order", () => {
+    const existingId = "0198b3f5-0e39-7b76-8f95-f7679d6b7201";
+    const buyId = "0198b3f5-0e39-7b76-8f95-f7679d6b7202";
+    const saleId = "0198b3f5-0e39-7b76-8f95-f7679d6b7203";
     const row = (id: string, kind: string, date: string) => ({
+      ...common,
       id,
-      user_id: base.user_id,
+      product_id: "0198b3f5-0e39-7b76-8f95-f7679d6b72b5",
       kind,
       operation_date: date,
       quantity: "1",
@@ -126,11 +180,13 @@ describe("outbound row conversion", () => {
       total_minor: 10_000,
       cost_basis_minor: kind === "sell" ? 10_000 : 0,
       realized_profit_loss_minor: 0,
+      note: null,
+      import_key: null,
     });
     const events = [
-      row("sale", "sell", "2026-07-03"),
-      row("buy", "buy", "2026-07-03"),
-      row("existing", "existing", "2026-07-03"),
+      row(saleId, "sell", "2026-07-03"),
+      row(buyId, "buy", "2026-07-03"),
+      row(existingId, "existing", "2026-07-03"),
     ].map((payload, index) => ({
       id: index + 1,
       row_id: payload.id,
@@ -141,7 +197,7 @@ describe("outbound row conversion", () => {
       booleanColumns: new Set<string>(),
     });
 
-    expect(batch.rows.map((candidate) => candidate.id)).toEqual(["existing", "buy", "sale"]);
+    expect(batch.rows.map((candidate) => candidate.id)).toEqual([existingId, buyId, saleId]);
   });
 
   it("keeps a healthy row pushable when another row is quarantined", () => {

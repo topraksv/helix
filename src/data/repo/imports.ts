@@ -1,6 +1,6 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
-import { fromDbShape, nowIso, readSetting, writeRows, type RowWrite } from "../../db/mutations";
+import { fromDbShape, nowIso, readSetting, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { addMonthsToKey, todayISO, yearOf, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
@@ -9,6 +9,7 @@ import { suggestCategoryIcon } from "../category-icons";
 import { CreditCardCycleRequiredError, ImportBatchUnreadableError } from "./errors";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
 import { buildSpreadsheetImportPlan, importCategoryKey } from "./import-plan";
+import { assertInvestmentWrites } from "./investment-validation";
 
 // ---------------------------------------------------------------------------
 // Spreadsheet import (faithful, multi-year, per-year columns)
@@ -528,7 +529,13 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     ...planRowBatches.flatMap((b) => b.rows),
     ...metadataWrites,
   ];
-  if (writes.length > 0) await writeRows(userId, writes);
+  if (writes.length > 0) {
+    await writeRowsValidated(
+      userId,
+      writes,
+      (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
+    );
+  }
   return { imported };
 }
 

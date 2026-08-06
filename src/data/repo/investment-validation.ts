@@ -10,6 +10,7 @@ import {
   type InvestmentState,
 } from "../../domain/investments";
 import { isSupportedMinorAmount } from "../../domain/money";
+import { textLength } from "../../domain/input";
 
 type AnyRow = Record<string, unknown>;
 
@@ -92,7 +93,7 @@ export async function assertInvestmentWrites(
     .map((row) => {
       const assetType = value<InvestmentAssetType>(row, "assetType", "asset_type");
       const name = value<string>(row, "name", "name")?.trim();
-      if (!["metal", "currency", "equity", "fund", "crypto", "pension"].includes(assetType) || !name || name.length > 120) {
+      if (!["metal", "currency", "equity", "fund", "crypto", "pension"].includes(assetType) || !name || textLength(name) > 120) {
         throw new InvestmentDomainError("unknown_product");
       }
       return { id: String(row.id), assetType, name };

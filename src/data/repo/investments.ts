@@ -16,7 +16,7 @@ import {
   type InvestmentQuoteInput,
 } from "../../domain/investments";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
-import { assertInputWithinLimit } from "../../domain/input";
+import { assertInputWithinLimit, textLength } from "../../domain/input";
 import type { SQLiteDatabase } from "expo-sqlite";
 import {
   assertInvestmentWrites,
@@ -72,7 +72,7 @@ export async function setupInvestments(userId: string, input: InvestmentSetupInp
 
 export async function saveInvestmentProduct(userId: string, input: InvestmentProductInput): Promise<string> {
   const name = input.name.trim();
-  if (!name || name.length > 120) throw new InvestmentDomainError("unknown_product");
+  if (!name || textLength(name) > 120) throw new InvestmentDomainError("unknown_product");
   assertInputWithinLimit(input.note ?? null, "note");
   const id = input.id ?? newId();
   const sqlite = await getSqliteAsync();

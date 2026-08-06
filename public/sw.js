@@ -11,7 +11,9 @@
  *     can't shadow an update.
  *   - Cross-origin (Supabase, FX feeds, favicons): never intercepted or cached.
  */
-const CACHE = "helix-v1";
+// v2 drops any shell entry an older worker may have replaced with a navigated
+// JS/image response before the content-type boundary below existed.
+const CACHE = "helix-v2";
 // Absolute so the offline fallback matches regardless of the navigated path
 // (a relative "./index.html" resolved against the request, not the shell).
 const SHELL = "/helix/index.html";
@@ -37,25 +39,31 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          caches
-            .open(CACHE)
-            .then(async (cache) => {
-              await cache.put(SHELL, res.clone());
-              // Prune: content-hashed asset names change every deploy and the
-              // old ones are never requested again, so without a cap the cache
-              // grows by one build per deploy, forever. We are online right
-              // now (this navigation fetch succeeded), so dropping stale
-              // assets is safe — live ones re-cache on their next request.
-              const keys = await cache.keys();
-              if (keys.length > 120) {
-                await Promise.all(
-                  keys
-                    .filter((cached) => new URL(cached.url).pathname !== SHELL)
-                    .map((cached) => cache.delete(cached)),
-                );
-              }
-            })
-            .catch(() => {});
+          const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+          // A navigation can target any URL under the service-worker scope,
+          // including a public JS/image asset. Never let that response replace
+          // the offline HTML shell and persistently break the next cold start.
+          if (res.ok && contentType.startsWith("text/html")) {
+            caches
+              .open(CACHE)
+              .then(async (cache) => {
+                await cache.put(SHELL, res.clone());
+                // Prune: content-hashed asset names change every deploy and the
+                // old ones are never requested again, so without a cap the cache
+                // grows by one build per deploy, forever. We are online right
+                // now (this navigation fetch succeeded), so dropping stale
+                // assets is safe — live ones re-cache on their next request.
+                const keys = await cache.keys();
+                if (keys.length > 120) {
+                  await Promise.all(
+                    keys
+                      .filter((cached) => new URL(cached.url).pathname !== SHELL)
+                      .map((cached) => cache.delete(cached)),
+                  );
+                }
+              })
+              .catch(() => {});
+          }
           return res;
         })
         .catch(async () => {

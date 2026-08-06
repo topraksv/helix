@@ -229,7 +229,10 @@ export interface InvestmentProductState extends InvestmentProductLike {
 interface MutableProductState extends InvestmentProductLike {
   quantityAtoms: bigint | null;
   costMinor: number;
-  realizedProfitLossMinor: number;
+  /** Long journals can cross Number.MAX_SAFE_INTEGER before later gains and
+   * losses cancel. Keep the projector exact until the supported final state
+   * is known. */
+  realizedProfitLossMinor: bigint;
 }
 
 export interface InvestmentState {
@@ -273,7 +276,7 @@ export function buildInvestmentState(input: {
       ...product,
       quantityAtoms: 0n,
       costMinor: 0,
-      realizedProfitLossMinor: 0,
+      realizedProfitLossMinor: 0n,
     }]),
   );
   const operationResults = new Map<string, { costBasisMinor: Minor; realizedProfitLossMinor: number }>();
@@ -323,7 +326,7 @@ export function buildInvestmentState(input: {
       const realized = operation.totalMinor - costBasis;
       state.quantityAtoms -= quantity.atoms;
       state.costMinor -= costBasis;
-      state.realizedProfitLossMinor += realized;
+      state.realizedProfitLossMinor += BigInt(realized);
       cashMinorExact += BigInt(operation.totalMinor);
       operationResults.set(operation.id, {
         costBasisMinor: costBasis,
@@ -359,6 +362,10 @@ export function buildInvestmentState(input: {
       const averageCostMinor = state.quantityAtoms && state.quantityAtoms > 0n
         ? Number(roundedDivision(BigInt(state.costMinor) * QUANTITY_FACTOR, state.quantityAtoms))
         : null;
+      const realizedProfitLossMinor = Number(state.realizedProfitLossMinor);
+      if (!Number.isSafeInteger(realizedProfitLossMinor)) {
+        throw new InvestmentDomainError("invalid_money");
+      }
       return {
         id: state.id,
         assetType: state.assetType,
@@ -366,13 +373,17 @@ export function buildInvestmentState(input: {
         quantity,
         costMinor: state.costMinor,
         averageCostMinor,
-        realizedProfitLossMinor: state.realizedProfitLossMinor,
+        realizedProfitLossMinor,
         active: state.costMinor > 0 || state.quantityAtoms == null || (state.quantityAtoms ?? 0n) > 0n,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "tr") || a.id.localeCompare(b.id));
   const investedCostMinor = products.reduce((sum, product) => sum + product.costMinor, 0);
-  const realizedProfitLossMinor = products.reduce((sum, product) => sum + product.realizedProfitLossMinor, 0);
+  const realizedProfitLossExact = products.reduce(
+    (sum, product) => sum + BigInt(product.realizedProfitLossMinor),
+    0n,
+  );
+  const realizedProfitLossMinor = Number(realizedProfitLossExact);
   if (!isSupportedMinorAmount(investedCostMinor) || !Number.isSafeInteger(realizedProfitLossMinor)) {
     throw new InvestmentDomainError("invalid_money");
   }

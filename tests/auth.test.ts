@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { friendlyAuthError } from "../src/auth/auth-errors";
 import { requestPasswordRecoveryEmail } from "../src/auth/email-flows";
@@ -68,6 +70,16 @@ describe("friendly auth errors", () => {
     expect(friendlyAuthError("Internal Server Error")).toBe(tr.auth.errService);
     expect(friendlyAuthError("Error 503: Service Unavailable")).toBe(tr.auth.errService);
     expect(friendlyAuthError("something unexpected")).toBe(tr.auth.errGeneric);
+  });
+});
+
+describe("server-side password policy", () => {
+  const config = readFileSync(join(process.cwd(), "supabase/config.toml"), "utf8");
+
+  it("requires strong new passwords and current-password verification", () => {
+    expect(config).toMatch(/^minimum_password_length = 8$/m);
+    expect(config).toMatch(/^secure_password_change = true$/m);
+    expect(config).toMatch(/\[auth\.email\][\s\S]*?^enable_confirmations = true$/m);
   });
 });
 

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dependencies = vi.hoisted(() => ({
   getSqliteAsync: vi.fn(),
   writeRows: vi.fn(),
+  writeRowsValidated: vi.fn(),
   runMaintenance: vi.fn(async () => {}),
 }));
 
@@ -14,7 +15,7 @@ vi.mock("../src/db/mutations", () => ({
   restoreRows: vi.fn(),
   softDelete: vi.fn(),
   writeRows: dependencies.writeRows,
-  writeRowsValidated: vi.fn(),
+  writeRowsValidated: dependencies.writeRowsValidated,
   assertLiveRow: vi.fn(),
 }));
 vi.mock("../src/db/ids", () => ({ newId: () => "new-id" }));
@@ -28,6 +29,14 @@ import { deleteUnreferencedPerson, reassignAndDeletePerson } from "../src/data/r
 describe("person reference lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dependencies.writeRowsValidated.mockImplementation(async (
+      userId: string,
+      writes: unknown[],
+      validate: (sqlite: unknown) => Promise<void>,
+    ) => {
+      await validate(await dependencies.getSqliteAsync());
+      dependencies.writeRows(userId, writes);
+    });
   });
 
   it("reassigns every live reference before tombstoning the watched person", async () => {
@@ -52,6 +61,7 @@ describe("person reference lifecycle", () => {
 
     await reassignAndDeletePerson("user-1", "watch", "self");
 
+    expect(dependencies.writeRowsValidated).toHaveBeenCalledOnce();
     expect(dependencies.writeRows).toHaveBeenCalledOnce();
     const [, writes] = dependencies.writeRows.mock.calls[0] as [
       string,

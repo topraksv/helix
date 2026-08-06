@@ -79,7 +79,7 @@ describe("ISO calendar dates", () => {
   });
 
   it("rejects impossible and malformed dates", () => {
-    for (const value of ["2026-02-29", "2026-02-31", "2026-04-31", "2026-00-01", "2026-13-01", "2026-01-00", "2026-1-01", null]) {
+    for (const value of ["0000-01-01", "2026-02-29", "2026-02-31", "2026-04-31", "2026-00-01", "2026-13-01", "2026-01-00", "2026-1-01", null]) {
       expect(isISODate(value)).toBe(false);
     }
     expect(() => assertISODate("2026-02-31")).toThrow(/Invalid ISO date/);

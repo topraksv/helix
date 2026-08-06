@@ -36,6 +36,7 @@ import {
   recordVerificationSuccess,
   type VerificationBrake,
 } from "./verification-brake";
+import { isValidNewPassword } from "../domain/input";
 
 /** Owner-keyed brake on password verification — see verification-brake.ts. */
 let verificationBrake: VerificationBrake = IDLE_BRAKE;
@@ -83,6 +84,23 @@ const ENTRY_DEFAULT_KEYS = ["helix.last.income", "helix.last.expense", "helix.la
 async function clearAccountScopedDeviceState(): Promise<void> {
   useSyncStatus.getState().set({ state: "idle", lastSyncAt: null, error: null, remoteChangeAt: null });
   await Promise.all(ENTRY_DEFAULT_KEYS.map((key) => kv.remove(key).catch(() => {})));
+}
+
+/**
+ * Remove a Supabase session that does not belong to the open workspace.
+ * Suppressing the ordinary SIGNED_OUT cleanup is load-bearing: that listener
+ * owns full workspace erasure, while this path must discard only the foreign
+ * bearer session and preserve the current user's offline rows.
+ */
+async function discardForeignSupabaseSession(): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  explicitSignOutInProgress = true;
+  try {
+    await signOutWithLocalFallback((options) => supabase.auth.signOut(options));
+  } finally {
+    explicitSignOutInProgress = false;
+  }
 }
 
 /**
@@ -180,7 +198,7 @@ interface SessionStore {
   previousLoginAt: string | null;
   bootstrap: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (email: string, password: string) => Promise<string | null>;
+  signUp: (email: string, password: string) => Promise<SignUpResult>;
   /** Send a neutral, expiring Supabase password-reset link. */
   requestPasswordReset: (email: string) => Promise<string | null>;
   /** Exchange a web/native recovery deep link for a short-lived session. */
@@ -206,8 +224,13 @@ interface SessionStore {
   changeEmail: (newEmail: string) => Promise<string | null>;
   /** Set a new password (the session is fresh from a prior verifyPassword).
    *  Returns an error string, or null on success. */
-  changePassword: (newPassword: string) => Promise<string | null>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<string | null>;
 }
+
+export type SignUpResult =
+  | { status: "signed-in" }
+  | { status: "confirmation-required" }
+  | { status: "error"; message: string };
 
 export const useSession = create<SessionStore>((set, get) => ({
   userId: null,
@@ -297,14 +320,19 @@ export const useSession = create<SessionStore>((set, get) => ({
 
   signUp: async (email, password) => {
     const supabase = getSupabase();
-    if (!supabase) return tr.errors.supabaseNotConfigured;
+    if (!supabase) return { status: "error", message: tr.errors.supabaseNotConfigured };
+    if (!isValidNewPassword(password)) return { status: "error", message: tr.auth.errWeakPassword };
     const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) return friendlyAuthError(error.message);
-    if (!data.user) return tr.errors.signUpFailed;
+    if (error) return { status: "error", message: friendlyAuthError(error.message) };
+    if (!data.user) return { status: "error", message: tr.errors.signUpFailed };
+    // With e-mail confirmation enabled Supabase deliberately returns no
+    // bearer session. Do not create an offline workspace under an identity the
+    // device cannot authenticate yet; the confirmed sign-in owns that step.
+    if (!data.session) return { status: "confirmation-required" };
     const wsError = await ensureWorkspaceFor(data.user.id);
     if (wsError) {
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-      return wsError;
+      return { status: "error", message: wsError };
     }
     await kv.set(LAST_USER_KEY, data.user.id);
     await kv.set(LAST_EMAIL_KEY, data.user.email ?? email);
@@ -314,7 +342,7 @@ export const useSession = create<SessionStore>((set, get) => ({
     // accounts syncing onto a fresh device.
     startSyncSession(data.user.id);
     set({ userId: data.user.id, email: data.user.email ?? email, isOnlineSession: true, isNewSignup: true, previousLoginAt: null });
-    return null;
+    return { status: "signed-in" };
   },
 
   requestPasswordReset: async (email) => {
@@ -338,17 +366,30 @@ export const useSession = create<SessionStore>((set, get) => ({
       : { platform: "native" as const, scheme: "helix" };
     const link = parsePasswordRecoveryUrl(url, target);
     if (link.kind === "expired") return "expired";
+    const acceptRecoverySession = async (recoveryUserId: string): Promise<boolean> => {
+      const workspaceUserId = get().userId;
+      if (workspaceUserId && workspaceUserId !== recoveryUserId) {
+        clearPasswordRecoveryDetected();
+        await stopSyncSession(workspaceUserId);
+        await discardForeignSupabaseSession();
+        set({ isOnlineSession: false });
+        return false;
+      }
+      markPasswordRecoverySession(recoveryUserId);
+      return true;
+    };
     if (link.kind === "code") {
       const { data: exchange, error } = await supabase.auth.exchangeCodeForSession(link.code);
       if (!error && exchange.session?.user) {
-        markPasswordRecoverySession(exchange.session.user.id);
-        return "ready";
+        return (await acceptRecoverySession(exchange.session.user.id)) ? "ready" : "invalid";
       }
       // On web, detectSessionInUrl may win the race and consume the one-time
       // code before this screen mounts. Accept only an observed recovery event,
       // never an unrelated existing session.
       const { data: current } = await supabase.auth.getSession();
-      return current.session && wasPasswordRecoveryDetected(current.session.user.id) ? "ready" : "invalid";
+      return current.session && wasPasswordRecoveryDetected(current.session.user.id)
+        ? (await acceptRecoverySession(current.session.user.id)) ? "ready" : "invalid"
+        : "invalid";
     }
     if (link.kind === "tokens") {
       const { data, error } = await supabase.auth.setSession({
@@ -356,22 +397,27 @@ export const useSession = create<SessionStore>((set, get) => ({
         refresh_token: link.refreshToken,
       });
       if (error || !data.session?.user) return "invalid";
-      markPasswordRecoverySession(data.session.user.id);
-      return "ready";
+      return (await acceptRecoverySession(data.session.user.id)) ? "ready" : "invalid";
     }
     const { data } = await supabase.auth.getSession();
-    return data.session && wasPasswordRecoveryDetected(data.session.user.id) ? "ready" : "invalid";
+    return data.session && wasPasswordRecoveryDetected(data.session.user.id)
+      ? (await acceptRecoverySession(data.session.user.id)) ? "ready" : "invalid"
+      : "invalid";
   },
 
   completePasswordRecovery: async (newPassword) => {
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
+    if (!isValidNewPassword(newPassword)) return tr.auth.errWeakPassword;
     const { data } = await supabase.auth.getSession();
     const recoveryUserId = data.session?.user.id;
     if (!recoveryUserId || !wasPasswordRecoveryDetected(recoveryUserId)) return tr.auth.resetInvalidBody;
     if (get().userId && get().userId !== recoveryUserId) {
+      const workspaceUserId = get().userId!;
       clearPasswordRecoveryDetected();
-      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      await stopSyncSession(workspaceUserId);
+      await discardForeignSupabaseSession();
+      set({ isOnlineSession: false });
       return tr.auth.resetInvalidBody;
     }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -545,8 +591,14 @@ export const useSession = create<SessionStore>((set, get) => ({
     // the password. It re-issues tokens for the same account (no identity
     // change), which is exactly the "recent login" Supabase wants before a
     // sensitive credential update.
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (!error) {
+      if (data.user.id !== brakeOwner) {
+        await stopSyncSession(brakeOwner);
+        await discardForeignSupabaseSession();
+        set({ isOnlineSession: false });
+        return tr.auth.errSessionExpired;
+      }
       verificationBrake = recordVerificationSuccess(verificationBrake, brakeOwner);
       return null;
     }
@@ -566,10 +618,11 @@ export const useSession = create<SessionStore>((set, get) => ({
     return null;
   },
 
-  changePassword: async (newPassword) => {
+  changePassword: async (currentPassword, newPassword) => {
     const supabase = getSupabase();
     if (!supabase) return tr.errors.supabaseNotConfigured;
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (!isValidNewPassword(newPassword)) return tr.auth.errWeakPassword;
+    const { error } = await supabase.auth.updateUser({ current_password: currentPassword, password: newPassword });
     if (error) return friendlyAuthError(error.message);
     return null;
   },

@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(83);
+select extensions.plan(126);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -386,6 +386,71 @@ select lives_ok(
   'user B can insert an owned person'
 );
 
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.persons set is_self = false
+    where id = '20000000-0000-4000-8000-000000000021'
+  $command$),
+  '23514',
+  'a client cannot change the stable self-person identity'
+);
+update public.persons set is_self = true
+where id = '20000000-0000-4000-8000-000000000021';
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (id, user_id, name, is_self) values (
+      '20000000-0000-4000-8000-000000000035',
+      '20000000-0000-4000-8000-000000000002',
+      'Forged second self', true
+    )
+  $command$),
+  '23505',
+  'an account cannot create a second live self person'
+);
+update public.persons set deleted_at = now()
+where id = '20000000-0000-4000-8000-000000000035';
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.persons set deleted_at = now()
+    where id = '20000000-0000-4000-8000-000000000021'
+  $command$),
+  '23514',
+  'a client cannot tombstone the only live self person'
+);
+update public.persons set deleted_at = null, tombstone_version = tombstone_version
+where id = '20000000-0000-4000-8000-000000000021';
+
+insert into public.persons (id, user_id, name, is_self) values (
+  '20000000-0000-4000-8000-000000000036',
+  '20000000-0000-4000-8000-000000000002',
+  'Watch only', false
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (id, user_id, name, is_self) values (
+      '20000000-0000-4000-8000-000000000037',
+      '20000000-0000-4000-8000-000000000002',
+      repeat('x', 121), false
+    )
+  $command$),
+  '23514',
+  'new live rows cannot exceed the direct API input cap'
+);
+
+select lives_ok(
+  $$insert into public.persons (
+      id, user_id, name, is_self, deleted_at, tombstone_version
+    ) values (
+      '20000000-0000-4000-8000-000000000038',
+      '20000000-0000-4000-8000-000000000002',
+      repeat('x', 121), false, now(), 1
+    )$$,
+  'a legacy over-limit row can still converge as a tombstone'
+);
+
 select results_eq(
   $$select count(*)::bigint from public.persons
     where id = '10000000-0000-4000-8000-000000000011'$$,
@@ -429,7 +494,7 @@ select results_eq(
 select results_eq(
   $$update public.persons
       set deleted_at = now(), tombstone_version = 1
-      where id = '20000000-0000-4000-8000-000000000021'
+      where id = '20000000-0000-4000-8000-000000000036'
       returning tombstone_version$$,
   $$values (1::bigint)$$,
   'an owned tombstone advances one generation'
@@ -438,16 +503,16 @@ select results_eq(
 select results_eq(
   $$update public.persons
       set name = 'stale resurrection', deleted_at = null, tombstone_version = 0
-      where id = '20000000-0000-4000-8000-000000000021'
+      where id = '20000000-0000-4000-8000-000000000036'
       returning (deleted_at is not null), tombstone_version, name$$,
-  $$values (true, 1::bigint, 'RLS B'::text)$$,
+  $$values (true, 1::bigint, 'Watch only'::text)$$,
   'a stale generation cannot resurrect a tombstone despite a later write'
 );
 
 select results_eq(
   $$update public.persons
       set deleted_at = null, tombstone_version = 1
-      where id = '20000000-0000-4000-8000-000000000021'
+      where id = '20000000-0000-4000-8000-000000000036'
       returning (deleted_at is null), tombstone_version$$,
   $$values (true, 1::bigint)$$,
   'an explicit undo at the observed generation remains available'
@@ -457,7 +522,7 @@ select is(
   pg_temp.exec_sqlstate($command$
     update public.persons
       set tombstone_version = 99
-      where id = '20000000-0000-4000-8000-000000000021'
+      where id = '20000000-0000-4000-8000-000000000036'
   $command$),
   '23514',
   'a client cannot forge a future tombstone generation'
@@ -501,6 +566,97 @@ select lives_ok(
   $$update public.categories set is_transfer = true
     where id = '20000000-0000-4000-8000-000000000023'$$,
   'an expense category can persist transfer semantics'
+);
+
+insert into public.categories (id, user_id, name, kind) values (
+  '20000000-0000-4000-8000-000000000038',
+  '20000000-0000-4000-8000-000000000002',
+  'Ordinary expense', 'expense'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.transactions (
+      id, user_id, type, amount_minor, amount_try_minor, entry_date,
+      effective_date, status, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000039',
+      '20000000-0000-4000-8000-000000000002',
+      'transfer', 1000, 1000, '2026-08-01', '2026-08-01', 'realized',
+      '20000000-0000-4000-8000-000000000038',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'a transfer transaction requires a persisted transfer category'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.transactions (
+      id, user_id, type, amount_minor, amount_try_minor, entry_date,
+      effective_date, status, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000056',
+      '20000000-0000-4000-8000-000000000002',
+      'expense', 1000, 1000, '2026-08-01', '2026-08-01', 'realized',
+      null, '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'a new transaction cannot bypass classification with a null category'
+);
+
+insert into public.categories (id, user_id, name, kind) values (
+  '20000000-0000-4000-8000-000000000073',
+  '20000000-0000-4000-8000-000000000002',
+  'Deleted expense', 'expense'
+);
+insert into public.transactions (
+  id, user_id, type, amount_minor, amount_try_minor, entry_date,
+  effective_date, status, category_id, person_id
+) values (
+  '20000000-0000-4000-8000-000000000074',
+  '20000000-0000-4000-8000-000000000002',
+  'expense', 1000, 1000, '2026-08-01', '2026-08-01', 'realized',
+  '20000000-0000-4000-8000-000000000073',
+  '20000000-0000-4000-8000-000000000021'
+);
+update public.categories set deleted_at = now()
+where id = '20000000-0000-4000-8000-000000000073';
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.transactions (
+      id, user_id, type, amount_minor, amount_try_minor, entry_date,
+      effective_date, status, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000075',
+      '20000000-0000-4000-8000-000000000002',
+      'expense', 1000, 1000, '2026-08-01', '2026-08-01', 'realized',
+      '20000000-0000-4000-8000-000000000073',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'a live transaction cannot use a tombstoned category'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.transactions
+    set amount_minor = 2000, amount_try_minor = 2000
+    where id = '20000000-0000-4000-8000-000000000074'
+  $command$),
+  '23514',
+  'an amount-only update cannot bypass the live-category boundary'
+);
+
+select lives_ok(
+  $$update public.transactions
+      set deleted_at = now(), tombstone_version = 1
+      where id = '20000000-0000-4000-8000-000000000074'$$,
+  'a legacy uncategorized transaction can still converge as a tombstone'
 );
 
 select lives_ok(
@@ -676,6 +832,19 @@ select ok(
   'investment guard helpers have no client-callable surface'
 );
 
+select is(
+  (
+    select count(*)
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private'
+      and p.proname like 'guard_investment_%'
+      and pg_catalog.pg_get_functiondef(p.oid) like '%pg_catalog.greatest(%'
+  ),
+  0::bigint,
+  'investment rejection paths use the GREATEST SQL expression, not a nonexistent qualified function'
+);
+
 select lives_ok(
   $$insert into public.investment_profiles (
       id, user_id, started_on, opening_cash_minor, setup_completed
@@ -685,6 +854,16 @@ select lives_ok(
       '2026-07-01', 10000, true
     )$$,
   'an owner can initialize one global investment wallet'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.investment_profiles
+    set started_on = '2999-01-01'
+    where id = '20000000-0000-4000-8000-000000000041'
+  $command$),
+  '23514',
+  'the API rejects a future investment wallet start date'
 );
 
 select is(
@@ -710,6 +889,113 @@ select lives_ok(
       'metal', 'Gram Altın'
     )$$,
   'an owner can create a supported investment product'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.investment_operations (
+      id, user_id, product_id, kind, operation_date, quantity,
+      unit_price_minor, total_minor
+    ) values (
+      '20000000-0000-4000-8000-000000000077',
+      '20000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000042',
+      'existing', '2026-07-01', '1000000000000', 1, 1000000000000
+    )
+  $command$),
+  '23514',
+  'one API operation cannot exceed the exact client quantity domain'
+);
+
+insert into public.investment_products (id, user_id, asset_type, name) values (
+  '20000000-0000-4000-8000-000000000078',
+  '20000000-0000-4000-8000-000000000002',
+  'fund', 'Quantity-bound fund'
+);
+insert into public.investment_operations (
+  id, user_id, product_id, kind, operation_date, quantity,
+  unit_price_minor, total_minor
+) values (
+  '20000000-0000-4000-8000-000000000079',
+  '20000000-0000-4000-8000-000000000002',
+  '20000000-0000-4000-8000-000000000078',
+  'existing', '2026-07-01', '600000000000', 1, 600000000000
+);
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date, quantity,
+        unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000080',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000078',
+        'existing', '2026-07-02', '600000000000', 1, 600000000000
+      ) returning deleted_at is not null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'multiple API operations cannot overflow the client holding domain'
+);
+
+insert into public.investment_operations (
+  id, user_id, product_id, kind, operation_date, quantity,
+  unit_price_minor, total_minor
+) values (
+  '20000000-0000-4000-8000-000000000081',
+  '20000000-0000-4000-8000-000000000002',
+  '20000000-0000-4000-8000-000000000078',
+  'existing', '2026-07-01', '1', 60000000000000, 60000000000000
+);
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date, quantity,
+        unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000084',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000078',
+        'existing', '2026-07-02', '1', 60000000000000, 60000000000000
+      ) returning deleted_at is not null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'one product journal cannot cross the client cost domain before a later sale'
+);
+insert into public.investment_products (id, user_id, asset_type, name) values (
+  '20000000-0000-4000-8000-000000000083',
+  '20000000-0000-4000-8000-000000000002',
+  'fund', 'Cost-bound fund'
+);
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date, quantity,
+        unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000082',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000083',
+        'existing', '2026-07-02', '1', 60000000000000, 60000000000000
+      ) returning deleted_at is not null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'multiple products cannot overflow the client invested-cost domain'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.investment_operations (
+      id, user_id, product_id, kind, operation_date, quantity,
+      unit_price_minor, total_minor
+    ) values (
+      '20000000-0000-4000-8000-000000000072',
+      '20000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000042',
+      'buy', '2999-01-01', '1', 1000, 1000
+    )
+  $command$),
+  '23514',
+  'the API rejects a future investment journal operation'
 );
 
 select lives_ok(
@@ -740,6 +1026,91 @@ select results_eq(
   $$values (true)$$,
   'a buy within the global cash balance remains live'
 );
+
+insert into public.transactions (
+  id, user_id, type, amount_minor, amount_try_minor, entry_date,
+  effective_date, status, category_id, person_id
+) values (
+  '20000000-0000-4000-8000-000000000037',
+  '20000000-0000-4000-8000-000000000002',
+  'transfer', 100000, 100000, '2026-07-02', '2026-07-02', 'realized',
+  '20000000-0000-4000-8000-000000000023',
+  '20000000-0000-4000-8000-000000000036'
+);
+
+reset role;
+set local role postgres;
+select is(
+  private.investment_cash('20000000-0000-4000-8000-000000000002'),
+  2000::bigint,
+  'watch-only transfers cannot fund the owner investment wallet'
+);
+reset role;
+select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+
+select results_eq(
+  $$with inserted as (
+      insert into public.transactions (
+        id, user_id, type, amount_minor, amount_try_minor, entry_date,
+        effective_date, status, category_id, person_id
+      ) values (
+        '20000000-0000-4000-8000-000000000085',
+        '20000000-0000-4000-8000-000000000002',
+        'transfer', 99999999999999, 99999999999999,
+        '2026-07-02', '2026-07-02', 'realized',
+        '20000000-0000-4000-8000-000000000023',
+        '20000000-0000-4000-8000-000000000021'
+      ) returning deleted_at is not null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'multiple transfers cannot overflow the client investment-cash domain'
+);
+
+insert into public.investment_operations (
+  id, user_id, product_id, kind, operation_date, quantity,
+  unit_price_minor, total_minor
+) values (
+  '20000000-0000-4000-8000-000000000086',
+  '20000000-0000-4000-8000-000000000002',
+  '20000000-0000-4000-8000-000000000083',
+  'existing', '2026-07-02', '1', 1, 1
+);
+select results_eq(
+  $$with inserted as (
+      insert into public.investment_operations (
+        id, user_id, product_id, kind, operation_date, quantity,
+        unit_price_minor, total_minor
+      ) values (
+        '20000000-0000-4000-8000-000000000087',
+        '20000000-0000-4000-8000-000000000002',
+        '20000000-0000-4000-8000-000000000083',
+        'sell', '2026-07-03', '1', 99999999999999, 99999999999999
+      ) returning deleted_at is not null
+    ) select * from inserted$$,
+  $$values (true)$$,
+  'multiple sales cannot overflow the client investment-cash domain'
+);
+
+select results_eq(
+  $$update public.investment_profiles
+      set opening_cash_minor = 0
+      where id = '20000000-0000-4000-8000-000000000041'
+      returning opening_cash_minor$$,
+  $$values (10000::bigint)$$,
+  'watch-only transfers cannot authorize an underfunded wallet edit'
+);
+
+select results_eq(
+  $$update public.categories
+      set is_transfer = false
+      where id = '20000000-0000-4000-8000-000000000023'
+      returning is_transfer$$,
+  $$values (false)$$,
+  'watch-only transfers cannot block a safe owner category edit'
+);
+update public.categories set is_transfer = true
+where id = '20000000-0000-4000-8000-000000000023';
 
 select results_eq(
   $$with inserted as (
@@ -922,6 +1293,316 @@ select is(
   $command$),
   '23514',
   'fractional quantities reject more than eight decimal places'
+);
+
+-- Direct PostgREST writes do not pass through the TypeScript repositories.
+-- These assertions keep the database acceptance domain inside the complete
+-- row validator used by backup restore and sync pull.
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.transactions (
+      id, user_id, type, amount_minor, amount_try_minor, entry_date,
+      effective_date, status, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000057',
+      '20000000-0000-4000-8000-000000000002',
+      'expense', 100000000000000, 100000000000000,
+      '2026-08-01', '2026-08-01', 'realized',
+      '20000000-0000-4000-8000-000000000038',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'the API cannot exceed the product minor-unit ceiling'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.transactions (
+      id, user_id, type, amount_minor, amount_try_minor, entry_date,
+      effective_date, status, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000058',
+      '20000000-0000-4000-8000-000000000002',
+      'expense', 1000, -1000, '2026-08-01', '2026-08-01', 'realized',
+      '20000000-0000-4000-8000-000000000038',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'the API cannot persist contradictory native and TRY amount signs'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.transactions (
+      id, user_id, type, amount_minor, currency, amount_try_minor,
+      entry_date, effective_date, status, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000059',
+      '20000000-0000-4000-8000-000000000002',
+      'expense', 1000, 'ZZZ', 1000, '2026-08-01', '2026-08-01',
+      'realized', '20000000-0000-4000-8000-000000000038',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'the API cannot introduce an unsupported currency'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.transactions (
+      id, user_id, type, amount_minor, currency, fx_rate,
+      amount_try_minor, entry_date, effective_date, status, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000060',
+      '20000000-0000-4000-8000-000000000002',
+      'expense', 1000, 'USD', 1000001, 1000,
+      '2026-08-01', '2026-08-01', 'realized',
+      '20000000-0000-4000-8000-000000000038',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'the API rejects an FX rate outside the bounded conversion domain'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.subscriptions (
+      id, user_id, name, amount_minor, cycle, interval_months,
+      billing_day, next_due_date, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000061',
+      '20000000-0000-4000-8000-000000000002',
+      'Unbounded schedule', 1000, 'custom', 13, 1, '2026-08-01',
+      '20000000-0000-4000-8000-000000000038',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'the API cannot create an out-of-product subscription interval'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.subscriptions (
+      id, user_id, name, amount_minor, cycle, billing_day,
+      next_due_date, category_id, person_id
+    ) values (
+      '20000000-0000-4000-8000-000000000062',
+      '20000000-0000-4000-8000-000000000002',
+      'Zero subscription', 0, 'monthly', 1, '2026-08-01',
+      '20000000-0000-4000-8000-000000000038',
+      '20000000-0000-4000-8000-000000000021'
+    )
+  $command$),
+  '23514',
+  'the API cannot create a non-positive subscription amount'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.installment_plans (
+      id, user_id, title, kind, monthly_amount_minor, installment_count,
+      start_month, person_id, category_id
+    ) values (
+      '20000000-0000-4000-8000-000000000063',
+      '20000000-0000-4000-8000-000000000002',
+      'Resource-heavy plan', 'loan', 1000, 601, '2026-08',
+      '20000000-0000-4000-8000-000000000021',
+      '20000000-0000-4000-8000-000000000038'
+    )
+  $command$),
+  '23514',
+  'the API cannot create more installments than the bounded generator supports'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.installment_plans (
+      id, user_id, title, kind, monthly_amount_minor, installment_count,
+      start_month, person_id, category_id
+    ) values (
+      '20000000-0000-4000-8000-000000000064',
+      '20000000-0000-4000-8000-000000000002',
+      'Year zero plan', 'loan', 1000, 1, '0000-01',
+      '20000000-0000-4000-8000-000000000021',
+      '20000000-0000-4000-8000-000000000038'
+    )
+  $command$),
+  '23514',
+  'the API rejects a month that cannot map to a PostgreSQL calendar date'
+);
+
+select lives_ok(
+  $$insert into public.persons (id, user_id, name, is_self) values (
+      '20000000-0000-4000-8000-000000000065',
+      '20000000-0000-4000-8000-000000000002',
+      repeat('🧭', 120), false
+    )$$,
+  'server and client accept the same 120 Unicode code-point text boundary'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (id, user_id, name, is_self) values (
+      '20000000-0000-4000-8000-000000000066',
+      '20000000-0000-4000-8000-000000000002',
+      repeat('🧭', 121), false
+    )
+  $command$),
+  '23514',
+  'the API rejects text beyond the shared Unicode boundary'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (id, user_id, created_at, name, is_self) values (
+      '20000000-0000-4000-8000-000000000067',
+      '20000000-0000-4000-8000-000000000002',
+      'infinity', 'Infinite timestamp', false
+    )
+  $command$),
+  '23514',
+  'the API rejects a timestamp JSON clients cannot represent'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.balance_adjustments (id, user_id, date, amount_minor) values (
+      '20000000-0000-4000-8000-000000000068',
+      '20000000-0000-4000-8000-000000000002',
+      date '10000-01-01', 1000
+    )
+  $command$),
+  '23514',
+  'the API rejects dates outside the four-digit client format'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.persons (
+      id, user_id, name, is_self, tombstone_version
+    ) values (
+      '20000000-0000-4000-8000-000000000069',
+      '20000000-0000-4000-8000-000000000002',
+      'Unsafe generation', false, 9007199254740992
+    )
+  $command$),
+  '23514',
+  'mass assignment cannot create an inexact tombstone generation'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.settings (id, user_id, key, value) values (
+      '20000000-0000-4000-8000-000000000070',
+      '20000000-0000-4000-8000-000000000002',
+      'oversized', repeat('x', 50001)
+    )
+  $command$),
+  '23514',
+  'the API rejects oversized settings payloads'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.settings (id, user_id, key, value) values (
+      '20000000-0000-4000-8000-000000000076',
+      '20000000-0000-4000-8000-000000000002',
+      'malformed-json', '{'
+    )
+  $command$),
+  '23514',
+  'the API rejects settings content that would pin every sync pull'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.computed_columns (id, user_id, name, definition) values (
+      '20000000-0000-4000-8000-000000000071',
+      '20000000-0000-4000-8000-000000000002',
+      'Extra field', '{"op":"income_minus_expense","code":"inject"}'::jsonb
+    )
+  $command$),
+  '23514',
+  'computed definitions reject unrecognized executable-looking fields'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.computed_columns (id, user_id, name, definition) values (
+      '20000000-0000-4000-8000-000000000072',
+      '20000000-0000-4000-8000-000000000002',
+      'Duplicate category',
+      '{"op":"sum","categoryIds":["20000000-0000-4000-8000-000000000038","20000000-0000-4000-8000-000000000038"]}'::jsonb
+    )
+  $command$),
+  '23514',
+  'computed definitions cannot multiply a category by repeating its id'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.computed_columns (id, user_id, name, definition)
+    select
+      '20000000-0000-4000-8000-000000000073',
+      '20000000-0000-4000-8000-000000000002',
+      'Unbounded categories',
+      jsonb_build_object(
+        'op', 'sum',
+        'categoryIds', jsonb_agg('30000000-0000-4000-8000-' || lpad(n::text, 12, '0'))
+      )
+    from generate_series(1, 501) as generated(n)
+  $command$),
+  '23514',
+  'computed definitions have a hard category-count resource bound'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.computed_columns (id, user_id, name, definition) values (
+      '20000000-0000-4000-8000-000000000074',
+      '20000000-0000-4000-8000-000000000002',
+      'Missing category',
+      '{"op":"sum","categoryIds":["30000000-0000-4000-8000-000000000001"]}'::jsonb
+    )
+  $command$),
+  '23514',
+  'computed definitions cannot reference a missing or foreign category'
+);
+
+select lives_ok(
+  $$insert into public.computed_columns (id, user_id, name, definition) values (
+      '20000000-0000-4000-8000-000000000075',
+      '20000000-0000-4000-8000-000000000002',
+      'Owned sum',
+      '{"op":"sum","categoryIds":["20000000-0000-4000-8000-000000000038"]}'::jsonb
+    )$$,
+  'a bounded computed definition over an owned category remains valid'
+);
+
+select ok(
+  not has_schema_privilege('authenticated', 'private', 'USAGE')
+    and not has_function_privilege(
+      'authenticated',
+      (
+        select p.oid from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'private' and p.proname = 'valid_computed_definition'
+      ),
+      'EXECUTE'
+    )
+    and not has_function_privilege(
+      'authenticated',
+      (
+        select p.oid from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'private' and p.proname = 'enforce_computed_definition'
+      ),
+      'EXECUTE'
+    ),
+  'computed definition guard helpers have no client-callable API surface'
 );
 
 

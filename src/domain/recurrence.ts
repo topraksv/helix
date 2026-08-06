@@ -24,10 +24,15 @@ import {
  * validation. The loops break at this bound instead of spinning forever.
  */
 const MAX_RECURRENCE_STEPS = 6000;
+export const MAX_SUBSCRIPTION_INTERVAL_MONTHS = 12;
 
 /** A safe, positive integer month interval, or null when the value is invalid. */
 function safeIntervalMonths(intervalMonths: number): number | null {
-  return Number.isInteger(intervalMonths) && intervalMonths >= 1 ? intervalMonths : null;
+  return Number.isInteger(intervalMonths)
+    && intervalMonths >= 1
+    && intervalMonths <= MAX_SUBSCRIPTION_INTERVAL_MONTHS
+    ? intervalMonths
+    : null;
 }
 
 /** Due date for a nominal billing day within a given month (clamped). */

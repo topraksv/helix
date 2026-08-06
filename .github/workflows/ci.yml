@@ -44,6 +44,7 @@ jobs:
           # The classifier diffs against the previous head, which a shallow
           # clone does not contain.
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -56,6 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Expo SDK 54 tooling is incompatible with Node 24/26 native TypeScript
       # stripping (it chokes on expo-modules-core's src/index.ts). Node 22 is
       # the newest LTS the SDK 54 build supports.
@@ -63,6 +66,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Audit the integrity-locked graph before any dependency lifecycle script
+      # executes. A new high/critical advisory blocks the delivery gate.
+      - run: node scripts/check-advisories.mjs
       - run: npm ci
       - run: npm run typecheck
       - run: npx expo lint
@@ -77,6 +83,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -105,6 +113,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -133,6 +143,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -158,6 +170,8 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -261,10 +275,10 @@ jobs:
       && needs.gate.result == 'success'
       && needs.classify.outputs.deploy_mobile == 'true' }}
     runs-on: ubuntu-latest
-    env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -272,13 +286,16 @@ jobs:
       - run: npm ci
       # Publish directly from this checked-out commit, after the gate. Expo Go
       # uses the SDK runtime, so there is no binary lookup, build or Apple
-      # credential path. Keep the CLI exact and clear Metro's shared cache so
-      # the update cannot inherit the local-only E2E environment.
+      # credential path. The CLI and its transitive tree are installed from the
+      # integrity-checked lockfile before the credential exists in a step. This
+      # keeps dependency install scripts outside the EXPO_TOKEN boundary.
       - name: Publish Expo Go preview update
-        if: ${{ env.EXPO_TOKEN != '' }}
-        run: npx eas-cli@21.4.0 update --branch preview --platform all --message "main $GITHUB_SHA" --clear-cache --non-interactive
-      - name: Report a missing EAS credential
-        if: ${{ env.EXPO_TOKEN == '' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          echo "::error::EXPO_TOKEN is not configured; the preview OTA was not published."
-          exit 1
+          set -euo pipefail
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "::error::EXPO_TOKEN is not configured; the preview OTA was not published."
+            exit 1
+          fi
+          ./node_modules/.bin/eas update --branch preview --platform all --message "main $GITHUB_SHA" --clear-cache --non-interactive

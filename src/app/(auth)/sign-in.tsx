@@ -11,6 +11,7 @@ import { controlSize, font, radius, spacing, type, useTheme } from "../../ui/the
 import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { OperationFlow, OperationSignature } from "../../ui/operation-flow";
+import { isValidNewPassword } from "../../domain/input";
 
 function JourneyNode({
   icon: Icon,
@@ -126,6 +127,7 @@ export default function SignInScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [signUpConfirmationSent, setSignUpConfirmationSent] = useState(false);
   const { signIn, signUp, requestPasswordReset } = useSession();
   const { palette } = useTheme();
   const { width } = useWindowDimensions();
@@ -133,7 +135,9 @@ export default function SignInScreen() {
   const wide = width >= 820;
 
   const emailValid = /.+@.+\..+/.test(email.trim());
-  const canSubmit = emailValid && (mode === "forgot" || password.length >= 6) && !busy;
+  const canSubmit = emailValid && (
+    mode === "forgot" || (mode === "signUp" ? isValidNewPassword(password) : password.length >= 6)
+  ) && !busy;
   const primaryLabel = mode === "signIn"
       ? tr.auth.signIn
       : mode === "signUp"
@@ -158,12 +162,18 @@ export default function SignInScreen() {
     await operationGuard.run(async () => {
       setBusy(true);
       setError(null);
+      if (mode === "signUp") setSignUpConfirmationSent(false);
       try {
-        const err = mode === "signIn"
-          ? await signIn(email.trim(), password)
-          : mode === "signUp"
-            ? await signUp(email.trim(), password)
+        let err: string | null = null;
+        if (mode === "signUp") {
+          const result = await signUp(email.trim(), password);
+          if (result.status === "error") err = result.message;
+          else if (result.status === "confirmation-required") setSignUpConfirmationSent(true);
+        } else {
+          err = mode === "signIn"
+            ? await signIn(email.trim(), password)
             : await requestPasswordReset(email.trim());
+        }
         // On success, let the root route guard navigate (it keys off userId +
         // onboarded). Replacing to "/" here landed on a length-0 route that made the
         // guard's "(tabs)" redirect loop (React error #185 → white screen).
@@ -180,6 +190,7 @@ export default function SignInScreen() {
   const switchMode = () => {
     setError(null);
     setResetSent(false);
+    setSignUpConfirmationSent(false);
     setMode(mode === "signIn" ? "signUp" : "signIn");
   };
 
@@ -188,6 +199,7 @@ export default function SignInScreen() {
     setPassword("");
     setError(null);
     setResetSent(false);
+    setSignUpConfirmationSent(false);
   };
 
   useSubmitOnEnter(() => void submit(), canSubmit);
@@ -262,6 +274,7 @@ export default function SignInScreen() {
             onChangeText={(v) => {
               setEmail(v);
               setError(null);
+              setSignUpConfirmationSent(false);
             }}
             autoCapitalize="none"
             keyboardType="email-address"
@@ -277,20 +290,23 @@ export default function SignInScreen() {
               onChangeText={(v) => {
                 setPassword(v);
                 setError(null);
+                setSignUpConfirmationSent(false);
               }}
               secure
               autoComplete={mode === "signIn" ? "current-password" : "new-password"}
               textContentType={mode === "signIn" ? "password" : "newPassword"}
               returnKeyType="go"
               onSubmitEditing={() => void submit()}
-              error={mode === "signUp" && password.length > 0 && password.length < 6 ? tr.auth.passwordMin : null}
+              error={mode === "signUp" && password.length > 0 && !isValidNewPassword(password) ? tr.auth.passwordMin : null}
             />
           ) : null}
 
-          {resetSent ? (
+          {resetSent || signUpConfirmationSent ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: palette.success + "16", borderRadius: radius.sm, padding: spacing.md, marginBottom: spacing.md }}>
               <CheckCircle2 accessible={false} size={17} color={palette.success} />
-              <Text accessibilityLiveRegion="polite" style={[type.label, { color: palette.successText, flex: 1 }]}>{tr.auth.resetSent}</Text>
+              <Text accessibilityLiveRegion="polite" style={[type.label, { color: palette.successText, flex: 1 }]}>
+                {signUpConfirmationSent ? tr.auth.signUpConfirmationSent : tr.auth.resetSent}
+              </Text>
             </View>
           ) : null}
 

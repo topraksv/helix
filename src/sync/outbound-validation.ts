@@ -3,6 +3,7 @@ import { isISODate, todayISO } from "../domain/dates";
 import { isSupportedCurrency } from "../domain/fx-provider";
 import { resolveInvestmentQuote } from "../domain/investments";
 import type { SyncedTableName } from "../db/schema";
+import { isValidImportRow } from "../services/backup-validation";
 import {
   classifyOutboxBatch,
   type OutboxEvent,
@@ -41,6 +42,9 @@ export function convertOutboundRow(
   }
 
   const out: Record<string, unknown> = { ...row };
+  if (!isValidImportRow(table, out, { enforceInputLimits: true })) {
+    return { ok: false, reason: "invalid_row" };
+  }
   if ("currency" in out && !isSupportedCurrency(out.currency)) return { ok: false, reason: "invalid_row" };
   for (const column of policy.booleanColumns) {
     if (column in out && out[column] !== null) {

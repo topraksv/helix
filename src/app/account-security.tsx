@@ -24,6 +24,7 @@ import { WorkspaceGrid } from "../ui/workspace-layout";
 import { OperationFlow } from "../ui/operation-flow";
 import { clearLifecycleIntent, setLifecycleIntent } from "../ui/lifecycle-intent";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
+import { isValidNewPassword } from "../domain/input";
 
 export default function AccountSecurityScreen() {
   // Account freeze promises a cloud-confirmed write followed by sign-out. A
@@ -84,7 +85,7 @@ function CloudAccountSecurityScreen() {
   };
 
   const submitPassword = async () => {
-    if (currentPassword.length < 6 || newPassword.length < 6) return;
+    if (currentPassword.length < 6 || !isValidNewPassword(newPassword)) return;
     try {
       await operationGuard.run(async () => {
         setPwBusy(true);
@@ -94,7 +95,7 @@ function CloudAccountSecurityScreen() {
             void appAlert(verifyError, tr.errors.title);
             return;
           }
-          const err = await changePassword(newPassword);
+          const err = await changePassword(currentPassword, newPassword);
           if (err) {
             void appAlert(err, tr.errors.title);
             return;
@@ -281,13 +282,13 @@ function CloudAccountSecurityScreen() {
           autoComplete="new-password"
           textContentType="newPassword"
           placeholder={tr.account.newPasswordPlaceholder}
-          error={newPassword.length > 0 && newPassword.length < 6 ? tr.auth.passwordMin : null}
+          error={newPassword.length > 0 && !isValidNewPassword(newPassword) ? tr.auth.passwordMin : null}
         />
         <Button
           label={tr.account.changePassword}
           onPress={() => void submitPassword()}
           loading={pwBusy}
-          disabled={currentPassword.length < 6 || newPassword.length < 6}
+          disabled={currentPassword.length < 6 || !isValidNewPassword(newPassword)}
         />
       </Card>
 

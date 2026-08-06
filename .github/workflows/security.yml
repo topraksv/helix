@@ -1,9 +1,8 @@
-# CodeQL and dependency auditing, off the delivery path.
+# CodeQL and scheduled dependency auditing.
 #
-# These are advisory scanners: a newly published query or a fresh advisory can
-# turn them red on a commit that changed nothing, so they must never be able to
-# block a deploy. They run weekly, and on a push only when something they can
-# actually analyse changed — a README edit does not qualify.
+# CodeQL remains advisory because new query packs can change without a source
+# change. High/critical dependency advisories also run here on a schedule, but
+# the same deterministic lockfile check runs in ci/quality and blocks delivery.
 #
 # This replaced a separate PR-only dependency-review workflow. There are no
 # pull requests any more (work lands directly on main), so the lockfile is
@@ -41,6 +40,8 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           languages: javascript-typescript
@@ -57,6 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22

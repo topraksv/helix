@@ -38,6 +38,28 @@ test("offline relaunch keeps the SQLite ledger and avoids duplicate writes @smok
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
+test("a navigated static asset cannot poison the offline app shell @smoke", async ({ page, context }) => {
+  await page.goto("/helix/");
+  await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator)) throw new Error("Service Worker unavailable");
+    await navigator.serviceWorker.ready;
+  });
+  // Reload once so this document is controlled by the active worker and the
+  // known-good HTML shell is cached before the hostile navigation.
+  await page.reload();
+  const entry = await page.locator('script[src*="/_expo/static/js/web/entry-"]').getAttribute("src");
+  expect(entry).toBeTruthy();
+
+  // A link from any site can navigate a browser to Helix's public JS URL. The
+  // worker must serve it online without ever storing it under index.html.
+  await page.goto(entry!);
+  await context.setOffline(true);
+  await page.goto("/helix/");
+  await expect(page).toHaveTitle("Helix");
+  await expect(page.locator("#root")).toBeVisible();
+  await context.setOffline(false);
+});
+
 /**
  * Only one document may hold the local database.
  *

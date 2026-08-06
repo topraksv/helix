@@ -7,6 +7,7 @@ import {
   type InvestmentCashEvent,
   type InvestmentOperationLike,
 } from "../src/domain/investments";
+import { MAX_ABS_AMOUNT_MINOR } from "../src/domain/money";
 
 const product = {
   id: "product-1",
@@ -250,5 +251,48 @@ describe("investment wallet and weighted-cost invariants", () => {
       costMinor: 6_000,
       realizedProfitLossMinor: 2_000,
     });
+  });
+
+  it("keeps a long gain/loss journal exact across unsafe intermediate sums", () => {
+    const gain = MAX_ABS_AMOUNT_MINOR - 2;
+    const highSale = gain + 1;
+    const operations: InvestmentOperationLike[] = [];
+    let day = 0;
+    const date = () => {
+      const value = new Date(Date.UTC(2000, 0, 1 + day++));
+      return value.toISOString().slice(0, 10);
+    };
+    for (let index = 0; index < 100; index += 1) {
+      operations.push(
+        operation(`gain-existing-${index}`, "existing", date(), 1, "1"),
+        operation(`gain-sale-${index}`, "sell", date(), highSale, "1"),
+      );
+    }
+    for (let index = 0; index < 99; index += 1) {
+      operations.push(
+        operation(`loss-existing-${index}`, "existing", date(), highSale, "1"),
+        operation(`loss-sale-${index}`, "sell", date(), 1, "1"),
+      );
+    }
+    const cashEvents: InvestmentCashEvent[] = [
+      ...Array.from({ length: 99 }, (_, index) => ({
+        id: `cash-offset-${index}`,
+        date: "2002-01-01",
+        amountMinor: -MAX_ABS_AMOUNT_MINOR,
+      })),
+      { id: "cash-offset-final", date: "2002-01-01", amountMinor: -highSale },
+    ];
+
+    const state = buildInvestmentState({
+      startedOn: "2000-01-01",
+      openingCashMinor: 0,
+      products: [product],
+      operations,
+      cashEvents,
+    });
+
+    expect(state.cashMinor).toBe(0);
+    expect(state.realizedProfitLossMinor).toBe(gain);
+    expect(state.products[0]?.realizedProfitLossMinor).toBe(gain);
   });
 });

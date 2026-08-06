@@ -19,7 +19,7 @@ export const MONTH_END_DAY = 31;
  * render on a deep link like `/cash-flow/garbage`, before any handler runs.
  */
 export function isMonthKey(value: unknown): value is MonthKey {
-  return typeof value === "string" && MONTH_KEY_RE.test(value);
+  return typeof value === "string" && MONTH_KEY_RE.test(value) && Number(value.slice(0, 4)) >= 1;
 }
 
 /** Whether a value is a real Gregorian calendar date in `YYYY-MM-DD` form. */
@@ -28,7 +28,7 @@ export function isISODate(value: unknown): value is ISODate {
   const year = Number(value.slice(0, 4));
   const month = Number(value.slice(5, 7));
   const day = Number(value.slice(8, 10));
-  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month);
 }
 
 export function isMonthDay(value: string | number): boolean {

@@ -11,6 +11,7 @@ import { Body, Button, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { circle, radius, spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
+import { isValidNewPassword } from "../../domain/input";
 
 type RecoveryState = "checking" | "ready" | "expired" | "invalid" | "success";
 
@@ -43,7 +44,7 @@ export default function ResetPasswordScreen() {
     };
   }, [incomingUrl, preparePasswordRecovery]);
 
-  const valid = password.length >= 6 && confirmation === password && !busy;
+  const valid = isValidNewPassword(password) && confirmation === password && !busy;
   const save = async () => {
     if (!valid) return;
     await operationGuard.run(async () => {
@@ -128,7 +129,7 @@ export default function ResetPasswordScreen() {
           secure
           autoComplete="new-password"
           textContentType="newPassword"
-          error={password.length > 0 && password.length < 6 ? tr.auth.passwordMin : null}
+          error={password.length > 0 && !isValidNewPassword(password) ? tr.auth.passwordMin : null}
         />
         <Field
           label={tr.auth.confirmNewPassword}

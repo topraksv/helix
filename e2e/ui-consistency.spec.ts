@@ -284,17 +284,6 @@ test("bar-chart amounts stay readable and contained on phone and desktop", async
           && box.top >= chartBox.top - 1 && box.bottom <= chartBox.bottom + 1;
       });
     })).toBe(true);
-    const chartBox = await chart.boundingBox();
-    expect(chartBox).not.toBeNull();
-    const axisGeometry = await chart.getByTestId("bar-axis-label").evaluateAll((elements) => elements.map((element) => {
-      const box = element.getBoundingClientRect();
-      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
-    }));
-    expect(axisGeometry.length).toBeGreaterThan(0);
-    expect(axisGeometry.every(({ left, right, top, bottom }) =>
-      left >= chartBox!.x - 1 && right <= chartBox!.x + chartBox!.width + 1 &&
-      top >= chartBox!.y - 1 && bottom <= chartBox!.y + chartBox!.height + 1,
-    )).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   }
 });

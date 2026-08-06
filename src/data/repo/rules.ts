@@ -9,6 +9,7 @@ import { assertInputWithinLimit } from "../../domain/input";
 import type { ExpectedPaymentLike, RecurringIncomeLike, SubscriptionLike } from "../../domain/types";
 import { findSubscriptionCategory } from "../../domain/subscriptions";
 import { isValidCardCycle } from "../../domain/card-statements";
+import { MAX_SUBSCRIPTION_INTERVAL_MONTHS } from "../../domain/recurrence";
 import { CreditCardCycleRequiredError, SubscriptionCategoryRequiredError } from "./errors";
 import { livePaymentSource } from "./transactions";
 import { assertRecurringIncomeCategory } from "./rule-validation";
@@ -166,7 +167,11 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   if (!["monthly", "yearly", "custom"].includes(input.cycle)) {
     throw new Error("Invalid subscription cycle");
   }
-  if (!Number.isInteger(input.intervalMonths) || input.intervalMonths < 1) {
+  if (
+    !Number.isInteger(input.intervalMonths)
+    || input.intervalMonths < 1
+    || input.intervalMonths > MAX_SUBSCRIPTION_INTERVAL_MONTHS
+  ) {
     throw new Error("Invalid subscription interval");
   }
   if (!isMonthDay(input.billingDay)) throw new Error("Invalid subscription billing day");

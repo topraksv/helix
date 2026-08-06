@@ -8,6 +8,7 @@ import { CreditCardCycleRequiredError, ReferencedRecordError } from "./errors";
 import { cardStatementWrite, type LivePaymentSource } from "./transactions";
 import { repairCardStatementLinks, runMaintenance } from "./maintenance";
 import { assertInputWithinLimit } from "../../domain/input";
+import { assertInvestmentWrites } from "./investment-validation";
 
 export interface PersonReferenceUsage {
   paymentSources: number;
@@ -222,7 +223,11 @@ export async function reassignAndDeletePerson(userId: string, personId: string, 
     ])
   ).flat();
   writes.push({ table: "persons", row: { ...fromDbShape("persons", person), deletedAt: nowIso() } });
-  await writeRows(userId, writes);
+  await writeRowsValidated(
+    userId,
+    writes,
+    (db) => assertInvestmentWrites(db, userId, writes).then(() => undefined),
+  );
   // Expected rows are derived from person ownership. Maintenance immediately
   // creates/cleans them under the replacement's self/watch-only classification.
   await runMaintenance(userId);

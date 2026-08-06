@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "com.toprak.helix",
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#E7ECEB",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

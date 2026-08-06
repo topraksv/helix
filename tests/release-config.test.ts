@@ -12,6 +12,7 @@ const nightly = read(".github/workflows/nightly.yml");
 const keepalive = read(".github/workflows/keepalive.yml");
 const dependabot = read(".github/dependabot.yml");
 const packageJson = JSON.parse(read("package.json"));
+const packageLock = JSON.parse(read("package-lock.json"));
 const easPreviewPath = resolve(process.cwd(), ".eas/workflows/deploy-preview.yml");
 
 function dependabotRule(dependency: string) {
@@ -29,6 +30,7 @@ describe("release contract", () => {
     expect(app.expo.extra.eas.projectId).toBe("f71b0477-c800-45cc-903a-9b4d32a9c6b4");
     expect(app.expo.ios.bundleIdentifier).toBe("com.toprak.helix");
     expect(app.expo.android.package).toBe("com.toprak.helix");
+    expect(app.expo.android.allowBackup).toBe(false);
     expect(packageJson.dependencies.expo).toMatch(/^~54\./);
     expect(eas.cli.version).toBe("21.4.0");
     expect(eas.build).toBeUndefined();
@@ -36,13 +38,25 @@ describe("release contract", () => {
     expect(packageJson.engines.node).toBe("^22");
   });
 
+  it("keeps web recovery and offline caches inside narrow browser boundaries", () => {
+    const html = read("src/app/+html.tsx");
+    const serviceWorker = read("public/sw.js");
+    expect(html).toContain('<meta name="referrer" content="no-referrer" />');
+    expect(html).toContain("trustedSupabaseOrigin(process.env.EXPO_PUBLIC_SUPABASE_URL)");
+    expect(html).not.toContain("https://*.supabase.co");
+    expect(html).toContain('"frame-src \'none\'"');
+    expect(serviceWorker).toContain('const CACHE = "helix-v2"');
+    expect(serviceWorker).toContain('res.ok && contentType.startsWith("text/html")');
+    expect(serviceWorker.indexOf('contentType.startsWith("text/html")'))
+      .toBeLessThan(serviceWorker.indexOf("cache.put(SHELL, res.clone())"));
+  });
+
   it("publishes one Expo Go preview update and never searches for or creates a binary", () => {
     expect(existsSync(easPreviewPath)).toBe(false);
     const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
-    const commands = mobile.split("\n").filter((line) => /^\s*(-\s*)?run:/.test(line));
-    const deploy = commands.find((line) => line.includes("eas-cli"));
+    const deploy = mobile.split("\n").find((line) => line.includes(".bin/eas update"));
     expect(deploy).toBeDefined();
-    expect(deploy).toMatch(/npx eas-cli@21\.4\.0 update /);
+    expect(deploy).toMatch(/\.\/node_modules\/\.bin\/eas update /);
     expect(deploy).toContain("--branch preview");
     expect(deploy).toContain("--platform all");
     expect(deploy).toContain("--clear-cache");
@@ -57,6 +71,7 @@ describe("release contract", () => {
       "npm run typecheck",
       "npx expo lint",
       "npm test",
+      "node scripts/check-advisories.mjs",
       "npx expo export -p web --clear",
       "npm run bundle:check",
     ]) {
@@ -149,7 +164,7 @@ describe("release contract", () => {
     expect(ci).toContain("success|skipped) ;;");
   });
 
-  it("keeps advisory scanners off the delivery path", () => {
+  it("blocks delivery on dependency advisories while keeping CodeQL advisory", () => {
     expect(security).toContain("github/codeql-action/init");
     // The gate names each accepted advisory instead of relaxing the threshold.
     // Assert against the executed lines: the surrounding comments legitimately
@@ -161,14 +176,26 @@ describe("release contract", () => {
     }
     expect(security).toContain("cron:");
     expect(security).toContain("package-lock.json");
+    const quality = ci.slice(ci.indexOf("  quality:"), ci.indexOf("  web-build:"));
+    expect(quality).toContain("node scripts/check-advisories.mjs");
+    expect(quality.indexOf("node scripts/check-advisories.mjs")).toBeLessThan(quality.indexOf("npm ci"));
     // A README or Markdown edit must not wake a scanner: the push trigger is
     // an allowlist of paths, and none of them is documentation.
     const paths = security.slice(security.indexOf("paths:")).split("\n").slice(1);
     const listed = paths.filter((line) => line.trim().startsWith("- ")).map((line) => line.trim());
     expect(listed.length).toBeGreaterThan(0);
     for (const entry of listed) expect(entry, entry).not.toMatch(/\.md|README/);
-    // And no scanner sits on the delivery path.
+    // CodeQL stays out of the delivery path; only the deterministic advisory
+    // policy over this commit's lockfile blocks it.
     expect(ci).not.toContain("codeql");
+  });
+
+  it("removes the checkout token before dependency or build code runs", () => {
+    for (const [name, workflow] of Object.entries({ ci, security, nightly })) {
+      const checkouts = workflow.split("uses: actions/checkout@").length - 1;
+      const removals = workflow.split("persist-credentials: false").length - 1;
+      expect(removals, name).toBe(checkouts);
+    }
   });
 
   it("pins every third-party action to a full commit SHA", () => {
@@ -179,11 +206,42 @@ describe("release contract", () => {
   });
 
   it("pins the EAS CLI that publishes after the gate", () => {
-    const commands = ci.split("\n").filter((line) => /^\s*(-\s*)?run:/.test(line));
-    const deploy = commands.find((line) => line.includes("eas-cli"));
+    const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
+    const deploy = mobile.split("\n").find((line) => line.includes(".bin/eas update"));
     expect(deploy).toBeDefined();
-    expect(deploy).toMatch(/npx eas-cli@\d+\.\d+\.\d+ update/);
+    expect(deploy).toMatch(/\.\/node_modules\/\.bin\/eas update/);
     expect(deploy).not.toContain("@latest");
+    expect(mobile).not.toMatch(/npx\s+eas-cli@/);
+
+    const expectedVersion = eas.cli.version;
+    expect(packageJson.devDependencies["eas-cli"]).toBe(expectedVersion);
+    const locked = packageLock.packages["node_modules/eas-cli"];
+    expect(locked.version).toBe(expectedVersion);
+    expect(locked.resolved).toBe(`https://registry.npmjs.org/eas-cli/-/eas-cli-${expectedVersion}.tgz`);
+    expect(locked.integrity).toMatch(/^sha512-/);
+
+    expect(packageJson.overrides["eas-cli@21.4.0"]["minimatch@5.1.2"]).toBe("5.1.9");
+    const patchedMinimatch = packageLock.packages["node_modules/eas-cli/node_modules/minimatch"];
+    expect(patchedMinimatch.version).toBe("5.1.9");
+    expect(patchedMinimatch.integrity).toMatch(/^sha512-/);
+    const unrelatedMinimatch = packageLock.packages[
+      "node_modules/eas-cli/node_modules/@expo/prebuild-config/node_modules/minimatch"
+    ];
+    expect(unrelatedMinimatch.version).toBe("9.0.9");
+  });
+
+  it("withholds the Expo publish credential from dependency installation", () => {
+    const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
+    const jobHeader = mobile.slice(0, mobile.indexOf("    steps:"));
+    expect(jobHeader).not.toContain("EXPO_TOKEN");
+
+    const installAt = mobile.indexOf("- run: npm ci");
+    const publishAt = mobile.indexOf("- name: Publish Expo Go preview update");
+    expect(installAt).toBeGreaterThanOrEqual(0);
+    expect(publishAt).toBeGreaterThan(installAt);
+    const publishStep = mobile.slice(publishAt);
+    expect(publishStep).toContain("EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}");
+    expect(publishStep).toContain("./node_modules/.bin/eas update");
   });
 
   it("denies the repository token to the standalone keepalive job", () => {

@@ -3,10 +3,14 @@ import { recordDiagnostic } from "./diagnostics";
 
 export function devError(scope: string, error: unknown, detail?: unknown): void {
   recordDiagnostic(scope, "error", error);
-  if (typeof __DEV__ !== "undefined" && __DEV__) console.error(`[${scope}]`, error, detail ?? "");
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    console.error("Helix development error", { scope, error, detail: detail ?? "" });
+  }
 }
 
 export function devWarning(scope: string, message: string): void {
   recordDiagnostic(scope, "warning", message);
-  if (typeof __DEV__ !== "undefined" && __DEV__) console.warn(`[${scope}]`, message);
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    console.warn("Helix development warning", { scope, message });
+  }
 }

@@ -44,7 +44,7 @@ describe("isMonthKey guards route params against the throwing range helpers", ()
   });
 
   it("rejects malformed, out-of-range and non-string params", () => {
-    for (const bad of ["garbage", "2026-13", "2026-00", "2026-99", "2026-7", "", "../etc", "2026", null, undefined, 202607]) {
+    for (const bad of ["garbage", "0000-01", "2026-13", "2026-00", "2026-99", "2026-7", "", "../etc", "2026", null, undefined, 202607]) {
       expect(isMonthKey(bad)).toBe(false);
     }
   });

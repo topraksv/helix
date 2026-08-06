@@ -105,6 +105,27 @@ if (entry && process.argv.includes("--require-supabase-config")) {
   if (!supabaseUrl) {
     console.log("supabaseConfigInlined: skipped (no EXPO_PUBLIC_SUPABASE_URL configured)");
   } else {
+    let trustedOrigin = null;
+    try {
+      const parsed = new URL(supabaseUrl);
+      if (
+        parsed.protocol === "https:" &&
+        !parsed.username &&
+        !parsed.password &&
+        !parsed.port &&
+        parsed.pathname === "/" &&
+        !parsed.search &&
+        !parsed.hash &&
+        /^[a-z0-9-]+\.supabase\.co$/i.test(parsed.hostname)
+      ) trustedOrigin = parsed.origin;
+    } catch {
+      // The explicit failure below is the release result.
+    }
+    console.log(`supabaseOriginTrusted: ${trustedOrigin != null} (expected true)`);
+    if (!trustedOrigin) {
+      console.error("EXPO_PUBLIC_SUPABASE_URL must be a bare HTTPS Supabase project origin.");
+      process.exitCode = 1;
+    }
     const inlined = (await readFile(entry.path, "utf8")).includes(supabaseUrl);
     console.log(`supabaseConfigInlined: ${inlined} (expected true)`);
     if (!inlined) {

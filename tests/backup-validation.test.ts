@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ExportTextBuilder, isValidImportRow, MAX_BACKUP_ROWS, parseExportBundleText, validateBundleRelationships, validateExportBundle } from "../src/services/backup-validation";
 import { SYNCED_TABLES, type SyncedTableName } from "../src/db/schema";
 import { LOCAL_ONLY_USER_ID } from "../src/domain/user-id";
+import { MAX_ABS_AMOUNT_MINOR } from "../src/domain/money";
 
 const timestamp = "2026-07-15T12:00:00.000Z";
 const id = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -82,6 +83,34 @@ describe("backup validation", () => {
     expect(isValidImportRow("transactions", transaction)).toBe(true);
   });
 
+  it("keeps generated transaction magnitudes on the exact product boundary", () => {
+    let state = 0x6d2b79f5;
+    const supported = [1, MAX_ABS_AMOUNT_MINOR];
+    for (let index = 0; index < 256; index += 1) {
+      state = Math.imul(state ^ (state >>> 15), 1 | state);
+      supported.push((Math.abs(state) % 1_000_000_000) + 1);
+    }
+    for (const magnitude of supported) {
+      expect(isValidImportRow("transactions", {
+        ...transaction,
+        amount_minor: magnitude,
+        amount_try_minor: magnitude,
+      })).toBe(true);
+      expect(isValidImportRow("transactions", {
+        ...transaction,
+        amount_minor: -magnitude,
+        amount_try_minor: -magnitude,
+      })).toBe(true);
+    }
+    for (let offset = 1; offset <= 256; offset += 1) {
+      expect(isValidImportRow("transactions", {
+        ...transaction,
+        amount_minor: MAX_ABS_AMOUNT_MINOR + offset,
+        amount_try_minor: MAX_ABS_AMOUNT_MINOR + offset,
+      })).toBe(false);
+    }
+  });
+
   it("keeps pre-generation backups recoverable and validates supplied generations", () => {
     expect(isValidImportRow("transactions", transaction)).toBe(true);
     expect(isValidImportRow("transactions", { ...transaction, tombstone_version: 2 })).toBe(true);
@@ -91,6 +120,10 @@ describe("backup validation", () => {
 
   it("rejects unsafe money, invalid enums and impossible calendar dates", () => {
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: Number.MAX_SAFE_INTEGER + 1 })).toBe(false);
+    expect(isValidImportRow("transactions", { ...transaction, amount_minor: 100_000_000_000_000 })).toBe(false);
+    expect(isValidImportRow("transactions", { ...transaction, amount_try_minor: -125_00 })).toBe(false);
+    expect(isValidImportRow("transactions", { ...transaction, fx_rate: "1000001" })).toBe(false);
+    expect(isValidImportRow("transactions", { ...transaction, installment_no: 0 })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, type: "refund" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, effective_date: "2026-02-31" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, currency: "NOT-A-CURRENCY" })).toBe(false);
@@ -112,6 +145,7 @@ describe("backup validation", () => {
     expect(isValidImportRow("credit_card_statements", statement)).toBe(true);
     expect(isValidImportRow("credit_card_statements", { ...statement, period_month: "2026-13" })).toBe(false);
     expect(isValidImportRow("credit_card_statements", { ...statement, due_date: "2026-02-30" })).toBe(false);
+    expect(isValidImportRow("credit_card_statements", { ...statement, due_date: "2026-07-24" })).toBe(false);
   });
 
   it("keeps legacy monthly-income backups readable and validates new schedules/budgets", () => {
@@ -152,7 +186,11 @@ describe("backup validation", () => {
     expect(isValidImportRow("investment_profiles", profile)).toBe(true);
     expect(isValidImportRow("investment_profiles", { ...profile, started_on: "2999-01-01" })).toBe(false);
     expect(isValidImportRow("investment_products", product)).toBe(true);
+    expect(isValidImportRow("investment_products", { ...product, name: "🧭".repeat(120) })).toBe(true);
+    expect(isValidImportRow("investment_products", { ...product, name: "🧭".repeat(121) })).toBe(false);
+    expect(isValidImportRow("investment_products", { ...product, market_code: "" })).toBe(false);
     expect(isValidImportRow("investment_operations", operation)).toBe(true);
+    expect(isValidImportRow("investment_operations", { ...operation, import_key: "" })).toBe(false);
     expect(isValidImportRow("investment_operations", { ...operation, operation_date: "2999-01-01" })).toBe(false);
     expect(isValidImportRow("investment_operations", { ...operation, total_minor: 900_000 })).toBe(false);
     expect(() => validateBundleRelationships(validateExportBundle({
@@ -249,13 +287,32 @@ describe("backup validation", () => {
 
     expect(isValidImportRow("subscriptions", { ...subscription, amount_minor: 0 })).toBe(false);
     expect(isValidImportRow("subscriptions", { ...subscription, interval_months: 0 })).toBe(false);
+    expect(isValidImportRow("subscriptions", { ...subscription, interval_months: 13 })).toBe(false);
+    expect(isValidImportRow(
+      "subscriptions",
+      { ...subscription, name: "x".repeat(121) },
+      { enforceInputLimits: true },
+    )).toBe(false);
     expect(isValidImportRow("recurring_incomes", { ...income, default_amount_minor: -1 })).toBe(false);
     expect(isValidImportRow("installment_plans", { ...plan, installment_count: 0 })).toBe(false);
+    expect(isValidImportRow("installment_plans", { ...plan, installment_count: 601 })).toBe(false);
+    expect(isValidImportRow("installment_plans", { ...plan, start_month: "0000-01" })).toBe(false);
     expect(isValidImportRow("installment_plans", { ...plan, total_amount_minor: null, monthly_amount_minor: null })).toBe(false);
     expect(isValidImportRow("fx_rates", { ...fxRate, rate_try: "0" })).toBe(false);
     expect(isValidImportRow("transactions", { ...transaction, amount_minor: 0 })).toBe(false);
     expect(isValidImportRow("payment_sources", cardSource)).toBe(false);
     expect(isValidImportRow("installment_plans", { ...plan, payment_source_id: null })).toBe(false);
+    expect(isValidImportRow(
+      "transactions",
+      { ...transaction, note: "x".repeat(1_001) },
+      { enforceInputLimits: true },
+    )).toBe(false);
+  });
+
+  it("keeps legacy user text restorable while new outbound writes use current limits", () => {
+    const legacy = { ...transaction, note: "x".repeat(1_001) };
+    expect(isValidImportRow("transactions", legacy)).toBe(true);
+    expect(isValidImportRow("transactions", legacy, { enforceInputLimits: true })).toBe(false);
   });
 
   it("validates backup relationships against bundled or existing parent ids", () => {

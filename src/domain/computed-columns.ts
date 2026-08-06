@@ -8,20 +8,34 @@ import { z } from "zod";
 import type { Minor } from "./money";
 import type { MonthKey } from "./dates";
 
+export const MAX_COMPUTED_CATEGORY_IDS = 500;
+
 const computedColumnDefinitionSchema = z.discriminatedUnion("op", [
   /** Sum of selected categories' realized totals. */
-  z.object({ op: z.literal("sum"), categoryIds: z.array(z.string().min(1)).min(1) }),
+  z.object({
+    op: z.literal("sum"),
+    categoryIds: z.array(z.string().min(1)).min(1).max(MAX_COMPUTED_CATEGORY_IDS),
+  }).strict(),
   /** Σ(plus categories) − Σ(minus categories). */
   z.object({
     op: z.literal("difference"),
-    plusCategoryIds: z.array(z.string().min(1)).min(1),
-    minusCategoryIds: z.array(z.string().min(1)).min(1),
-  }),
+    plusCategoryIds: z.array(z.string().min(1)).min(1).max(MAX_COMPUTED_CATEGORY_IDS),
+    minusCategoryIds: z.array(z.string().min(1)).min(1).max(MAX_COMPUTED_CATEGORY_IDS),
+  }).strict(),
   /** Month's total income minus total expense. */
-  z.object({ op: z.literal("income_minus_expense") }),
+  z.object({ op: z.literal("income_minus_expense") }).strict(),
   /** Credit-card split: single-shot or installment share. */
-  z.object({ op: z.literal("cc_split"), part: z.enum(["single", "installment"]) }),
-]);
+  z.object({ op: z.literal("cc_split"), part: z.enum(["single", "installment"]) }).strict(),
+]).superRefine((definition, ctx) => {
+  const ids = definition.op === "sum"
+    ? definition.categoryIds
+    : definition.op === "difference"
+      ? [...definition.plusCategoryIds, ...definition.minusCategoryIds]
+      : [];
+  if (new Set(ids).size !== ids.length) {
+    ctx.addIssue({ code: "custom", message: "Computed categories must be unique" });
+  }
+});
 
 export type ComputedColumnDefinition = z.infer<typeof computedColumnDefinitionSchema>;
 

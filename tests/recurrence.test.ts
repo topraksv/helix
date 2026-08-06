@@ -51,6 +51,7 @@ describe("dueDatesInRange", () => {
     expect(dueDatesInRange("2026-07-10", -1, 10, "2026-07-01", "2026-09-30")).toEqual([]);
     expect(dueDatesInRange("2026-07-10", NaN, 10, "2026-07-01", "2026-09-30")).toEqual([]);
     expect(dueDatesInRange("2026-07-10", 1.5, 10, "2026-07-01", "2026-09-30")).toEqual([]);
+    expect(dueDatesInRange("2026-07-10", 13, 10, "2026-07-01", "2026-09-30")).toEqual([]);
   });
 
   it("stays finite even across a very wide window (iteration cap)", () => {

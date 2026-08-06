@@ -10,7 +10,8 @@ import { isSupportedCurrency } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 import { UserFacingError, userMessage } from "../domain/user-error";
-import { utf8ByteLength } from "../domain/input";
+import { textLength, utf8ByteLength } from "../domain/input";
+import { MAX_SUBSCRIPTION_INTERVAL_MONTHS } from "../domain/recurrence";
 
 const EXPORT_VERSION = 1;
 export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
@@ -121,9 +122,32 @@ function isSupportedRate(value: unknown): boolean {
   return Number.isFinite(rate) && rate > 0 && rate <= 1_000_000;
 }
 
+function requiredText(value: unknown, max: number): boolean {
+  return typeof value === "string" && value.trim() !== "" && textLength(value) <= max;
+}
+
+function optionalText(value: unknown, max: number): boolean {
+  return value == null || (typeof value === "string" && textLength(value) <= max);
+}
+
+function optionalNonEmptyText(value: unknown, max: number): boolean {
+  if (value == null) return true;
+  if (typeof value !== "string") return false;
+  const length = textLength(value);
+  return length >= 1 && length <= max;
+}
+
 /** Validate a restore row completely before any database write begins. */
-export function isValidImportRow(table: SyncedTableName, raw: Record<string, unknown>): boolean {
+export function isValidImportRow(
+  table: SyncedTableName,
+  raw: Record<string, unknown>,
+  options: { enforceInputLimits?: boolean } = {},
+): boolean {
   const today = todayISO();
+  // A tombstone must remain pushable even when it was created from a legacy
+  // row that predates today's input caps. Its payload has no live product
+  // effect; quarantining it would instead keep the old cloud row alive.
+  const enforceInputLimits = options.enforceInputLimits === true && raw.deleted_at == null;
   if (typeof raw.id !== "string" || !UUID_RE.test(raw.id)) return false;
   for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
     const value = raw[column.name];
@@ -144,7 +168,7 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     if (column.columnType === "SQLiteBoolean" && value !== 0 && value !== 1 && typeof value !== "boolean") return false;
     if (column.dataType === "string" && typeof value !== "string") return false;
     if (column.enumValues && !column.enumValues.includes(value as never)) return false;
-    if (typeof value === "string" && value.length > 50_000) return false;
+    if (typeof value === "string" && textLength(value) > 50_000) return false;
   }
   for (const [key, value] of Object.entries(raw)) {
     if (key === "user_id" && value === LOCAL_ONLY_USER_ID) continue;
@@ -169,6 +193,7 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     if (value != null && (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 31)) return false;
   }
   if (table === "settings") {
+    if (enforceInputLimits && (!requiredText(raw.key, 120) || !optionalText(raw.value, 50_000))) return false;
     try {
       JSON.parse(String(raw.value));
     } catch {
@@ -176,6 +201,7 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     }
   }
   if (table === "computed_columns") {
+    if (enforceInputLimits && !requiredText(raw.name, 120)) return false;
     try {
       const definition = parseDefinition(JSON.parse(String(raw.definition)));
       if (definitionCategoryIds(definition).some((id) => !UUID_RE.test(id))) return false;
@@ -188,12 +214,25 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
       !isSupportedMoney(raw.amount_minor, false)
       || !isSupportedMoney(raw.amount_try_minor, false)
       || Math.sign(raw.amount_minor) !== Math.sign(raw.amount_try_minor)
+      || (raw.installment_no != null && (!Number.isInteger(raw.installment_no) || Number(raw.installment_no) < 1))
+      || (enforceInputLimits && !optionalText(raw.note, 1_000))
     ) return false;
+    if (raw.fx_rate != null) {
+      const rate = Number(raw.fx_rate);
+      if (!Number.isFinite(rate) || rate <= 0 || rate > 1_000_000) return false;
+    }
   }
   if (table === "subscriptions") {
     if (
       !isPositiveMoney(raw.amount_minor)
       || !isPositiveInteger(raw.interval_months)
+      || raw.interval_months > MAX_SUBSCRIPTION_INTERVAL_MONTHS
+      || (enforceInputLimits && (
+        !requiredText(raw.name, 120)
+        || !optionalText(raw.website_domain, 512)
+        || !optionalText(raw.logo_ref, 512)
+        || !optionalText(raw.note, 1_000)
+      ))
     ) return false;
   }
   if (table === "price_history" && !isPositiveMoney(raw.amount_minor)) return false;
@@ -206,8 +245,21 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     statementDay: typeof raw.statement_day === "number" ? raw.statement_day : null,
     dueDay: typeof raw.due_day === "number" ? raw.due_day : null,
   })) return false;
+  if (
+    table === "credit_card_statements"
+    && typeof raw.statement_date === "string"
+    && typeof raw.due_date === "string"
+    && raw.due_date < raw.statement_date
+  ) return false;
   if (table === "installment_plans") {
-    if (!isPositiveInteger(raw.installment_count) || raw.installment_count > MAX_INSTALLMENT_COUNT) {
+    if (
+      !isPositiveInteger(raw.installment_count)
+      || raw.installment_count > MAX_INSTALLMENT_COUNT
+      || (enforceInputLimits && (
+        !requiredText(raw.title, 120)
+        || !optionalText(raw.note, 1_000)
+      ))
+    ) {
       return false;
     }
     const hasTotal = raw.total_amount_minor != null;
@@ -231,6 +283,9 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
       !["metal", "currency", "equity", "fund", "crypto", "pension"].includes(String(raw.asset_type))
       || typeof raw.name !== "string"
       || raw.name.trim() === ""
+      || textLength(raw.name) > 120
+      || !optionalNonEmptyText(raw.market_code, 40)
+      || !optionalText(raw.note, 2_000)
     ) return false;
   }
   if (table === "investment_operations") {
@@ -245,6 +300,8 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
       || !isSupportedMinorAmount(raw.total_minor, false)
       || !isSupportedMinorAmount(raw.cost_basis_minor)
       || !isSupportedMinorAmount(raw.realized_profit_loss_minor)
+      || !optionalText(raw.note, 2_000)
+      || !optionalNonEmptyText(raw.import_key, 240)
     ) return false;
     if (raw.quantity == null) {
       if (raw.kind !== "contribution" || raw.unit_price_minor != null) return false;
@@ -270,6 +327,23 @@ export function isValidImportRow(table: SyncedTableName, raw: Record<string, unk
     const transfer = raw.is_transfer === true || raw.is_transfer === 1;
     if (transfer && raw.kind !== "expense") return false;
   }
+  if (enforceInputLimits && table === "persons" && !requiredText(raw.name, 120)) return false;
+  if (enforceInputLimits && table === "payment_sources" && (
+    !requiredText(raw.name, 120)
+    || !optionalText(raw.color, 64)
+    || !optionalText(raw.logo_ref, 512)
+  )) return false;
+  if (enforceInputLimits && table === "categories" && (
+    !requiredText(raw.name, 120)
+    || !optionalText(raw.icon, 64)
+    || !optionalText(raw.color, 64)
+  )) return false;
+  if (enforceInputLimits && table === "recurring_incomes" && (
+    !requiredText(raw.name, 120)
+    || !optionalText(raw.note, 1_000)
+  )) return false;
+  if (enforceInputLimits && table === "balance_adjustments" && !optionalText(raw.note, 1_000)) return false;
+  if (enforceInputLimits && table === "cell_notes" && !optionalText(raw.body, 1_000)) return false;
   if (table === "recurring_incomes") {
     const recurrence = raw.recurrence ?? "monthly";
     if ((recurrence === "weekly" || recurrence === "biweekly") && !isIsoDate(raw.anchor_date)) return false;

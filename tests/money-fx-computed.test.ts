@@ -16,6 +16,7 @@ import {
 import { convertToTryMinor, pickRate } from "../src/domain/fx";
 import {
   evaluateComputedColumn,
+  MAX_COMPUTED_CATEGORY_IDS,
   parseDefinition,
   type MonthAggregates,
 } from "../src/domain/computed-columns";
@@ -217,6 +218,12 @@ describe("computed columns", () => {
     expect(() => parseDefinition({ op: "eval", code: "1+1" })).toThrow();
     expect(() => parseDefinition({ op: "sum", categoryIds: [] })).toThrow();
     expect(() => parseDefinition({ op: "difference", plusCategoryIds: ["a"] })).toThrow();
+    expect(() => parseDefinition({ op: "income_minus_expense", code: "1+1" })).toThrow();
+    expect(() => parseDefinition({ op: "sum", categoryIds: ["a", "a"] })).toThrow();
+    expect(() => parseDefinition({
+      op: "sum",
+      categoryIds: Array.from({ length: MAX_COMPUTED_CATEGORY_IDS + 1 }, (_, index) => String(index)),
+    })).toThrow();
   });
 });
 
