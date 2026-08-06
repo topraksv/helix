@@ -353,6 +353,10 @@ function Figure({
     const next = nextAmountFontSize(scale, fittedSize);
     if (next !== fittedSize) setFit({ key: fitKey, size: next });
   };
+  // A plain ASCII minus is a legal line-break opportunity on several text
+  // engines. Keep the sign glued to the currency glyph while leaving the
+  // spoken/accessibility value untouched.
+  const rendered = formatted.startsWith("-") ? `-\u2060${formatted.slice(1)}` : formatted;
   return (
     <Text
       testID={testID}
@@ -371,16 +375,21 @@ function Figure({
       }}
       style={[
         large || hero ? type.amountLg : type.amount,
-        { color: resolved, flexShrink: 1, textAlign: "right" },
+        { color: resolved, flexShrink: 1, minWidth: 0, maxWidth: "100%", textAlign: "right" },
         style,
         // A caller may request a smaller starting role, but never gets to
         // override a measured fit on the final style layer. That override was
         // why a long negative figure could wrap again after Amount had already
         // walked down its font ladder.
-        { fontSize: fittedSize },
+        {
+          fontSize: fittedSize,
+          minWidth: 0,
+          maxWidth: "100%",
+          ...(Platform.OS === "web" ? ({ whiteSpace: "nowrap" } as unknown as TextStyle) : {}),
+        },
       ]}
     >
-      {formatted}
+      {rendered}
     </Text>
   );
 }

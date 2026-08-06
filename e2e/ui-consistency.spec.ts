@@ -119,6 +119,8 @@ test("theme fallback begins with the palette that is leaving", async ({ page }) 
   // the first frame; using the destination colour here makes a dark/light
   // change snap before the fallback has a chance to soften it.
   await expect.poll(() => veil.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(241, 237, 232)");
+  await expect.poll(() => veil.evaluate((element) => getComputedStyle(element).transitionProperty)).toContain("opacity");
+  await expect.poll(() => veil.evaluate((element) => Number.parseFloat(getComputedStyle(element).transitionDuration))).toBeGreaterThan(0);
 });
 
 test("dragging across the footer still changes tabs", async ({ page }) => {
@@ -238,7 +240,7 @@ test("navigation stays a bounded bottom bar at every width", async ({ page }) =>
 test("bar-chart amounts stay readable and contained on phone and desktop", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await onboard(page);
-  await addMarketExpense(page, "Sütun grafik tutarı", "123.456,78");
+  await addMarketExpense(page, "Sütun grafik tutarı", "987.654.321,00");
   await page.getByRole("tab", { name: "Durum" }).click();
   await page.getByRole("radio", { name: "Sütun", exact: true }).click();
 
@@ -265,8 +267,60 @@ test("bar-chart amounts stay readable and contained on phone and desktop", async
       }),
     );
     expect(measurements.every(({ fontSize, contained }) => fontSize >= 14 && contained)).toBe(true);
+    const chart = page.getByTestId("bar-chart-frame").first();
+    const chartBox = await chart.boundingBox();
+    expect(chartBox).not.toBeNull();
+    const axisGeometry = await chart.getByTestId("bar-axis-label").evaluateAll((elements) => elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+    }));
+    expect(axisGeometry.length).toBeGreaterThan(0);
+    expect(axisGeometry.every(({ left, right, top, bottom }) =>
+      left >= chartBox!.x - 1 && right <= chartBox!.x + chartBox!.width + 1 &&
+      top >= chartBox!.y - 1 && bottom <= chartBox!.y + chartBox!.height + 1,
+    )).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   }
+});
+
+test("clicking a table item opens its month-value bars on desktop and mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await onboard(page);
+  await addMarketExpense(page, "Aylık bar görünümü", "999.999,99");
+
+  await page.getByRole("button", { name: "Market", exact: true }).click();
+  await expect(page).toHaveURL(/\/cash-flow\/item/);
+  await expect(page.getByTestId("month-value-bar")).toHaveCount(12);
+  await expect(page.getByTestId("month-value-amount").first()).toBeVisible();
+
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto("/helix/cash-flow");
+  const matrixValues = page.getByTestId("matrix-value");
+  await expect(matrixValues.first()).toBeVisible();
+  const matrixGeometry = await matrixValues.evaluateAll((elements) => elements
+    .filter((element) => element.textContent?.includes("999"))
+    .map((element) => {
+      const box = element.getBoundingClientRect();
+      const parent = element.parentElement!.getBoundingClientRect();
+      return {
+        text: element.textContent,
+        height: box.height,
+        contained: box.left >= parent.left - 1 && box.right <= parent.right + 1 && box.top >= parent.top - 1 && box.bottom <= parent.bottom + 1,
+        oneLine: element.scrollHeight <= element.clientHeight + 1,
+      };
+    }));
+  expect(matrixGeometry.length).toBeGreaterThan(0);
+  expect(matrixGeometry.every(({ height, contained, oneLine }) => height <= 18 && contained && oneLine)).toBe(true);
+  await page.getByRole("link", { name: "Market", exact: true }).click();
+  await expect(page).toHaveURL(/\/cash-flow\/item/);
+  const bars = page.getByTestId("month-value-bar");
+  await expect(bars).toHaveCount(12);
+  const barGeometry = await bars.evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  }));
+  expect(barGeometry.every(({ width, height }) => width >= 32 && height >= 6)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 /**
@@ -642,6 +696,29 @@ test("the investment wallet keeps large balances readable at the narrowest phone
   expect(new Set(actionGeometry.map(({ top }) => top)).size).toBe(1);
   expect(Math.max(...actionGeometry.map(({ width }) => width)) - Math.min(...actionGeometry.map(({ width }) => width))).toBeLessThanOrEqual(1);
   expect(Math.max(...actionGeometry.map(({ right }) => right))).toBeLessThanOrEqual(320 - 16);
+
+  const actionBand = page.getByTestId("investment-actions");
+  const bandGeometry = await actionBand.evaluate((element) => {
+    const band = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const boxes = (selector: string) => Array.from(element.querySelectorAll<HTMLElement>(selector)).map((child) => {
+      const box = child.getBoundingClientRect();
+      return { top: box.top, left: box.left, right: box.right, bottom: box.bottom };
+    });
+    return {
+      band: { left: band.left, right: band.right },
+      padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
+      icons: boxes('[data-testid="investment-action-icon"]'),
+      labels: boxes('[data-testid="investment-action-label"]'),
+      captions: boxes('[data-testid="investment-action-caption"]'),
+    };
+  });
+  expect(bandGeometry.padding).toEqual(["0px", "0px", "0px", "0px"]);
+  expect(bandGeometry.icons.every(({ top }) => top === bandGeometry.icons[0]!.top)).toBe(true);
+  expect(bandGeometry.labels.every(({ top }) => top === bandGeometry.labels[0]!.top)).toBe(true);
+  expect(bandGeometry.captions.every(({ top }) => top === bandGeometry.captions[0]!.top)).toBe(true);
+  expect(actionGeometry[0]!.left).toBeGreaterThanOrEqual(bandGeometry.band.left - 1);
+  expect(actionGeometry[actionGeometry.length - 1]!.right).toBeLessThanOrEqual(bandGeometry.band.right + 1);
 
   const actionTextGeometry = await actions.evaluateAll((elements) => elements.map((element) => {
     const textNodes = Array.from(element.querySelectorAll<HTMLElement>("*"))

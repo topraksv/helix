@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from "react";
-import { FlatList, ScrollView, Text, View } from "react-native";
+import { FlatList, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { MessageSquareText, PlusCircle } from "lucide-react-native";
 import { addTransaction, deleteTransaction, restoreTransaction, saveCellNote } from "../data/repo";
@@ -22,12 +22,12 @@ import { combineLiveQueryStatus } from "../data/live-state";
 import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
 import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
-import { formatMinorCompact, parseAmountExpression } from "../domain/money";
+import { formatMinor, formatMinorCompact, parseAmountExpression } from "../domain/money";
 import { categoryTableEntryType, signedBalanceEffectOf } from "../domain/transactions";
 import { transactionDateText } from "../ui/transaction-date";
 import { monthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, EmptyState, Field, MoneyField, PanelHeader, Row, Screen, SectionHeader } from "../ui/components";
 import { TransactionRow } from "../ui/transaction-row";
 import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { useUndo } from "../ui/undo";
@@ -173,18 +173,28 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const header = (
     <View>
       <DataStateNotice status={dataStatus} retry={retryData} />
-      <Spread style={{ marginBottom: spacing.md }}>
+      <View
+        testID="cell-total-row"
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          minWidth: 0,
+          marginBottom: spacing.md,
+        }}
+      >
         <Body muted style={{ flexShrink: 0 }}>{tr.cell.total}</Body>
-        <ScrollView
-          horizontal
-          bounces={false}
-          showsHorizontalScrollIndicator={false}
-          style={{ flex: 1, marginLeft: spacing.md }}
-          contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end" }}
-        >
-          <Amount minor={selfSum} large style={{ flexShrink: 0 }} />
-        </ScrollView>
-      </Spread>
+        <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
+          <Amount
+            testID="cell-total-amount"
+            minor={selfSum}
+            large
+            compact
+            accessibilityLabel={formatMinor(selfSum)}
+            style={{ maxWidth: "100%" }}
+          />
+        </View>
+      </View>
 
       <WorkspaceGrid testID="cell-editor-tools">
         <Card>

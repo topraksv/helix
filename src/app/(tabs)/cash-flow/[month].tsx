@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { Animated, FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Inbox } from "lucide-react-native";
+import { ArrowDownRight, ArrowRightLeft, ArrowUpRight, Inbox } from "lucide-react-native";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
 import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
@@ -49,66 +49,75 @@ type MonthListItem =
   | { kind: "group-footer"; categoryId: string; category: Categories[number] | undefined };
 
 /**
- * A contained balance bridge: two endpoints and a moving pulse show the
- * direction without an arrow glyph or a rule that looks like `--->--` when a
- * phone has to shrink either side.
+ * A contained balance bridge: the two balances keep their own columns while
+ * this small transfer badge gives the eye a clear, animated hand-off point.
+ * It has enough structure to read as a component rather than a stretched
+ * `--->--` rule, and its arrow changes with the actual balance delta.
  */
-function BalanceBridge({ token }: { token: string }) {
+function BalanceBridge({ token, deltaMinor }: { token: string; deltaMinor: number }) {
   const { palette } = useTheme();
   const draw = useDrawIn(true, motion.draw, token);
-  const pulseX = draw.interpolate({ inputRange: [0, 1], outputRange: [0, 28] });
+  const DirectionIcon = deltaMinor > 0 ? ArrowUpRight : deltaMinor < 0 ? ArrowDownRight : ArrowRightLeft;
+  const haloOpacity = draw.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.08, 0.3, 0.08] });
+  const haloScale = draw.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1.04] });
   return (
     <View
       testID="month-balance-transition"
       accessible={false}
       style={{
-        width: 48,
-        height: 28,
+        width: 64,
+        height: 40,
         flexShrink: 0,
         justifyContent: "center",
         alignItems: "center",
       }}
     >
-      <View
-        accessible={false}
-        style={{
-          width: 36,
-          height: 2,
-          borderRadius: radius.full,
-          overflow: "hidden",
-          backgroundColor: palette.surfaceStrong,
-        }}
-      >
-        <View style={{ width: "100%", height: "100%", backgroundColor: palette.primary, opacity: 0.35 }} />
-      </View>
       <Animated.View
         accessible={false}
         style={{
           position: "absolute",
-          left: 6,
-          top: 10,
-          width: 8,
-          height: 8,
+          width: 56,
+          height: 30,
           borderRadius: radius.full,
-          backgroundColor: palette.primary,
-          transform: [{ translateX: pulseX }],
+          borderWidth: 1,
+          borderColor: palette.primary,
+          opacity: haloOpacity,
+          transform: [{ scale: haloScale }],
         }}
       />
       <View
         accessible={false}
         style={{
-          position: "absolute",
-          left: 6,
-          top: 10,
-          width: 36,
-          height: 8,
+          width: 56,
+          height: 30,
+          borderRadius: radius.full,
           flexDirection: "row",
-          justifyContent: "space-between",
           alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+          backgroundColor: palette.surfaceAlt,
+          borderWidth: 1,
+          borderColor: palette.border,
         }}
       >
         <View style={{ width: 6, height: 6, borderRadius: radius.full, backgroundColor: palette.primary }} />
-        <View style={{ width: 8, height: 8, borderRadius: radius.full, borderWidth: 2, borderColor: palette.primary }} />
+        <View style={{ width: 10, height: 2, borderRadius: radius.full, backgroundColor: palette.primary, opacity: 0.65 }} />
+        <View
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: radius.full,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: palette.primarySoft,
+            borderWidth: 1,
+            borderColor: palette.primary + "75",
+          }}
+        >
+          <DirectionIcon accessible={false} size={14} color={palette.primaryText} strokeWidth={2.4} />
+        </View>
+        <View style={{ width: 10, height: 2, borderRadius: radius.full, backgroundColor: palette.primary, opacity: 0.65 }} />
+        <View style={{ width: 6, height: 6, borderRadius: radius.full, backgroundColor: palette.primary }} />
       </View>
     </View>
   );
@@ -170,18 +179,18 @@ function MonthFlowSummary({
             <View testID="month-opening-balance" style={{ flex: 1, minWidth: 0 }}>
               <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "left" }}>{tr.cashflow.opening}</Body>
             </View>
-            <View style={{ width: 48, flexShrink: 0 }} />
+            <View style={{ width: 64, flexShrink: 0 }} />
             <View testID="month-closing-balance" style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
               <Body muted style={{ fontSize: type.caption.fontSize, textAlign: "right" }}>{tr.cashflow.closing}</Body>
             </View>
           </View>
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, marginTop: spacing.xs }}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Amount testID="month-opening-amount" minor={flows.openingMinor} colorized={false} style={{ textAlign: "left" }} />
+              <Amount testID="month-opening-amount" minor={flows.openingMinor} large compact colorized={false} style={{ maxWidth: "100%", textAlign: "left" }} />
             </View>
-            <BalanceBridge token={`${flows.openingMinor}|${flows.closingMinor}`} />
+            <BalanceBridge token={`${flows.openingMinor}|${flows.closingMinor}`} deltaMinor={flows.closingMinor - flows.openingMinor} />
             <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
-              <Amount testID="month-closing-amount" minor={flows.closingMinor} large style={{ textAlign: "right" }} />
+              <Amount testID="month-closing-amount" minor={flows.closingMinor} large compact style={{ maxWidth: "100%", textAlign: "right" }} />
             </View>
           </View>
         </View>

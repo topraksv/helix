@@ -16,7 +16,7 @@ test("offline relaunch keeps the SQLite ledger and avoids duplicate writes @smok
   await onboard(page);
   await addMarketExpense(page, "Çevrimdışı kalıcılık", "210,50");
   await page.goto("/helix/");
-  await expect(page.getByText(/-₺210,50/).first()).toBeVisible();
+  await expect(page.getByText(/-.*₺210,50/).first()).toBeVisible();
 
   await page.evaluate(async () => {
     if (!("serviceWorker" in navigator)) throw new Error("Service Worker unavailable");
@@ -29,12 +29,12 @@ test("offline relaunch keeps the SQLite ledger and avoids duplicate writes @smok
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole("tab", { name: "Durum", selected: true })).toBeVisible();
-  await expect(page.getByText(/-₺210,50/).first()).toBeVisible();
+  await expect(page.getByText(/-.*₺210,50/).first()).toBeVisible();
   await context.setOffline(false);
 
   await openCashFlow(page);
   await page.getByRole("radio", { name: "Ay odaklı" }).click();
-  await expect(page.getByText(/-₺210,50/).first()).toBeVisible();
+  await expect(page.getByText(/-.*₺210,50/).first()).toBeVisible();
   await assertNoRuntimeErrors(errors, testInfo);
 });
 

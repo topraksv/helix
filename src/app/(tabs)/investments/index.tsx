@@ -288,7 +288,6 @@ function InvestmentQuickAction({
       style={({ pressed }) => ({
         flex: 1,
         minWidth: 0,
-        minHeight: 78,
         alignItems: "center",
         // Top, not centre. Four of these share a row and their captions are
         // two, three or four words: centring each tile's own column put the
@@ -297,8 +296,6 @@ function InvestmentQuickAction({
         // line up, and the captions still centre on their own axis.
         justifyContent: "flex-start",
         gap: 5,
-        paddingHorizontal: spacing.xs,
-        paddingVertical: spacing.sm,
         borderRadius: radius.md,
         backgroundColor: pressed ? palette.surfaceHover : "transparent",
         opacity: disabled ? 0.45 : 1,
@@ -306,6 +303,7 @@ function InvestmentQuickAction({
       })}
     >
       <View
+        testID="investment-action-icon"
         accessible={false}
         style={{
           width: 30,
@@ -319,14 +317,14 @@ function InvestmentQuickAction({
       >
         <Icon accessible={false} size={15} color={foreground} strokeWidth={2.2} />
       </View>
-      <View style={{ width: "100%", minHeight: 36, justifyContent: "flex-start" }}>
+      <View testID="investment-action-label" style={{ width: "100%", minHeight: 36, justifyContent: "flex-start" }}>
         <Text
           style={[type.small, { color: disabled ? palette.textMuted : palette.text, fontSize: type.micro.fontSize, lineHeight: 12, textAlign: "center", fontFamily: font.semibold }]}
         >
           {label}
         </Text>
       </View>
-      <View style={{ width: "100%", minHeight: 26, justifyContent: "flex-start" }}>
+      <View testID="investment-action-caption" style={{ width: "100%", minHeight: 26, justifyContent: "flex-start" }}>
         <Text
           style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize, lineHeight: 13, textAlign: "center" }]}
         >
@@ -620,9 +618,8 @@ export default function InvestmentsScreen() {
         style={{
           width: "100%",
           flexDirection: "row",
-          gap: spacing.xs,
-          padding: spacing.xs,
           borderRadius: radius.lg,
+          overflow: "hidden",
           backgroundColor: palette.surface,
           borderWidth: StyleSheet.hairlineWidth,
           borderColor: palette.border + "70",

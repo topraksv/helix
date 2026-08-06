@@ -39,9 +39,10 @@ function MonthValueBar({
   const ratio = value == null ? 0 : Math.min(1, Math.abs(value) / maxMagnitude);
   return (
     <View
+      testID="month-value-bar"
       accessible={false}
       style={{
-        flex: 1,
+        width: "100%",
         minWidth: 32,
         height: 6,
         borderRadius: 3,
@@ -184,7 +185,7 @@ function ItemBreakdown({
         <Card padded={false}>
           <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderColor: palette.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={[type.label, { color: palette.textSecondary }]}>{tr.cashflow.yearTotal(year)}</Text>
-            <Amount minor={total} />
+            <Amount minor={total} compact style={{ maxWidth: "100%" }} />
           </View>
           {rows.map((r, i) => {
             const isCurrent = r.month === currentMonth;
@@ -198,6 +199,7 @@ function ItemBreakdown({
                   flexDirection: "row",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  minWidth: 0,
                   // The last row has no separator, so it measured one pixel
                   // shorter than the eleven above it and was the only control
                   // in the app under the platform minimum. The height is the
@@ -226,7 +228,16 @@ function ItemBreakdown({
                 ) : r.value === 0 ? (
                   <Text style={[type.amountSm, { color: palette.textSecondary }]}>—</Text>
                 ) : (
-                  <Amount minor={r.value} colorized={false} color={r.value < 0 ? palette.negativeText : palette.text} style={{ fontSize: type.amount.fontSize }} />
+                  <View style={{ minWidth: 0, maxWidth: 132, flexShrink: 1, alignItems: "flex-end" }}>
+                    <Amount
+                      testID="month-value-amount"
+                      minor={r.value}
+                      compact
+                      colorized={false}
+                      color={r.value < 0 ? palette.negativeText : palette.text}
+                      style={{ maxWidth: "100%", fontSize: type.amount.fontSize }}
+                    />
+                  </View>
                 )}
               </Pressable>
             );

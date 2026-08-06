@@ -1048,21 +1048,28 @@ function MatrixCell({
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={note}
       style={({ pressed }) => [
-        { flex: 1, justifyContent: "center", paddingHorizontal: fontSize <= type.caption.fontSize ? 2 : spacing.sm },
+        {
+          flex: 1,
+          minWidth: 0,
+          justifyContent: "center",
+          paddingHorizontal: fontSize <= type.caption.fontSize ? 2 : spacing.sm,
+        },
         highlighted && { backgroundColor: palette.primarySoft + "55" },
         hovered && onPress && { backgroundColor: palette.primarySoft },
         pressed && onPress && { backgroundColor: palette.primary + "38" },
       ]}
     >
       {value == null || value === 0 ? null : (
-        <Amount
-          testID="matrix-value"
-          minor={value}
-          compact
-          colorized={false}
-          color={value < 0 ? palette.negativeText : palette.text}
-          style={[type.amountSm, { fontSize, textAlign: "right" }]}
-        />
+        <View style={{ width: "100%", minWidth: 0, alignItems: "flex-end" }}>
+          <Amount
+            testID="matrix-value"
+            minor={value}
+            compact
+            colorized={false}
+            color={value < 0 ? palette.negativeText : palette.text}
+            style={[type.amountSm, { maxWidth: "100%", fontSize, textAlign: "right" }]}
+          />
+        </View>
       )}
       {note ? (
         <View

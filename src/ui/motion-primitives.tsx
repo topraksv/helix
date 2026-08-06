@@ -421,12 +421,12 @@ export function SlideUp({
  * value behind every token in every component; this lays one veil over the top
  * and fades it out, which costs one view and one opacity.
  *
- * This is the NATIVE half only. The browser can cross-fade the rendered pixels
- * itself — the old interface literally dissolving into the new one — so on the
- * web `theme-transition.ts` hands the change to `startViewTransition` and this
- * stays out of the way. No overlay can imitate that, and a full-screen veil is
- * what a page replacement looks like, which is how the first two attempts were
- * reported.
+ * A browser with View Transitions can cross-fade the rendered pixels itself —
+ * the old interface literally dissolving into the new one — so
+ * `theme-transition.ts` hands that change to `startViewTransition` and this
+ * stays out of the way. Browsers without it use the same small veil through a
+ * compositor-owned CSS opacity transition; native platforms use the animated
+ * value below. No palette token is animated per component.
  *
  * What is left for iOS, Android and browsers without View Transitions is a
  * measured crossfade of the previous root background over the freshly-painted
@@ -451,6 +451,7 @@ export function ThemeDissolve() {
   const browserCrossFades = crossFadesNatively();
   const progress = useRef(new Animated.Value(0)).current;
   const [transitionFrom, setTransitionFrom] = useState<string | null>(null);
+  const [webFade, setWebFade] = useState<"visible" | "fading">("fading");
   useThemeChangeEffect(() => {
     const before = previous.current;
     const from = previousPalette.current;
@@ -458,15 +459,30 @@ export function ThemeDissolve() {
     previousPalette.current = palette.background;
     if (before === identity || reducedMotion || browserCrossFades) {
       setTransitionFrom(null);
+      setWebFade("fading");
       return;
     }
-    progress.setValue(0);
     setTransitionFrom(from);
+    // React Native Web's JS-driven Animated fallback updates a full-screen
+    // opacity value on every frame. On a phone-sized browser that competes
+    // with the theme repaint and is the source of the visible hitch. Mount
+    // the old-colour veil once, then let the compositor own its CSS fade.
+    if (Platform.OS === "web") {
+      setWebFade("visible");
+      const frame = window.requestAnimationFrame(() => setWebFade("fading"));
+      const timer = window.setTimeout(() => setTransitionFrom(null), motion.theme + 50);
+      return () => {
+        window.cancelAnimationFrame(frame);
+        window.clearTimeout(timer);
+        setTransitionFrom(null);
+      };
+    }
+    progress.setValue(0);
     const animation = Animated.timing(progress, {
       toValue: 1,
       duration: motion.theme,
       easing: Easing.out(Easing.cubic),
-      useNativeDriver: Platform.OS !== "web",
+      useNativeDriver: true,
     });
     animation.start(({ finished }) => {
       if (finished) setTransitionFrom(null);
@@ -484,15 +500,25 @@ export function ThemeDissolve() {
       aria-hidden
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: transitionFrom,
-        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [VEIL_STRENGTH, 0] }),
-      }}
+      style={[
+        {
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: transitionFrom,
+        },
+        Platform.OS === "web"
+          ? ({
+              opacity: webFade === "visible" ? VEIL_STRENGTH : 0,
+              transitionProperty: "opacity",
+              transitionDuration: `${motion.theme}ms`,
+              transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+              willChange: "opacity",
+            } as unknown as ViewStyle)
+          : { opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [VEIL_STRENGTH, 0] }) },
+      ]}
     />
   );
 }

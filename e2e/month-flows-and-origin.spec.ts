@@ -11,7 +11,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { addMonthsToKey } from "../src/domain/dates";
-import { currentMonthKey, isolateExternalData, onboard, pickOption } from "./helpers";
+import { addMarketExpense, currentMonthKey, isolateExternalData, onboard, pickOption } from "./helpers";
 import { monthLabel } from "../src/i18n/tr";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -52,7 +52,7 @@ test("a future month focus states the planned flows behind its own total", async
   await expect(page.getByRole("heading", { name: monthLabel(planned), exact: true })).toBeVisible();
   await expect(page.getByText("Gider", { exact: true })).toBeVisible();
   await expect(page.getByText("₺5.000,00", { exact: true })).toHaveCount(2);
-  await expect(page.getByText("-₺5.000,00", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^-.*₺5\.000,00$/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Market.*5\.000,00/ })).toBeVisible();
 });
 
@@ -109,6 +109,42 @@ test("month opening and current balances share a visual baseline on a phone", as
   expect(geometry[0]).not.toBeNull();
   expect(geometry[1]).not.toBeNull();
   expect(Math.abs((geometry[0]!.y + geometry[0]!.height) - (geometry[1]!.y + geometry[1]!.height))).toBeLessThanOrEqual(1);
+});
+
+test("a large cell total stays inside its row after a narrow resize", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await onboard(page);
+  await addMarketExpense(page, "Büyük hücre toplamı", "987.654.321,00");
+  const month = currentMonthKey();
+  await page.getByRole("button", { name: new RegExp(`^${monthLabel(month)}, Market`) }).click();
+  await expect(page.getByTestId("cell-total-row")).toBeVisible();
+
+  await page.setViewportSize({ width: 320, height: 844 });
+  const geometry = await page.getByTestId("cell-total-row").evaluate((row) => {
+    const amount = row.querySelector<HTMLElement>('[data-testid="cell-total-amount"]');
+    if (!amount) throw new Error("Missing cell total amount");
+    const rowBox = row.getBoundingClientRect();
+    const amountBox = amount.getBoundingClientRect();
+    return {
+      rowLeft: rowBox.left,
+      rowRight: rowBox.right,
+      rowScrollWidth: row.scrollWidth,
+      rowClientWidth: row.clientWidth,
+      amountLeft: amountBox.left,
+      amountRight: amountBox.right,
+      amountTop: amountBox.top,
+      amountBottom: amountBox.bottom,
+      rowTop: rowBox.top,
+      rowBottom: rowBox.bottom,
+      ariaLabel: amount.getAttribute("aria-label"),
+    };
+  });
+  expect(geometry.rowScrollWidth).toBeLessThanOrEqual(geometry.rowClientWidth + 1);
+  expect(geometry.amountLeft).toBeGreaterThanOrEqual(geometry.rowLeft - 1);
+  expect(geometry.amountRight).toBeLessThanOrEqual(geometry.rowRight + 1);
+  expect(geometry.amountTop).toBeGreaterThanOrEqual(geometry.rowTop - 1);
+  expect(geometry.amountBottom).toBeLessThanOrEqual(geometry.rowBottom + 1);
+  expect(geometry.ariaLabel).toBe("-₺987.654.321,00");
 });
 
 test("the transfer classification appears once, in the row being edited", async ({ page }) => {

@@ -273,13 +273,16 @@ test("large exact negative amounts keep their sign and digits on one visual line
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await onboard(page);
   await addMarketExpense(page, "Büyük tutar yerleşim kontrolü", "9876543,21");
-  const formatted = "-₺9.876.543,21";
-  const maxVisualLines = (text: string) => page.getByText(text, { exact: true }).evaluateAll((nodes) => Math.max(...nodes.map((node) => {
+  // Amount keeps an ASCII minus glued to its currency glyph with an invisible
+  // word joiner; match the painted text without making that layout character
+  // part of the test contract.
+  const formatted = /^-.*₺9\.876\.543,21$/;
+  const maxVisualLines = (text: RegExp) => page.getByText(text).evaluateAll((nodes) => Math.max(...nodes.map((node) => {
     const range = document.createRange();
     range.selectNodeContents(node);
     return new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size;
   })));
-  const minRenderedFontSize = (text: string) => page.getByText(text, { exact: true }).evaluateAll((nodes) =>
+  const minRenderedFontSize = (text: RegExp) => page.getByText(text).evaluateAll((nodes) =>
     Math.min(...nodes.map((node) => Number.parseFloat(getComputedStyle(node).fontSize))),
   );
 
@@ -301,7 +304,7 @@ test("large exact negative amounts keep their sign and digits on one visual line
     // has to be painted somewhere — these surfaces also hold it in scrolled-out
     // matrix cells, so it is "at least one laid-out node", not "the first one".
     const painted = await page
-      .getByText(formatted, { exact: true })
+      .getByText(formatted)
       .evaluateAll((nodes) => nodes.filter((node) => node.getClientRects().length > 0).length);
     expect(painted, `${surface.tag} paints the signed amount`).toBeGreaterThan(0);
     expect(await minRenderedFontSize(formatted), `${surface.tag} font size`).toBeGreaterThanOrEqual(12);
@@ -315,8 +318,9 @@ test("large exact negative amounts keep their sign and digits on one visual line
   await addMarketExpense(page, "Azami tutar yerleşim kontrolü", "999999999999,99");
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/helix/");
-  await expect.poll(() => maxVisualLines("-₺1.000.009.876.543,20")).toBe(1);
-  await expect.poll(() => minRenderedFontSize("-₺1.000.009.876.543,20")).toBeGreaterThanOrEqual(12);
+  const maximumFormatted = /^-.*₺1\.000\.009\.876\.543,20$/;
+  await expect.poll(() => maxVisualLines(maximumFormatted)).toBe(1);
+  await expect.poll(() => minRenderedFontSize(maximumFormatted)).toBeGreaterThanOrEqual(12);
   await assertNoRuntimeErrors(errors, testInfo);
 });
 

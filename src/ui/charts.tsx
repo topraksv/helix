@@ -574,6 +574,20 @@ function formatChartAxis(valueMinor: number): string {
   }).format(major);
 }
 
+/**
+ * Reserve the real ink width of the longest ruler label before drawing the
+ * plot. A fixed 58/64px gutter was enough for ordinary figures, but a signed
+ * billion label is wider than that and SVG clips text that starts outside its
+ * viewBox. Inter's measured numeric advance is roughly 0.6–0.7em; the
+ * conservative 0.72em ceiling keeps the first and last glyph inside on both
+ * the web font and the native face without giving the axis a permanent empty
+ * desktop rail.
+ */
+function barAxisLabelGutter(values: number[], fontSize: number, minimum: number): number {
+  const longest = values.reduce((width, value) => Math.max(width, formatChartAxis(value).length), 0);
+  return Math.ceil(Math.max(minimum, longest * fontSize * 0.72 + 12));
+}
+
 /** Bar geometry with square baseline corners and rounded data-end corners. */
 function barShape(x: number, top: number, width: number, height: number, positive: boolean): string {
   const bottom = top + height;
@@ -631,7 +645,12 @@ export function Bars({
   const { min, max, ticks } = axis;
   const span = Math.max(axis.step, max - min);
   const axisFontSize = width >= 480 ? 11 : 10;
-  const pad = { left: width >= 480 ? 64 : 58, right: 10, top: 14, bottom: 28 };
+  const pad = {
+    left: barAxisLabelGutter([...ticks, ...axis.valueTicks], axisFontSize, width >= 480 ? 64 : 58),
+    right: 10,
+    top: 14,
+    bottom: 28,
+  };
   const plotW = Math.max(1, width - pad.left - pad.right);
   const plotH = height - pad.top - pad.bottom;
   const groupW = plotW / groups.length;
@@ -681,7 +700,7 @@ export function Bars({
   }).join(". "));
 
   return (
-    <View>
+    <View testID="bar-chart-frame">
       <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
         <Svg accessible={false} width={width} height={height}>
           <Defs>
