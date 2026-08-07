@@ -8,7 +8,10 @@
 import React, { useEffect, useState } from "react";
 import { Animated, FlatList, Pressable, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Inbox, Minus, TrendingDown, TrendingUp } from "lucide-react-native";
+import Inbox from "lucide-react-native/icons/inbox";
+import Minus from "lucide-react-native/icons/minus";
+import TrendingDown from "lucide-react-native/icons/trending-down";
+import TrendingUp from "lucide-react-native/icons/trending-up";
 import { deleteTransaction, restoreTransaction, saveCellNote } from "../../../data/repo";
 import { monthFlowTotals } from "../../../domain/balance";
 import { firstDayOf, isMonthKey, lastDayOf, monthKeyOf, todayISO, yearOf } from "../../../domain/dates";
@@ -21,7 +24,7 @@ import {
   useTransactionsBetweenState,
   useUserId,
 } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { installmentDisplayTitle } from "../../../domain/installments";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
@@ -33,6 +36,7 @@ import { useDrawIn } from "../../../ui/motion-primitives";
 import { TransactionRow } from "../../../ui/transaction-row";
 import { useUndo } from "../../../ui/undo";
 import { selectionTapIfChanged } from "../../../ui/haptics";
+import { interactionSurface } from "../../../ui/interaction";
 import { controlSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
@@ -265,17 +269,7 @@ export default function MonthDetailScreen() {
     ([categoryId, body]) => body !== (cellNotes.find((note) => note.categoryId === categoryId)?.body ?? ""),
   );
   useDirtyExitGuard(noteDirty);
-  const liveStates = [categoriesState, personsState, plansState, transactionsState, ledgerState, cellNotesState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    categoriesState.retry();
-    personsState.retry();
-    plansState.retry();
-    transactionsState.retry();
-    ledgerState.retry();
-    cellNotesState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, plansState, transactionsState, ledgerState, cellNotesState]);
 
   const removeTx = async (id: string) => {
     try {
@@ -342,13 +336,13 @@ export default function MonthDetailScreen() {
               // it owes the platform minimum. It measured 28pt tall — the exact
               // height of its own heading — which on a phone is a target you
               // have to aim at.
-              style={({ pressed }) => ({
+              style={(state) => ({
                 minHeight: controlSize.minimumTarget,
                 justifyContent: "center",
                 marginHorizontal: -spacing.sm,
                 paddingHorizontal: spacing.sm,
                 borderRadius: radius.sm,
-                backgroundColor: pressed ? palette.surfaceHover : "transparent",
+                ...interactionSurface(palette, state),
               })}
             >
               <Spread style={{ alignItems: "flex-start" }}>

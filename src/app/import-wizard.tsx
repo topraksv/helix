@@ -11,10 +11,17 @@ import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import { ArrowRight, CheckCircle2, FileCheck2, FileSpreadsheet, ScanLine, TableProperties, Upload, type LucideIcon } from "lucide-react-native";
+import ArrowRight from "lucide-react-native/icons/arrow-right";
+import CheckCircle2 from "lucide-react-native/icons/circle-check";
+import FileCheck2 from "lucide-react-native/icons/file-check-corner";
+import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
+import ScanLine from "lucide-react-native/icons/scan-line";
+import TableProperties from "lucide-react-native/icons/table-properties";
+import Upload from "lucide-react-native/icons/upload";
+import type { LucideIcon } from "lucide-react-native";
 import { ImportBatchUnreadableError, importSheets, importedYears } from "../data/repo";
 import { usePersonsState, useSourcesState, useUserId } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { isMonthDay, yearOf } from "../domain/dates";
 import { formatMinorCompact } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
@@ -290,13 +297,7 @@ export default function ImportWizardModal() {
   const operation = useTrackedOperation();
   const busy = operation.state.active;
   const { confirmDiscard } = useDirtyExitGuard(workbook != null && doneCount == null && !busy);
-  const liveStates = [personsState, sourcesState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    personsState.retry();
-    sourcesState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([personsState, sourcesState]);
 
   useEffect(() => {
     if (doneCount == null) return;

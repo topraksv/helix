@@ -4,6 +4,8 @@
  * status store (never swallowed) and retry with exponential backoff.
  */
 
+import { Platform } from "react-native";
+import Constants from "expo-constants";
 import { getTableColumns } from "drizzle-orm";
 import type { SQLiteBindValue } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "../db/client";
@@ -14,6 +16,7 @@ import { tr } from "../i18n/tr";
 import { SessionEpoch, SessionEpochCancelledError, runSessionEpochTask, type SessionEpochToken } from "./session-epoch";
 import { isUuidShaped, remoteSupersededLocal, remoteWinsLww, shouldApplyServerAck, type ParsedOutboxEvent } from "./merge-policy";
 import { devError, devWarning } from "../services/logger";
+import { uploadDiagnostics, type DiagnosticUpload, type DiagnosticUploadPort } from "../services/diagnostics";
 import { prepareOutboundBatch } from "./outbound-validation";
 import { isValidImportRow } from "../services/backup-validation";
 import type { Database } from "./database.types";
@@ -352,6 +355,36 @@ export async function stopSyncSession(userId?: string): Promise<void> {
   await Promise.allSettled([...(current ? [current] : []), ...sessionTasks]);
 }
 
+/** The version the incident happened in, as the table's CHECK will accept it. */
+const APP_VERSION = String(Constants.expoConfig?.version ?? "0").slice(0, 32);
+
+function devicePlatform(): DiagnosticUpload["platform"] {
+  return Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
+}
+
+/**
+ * The only writer of `diagnostic_events`.
+ *
+ * `ignoreDuplicates` leans on the table's identity index: a device that has
+ * been offline for a week still holds its whole ring, and re-sending it must
+ * add nothing rather than fail the batch.
+ */
+function diagnosticUploadPort(userId: string): DiagnosticUploadPort {
+  return {
+    async upload(rows) {
+      const client = getSupabase();
+      if (!client) throw new Error("unconfigured");
+      const { error } = await client
+        .from("diagnostic_events")
+        .upsert(rows.filter((row) => row.user_id === userId), {
+          onConflict: "user_id,occurred_at,scope,code",
+          ignoreDuplicates: true,
+        });
+      if (error) throw new Error(error.message);
+    },
+  };
+}
+
 async function runSync(userId: string, token: SessionEpochToken, allowRefresh: boolean): Promise<boolean> {
   const status = useSyncStatus.getState();
   if (!getSupabase()) {
@@ -367,6 +400,11 @@ async function runSync(userId: string, token: SessionEpochToken, allowRefresh: b
     const deadLetters = await sqlite.getFirstAsync<{ count: number }>(DEAD_LETTER_COUNT_SQL, []);
     const completionState = completedSyncState(deadLetters?.count ?? 0);
     retryAttempt = 0;
+    // Piggybacked on a completed sync rather than scheduled on its own: this is
+    // the one moment the app knows it has a live session AND a working network,
+    // and the upload must never be the reason either is spent. It reports its
+    // own failures nowhere and cannot fail this sync.
+    void uploadDiagnostics(diagnosticUploadPort(userId), userId, devicePlatform(), APP_VERSION);
     status.set({
       state: completionState,
       lastSyncAt: new Date().toISOString(),

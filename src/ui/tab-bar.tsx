@@ -29,11 +29,11 @@ import { Animated, PanResponder, Platform, Pressable, Text, View, useWindowDimen
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion, useReduceTransparency } from "./motion";
-import { font, motion, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type, useTheme } from "./theme";
+import { tabLabelsFit, tooWide } from "./responsive";
+import { font, maxFontScale, motion, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type, useTheme } from "./theme";
 
 /** The bar's own inset. The selection slides inside it, not over its edge. */
 const BAR_PADDING = 2;
-
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { palette, scheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -80,6 +80,27 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   // draggable, where a jumping highlight reads as five separate flickers rather
   // than one thing being scrubbed.
   const [barWidth, setBarWidth] = useState(0);
+  /**
+   * The bar drops its labels once the user's text no longer fits them.
+   *
+   * Five equal columns in a bounded bar give each label roughly 60pt. Capping
+   * the multiplier at 200% stops the glyphs clipping and does nothing about the
+   * words: measured on a simulator at the largest accessibility size, the bar
+   * rendered "Duru | Mali | Abo | Yatı | Aya" with the five labels overlapping
+   * each other — worse than no labels at all.
+   *
+   * The trigger is the MEASURED label, not a font scale. `fontScale` from
+   * `useWindowDimensions` is 1 on iOS whatever the text-size setting says — it
+   * follows Display Zoom, not Dynamic Type — so a threshold on it is dead code
+   * on the one platform that has the problem. This is the same intrinsic-width
+   * probe `Figure` uses for the amount ladder.
+   *
+   * Above the threshold the bar becomes icon-only, which is what iOS does when
+   * its own tab bar runs out of room. Nothing is lost to a screen reader:
+   * `tabBarAccessibilityLabel` sits on the Pressable and is announced either
+   * way.
+   */
+  const [labelWidth, setLabelWidth] = useState(0);
   const slotWidth = state.routes.length > 0 && barWidth > 0
     ? (barWidth - BAR_PADDING * 2) / state.routes.length
     : 0;
@@ -128,6 +149,16 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     ...webMaterial,
     ...themeShadow.overlay(palette),
   };
+
+  // Derived, not stored. The label lays itself out before the bar has reported
+  // its own width, so a decision taken inside the measurement callback is taken
+  // against `slotWidth === 0` and never revisited. Remembering the widest label
+  // and comparing it in render means the answer follows the geometry whenever
+  // the geometry changes.
+  const labelsFit = tabLabelsFit(labelWidth, slotWidth);
+  // A new bar width deserves a fresh measurement, so shrinking the text can
+  // bring the labels back.
+  useEffect(() => setLabelWidth(0), [barWidth]);
 
   const destinations = state.routes.map((route, index) => {
     const options = descriptors[route.key]?.options ?? {};
@@ -185,17 +216,44 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         >
           {options.tabBarIcon?.({ focused, color, size: 22 })}
         </View>
-        <Text
-          style={{
-            fontFamily: focused ? font.semibold : font.medium,
-            fontSize: type.caption.fontSize,
-            lineHeight: 14,
-            textAlign: "center",
-            color: focused ? palette.textStrong : palette.textSecondary,
-          }}
-        >
-          {typeof label === "string" ? label : route.name}
-        </Text>
+        {labelsFit ? (
+          <Text
+            maxFontSizeMultiplier={maxFontScale.measuredBox}
+            // A label that WRAPPED is the clearest evidence it does not fit,
+            // and it is the only evidence available without clamping the label
+            // to one line — which this app does not do to its own copy.
+            // Wrapping reports a width the column cannot hold; a single line
+            // reports its real one.
+            onTextLayout={(event) => {
+              const lines = event.nativeEvent.lines;
+              const widest = Math.max(...lines.map((line) => line.width), 0);
+              setLabelWidth((known) => Math.max(known, lines.length > 1 ? tooWide(slotWidth) : Math.ceil(widest)));
+            }}
+            onLayout={(event) => {
+              // react-native-web does not dispatch `onTextLayout`, so the web
+              // half reads the DOM node directly — the same probe `Figure` uses
+              // for the amount ladder. More than one client rect is more than
+              // one line box.
+              const node = event.target as unknown as { scrollWidth?: number; getClientRects?: () => { length: number } } | null;
+              const wrapped = (node?.getClientRects?.().length ?? 1) > 1;
+              const intrinsic = node?.scrollWidth ?? 0;
+              setLabelWidth((known) => Math.max(known, wrapped ? tooWide(slotWidth) : Math.ceil(intrinsic)));
+            }}
+            style={{
+              fontFamily: focused ? font.semibold : font.medium,
+              fontSize: type.caption.fontSize,
+              // No `lineHeight`. A constant line box beside a scaling font size
+              // is the Dynamic Type clipping bug the shared type scale already
+              // refuses to write: at 14pt the glyphs grew with the OS setting
+              // and the box did not, so Turkish descenders (ç, ğ) were cut off
+              // the moment the user asked for larger text.
+              textAlign: "center",
+              color: focused ? palette.textStrong : palette.textSecondary,
+            }}
+          >
+            {typeof label === "string" ? label : route.name}
+          </Text>
+        ) : null}
       </Pressable>
     );
   });

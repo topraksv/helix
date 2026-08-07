@@ -12,20 +12,18 @@
 import React, { useState } from "react";
 import { Text, View } from "react-native";
 import { Image } from "expo-image";
-import {
-  Building2,
-  Car,
-  Droplets,
-  Dumbbell,
-  Flame,
-  GraduationCap,
-  Phone,
-  Shield,
-  Trash2,
-  Wifi,
-  Zap,
-  type LucideIcon,
-} from "lucide-react-native";
+import Building2 from "lucide-react-native/icons/building-2";
+import Car from "lucide-react-native/icons/car";
+import Droplets from "lucide-react-native/icons/droplets";
+import Dumbbell from "lucide-react-native/icons/dumbbell";
+import Flame from "lucide-react-native/icons/flame";
+import GraduationCap from "lucide-react-native/icons/graduation-cap";
+import Phone from "lucide-react-native/icons/phone";
+import Shield from "lucide-react-native/icons/shield";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import Wifi from "lucide-react-native/icons/wifi";
+import Zap from "lucide-react-native/icons/zap";
+import type { LucideIcon } from "lucide-react-native";
 import { InitialsBadge } from "./components";
 import { font } from "./theme";
 import { BRAND, brandPlate } from "./brand-colors";

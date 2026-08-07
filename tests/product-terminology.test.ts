@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { sourceFiles } from "./source-corpus";
+import { join, resolve } from "node:path";
 import { productTerms, tr } from "../src/i18n/tr";
 
 describe("canonical product terminology", () => {
@@ -37,5 +38,47 @@ describe("canonical product terminology", () => {
     expect(tr.settings.sources).toBe(productTerms.paymentMethods);
     expect(tr.settings.incomeRules).toBe(productTerms.recurringIncomes);
     expect(tr.settings.opening).toBe(productTerms.balanceAdjustment);
+  });
+});
+
+/**
+ * `tr` is a 1000-key surface that nothing else references, so a string whose
+ * last caller was deleted stays there forever, reads as live copy to the next
+ * person editing the file, and gets translated, reviewed and shipped. Walking
+ * the real object (not the file) means a rename or a restructure cannot make
+ * this test quietly stop checking anything.
+ */
+describe("copy surface", () => {
+  // An array is addressed by index, never by a literal path, so the array
+  // itself is the unit that has to be reachable.
+  const dottedPaths = (node: unknown, prefix: string): string[] =>
+    typeof node === "object" && node !== null && !Array.isArray(node)
+      ? Object.entries(node).flatMap(([key, value]) => dottedPaths(value, `${prefix}.${key}`))
+      : [prefix];
+
+  it("has no string that nothing can render", () => {
+    const blob = [
+      ...sourceFiles("src", { atLeast: 150 }),
+      ...sourceFiles("tests", { atLeast: 90 }),
+      ...sourceFiles("e2e", { atLeast: 5 }),
+    ]
+      .filter((file) => file !== join("src", "i18n", "tr.ts"))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
+
+    // A group read as a whole — `tr.computed.ops[op].title`, `{ ...tr.errors }`
+    // — makes every key under it reachable without naming any of them.
+    const readWhole = (group: string): boolean =>
+      new RegExp(`${group.replace(/\./g, "\\.")}(?![.\\w])`).test(blob);
+
+    const unreachable = dottedPaths(tr, "tr").filter((path) => {
+      if (blob.includes(path)) return false;
+      for (let cut = path.lastIndexOf("."); cut > "tr".length; cut = path.lastIndexOf(".", cut - 1)) {
+        if (readWhole(path.slice(0, cut))) return false;
+      }
+      return true;
+    });
+
+    expect(unreachable).toEqual([]);
   });
 });

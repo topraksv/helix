@@ -4,7 +4,14 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, SlidersHorizontal, TrendingUp, Undo2, WalletCards, type LucideIcon } from "lucide-react-native";
+import ArrowDownLeft from "lucide-react-native/icons/arrow-down-left";
+import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
+import CalendarClock from "lucide-react-native/icons/calendar-clock";
+import SlidersHorizontal from "lucide-react-native/icons/sliders-horizontal";
+import TrendingUp from "lucide-react-native/icons/trending-up";
+import Undo2 from "lucide-react-native/icons/undo-2";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
+import type { LucideIcon } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
 import {
   useAllTransactionsState,
@@ -13,19 +20,19 @@ import {
   useInvestmentOperationsState,
   useInvestmentProductsState,
   useInvestmentProfilesState,
+  useInvestmentWallet,
   usePersonsState,
   useSourcesState,
   useUserId,
 } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
-import { convertToTryMinor } from "../domain/fx";
+import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-draft";
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
-import { formatMinorCompact, formatMinorInput, isSupportedMinorAmount } from "../domain/money";
+import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
-import { projectInvestmentState } from "../domain/investment-projection";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
@@ -112,31 +119,9 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   const operationsState = useInvestmentOperationsState();
   const categoriesState = useInvestmentCategoriesState();
   const personsState = usePersonsState();
-  const states = [profilesState, productsState, operationsState, categoriesState, personsState, transactionsState];
-  const status = combineLiveQueryStatus(states);
-  const ready = states.every((state) => state.updatedAt != null);
+  const { status, ready, retry } = combineLiveStates([profilesState, productsState, operationsState, categoriesState, personsState, transactionsState]);
   const profile = profilesState.data[0];
-  const selfPersonIds = React.useMemo(
-    () => new Set(personsState.data.filter((person) => person.isSelf).map((person) => person.id)),
-    [personsState.data],
-  );
-  const wallet = React.useMemo(() => {
-    if (!profile) return null;
-    try {
-      return projectInvestmentState(
-        profile,
-        productsState.data,
-        operationsState.data,
-        transactionsState.data.map((transaction) => ({
-          ...transaction,
-          personIsSelf: selfPersonIds.has(transaction.personId),
-        })),
-        categoriesState.data,
-      );
-    } catch {
-      return null;
-    }
-  }, [profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data, selfPersonIds]);
+  const wallet = useInvestmentWallet();
   const transferCategories = categoriesState.data.filter((category) => category.isTransfer && category.deletedAt == null);
   const selfPerson = personsState.data.find((person) => person.isSelf) ?? personsState.data[0];
   const [amountMode, setAmountMode] = useState<"all" | "partial">("all");
@@ -212,7 +197,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
     return (
       <Screen>
         <Stack.Screen options={{ title: tr.investments.refundTitle }} />
-        <DataStateNotice status={status} retry={() => states.forEach((state) => state.retry())} />
+        <DataStateNotice status={status} retry={retry} />
       </Screen>
     );
   }
@@ -293,14 +278,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   const { palette } = useTheme();
   const operationGuard = useOperationGuard();
   const undo = useUndo();
-  const liveStates = [categoriesState, sourcesState, personsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    categoriesState.retry();
-    sourcesState.retry();
-    personsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, sourcesState, personsState]);
   const isEdit = existing != null;
   // Opened as a router modal normally, but a web deep-link to /transaction has
   // no back stack — fall back to a real screen so "save" always closes it.
@@ -321,6 +299,11 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   // even when the modal mounts before the first query resolves.
   const [personChoice, setPersonChoice] = useState<string | null>(existing?.personId ?? null);
   const personId = personChoice ?? persons.find((p) => p.isSelf)?.id ?? persons[0]?.id ?? null;
+  // The person ROW, not just the id. The installment path needs `isSelf` and
+  // used to assert the lookup could not miss — but a person deleted on another
+  // device while this form is open arrives by sync, and the assertion then
+  // threw inside the save instead of refusing it.
+  const selectedPerson = persons.find((person) => person.id === personId) ?? null;
   // When did it happen? New entries default to TODAY (specific day) so the
   // amount hits the current balance right away; "month only" (dateless) and
   // future days stay one explicit tap away. An existing dateless row
@@ -356,8 +339,14 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   // Smart defaults (new entries only): remember last used category/source.
   React.useEffect(() => {
     if (isEdit || !dataReady) return;
+    // Switching the entry type starts a second read while the first is still
+    // in flight, and storage does not promise to answer in order. The stale
+    // answer checks the kind it was STARTED with, so landing last is how an
+    // income category ends up preselected on an expense — a pairing the
+    // repository then refuses, after the user has filled the rest of the form.
+    let current = true;
     void kv.get(`helix.last.${entryType}`).then((v) => {
-      if (!v) return;
+      if (!current || !v) return;
       try {
         const parsed = JSON.parse(v) as { categoryId?: string; sourceId?: string };
         const expectedKind = entryType === "income" ? "income" : "expense";
@@ -372,8 +361,14 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
           setCategoryId(parsed.categoryId);
         }
         if (parsed.sourceId && sources.some((s) => s.id === parsed.sourceId)) setSourceId(parsed.sourceId);
-      } catch {}
+      } catch {
+        // A corrupt device-local preference is not worth reporting; the form
+        // simply keeps its own defaults.
+      }
     });
+    return () => {
+      current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryType, dataReady]);
 
@@ -398,10 +393,6 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
     editingSameCurrency && existing?.fxRate ? Number(existing.fxRate) : null;
   const effectiveRateTry: number | null =
     currency === "TRY" ? 1 : (historicalRateTry ?? rate?.rate.rateTry ?? null);
-  const unsignedTryMinor =
-    amountMinor == null || effectiveRateTry == null ? null : convertToTryMinor(amountMinor, effectiveRateTry);
-  const signedAmountMinor = amountMinor == null ? null : isReversal ? -amountMinor : amountMinor;
-  const tryMinor = unsignedTryMinor == null ? null : isReversal ? -unsignedTryMinor : unsignedTryMinor;
 
   const kindForCategories = entryType === "income" ? "income" : "expense";
   const categoryOptions = categories
@@ -426,10 +417,24 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   const paid = Number(paidStr);
   const installmentValid =
     !installment || (isValidInstallmentCount(count) && count >= 2 && Number.isInteger(paid) && paid >= 0 && paid < count);
-  // A category is mandatory for every entry (no "uncategorized" rows).
-  const canSave =
-    dataReady && amountMinor != null && amountMinor > 0 && tryMinor != null && isSupportedMinorAmount(tryMinor, false) && personId != null && dateValid && installmentValid && categoryId != null &&
-    cardCycleValid && !(installment && isReversal);
+  const tryMinor = previewTryMinor(amountMinor, isReversal, effectiveRateTry);
+  // The rule itself is in `domain/transaction-draft.ts`, where a test can hold
+  // it without a renderer. This screen owns the fields; that owns the answer.
+  const saveable = resolveTransactionSave({
+    dataReady,
+    type: entryType,
+    amountMinor,
+    isReversal,
+    currency,
+    rateTry: effectiveRateTry,
+    categoryId,
+    person: selectedPerson,
+    dateValid,
+    installmentValid,
+    cardCycleValid,
+    installment,
+  });
+  const canSave = saveable != null;
 
   const cardStatementPreview = isCreditCardExpense && isValidCardCycle(cardCycle) && dateValid
     ? statementForPurchase(dateStr, cardCycle)
@@ -438,36 +443,39 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
   const fail = (msg: string) => void appAlert(msg, tr.errors.title);
 
   const save = async (thenNew: boolean) => {
-    if (!canSave || !personId) return;
+    if (!saveable) return;
     await operationGuard.run(async () => {
       setBusy(true);
       try {
         assertISODate(effectiveDate);
         const fxRate = currency === "TRY" ? null : String(effectiveRateTry);
+        // The same eleven fields either way — an edit patches them, a new
+        // entry creates them. One literal is what stops a twelfth from being
+        // added to only one of the two write paths.
+        const written = {
+          type: entryType,
+          amountMinor: saveable.signedAmountMinor,
+          currency,
+          fxRate,
+          amountTryMinor: saveable.tryMinor,
+          effectiveDate,
+          isAggregate: dateless,
+          categoryId: saveable.categoryId,
+          paymentSourceId: sourceId,
+          personId: saveable.person.id,
+          note: note.trim() || null,
+        };
         if (isEdit) {
-          await updateTransaction(userId, existing as unknown as Record<string, unknown>, {
-            type: entryType,
-            amountMinor: signedAmountMinor!,
-            currency,
-            fxRate,
-            amountTryMinor: tryMinor!,
-            effectiveDate,
-            isAggregate: dateless,
-            categoryId: categoryId!,
-            paymentSourceId: sourceId,
-            personId,
-            note: note.trim() || null,
-          });
+          await updateTransaction(userId, existing, written);
           scheduleSync(userId);
           allowExit(close);
           return;
         }
         if (installment) {
-          const person = persons.find((p) => p.id === personId)!;
           await createInstallmentPlan(userId, {
-            title: note.trim() || tr.installments.defaultTitle(formatMinorCompact(amountMinor!, currency)),
+            title: note.trim() || tr.installments.defaultTitle(formatMinorCompact(saveable.amountMinor, currency)),
             kind: "card_installment",
-            totalAmountMinor: amountMinor!,
+            totalAmountMinor: saveable.amountMinor,
             monthlyAmountMinor: null,
             installmentCount: count,
             currency,
@@ -478,26 +486,14 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
                 : cardStatementPreview ? monthKeyOf(cardStatementPreview.dueDate) : dateless ? monthKey : monthKeyOf(dateStr),
             dueDay: sources.find((s) => s.id === sourceId)?.dueDay ?? null,
             paymentSourceId: sourceId,
-            personId,
-            personIsSelf: person.isSelf,
-            categoryId: categoryId!,
+            personId: saveable.person.id,
+            personIsSelf: saveable.person.isSelf,
+            categoryId: saveable.categoryId,
             note: note.trim() || null,
-            tryFactor: currency === "TRY" ? 1 : effectiveRateTry!,
+            tryFactor: saveable.rateTry,
           });
         } else {
-          await addTransaction(userId, {
-            type: entryType,
-            amountMinor: signedAmountMinor!,
-            currency,
-            fxRate,
-            amountTryMinor: tryMinor!,
-            effectiveDate,
-            isAggregate: dateless,
-            categoryId: categoryId!,
-            paymentSourceId: sourceId,
-            personId,
-            note: note.trim() || null,
-          });
+          await addTransaction(userId, written);
         }
         void kv.set(`helix.last.${entryType}`, JSON.stringify({ categoryId, sourceId }));
         scheduleSync(userId);

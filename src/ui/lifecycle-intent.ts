@@ -39,10 +39,6 @@ export function clearLifecycleIntent(): void {
   emit();
 }
 
-export function lifecycleIntent(): LifecycleIntent | null {
-  return current;
-}
-
 export function useLifecycleIntent(): LifecycleIntent | null {
   return useSyncExternalStore(
     (listener) => {

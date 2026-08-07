@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { usePersonsState, useUserId } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import {
   deleteUnreferencedPerson,
   createPerson,
@@ -16,7 +16,11 @@ import {
 } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { tr } from "../../../i18n/tr";
-import { Eye, Pencil, Plus, Trash2, UserRound } from "lucide-react-native";
+import Eye from "lucide-react-native/icons/eye";
+import Pencil from "lucide-react-native/icons/pencil";
+import Plus from "lucide-react-native/icons/plus";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import UserRound from "lucide-react-native/icons/user-round";
 import { Badge, Body, Button, Card, CardList, ChipPicker, DataStateNotice, FadeIn, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
@@ -134,8 +138,7 @@ export default function PersonsScreen() {
   const editDraftDirty = Boolean(editingPerson && editName.trim() !== editingPerson.name);
   const { confirmDiscard } = useDirtyExitGuard(name.trim() !== "" || editDraftDirty);
   const personPlaceholder = useRotatingPlaceholder(placeholderPools.person);
-  const dataStatus = combineLiveQueryStatus([personsState]);
-  const dataReady = personsState.updatedAt != null;
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([personsState]);
 
   const rename = async (p: (typeof persons)[number], newName: string) => {
     try {
@@ -229,14 +232,14 @@ export default function PersonsScreen() {
   if (!dataReady) {
     return (
       <Screen>
-        <DataStateNotice status={dataStatus} retry={personsState.retry} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
   }
 
   return (
     <Screen width="workspace">
-      <DataStateNotice status={dataStatus} retry={personsState.retry} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <PeopleOverview people={persons} />
       <WorkspaceSplit
         testID="persons-workspace"

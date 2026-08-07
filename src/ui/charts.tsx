@@ -562,9 +562,9 @@ interface BarGroup {
 /** Axis labels communicate scale, not ledger precision. Keep the shared money
  * formatter in the value strip and use the app's own Mn/Mr/Tr vocabulary on a
  * large chart. */
-export type ChartAxisScale = "full" | CompactMoneyScale;
+type ChartAxisScale = "full" | CompactMoneyScale;
 
-export function chartAxisScale(values: readonly (number | null)[]): ChartAxisScale {
+function chartAxisScale(values: readonly (number | null)[]): ChartAxisScale {
   const largestMinor = values.reduce<number>(
     (largest, value) => value == null || !Number.isFinite(value) ? largest : Math.max(largest, Math.abs(value)),
     0,
@@ -573,7 +573,7 @@ export function chartAxisScale(values: readonly (number | null)[]): ChartAxisSca
   return usesCompactMoneyScale(roundedLargestMinor) ? compactMoneyScale(roundedLargestMinor) : "full";
 }
 
-export function formatChartAxis(valueMinor: number, scale: ChartAxisScale = "full"): string {
+function formatChartAxis(valueMinor: number, scale: ChartAxisScale = "full"): string {
   const roundedMinor = Math.round(valueMinor);
   return scale === "full"
     ? formatMinorCompact(roundedMinor)

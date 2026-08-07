@@ -13,10 +13,16 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowRight, ChevronLeft, ChevronRight, History, Info, Scale, Trash2 } from "lucide-react-native";
+import ArrowRight from "lucide-react-native/icons/arrow-right";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import History from "lucide-react-native/icons/rotate-ccw-clock";
+import Info from "lucide-react-native/icons/info";
+import Scale from "lucide-react-native/icons/scale";
+import Trash2 from "lucide-react-native/icons/trash-2";
 import { deleteBalanceAdjustment, restoreBalanceAdjustment, setBalanceDeclaration, setCurrentBalance, setOpeningBalance } from "../data/repo";
 import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useUserId } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../domain/balance-declaration";
@@ -98,14 +104,7 @@ export function OpeningBalanceEditor() {
   const adjustments = adjustmentsState.data;
   const undo = useUndo();
   const computed = bundle?.actualBalanceMinor ?? null;
-  const liveStates = [settingsState, ledgerState, adjustmentsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    settingsState.retry();
-    ledgerState.retry();
-    adjustmentsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([settingsState, ledgerState, adjustmentsState]);
 
   // --- primary: set current balance -----------------------------------------
   // Pristine until the user types (null): mirror the computed balance so the

@@ -1,9 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronRight, PartyPopper } from "lucide-react-native";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import PartyPopper from "lucide-react-native/icons/party-popper";
 import {
-  toTxLike,
   useAllTransactionsState,
   useCategoriesState,
   useCreditCardStatementsState,
@@ -12,8 +12,9 @@ import {
   useRecurringIncomesState,
   useSourcesState,
   useSubscriptionsState,
+  useTxLike,
 } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { monthKeyOf, todayISO } from "../domain/dates";
 import { buildUpcomingTimeline, type UpcomingTimelineItem } from "../domain/upcoming";
 import { formatMinorCompact } from "../domain/money";
@@ -34,13 +35,16 @@ export default function UpcomingScreen() {
   const incomesState = useRecurringIncomesState();
   const sourcesState = useSourcesState();
   const statementsState = useCreditCardStatementsState();
-  const states = [transactionsState, categoriesState, personsState, expectedState, subscriptionsState, incomesState, sourcesState, statementsState];
-  const status = combineLiveQueryStatus(states);
+  const { status, retry } = combineLiveStates([transactionsState, categoriesState, personsState, expectedState, subscriptionsState, incomesState, sourcesState, statementsState]);
   const categories = categoriesState.data;
-  const categoryById = new Map(categories.map((category) => [category.id, category.name]));
-  const timeline = buildUpcomingTimeline({
+  const txLike = useTxLike();
+  const today = todayISO();
+  const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
+  // Walks every transaction the account has, so it follows the data rather
+  // than the render.
+  const timeline = useMemo(() => buildUpcomingTimeline({
     expected: expectedState.data,
-    transactions: toTxLike(transactionsState.data, personsState.data, categories),
+    transactions: txLike,
     expectedSources: [
       ...subscriptionsState.data.map((subscription) => ({
         id: subscription.id,
@@ -58,17 +62,16 @@ export default function UpcomingScreen() {
     categories: categories.map((category) => ({ id: category.id, name: category.name })),
     cards: sourcesState.data.filter((source) => source.type === "credit_card"),
     statements: statementsState.data,
-    today: todayISO(),
-  });
-  const grouped = [...timeline.reduce((groups, item) => {
+    today,
+  }), [expectedState.data, txLike, subscriptionsState.data, incomesState.data, categories, categoryById, sourcesState.data, statementsState.data, today]);
+  const grouped = useMemo(() => [...timeline.reduce((groups, item) => {
     const month = monthKeyOf(item.date);
     const current = groups.get(month) ?? [];
     current.push(item);
     groups.set(month, current);
     return groups;
-  }, new Map<string, UpcomingTimelineItem[]>()).entries()];
+  }, new Map<string, UpcomingTimelineItem[]>()).entries()], [timeline]);
 
-  const retry = () => states.forEach((state) => state.retry());
   const openItem = (item: UpcomingTimelineItem) => {
     if (item.status === "late") return router.push("/reconciliation");
     if (item.kind === "transaction") return router.push({ pathname: "/transaction", params: { id: item.refId } });

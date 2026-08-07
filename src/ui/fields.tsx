@@ -18,15 +18,24 @@ import {
   Text,
   TextInput,
   View,
+  type PressableStateCallbackType,
   type TextInputProps,
   } from "react-native";
-import { AlertCircle, Calculator as CalculatorIcon, Check, ChevronLeft, ChevronRight, Eye, EyeOff, Minus } from "lucide-react-native";
+import AlertCircle from "lucide-react-native/icons/circle-alert";
+import CalculatorIcon from "lucide-react-native/icons/calculator";
+import Check from "lucide-react-native/icons/check";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import Eye from "lucide-react-native/icons/eye";
+import EyeOff from "lucide-react-native/icons/eye-off";
+import Minus from "lucide-react-native/icons/minus";
 import { CalculatorModal } from "./calculator";
 import { formatMinorInput, formatMoneyInputLive, majorToMinor, parseAmountExpression } from "../domain/money";
 import { INPUT_LIMITS } from "../domain/input";
 import { addMonthsToKey, type MonthKey } from "../domain/dates";
 import { monthLabel, tr } from "../i18n/tr";
 import { selectionTap } from "./haptics";
+import { interactionSurface } from "./interaction";
 import { useReducedMotion } from "./motion";
 import { useShake } from "./motion-primitives";
 import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder";
@@ -51,9 +60,10 @@ const fieldAccessoryStyle = {
  */
 
 function fieldAccessoryPressStyle(palette: Palette) {
-  return ({ pressed }: { pressed: boolean }) => [
+  return (state: PressableStateCallbackType) => [
     fieldAccessoryStyle,
-    pressed ? { backgroundColor: palette.surfaceHover, borderTopRightRadius: radius.md, borderBottomRightRadius: radius.md } : null,
+    interactionSurface(palette, state),
+    { borderTopRightRadius: radius.md, borderBottomRightRadius: radius.md },
   ];
 }
 

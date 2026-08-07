@@ -355,11 +355,17 @@ export async function restoreRow(
 }
 
 /** snake_case DB row → camelCase Drizzle shape. */
-export function fromDbShape(table: SyncedTableName, dbRow: Record<string, unknown>): Record<string, unknown> {
+export function fromDbShape(table: SyncedTableName, dbRow: object): Record<string, unknown> {
+  // `object`, not `Record<string, unknown>`: a typed `SELECT` result is an
+  // interface, and TypeScript refuses those to an index signature. Every call
+  // site therefore carried an `as unknown as` — the strongest cast the
+  // language has, spent on a technicality, in the write paths where a real one
+  // would be most expensive to miss. The one narrowing lives here instead.
+  const source = dbRow as Record<string, unknown>;
   const columns = getTableColumns(SYNCED_TABLES[table]);
   const out: Record<string, unknown> = {};
   for (const [tsKey, column] of Object.entries(columns)) {
-    if (column.name in dbRow) out[tsKey] = dbRow[column.name];
+    if (column.name in source) out[tsKey] = source[column.name];
   }
   return out;
 }

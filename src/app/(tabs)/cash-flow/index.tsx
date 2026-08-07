@@ -9,8 +9,22 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, CalendarPlus, ChartNoAxesColumn, ChevronLeft, ChevronRight, CreditCard, Flag, Inbox, Info, Pencil, Plus, Sigma, TriangleAlert } from "lucide-react-native";
-import { monthFlowTotals } from "../../../domain/balance";
+import ArrowDownRight from "lucide-react-native/icons/arrow-down-right";
+import ArrowLeftRight from "lucide-react-native/icons/arrow-left-right";
+import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
+import CalendarPlus from "lucide-react-native/icons/calendar-plus";
+import ChartNoAxesColumn from "lucide-react-native/icons/chart-no-axes-column";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CreditCard from "lucide-react-native/icons/credit-card";
+import Flag from "lucide-react-native/icons/flag";
+import Inbox from "lucide-react-native/icons/inbox";
+import Info from "lucide-react-native/icons/info";
+import Pencil from "lucide-react-native/icons/pencil";
+import Plus from "lucide-react-native/icons/plus";
+import Sigma from "lucide-react-native/icons/sigma";
+import TriangleAlert from "lucide-react-native/icons/triangle-alert";
+import { monthFlowTotals, type LedgerBundle } from "../../../domain/balance";
 import { buildCashFlowMatrixModel, type CashFlowMatrixColumn } from "../../../domain/cash-flow-matrix";
 import { resolveYearColumns } from "../../../domain/year-columns";
 import { monthKeyOf, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
@@ -20,7 +34,6 @@ import { dateLabel, monthLabel, monthName, shortMonthLabel, tr } from "../../../
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../../domain/balance-declaration";
 import {
   settingValue,
-  toTxLike,
   useAllTransactionsState,
   useCellNotesState,
   useCategoriesState,
@@ -29,13 +42,14 @@ import {
   usePersonsState,
   useSettingsMapState,
   useSourcesState,
-  type LedgerBundle,
+  useTxLike,
 } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
+import { interactionSurface } from "../../../ui/interaction";
 import { circle, controlSize, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { ledgerCellWidth, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
@@ -66,7 +80,7 @@ function MatrixTool({
       // rectangle behind the icon while the pressable was the whole column,
       // so holding the tool lit a small patch sitting above its own caption
       // instead of the thing being pressed.
-      style={({ pressed }) => ({
+      style={(state) => ({
         flex: 1,
         flexBasis: 0,
         minWidth: 0,
@@ -76,7 +90,7 @@ function MatrixTool({
         gap: 1,
         paddingVertical: spacing.xs,
         borderRadius: radius.sm,
-        backgroundColor: pressed ? palette.surfaceHover : "transparent",
+        ...interactionSurface(palette, state),
       })}
     >
       <IconCmp accessible={false} size={15} color={palette.textSecondary} strokeWidth={2} />
@@ -147,20 +161,8 @@ export default function CashflowScreen() {
   const balanceDrift = balanceDeclarationDrift(balanceDeclaration, bundle?.actualBalanceMinor ?? null);
   const visibleComputed = useMemo(() => computed.filter((c) => !hiddenComputed.includes(c.id)), [computed, hiddenComputed]);
   const sources = sourcesState.data;
-  const persons = personsState.data;
   const allTx = allTxState.data;
-  const liveStates = [ledgerState, categoriesState, computedState, settingsState, sourcesState, personsState, allTxState, cellNotesState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const retryData = () => {
-    ledgerState.retry();
-    categoriesState.retry();
-    computedState.retry();
-    settingsState.retry();
-    sourcesState.retry();
-    personsState.retry();
-    allTxState.retry();
-    cellNotesState.retry();
-  };
+  const { status: dataStatus, retry: retryData } = combineLiveStates([ledgerState, categoriesState, computedState, settingsState, sourcesState, personsState, allTxState, cellNotesState]);
   const { width } = useWindowDimensions();
   const contentWidth = useContentWidth();
   const wide = shouldUseWideWorkspace(contentWidth);
@@ -230,7 +232,7 @@ export default function CashflowScreen() {
     () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
     [sources],
   );
-  const txLike = useMemo(() => toTxLike(allTx, persons, categories), [allTx, persons, categories]);
+  const txLike = useTxLike();
 
   // Year switcher bounds: back to the earliest data, forward only while there
   // is actual data (e.g. installments spilling into next year).
@@ -349,7 +351,7 @@ export default function CashflowScreen() {
           accessibilityRole="button"
           accessibilityLabel={tr.settings.balanceDriftTitle}
           onPress={() => router.push("/opening-balance")}
-          style={({ pressed }) => ({
+          style={(state) => ({
             flexDirection: "row",
             alignItems: "center",
             gap: spacing.sm,
@@ -357,7 +359,7 @@ export default function CashflowScreen() {
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm,
             borderRadius: radius.md,
-            backgroundColor: pressed ? palette.warning + "2A" : palette.warning + "16",
+            ...interactionSurface(palette, state, { base: palette.warning + "16" }),
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: palette.warning + "70",
           })}
@@ -452,11 +454,8 @@ export default function CashflowScreen() {
                 month={focusMonth}
                 onMonthChange={setFocusMonthNumber}
                 bundle={bundle}
+                matrix={tableMatrix!}
                 columnCategories={columnCategories}
-                computedColumns={visibleComputed}
-                creditCardIds={creditCardIds}
-                liveCategoryIds={liveCategoryIds}
-                txLike={txLike}
                 cellNotes={cellNotesState.data}
               />
             </ScrollView>
@@ -467,45 +466,31 @@ export default function CashflowScreen() {
   );
 }
 
+/** The card view of the same matrix the table renders — one model, one owner.
+ *  It used to rebuild `buildCashFlowMatrixModel` from the same arguments the
+ *  screen had already memoized, so switching to cards paid for the whole
+ *  ledger twice and then again on every re-render of this subtree. */
 function MonthFocusTable({
   year,
   month,
   onMonthChange,
   bundle,
+  matrix,
   columnCategories,
-  computedColumns,
-  creditCardIds,
-  liveCategoryIds,
-  txLike,
   cellNotes,
 }: {
   year: number;
   month: MonthKey;
   onMonthChange: (monthNumber: number) => void;
   bundle: LedgerBundle;
+  matrix: MatrixModel;
   columnCategories: ReturnType<typeof useCategoriesState>["data"];
-  computedColumns: ReturnType<typeof useComputedColumnsState>["data"];
-  creditCardIds: Set<string>;
-  liveCategoryIds: Set<string>;
-  txLike: ReturnType<typeof toTxLike>;
   cellNotes: ReturnType<typeof useCellNotesState>["data"];
 }) {
   const { palette } = useTheme();
   const router = useRouter();
   const today = todayISO();
   const monthNumber = Number(month.slice(5, 7));
-  const matrix = buildCashFlowMatrixModel({
-    year,
-    yearMonths: bundle.yearMonths,
-    categories: columnCategories,
-    computedColumns,
-    transactions: txLike,
-    creditCardIds,
-    liveCategoryIds,
-    today,
-    openingLabel: tr.cashflow.opening,
-    closingLabel: tr.cashflow.closing,
-  });
   const monthData = bundle.yearMonths.find((item) => item.month === month);
   const flows = monthData ? monthFlowTotals(monthData) : null;
   const noteByCategory = new Map(
@@ -616,7 +601,7 @@ function MonthFocusTable({
               role={onPress ? "button" : "group"}
               accessibilityLabel={tr.a11y.matrixCell(monthLabel(month), column.label, formatMinorCompact(value), Boolean(note))}
               accessibilityHint={note}
-              style={({ pressed }) => ({
+              style={(state) => ({
                 minHeight: 48,
                 flexDirection: "row",
                 alignItems: "center",
@@ -624,7 +609,7 @@ function MonthFocusTable({
                 paddingRight: spacing.md,
                 borderBottomWidth: index < matrix.columns.length - 1 ? StyleSheet.hairlineWidth : 0,
                 borderColor: palette.border,
-                backgroundColor: pressed ? palette.surfaceHover : "transparent",
+                ...interactionSurface(palette, state),
               })}
             >
               <View
@@ -674,7 +659,7 @@ function MonthFocusTable({
               pathname: "/cash-flow/item",
               params: { col: "__uncategorized", label: tr.cashflow.uncategorizedLegacy, year: String(year), kind: "uncategorized" },
             })}
-            style={({ pressed }) => ({ padding: spacing.md, backgroundColor: palette.warning + (pressed ? "26" : "12") })}
+            style={(state) => ({ padding: spacing.md, backgroundColor: palette.warning + "12", ...interactionSurface(palette, state) })}
           >
             <Spread>
               <Text style={[type.label, { color: palette.warningText, flex: 1 }]}>{tr.cashflow.uncategorizedLegacy}</Text>
@@ -726,10 +711,10 @@ function TableDetailsPanel({
           accessibilityRole="button"
           accessibilityLabel={tr.cashflow.uncategorizedLegacy}
           onPress={onOpenUncategorized}
-          style={({ pressed }) => ({
+          style={(state) => ({
             padding: spacing.sm,
             borderRadius: radius.sm,
-            backgroundColor: pressed ? palette.primarySoft : palette.surface,
+            ...interactionSurface(palette, state, { base: palette.surface }),
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: palette.warning + "55",
             flexDirection: "row",
@@ -1030,20 +1015,17 @@ function MatrixCell({
   accessibilityLabel: string;
 }) {
   const { palette } = useTheme();
-  const [hovered, setHovered] = useState(false);
   return (
     <Pressable
       disabled={!onPress}
       onPress={onPress}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
       // A cell that cannot be opened (a system column, or one with nothing to
       // edit) still has to announce its month/column/value. A labelled group
       // keeps that context without implying an action.
       role={onPress ? "button" : "group"}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={note}
-      style={({ pressed }) => [
+      style={(state) => [
         {
           flex: 1,
           minWidth: 0,
@@ -1051,8 +1033,7 @@ function MatrixCell({
           paddingHorizontal: fontSize <= type.caption.fontSize ? 2 : spacing.sm,
         },
         highlighted && { backgroundColor: palette.primarySoft + "55" },
-        hovered && onPress && { backgroundColor: palette.primarySoft },
-        pressed && onPress && { backgroundColor: palette.primary + "38" },
+        interactionSurface(palette, state, { enabled: Boolean(onPress) }),
       ]}
     >
       {value == null || value === 0 ? null : (

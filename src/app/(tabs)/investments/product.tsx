@@ -1,16 +1,14 @@
 import React, { useState } from "react";
 import { Text, View } from "react-native";
-import {
-  Bitcoin,
-  ChartNoAxesCombined,
-  Coins,
-  Landmark,
-  PackagePlus,
-  Umbrella,
-  Shapes,
-  WalletCards,
-  type LucideIcon,
-} from "lucide-react-native";
+import Bitcoin from "lucide-react-native/icons/bitcoin";
+import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
+import Coins from "lucide-react-native/icons/coins";
+import Landmark from "lucide-react-native/icons/landmark";
+import PackagePlus from "lucide-react-native/icons/package-plus";
+import Shapes from "lucide-react-native/icons/shapes";
+import Umbrella from "lucide-react-native/icons/umbrella";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
+import type { LucideIcon } from "lucide-react-native";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { saveInvestmentProduct } from "../../../data/repo";
 import { useInvestmentProfilesState, useUserId } from "../../../data/hooks";

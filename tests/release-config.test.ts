@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -10,6 +10,7 @@ const ci = read(".github/workflows/ci.yml");
 const security = read(".github/workflows/security.yml");
 const nightly = read(".github/workflows/nightly.yml");
 const keepalive = read(".github/workflows/keepalive.yml");
+const database = read(".github/workflows/database.yml");
 const dependabot = read(".github/dependabot.yml");
 const packageJson = JSON.parse(read("package.json"));
 const packageLock = JSON.parse(read("package-lock.json"));
@@ -24,8 +25,28 @@ function dependabotRule(dependency: string) {
 }
 
 describe("release contract", () => {
+  /**
+   * The three facts that make an OTA safe here, and the one that would stop
+   * making it safe.
+   *
+   * `sdkVersion` is correct for exactly one distribution model: Expo Go, which
+   * runs an update against the SDK's own runtime and therefore has no binary to
+   * be incompatible with. It is the WRONG policy for a standalone build,
+   * because it does not change when the native project does — a new native
+   * module, a plugin edit, an SDK bump in the config — so an OTA would be
+   * delivered to a binary that cannot run it, which is a white screen on a
+   * phone that was working a minute ago. Expo's `fingerprint` policy exists for
+   * that case: it hashes the native project and moves whenever the runtime
+   * does.
+   *
+   * So the two must move together. The moment this project gains standalone
+   * build configuration — `eas.build`, an `updates` URL, a build profile — the
+   * policy has to become `fingerprint` BEFORE the next update is published, and
+   * this test fails until it does.
+   */
   it("targets the Expo Go runtime without standalone-build configuration", () => {
-    expect(app.expo.runtimeVersion).toEqual({ policy: "sdkVersion" });
+    const standalone = Boolean(app.expo.updates || eas.build || existsSync(easPreviewPath));
+    expect(app.expo.runtimeVersion).toEqual({ policy: standalone ? "fingerprint" : "sdkVersion" });
     expect(app.expo.updates).toBeUndefined();
     expect(app.expo.extra.eas.projectId).toBe("f71b0477-c800-45cc-903a-9b4d32a9c6b4");
     expect(app.expo.ios.bundleIdentifier).toBe("com.toprak.helix");
@@ -277,5 +298,60 @@ describe("release contract", () => {
     expect(eslintRule).toContain("version-update:semver-minor");
     expect(eslintRule).toContain("version-update:semver-major");
     expect(dependabotRule("typescript")).toContain("version-update:semver-major");
+  });
+});
+
+/**
+ * Row-level security is the ONLY authority on account isolation — the client
+ * checks are defence in depth. Its 126 pgTAP assertions existed for months
+ * with nothing running them, so this pins both that they run and how.
+ */
+describe("database workflow", () => {
+  it("proves account isolation on a schedule and when the schema changes", () => {
+    expect(database).toContain("supabase test db --local");
+    expect(database).toContain("cron:");
+    const paths = database.slice(database.indexOf("paths:"), database.indexOf("schedule:"));
+    expect(paths).toContain("supabase/**");
+  });
+
+  it("runs against a local stack, so an unattended job holds no credential", () => {
+    // `--linked` would point a weekly, unattended run at production and need a
+    // `SUPABASE_ACCESS_TOKEN` to do it. The suite rolls back, but that is a
+    // promise a scheduled job should not have to keep.
+    expect(database).not.toContain("--linked");
+    expect(database).not.toContain("secrets.");
+    expect(database).toMatch(/permissions:\n\s+contents: read/);
+  });
+
+  it("reports and never deploys", () => {
+    expect(database).not.toMatch(/^\s+deploy[\w-]*:$/m);
+    expect(database).not.toMatch(/deploy-pages|upload-pages-artifact|eas-cli/);
+  });
+});
+
+/**
+ * A supply-chain rule is only as good as the file nobody remembered to check.
+ * Every workflow, including ones added later, not a list kept by hand.
+ */
+describe("workflow supply chain", () => {
+  const workflows = readdirSync(resolve(process.cwd(), ".github/workflows"))
+    .filter((name) => name.endsWith(".yml"));
+
+  it("has more than one workflow to check", () => {
+    // The walk itself is part of the assertion: an empty directory listing
+    // would satisfy every loop below it.
+    expect(workflows.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("pins every action to a full commit SHA", () => {
+    const floating: string[] = [];
+    for (const name of workflows) {
+      for (const line of read(`.github/workflows/${name}`).split("\n")) {
+        const used = /^\s*-?\s*uses:\s*(\S+)/.exec(line);
+        // A tag or branch can be moved to point at different code; a SHA cannot.
+        if (used && !/@[0-9a-f]{40}$/.test(used[1] ?? "")) floating.push(`${name}: ${used[1]}`);
+      }
+    }
+    expect(floating).toEqual([]);
   });
 });

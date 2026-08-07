@@ -1,0 +1,62 @@
+# The app survives the user's own text size.
+#
+# WCAG 1.4.4 asks for 200%; iOS accessibility sizes go past it, to roughly 3.1x.
+# React Native scales every `Text` by that setting for free, which is why the
+# risk is not the text — it is the geometry beside it. Three surfaces here are
+# measured in points and cannot grow with it: the ledger's 116pt label column,
+# its fitted cell widths, and the 56pt floating tab bar.
+#
+# The browser suite cannot ask this question at all. `react-native-web` emits
+# `px` font sizes, so a browser's own text-size setting moves nothing, and
+# `useWindowDimensions().fontScale` is a constant 1 there — on iOS too, where it
+# follows Display Zoom rather than Dynamic Type. Only a device has a real
+# answer, which is why the tab bar decides from a MEASURED label instead.
+#
+# Run it at the size it is about, and put the simulator back afterwards:
+#   xcrun simctl ui booted content_size accessibility-large   # ~200%, the WCAG bar
+#   npm run test:native
+#   xcrun simctl ui booted content_size large
+#
+# What this flow deliberately does NOT assert: the welcome screen's three-step
+# strip. "Kaydet / Anla / Takip et" is one merged accessibility node carrying a
+# hand-written label, so its individual words are not queryable and that label
+# would read correctly even if the glyphs did not. At 3.1x iOS broke every one
+# of them mid-word — "Kay / det", "Anl / a", "Taki / p et" — and that was found
+# by looking at the screen. It is held from coming back by the
+# `maxFontSizeMultiplier` contract in `tests/accessibility-contract.test.ts`.
+appId: com.toprak.helix
+---
+- launchApp:
+    clearState: true
+# iOS's own "save this password?" sheet outlives `clearState` — it belongs to
+# the keychain, not the app — and it covers the whole screen.
+- runFlow:
+    when:
+      visible: "Parola Kaydedilsin mi?"
+    commands:
+      - tapOn: "Sonra"
+- extendedWaitUntil:
+    visible: "Helix"
+    timeout: 90000
+# At this size the app still renders its Turkish copy rather than collapsing or
+# clipping it away. Which surface that is depends on whether an account exists
+# on this simulator, so both are accepted: the assertion is about the TEXT
+# surviving, not about the route.
+- assertVisible:
+    text: "Kişisel finans çalışma alanın|Günaydın|İyi akşamlar|Tünaydın|İyi geceler"
+# The tab bar is the tightest box in the app: five equal columns in a bounded
+# 56pt bar. Once a label no longer clears its column the bar drops to icons,
+# rather than drawing "Durum | Mali Ta | Abone | Yatırım | Ayarlar" on top of
+# each other — which is what it did at exactly the 200% WCAG asks for. The
+# names must still be ANNOUNCED, so this asserts the accessibility label, which
+# is present whether or not the text is drawn.
+#
+# Only reachable when this simulator already has a workspace; a fresh device
+# lands on the entry surface, which has no navigation to check.
+- runFlow:
+    when:
+      notVisible: "Kişisel finans çalışma alanın"
+    commands:
+      - assertVisible:
+          id: ".*"
+          text: "Ayarlar"

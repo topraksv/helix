@@ -402,10 +402,16 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     const byId = new Map(pendingRows.map((r) => [r.id, r]));
     await writeRows(
       userId,
-      late.map((l) => ({
-        table: "expected_payments" as const,
-        row: { ...fromDbShape("expected_payments", byId.get(l.id) as unknown as Record<string, unknown>), status: "late" },
-      })),
+      // A derived id with no row behind it should not exist, and an `as
+      // unknown as` cast used to say so — but maintenance runs on every boot,
+      // and `fromDbShape(undefined)` would throw out of it rather than skip
+      // one row. Nothing else on that boot would then run either.
+      late.flatMap((l) => {
+        const row = byId.get(l.id);
+        return row
+          ? [{ table: "expected_payments" as const, row: { ...fromDbShape("expected_payments", row), status: "late" } }]
+          : [];
+      }),
       false,
     );
   }

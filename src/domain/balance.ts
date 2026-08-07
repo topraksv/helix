@@ -10,7 +10,7 @@
  * negative (Temmuz 2026: −18.773,03).
  */
 
-import { monthKeyOf, monthRange, type ISODate, type MonthKey } from "./dates";
+import { makeMonthKey, monthKeyOf, monthRange, yearOf, type ISODate, type MonthKey } from "./dates";
 import type { Minor } from "./money";
 import type { AdjustmentLike, TxLike } from "./types";
 import { financialFlow, signedBalanceEffect } from "./transactions";
@@ -248,9 +248,91 @@ export function buildLedger(input: LedgerInput): MonthLedger[] {
   return ledger;
 }
 
-/** Actual balance as of `today` (partial current month included). */
+export interface LedgerBundle {
+  ledger: MonthLedger[];
+  yearMonths: MonthLedger[];
+  startMonth: MonthKey;
+  actualBalanceMinor: Minor;
+  txLike: TxLike[];
+}
+
+/**
+ * The whole ledger a screen reads: the back-anchored chain, the requested
+ * year's slice and the balance that is true right now.
+ *
+ * One derivation, so the four rules that used to live inline in the data hook
+ * — back-anchoring before the configured start, extending the end month to at
+ * least the current year, taking the current balance from the chain rather
+ * than a second full scan, and returning nothing at all until an opening month
+ * is configured — are stated once and can be tested without a renderer.
+ */
+export function buildLedgerBundle(input: {
+  configuredStart: MonthKey | null;
+  openingBalanceMinor: Minor;
+  includePendingInCells: boolean;
+  transactions: TxLike[];
+  adjustments: AdjustmentLike[];
+  year: number;
+  today: ISODate;
+}): LedgerBundle | null {
+  const { configuredStart, transactions, adjustments, year, today } = input;
+  if (!configuredStart) return null;
+
+  const { startMonth, openingBalanceMinor } = resolveLedgerAnchor(
+    configuredStart,
+    input.openingBalanceMinor,
+    transactions,
+    adjustments,
+    today,
+  );
+  const endMonth = makeMonthKey(Math.max(year, yearOf(today)), 12);
+  const ledger = buildLedger({
+    openingBalanceMinor,
+    startMonth,
+    endMonth,
+    transactions,
+    adjustments,
+    today,
+    includePendingInCells: input.includePendingInCells,
+  });
+  // buildLedger already scanned every transaction and applies the same
+  // realized/today rules. Its current-month close is the actual balance, so a
+  // normal render does not need a second O(N) currentBalance pass. Keep the
+  // direct calculation only for the unusual case where the configured anchor
+  // starts after the current month.
+  const currentLedgerMonth = ledger.find((entry) => entry.month === monthKeyOf(today));
+  const actualBalanceMinor = currentLedgerMonth?.closingMinor ?? currentBalance({
+    openingBalanceMinor,
+    transactions,
+    adjustments,
+    today,
+  });
+  return {
+    ledger,
+    yearMonths: ledger.filter((month) => yearOf(month.month) === year),
+    startMonth,
+    actualBalanceMinor,
+    txLike: transactions,
+  };
+}
+
+/**
+ * Actual balance as of `today` (partial current month included).
+ *
+ * It sums EVERY row that counts, with no month window at all — so
+ * `openingBalanceMinor` has to be the balance at the anchor
+ * `resolveLedgerAnchor` returned, not the one the user configured. The
+ * signature used to accept a `startMonth` and quietly ignore it, which reads
+ * as a window that is applied and is not; a property test walked straight into
+ * it and reported the chain and this disagreeing.
+ */
 export function currentBalance(
-  input: Omit<LedgerInput, "endMonth">,
+  input: {
+    openingBalanceMinor: Minor;
+    transactions: TxLike[];
+    adjustments: AdjustmentLike[];
+    today: ISODate;
+  },
 ): Minor {
   const { openingBalanceMinor, transactions, adjustments, today } = input;
   let balance = openingBalanceMinor;

@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import * as LocalAuthentication from "expo-local-authentication";
-import { ShieldCheck } from "lucide-react-native";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
 import { setAccountFrozen } from "../data/repo";
 import { scheduleSync } from "../sync/engine";
 import { isSupabaseConfigured } from "../sync/supabase";

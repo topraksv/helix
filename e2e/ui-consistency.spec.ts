@@ -1661,7 +1661,16 @@ test("paired month-day fields keep one baseline when a day is taken", async ({ p
  * content box the fill began at the first glyph, so a held settings row looked
  * cropped against the card it sits in.
  */
-test("a held list row lights a surface wider than its own text", async ({ page }) => {
+/**
+ * A row's fill reaches the card's edge, not four pixels short of it.
+ *
+ * The fill is painted on the pressable, so the pressable has to be as wide as
+ * the space it occupies. It bled `spacing.sm` past its own text while the card
+ * around it padded by `density.list.cardPadding` — 8 against 12 — which left a
+ * 4px unlit strip down both sides of every hovered settings row. Four pixels
+ * does not read as a margin; it reads as a fill that missed.
+ */
+test("a held list row lights its card from edge to edge", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.goto("/helix/settings");
@@ -1671,10 +1680,64 @@ test("a held list row lights a surface wider than its own text", async ({ page }
   const geometry = await row.evaluate((el) => {
     const box = el.getBoundingClientRect();
     const label = el.querySelector("div")!.getBoundingClientRect();
-    return { left: box.left, right: box.right, textLeft: label.left, textRight: label.right };
+    // The nearest ancestor that paints a surface of its own is the card.
+    let card: HTMLElement | null = el.parentElement;
+    while (card && getComputedStyle(card).borderRadius === "0px") card = card.parentElement;
+    const cardBox = (card ?? el).getBoundingClientRect();
+    return {
+      left: box.left, right: box.right,
+      textLeft: label.left, textRight: label.right,
+      cardLeft: cardBox.left, cardRight: cardBox.right,
+    };
   });
+  // Still wider than its own words, which is what the fill is for.
   expect(geometry.textLeft - geometry.left, "left inset").toBeGreaterThanOrEqual(8);
   expect(geometry.right - geometry.textRight, "right inset").toBeGreaterThanOrEqual(8);
+  // And now flush with the card itself on both sides — the row's negative
+  // margin gives back exactly the padding the card took, so the only gap left
+  // is the card's hairline border.
+  expect(Math.abs(geometry.left - geometry.cardLeft), "left edge of the card").toBeLessThanOrEqual(2);
+  expect(Math.abs(geometry.right - geometry.cardRight), "right edge of the card").toBeLessThanOrEqual(2);
+});
+
+/**
+ * Every control lights the whole box it occupies.
+ *
+ * The rule this enforces is one line: the interaction fill is painted on the
+ * pressable, the pressable owns its padding, and the box around it owns only
+ * position. Break it and the fill floats — the ledger's column header held its
+ * padding on the cell around the button, so a hovered header lit 86x48 of a
+ * 134x56 cell and left an unlit margin on all four sides.
+ *
+ * Only controls that are the SOLE occupant of their slot are checked: one of
+ * five buttons in a flex row being a fifth as wide is correct, not a defect.
+ */
+test("a control fills the slot it is the only thing in", async ({ page }) => {
+  await onboard(page);
+  await openCashFlow(page);
+  const offenders = await page.evaluate(() => {
+    const found: string[] = [];
+    for (const node of Array.from(document.querySelectorAll('[role="button"],[role="radio"],[role="link"]'))) {
+      const el = node as HTMLElement;
+      const box = el.getBoundingClientRect();
+      const parent = el.parentElement;
+      if (box.width < 2 || box.height < 2 || !parent) continue;
+      const occupants = Array.from(parent.children)
+        .filter((child) => child.getBoundingClientRect().width > 1);
+      if (occupants.length !== 1) continue;
+      const slot = parent.getBoundingClientRect();
+      const style = getComputedStyle(parent);
+      const inset = (side: "Top" | "Right" | "Bottom" | "Left") =>
+        Number.parseFloat(style[`padding${side}` as "paddingTop"] || "0");
+      const missingWidth = Math.round(slot.width - inset("Left") - inset("Right") - box.width);
+      const missingHeight = Math.round(slot.height - inset("Top") - inset("Bottom") - box.height);
+      if (missingWidth <= 1 && missingHeight <= 1) continue;
+      const name = (el.getAttribute("aria-label") || el.textContent || "?").trim().slice(0, 30);
+      found.push(`${name}: ${Math.round(box.width)}x${Math.round(box.height)} in ${Math.round(slot.width)}x${Math.round(slot.height)}`);
+    }
+    return found;
+  });
+  expect(offenders, "a fill that floats inside the box it belongs to").toEqual([]);
 });
 
 /**

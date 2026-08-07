@@ -5,22 +5,30 @@
  * current month, then save.
  */
 
-import React, { useState, type ReactNode } from "react";
+import React, { useMemo, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Calculator, Columns3, CreditCard, Minus, Pencil, Plus, Scale, Trash2, type LucideIcon } from "lucide-react-native";
+import Calculator from "lucide-react-native/icons/calculator";
+import Columns3 from "lucide-react-native/icons/columns-3";
+import CreditCard from "lucide-react-native/icons/credit-card";
+import Minus from "lucide-react-native/icons/minus";
+import Pencil from "lucide-react-native/icons/pencil";
+import Plus from "lucide-react-native/icons/plus";
+import Scale from "lucide-react-native/icons/scale";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import type { LucideIcon } from "lucide-react-native";
 import {
   settingValue,
-  toTxLike,
   useAllTransactionsState,
   useCategoriesState,
   useComputedColumnsState,
   useLedgerState,
   usePersonsState,
   useSettingsMapState,
+  useTxLike,
   useSourcesState,
   useUserId,
 } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { deleteComputedColumn, reorderComputedColumns, restoreComputedColumn, saveComputedColumn, setComputedColumnsHidden } from "../../../data/repo";
 import { creditCardSplit } from "../../../domain/analytics";
 import { monthColumnBasis } from "../../../domain/balance";
@@ -32,6 +40,7 @@ import { tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, Label, PanelHeader, Row, Screen, SelectionGrid, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { useUndo } from "../../../ui/undo";
+import { interactionSurface } from "../../../ui/interaction";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
@@ -120,8 +129,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   const settingsState = useSettingsMapState();
   const bundle = ledgerState.data;
   const sources = sourcesState.data;
-  const allTx = transactionsState.data;
-  const persons = personsState.data;
+  const txLike = useTxLike();
   const settings = settingsState.data;
   const hidden = settingValue<string[]>(settings, HIDDEN_KEY, []);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -136,15 +144,16 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
-  let definition: ComputedColumnDefinition | null = null;
-  try {
-    if (op === "sum") definition = parseDefinition({ op, categoryIds: plus });
-    else if (op === "difference") definition = parseDefinition({ op, plusCategoryIds: plus, minusCategoryIds: minus });
-    else if (op === "income_minus_expense") definition = parseDefinition({ op });
-    else definition = parseDefinition({ op: "cc_split", part: ccPart });
-  } catch {
-    definition = null;
-  }
+  const definition = useMemo<ComputedColumnDefinition | null>(() => {
+    try {
+      if (op === "sum") return parseDefinition({ op, categoryIds: plus });
+      if (op === "difference") return parseDefinition({ op, plusCategoryIds: plus, minusCategoryIds: minus });
+      if (op === "income_minus_expense") return parseDefinition({ op });
+      return parseDefinition({ op: "cc_split", part: ccPart });
+    } catch {
+      return null;
+    }
+  }, [op, plus, minus, ccPart]);
   const editingColumn = editingId ? columns.find((column) => column.id === editingId) : null;
   let storedDefinition: ComputedColumnDefinition | null = null;
   if (editingColumn) {
@@ -158,38 +167,27 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
     ? name.trim() !== editingColumn.name || JSON.stringify(definition) !== JSON.stringify(storedDefinition)
     : Boolean(name.trim() || plus.length || minus.length || op !== "sum" || ccPart !== "single");
   const { confirmDiscard } = useDirtyExitGuard(computedDraftDirty && !busy);
-  const liveStates = [columnsState, categoriesState, ledgerState, sourcesState, transactionsState, personsState, settingsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    columnsState.retry();
-    categoriesState.retry();
-    ledgerState.retry();
-    sourcesState.retry();
-    transactionsState.retry();
-    personsState.retry();
-    settingsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([columnsState, categoriesState, ledgerState, sourcesState, transactionsState, personsState, settingsState]);
 
-  // Live preview against the current month, so setup is never a guess.
-  let preview: number | null = null;
-  if (definition && bundle) {
-    const month = bundle.yearMonths.find((item) => item.month === monthKeyOf(today));
+  // Live preview against the current month, so setup is never a guess. The
+  // split scans the whole ledger, so it follows the definition and the data —
+  // not every keystroke in the name field beside it.
+  const preview = useMemo<number | null>(() => {
+    const month = bundle?.yearMonths.find((item) => item.month === monthKeyOf(today));
+    if (!definition || !month) return null;
     try {
-      if (month) {
-        const creditCardIds = new Set(sources.filter((source) => source.type === "credit_card").map((source) => source.id));
-        const cc = creditCardSplit(toTxLike(allTx, persons, categories), creditCardIds, month.month, today);
-        preview = evaluateComputedColumn(definition, {
-          month: month.month,
-          ...monthColumnBasis(month),
-          ccSingleMinor: cc.singleMinor,
-          ccInstallmentMinor: cc.installmentMinor,
-        });
-      }
+      const creditCardIds = new Set(sources.filter((source) => source.type === "credit_card").map((source) => source.id));
+      const cc = creditCardSplit(txLike, creditCardIds, month.month, today);
+      return evaluateComputedColumn(definition, {
+        month: month.month,
+        ...monthColumnBasis(month),
+        ccSingleMinor: cc.singleMinor,
+        ccInstallmentMinor: cc.installmentMinor,
+      });
     } catch {
-      preview = null;
+      return null;
     }
-  }
+  }, [definition, bundle, sources, txLike, today]);
 
   const valid = name.trim() !== "" && definition !== null;
 
@@ -333,7 +331,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               selectionTapIfChanged(op, value);
               setOp(value);
             }}
-            style={({ pressed }) => ({
+            style={(state) => ({
               flexBasis: "47%",
               flexGrow: 1,
               minWidth: 0,
@@ -346,7 +344,7 @@ export default function ComputedColumnsScreen({ header }: { header?: ReactNode }
               borderRadius: radius.md,
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: palette.border,
-              backgroundColor: pressed ? palette.surfaceHover : selected ? palette.primarySoft : palette.surface,
+              ...interactionSurface(palette, state, { base: selected ? palette.primarySoft : palette.surface }),
             })}
           >
             <IconCmp accessible={false} size={20} color={selected ? palette.primary : palette.textSecondary} />

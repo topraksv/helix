@@ -1,12 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Landmark,
-  Plus,
-} from "lucide-react-native";
+import ArrowDownToLine from "lucide-react-native/icons/arrow-down-to-line";
+import ArrowUpFromLine from "lucide-react-native/icons/arrow-up-from-line";
+import Landmark from "lucide-react-native/icons/landmark";
+import Plus from "lucide-react-native/icons/plus";
 import { addInvestmentOperation, updateInvestmentOperation } from "../../../data/repo";
 import {
   useInvestmentOperationsState,

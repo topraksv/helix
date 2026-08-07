@@ -5,14 +5,20 @@ import { StyleSheet, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequiredError, deletePlan, InstallmentHistoryConflictError, updateInstallmentPlan } from "../data/repo";
 import { useAllTransactionsState, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount, planProgress, type GeneratedInstallment } from "../domain/installments";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
-import { CalendarRange, ChevronLeft, ChevronRight, CreditCard, Landmark, Trash2, type LucideIcon } from "lucide-react-native";
+import CalendarRange from "lucide-react-native/icons/calendar-range";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CreditCard from "lucide-react-native/icons/credit-card";
+import Landmark from "lucide-react-native/icons/landmark";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import type { LucideIcon } from "lucide-react-native";
 import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
@@ -186,14 +192,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
   const router = useRouter();
   const isEdit = existing != null;
   const close = () => navigateBack(router, "/(tabs)/cash-flow/installments");
-  const liveStates = [sourcesState, personsState, categoriesState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    sourcesState.retry();
-    personsState.retry();
-    categoriesState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([sourcesState, personsState, categoriesState]);
 
   const [kind, setKind] = useState<"card_installment" | "loan">(existing?.kind ?? "card_installment");
   const existingAmountMinor = existing ? (existing.kind === "loan" ? existing.monthlyAmountMinor : existing.totalAmountMinor) : null;

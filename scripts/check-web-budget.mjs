@@ -27,12 +27,34 @@ const root = process.argv[2] ?? "dist";
 // one-line change trips is a ceiling that stops being read. Total moves to
 // 5_760_000, which is the measured figure plus the same ~1% of slack the entry
 // ceiling carries; entry stays where it is because it did not move much.
+//
+// Then the icon barrel came out. `lucide-react-native` ships ~1_757 icons and
+// the app draws 106 of them, but Metro does not tree-shake, so importing from
+// the package root put all of them in the entry bundle — measured directly in
+// the shipped file, which contained Aperture, Rocket, Telescope and every
+// other icon nothing renders. Moving to the package's own `lucide-react-native
+// /icons/<name>` deep paths measured entry 5_085_159 -> 3_318_684 and total
+// JavaScript 5_714_924 -> 3_948_449: 1_766_475 bytes, 34.7% of the entry
+// bundle. The ceilings come down with it, or the barrel could come back in one
+// convenient import and nothing would say so. `tests/architecture-contract`
+// holds the import rule; these hold the weight.
+//
+// Then the fonts were subset. Five faces carried ~2_849 codepoints each —
+// Cyrillic, Greek, Vietnamese, IPA, Latin Extended Additional — for a Turkish
+// product: 1_534_728 bytes, 19.1% of the export. `scripts/subset-fonts.mjs`
+// cuts them to the Latin scripts plus the punctuation, currency, arrow, math
+// and symbol blocks the UI draws, measured 791_272 and total export 8_037_750
+// -> 7_269_039. Advance widths, OpenType features and the measured digit
+// spreads are unchanged; `tests/font-coverage.test.ts` holds all three.
 const limits = {
-  entryJavaScript: 5_090_000,
-  totalJavaScript: 5_760_000,
-  totalExport: 10_000_000,
+  entryJavaScript: 3_352_000,
+  totalJavaScript: 3_988_000,
+  // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
+  // grows in coarser steps than the JavaScript above it — measured 8_037_112
+  // with ~3% of slack rather than the ~1% the JS ceilings carry.
+  totalExport: 7_500_000,
   fontFiles: 6,
-  fontBytes: 1_600_000,
+  fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,
   // if one is approved later; neither map files nor bundle references ship.
   sourceMapFiles: 0,

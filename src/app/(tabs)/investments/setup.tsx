@@ -1,6 +1,11 @@
 import React, { useState } from "react";
 import { Text, View } from "react-native";
-import { ArrowRight, Banknote, Check, Landmark, PackagePlus, ShieldCheck } from "lucide-react-native";
+import ArrowRight from "lucide-react-native/icons/arrow-right";
+import Banknote from "lucide-react-native/icons/banknote";
+import Check from "lucide-react-native/icons/check";
+import Landmark from "lucide-react-native/icons/landmark";
+import PackagePlus from "lucide-react-native/icons/package-plus";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
 import { Redirect, useRouter } from "expo-router";
 import { setupInvestments } from "../../../data/repo";
 import { useInvestmentProfilesState, useUserId } from "../../../data/hooks";

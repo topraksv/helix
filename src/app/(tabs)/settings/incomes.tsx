@@ -7,9 +7,9 @@
 
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Banknote } from "lucide-react-native";
+import Banknote from "lucide-react-native/icons/banknote";
 import { useCategoriesState, usePersonsState, useRecurringIncomesState, useUserId } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringIncome } from "../../../data/repo";
 import { scheduleSync } from "../../../sync/engine";
 import { shortDateLabel, tr } from "../../../i18n/tr";
@@ -169,14 +169,7 @@ export default function IncomeRulesScreen() {
       categoryChoice
     );
   const { confirmDiscard } = useDirtyExitGuard(incomeDraftDirty && !busy);
-  const liveStates = [incomesState, personsState, categoriesState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    incomesState.retry();
-    personsState.retry();
-    categoriesState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([incomesState, personsState, categoriesState]);
 
   const payDay = Number(payDayStr);
   const dayValid = isMonthDay(payDayStr);

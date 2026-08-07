@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AppState, Modal, Platform, Text, View } from "react-native";
-import { ShieldCheck } from "lucide-react-native";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
 import { tr } from "../i18n/tr";
 import { Button } from "./components";
 import { useModalAccessibility } from "./accessibility";

@@ -52,7 +52,6 @@ supabase/.temp/
 # handoff note are real inputs to a local Claude/Codex session, but they are
 # not inputs to a build, a test or a deploy — keeping them out of Git stops CI
 # from reacting to them and stops the history from carrying vendored prose.
-/.agents/
 /.claude/
 /.ai/
 /docs/

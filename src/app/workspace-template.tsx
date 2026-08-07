@@ -9,10 +9,11 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { CheckCircle2, LayoutGrid } from "lucide-react-native";
+import CheckCircle2 from "lucide-react-native/icons/circle-check";
+import LayoutGrid from "lucide-react-native/icons/layout-grid";
 import { addTemplateCategories, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES } from "../data/repo";
 import { useCategoriesState, useUserId } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { Button, DataStateNotice, EmptyState, Screen, SectionHeader, SelectionGrid } from "../ui/components";
@@ -44,7 +45,7 @@ export default function WorkspaceTemplateModal() {
   const [excluded, setExcluded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const operationGuard = useOperationGuard();
-  const dataReady = categoriesState.updatedAt != null;
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState]);
 
   const existing = new Set(categories.map((c) => norm(c.name)));
   const missing = ALL_TEMPLATES.filter((c) => !existing.has(norm(c.name)));
@@ -70,14 +71,14 @@ export default function WorkspaceTemplateModal() {
   if (!dataReady) {
     return (
       <Screen>
-        <DataStateNotice status={combineLiveQueryStatus([categoriesState])} retry={categoriesState.retry} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
   }
 
   return (
     <Screen width="workspace">
-      <DataStateNotice status={combineLiveQueryStatus([categoriesState])} retry={categoriesState.retry} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="workspace-template-layout"
         primary={(

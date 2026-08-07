@@ -29,6 +29,7 @@ import { pendingChangesWouldBeLost, signOutWithLocalFallback } from "./sign-out"
 import { loadPreviousLogin, recordSuccessfulLogin, seedCurrentLogin, startLoginHistory } from "./login-history";
 import { parsePasswordRecoveryUrl, passwordRecoveryRequestRedirect } from "./recovery";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
+import { resetDiagnosticUploads } from "../services/diagnostics";
 import {
   IDLE_BRAKE,
   isVerificationBlocked,
@@ -83,6 +84,11 @@ const ENTRY_DEFAULT_KEYS = ["helix.last.income", "helix.last.expense", "helix.la
  */
 async function clearAccountScopedDeviceState(): Promise<void> {
   useSyncStatus.getState().set({ state: "idle", lastSyncAt: null, error: null, remoteChangeAt: null });
+  // The diagnostics watermark says "everything up to here is already in the
+  // account's incident table". A different account has no such table, so the
+  // next owner of this device would silently skip every incident recorded
+  // before they signed in.
+  await resetDiagnosticUploads();
   await Promise.all(ENTRY_DEFAULT_KEYS.map((key) => kv.remove(key).catch(() => {})));
 }
 

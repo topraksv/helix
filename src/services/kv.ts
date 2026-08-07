@@ -5,8 +5,9 @@
  * Device-local, non-secret values only. Everything here is either a preference
  * (theme, biometric opt-in, notification opt-in, table layout), an identifier
  * used to re-open the right workspace offline (last user id, local owner, last
- * e-mail, last used category/source), public market prices, or the bounded
- * diagnostics event shape. Financial rows live in SQLite, never here.
+ * e-mail, last used category/source), public market prices, the bounded
+ * diagnostics event shape, or the timestamp marking how much of that ring has
+ * already been uploaded. Financial rows live in SQLite, never here.
  *
  * No credential, password, access token or refresh token belongs in this store:
  * supabase-js owns session material and its own storage. On web the backing

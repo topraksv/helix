@@ -2,12 +2,20 @@ import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import { CalendarPlus, ChartNoAxesCombined, ChevronLeft, ChevronRight, FileSpreadsheet, FileUp, Pencil, Trash2, WalletCards } from "lucide-react-native";
+import CalendarPlus from "lucide-react-native/icons/calendar-plus";
+import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
+import FileUp from "lucide-react-native/icons/file-up";
+import Pencil from "lucide-react-native/icons/pencil";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { finalizeOnboarding, hasImportedData, seedWorkspace, TEMPLATE_CATEGORIES, TEMPLATE_EXTRA_CATEGORIES, type TemplateCategory } from "../../data/repo";
 import { importBundle, MAX_BACKUP_BYTES, parseExportBundleText } from "../../services/export-import";
 import { useSession } from "../../auth/session";
 import { useSettingsMapState } from "../../data/hooks";
-import { combineLiveQueryStatus } from "../../data/live-state";
+import { combineLiveStates } from "../../data/live-state";
 import { addMonthsToKey, isCurrentOrFutureMonth, isMonthDay, monthKeyOf, todayISO } from "../../domain/dates";
 import { remapDraftOwnerIndex } from "../../domain/onboarding";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../domain/types";
@@ -145,8 +153,7 @@ export default function SetupScreen() {
     sources.length > 0 ||
     sourceFormDirty;
   const { allowExit } = useDirtyExitGuard(draftDirty && !busy && !committed);
-  const dataStatus = combineLiveQueryStatus([settingsState]);
-  const dataReady = settingsState.updatedAt != null;
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([settingsState]);
 
   // Once an import lands, drop the pre-selected template so we don't seed empty
   // template columns beside the imported ones. Guarded so the user can still
@@ -321,7 +328,7 @@ export default function SetupScreen() {
   if (!dataReady) {
     return (
       <Screen width="focus">
-        <DataStateNotice status={dataStatus} retry={settingsState.retry} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
   }
@@ -329,7 +336,7 @@ export default function SetupScreen() {
   return (
     <Screen width="focus">
       <View>
-        <DataStateNotice status={dataStatus} retry={settingsState.retry} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
         <Row gap={spacing.md} style={{ marginBottom: spacing.lg }}>
           <BrandMark size={44} />
           <View style={{ flex: 1, minWidth: 0 }}>

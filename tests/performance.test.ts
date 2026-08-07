@@ -167,3 +167,54 @@ describe("item breakdown credit-card splits", () => {
     expect(source).not.toMatch(/creditCardSplit\(/);
   });
 });
+
+/**
+ * Analysis search builds a token line per transaction, and the money formatter
+ * inside it is an `Intl.NumberFormat` call. Measured at 100k rows: 65 ms to
+ * build the index, 140 ms to filter it — so the screen must key both on their
+ * real inputs. Built from the render instead, the index was rebuilt on every
+ * keystroke in the search box, every filter chip and every layout measurement.
+ *
+ * The budget below is deliberately broad; what it defends is that the cost per
+ * transaction stays constant, so a change that adds another whole-table pass
+ * to either half shows up as a failure rather than as a laggy search box.
+ */
+describe("analysis search cost", () => {
+  const SEARCH_BUDGET_MS = 4_000;
+  const rows = largeTransactions(LARGE_LEDGER_ROWS).map((transaction, index) => ({
+    ...transaction,
+    note: index % 5 === 0 ? "market alışverişi" : null,
+    searchText: `kategori kaynak ${index % 5 === 0 ? "market alışverişi" : ""} ${transaction.amountTryMinor}`,
+  }));
+
+  it("indexes and filters a 100k-row account within the release budget", async () => {
+    const { formatMinorCompact } = await import("../src/domain/money");
+    const { filterTransactions } = await import("../src/domain/transaction-search");
+
+    const indexStartedAt = performance.now();
+    const index = rows.map((transaction) => ({
+      ...transaction,
+      searchText: [transaction.note ?? "", formatMinorCompact(transaction.amountTryMinor)].join(" "),
+    }));
+    const indexElapsed = performance.now() - indexStartedAt;
+
+    const filterStartedAt = performance.now();
+    const matches = filterTransactions(index, {
+      query: "market",
+      type: null,
+      categoryId: null,
+      paymentSourceId: null,
+      from: null,
+      to: null,
+    });
+    const filterElapsed = performance.now() - filterStartedAt;
+
+    // Every fifth row carries the note, so the filter really does match at
+    // scale — and the result list stays bounded by its own cap rather than
+    // handing 20 000 rows to a screen.
+    expect(matches.length).toBe(100);
+    expect(matches.every((match) => match.searchText.includes("market"))).toBe(true);
+    expect(indexElapsed).toBeLessThan(SEARCH_BUDGET_MS);
+    expect(filterElapsed).toBeLessThan(SEARCH_BUDGET_MS);
+  });
+});

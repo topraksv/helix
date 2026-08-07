@@ -6,7 +6,8 @@
 
 import React from "react";
 import { Text, View } from "react-native";
-import { Pencil, Trash2 } from "lucide-react-native";
+import Pencil from "lucide-react-native/icons/pencil";
+import Trash2 from "lucide-react-native/icons/trash-2";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, Divider, IconButton, Row, Spread } from "./components";
 import { font, spacing, type, useTheme } from "./theme";

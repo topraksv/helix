@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useContentWidth } from "../../../ui/viewport";
 import { useAllTransactionsState, useCreditCardStatementsState, usePersonsState, useSourcesState, useUserId } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import {
   CreditCardCycleRequiredError,
   deleteUnreferencedPaymentSource,
@@ -19,7 +19,14 @@ import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../../../domain/ty
 import { dateLabel, monthLabel, tr } from "../../../i18n/tr";
 import { formatMinorCompact } from "../../../domain/money";
 import { scheduleSync } from "../../../sync/engine";
-import { Banknote, CreditCard, Landmark, Pencil, ReceiptText, Trash2, WalletCards, type LucideIcon } from "lucide-react-native";
+import Banknote from "lucide-react-native/icons/banknote";
+import CreditCard from "lucide-react-native/icons/credit-card";
+import Landmark from "lucide-react-native/icons/landmark";
+import Pencil from "lucide-react-native/icons/pencil";
+import ReceiptText from "lucide-react-native/icons/receipt-text";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
+import type { LucideIcon } from "lucide-react-native";
 import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -152,15 +159,7 @@ export default function SourcesScreen() {
     );
   const { confirmDiscard } = useDirtyExitGuard(sourceDraftDirty && !busy);
   const sourcePlaceholder = useRotatingPlaceholder(placeholderPools.source);
-  const liveStates = [sourcesState, statementsState, transactionsState, personsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    sourcesState.retry();
-    statementsState.retry();
-    transactionsState.retry();
-    personsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([sourcesState, statementsState, transactionsState, personsState]);
   const validDay = (day: number | null) => day != null && isMonthDay(day);
   // A statement that closes on the day it is due has no period at all, and
   // "ayın sonu" is day 31 — so typing 31 opposite the month-end chip is the

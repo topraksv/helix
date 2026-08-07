@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(126);
+select extensions.plan(136);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -308,6 +308,117 @@ select is(
   0::bigint,
   'synced tables expose no client hard-delete policies'
 );
+
+-- ---------------------------------------------------------------------------
+-- Failure telemetry (`diagnostic_events`)
+--
+-- Append-only by design: a client may add to the incident record and may never
+-- rewrite or erase it. That is the one property worth the most here, because a
+-- log an attacker can edit is a log nobody can rely on. The CHECK constraints
+-- are the second lock on the redaction the client already performs, so a future
+-- change that tries to write a message or a stack through this table is
+-- refused by the database rather than quietly stored.
+-- ---------------------------------------------------------------------------
+
+reset role;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.diagnostic_events (user_id, occurred_at, scope, severity, code, platform, app_version)
+    values ('10000000-0000-4000-8000-000000000001', now(), 'sync.push', 'error', 'network', 'ios', '1.0.0')
+  $command$),
+  null,
+  'an owner can record an incident of their own'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.diagnostic_events (user_id, occurred_at, scope, severity, code, platform, app_version)
+    values ('20000000-0000-4000-8000-000000000002', now(), 'sync.push', 'error', 'network', 'ios', '1.0.0')
+  $command$),
+  '42501',
+  'an incident cannot be recorded against another account'
+);
+
+select is(
+  (select count(*) from public.diagnostic_events),
+  1::bigint,
+  'an owner reads only their own incidents'
+);
+
+-- No update and no delete policy exists, so both fail the row-level check
+-- rather than being merely unhelpful.
+select is(
+  pg_temp.exec_sqlstate($command$
+    update public.diagnostic_events set code = 'unknown'
+  $command$),
+  '42501',
+  'an incident cannot be rewritten after the fact'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    delete from public.diagnostic_events
+  $command$),
+  '42501',
+  'an incident cannot be erased after the fact'
+);
+
+-- The redaction contract, enforced by the database rather than trusted from the
+-- client. A scope is an internal label; anything shaped like an e-mail, a path
+-- or a sentence is not one.
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.diagnostic_events (user_id, occurred_at, scope, severity, code, platform, app_version)
+    values ('10000000-0000-4000-8000-000000000001', now(), 'owner@example.com', 'error', 'network', 'ios', '1.0.0')
+  $command$),
+  '23514',
+  'a scope that looks like an identifier is refused'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.diagnostic_events (user_id, occurred_at, scope, severity, code, platform, app_version)
+    values ('10000000-0000-4000-8000-000000000001', now(), 'sync.push', 'error', 'TypeError: cannot read x of undefined', 'ios', '1.0.0')
+  $command$),
+  '23514',
+  'a free-text failure class is refused'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.diagnostic_events (user_id, occurred_at, scope, severity, code, platform, app_version)
+    values ('10000000-0000-4000-8000-000000000001', now(), 'sync.push', 'error', 'network', 'ios/SM-G991B/tr_TR', '1.0.0')
+  $command$),
+  '23514',
+  'a platform field carrying device detail is refused'
+);
+
+-- A device coming back after a week re-sends the ring it still holds; the
+-- second copy must not become a second incident.
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.diagnostic_events (user_id, occurred_at, scope, severity, code, platform, app_version)
+    select user_id, occurred_at, scope, severity, code, platform, app_version
+    from public.diagnostic_events limit 1
+  $command$),
+  '23505',
+  'the same incident cannot be recorded twice'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+
+select is(
+  (select count(*) from public.diagnostic_events),
+  0::bigint,
+  'another account sees no incident of the first'
+);
+
+reset role;
 
 select ok(
   (select prosecdef from pg_proc where oid = 'public.delete_own_account()'::regprocedure),
@@ -1842,8 +1953,6 @@ select is(
   '23503',
   'a stale token for a deleted account cannot write new rows'
 );
-
-reset role;
 
 -- `reset role` returns to the Supabase CLI's short-lived login role, which can
 -- execute the assertions through the test search_path but cannot execute

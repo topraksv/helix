@@ -1,0 +1,22 @@
+# The native sign-in surface renders its controls.
+#
+# This is the first screen a phone shows, and it is one the browser suite never
+# sees: the E2E web build deliberately empties the Supabase configuration to
+# reach the local-only path, so nothing has ever exercised the cloud entry on
+# native. Fields, buttons and the offline promise all render through UIKit here.
+appId: com.toprak.helix
+---
+- launchApp:
+    clearState: true
+# A dev-client build downloads its JavaScript from Metro on every launch, so
+# the first assertion has to wait for the bundle rather than race it. A release
+# build with an embedded bundle is up in a fraction of this.
+- extendedWaitUntil:
+    visible: "Tekrar hoş geldin"
+    timeout: 90000
+- assertVisible: "E-posta"
+- assertVisible: "Şifre"
+- assertVisible: "Giriş yap"
+- assertVisible: "Şifremi Unuttum"
+# The promise the product makes on its own front door.
+- assertVisible: "Verilerin cihazında saklanır, internet yokken de çalışır."

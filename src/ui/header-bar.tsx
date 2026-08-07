@@ -104,7 +104,7 @@ function HeaderBar({
  */
 const STACK_ANIMATION = "slide_from_right" as const;
 
-export function stackScreenOptions(palette: Palette, presentationClass: PresentationClass = "drill-down") {
+function stackScreenOptions(palette: Palette, presentationClass: PresentationClass = "drill-down") {
   // Presentation taxonomy: every navigable route shares this stack contract —
   // one header, one back rule, one safe-area rule. Short contextual choices
   // live in `ui/dialog` and `ui/calendar` as real modals and never become a

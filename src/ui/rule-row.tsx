@@ -13,9 +13,12 @@
 
 import React, { type ReactNode } from "react";
 import { Pressable, View } from "react-native";
-import { Pencil, Trash2, type LucideIcon } from "lucide-react-native";
+import Pencil from "lucide-react-native/icons/pencil";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import type { LucideIcon } from "lucide-react-native";
 import { tr } from "../i18n/tr";
 import { Amount, Badge, Body, IconButton, Row } from "./components";
+import { interactionSurface } from "./interaction";
 import { controlSize, font, radius, spacing, type, useTheme } from "./theme";
 import { shouldStackListActions } from "./responsive";
 import { useContentWidth } from "./viewport";
@@ -93,13 +96,24 @@ export function RuleRow({
           accessibilityRole="button"
           accessibilityLabel={title}
           onPress={onPress}
-          style={({ pressed }) => ({
+          // The fill reaches past the label on all four sides. Painted on the
+          // bare content box it began at the first glyph and stopped at the
+          // last, inside a row that is taller than it and padded around it —
+          // so a hovered subscription lit a strip floating in its own row. The
+          // bleed borrows the row's own padding and the matching inset gives it
+          // straight back, so nothing moves and only the lit area grows.
+          style={(state) => ({
             flex: 1,
             minWidth: 0,
+            alignSelf: "stretch",
             justifyContent: "center",
             minHeight: controlSize.minimumTarget,
+            marginVertical: -spacing.sm,
+            paddingVertical: spacing.sm,
+            marginLeft: -spacing.sm,
+            paddingHorizontal: spacing.sm,
             borderRadius: radius.sm,
-            backgroundColor: pressed ? palette.surfaceHover : "transparent",
+            ...interactionSurface(palette, state),
           })}
         >
           {label}

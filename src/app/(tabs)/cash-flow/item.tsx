@@ -4,10 +4,10 @@
  * month row jumps into that month's detail where the transactions are managed.
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Inbox } from "lucide-react-native";
+import Inbox from "lucide-react-native/icons/inbox";
 import { creditCardSplitsByMonth } from "../../../domain/analytics";
 import { monthColumnBasis } from "../../../domain/balance";
 import { evaluateComputedColumn, parseDefinition } from "../../../domain/computed-columns";
@@ -15,17 +15,18 @@ import { makeMonthKey, monthKeyOf, todayISO } from "../../../domain/dates";
 import { isValidItemParams, singleParam, type ItemKind } from "../../../domain/route-params";
 import { formatMinorCompact } from "../../../domain/money";
 import {
-  toTxLike,
   useAllTransactionsState,
   useCategoriesState,
   useComputedColumnsState,
   useLedgerState,
+  useTxLike,
   usePersonsState,
   useSourcesState,
 } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Card, DataStateNotice, EmptyState, Screen } from "../../../ui/components";
+import { interactionSurface } from "../../../ui/interaction";
 import { controlSize, font, spacing, type, useTheme } from "../../../ui/theme";
 
 function MonthValueBar({
@@ -99,25 +100,16 @@ function ItemBreakdown({
   const bundle = ledgerState.data;
   const computed = computedState.data;
   const sources = sourcesState.data;
-  const persons = personsState.data;
   const categories = categoriesState.data;
-  const allTx = transactionsState.data;
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
-  const liveStates = [ledgerState, computedState, sourcesState, personsState, categoriesState, transactionsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    ledgerState.retry();
-    computedState.retry();
-    sourcesState.retry();
-    personsState.retry();
-    categoriesState.retry();
-    transactionsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([ledgerState, computedState, sourcesState, personsState, categoriesState, transactionsState]);
 
-  const creditCardIds = new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id));
-  const txLike = toTxLike(allTx, persons, categories);
+  const creditCardIds = useMemo(
+    () => new Set(sources.filter((src) => src.type === "credit_card").map((src) => src.id)),
+    [sources],
+  );
+  const txLike = useTxLike();
 
   // Value of this column for a given month: a category reads its bucket; a
   // computed column is evaluated the same way the matrix does (with the
@@ -128,7 +120,10 @@ function ItemBreakdown({
   // loop re-scanned the whole ledger twelve times per render: measured 65.3 ms
   // at 100k rows versus 5.4 ms hoisted (12.2x). `buildCashFlowMatrixModel`
   // already used the batch form; this call site had not.
-  const cardSplits = creditCardSplitsByMonth(txLike, creditCardIds, today);
+  const cardSplits = useMemo(
+    () => creditCardSplitsByMonth(txLike, creditCardIds, today),
+    [txLike, creditCardIds, today],
+  );
   const compDef = kind === "computed" ? computed.find((column) => column.id === col) : null;
   const liveCategoryIds = new Set(categories.map((category) => category.id));
   const rows = Array.from({ length: 12 }, (_, index) => {
@@ -195,7 +190,7 @@ function ItemBreakdown({
                 accessibilityRole="button"
                 accessibilityLabel={`${monthLabel(r.month)} · ${r.value == null ? tr.common.none : formatMinorCompact(r.value)}`}
                 onPress={() => router.push(`/cash-flow/${r.month}`)}
-                style={({ pressed }) => ({
+                style={(state) => ({
                   flexDirection: "row",
                   justifyContent: "space-between",
                   alignItems: "center",
@@ -209,7 +204,7 @@ function ItemBreakdown({
                   paddingVertical: spacing.md,
                   borderBottomWidth: i === rows.length - 1 ? 0 : 1,
                   borderColor: palette.border,
-                  backgroundColor: isCurrent ? palette.primarySoft + "55" : pressed ? palette.surfaceAlt : "transparent",
+                  ...interactionSurface(palette, state, { base: isCurrent ? palette.primarySoft + "55" : "transparent" }),
                 })}
               >
                 {/* One measure for the label column, wide enough for the

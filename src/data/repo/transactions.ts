@@ -1,4 +1,5 @@
 import { getSqliteAsync } from "../../db/client";
+import { transactions } from "../../db/schema";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import {
   assertLiveRow,
@@ -218,10 +219,18 @@ export interface TransactionPatch {
   note: string | null;
 }
 
-/** Update an existing transaction in place; status is re-derived from the date. */
+/**
+ * Update an existing transaction in place; status is re-derived from the date.
+ *
+ * `existing` is the row in APPLICATION shape (camelCase), which is what the
+ * live queries hand a screen — not the snake_case row a raw `SELECT` returns.
+ * Both used to be typed `Record<string, unknown>`, so the two shapes were
+ * interchangeable to the compiler while spreading the wrong one here would
+ * have written a row of undefined columns.
+ */
 export async function updateTransaction(
   userId: string,
-  existing: Record<string, unknown>,
+  existing: Partial<typeof transactions.$inferSelect> & { id?: unknown },
   patch: TransactionPatch,
 ): Promise<void> {
   if (!isISODate(patch.effectiveDate)) throw new Error("Invalid transaction date");

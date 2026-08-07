@@ -3,7 +3,16 @@
 
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { Banknote, CalendarCheck, ChartPie, CloudUpload, Landmark, Plus, PlusCircle, Table2, TrendingUp, type LucideIcon } from "lucide-react-native";
+import Banknote from "lucide-react-native/icons/banknote";
+import CalendarCheck from "lucide-react-native/icons/calendar-check";
+import ChartPie from "lucide-react-native/icons/chart-pie";
+import CloudUpload from "lucide-react-native/icons/cloud-upload";
+import Landmark from "lucide-react-native/icons/landmark";
+import Plus from "lucide-react-native/icons/plus";
+import PlusCircle from "lucide-react-native/icons/circle-plus";
+import Table2 from "lucide-react-native/icons/table-2";
+import TrendingUp from "lucide-react-native/icons/trending-up";
+import type { LucideIcon } from "lucide-react-native";
 import { kv } from "../services/kv";
 import { tr } from "../i18n/tr";
 import { Button, FadeIn, Row } from "./components";

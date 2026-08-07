@@ -7,7 +7,10 @@ import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useContentWidth } from "../../../ui/viewport";
 import { useRouter } from "expo-router";
-import { ChevronRight, CreditCard, Landmark, Plus } from "lucide-react-native";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CreditCard from "lucide-react-native/icons/credit-card";
+import Landmark from "lucide-react-native/icons/landmark";
+import Plus from "lucide-react-native/icons/plus";
 import { installmentDisplayTitle, planProgress, type GeneratedInstallment } from "../../../domain/installments";
 import { monthKeyOf, todayISO } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
@@ -18,7 +21,7 @@ import {
   useSourcesState,
   useAllTransactionsState,
 } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { paymentSourceIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, SegmentBar, Select } from "../../../ui/components";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
@@ -38,15 +41,7 @@ export default function InstallmentsScreen() {
   const compact = useContentWidth() < 560;
   const [viewMonth, setViewMonth] = useState(monthKeyOf(todayISO()));
   const [cardFilter, setCardFilter] = useState<string | null>(null);
-  const liveStates = [plansState, sourcesState, personsState, transactionsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    plansState.retry();
-    sourcesState.retry();
-    personsState.retry();
-    transactionsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([plansState, sourcesState, personsState, transactionsState]);
 
   const selfIds = new Set(persons.filter((p) => p.isSelf).map((p) => p.id));
   const sourceName = new Map(sources.map((s) => [s.id, s.name]));

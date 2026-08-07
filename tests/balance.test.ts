@@ -127,7 +127,6 @@ describe("§2.8 payer-other exclusion", () => {
     expect(
       currentBalance({
         openingBalanceMinor: 1000_00,
-        startMonth: "2026-07",
         transactions: [other, mine],
         adjustments: [],
         today: "2026-07-05",
@@ -358,5 +357,72 @@ describe("resolveLedgerAnchor (prior-year history)", async () => {
     const r = resolveLedgerAnchor("2026-01", 100_00, [tx("a", "2025-12-01", 40_00, "income")], [], "2026-07-01");
     expect(r.startMonth).toBe("2025-12");
     expect(r.openingBalanceMinor).toBe(60_00); // 100_00 - 40_00
+  });
+});
+
+/**
+ * The bundle six screens actually read. It used to be assembled inline inside
+ * `useLedgerState`, where none of these four rules could be asserted without a
+ * renderer — and where the whole chain was rebuilt on every render rather than
+ * when the data changed.
+ */
+describe("buildLedgerBundle", async () => {
+  const { buildLedgerBundle } = await import("../src/domain/balance");
+  const base = {
+    configuredStart: "2026-01" as const,
+    openingBalanceMinor: 1_000_00,
+    includePendingInCells: true,
+    adjustments: [],
+    year: 2026,
+    today: "2026-07-15" as const,
+  };
+
+  it("returns nothing at all until an opening month is configured", () => {
+    expect(buildLedgerBundle({ ...base, configuredStart: null, transactions: [] })).toBeNull();
+  });
+
+  it("takes the current balance from the chain's current month, not a second scan", () => {
+    const transactions = [
+      tx({ type: "income", amountTryMinor: 500_00, effectiveDate: "2026-07-01" }),
+      // Later this month but already realized: still part of today's balance.
+      tx({ type: "expense", amountTryMinor: 200_00, effectiveDate: "2026-07-10" }),
+      // Future: visible in the table, absent from the balance.
+      tx({ type: "expense", amountTryMinor: 999_00, effectiveDate: "2026-08-01" }),
+    ];
+    const bundle = required(buildLedgerBundle({ ...base, transactions }));
+    const july = required(bundle.ledger.find((month) => month.month === "2026-07"));
+    expect(bundle.actualBalanceMinor).toBe(1_300_00);
+    expect(bundle.actualBalanceMinor).toBe(july.closingMinor);
+  });
+
+  it("back-anchors to earlier data while keeping the balance at the configured start", () => {
+    const bundle = required(buildLedgerBundle({
+      ...base,
+      transactions: [tx({ type: "expense", amountTryMinor: 300_00, effectiveDate: "2025-11-20" })],
+    }));
+    expect(bundle.startMonth).toBe("2025-11");
+    const january = required(bundle.ledger.find((month) => month.month === "2026-01"));
+    expect(january.openingMinor).toBe(1_000_00);
+    // The prior-year month is in the chain but not in the requested year's slice.
+    expect(bundle.yearMonths.every((month) => month.month.startsWith("2026-"))).toBe(true);
+    expect(bundle.yearMonths).toHaveLength(12);
+  });
+
+  it("extends a past year's request to the end of the current year", () => {
+    const bundle = required(buildLedgerBundle({ ...base, transactions: [], year: 2026, today: "2027-03-01" }));
+    expect(bundle.ledger.at(-1)?.month).toBe("2027-12");
+    // The slice still answers the year that was asked for.
+    expect(bundle.yearMonths.at(0)?.month).toBe("2026-01");
+    expect(bundle.yearMonths.at(-1)?.month).toBe("2026-12");
+  });
+
+  it("passes the pending-cell preference through to the category cells", () => {
+    const transactions = [tx({ type: "expense", amountTryMinor: 75_00, effectiveDate: "2026-09-01", status: "pending", categoryId: "cat" })];
+    const shown = required(buildLedgerBundle({ ...base, transactions }));
+    const hidden = required(buildLedgerBundle({ ...base, transactions, includePendingInCells: false }));
+    expect(required(shown.ledger.find((month) => month.month === "2026-09")).byCategory.get("cat")).toBe(75_00);
+    expect(required(hidden.ledger.find((month) => month.month === "2026-09")).byCategory.get("cat")).toBeUndefined();
+    // Either way a pending row never moves the balance.
+    expect(shown.actualBalanceMinor).toBe(hidden.actualBalanceMinor);
   });
 });

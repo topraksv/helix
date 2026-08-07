@@ -4,7 +4,8 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Stack, useRouter } from "expo-router";
-import { CheckCircle2, Plus } from "lucide-react-native";
+import CheckCircle2 from "lucide-react-native/icons/circle-check";
+import Plus from "lucide-react-native/icons/plus";
 import { confirmExpected, FxRateUnavailableError, revertExpected, skipExpected, unskipExpected } from "../data/repo";
 import {
   useLastEntryInfoState,
@@ -14,7 +15,7 @@ import {
   useSubscriptionsState,
   useUserId,
 } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { todayISO } from "../domain/dates";
 import { formatMinorCompact } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
@@ -54,16 +55,7 @@ export default function CatchUpScreen() {
   // must not submit the same expected item twice.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const operationGuard = useOperationGuard();
-  const liveStates = [expectedState, subscriptionsState, incomesState, personsState, lastEntryState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    expectedState.retry();
-    subscriptionsState.retry();
-    incomesState.retry();
-    personsState.retry();
-    lastEntryState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([expectedState, subscriptionsState, incomesState, personsState, lastEntryState]);
 
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));

@@ -26,7 +26,10 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { Check, Minus, Plus, type LucideIcon } from "lucide-react-native";
+import Check from "lucide-react-native/icons/check";
+import Minus from "lucide-react-native/icons/minus";
+import Plus from "lucide-react-native/icons/plus";
+import type { LucideIcon } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { tr } from "../i18n/tr";
 import { filterSelectionOptions, type SelectionOption } from "./selection";
@@ -35,6 +38,7 @@ import { useModalAccessibility } from "./accessibility";
 import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { DelayedLoadingIndicator } from "./loading-indicator";
+import { interactionSurface } from "./interaction";
 import { SlideUp } from "./motion-primitives";
 import { Body, DisclosureChevron, FadeIn, Label, Row, controlStateStyle } from "./primitives";
 import { Field } from "./fields";
@@ -195,17 +199,15 @@ export function Select<T extends string>({
                             onChange(option.value);
                             setOpen(false);
                           }}
-                          style={({ pressed }) => [
+                          style={(state) => [
                             {
                               paddingHorizontal: spacing.lg,
                               paddingVertical: spacing.md,
                               borderTopWidth: index === 0 ? 0 : StyleSheet.hairlineWidth,
                               borderTopColor: palette.border + "70",
-                              backgroundColor: selected
-                                ? palette.primarySoft
-                                : pressed
-                                  ? palette.surfaceHover
-                                  : "transparent",
+                              ...interactionSurface(palette, state, {
+                                base: selected ? palette.primarySoft : "transparent",
+                              }),
                             },
                           ]}
                         >
@@ -243,12 +245,12 @@ export function Select<T extends string>({
                         setOpen(false);
                         onCreate.run();
                       }}
-                      style={({ pressed }) => ({
+                      style={(state) => ({
                         paddingHorizontal: spacing.lg,
                         paddingVertical: spacing.md,
                         borderTopWidth: StyleSheet.hairlineWidth,
                         borderTopColor: palette.border,
-                        backgroundColor: pressed ? palette.surfaceHover : palette.surface,
+                        ...interactionSurface(palette, state, { base: palette.surface }),
                       })}
                     >
                       <Row gap={spacing.sm}>
@@ -286,7 +288,7 @@ export function Select<T extends string>({
         accessibilityState={{ disabled, expanded: open }}
         disabled={disabled}
         onPress={() => setOpen(true)}
-        style={({ pressed }) => [
+        style={(state) => [
           {
             ...controlStateStyle(palette, open),
             borderRadius: radius.sm,
@@ -297,7 +299,7 @@ export function Select<T extends string>({
             alignItems: "center",
             justifyContent: "space-between",
             ...(disabled ? { borderColor: palette.border } : null),
-            ...(pressed && !disabled ? { backgroundColor: palette.surfaceHover } : null),
+            ...interactionSurface(palette, state, { enabled: !disabled }),
           },
         ]}
       >
@@ -438,18 +440,25 @@ export function Segmented<T extends string>({
             accessibilityRole="radio"
             aria-checked={selected}
             accessibilityState={{ checked: selected, selected, disabled }}
-            style={({ pressed }) => [
+            style={(state) => [
               {
                 flex: 1,
+                alignSelf: "stretch",
                 minHeight: controlSize.minimumTarget,
                 paddingVertical: spacing.sm,
                 paddingHorizontal: 2,
-                borderRadius: 0,
+                // The track is rounded and its underline is square, so the
+                // segment takes the track's corner on top and none at the
+                // bottom. Square all round, a hovered first or last tab put a
+                // right-angled fill inside the track's own rounded corner.
+                borderTopLeftRadius: radius.sm,
+                borderTopRightRadius: radius.sm,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: pressed && !disabled
-                  ? palette.surfaceHover
-                  : selected && disabled ? palette.surfaceAlt : "transparent",
+                ...interactionSurface(palette, state, {
+                  base: selected && disabled ? palette.surfaceAlt : "transparent",
+                  enabled: !disabled,
+                }),
               },
             ]}
           >
@@ -492,12 +501,12 @@ export function Segmented<T extends string>({
           aria-expanded={action.active}
           accessibilityState={{ expanded: action.active }}
           onPress={action.onPress}
-          style={({ pressed }) => ({
+          style={(state) => ({
             width: controlSize.minimumTarget,
             minHeight: controlSize.minimumTarget,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: pressed ? palette.surfaceHover : "transparent",
+            ...interactionSurface(palette, state),
             borderBottomWidth: 3,
             borderBottomColor: action.active ? palette.primary : "transparent",
           })}
@@ -618,7 +627,7 @@ export function SelectionGrid({
                   selectionTap();
                   onToggle(option.value);
                 }}
-                style={({ pressed }) => ({
+                style={(state) => ({
                   flexBasis: contentWidth >= 720 ? "31%" : "47%",
                   flexGrow: 1,
                   minWidth: 0,
@@ -633,7 +642,7 @@ export function SelectionGrid({
                   // that thickens moves the tiles that wrap after it.
                   borderWidth: borderWidth.control,
                   borderColor: selected ? selectedColor : palette.border,
-                  backgroundColor: pressed ? palette.surfaceHover : selected ? selectedSoft : palette.surfaceAlt,
+                  ...interactionSurface(palette, state, { base: selected ? selectedSoft : palette.surfaceAlt }),
                 })}
               >
                 <View
@@ -752,7 +761,7 @@ export function ChoiceTile({
       accessibilityState={{ checked: selected, selected, disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => ({
+      style={(state) => ({
         flexGrow: 1,
         flexBasis: basis ?? 0,
         minWidth: 0,
@@ -769,10 +778,11 @@ export function ChoiceTile({
         borderColor: disabled ? p.controlBorder : selected ? accent : p.border + "80",
         // Disabled is said in colour, never by fading the tile: a control the
         // user cannot use still has to be readable enough to explain itself.
-        backgroundColor: disabled
-          ? p.surfaceAlt
-          : pressed ? p.surfaceHover : selected ? accent + "14" : p.surface,
-        transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
+        ...interactionSurface(p, state, {
+          base: disabled ? p.surfaceAlt : selected ? accent + "14" : p.surface,
+          enabled: !disabled,
+        }),
+        transform: [{ translateY: state.pressed && !disabled ? 1 : 0 }],
       })}
     >
       {children}
@@ -873,15 +883,15 @@ export function ChipPicker<T extends string>({
             // The tile's shape, border and selected treatment win because they
             // survive a long label and read as chosen without relying on fill
             // alone; the pill's geometry and touch target are unchanged.
-            style={({ pressed }) => ({
+            style={(state) => ({
               paddingVertical: spacing.sm + 2,
               paddingHorizontal: compact ? spacing.sm + 2 : spacing.md + 2,
               borderRadius: radius.md,
               borderWidth: borderWidth.control,
               borderColor: selected ? palette.primary : palette.border,
-              backgroundColor: pressed
-                ? palette.surfaceHover
-                : selected ? palette.primarySoft : palette.surfaceAlt,
+              ...interactionSurface(palette, state, {
+                base: selected ? palette.primarySoft : palette.surfaceAlt,
+              }),
               opacity: unavailable ? 0.45 : 1,
               minHeight: controlSize.minimumTarget,
               justifyContent: "center",

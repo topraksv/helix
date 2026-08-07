@@ -73,3 +73,33 @@ jobs:
       # the SheetJS CDN tarball and is invisible to the registry audit either
       # way, which is why a moderate gate here would mostly report noise.)
       - run: node scripts/check-advisories.mjs
+
+  # Who built what is in the lockfile, as opposed to whether it is known-broken.
+  #
+  # `npm audit signatures` checks two different things: that every tarball
+  # matches the registry's own Sigstore signature, and — for the packages that
+  # publish it — the SLSA provenance attestation binding the tarball to the
+  # commit and workflow that produced it. A tampered or re-uploaded tarball
+  # fails the first; a package published from somewhere other than its own
+  # repository fails the second. Neither is something `npm audit` can see, and
+  # neither was checked anywhere before.
+  #
+  # It needs the tree on disk, which the advisory job deliberately does without,
+  # so it is its own job. `--ignore-scripts` is not caution theatre here: the
+  # whole point of this job is to inspect these packages, and running their
+  # install hooks first would mean executing the code under review.
+  signatures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Measured 2026-08-07: 1339 packages with verified registry signatures,
+      # 240 of them also carrying an attestation. A count that falls is a
+      # package that stopped being verifiable.
+      - run: npm audit signatures

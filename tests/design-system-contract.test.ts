@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { sourceFiles } from "./source-corpus";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -58,17 +59,15 @@ function presentationViolations(source: string, path: string): string[] {
   return violations;
 }
 
-function sourceFiles(directory: string): string[] {
-  return readdirSync(join(root, directory), { withFileTypes: true }).flatMap((entry) => {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path);
-    return entry.name.endsWith(".ts") || entry.name.endsWith(".tsx") ? [path] : [];
-  });
-}
+
 
 describe("design-system metric contracts", () => {
   it("keeps displayed money on the shared compact formatter", () => {
-    const displaySources = [...sourceFiles("src/app"), ...sourceFiles("src/ui"), ...sourceFiles("src/services")];
+    const displaySources = [
+      ...sourceFiles("src/app", { atLeast: 40 }),
+      ...sourceFiles("src/ui", { atLeast: 50 }),
+      ...sourceFiles("src/services", { atLeast: 8 }),
+    ];
     const offenders = displaySources.filter((path) => /\bformatMinor\s*\(/.test(readFileSync(join(root, path), "utf8")));
     expect(offenders).toEqual([]);
     const localInputFormatters = displaySources
@@ -177,7 +176,7 @@ describe("design-system typography contracts", () => {
    * drawing input, not a typographic role.
    */
   it("declares every text size in the scale, never at a call site", () => {
-    const offenders = sourceFiles("src")
+    const offenders = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path !== "src/ui/theme.ts" && path !== "src/ui/charts.tsx")
       .filter((path) => /fontSize:\s*\d/.test(readFileSync(join(root, path), "utf8")));
     expect(offenders).toEqual([]);
@@ -193,14 +192,14 @@ describe("design-system typography contracts", () => {
    * half its own width written out beside it.
    */
   it("gives every surface-sized corner a name", () => {
-    const offenders = sourceFiles("src")
+    const offenders = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path !== "src/ui/theme.ts")
       .filter((path) => /borderRadius:\s*(?:[89]|[1-9]\d)\b/.test(readFileSync(join(root, path), "utf8")));
     expect(offenders).toEqual([]);
   });
 
   it("keeps raw Inter face names inside the theme and font loader only", () => {
-    const offenders = sourceFiles("src").filter((path) => {
+    const offenders = sourceFiles("src", { atLeast: 150 }).filter((path) => {
       if (path === "src/ui/theme.ts" || path === "src/app/_layout.tsx") return false;
       return /Inter_[4567]00/.test(readFileSync(join(root, path), "utf8"));
     });
@@ -250,7 +249,7 @@ describe("content width is a shared scale, not a per-route number", () => {
 
   it("leaves no route setting its own pixel width", () => {
     const offenders: string[] = [];
-    for (const path of sourceFiles("src")) {
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
       const source = readFileSync(join(root, path), "utf8");
       for (const match of source.matchAll(/maxWidth=\{/g)) {
         offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length}`);
@@ -273,7 +272,7 @@ describe("content width is a shared scale, not a per-route number", () => {
     // else.
     const windowScoped = new Set(["shouldUseWideGutter"]);
     const offenders: string[] = [];
-    for (const path of sourceFiles("src")) {
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
       const source = readFileSync(join(root, path), "utf8");
       for (const match of source.matchAll(/(should[A-Z]\w*)\(\s*width\s*\)/g)) {
         if (windowScoped.has(match[1]!)) continue;
@@ -286,7 +285,7 @@ describe("content width is a shared scale, not a per-route number", () => {
   it("gives every screen a width its structure earns", () => {
     const names = new Set(Object.keys(contentWidth));
     const offenders: string[] = [];
-    for (const path of sourceFiles("src")) {
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
       const source = readFileSync(join(root, path), "utf8");
       for (const match of source.matchAll(/<Screen\b[^>]*\bwidth="([a-z]+)"/g)) {
         if (!names.has(match[1]!)) offenders.push(`${path} unknown width "${match[1]}"`);
@@ -305,7 +304,7 @@ describe("content width is a shared scale, not a per-route number", () => {
    */
   it("sizes pixel-width charts from their own container, never from the window", () => {
     const offenders: string[] = [];
-    for (const path of sourceFiles("src")) {
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
       if (path === "src/ui/charts.tsx") continue;
       const source = readFileSync(join(root, path), "utf8");
       for (const match of source.matchAll(/width=\{[^}]*\bwidth\s*[-*]/g)) {
@@ -379,7 +378,36 @@ describe("interaction feedback contracts", () => {
     expect(components).not.toContain("useSpringPress");
     expect(components).not.toContain("AnimatedPressable");
     expect(button).toContain("pressed");
-    expect(components).toContain("backgroundColor: pressed ? palette.surfaceHover");
+    expect(components).toContain("interactionSurface(palette, state)");
+  });
+
+  /**
+   * One fill answers the pointer, everywhere.
+   *
+   * Before `interactionSurface` there were twenty-eight hand-written hover and
+   * press fills across eighteen files, most of them reacting to `pressed` only
+   * — so on a desktop pointer the majority of this app's controls said nothing
+   * at all until they were clicked. The ones that did answer moved by different
+   * amounts: 1.253:1 in Petrol Dark against 1.556:1 in Amber Light for the same
+   * gesture, when a hover should be the quietest state a control has.
+   *
+   * The rule is not "use the helper" for its own sake: it is that a control's
+   * response has to be the same size as every other control's, which cannot be
+   * true while each call site picks its own colour.
+   */
+  it("routes every interaction fill through the one shared surface", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
+      if (path.endsWith("ui/interaction.ts")) continue;
+      const source = readFileSync(path, "utf8");
+      for (const [index, line] of source.split("\n").entries()) {
+        // A background chosen by the pressed or hovered flag is, by definition,
+        // an interaction fill.
+        if (!/backgroundColor.*\b(pressed|hovered)\b|\b(pressed|hovered)\b.*\?\s*(palette|p)\./.test(line)) continue;
+        offenders.push(`${path}:${index + 1}`);
+      }
+    }
+    expect(offenders, "an interaction fill that no other control shares").toEqual([]);
   });
 
   it("keeps loading actions visually active while preventing a second press", () => {
@@ -417,7 +445,7 @@ describe("interaction feedback contracts", () => {
     expect(card).toContain('tone?: "success" | "warning" | "error"');
     expect(card).toContain("borderWidth: StyleSheet.hairlineWidth");
     expect(card).toContain('borderColor: toneColor ? toneColor + "66" : palette.border + "70"');
-    for (const path of sourceFiles("src/app")) {
+    for (const path of sourceFiles("src/app", { atLeast: 40 })) {
       const source = readFileSync(join(root, path), "utf8");
       expect(source, path).not.toMatch(/<Card[^>]*borderColor: palette\.(?:success|warning|error)/);
     }
@@ -548,7 +576,7 @@ describe("primary, secondary and disabled are three different weights", () => {
 describe("a press lights the control it is on", () => {
   it("paints every pressed fill on the pressable's own box", () => {
     const offenders: string[] = [];
-    for (const path of sourceFiles("src")) {
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
       // Two deliberate exceptions, both for the same reason: the painted chip
       // is centred inside a larger minimum-size target, so the fill IS the
       // control that was pressed. `IconButton` in components.tsx, and the
@@ -582,7 +610,7 @@ describe("a press lights the control it is on", () => {
    */
   it("gives every interactive pressable a pressed state", () => {
     const offenders: string[] = [];
-    for (const path of sourceFiles("src")) {
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
       const source = readFileSync(join(root, path), "utf8");
       let index = 0;
       while ((index = source.indexOf("<Pressable", index)) !== -1) {
@@ -610,6 +638,7 @@ describe("a press lights the control it is on", () => {
         // whole-state form — `(state) => … state.pressed` — is the one a
         // control that also answers a hovering pointer has to use, because
         // `hovered` is not in React Native's own callback type.
+        if (/interactionSurface\(/.test(tag)) continue;
         if (/\(\{ pressed \}\)/.test(tag) || /pressed \?/.test(tag) || /state\.pressed/.test(tag)) continue;
         if (/^\s*>?\s*\{\(\{ pressed \}\)/.test(opening) || /^\s*>?\s*\{\(state\) =>/.test(opening)) continue;
         // Shared helpers that return the pressed style for their caller.
@@ -628,7 +657,7 @@ describe("a press lights the control it is on", () => {
    * browser. Every box now carries its own minimum.
    */
   it("never buys a touch target with a prop the web ignores", () => {
-    const offenders = sourceFiles("src").filter((path) =>
+    const offenders = sourceFiles("src", { atLeast: 150 }).filter((path) =>
       /hitSlop=/.test(readFileSync(join(root, path), "utf8")),
     );
     expect(offenders).toEqual([]);
@@ -668,7 +697,7 @@ describe("product copy keeps one casing rule per role", () => {
     }
     const buttons: [string, string][] = [];
     const fields: [string, string][] = [];
-    for (const path of sourceFiles("src").filter((file) => file.endsWith(".tsx"))) {
+    for (const path of sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"))) {
       const file = readFileSync(join(root, path), "utf8");
       for (const match of file.matchAll(/label=\{tr\.([a-zA-Z0-9_.]+)\}/g)) {
         const before = file.slice(Math.max(0, match.index! - 1200), match.index!);
@@ -710,7 +739,7 @@ describe("product copy keeps one casing rule per role", () => {
     // Only what really reaches a field's `error` prop. A dialog body explains
     // itself somewhere calmer and is allowed the length.
     const offenders: string[] = [];
-    for (const path of sourceFiles("src").filter((file) => file.endsWith(".tsx"))) {
+    for (const path of sourceFiles("src", { atLeast: 150 }).filter((file) => file.endsWith(".tsx"))) {
       const file = readFileSync(join(root, path), "utf8");
       for (const match of file.matchAll(/\berror=\{[^}]*?tr\.[a-zA-Z0-9_.]*?(\w+)[^}]*?\}/g)) {
         const message = strings.get(match[1]!);
@@ -729,7 +758,7 @@ describe("product copy keeps one casing rule per role", () => {
  * not that they exist but that they obey the same three rules everywhere.
  */
 describe("every animation obeys the same three rules", () => {
-  const animatedFiles = sourceFiles("src").filter((path) => {
+  const animatedFiles = sourceFiles("src", { atLeast: 150 }).filter((path) => {
     if (!path.endsWith(".tsx") && !path.endsWith(".ts")) return false;
     const source = readFileSync(join(root, path), "utf8");
     return /Animated\.(timing|spring|loop|sequence)\(/.test(source);
@@ -913,7 +942,7 @@ describe("only a hero figure counts", () => {
   });
 
   it("is asked for on exactly the two hero figures and nowhere else", () => {
-    const askers = sourceFiles("src")
+    const askers = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path.endsWith(".tsx"))
       .filter((path) => /<Amount[^>]*\scount(\s|\n|\/|>)/.test(readFileSync(join(root, path), "utf8")));
     expect(askers.sort()).toEqual([
@@ -1035,7 +1064,7 @@ describe("nothing changes state by cutting to it", () => {
   it("rotates one chevron rather than swapping two glyphs", () => {
     expect(primitives).toContain("export function DisclosureChevron(");
     expect(primitives).toContain('outputRange: ["0deg", "180deg"]');
-    const swappers = sourceFiles("src")
+    const swappers = sourceFiles("src", { atLeast: 150 })
       .filter((path) => path.endsWith(".tsx"))
       .filter((path) => {
         const source = readFileSync(join(root, path), "utf8");
@@ -1098,7 +1127,7 @@ describe("progress is one shape", () => {
       expect(readFileSync(join(root, path), "utf8"), path).toContain("<SegmentBar");
     }
     // No screen paints its own proportional fill any more.
-    const offenders = sourceFiles("src/app").filter((path) =>
+    const offenders = sourceFiles("src/app", { atLeast: 40 }).filter((path) =>
       /width: `\$\{(?:Math\.round\()?\(?[\w.]+ \/ /.test(readFileSync(join(root, path), "utf8")),
     );
     expect(offenders).toEqual([]);

@@ -5,13 +5,19 @@ import React, { useState, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useCategoriesState, useUserId } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { countTransactionsForCategory, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, updateCategory } from "../../../data/repo";
 import { categoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";
-import { ArrowDownLeft, ArrowUpRight, Columns3, LayoutTemplate, Pencil, Plus, Trash2 } from "lucide-react-native";
+import ArrowDownLeft from "lucide-react-native/icons/arrow-down-left";
+import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
+import Columns3 from "lucide-react-native/icons/columns-3";
+import LayoutTemplate from "lucide-react-native/icons/layout-template";
+import Pencil from "lucide-react-native/icons/pencil";
+import Plus from "lucide-react-native/icons/plus";
+import Trash2 from "lucide-react-native/icons/trash-2";
 import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
@@ -100,8 +106,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     }, editDraftDirty);
   };
   const categoryPlaceholder = useRotatingPlaceholder(placeholderPools.category);
-  const dataStatus = combineLiveQueryStatus([categoriesState]);
-  const dataReady = categoriesState.updatedAt != null;
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState]);
 
   const add = async () => {
     if (!name.trim()) return;
@@ -176,7 +181,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     return (
       <Screen>
         {header}
-        <DataStateNotice status={dataStatus} retry={categoriesState.retry} />
+        <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
   }
@@ -184,7 +189,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   return (
     <Screen scrollEnabled={!dragging} width="workspace">
       {header}
-      <DataStateNotice status={dataStatus} retry={categoriesState.retry} />
+      <DataStateNotice status={dataStatus} retry={retryData} />
       <WorkspaceSplit
         testID="categories-workspace"
         wideLayout={categories.length === 0 ? "stack" : "split"}

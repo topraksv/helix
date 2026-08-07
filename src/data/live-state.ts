@@ -2,7 +2,7 @@
 
 export type LiveQueryStatus = "loading" | "refreshing" | "ready" | "stale" | "error";
 
-interface LiveQueryError {
+export interface LiveQueryError {
   kind: "query_failed";
   attempt: number;
   occurredAt: Date;
@@ -37,6 +37,19 @@ export function failLiveQuery<T>(previous: LiveSnapshot<T>, attempt: number, at:
     status: previous.updatedAt ? "stale" : "error",
     error: { kind: "query_failed", attempt, occurredAt: at },
   };
+}
+
+/**
+ * How long to wait before attempt N+1 of a failed live query.
+ *
+ * Capped exponential backoff, and it never gives up: abandoning after a fixed
+ * number of tries left screens frozen on empty data (a wedged sqlite worker
+ * never recovered, and route guards keyed off the query showed a permanently
+ * blank screen). The ceiling is what keeps "never gives up" from meaning
+ * "retries in a tight loop".
+ */
+export function retryDelayMs(attempt: number): number {
+  return Math.min(250 * 2 ** (attempt - 1), 5000);
 }
 
 /**
@@ -87,10 +100,57 @@ export function readSyncedFlag(
 }
 
 /** Collapse several query states without hiding the most severe condition. */
-export function combineLiveQueryStatus(snapshots: readonly LiveSnapshot<unknown>[]): LiveQueryStatus {
+function combineLiveQueryStatus(snapshots: readonly LiveSnapshot<unknown>[]): LiveQueryStatus {
   if (snapshots.some((snapshot) => snapshot.status === "error")) return "error";
   if (snapshots.some((snapshot) => snapshot.status === "stale")) return "stale";
   if (snapshots.some((snapshot) => snapshot.status === "loading")) return "loading";
   if (snapshots.some((snapshot) => snapshot.status === "refreshing")) return "refreshing";
   return "ready";
+}
+
+export interface LiveStateGroup {
+  /** The most severe condition any of the sources is in. */
+  status: LiveQueryStatus;
+  /**
+   * Every source has answered at least once for the current parameters.
+   *
+   * A distinct question from the status: a `refreshing` query has answered,
+   * and a `stale` one is showing its last good data. This is the one a screen
+   * gates its content on, because rendering "you have no categories" from a
+   * query that has not run yet is the lie.
+   */
+  ready: boolean;
+  /** The first failure, so a caller can report it without picking a source. */
+  error: LiveQueryError | null;
+  /** The OLDEST completion among the sources, or `undefined` until all have
+   *  answered — the moment the whole picture was last true. */
+  updatedAt: Date | undefined;
+  retry: () => void;
+}
+
+/**
+ * What a screen needs to know about the several live queries it reads.
+ *
+ * Eighteen screens spelled this out by hand: combine the statuses, test every
+ * `updatedAt`, then write a retry that names each source again — a list that
+ * silently falls out of step with the queries above it the first time one is
+ * added. One helper, and adding a query to the array is the whole edit.
+ */
+export function combineLiveStates(
+  states: readonly (LiveSnapshot<unknown> & { retry: () => void })[],
+): LiveStateGroup {
+  const answered = states.flatMap((state) => (state.updatedAt ? [state.updatedAt.getTime()] : []));
+  // `Math.min()` of nothing is `Infinity`, and `new Date(Infinity)` is an
+  // Invalid Date that every `!= null` check downstream would accept as a real
+  // completion. An empty group is vacuously ready and has no such moment.
+  const ready = answered.length === states.length;
+  return {
+    status: combineLiveQueryStatus(states),
+    ready,
+    error: states.find((state) => state.error)?.error ?? null,
+    updatedAt: ready && answered.length > 0 ? new Date(Math.min(...answered)) : undefined,
+    retry: () => {
+      for (const state of states) state.retry();
+    },
+  };
 }

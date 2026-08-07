@@ -3,23 +3,26 @@
  * writes instantly (and to sync merges, via SQLite change events).
  */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
 import { and, asc, eq, getTableColumns, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
-import { buildLedger, currentBalance, resolveLedgerAnchor, type MonthLedger } from "../domain/balance";
-import { daysBetweenISO, makeMonthKey, monthKeyOf, todayISO, yearOf, type MonthKey } from "../domain/dates";
+import { buildLedgerBundle, type LedgerBundle } from "../domain/balance";
+import { projectInvestmentState } from "../domain/investment-projection";
+import type { InvestmentState } from "../domain/investments";
+import { daysBetweenISO, todayISO, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { devError } from "../services/logger";
 import { decodeSettingValue } from "../domain/settings";
 import {
-  combineLiveQueryStatus,
+  combineLiveStates,
   completeLiveQuery,
   failLiveQuery,
   initialLiveSnapshot,
   readSyncedFlag,
+  retryDelayMs,
   snapshotForParameters,
   startLiveQuery,
   type LiveSnapshot,
@@ -36,15 +39,77 @@ interface LiveValueResult<T> extends LiveSnapshot<T> {
 }
 
 /**
- * Live query over the async driver: runs the drizzle query, then re-runs it
- * (debounced) whenever a relevant local table changes. Failures are logged and
- * retried with backoff instead of silently freezing screens on empty data.
+ * The engine both live hooks run on: execute the query, re-run it (debounced)
+ * when a relevant local table changes, and retry forever with capped backoff
+ * instead of silently freezing a screen on empty data.
+ *
+ * Retrying forever is a deliberate decision, not an oversight: abandoning
+ * after N tries left screens frozen on empty data (a wedged sqlite worker
+ * never recovered, and route guards keyed off this query showed a permanent
+ * blank screen). A failure preserves the last good data and exposes an
+ * explicit error/stale state rather than asserting an empty result.
  *
  * `tables` scopes invalidation: only change events for those tables re-run the
  * query, so one write no longer re-executes every mounted live query (a
  * dashboard mounts ~10). Omit it to re-run on any change (safe fallback, also
  * used when the platform doesn't report the changed table).
+ *
+ * `apply` takes one of the pure transitions from `live-state.ts` and is the
+ * *only* thing that differs between the two callers — React state for a
+ * per-screen query, a module entry plus a notify for a shared one. They ran
+ * two copies of everything above before, which is two places to fix a backoff
+ * or a leak in.
  */
+function startLiveQueryRunner<T>(
+  query: () => PromiseLike<T[]>,
+  tables: readonly string[] | undefined,
+  apply: (transition: (previous: LiveSnapshot<T[]>) => LiveSnapshot<T[]>) => void,
+): { retry: () => void; stop: () => void } {
+  let attempt = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let cancelled = false;
+
+  const run = (): void => {
+    apply(startLiveQuery);
+    query().then(
+      (data) => {
+        if (cancelled) return;
+        attempt = 0;
+        apply(() => completeLiveQuery(data, new Date()));
+      },
+      (error) => {
+        if (cancelled) return;
+        if (attempt < 3) devError("live-query", error);
+        attempt += 1;
+        apply((previous) => failLiveQuery(previous, attempt, new Date()));
+        timer = setTimeout(run, retryDelayMs(attempt));
+      },
+    );
+  };
+
+  const listener = addDatabaseChangeListener((event) => {
+    // Unknown table (or platform without table info) → conservative re-run.
+    if (tables && event?.tableName && !tables.includes(event.tableName)) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(run, 60); // coalesce bursts of change events
+  });
+  run();
+
+  return {
+    retry: () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      run();
+    },
+    stop: () => {
+      cancelled = true;
+      listener.remove();
+      if (timer) clearTimeout(timer);
+    },
+  };
+}
+
+/** Per-screen live query, parameterised by `deps` (a user, a month, a range). */
 function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly string[]): LiveResult<T> {
   const retryRef = useRef<() => void>(() => {});
   const retry = useCallback(() => retryRef.current(), []);
@@ -60,10 +125,6 @@ function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly 
   // when deps change — the effect closure capturing it is deps-accurate,
   // and drizzle builders are re-executable.
   useEffect(() => {
-    let cancelled = false;
-    let attempt = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
     // This effect re-runs only when `deps` change, which means the query now
     // asks a DIFFERENT question (another user, month or account). The previous
     // answer is not a "last good snapshot" of it, so drop it: keeping it left
@@ -75,51 +136,15 @@ function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly 
     // writes, retries) still keep their data via `startLiveQuery`.
     setState({ ...initialLiveSnapshot<T[]>([]), retry });
 
-    const run = () => {
-      setState((previous) => ({ ...startLiveQuery(previous), retry }));
-      query.then(
-        (data) => {
-          if (cancelled) return;
-          attempt = 0;
-          setState({ ...completeLiveQuery(data, new Date()), retry });
-        },
-        (error) => {
-          if (cancelled) return;
-          // Retry forever with capped backoff — a deliberate decision, not an
-          // oversight: abandoning after N tries left screens frozen on empty
-          // data (a wedged sqlite worker never recovered, and route guards
-          // keyed off this query showed a permanent blank screen). Failures
-          // preserve the last good data and expose an explicit error/stale
-          // state instead of asserting an empty result.
-          if (attempt < 3) devError("live-query", error);
-          attempt += 1;
-          setState((previous) => ({ ...failLiveQuery(previous, attempt, new Date()), retry }));
-          const delay = Math.min(250 * 2 ** (attempt - 1), 5000);
-          timer = setTimeout(run, delay);
-        },
-      );
-    };
-    retryRef.current = () => {
-      if (timer) clearTimeout(timer);
-      timer = null;
-      run();
-    };
-    run();
-
-    const schedule = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(run, 60); // coalesce bursts of change events
-    };
-    const listener = addDatabaseChangeListener((event) => {
-      // Unknown table (or platform without table info) → conservative re-run.
-      if (tables && event?.tableName && !tables.includes(event.tableName)) return;
-      schedule();
-    });
+    const runner = startLiveQueryRunner<T>(
+      () => query,
+      tables,
+      (transition) => setState((previous) => ({ ...transition(previous), retry })),
+    );
+    retryRef.current = runner.retry;
     return () => {
-      cancelled = true;
       retryRef.current = () => {};
-      listener.remove();
-      if (timer) clearTimeout(timer);
+      runner.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -149,9 +174,8 @@ export function useUserId(): string {
  * them ran its OWN copy of the same query — one write re-executed the full
  * transactions scan once per mounted screen. An entry is created by the first
  * subscriber, reference-counted, and torn down with the last one (the
- * `motion.ts` pattern); run/debounce/backoff semantics match `useLive`.
- * Parametric queries (month windows) stay on `useLive` — caching per-argument
- * results here would grow without bound.
+ * `motion.ts` pattern). Parametric queries (month windows) stay on `useLive` —
+ * caching per-argument results here would grow without bound.
  */
 interface SharedLiveEntry {
   state: LiveResult<unknown>;
@@ -170,56 +194,22 @@ function acquireSharedLive<T>(
 ): SharedLiveEntry {
   const existing = sharedLive.get(key);
   if (existing) return existing;
-  let attempt = 0;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let cancelled = false;
-  let run: () => void = () => {};
-  const retry = () => {
-    if (timer) clearTimeout(timer);
-    timer = null;
-    run();
-  };
+  // The runner emits its first transition synchronously, so both handles are
+  // reached through the entry rather than captured from its return value.
+  let runner: { retry: () => void; stop: () => void } | null = null;
+  const retry = () => runner?.retry();
   const entry: SharedLiveEntry = {
     state: { ...initialLiveSnapshot<unknown[]>([]), retry },
     listeners: new Set(),
     teardown: () => {
-      cancelled = true;
-      listener.remove();
-      if (timer) clearTimeout(timer);
+      runner?.stop();
       sharedLive.delete(key);
     },
   };
-  run = () => {
-    entry.state = { ...startLiveQuery(entry.state), retry };
+  runner = startLiveQueryRunner<unknown>(query, tables, (transition) => {
+    entry.state = { ...transition(entry.state), retry };
     for (const notify of entry.listeners) notify();
-    query().then(
-      (data) => {
-        if (cancelled) return;
-        attempt = 0;
-        entry.state = { ...completeLiveQuery(data, new Date()), retry };
-        for (const notify of entry.listeners) notify();
-      },
-      (error) => {
-        if (cancelled) return;
-        // Same retry-forever rationale as useLive below.
-        if (attempt < 3) devError("live-query", error);
-        attempt += 1;
-        entry.state = { ...failLiveQuery(entry.state, attempt, new Date()), retry };
-        for (const notify of entry.listeners) notify();
-        const delay = Math.min(250 * 2 ** (attempt - 1), 5000);
-        timer = setTimeout(run, delay);
-      },
-    );
-  };
-  const schedule = () => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(run, 60);
-  };
-  const listener = addDatabaseChangeListener((event) => {
-    if (event?.tableName && !tables.includes(event.tableName)) return;
-    schedule();
   });
-  run();
   sharedLive.set(key, entry);
   return entry;
 }
@@ -520,7 +510,12 @@ export function useSettingsMapState(): LiveValueResult<Map<string, string>> {
     () => getDb().select().from(s.settings).where(and(eq(s.settings.userId, userId), isNull(s.settings.deletedAt))),
     ["settings"],
   );
-  return { ...result, data: new Map(result.data.map((row) => [row.key, row.value])) };
+  // Keyed on the rows, not on the render. A fresh Map per render is a fresh
+  // identity, and every consumer memo that lists `settings` as a dependency —
+  // `column_years`, the hidden-column set, the matrix model behind them — was
+  // therefore guaranteed to miss.
+  const data = useMemo(() => new Map(result.data.map((row) => [row.key, row.value])), [result.data]);
+  return { ...result, data };
 }
 
 export function useCellNotesState(): LiveResult<typeof s.cellNotes.$inferSelect> {
@@ -538,7 +533,7 @@ export function settingValue<T>(map: Map<string, string>, key: string, fallback:
 }
 
 /** Map DB transaction rows to the domain TxLike shape. */
-export function toTxLike(
+function toTxLike(
   rows: (typeof s.transactions.$inferSelect)[],
   persons: (typeof s.persons.$inferSelect)[],
   categories: (typeof s.categories.$inferSelect)[],
@@ -563,101 +558,120 @@ export function toTxLike(
   }));
 }
 
-export interface LedgerBundle {
-  ledger: MonthLedger[];
-  yearMonths: MonthLedger[];
-  startMonth: MonthKey;
-  actualBalanceMinor: number;
-  txLike: TxLike[];
+/**
+ * The account's transactions in domain shape — one owner, one identity.
+ *
+ * Every whole-account derivation (the ledger, the matrix model, the upcoming
+ * timeline, budget progress) starts from this list, and each screen used to
+ * build its own copy inline: one O(N) mapping per screen per RENDER, and a
+ * fresh array identity that defeated every memo downstream of it.
+ *
+ * The cache is a module value rather than a `useMemo` because the tab
+ * navigator keeps five screens mounted at once and they all ask the same
+ * question. Its three inputs are shared live-query results, so identity
+ * comparison is exact, and holding one entry means the answer is literally the
+ * same array everywhere — a per-hook memo would still map the list once per
+ * mounted screen and hand each one a different identity.
+ */
+let txLikeCache: {
+  rows: unknown;
+  persons: unknown;
+  categories: unknown;
+  value: TxLike[];
+} | null = null;
+
+export function useTxLike(): TxLike[] {
+  const rows = useAllTransactionsState().data;
+  const persons = usePersonsState().data;
+  const categories = useCategoriesState().data;
+  if (txLikeCache && txLikeCache.rows === rows && txLikeCache.persons === persons && txLikeCache.categories === categories) {
+    return txLikeCache.value;
+  }
+  const value = toTxLike(rows, persons, categories);
+  txLikeCache = { rows, persons, categories, value };
+  return value;
 }
 
-/** Full chained ledger from start month through the requested year. */
+/**
+ * The investment wallet as it stands right now.
+ *
+ * Two screens project it from the same five sources — the wallet itself and
+ * the refund form that spends from it — and both had the same twenty lines
+ * inline. A projection that drifts between them is a wallet that shows one
+ * cash figure and refuses a refund for a different one.
+ *
+ * A projection that throws is a wallet whose history cannot be replayed
+ * (a sale before its purchase arrived, say). It reports `null` rather than
+ * taking the screen down; the screens above show their empty state.
+ */
+export function useInvestmentWallet(): InvestmentState | null {
+  const profile = useInvestmentProfilesState().data[0];
+  const products = useInvestmentProductsState().data;
+  const operations = useInvestmentOperationsState().data;
+  const transactions = useAllTransactionsState().data;
+  const categories = useInvestmentCategoriesState().data;
+  const persons = usePersonsState().data;
+  return useMemo(() => {
+    if (!profile) return null;
+    const selfPersonIds = new Set(persons.filter((person) => person.isSelf).map((person) => person.id));
+    try {
+      return projectInvestmentState(
+        profile,
+        products,
+        operations,
+        transactions.map((transaction) => ({
+          ...transaction,
+          personIsSelf: selfPersonIds.has(transaction.personId),
+        })),
+        categories,
+      );
+    } catch {
+      return null;
+    }
+  }, [profile, products, operations, transactions, categories, persons]);
+}
+
+/**
+ * Full chained ledger from start month through the requested year.
+ *
+ * Six screens read this, and the chain walks every transaction the account
+ * has. Keyed on the data (and on the calendar day, which is what makes a row
+ * realized) rather than on the render: it used to rebuild the whole chain for
+ * every pin, layout measurement, resize and navigation re-render, and handed
+ * back a new bundle identity each time, so the consumers' own memos over it
+ * could never hit either.
+ */
 export function useLedgerState(year: number): LiveValueResult<LedgerBundle | null> {
   const settingsState = useSettingsMapState();
   const personsState = usePersonsState();
   const categoriesState = useCategoriesState();
   const transactionsState = useAllTransactionsState();
   const adjustmentsState = useAdjustmentsState();
+  const txLike = useTxLike();
   const settings = settingsState.data;
-  const persons = personsState.data;
-  const categories = categoriesState.data;
-  const transactions = transactionsState.data;
   const adjustments = adjustmentsState.data;
-  const sources: LiveSnapshot<unknown>[] = [
+  const { status, error, updatedAt, retry } = combineLiveStates([
     settingsState,
     personsState,
     categoriesState,
     transactionsState,
     adjustmentsState,
-  ];
-  const status = combineLiveQueryStatus(sources);
-  const error = sources.find((source) => source.error)?.error ?? null;
-  const timestamps = sources.flatMap((source) => source.updatedAt ? [source.updatedAt] : []);
-  const updatedAt = timestamps.length === sources.length
-    ? new Date(Math.min(...timestamps.map((timestamp) => timestamp.getTime())))
-    : undefined;
-  const retry = () => {
-    settingsState.retry();
-    personsState.retry();
-    categoriesState.retry();
-    transactionsState.retry();
-    adjustmentsState.retry();
-  };
+  ]);
 
-  const configuredStart = settingValue<string | null>(settings, "start_month", null);
-  if (!configuredStart) return { data: null, status, error, updatedAt, retry };
-  const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
-  const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
   const today = todayISO();
-  const txLike = toTxLike(transactions, persons, categories);
-  const adj = adjustments.map((a) => ({ date: a.date, amountMinor: a.amountMinor }));
-
-  // Extend the ledger back to the earliest recorded data so history entered
-  // before the configured opening month (e.g. a 2025 row) still appears.
-  const { startMonth, openingBalanceMinor: openingAtStart } = resolveLedgerAnchor(
-    configuredStart,
-    openingBalanceMinor,
-    txLike,
-    adj,
-    today,
+  const data = useMemo(
+    () => buildLedgerBundle({
+      configuredStart: settingValue<MonthKey | null>(settings, "start_month", null),
+      openingBalanceMinor: settingValue<number>(settings, "opening_balance_minor", 0),
+      includePendingInCells: settingValue<boolean>(settings, "show_pending_in_table", true),
+      transactions: txLike,
+      adjustments: adjustments.map((row) => ({ date: row.date, amountMinor: row.amountMinor })),
+      year,
+      today,
+    }),
+    [settings, txLike, adjustments, year, today],
   );
-
-  const endMonth = makeMonthKey(Math.max(year, yearOf(today)), 12);
-  const ledger = buildLedger({
-    openingBalanceMinor: openingAtStart,
-    startMonth,
-    endMonth,
-    transactions: txLike,
-    adjustments: adj,
-    today,
-    includePendingInCells,
-  });
-  // buildLedger already scanned every transaction and applies the same
-  // realized/today rules. Its current-month close is the actual balance, so a
-  // normal render does not need a second O(N) currentBalance pass. Keep the
-  // direct calculation only for the unusual case where the configured anchor
-  // starts after the current month.
-  const currentLedgerMonth = ledger.find((entry) => entry.month === monthKeyOf(today));
-  const actualBalanceMinor = currentLedgerMonth?.closingMinor ?? currentBalance({
-    openingBalanceMinor: openingAtStart,
-    startMonth,
-    transactions: txLike,
-    adjustments: adj,
-    today,
-  });
-  return {
-    data: {
-      ledger,
-      yearMonths: ledger.filter((m) => yearOf(m.month) === year),
-      startMonth,
-      actualBalanceMinor,
-      txLike,
-    },
-    status,
-    error,
-    updatedAt,
-    retry,
-  };
+  return { data, status, error, updatedAt, retry };
 }
 
 export function useLastEntryInfoState(): LiveValueResult<{ at: string | null; daysAgo: number | null }> {

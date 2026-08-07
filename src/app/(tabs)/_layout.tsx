@@ -1,6 +1,10 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import { ChartPie, Landmark, RefreshCw, Settings, WalletCards } from "lucide-react-native";
+import ChartPie from "lucide-react-native/icons/chart-pie";
+import Landmark from "lucide-react-native/icons/landmark";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
+import Settings from "lucide-react-native/icons/settings";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { tr } from "../../i18n/tr";
 import { selectionTapIfChanged } from "../../ui/haptics";
 import { TabBar } from "../../ui/tab-bar";

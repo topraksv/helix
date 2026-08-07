@@ -1,0 +1,58 @@
+# Row-level security, asserted.
+#
+# `supabase/tests/owner_integrity_and_rls.sql` is 126 pgTAP assertions and it is
+# the ONLY executable proof that one account cannot read or write another's
+# rows. Client-side ownership checks are defence in depth; RLS is the authority.
+# Until now nothing ran the file, so the authority was unverified between one
+# manual run and the next.
+#
+# It runs against a LOCAL stack, not the linked project. The suite inserts into
+# `auth.users` and rolls back, which is safe by construction — but "safe by
+# construction against production" is a promise the schedule would be making
+# every week, unattended, and a local stack does not have to make it. It also
+# needs no `SUPABASE_ACCESS_TOKEN`, so a scheduled job holds no credential.
+#
+# Triggers: the migrations or policies changed, once a week regardless (a
+# Postgres image update can change behaviour with no commit of ours), or by
+# hand. It deploys nothing; a red run is a bug report.
+name: database
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - ".github/workflows/database.yml"
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
+        with:
+          # Pinned, not `latest`: a CLI that changes under a scheduled job turns
+          # a green history red for a reason that is not ours.
+          version: 2.109.1
+      # The migrations under `supabase/migrations` are applied as the stack
+      # boots, so the tests run against the schema this commit actually ships.
+      - run: supabase start
+      # The same linter the invariants require to stay clean after a migration
+      # change. Cheap here, and it runs before the assertions so a schema fault
+      # is reported as a schema fault rather than as 126 failed tests.
+      - run: supabase db lint --local --fail-on warning
+      - run: supabase test db --local
+      - if: always()
+        run: supabase stop --no-backup

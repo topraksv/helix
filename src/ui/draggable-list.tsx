@@ -13,7 +13,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, View, type GestureResponderHandlers, type LayoutChangeEvent } from "react-native";
-import { GripVertical } from "lucide-react-native";
+import GripVertical from "lucide-react-native/icons/grip-vertical";
 import { errorNotice, mediumTap, selectionTap } from "./haptics";
 import { controlSize, elevation, layer, spacing, stateOpacity, useTheme } from "./theme";
 import { tr } from "../i18n/tr";

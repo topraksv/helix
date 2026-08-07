@@ -8,7 +8,8 @@
 import React, { useState } from "react";
 import { FlatList, Text, View } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { MessageSquareText, PlusCircle } from "lucide-react-native";
+import MessageSquareText from "lucide-react-native/icons/message-square-text";
+import PlusCircle from "lucide-react-native/icons/circle-plus";
 import { addTransaction, deleteTransaction, restoreTransaction, saveCellNote } from "../data/repo";
 import {
   useCategoriesState,
@@ -18,7 +19,7 @@ import {
   useTransactionsBetweenState,
   useUserId,
 } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { dateForMonthEntry, firstDayOf, lastDayOf, todayISO } from "../domain/dates";
 import { isValidCellParams } from "../domain/route-params";
 import { installmentDisplayTitle } from "../domain/installments";
@@ -91,16 +92,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
   const note = cellNotesState.data.find(
     (row) => row.month === rangeMonth && row.categoryId === categoryId,
   );
-  const liveStates = [categoriesState, personsState, plansState, transactionsState, cellNotesState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    categoriesState.retry();
-    personsState.retry();
-    plansState.retry();
-    transactionsState.retry();
-    cellNotesState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, plansState, transactionsState, cellNotesState]);
 
   useDirtyExitGuard(
     (entryRaw.trim() !== "" || (noteDraft != null && noteDraft !== (note?.body ?? ""))) && !busy,

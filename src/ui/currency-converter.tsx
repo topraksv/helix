@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { ArrowDownUp } from "lucide-react-native";
+import ArrowDownUp from "lucide-react-native/icons/arrow-down-up";
 import { formatMinorCompact, roundHalfAwayFromZero } from "../domain/money";
 import { todayISO } from "../domain/dates";
 import { ensureFreshRates, loadRateCache, lookupRate, useFxRates, type Currency } from "../services/fx-fetch";
@@ -18,6 +18,7 @@ import { marketLastKnownRateTry, useMarkets } from "../services/markets";
 import { useUserId } from "../data/hooks";
 import { clockOrDateTimeLabel, dateLabel, tr } from "../i18n/tr";
 import { Amount, Badge, Body, Label, MoneyField } from "./components";
+import { interactionSurface } from "./interaction";
 import { controlSize, iconSize, radius, spacing, useTheme } from "./theme";
 
 export function CurrencyConverter() {
@@ -101,11 +102,11 @@ export function CurrencyConverter() {
           accessibilityRole="button"
           accessibilityLabel={tr.calc.swap}
           onPress={swap}
-          style={({ pressed }) => ({
+          style={(state) => ({
             width: controlSize.minimumTarget,
             height: controlSize.minimumTarget,
             borderRadius: radius.xl,
-            backgroundColor: pressed ? palette.surfaceHover : palette.surfaceAlt,
+            ...interactionSurface(palette, state, { base: palette.surfaceAlt }),
             alignItems: "center",
             justifyContent: "center",
           })}

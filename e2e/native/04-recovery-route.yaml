@@ -1,0 +1,28 @@
+# Password recovery and the way back out of it.
+#
+# `.ai/INVARIANTS.md` exempts the recovery routes from the signed-in and
+# onboarding guards, which makes "can the user still leave" a real question —
+# a recovery screen that cannot be left is an account that cannot be reached.
+#
+# Recovery is a STATE of the auth surface here, not a native Stack push, so the
+# way back is the screen's own return link and not an edge swipe. Finding that
+# out is exactly what a native test is for: an edge-swipe assertion would have
+# passed on Android and quietly meant nothing on iOS.
+appId: com.toprak.helix
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Şifremi Unuttum"
+    timeout: 90000
+- tapOn: "Şifremi Unuttum"
+- assertVisible: "Şifreni yenile"
+- assertVisible: "Yenileme Bağlantısı Gönder"
+# Never reveal whether an address has an account: the form asks for one and
+# promises a link, and says nothing about who is registered.
+- assertNotVisible: "Tekrar hoş geldin"
+- tapOn: "Giriş yap"
+- extendedWaitUntil:
+    visible: "Tekrar hoş geldin"
+    timeout: 20000
+- assertVisible: "Şifremi Unuttum"

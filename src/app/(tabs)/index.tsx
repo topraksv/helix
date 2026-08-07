@@ -4,7 +4,17 @@
 import React, { useMemo } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, ChartNoAxesColumn, ChevronRight, History, Plus, ShieldCheck, TrendingDown, TrendingUp, TriangleAlert } from "lucide-react-native";
+import ArrowDownLeft from "lucide-react-native/icons/arrow-down-left";
+import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
+import CalendarClock from "lucide-react-native/icons/calendar-clock";
+import ChartNoAxesColumn from "lucide-react-native/icons/chart-no-axes-column";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import History from "lucide-react-native/icons/rotate-ccw-clock";
+import Plus from "lucide-react-native/icons/plus";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
+import TrendingDown from "lucide-react-native/icons/trending-down";
+import TrendingUp from "lucide-react-native/icons/trending-up";
+import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../domain/balance-declaration";
 import { buildDashboardModel } from "../../domain/dashboard";
 import { daysBetweenISO, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
@@ -25,7 +35,7 @@ import {
   useSubscriptionsState,
   useUserId,
 } from "../../data/hooks";
-import { combineLiveQueryStatus } from "../../data/live-state";
+import { combineLiveStates } from "../../data/live-state";
 import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
 import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
@@ -42,6 +52,8 @@ import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
 import { shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart } from "../../ui/responsive";
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
+import { interactionSurface } from "../../ui/interaction";
+import { useWarmRoute } from "../../ui/route-warmup";
 import { circle, font, heroSurface, radius, spacing, type, useTheme } from "../../ui/theme";
 import { devError } from "../../services/logger";
 import { useOperationGuard } from "../../ui/operation-guard";
@@ -354,6 +366,10 @@ function greeting(): string {
 }
 
 export default function DashboardScreen() {
+  // The ledger is the tab this app exists for and the most expensive one to
+  // create. Built while the navigator is fading between two scenes it drops
+  // frames once, on the first arrival; built here, in idle, it drops none.
+  useWarmRoute("cash-flow");
   const userId = useUserId();
   const previousLoginAt = useSession((state) => state.previousLoginAt);
   // "You told me X; the table says Y" — computed here so the hero can mark it
@@ -379,7 +395,7 @@ export default function DashboardScreen() {
   const incomes = incomesState.data;
   const sources = sourcesState.data;
   const cardStatements = cardStatementsState.data;
-  const liveStates = [
+  const { status: dataStatus, retry: retryData } = combineLiveStates([
     ledgerState,
     categoriesState,
     personsState,
@@ -388,18 +404,7 @@ export default function DashboardScreen() {
     incomesState,
     sourcesState,
     cardStatementsState,
-  ];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const retryData = () => {
-    ledgerState.retry();
-    categoriesState.retry();
-    personsState.retry();
-    expectedState.retry();
-    subscriptionsState.retry();
-    incomesState.retry();
-    sourcesState.retry();
-    cardStatementsState.retry();
-  };
+  ]);
   const router = useRouter();
   const undo = useUndo();
   const { palette, scheme } = useTheme();
@@ -664,14 +669,15 @@ export default function DashboardScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={tr.settings.balanceDriftTitle}
                     onPress={() => router.push("/opening-balance")}
-                    style={({ pressed }) => ({
+                    style={(state) => ({
                       flexDirection: "row",
                       alignItems: "center",
                       gap: 4,
                       paddingHorizontal: spacing.sm,
                       paddingVertical: 2,
                       borderRadius: radius.full,
-                      backgroundColor: pressed ? palette.warning + "2E" : palette.warning + "1C",
+                      backgroundColor: palette.warning + "1C",
+                      ...interactionSurface(palette, state),
                       borderWidth: StyleSheet.hairlineWidth,
                       borderColor: palette.warning + "80",
                     })}
@@ -700,7 +706,7 @@ export default function DashboardScreen() {
                   }`}
                   accessibilityState={{ expanded: showForecast }}
                   onPress={() => setShowForecast((v) => !v)}
-                  style={({ pressed }) => ({
+                  style={(state) => ({
                     flexDirection: "row",
                     alignItems: "center",
                     gap: spacing.sm,
@@ -708,7 +714,7 @@ export default function DashboardScreen() {
                     paddingTop: spacing.md,
                     borderTopWidth: StyleSheet.hairlineWidth,
                     borderTopColor: palette.border,
-                    opacity: pressed ? 0.72 : 1,
+                    ...interactionSurface(palette, state),
                   })}
                 >
                   {/* Direction is carried by the glyph, never by colour. The

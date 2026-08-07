@@ -1,13 +1,19 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { AlertCircle, BellRing, CheckCircle2, CloudOff, Table2, WalletCards } from "lucide-react-native";
+import AlertCircle from "lucide-react-native/icons/circle-alert";
+import BellRing from "lucide-react-native/icons/bell-ring";
+import CheckCircle2 from "lucide-react-native/icons/circle-check";
+import CloudOff from "lucide-react-native/icons/cloud-off";
+import Table2 from "lucide-react-native/icons/table-2";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
 import { useSession } from "../../auth/session";
 import { isSupabaseConfigured } from "../../sync/supabase";
 import { Body, Button, Card, Field, Screen } from "../../ui/components";
 import { useSubmitOnEnter } from "../../ui/keyboard";
 import { clearLifecycleIntent } from "../../ui/lifecycle-intent";
 import { BrandMark } from "../../ui/brand";
-import { controlSize, font, radius, spacing, type, useTheme } from "../../ui/theme";
+import { interactionSurface } from "../../ui/interaction";
+import { controlSize, font, maxFontScale, radius, spacing, type, useTheme } from "../../ui/theme";
 import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { OperationFlow, OperationSignature } from "../../ui/operation-flow";
@@ -40,6 +46,13 @@ function JourneyNode({
         <Icon accessible={false} size={21} strokeWidth={1.8} color={active ? palette.onPrimary : palette.textSecondary} />
       </View>
       <Text
+        // A third of the card, beside a 46pt disc that does not scale: at the
+        // largest iOS accessibility size (~3.1x) "Kaydet" no longer fitted its
+        // column and iOS broke it MID-WORD — "Kay / det", "Anl / a", "Taki / p
+        // et" — which is the truncation this app refuses, wearing a different
+        // costume. Found on a simulator at
+        // `content_size accessibility-extra-extra-extra-large`.
+        maxFontSizeMultiplier={maxFontScale.measuredBox}
         style={[type.small, {
           color: active ? palette.accentText : palette.textSecondary,
           fontFamily: font.semibold,
@@ -354,18 +367,25 @@ export default function SignInScreen() {
             </View>
           ) : null}
 
-          <View style={{ flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.lg }}>
+          {/* `alignItems` is not decoration here. A row defaults to `stretch`,
+              so the question text grew to the 44px touch target beside it and
+              drew itself at the TOP of that box while the link centred itself
+              inside the same height — two sentences on one line, on different
+              baselines. Found on an iOS simulator, because the browser suite
+              exports with an empty Supabase configuration and never reaches
+              this screen at all. */}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.lg }}>
             <Body muted>{mode === "signIn" ? tr.auth.noAccount : mode === "signUp" ? tr.auth.haveAccount : tr.auth.rememberedPassword}</Body>
             <Pressable
               accessibilityRole="button"
               onPress={switchMode}
-              style={({ pressed }) => ({
+              style={(state) => ({
                 minHeight: controlSize.minimumTarget,
                 justifyContent: "center",
                 paddingHorizontal: spacing.sm,
                 marginHorizontal: -spacing.sm,
                 borderRadius: radius.sm,
-                backgroundColor: pressed ? palette.surfaceHover : "transparent",
+                ...interactionSurface(palette, state),
               })}
             >
               <Text style={[type.body, { color: palette.primaryText, fontFamily: font.semibold }]}>

@@ -100,7 +100,6 @@ describe("every money screen reports the same dataset the same way", () => {
     const fromChain = required(ledger.find((month) => month.month === monthKeyOf(TODAY))).closingMinor;
     const direct = currentBalance({
       openingBalanceMinor: anchor.openingBalanceMinor,
-      startMonth: anchor.startMonth,
       transactions,
       adjustments,
       today: TODAY,

@@ -9,7 +9,6 @@ export interface Palette {
   /** `surface` renginin `EB` alpha eklenmiş hali. */
   surfaceTranslucent: string;
   surfaceAlt: string;
-  surfaceHover: string;
   surfaceStrong: string;
   border: string;
   controlBorder: string;
@@ -121,7 +120,6 @@ const amberLight: Palette = {
   surface: "#FFFDFB",
   surfaceTranslucent: "#FFFDFBEB",
   surfaceAlt: "#E7DFD7",
-  surfaceHover: "#D7CCC1",
   surfaceStrong: "#C2B2A3",
   border: "#8B796A",
   controlBorder: "#6D5B4D",
@@ -156,7 +154,6 @@ const amberDark: Palette = {
   surface: "#191512",
   surfaceTranslucent: "#191512EB",
   surfaceAlt: "#27211D",
-  surfaceHover: "#352D28",
   surfaceStrong: "#473D36",
   border: "#5F534A",
   controlBorder: "#8F8176",
@@ -194,7 +191,6 @@ const petrolLight: Palette = {
   surface: "#FEFEFD",
   surfaceTranslucent: "#FEFEFDEB",
   surfaceAlt: "#E6E9EA",
-  surfaceHover: "#D4D9DB",
   surfaceStrong: "#C1C8CB",
   border: "#808B91",
   controlBorder: "#5E6B72",
@@ -229,7 +225,6 @@ const petrolDark: Palette = {
   surface: "#15191C",
   surfaceTranslucent: "#15191CEB",
   surfaceAlt: "#20262A",
-  surfaceHover: "#2B3338",
   surfaceStrong: "#3A444A",
   border: "#536068",
   controlBorder: "#89969D",
@@ -267,7 +262,6 @@ const serviLight: Palette = {
   surface: "#FFFDF9",
   surfaceTranslucent: "#FFFDF9EB",
   surfaceAlt: "#E8E6DF",
-  surfaceHover: "#D5D3CB",
   surfaceStrong: "#C5C2B8",
   border: "#817E74",
   controlBorder: "#625F56",
@@ -302,7 +296,6 @@ const serviDark: Palette = {
   surface: "#171917",
   surfaceTranslucent: "#171917EB",
   surfaceAlt: "#232623",
-  surfaceHover: "#303430",
   surfaceStrong: "#414641",
   border: "#596059",
   controlBorder: "#8B938C",
@@ -418,11 +411,18 @@ export const motion = {
   waiting: 1600,
   loading: 1200,
   loadingReveal: 350,
+  /** A pointer arriving on, or leaving, a control.
+   *
+   *  Longer than `feedback` on purpose: a press is confirming something the
+   *  user already committed to and must feel immediate, while a hover is the
+   *  control noticing a pointer that is merely passing. At 120ms the fill
+   *  snapped on and read as a flicker when the pointer crossed a list. */
+  hover: 170,
   /** A figure counting to its new value. Long enough to be read as movement,
    *  short enough that the number is legible before the user looks away. */
-  figure: 520,
+  figure: 900,
   /** A chart drawing itself in once, after its data has settled. */
-  draw: 620,
+  draw: 1150,
   /** Light to dark. Long, because it is the only moment the whole window
    *  changes at once and a snap of that size reads as a fault rather than as a
    *  choice — and because nothing is waiting on it. */
@@ -467,6 +467,29 @@ export const chart = {
 
 /** Shared control geometry. Keep compact visual controls distinct from the
  *  minimum interactive target: compact buttons use hitSlop to reach 44pt. */
+/**
+ * How far the user's own text size may grow a label whose box cannot grow with
+ * it.
+ *
+ * React Native scales every `Text` by the platform setting by default, and it
+ * should: a person who has asked for larger type has asked the whole system,
+ * not just the apps that remembered. But three surfaces in this app have
+ * geometry measured in points rather than in ems — the ledger's `headWidth` and
+ * cell widths, the floating tab bar's fixed height, the status column — and iOS
+ * accessibility sizes reach roughly 3.1x. A 3.1x label in a 116pt column is not
+ * a large label; it is an ellipsis, and this repository's own rule is that
+ * nothing truncates.
+ *
+ * 2.0 is not a compromise between those: it is exactly what WCAG 1.4.4 asks
+ * for — text resizable to 200% without loss of content or function — applied
+ * only where the box is fixed. Prose, headings, amounts and every form scale
+ * without a ceiling, because their containers grow.
+ */
+export const maxFontScale = {
+  /** A label inside a box whose width or height is a measured constant. */
+  measuredBox: 2,
+} as const;
+
 export const controlSize = {
   compact: 36,
   minimumTarget: 44,

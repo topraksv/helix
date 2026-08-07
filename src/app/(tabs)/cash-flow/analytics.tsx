@@ -5,7 +5,11 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, Inbox, SlidersHorizontal, Target } from "lucide-react-native";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import Inbox from "lucide-react-native/icons/inbox";
+import SlidersHorizontal from "lucide-react-native/icons/sliders-horizontal";
+import Target from "lucide-react-native/icons/target";
 import { categoryRangeMatrix, distributionForRange, monthlySeries } from "../../../domain/analytics";
 import { addMonthsToKey, firstDayOf, lastDayOf, makeMonthKey, monthKeyOf, monthRange, todayISO, yearOf, type MonthKey } from "../../../domain/dates";
 import { formatMinorCompact } from "../../../domain/money";
@@ -15,14 +19,14 @@ import { budgetProgress } from "../../../domain/budgets";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import {
-  toTxLike,
   useAllTransactionsState,
   useCategoryBudgetsState,
   useCategoriesState,
   usePersonsState,
   useSourcesState,
+  useTxLike,
 } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { categoryIcon, paymentSourceIcon } from "../../../data/category-icons";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, ChartFrame, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
@@ -30,6 +34,7 @@ import { Collapse } from "../../../ui/motion-primitives";
 import { StickyTable } from "../../../ui/sticky-table";
 import { shouldPairFilterCards, shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
+import { interactionSurface } from "../../../ui/interaction";
 import { radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 
 type Period = "1m" | "3m" | "6m" | "12m" | "year" | "custom";
@@ -69,7 +74,6 @@ export default function AnalysisScreen() {
   const budgetsState = useCategoryBudgetsState();
   const transactionsState = useAllTransactionsState();
   const categories = categoriesState.data;
-  const persons = personsState.data;
   const sources = sourcesState.data;
   const budgets = budgetsState.data;
   const allTx = transactionsState.data;
@@ -83,16 +87,7 @@ export default function AnalysisScreen() {
   // the anchor put the wrong screen underneath in the first place.
   const openBudgets = () => router.push("/budgets");
   const colors = useSeriesColors();
-  const liveStates = [categoriesState, personsState, sourcesState, budgetsState, transactionsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    categoriesState.retry();
-    personsState.retry();
-    sourcesState.retry();
-    budgetsState.retry();
-    transactionsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState, sourcesState, budgetsState, transactionsState]);
 
   // Window: rolling N months ending now, or a calendar year (navigable).
   const [startMonth, endMonth] =
@@ -103,13 +98,13 @@ export default function AnalysisScreen() {
         // user moves past the other, the window stays a window.
         ? [customStart <= customEnd ? customStart : customEnd, customStart <= customEnd ? customEnd : customStart]
         : [addMonthsToKey(currentMonth, -(Number(period.replace("m", "")) - 1)), currentMonth];
-  const monthKeys = monthRange(startMonth, endMonth);
+  const monthKeys = useMemo(() => monthRange(startMonth, endMonth), [startMonth, endMonth]);
   const searchPeriodLabel = `${monthLabel(startMonth)} – ${monthLabel(endMonth)}`;
 
   // Both of these walk the whole transaction list, and both used to do it on
   // every render — including every keystroke in the search box, every filter
   // chip and every layout measurement. Derived from the data, not the render.
-  const txLike = useMemo(() => toTxLike(allTx, persons, categories), [allTx, persons, categories]);
+  const txLike = useTxLike();
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   // Legacy type/category mismatches are normalized by the shared domain flow,
   // so category details and aggregate charts use one financial rule.
@@ -129,55 +124,64 @@ export default function AnalysisScreen() {
     .reverse()
     .map((month) => ({ value: month, label: monthLabel(month) }));
 
-  const rows = categories
-    .flatMap((category) => {
-      const data = matrix.get(category.id);
-      return data && data.ytdMinor !== 0 ? [{ category, data }] : [];
-    })
-    .filter((r) => categoryFilter == null || r.category.id === categoryFilter);
+  const rows = useMemo(
+    () => categories
+      .flatMap((category) => {
+        const data = matrix.get(category.id);
+        return data && data.ytdMinor !== 0 ? [{ category, data }] : [];
+      })
+      .filter((r) => categoryFilter == null || r.category.id === categoryFilter),
+    [categories, matrix, categoryFilter],
+  );
 
   const catName = (cid: string | null) => (cid ? categoryById.get(cid)?.name ?? "" : "");
   const deferredQuery = useDeferredValue(query);
   const q = deferredQuery.trim().toLocaleLowerCase("tr-TR");
-  const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
+  const sourceNameById = useMemo(() => new Map(sources.map((source) => [source.id, source.name])), [sources]);
   // Asking for all time is itself a request to see records, so it counts as a
   // filter. Without it, clearing the payment method back to "Tümü" emptied
   // the list even though the owner had just told the screen what to search.
   const searchActive =
     q.length > 0 || transactionType != null || categoryFilter != null || sourceFilter != null || searchScope === "all";
-  const searchResults = searchActive
-    ? filterTransactions(
-        allTx.map((transaction) => {
-          const mk = monthKeyOf(transaction.effectiveDate);
-          return {
-            ...transaction,
-            searchText: [
-              catName(transaction.categoryId),
-              sourceNameById.get(transaction.paymentSourceId ?? "") ?? "",
-              transaction.note ?? "",
-              monthName(mk),
-              String(yearOf(transaction.effectiveDate)),
-              String(Math.round(transaction.amountTryMinor / 100)),
-              // The plain major number is a non-rendered search token; every
-              // spoken or painted amount below uses the shared formatter.
-              formatMinorCompact(transaction.amountTryMinor),
-            ].join(" "),
-          };
-        }),
-        {
+  // The token line calls the money formatter — an `Intl.NumberFormat` — once
+  // per transaction the account has: measured 65 ms at 100k rows. Built from
+  // the render it was rebuilt on every keystroke in the box above it, every
+  // filter chip and every layout measurement. It follows the data now, and
+  // still only exists while a search is actually open.
+  const searchIndex = useMemo(
+    () => (!searchActive ? [] : allTx.map((transaction) => ({
+      ...transaction,
+      searchText: [
+        transaction.categoryId ? categoryById.get(transaction.categoryId)?.name ?? "" : "",
+        sourceNameById.get(transaction.paymentSourceId ?? "") ?? "",
+        transaction.note ?? "",
+        monthName(monthKeyOf(transaction.effectiveDate)),
+        String(yearOf(transaction.effectiveDate)),
+        String(Math.round(transaction.amountTryMinor / 100)),
+        // The plain major number is a non-rendered search token; every
+        // spoken or painted amount below uses the shared formatter.
+        formatMinorCompact(transaction.amountTryMinor),
+      ].join(" "),
+    }))),
+    [searchActive, allTx, categoryById, sourceNameById],
+  );
+  const searchResults = useMemo(
+    () => (searchActive
+      ? filterTransactions(searchIndex, {
           query: deferredQuery,
           type: transactionType,
           categoryId: categoryFilter,
           paymentSourceId: sourceFilter,
           from: searchScope === "period" ? firstDayOf(startMonth) : null,
           to: searchScope === "period" ? lastDayOf(endMonth) : null,
-        },
-      )
-    : [];
+        })
+      : []),
+    [searchActive, searchIndex, deferredQuery, transactionType, categoryFilter, sourceFilter, searchScope, startMonth, endMonth],
+  );
   // "Tüm zamanlar" takes the window out of the question, so the controls that
   // set it stop accepting input rather than sitting there implying otherwise.
   const allTimeSearch = searchScope === "all";
-  const sortedResults = sortTransactions(searchResults, sortMode);
+  const sortedResults = useMemo(() => sortTransactions(searchResults, sortMode), [searchResults, sortMode]);
   // A period can match hundreds of rows, and a wall of them answers no question.
   // Five is what fits under the filters without scrolling; the rest are one tap
   // away and the sort decides which five those are.
@@ -187,7 +191,10 @@ export default function AnalysisScreen() {
   const trendStartMonth = monthKeys[0];
   const trendEndMonth = monthKeys.at(-1);
 
-  const periodDistribution = distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today);
+  const periodDistribution = useMemo(
+    () => distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today),
+    [txLike, startMonth, endMonth, today],
+  );
   const supportsTrend = contentWidth >= 720 && monthKeys.length >= 2 && !categoryFilter;
   useEffect(() => {
     if (!supportsTrend && chartType === "trend") setChartType("bars");
@@ -197,12 +204,17 @@ export default function AnalysisScreen() {
     supplementalSlices: pieSupplemental,
     totalMinor: pieTotalMinor,
   } = distributionDonutData(periodDistribution, colors, (id) => categoryById.get(id)?.name ?? tr.common.none);
-  const barGroups = monthKeys.map((m) => {
-    const label = shortMonthLabel(m);
-    if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
-    const distribution = distributionForRange(txLike, firstDayOf(m), lastDayOf(m), today);
-    return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor, distribution.transferTotalMinor] };
-  });
+  // One full scan of the ledger per month in the window — up to thirteen of
+  // them, and every one of them ran again for a keystroke the chart cannot see.
+  const barGroups = useMemo(
+    () => monthKeys.map((m) => {
+      const label = shortMonthLabel(m);
+      if (categoryFilter) return { label, values: [matrix.get(categoryFilter)?.monthly.get(m) ?? 0] };
+      const distribution = distributionForRange(txLike, firstDayOf(m), lastDayOf(m), today);
+      return { label, values: [distribution.incomeTotalMinor, distribution.expenseTotalMinor, distribution.transferTotalMinor] };
+    }),
+    [monthKeys, categoryFilter, matrix, txLike, today],
+  );
   const barSeries = categoryFilter
     ? [{ label: catName(categoryFilter) || tr.tx.category, color: colors[0] }]
     : [
@@ -213,15 +225,20 @@ export default function AnalysisScreen() {
   const netTrendPoints = barGroups.map((group) =>
     (group.values[0] ?? 0) - (group.values[1] ?? 0) - (group.values[2] ?? 0),
   );
-  const maxAmountChars = rows.reduce((longest, { data }) => {
-    const values = [...monthKeys.map((month) => data.monthly.get(month) ?? 0), data.ytdMinor];
-    return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinorCompact(value).length));
-  }, 0);
+  const maxAmountChars = useMemo(
+    () => rows.reduce((longest, { data }) => {
+      const values = [...monthKeys.map((month) => data.monthly.get(month) ?? 0), data.ytdMinor];
+      return Math.max(longest, ...values.filter((value) => value !== 0).map((value) => formatMinorCompact(value).length));
+    }, 0),
+    [rows, monthKeys],
+  );
   // The table already scrolls horizontally; size each numeric column for the
   // longest actual value so amounts remain on one line instead of wrapping.
   const analysisCellWidth = Math.min(240, Math.max(compact ? 120 : 128, Math.ceil(maxAmountChars * 7.5) + spacing.lg * 2));
-  const activeBudgetRows = budgetProgress(budgets, txLike, endMonth, today)
-    .filter((budget) => categoryById.has(budget.categoryId));
+  const activeBudgetRows = useMemo(
+    () => budgetProgress(budgets, txLike, endMonth, today).filter((budget) => categoryById.has(budget.categoryId)),
+    [budgets, txLike, endMonth, today, categoryById],
+  );
 
   // Everything above the virtualized result list (period/filters/search box).
   // One list for the control and for the width it needs: a third option
@@ -437,11 +454,11 @@ export default function AnalysisScreen() {
         accessibilityRole="button"
         accessibilityHint={tr.analysis.openTransaction}
         onPress={() => router.push({ pathname: "/transaction", params: { id: t.id } })}
-        style={({ pressed }) => ({
+        style={(state) => ({
           marginHorizontal: -spacing.sm,
           paddingHorizontal: spacing.sm,
           borderRadius: radius.sm,
-          backgroundColor: pressed ? palette.surfaceHover : "transparent",
+          ...interactionSurface(palette, state),
         })}
       >
         <Spread style={{ paddingVertical: spacing.xs }}>

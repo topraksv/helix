@@ -20,7 +20,7 @@
  */
 
 import React, { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Animated, Easing, Platform, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from "react-native";
 import { NavigationContext } from "@react-navigation/native";
 import { useReducedMotion } from "./motion";
 import { motion, spacing, useTheme } from "./theme";
@@ -608,27 +608,5 @@ export function ThemeDissolve() {
             },
       ]}
     />
-  );
-}
-
-/** A text node whose figure counts to its new value. `format` runs per frame. */
-export function CountingText({
-  value,
-  format,
-  style,
-  accessibilityLabel,
-  testID,
-}: {
-  value: number;
-  format: (value: number) => string;
-  style?: StyleProp<TextStyle>;
-  accessibilityLabel?: string;
-  testID?: string;
-}) {
-  const shown = useCountUp(value);
-  return (
-    <Text testID={testID} accessibilityLabel={accessibilityLabel ?? format(value)} style={style}>
-      {format(shown)}
-    </Text>
   );
 }

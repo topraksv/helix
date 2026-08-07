@@ -11,11 +11,6 @@ import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
-import { Inter_400Regular } from "@expo-google-fonts/inter/400Regular";
-import { Inter_500Medium } from "@expo-google-fonts/inter/500Medium";
-import { Inter_600SemiBold } from "@expo-google-fonts/inter/600SemiBold";
-import { Inter_700Bold } from "@expo-google-fonts/inter/700Bold";
-import { IBMPlexSerif_600SemiBold } from "@expo-google-fonts/ibm-plex-serif/600SemiBold";
 import { migrateDb } from "../db/migrate";
 import { useSession } from "../auth/session";
 import { useSyncStatus } from "../sync/status";
@@ -59,6 +54,18 @@ import {
   useMarketLifecycle,
   useWorkspaceMaintenance,
 } from "../ui/root-lifecycle";
+
+// Subset from the upstream Google Fonts packages by `scripts/subset-fonts.mjs`
+// — the same TTF on every platform, so mobile web, desktop web, desktop-mode
+// mobile web and the installed app all measure and render identically. The
+// upstream faces carry 2_849 codepoints each for a Turkish product; see the
+// script for what is kept and `tests/font-coverage.test.ts` for what may not
+// be dropped.
+const Inter_400Regular = require("../../assets/fonts/Inter_400Regular.ttf");
+const Inter_500Medium = require("../../assets/fonts/Inter_500Medium.ttf");
+const Inter_600SemiBold = require("../../assets/fonts/Inter_600SemiBold.ttf");
+const Inter_700Bold = require("../../assets/fonts/Inter_700Bold.ttf");
+const IBMPlexSerif_600SemiBold = require("../../assets/fonts/IBMPlexSerif_600SemiBold.ttf");
 
 /** What the guard's waiting view should say, given what the user just did. */
 function waitingState(

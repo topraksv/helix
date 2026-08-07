@@ -4,13 +4,18 @@ import React from "react";
 import { Text, View } from "react-native";
 import { useContentWidth } from "../../ui/viewport";
 import { useRouter } from "expo-router";
-import { CalendarClock, MousePointerClick, Plus, RefreshCw, Repeat, Zap } from "lucide-react-native";
+import CalendarClock from "lucide-react-native/icons/calendar-clock";
+import MousePointerClick from "lucide-react-native/icons/mouse-pointer-click";
+import Plus from "lucide-react-native/icons/plus";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
+import Repeat from "lucide-react-native/icons/repeat";
+import Zap from "lucide-react-native/icons/zap";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
 import { addDaysISO, daysBetweenISO, todayISO, type ISODate } from "../../domain/dates";
 import { formatMinorCompact } from "../../domain/money";
 import { shortDateLabel, tr } from "../../i18n/tr";
 import { usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
-import { combineLiveQueryStatus } from "../../data/live-state";
+import { combineLiveStates } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
 import { Amount, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, PanelHeader, Screen, SectionHeader } from "../../ui/components";
@@ -245,13 +250,7 @@ export default function SubscriptionsScreen() {
   const router = useRouter();
   const undo = useUndo();
   const today = todayISO();
-  const liveStates = [subscriptionsState, personsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    subscriptionsState.retry();
-    personsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([subscriptionsState, personsState]);
 
   if (!dataReady) {
     return (

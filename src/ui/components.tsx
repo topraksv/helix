@@ -25,18 +25,20 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSegments } from "expo-router";
 import { useScrollToTop } from "@react-navigation/native";
-import { ChevronRight, TriangleAlert, type LucideIcon } from "lucide-react-native";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import TriangleAlert from "lucide-react-native/icons/triangle-alert";
+import type { LucideIcon } from "lucide-react-native";
 import { DelayedLoading, LoadingIndicator } from "./loading-indicator";
 import type { TrackedOperationState } from "./operation-guard";
 import { tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
+import { interactionSurface } from "./interaction";
 import {
   Amount,
   Body,
   Button,
   Divider,
   FadeIn,
-  isHovered,
   Row,
   useLedeAlignment,
 } from "./primitives";
@@ -57,7 +59,6 @@ export {
   Heading,
   IconButton,
   InitialsBadge,
-  isHovered,
   Label,
   Row,
   SegmentBar,
@@ -65,6 +66,8 @@ export {
   STATUS_W,
   Title,
 } from "./primitives";
+
+export { interactionSurface, isHovered } from "./interaction";
 
 export { Field, FieldError, MoneyField, MonthStepper, Toggle } from "./fields";
 export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./selection-controls";
@@ -292,7 +295,7 @@ export function Card({
         style={(state) => [
           base,
           style,
-          (state.pressed || isHovered(state)) && { backgroundColor: palette.surfaceHover },
+          interactionSurface(palette, state),
           state.pressed && { transform: [{ translateY: 1 }] },
         ]}
       >
@@ -799,8 +802,14 @@ export function ListRow({
   return <PressableRow onPress={onPress}>{content}</PressableRow>;
 }
 
-/** How far a row's pressed fill reaches past its own content, each side. */
-const PRESS_BLEED = spacing.sm;
+/**
+ * How far a row's fill reaches past its own content, each side.
+ *
+ * Exactly the card's own padding, so a hovered row lights the card from edge to
+ * edge. At `spacing.sm` it stopped 4px short of that edge on both sides, which
+ * does not read as a decision — it reads as a fill that missed.
+ */
+const PRESS_BLEED = density.list.cardPadding;
 
 /**
  * List row wrapper with quiet, interruptible tonal press feedback.
@@ -821,7 +830,7 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
       style={(state) => ({
         marginHorizontal: -PRESS_BLEED,
         paddingHorizontal: PRESS_BLEED,
-        backgroundColor: state.pressed || isHovered(state) ? palette.surfaceHover : "transparent",
+        ...interactionSurface(palette, state),
         borderRadius: radius.sm,
         transform: [{ translateY: state.pressed ? 1 : 0 }],
       })}

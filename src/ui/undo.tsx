@@ -2,7 +2,9 @@
 
 import React from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { Check, RotateCcw, TriangleAlert } from "lucide-react-native";
+import Check from "lucide-react-native/icons/check";
+import RotateCcw from "lucide-react-native/icons/rotate-ccw";
+import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { SlideUp, SuccessPop } from "./motion-primitives";

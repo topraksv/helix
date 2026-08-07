@@ -1,22 +1,20 @@
 import React, { useMemo, useState } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Bitcoin,
-  ChartNoAxesCombined,
-  Coins,
-  Landmark,
-  Pencil,
-  PackagePlus,
-  Umbrella,
-  Plus,
-  Sparkles,
-  Trash2,
-  WalletCards,
-  type LucideIcon,
-} from "lucide-react-native";
+import ArrowDownToLine from "lucide-react-native/icons/arrow-down-to-line";
+import ArrowUpFromLine from "lucide-react-native/icons/arrow-up-from-line";
+import Bitcoin from "lucide-react-native/icons/bitcoin";
+import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
+import Coins from "lucide-react-native/icons/coins";
+import Landmark from "lucide-react-native/icons/landmark";
+import PackagePlus from "lucide-react-native/icons/package-plus";
+import Pencil from "lucide-react-native/icons/pencil";
+import Plus from "lucide-react-native/icons/plus";
+import Sparkles from "lucide-react-native/icons/sparkles";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import Umbrella from "lucide-react-native/icons/umbrella";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
+import type { LucideIcon } from "lucide-react-native";
 import { deleteInvestmentOperation, restoreInvestmentOperation } from "../../../data/repo";
 import {
   useAllTransactionsState,
@@ -24,14 +22,14 @@ import {
   useInvestmentOperationsState,
   useInvestmentProductsState,
   useInvestmentProfilesState,
+  useInvestmentWallet,
   usePersonsState,
   useUserId,
 } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import {
   type InvestmentAssetType,
 } from "../../../domain/investments";
-import { projectInvestmentState } from "../../../domain/investment-projection";
 import { formatMinorCompact } from "../../../domain/money";
 import { todayISO } from "../../../domain/dates";
 import { tr } from "../../../i18n/tr";
@@ -54,6 +52,7 @@ import {
 } from "../../../ui/components";
 import { Donut, useSeriesColors } from "../../../ui/charts";
 import { useDrawIn } from "../../../ui/motion-primitives";
+import { interactionSurface } from "../../../ui/interaction";
 import { actionTileMetrics, circle, density, font, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useContentWidth, useMeasuredWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
@@ -285,7 +284,7 @@ function InvestmentQuickAction({
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => ({
+      style={(state) => ({
         flex: 1,
         minWidth: 0,
         alignItems: "center",
@@ -294,9 +293,9 @@ function InvestmentQuickAction({
         gap: metrics.gap,
         justifyContent: "flex-start",
         borderRadius: radius.md,
-        backgroundColor: pressed ? palette.surfaceHover : "transparent",
+        ...interactionSurface(palette, state),
         opacity: disabled ? 0.45 : 1,
-        transform: [{ translateY: pressed && !disabled ? 1 : 0 }],
+        transform: [{ translateY: state.pressed && !disabled ? 1 : 0 }],
       })}
     >
       <View
@@ -362,32 +361,13 @@ export default function InvestmentsScreen() {
   const transactionsState = useAllTransactionsState();
   const categoriesState = useInvestmentCategoriesState();
   const personsState = usePersonsState();
-  const states = [profilesState, productsState, operationsState, transactionsState, categoriesState, personsState];
-  const status = combineLiveQueryStatus(states);
-  const ready = states.every((state) => state.updatedAt != null);
+  const { status, ready, retry } = combineLiveStates([profilesState, productsState, operationsState, transactionsState, categoriesState, personsState]);
   const profile = profilesState.data[0];
   const selfPersonIds = useMemo(
     () => new Set(personsState.data.filter((person) => person.isSelf).map((person) => person.id)),
     [personsState.data],
   );
-  const state = useMemo(() => {
-    if (!profile) return null;
-    try {
-      return projectInvestmentState(
-        profile,
-        productsState.data,
-        operationsState.data,
-        transactionsState.data.map((transaction) => ({
-          ...transaction,
-          personIsSelf: selfPersonIds.has(transaction.personId),
-        })),
-        categoriesState.data,
-      );
-    } catch {
-      return null;
-    }
-  }, [profile, productsState.data, operationsState.data, transactionsState.data, categoriesState.data, selfPersonIds]);
-  const retry = () => states.forEach((source) => source.retry());
+  const state = useInvestmentWallet();
   const productById = new Map(productsState.data.map((product) => [product.id, product]));
   const deleteOperation = async (id: string) => {
     if (!(await appConfirm(tr.common.delete, "Bu hareket kaldırıldığında cüzdan ve maliyetler yeniden hesaplanır.", { confirmLabel: tr.common.delete, danger: true }))) return;

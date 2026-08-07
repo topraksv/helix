@@ -1,19 +1,17 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
-import {
-  Check,
-  CheckCircle2,
-  CircleAlert,
-  KeyRound,
-  LogOut,
-  Mail,
-  RefreshCw,
-  ShieldCheck,
-  Snowflake,
-  Trash2,
-  WalletCards,
-  type LucideIcon,
-} from "lucide-react-native";
+import Check from "lucide-react-native/icons/check";
+import CheckCircle2 from "lucide-react-native/icons/circle-check";
+import CircleAlert from "lucide-react-native/icons/circle-alert";
+import KeyRound from "lucide-react-native/icons/key-round";
+import LogOut from "lucide-react-native/icons/log-out";
+import Mail from "lucide-react-native/icons/mail";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
+import Snowflake from "lucide-react-native/icons/snowflake";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import WalletCards from "lucide-react-native/icons/wallet-cards";
+import type { LucideIcon } from "lucide-react-native";
 import { circle, radius, spacing, type, type Palette, useTheme } from "./theme";
 import { tr } from "../i18n/tr";
 import { useReducedMotion } from "./motion";

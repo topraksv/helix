@@ -1,4 +1,5 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { sourceFiles } from "./source-corpus";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { navigateBack, registerDirtyExitFallback } from "../src/ui/navigation";
@@ -107,17 +108,8 @@ describe("cross-tab screens are reachable at the root", () => {
     // Comments are stripped first: the rule is about what the app does, and
     // the files that explain why the anchor is gone have to be able to name it.
     const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-    const offenders: string[] = [];
-    const walk = (dir: string) => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const path = join(dir, entry.name);
-        if (entry.isDirectory()) walk(path);
-        else if (entry.name.endsWith(".tsx") && code(readFileSync(path, "utf8")).includes("withAnchor")) {
-          offenders.push(path.slice(root.length + 1));
-        }
-      }
-    };
-    walk(appDir);
+    const offenders = sourceFiles("src/app", { extensions: [".tsx"], atLeast: 40 })
+      .filter((path) => code(readFileSync(join(root, path), "utf8")).includes("withAnchor"));
     expect(offenders).toEqual([]);
   });
 });

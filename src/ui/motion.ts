@@ -31,6 +31,19 @@ export function useReducedMotion(): boolean {
   return useSyncExternalStore(subscribe, () => reducedMotion, () => false);
 }
 
+/**
+ * The same answer, read without subscribing.
+ *
+ * For a style a component already re-renders to produce — the hover fill is
+ * computed inside a `Pressable`'s style callback, which runs on every pointer
+ * enter and leave anyway. A hook there would add a subscriber per control on
+ * screen to learn something that cannot change between those two renders
+ * without one of them happening.
+ */
+export function isReducedMotion(): boolean {
+  return reducedMotion;
+}
+
 let reduceTransparency = false;
 let transparencySubscription: EmitterSubscription | null = null;
 const transparencyListeners = new Set<() => void>();

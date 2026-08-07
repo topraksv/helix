@@ -5,9 +5,12 @@
 
 import React, { useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react-native";
+import CalendarDays from "lucide-react-native/icons/calendar-days";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
 import { addMonthsToKey, monthKeyOf, monthOf, todayISO, yearOf, type ISODate, type MonthKey } from "../domain/dates";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
+import { interactionSurface } from "./interaction";
 import { circle, controlSize, radius, spacing, stateOpacity, themeShadow, type, useTheme } from "./theme";
 import { Button, FadeIn, IconButton, Label, controlStateStyle } from "./components";
 import { useModalAccessibility } from "./accessibility";
@@ -95,7 +98,7 @@ export function CalendarSheet({
                     }}
                     style={{ width: `${100 / 7}%`, height: controlSize.minimumTarget, alignItems: "center", justifyContent: "center" }}
                   >
-                    {({ pressed }) => (
+                    {(state) => (
                     <View
                       style={{
                         width: 34,
@@ -103,7 +106,13 @@ export function CalendarSheet({
                         borderRadius: circle(34),
                         alignItems: "center",
                         justifyContent: "center",
-                        backgroundColor: pressed ? palette.surfaceHover : selected ? palette.primarySoft : "transparent",
+                        // A selected day keeps its own fill and takes the
+                        // overlay on top of it, so hovering the day you are
+                        // already on still answers.
+                        ...interactionSurface(palette, state, {
+                          base: selected ? palette.primarySoft : "transparent",
+                          enabled: !disabled,
+                        }),
                         borderWidth: isToday && !selected ? StyleSheet.hairlineWidth : 0,
                         borderColor: palette.primaryText,
                       }}

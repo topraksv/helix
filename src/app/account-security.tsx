@@ -6,7 +6,11 @@
 import React, { useState } from "react";
 import { View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
-import { KeyRound, Mail, RotateCcw, Snowflake, Trash2 } from "lucide-react-native";
+import KeyRound from "lucide-react-native/icons/key-round";
+import Mail from "lucide-react-native/icons/mail";
+import RotateCcw from "lucide-react-native/icons/rotate-ccw";
+import Snowflake from "lucide-react-native/icons/snowflake";
+import Trash2 from "lucide-react-native/icons/trash-2";
 import { useSession } from "../auth/session";
 import { performAccountFreeze, type AccountFreezePhase } from "../auth/freeze";
 import { useUserId } from "../data/hooks";

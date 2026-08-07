@@ -1,0 +1,24 @@
+# The app survives a cold start against its own container.
+#
+# On iOS the database is a file in an app container sealed while the device is
+# locked (`NSFileProtectionComplete`). That entitlement is the one thing that
+# could make it unreadable on a real relaunch, and no browser test can ask the
+# question — web persistence is IndexedDB and is covered by
+# `e2e/resilience.spec.ts`.
+appId: com.toprak.helix
+---
+- launchApp:
+    clearState: true
+# A dev-client build downloads its JavaScript from Metro on every launch, so
+# the first assertion has to wait for the bundle rather than race it. A release
+# build with an embedded bundle is up in a fraction of this.
+- extendedWaitUntil:
+    visible: "Tekrar hoş geldin"
+    timeout: 90000
+# Cold start against the container written above — no `clearState` this time.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Tekrar hoş geldin"
+    timeout: 90000
+- assertVisible: "Giriş yap"

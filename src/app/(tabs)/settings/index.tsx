@@ -7,36 +7,34 @@ import { shouldPairFilterCards } from "../../../ui/responsive";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
-import {
-  Banknote,
-  Bell,
-  BookOpen,
-  CalendarClock,
-  Calculator,
-  Check,
-  CloudUpload,
-  Columns3,
-  FileDown,
-  FileSpreadsheet,
-  FileUp,
-  Eye,
-  KeyRound,
-  LogOut,
-  Monitor,
-  Moon,
-  Flag,
-  Target,
-  ScanFace,
-  Sun,
-  Trash2,
-  Users,
-  Wallet,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react-native";
+import Banknote from "lucide-react-native/icons/banknote";
+import Bell from "lucide-react-native/icons/bell";
+import BookOpen from "lucide-react-native/icons/book-open";
+import Calculator from "lucide-react-native/icons/calculator";
+import CalendarClock from "lucide-react-native/icons/calendar-clock";
+import Check from "lucide-react-native/icons/check";
+import CloudUpload from "lucide-react-native/icons/cloud-upload";
+import Columns3 from "lucide-react-native/icons/columns-3";
+import Eye from "lucide-react-native/icons/eye";
+import FileDown from "lucide-react-native/icons/file-down";
+import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
+import FileUp from "lucide-react-native/icons/file-up";
+import Flag from "lucide-react-native/icons/flag";
+import KeyRound from "lucide-react-native/icons/key-round";
+import LogOut from "lucide-react-native/icons/log-out";
+import Monitor from "lucide-react-native/icons/monitor";
+import Moon from "lucide-react-native/icons/moon";
+import ScanFace from "lucide-react-native/icons/scan-face";
+import Sun from "lucide-react-native/icons/sun";
+import Target from "lucide-react-native/icons/target";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import Users from "lucide-react-native/icons/users";
+import Wallet from "lucide-react-native/icons/wallet";
+import Wrench from "lucide-react-native/icons/wrench";
+import type { LucideIcon } from "lucide-react-native";
 import { SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
 import { useSettingsMapState, settingValue, useUserId } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import { combineLiveStates } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
 import { pendingSyncChangeCount, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
 import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
@@ -282,6 +280,7 @@ export default function SettingsScreen() {
   const userId = useUserId();
   const { signOut, deleteAccount } = useSession();
   const settingsState = useSettingsMapState();
+  const settingsData = combineLiveStates([settingsState]);
   const settings = settingsState.data;
   const sync = useSyncStatus();
   const router = useRouter();
@@ -505,7 +504,7 @@ export default function SettingsScreen() {
 
   return (
     <Screen title={tr.settings.title} width="workspace">
-      <DataStateNotice status={combineLiveQueryStatus([settingsState])} retry={settingsState.retry} />
+      <DataStateNotice status={settingsData.status} retry={settingsData.retry} />
       <SectionHeader>{tr.settings.balanceSection}</SectionHeader>
       <Card>
         <ListRow icon={Flag} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />

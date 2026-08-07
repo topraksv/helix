@@ -13,11 +13,13 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
-import { Pin, type LucideIcon } from "lucide-react-native";
+import Pin from "lucide-react-native/icons/pin";
+import type { LucideIcon } from "lucide-react-native";
 import { selectionTap } from "./haptics";
+import { interactionSurface } from "./interaction";
 import { tr } from "../i18n/tr";
 import { fittedCellWidth } from "./responsive";
-import { font, spacing, type, useTheme } from "./theme";
+import { font, maxFontScale, spacing, type, useTheme } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
 export const STICKY_ROW_HEIGHT = 52;
@@ -415,13 +417,6 @@ export function StickyTable({
           height: resolvedHeaderHeight,
           backgroundColor: "transparent",
           justifyContent: "center",
-          paddingLeft: compactHeader ? spacing.xs : hasMarker ? markerWidth : spacing.xs,
-          // The pin keeps a 24px measured web target, but its glyph occupies
-          // only the trailing 12px. Let compact copy use the transparent part
-          // of that target so ordinary words stay whole without shrinking the
-          // number of visible financial columns.
-          paddingRight: hasMarker ? (compactHeader ? markerWidth - 6 : markerWidth) : spacing.xs,
-          paddingVertical: spacing.xs,
           borderBottomWidth: isCurrent ? 3 : 0,
           borderBottomColor: palette.primary,
         }}
@@ -436,15 +431,30 @@ export function StickyTable({
           accessibilityLabel={labelAction ? c.accessibilityLabel ?? c.label : undefined}
           // Fill the header band: wrapping only the label left a full-width but
           // 16px-tall tap target on the app's primary financial surface.
-          style={({ pressed }) => ({
+          //
+          // The padding is HERE and not on the cell around it. Held by the
+          // wrapper it kept the pressable 86x48 inside a 134x56 header, so the
+          // hover fill floated in the middle of the cell with an unlit margin
+          // on all four sides — the rule is that the pressable owns its padding
+          // and the box around it owns only position.
+          style={(state) => ({
             flex: 1,
+            alignSelf: "stretch",
             justifyContent: "center",
-            backgroundColor: pressed ? palette.surfaceHover : "transparent",
+            paddingLeft: compactHeader ? spacing.xs : hasMarker ? markerWidth : spacing.xs,
+            // The pin keeps a 24px measured web target, but its glyph occupies
+            // only the trailing 12px. Let compact copy use the transparent part
+            // of that target so ordinary words stay whole without shrinking the
+            // number of visible financial columns.
+            paddingRight: hasMarker ? (compactHeader ? markerWidth - 6 : markerWidth) : spacing.xs,
+            paddingVertical: spacing.xs,
+            ...interactionSurface(palette, state, { enabled: Boolean(labelAction) }),
           })}
         >
           <Text
             testID="table-column-label"
             accessibilityLabel={c.accessibilityLabel ?? c.label}
+            maxFontSizeMultiplier={maxFontScale.measuredBox}
             numberOfLines={LABEL_MAX_LINES}
             ellipsizeMode="tail"
             style={[
@@ -488,12 +498,12 @@ export function StickyTable({
                 // and does nothing on the web, where the pin really was a 24x24
                 // target sitting between two amounts. The width stays inside
                 // the marker strip — wider, it crossed its own column's edge.
-                style={({ pressed }) => ({
+                style={(state) => ({
                   width: STICKY_MARKER_W,
                   alignSelf: "stretch",
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: pressed ? palette.surfaceHover : "transparent",
+                  ...interactionSurface(palette, state),
                 })}
               >
                 <Pin
@@ -583,16 +593,21 @@ export function StickyTable({
                   onPress={r.onLabelPress}
                   accessibilityRole={r.onLabelPress ? "link" : undefined}
                   accessibilityLabel={r.accessibilityLabel ?? r.label}
-                  style={({ pressed }) => [
-                    { width: headWidth, alignItems: "flex-start", paddingVertical: spacing.xs },
+                  style={(state) => [
+                    // `alignSelf` stretches the label box to the row's measured
+                    // height. Without it the fill was only as tall as the label
+                    // plus its own padding, so hovering a two-line row lit a
+                    // band floating inside it.
+                    { width: headWidth, alignSelf: "stretch", alignItems: "flex-start", paddingVertical: spacing.xs },
                     cellCenter,
-                    pressed && r.onLabelPress ? { backgroundColor: palette.surfaceHover } : null,
+                    interactionSurface(palette, state, { enabled: Boolean(r.onLabelPress) }),
                   ]}
                 >
                   <Text
                     testID="table-row-label"
                     accessible={!r.onLabelPress}
                     accessibilityLabel={r.accessibilityLabel ?? r.label}
+                    maxFontSizeMultiplier={maxFontScale.measuredBox}
                     numberOfLines={LABEL_MAX_LINES}
                     ellipsizeMode="tail"
                     style={[type.label, { color: r.onLabelPress ? palette.primaryText : palette.text, textAlign: "left", fontFamily: r.labelHighlight ? font.bold : font.semibold }]}
@@ -694,19 +709,20 @@ function PinnedHeader({
       onPress={onUnpin ? () => { selectionTap(); onUnpin(); } : undefined}
       accessibilityRole={onUnpin ? "button" : undefined}
       accessibilityLabel={onUnpin ? tr.a11y.unpinColumn(accessibilityLabel ?? label) : undefined}
-      style={({ pressed }) => ({
+      style={(state) => ({
         width,
         justifyContent: "center",
         paddingLeft: compactHeader ? spacing.xs : STICKY_MARKER_W,
         paddingRight: compactHeader ? STICKY_MARKER_W - 6 : STICKY_MARKER_W,
         paddingVertical: spacing.xs,
         alignItems: "center",
-        backgroundColor: pressed ? palette.surfaceHover : "transparent",
+        ...interactionSurface(palette, state, { enabled: Boolean(onUnpin) }),
       })}
     >
       <Text
         testID="table-column-label"
         accessibilityLabel={accessibilityLabel ?? label}
+        maxFontSizeMultiplier={maxFontScale.measuredBox}
         numberOfLines={LABEL_MAX_LINES}
         ellipsizeMode="tail"
         style={[

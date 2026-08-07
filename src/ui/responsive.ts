@@ -206,3 +206,24 @@ export function fittedQuickDays<T>(boxWidth: number, days: readonly T[]): T[] {
   for (let i = 0; i < fits; i += 1) kept.add(Math.round(i * step));
   return days.filter((_, index) => kept.has(index));
 }
+
+/** How much of a tab's column must stay clear for its label to count as fitting. */
+export const LABEL_BREATHING = 8;
+
+/**
+ * Whether the bar should draw its labels at all.
+ *
+ * Exported because it is the whole rule, and a rule this cheap to get wrong
+ * deserves a test rather than a device. Both zeroes mean "not measured yet",
+ * which has to read as fits: the labels must render at least once or they can
+ * never be measured, and a bar that starts icon-only would stay icon-only.
+ */
+/** A width the column provably cannot hold, for a label that wrapped. */
+export function tooWide(slotWidth: number): number {
+  return slotWidth + LABEL_BREATHING + 1;
+}
+
+export function tabLabelsFit(labelWidth: number, slotWidth: number): boolean {
+  if (labelWidth <= 0 || slotWidth <= 0) return true;
+  return labelWidth <= slotWidth - LABEL_BREATHING;
+}

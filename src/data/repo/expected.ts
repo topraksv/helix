@@ -193,7 +193,7 @@ export async function skipExpected(userId: string, expectedId: string): Promise<
   await writeRows(userId, [
     {
       table: "expected_payments",
-      row: { ...fromDbShape("expected_payments", row as unknown as Record<string, unknown>), status: "skipped" },
+      row: { ...fromDbShape("expected_payments", row), status: "skipped" },
     },
   ]);
 }
@@ -208,7 +208,7 @@ export async function unskipExpected(userId: string, expectedId: string): Promis
   await writeRows(userId, [
     {
       table: "expected_payments",
-      row: { ...fromDbShape("expected_payments", row as unknown as Record<string, unknown>), status: "pending" },
+      row: { ...fromDbShape("expected_payments", row), status: "pending" },
     },
   ]);
 }
@@ -221,7 +221,7 @@ export async function revertExpected(userId: string, expectedId: string): Promis
   const writes: RowWrite[] = [
     {
       table: "expected_payments",
-      row: { ...fromDbShape("expected_payments", row as unknown as Record<string, unknown>), status: "pending", paidAt: null, transactionId: null, autoConfirmed: false },
+      row: { ...fromDbShape("expected_payments", row), status: "pending", paidAt: null, transactionId: null, autoConfirmed: false },
     },
   ];
   if (row.kind === "subscription" && isISODate(row.due_date)) {

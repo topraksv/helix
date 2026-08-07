@@ -2,11 +2,14 @@
 
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { ArrowRight, BellRing, CalendarClock, Repeat2 } from "lucide-react-native";
+import ArrowRight from "lucide-react-native/icons/arrow-right";
+import BellRing from "lucide-react-native/icons/bell-ring";
+import CalendarClock from "lucide-react-native/icons/calendar-clock";
+import Repeat2 from "lucide-react-native/icons/repeat-2";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategory, upsertSubscription } from "../data/repo";
 import { useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
 import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
@@ -208,14 +211,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const [busy, setBusy] = useState(false);
   const [showCategoryOffer, setShowCategoryOffer] = useState(false);
   const operationGuard = useOperationGuard();
-  const liveStates = [categoriesState, sourcesState, personsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    categoriesState.retry();
-    sourcesState.retry();
-    personsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, sourcesState, personsState]);
   const [draftId] = useState(() => existing?.id ?? createRecordId());
   const draftSnapshot = JSON.stringify({
     name,

@@ -28,7 +28,7 @@ export function tl(s: string): number {
   return sign * (Math.abs(Number(intPart)) * 100 + Number((frac + "00").slice(0, 2)));
 }
 
-export function required<T>(value: T | undefined, context = "required test value"): T {
-  if (value === undefined) throw new Error(`Missing ${context}`);
+export function required<T>(value: T | undefined | null, context = "required test value"): T {
+  if (value == null) throw new Error(`Missing ${context}`);
   return value;
 }

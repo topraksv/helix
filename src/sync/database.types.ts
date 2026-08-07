@@ -294,6 +294,42 @@ export type Database = {
           },
         ]
       }
+      diagnostic_events: {
+        Row: {
+          app_version: string
+          code: string
+          id: string
+          occurred_at: string
+          platform: string
+          received_at: string
+          scope: string
+          severity: string
+          user_id: string
+        }
+        Insert: {
+          app_version: string
+          code: string
+          id?: string
+          occurred_at: string
+          platform: string
+          received_at?: string
+          scope: string
+          severity: string
+          user_id: string
+        }
+        Update: {
+          app_version?: string
+          code?: string
+          id?: string
+          occurred_at?: string
+          platform?: string
+          received_at?: string
+          scope?: string
+          severity?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       expected_payments: {
         Row: {
           amount_minor: number
@@ -1261,3 +1297,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

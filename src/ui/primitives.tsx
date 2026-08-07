@@ -23,18 +23,19 @@ import {
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
-  type PressableStateCallbackType,
   type StyleProp,
   type TextProps,
   type TextStyle,
   type ViewProps,
   type ViewStyle,
 } from "react-native";
-import { ChevronDown, type LucideIcon } from "lucide-react-native";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
+import type { LucideIcon } from "lucide-react-native";
 import { formatMinorCompact } from "../domain/money";
 import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
 import { initialsBadgeColor } from "./badge-color";
 import { haptic, type HapticKind } from "./haptics";
+import { interactionSurface } from "./interaction";
 import { useReducedMotion } from "./motion";
 import { useCountUp } from "./motion-primitives";
 import { borderWidth, controlSize, font, generatedBadgeForeground, iconSize, motion, radius, spacing, staggerDelay, stateOpacity, type, useTheme, type Palette } from "./theme";
@@ -47,24 +48,6 @@ export function controlStateStyle(palette: Palette, active: boolean, error = fal
   };
 }
 
-/**
- * Whether a pointer is resting on this control.
- *
- * react-native-web's `Pressable` already tracks hover and hands it to the style
- * callback — it re-renders on enter and leave whether or not anyone reads it —
- * so taking the flag from there costs nothing, while adding
- * `onHoverIn`/`onHoverOut` state of our own would have paid for the same render
- * twice. React Native's types only declare `pressed` (iOS and Android have no
- * pointer to hover with), which is why the read is written once here instead of
- * being cast at every control.
- *
- * Hover lands on the same fill as the press. A pointer gets the fill on
- * approach and the 1pt depression on contact; a finger, which cannot hover,
- * gets both at once and loses nothing.
- */
-export function isHovered(state: PressableStateCallbackType): boolean {
-  return (state as { hovered?: boolean }).hovered === true;
-}
 
 /**
  * The chevron on anything that opens and closes.
@@ -455,12 +438,6 @@ export function Button({
         foreground: palette.textSecondary,
       }
     : enabledColors;
-  const pressedBackground = {
-    primary: palette.primaryStrong,
-    secondary: palette.surfaceHover,
-    danger: palette.destructive,
-    ghost: palette.surfaceHover,
-  }[variant];
   const toneColor = tone === "positive" ? palette.positiveText : tone === "primary" ? palette.primaryText : null;
   const toned = toneColor != null && !visuallyDisabled && (variant === "secondary" || variant === "ghost");
   const small = size === "sm";
@@ -484,7 +461,7 @@ export function Button({
       }}
       style={(state) => [
         {
-          backgroundColor: (state.pressed || isHovered(state)) && !visuallyDisabled ? pressedBackground : colors.background,
+          ...interactionSurface(palette, state, { base: colors.background, enabled: !visuallyDisabled }),
           borderRadius: radius.md,
           borderCurve: "continuous",
           paddingVertical: small ? spacing.sm : spacing.md + 1,
@@ -581,11 +558,10 @@ export function IconButton({
             width: size,
             height: size,
             borderRadius: radius.sm,
-            backgroundColor: tone === "primary"
-              ? palette.primarySoft
-              : state.pressed || isHovered(state)
-                ? palette.surfaceHover
-                : palette.surface,
+            ...interactionSurface(palette, state, {
+              base: tone === "primary" ? palette.primarySoft : palette.surface,
+              enabled: !disabled,
+            }),
             alignItems: "center",
             justifyContent: "center",
             borderWidth: StyleSheet.hairlineWidth,

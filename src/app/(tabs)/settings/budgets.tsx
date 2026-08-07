@@ -1,8 +1,10 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View } from "react-native";
-import { Target, Pencil, Trash2 } from "lucide-react-native";
-import { useAllTransactionsState, useCategoryBudgetsState, useCategoriesState, usePersonsState, useUserId, toTxLike } from "../../../data/hooks";
-import { combineLiveQueryStatus } from "../../../data/live-state";
+import Pencil from "lucide-react-native/icons/pencil";
+import Target from "lucide-react-native/icons/target";
+import Trash2 from "lucide-react-native/icons/trash-2";
+import { useAllTransactionsState, useCategoryBudgetsState, useCategoriesState, usePersonsState, useTxLike, useUserId } from "../../../data/hooks";
+import { combineLiveStates } from "../../../data/live-state";
 import { deleteCategoryBudget, restoreCategoryBudget, upsertCategoryBudget } from "../../../data/repo";
 import { budgetProgress } from "../../../domain/budgets";
 import { monthKeyOf, todayISO } from "../../../domain/dates";
@@ -49,8 +51,7 @@ export default function BudgetsScreen() {
   const personsState = usePersonsState();
   const categories = categoriesState.data;
   const budgets = budgetsState.data;
-  const transactions = transactionsState.data;
-  const persons = personsState.data;
+  const txLike = useTxLike();
   const { palette } = useTheme();
   const undo = useUndo();
   const guard = useOperationGuard();
@@ -71,20 +72,12 @@ export default function BudgetsScreen() {
   const monthBudgets = budgets.filter((budget) => budget.month === month);
   const categoryId = categoryChoice ?? expenseCategories.find((category) => !monthBudgets.some((budget) => budget.categoryId === category.id))?.id ?? null;
   const editing = categoryChoice ? monthBudgets.find((budget) => budget.categoryId === categoryChoice) : null;
-  const progress = budgetProgress(monthBudgets, toTxLike(transactions, persons, categories), month, todayISO());
+  const progress = useMemo(() => budgetProgress(monthBudgets, txLike, month, todayISO()), [monthBudgets, txLike, month]);
   const progressById = new Map(progress.map((row) => [row.id, row]));
   const editingProgress = editing ? progressById.get(editing.id) : null;
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   const { confirmDiscard } = useDirtyExitGuard(amountRaw !== loadedAmountRaw && !busy);
-  const liveStates = [categoriesState, budgetsState, transactionsState, personsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    categoriesState.retry();
-    budgetsState.retry();
-    transactionsState.retry();
-    personsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, budgetsState, transactionsState, personsState]);
 
   const reset = () => {
     setCategoryChoice(null);

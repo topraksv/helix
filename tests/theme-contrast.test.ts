@@ -148,14 +148,14 @@ describe("semantic theme contrast", () => {
   it("keeps the default ramp exact", () => {
     expect(lightPalette).toMatchObject({
       background: "#F1EDE8", surface: "#FFFDFB", surfaceAlt: "#E7DFD7",
-      surfaceHover: "#D7CCC1", surfaceStrong: "#C2B2A3", textStrong: "#2A211B",
+      surfaceStrong: "#C2B2A3", textStrong: "#2A211B",
       text: "#3A3028", textSecondary: "#62564C", textMuted: "#6D6157",
       primary: "#A55335", accentText: "#7B3A28", primaryStrong: "#88432D",
       primarySoft: "#EED8CC", border: "#8B796A",
     });
     expect(darkPalette).toMatchObject({
       background: "#090807", surface: "#191512", surfaceAlt: "#27211D",
-      surfaceHover: "#352D28", surfaceStrong: "#473D36", textStrong: "#F2ECE6",
+      surfaceStrong: "#473D36", textStrong: "#F2ECE6",
       text: "#E5DDD6", textSecondary: "#BEB2A8", textMuted: "#9D9289",
       primary: "#D88967", accentText: "#E7A68B", primaryStrong: "#BE6B4A",
       primarySoft: "#3C2A22", border: "#5F534A",
@@ -177,8 +177,56 @@ describe("semantic theme contrast", () => {
    * force the whole dark ramp pale to satisfy arithmetic that does not describe
    * what a person sees there.
    */
+  /**
+   * A hover is the quietest thing a control says, and it says it the same way
+   * everywhere.
+   *
+   * The tokens this replaced were picked per palette by eye, and it showed:
+   * surface → surfaceHover measured 1.253:1 in Petrol Dark against 1.556:1 in
+   * Amber Light, so the same pointer resting on the same control was almost
+   * twice as loud depending on which theme was on. Both ends were also far past
+   * what the state means — 1.5:1 is what a SELECTED row is allowed, and a
+   * pointer passing over something has not selected it.
+   *
+   * One alpha of the palette's own ink, composited over whatever is underneath,
+   * is what makes the step identical: it is measured here against three
+   * different surfaces precisely because a row sits on a card, a chip sits on
+   * `surfaceAlt`, and a matrix cell sits on the table.
+   */
+  it("moves every palette by the same amount under a pointer", () => {
+    const composite = (base: string, tint: string, alpha: number) =>
+      `#${[1, 3, 5]
+        .map((at) => Math.round(
+          Number.parseInt(base.slice(at, at + 2), 16) * (1 - alpha)
+            + Number.parseInt(tint.slice(at, at + 2), 16) * alpha,
+        ))
+        .map((value) => value.toString(16).padStart(2, "0"))
+        .join("")}`;
+    // Kept in step with `INTERACTION_ALPHA` in `src/ui/interaction.ts`.
+    const [hover, pressed] = [0.06, 0.11];
+    const steps: number[] = [];
+    for (const palette of shippedPalettes) {
+      for (const under of [palette.surface, palette.surfaceAlt, palette.primarySoft] as const) {
+        const hovered = contrastRatio(under, composite(under, palette.textStrong, hover));
+        const held = contrastRatio(under, composite(under, palette.textStrong, pressed));
+        // Visible at all — a state nobody can see is a control that gets
+        // clicked twice.
+        expect(hovered, `hover on ${under}`).toBeGreaterThan(1.05);
+        // And never as loud as a selection.
+        expect(hovered, `hover on ${under}`).toBeLessThan(1.25);
+        // Pressed has to be plainly deeper than hover, or the pointer cannot
+        // tell "I am over it" from "I am on it".
+        expect(held, `pressed on ${under}`).toBeGreaterThan(hovered);
+        steps.push(hovered);
+      }
+    }
+    // The whole point: one gesture, one size, in every theme and on every
+    // surface. The old tokens spread 0.303 across the six palettes.
+    expect(Math.max(...steps) - Math.min(...steps)).toBeLessThan(0.09);
+  });
+
   it("keeps each surface layer distinguishable from the one under it", () => {
-    const ramp = ["background", "surface", "surfaceAlt", "surfaceHover", "surfaceStrong"] as const;
+    const ramp = ["background", "surface", "surfaceAlt", "surfaceStrong"] as const;
     for (const { light, dark } of Object.values(PALETTES)) {
       for (const [palette, floor] of [[light, 1.14], [dark, 1.1]] as const) {
         for (let i = 0; i < ramp.length - 1; i++) {
@@ -324,7 +372,7 @@ describe("semantic theme contrast", () => {
     // `primarySoft` stays in this list on purpose: it is both the active track
     // fill and a real row background, so it is the worst case the token has to
     // survive if either is ever used behind a control again.
-    const controlSurfaces = ["background", "surface", "surfaceAlt", "surfaceHover", "primarySoft"] as const;
+    const controlSurfaces = ["background", "surface", "surfaceAlt", "primarySoft"] as const;
     for (const palette of shippedPalettes) {
       for (const surface of controlSurfaces) {
         expect(

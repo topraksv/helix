@@ -6,7 +6,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { Delete } from "lucide-react-native";
+import Delete from "lucide-react-native/icons/delete";
 import { formatMinorCompact, majorToMinor, MAX_AMOUNT_MAJOR_DIGITS } from "../domain/money";
 import { tr } from "../i18n/tr";
 import { radius, spacing, themeShadow, type, useTheme } from "./theme";

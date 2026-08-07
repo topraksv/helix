@@ -1,9 +1,10 @@
 import React from "react";
 import { Pressable } from "react-native";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import { tr } from "../i18n/tr";
 import { navigateBack } from "./navigation";
+import { interactionSurface } from "./interaction";
 import { controlSize, iconSize, radius, useTheme } from "./theme";
 
 /**
@@ -24,11 +25,11 @@ export function HeaderBackButton({ fallback }: { fallback: Href }) {
       accessibilityRole="button"
       accessibilityLabel={tr.common.back}
       onPress={() => navigateBack(router, fallback)}
-      style={({ pressed }) => ({
+      style={(state) => ({
         width: controlSize.minimumTarget,
         height: controlSize.minimumTarget,
         borderRadius: radius.full,
-        backgroundColor: pressed ? palette.surfaceHover : "transparent",
+        ...interactionSurface(palette, state),
         alignItems: "center",
         justifyContent: "center",
       })}

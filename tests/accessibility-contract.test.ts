@@ -17,20 +17,16 @@
  * sweeps anyway.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { sourceFiles } from "./source-corpus";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { maxFontScale } from "../src/ui/theme";
 
 const root = process.cwd();
 const source = (path: string) => readFileSync(join(root, path), "utf8");
 
-function sourceFiles(directory: string, extensions: string[]): string[] {
-  return readdirSync(join(root, directory), { withFileTypes: true }).flatMap((entry) => {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path, extensions);
-    return extensions.some((extension) => entry.name.endsWith(extension)) ? [path] : [];
-  });
-}
+
 
 describe("text wraps before it is ever shortened", () => {
   /**
@@ -50,7 +46,7 @@ describe("text wraps before it is ever shortened", () => {
     // Two places, both carrying a name the user typed: the ledger's own label
     // and the screen title a drill-down inherits from it. Everything else
     // wraps.
-    const offenders = sourceFiles("src", [".tsx", ".ts"]).filter((file) =>
+    const offenders = sourceFiles("src", { atLeast: 150 }).filter((file) =>
       /(numberOfLines|ellipsizeMode)\s*=/.test(source(file)),
     );
     expect(offenders).toEqual(["src/ui/header-bar.tsx", "src/ui/sticky-table.tsx"]);
@@ -74,16 +70,42 @@ describe("text wraps before it is ever shortened", () => {
 describe("Dynamic Type is never opted out of", () => {
   /**
    * React Native's default is `allowFontScaling={true}`, so every Text and
-   * TextInput already follows the OS font-size setting. The failure mode is a
-   * component that opts OUT to protect a layout — which is exactly the tradeoff
-   * WCAG 1.4.4 forbids. Physical iOS/Android acceptance at XL/AX sizes stays a
-   * manual device check; this guards the code-level regression.
+   * TextInput already follows the OS font-size setting. Opting OUT is the
+   * tradeoff WCAG 1.4.4 forbids and stays banned outright.
+   *
+   * A CEILING is a different thing, and this test used to ban it too. That was
+   * wrong in one direction and unenforced in the other: iOS accessibility sizes
+   * reach roughly 3.1x, and three of this app's surfaces have geometry measured
+   * in points — the ledger's 116pt label column and its fitted cell widths, the
+   * 56pt floating tab bar. At 3.1x those labels do not become large, they
+   * become an ellipsis, which this repository's own rule forbids as well.
+   *
+   * So the rule is exact rather than absolute: a ceiling may only ever be
+   * `maxFontScale.measuredBox`, which is 2 — precisely the 200% WCAG 1.4.4
+   * asks for. A literal, or a token worth less than 2, is what would actually
+   * cost a user something, and that is what fails here.
    */
-  it("no component disables font scaling or caps the multiplier", () => {
-    const offenders = sourceFiles("src", [".tsx", ".ts"]).filter((file) =>
-      /allowFontScaling\s*=\s*\{?\s*false|maxFontSizeMultiplier/.test(source(file)),
+  it("no component disables font scaling", () => {
+    const offenders = sourceFiles("src", { atLeast: 150 }).filter((file) =>
+      /allowFontScaling\s*=\s*\{?\s*false/.test(source(file)),
     );
     expect(offenders).toEqual([]);
+  });
+
+  it("caps the font multiplier only at the shared 200% token", () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles("src", { atLeast: 150 })) {
+      for (const [index, line] of source(file).split("\n").entries()) {
+        if (!line.includes("maxFontSizeMultiplier")) continue;
+        if (line.includes("maxFontSizeMultiplier={maxFontScale.measuredBox}")) continue;
+        offenders.push(`${file}:${index + 1}`);
+      }
+    }
+    expect(offenders, "a text ceiling that is not the shared 200% token").toEqual([]);
+  });
+
+  it("keeps the shared ceiling at the 200% WCAG 1.4.4 asks for", () => {
+    expect(maxFontScale.measuredBox).toBe(2);
   });
 
   /**

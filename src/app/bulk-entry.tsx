@@ -6,12 +6,15 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";
 import { useCategoriesState, usePersonsState, useUserId } from "../data/hooks";
-import { combineLiveQueryStatus } from "../data/live-state";
+import { combineLiveStates } from "../data/live-state";
 import { categoryIcon } from "../data/category-icons";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../domain/dates";
 import { categoryTableEntryType } from "../domain/transactions";
 import { monthLabel, tr } from "../i18n/tr";
-import { CalendarRange, ChevronLeft, ChevronRight, ListPlus } from "lucide-react-native";
+import CalendarRange from "lucide-react-native/icons/calendar-range";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import ListPlus from "lucide-react-native/icons/list-plus";
 import { Badge, Body, Button, Card, DataStateNotice, EmptyState, Heading, IconButton, MoneyField, OperationStatusNotice, PanelHeader, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { scheduleSync } from "../sync/engine";
@@ -46,13 +49,7 @@ export default function BulkEntryModal() {
   );
   const [savedSnapshot, setSavedSnapshot] = useState("[]");
   const { confirmDiscard } = useDirtyExitGuard(draftSnapshot !== savedSnapshot && !busy);
-  const liveStates = [categoriesState, personsState];
-  const dataStatus = combineLiveQueryStatus(liveStates);
-  const dataReady = liveStates.every((state) => state.updatedAt != null);
-  const retryData = () => {
-    categoriesState.retry();
-    personsState.retry();
-  };
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([categoriesState, personsState]);
 
   const selfId = persons.find((p) => p.isSelf)?.id;
   const rows = [...categories].sort((a, b) => (a.kind === b.kind ? a.sortOrder - b.sortOrder : a.kind === "expense" ? -1 : 1));
