@@ -20,3 +20,11 @@ appId: com.toprak.helix
 - assertVisible: "Şifremi Unuttum"
 # The promise the product makes on its own front door.
 - assertVisible: "Verilerin cihazında saklanır, internet yokken de çalışır."
+# The mode switch is part of the mobile auth surface too. Keep both directions
+# exercised so the link cannot drift away from the form after a layout change.
+- tapOn: "Kayıt ol"
+- assertVisible: "Hesap oluştur"
+- assertVisible: "Zaten hesabın var mı?"
+- assertVisible: "Giriş yap"
+- tapOn: "Giriş yap"
+- assertVisible: "Tekrar hoş geldin"

@@ -1,6 +1,6 @@
 # Row-level security, asserted.
 #
-# `supabase/tests/owner_integrity_and_rls.sql` is 126 pgTAP assertions and it is
+# `supabase/tests/owner_integrity_and_rls.sql` is 136 pgTAP assertions and it is
 # the ONLY executable proof that one account cannot read or write another's
 # rows. Client-side ownership checks are defence in depth; RLS is the authority.
 # Until now nothing ran the file, so the authority was unverified between one
@@ -41,18 +41,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
-        with:
-          # Pinned, not `latest`: a CLI that changes under a scheduled job turns
-          # a green history red for a reason that is not ours.
-          version: 2.109.1
+      # The CLI comes from npm rather than from `supabase/setup-cli`. This
+      # repository allows GitHub-owned actions only — `patterns_allowed` is
+      # empty and `verified_allowed` is false — so a third-party action is
+      # refused before the run starts, with no log to say why. Loosening that
+      # allowlist to import one step is the wrong trade; `npx` at a pinned
+      # version is the same software with none of it.
+      #
+      # Pinned, not `latest`: a CLI that changes under a scheduled job turns a
+      # green history red for a reason that is not ours.
+      - run: npx --yes supabase@2.109.1 --version
       # The migrations under `supabase/migrations` are applied as the stack
       # boots, so the tests run against the schema this commit actually ships.
-      - run: supabase start
+      - run: npx --yes supabase@2.109.1 start
       # The same linter the invariants require to stay clean after a migration
       # change. Cheap here, and it runs before the assertions so a schema fault
-      # is reported as a schema fault rather than as 126 failed tests.
-      - run: supabase db lint --local --fail-on warning
-      - run: supabase test db --local
+      # is reported as a schema fault rather than as 136 failed tests.
+      # The managed `extensions` schema contains pgTAP internals that the
+      # linter cannot resolve as ordinary application functions. The product
+      # schema is the surface this workflow owns and is the one we gate.
+      - run: npx --yes supabase@2.109.1 db lint --local --schema public --fail-on warning
+      - run: npx --yes supabase@2.109.1 test db --local
       - if: always()
-        run: supabase stop --no-backup
+        run: npx --yes supabase@2.109.1 stop --no-backup

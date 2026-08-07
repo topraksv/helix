@@ -420,12 +420,17 @@ select is(
 
 reset role;
 
-select ok(
+-- `reset role` restores the short-lived login role, which cannot inspect the
+-- pgTAP schema. Return to the trusted test role before the remaining assertions.
+set local role postgres;
+set local search_path = extensions, public, pg_catalog;
+
+select extensions.ok(
   (select prosecdef from pg_proc where oid = 'public.delete_own_account()'::regprocedure),
   'account deletion remains SECURITY DEFINER'
 );
 
-select is(
+select extensions.is(
   (
     select pg_get_userbyid(proowner)
     from pg_proc
@@ -435,19 +440,19 @@ select is(
   'account deletion is owned by the trusted postgres role'
 );
 
-select is(
+select extensions.is(
   (select proconfig from pg_proc
     where oid = 'public.delete_own_account()'::regprocedure),
   array['search_path=""']::text[],
   'account deletion pins an empty search_path'
 );
 
-select ok(
+select extensions.ok(
   has_function_privilege('authenticated', 'public.delete_own_account()', 'EXECUTE'),
   'authenticated can execute account deletion'
 );
 
-select ok(
+select extensions.ok(
   not has_function_privilege('anon', 'public.delete_own_account()', 'EXECUTE')
     and not has_function_privilege('service_role', 'public.delete_own_account()', 'EXECUTE'),
   'account deletion has no anonymous or service-role RPC surface'

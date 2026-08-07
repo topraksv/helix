@@ -382,8 +382,10 @@ export default function SignInScreen() {
               style={(state) => ({
                 minHeight: controlSize.minimumTarget,
                 justifyContent: "center",
-                paddingHorizontal: spacing.sm,
-                marginHorizontal: -spacing.sm,
+                // The text is the control's visible width. Padding here made
+                // the hit box overlap the question beside it; the web layout
+                // keeps the same visual gap without a negative margin.
+                paddingHorizontal: 0,
                 borderRadius: radius.sm,
                 ...interactionSurface(palette, state),
               })}

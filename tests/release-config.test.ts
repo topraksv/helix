@@ -303,13 +303,20 @@ describe("release contract", () => {
 
 /**
  * Row-level security is the ONLY authority on account isolation — the client
- * checks are defence in depth. Its 126 pgTAP assertions existed for months
+ * checks are defence in depth. Its 136 pgTAP assertions existed for months
  * with nothing running them, so this pins both that they run and how.
  */
 describe("database workflow", () => {
   it("proves account isolation on a schedule and when the schema changes", () => {
-    expect(database).toContain("supabase test db --local");
+    expect(database).toContain("supabase@2.109.1 test db --local");
+    expect(database).toContain("supabase@2.109.1 db lint --local --schema public --fail-on warning");
     expect(database).toContain("cron:");
+    // The CLI must not arrive through a third-party action. This repository
+    // allows GitHub-owned actions only (`patterns_allowed` empty,
+    // `verified_allowed` false), so `supabase/setup-cli` was refused before the
+    // run could start — a `startup_failure` with no log to explain itself.
+    const uses = database.split("\n").filter((line) => line.includes("uses:"));
+    expect(uses.every((line) => /uses:\s*(actions|github)\//.test(line)), uses.join(" | ")).toBe(true);
     const paths = database.slice(database.indexOf("paths:"), database.indexOf("schedule:"));
     expect(paths).toContain("supabase/**");
   });

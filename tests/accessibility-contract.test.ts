@@ -143,3 +143,16 @@ describe("password-manager metadata on the sign-in form", () => {
     expect(signIn).toContain('autoComplete={mode === "signIn" ? "current-password" : "new-password"}');
   });
 });
+
+describe("auth mode switch layout", () => {
+  it("keeps the sign-in/sign-up link aligned without an overlapping hit box", () => {
+    const signIn = source("src/app/(auth)/sign-in.tsx");
+    const modeSwitch = signIn.slice(signIn.indexOf("<View style={{ flexDirection: \"row\", alignItems: \"center\""));
+
+    // The row's text and link are peers. A negative margin previously pulled
+    // the link's 44pt hit box over the question text, so native hit testing
+    // disagreed with the web layout even though the glyphs looked adjacent.
+    expect(modeSwitch).toContain("paddingHorizontal: 0");
+    expect(modeSwitch).not.toContain("marginHorizontal: -spacing.sm");
+  });
+});
