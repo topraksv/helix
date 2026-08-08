@@ -8,7 +8,7 @@
     "node": "^22"
   },
   "dependencies": {
-    "@react-navigation/bottom-tabs": "^7.18.14",
+    "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/native": "^7.1.8",
     "@supabase/supabase-js": "^2.110.8",
     "babel-preset-expo": "~54.0.12",
@@ -83,7 +83,8 @@
     "test:native:local": "PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\" maestro test e2e/native-local",
     "ios:build": "expo run:ios --device \"iPhone 17 Pro\"",
     "quality:audit": "node scripts/quality-audit.mjs --check",
-    "quality:report": "node scripts/quality-audit.mjs --render"
+    "quality:report": "node scripts/quality-audit.mjs --render",
+    "audit:unused": "npx --yes knip@6.32.0"
   },
   "private": true,
   "overrides": {

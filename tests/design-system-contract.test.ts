@@ -876,7 +876,7 @@ describe("a leading mark centres against its own text", () => {
   const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
 
   it("caps the centring at three lines", () => {
-    expect(primitives).toContain("export const LEDE_CENTRE_LINES = 3;");
+    expect(primitives).toContain("const LEDE_CENTRE_LINES = 3;");
     expect(primitives).toContain("Math.min(blockHeight, cap)");
     // Measured, not assumed: the type scale sets `fontSize` only and each
     // platform derives its own line box.
@@ -1019,7 +1019,7 @@ describe("returning to a screen is not a reload", () => {
    * phone. A count cannot be coalesced away.
    */
   it("counts arrivals rather than comparing a focus flag", () => {
-    expect(motionPrimitives).toContain("export function useScreenVisit()");
+    expect(motionPrimitives).toContain("function useScreenVisit()");
     expect(motionPrimitives).toContain("setVisit((count) => count + 1)");
     for (const hook of ["useDrawIn", "useCountUp"]) {
       const body = motionPrimitives.slice(motionPrimitives.indexOf(`export function ${hook}(`));
@@ -1122,7 +1122,7 @@ describe("progress is one shape", () => {
   it("is drawn by one primitive, with a countable number of steps", () => {
     const primitives = readFileSync(join(root, "src/ui/primitives.tsx"), "utf8");
     expect(primitives).toContain("export function SegmentBar(");
-    expect(primitives).toContain("export const MAX_SEGMENTS = 12;");
+    expect(primitives).toContain("const MAX_SEGMENTS = 12;");
     for (const path of ["src/app/(tabs)/settings/budgets.tsx", "src/app/(tabs)/cash-flow/installments.tsx"]) {
       expect(readFileSync(join(root, path), "utf8"), path).toContain("<SegmentBar");
     }

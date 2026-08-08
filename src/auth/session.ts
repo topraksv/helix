@@ -233,7 +233,7 @@ interface SessionStore {
   changePassword: (currentPassword: string, newPassword: string) => Promise<string | null>;
 }
 
-export type SignUpResult =
+type SignUpResult =
   | { status: "signed-in" }
   | { status: "confirmation-required" }
   | { status: "error"; message: string };

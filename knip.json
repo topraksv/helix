@@ -1,0 +1,28 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/app/**/*.{ts,tsx}",
+    "tests/**/*.ts",
+    "e2e/**/*.ts",
+    "scripts/*.{js,mjs}",
+    "*.config.{js,ts}",
+    "plugins/**/*.js",
+    "public/sw.js"
+  ],
+  "project": [
+    "**/*.{js,mjs,ts,tsx}"
+  ],
+  "ignore": [
+    "src/sync/database.types.ts"
+  ],
+  "ignoreDependencies": [
+    "@expo-google-fonts/ibm-plex-serif",
+    "@expo-google-fonts/inter",
+    "babel-plugin-inline-import",
+    "babel-preset-expo"
+  ],
+  "ignoreBinaries": [
+    "maestro",
+    "pyftsubset"
+  ]
+}

@@ -4,6 +4,26 @@ import { sourceFiles } from "./source-corpus";
 import { join, resolve } from "node:path";
 import { productTerms, tr } from "../src/i18n/tr";
 
+function isAsciiWordCharacter(value: string | undefined): boolean {
+  if (!value) return false;
+  return value === "_"
+    || (value >= "0" && value <= "9")
+    || (value >= "A" && value <= "Z")
+    || (value >= "a" && value <= "z");
+}
+
+function containsWholeReference(blob: string, group: string): boolean {
+  let from = 0;
+  while (from < blob.length) {
+    const index = blob.indexOf(group, from);
+    if (index < 0) return false;
+    const next = blob[index + group.length];
+    if (next !== "." && !isAsciiWordCharacter(next)) return true;
+    from = index + group.length;
+  }
+  return false;
+}
+
 describe("canonical product terminology", () => {
   it("keeps Helix as the application identity", () => {
     const appConfig = JSON.parse(
@@ -56,6 +76,12 @@ describe("copy surface", () => {
       ? Object.entries(node).flatMap(([key, value]) => dottedPaths(value, `${prefix}.${key}`))
       : [prefix];
 
+  it("distinguishes a whole-group read from a member or longer identifier", () => {
+    expect(containsWholeReference("const copy = { ...tr.errors };", "tr.errors")).toBe(true);
+    expect(containsWholeReference("tr.errors.network", "tr.errors")).toBe(false);
+    expect(containsWholeReference("tr.errorsExtra", "tr.errors")).toBe(false);
+  });
+
   it("has no string that nothing can render", () => {
     const blob = [
       ...sourceFiles("src", { atLeast: 150 }),
@@ -68,13 +94,10 @@ describe("copy surface", () => {
 
     // A group read as a whole — `tr.computed.ops[op].title`, `{ ...tr.errors }`
     // — makes every key under it reachable without naming any of them.
-    const readWhole = (group: string): boolean =>
-      new RegExp(`${group.replace(/\./g, "\\.")}(?![.\\w])`).test(blob);
-
     const unreachable = dottedPaths(tr, "tr").filter((path) => {
       if (blob.includes(path)) return false;
       for (let cut = path.lastIndexOf("."); cut > "tr".length; cut = path.lastIndexOf(".", cut - 1)) {
-        if (readWhole(path.slice(0, cut))) return false;
+        if (containsWholeReference(blob, path.slice(0, cut))) return false;
       }
       return true;
     });

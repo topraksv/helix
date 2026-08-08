@@ -516,7 +516,7 @@ export const loadingSize = {
  * six-way one needs, and the ceiling stops even a long row from spanning a wide
  * monitor. Below the cap nothing changes, which is every phone.
  */
-export const controlWidth = {
+const controlWidth = {
   segmentedPerOption: 132,
   segmentedMax: 560,
 } as const;
@@ -760,7 +760,7 @@ export function tabBarBottomOffset(bottomInset: number): number {
  * scene, so react-navigation no longer reserves its height — this is the single
  * source every scroller and overlay reads instead of guessing an offset.
  */
-export function tabBarClearance(bottomInset: number, isWeb: boolean): number {
+function tabBarClearance(bottomInset: number, isWeb: boolean): number {
   return tabBarHeight(isWeb) + tabBarBottomOffset(bottomInset) + TAB_BAR.gap;
 }
 

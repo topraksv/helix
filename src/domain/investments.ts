@@ -218,7 +218,7 @@ export interface InvestmentCashEvent {
   amountMinor: number;
 }
 
-export interface InvestmentProductState extends InvestmentProductLike {
+interface InvestmentProductState extends InvestmentProductLike {
   quantity: string | null;
   costMinor: Minor;
   averageCostMinor: Minor | null;

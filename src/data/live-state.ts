@@ -2,7 +2,7 @@
 
 export type LiveQueryStatus = "loading" | "refreshing" | "ready" | "stale" | "error";
 
-export interface LiveQueryError {
+interface LiveQueryError {
   kind: "query_failed";
   attempt: number;
   occurredAt: Date;

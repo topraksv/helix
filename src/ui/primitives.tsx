@@ -190,7 +190,7 @@ export function Spread({ children, style, ...props }: {
  * is short, and past that behave as though the block were three lines, so the
  * mark keeps a little air above it and stops travelling.
  */
-export const LEDE_CENTRE_LINES = 3;
+const LEDE_CENTRE_LINES = 3;
 
 /**
  * Vertical alignment for a mark that leads a block of text.
@@ -654,7 +654,7 @@ export function Divider() {
  * `segments` is capped because past about a dozen the steps stop being
  * countable and a plain proportion is the honest picture.
  */
-export const MAX_SEGMENTS = 12;
+const MAX_SEGMENTS = 12;
 
 export function SegmentBar({
   ratio,

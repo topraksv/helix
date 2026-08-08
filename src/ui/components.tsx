@@ -67,9 +67,7 @@ export {
   Title,
 } from "./primitives";
 
-export { interactionSurface, isHovered } from "./interaction";
-
-export { Field, FieldError, MoneyField, MonthStepper, Toggle } from "./fields";
+export { Field, MoneyField, MonthStepper, Toggle } from "./fields";
 export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./selection-controls";
 
 /**

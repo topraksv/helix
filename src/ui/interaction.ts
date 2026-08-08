@@ -22,7 +22,7 @@ import { motion, type Palette } from "./theme";
  * pointer to hover with), which is why the read is written once here instead of
  * being cast at every control.
  */
-export function isHovered(state: PressableStateCallbackType): boolean {
+function isHovered(state: PressableStateCallbackType): boolean {
   return (state as { hovered?: boolean }).hovered === true;
 }
 

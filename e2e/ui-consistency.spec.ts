@@ -454,7 +454,6 @@ test("stack headers keep navigation titles on one line at narrow width", async (
     const metrics = await header.evaluate((element) => {
       const title = element.querySelector<HTMLElement>('[role="heading"]');
       if (!title) throw new Error("navigation header has no title");
-      const style = getComputedStyle(title);
       const box = title.getBoundingClientRect();
       return {
         height: box.height,

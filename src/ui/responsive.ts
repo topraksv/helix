@@ -208,7 +208,7 @@ export function fittedQuickDays<T>(boxWidth: number, days: readonly T[]): T[] {
 }
 
 /** How much of a tab's column must stay clear for its label to count as fitting. */
-export const LABEL_BREATHING = 8;
+const LABEL_BREATHING = 8;
 
 /**
  * Whether the bar should draw its labels at all.

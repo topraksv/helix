@@ -1,4 +1,4 @@
-const { withInfoPlist, withPodfile, withXcodeProject } = require("@expo/config-plugins");
+const { withInfoPlist, withPodfile, withXcodeProject } = require("expo/config-plugins");
 
 const NATIVE_PRODUCT_NAME = "HelixNative";
 const SQLITE_HEADER_SEARCH_PATH = "$(PODS_ROOT)/Headers/Public/ExpoSQLite";
