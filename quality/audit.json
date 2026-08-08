@@ -1,0 +1,309 @@
+{
+  "schemaVersion": 1,
+  "title": "Helix kanıt tabanlı kalite denetimi",
+  "environment": "Tek test ortamı; production ve store release kapsam dışı",
+  "auditedCommit": "0b29d0e734ce081d4a118f0ff4a86d0b127ddb69",
+  "auditedAt": "2026-08-09",
+  "methodology": {
+    "formula": "Kategori puanı = 10 × geçen kontrol / uygulanabilir kontrol. Her puanlanan kategoride tam 5 kontrol vardır; her geçen kontrol 2 puandır.",
+    "overallFormula": "Genel puan = 10 × tüm geçen kontroller / tüm uygulanabilir kontroller. N/A kategoriler paydaya girmez.",
+    "rules": [
+      "Yalnız status=pass puan getirir; fail, manual ve blocked sıfırdır.",
+      "Bir kod değişikliği tek başına puan yükseltmez; tekrarlanabilir komut, test, cihaz veya servis kanıtı gerekir.",
+      "baseline değişiklik öncesi durumu korur; status güncel durumdur. Git diff hangi kontrolün neden yükseldiğini gösterir.",
+      "Kontrol listesi düzeltmelerden önce dondurulmuştur; puanı yükseltmek için kontrol silinemez veya gevşetilemez.",
+      "10/10 kusursuzluk iddiası değil, bu proje için önceden ilan edilen beş kontrolün tamamının geçmiş olmasıdır."
+    ],
+    "standards": [
+      "https://www.w3.org/TR/WCAG22/",
+      "https://mas.owasp.org/MASVS/",
+      "https://supabase.com/docs/guides/deployment/going-into-prod",
+      "https://docs.expo.dev/versions/v54.0.0/"
+    ]
+  },
+  "categories": [
+    {
+      "id": "financial-domain",
+      "name": "Finansal ve domain doğruluğu",
+      "controls": [
+        { "id": "FIN-01", "name": "Para, tarih, recurrence ve sıralama invariant'ları property testlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/financial-properties.test.ts; npm run verify:full: 944/944 test geçti"], "toPass": [] },
+        { "id": "FIN-02", "name": "Kart, taksit, yatırım ve döviz hesapları örnek-oracle ile uzlaşır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/installments.test.ts, tests/investments.test.ts, tests/money-fx-computed.test.ts"], "toPass": [] },
+        { "id": "FIN-03", "name": "Ledger, dashboard ve analiz aynı veri üzerinde uzlaşır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/financial-consistency.test.ts; temiz verify:full geçti"], "toPass": [] },
+        { "id": "FIN-04", "name": "Finansal yazımlar native SQLite satırlarıyla doğrulanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-08 iPhone 16e ve iPad Air 11-inch M2 simülatörlerinde transaction ve SASA satırları sorgulandı; .ai/AI_HANDOFF.md:57"], "toPass": [] },
+        { "id": "FIN-05", "name": "Uzun repository mutation dizileri bağımsız saf modelle adım adım karşılaştırılır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["100 seed × 50 mutation gerçek SQLite repository/model testi bulunamadı"], "toPass": ["Bakiye, kart ekstresi, kategori toplamı ve yatırım cüzdanını her adımda oracle ile karşılaştıran deterministik model-tabanlı test ekle"] }
+      ]
+    },
+    {
+      "id": "data-integrity",
+      "name": "Veri bütünlüğü ve yerel dayanıklılık",
+      "controls": [
+        { "id": "DATA-01", "name": "Yazımlar transaction içinde ve eşzamanlı transaction'lar serialize edilir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["src/db/client.ts withTransaction; tests/maintenance-queue.test.ts ve repository contract testleri geçti"], "toPass": [] },
+        { "id": "DATA-02", "name": "Migration upgrade ve tekrar çalıştırma veri koruyucudur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/migration-upgrade.test.ts geçti"], "toPass": [] },
+        { "id": "DATA-03", "name": "İlişkisel geçersiz restore atomik olarak hiçbir şey yazmaz", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/restore-integrity.test.ts ve Chromium core-flow restore E2E geçti"], "toPass": [] },
+        { "id": "DATA-04", "name": "Native local ledger cold restart sonrasında aynı kalır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["e2e/native-local akışı yazımdan sonra stopApp/launchApp ve yeniden okuma yapmıyor"], "toPass": ["İşlem ve yatırım yazımından sonra uygulamayı öldür/aç; tutar, not, SASA ve alış toplamını yeniden doğrula"] },
+        { "id": "DATA-05", "name": "Disk dolu, bozuk DB ve yarım migration fault-injection ile güvenli kurtarılır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["SQLITE_FULL, SQLITE_CORRUPT ve yarım migration fault matrisi yok"], "toPass": ["Kontrollü hataları enjekte et; sağlam satırların korunduğunu ve kullanıcı kurtarma yolunu test et"] }
+      ]
+    },
+    {
+      "id": "architecture",
+      "name": "Mimari ve modülerlik",
+      "controls": [
+        { "id": "ARCH-01", "name": "Import grafiğinde cycle yoktur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["madge --circular: cycle bulunmadı; Graphify: cycle yok"], "toPass": [] },
+        { "id": "ARCH-02", "name": "Kopya kod oranı yüzde 1'in altındadır", "critical": false, "baseline": "pass", "status": "pass", "evidence": ["jscpd: 64.179 satırda yüzde 0,44 duplicate"], "toPass": [] },
+        { "id": "ARCH-03", "name": "Veri, domain ve UI sınırları kaynak kontrat testleriyle korunur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/source-boundaries.test.ts, tests/repository-contract.test.ts geçti"], "toPass": [] },
+        { "id": "ARCH-04", "name": "Route modülleri tek değişme nedeni taşıyan sınırlar içindedir", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["cash-flow 1067, dashboard 982, settings 870 satır; birden fazla bağımsız akış aynı route'ta"], "toPass": ["Call-site ve testleri okuyup yalnız bağımsız sorumlulukları çıkar; toplam karmaşıklığı ölç"] },
+        { "id": "ARCH-05", "name": "Public modül yüzeyindeki her export'un dış caller'ı vardır", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Knip + rg; birden fazla internal-only export/re-export doğrulandı"], "toPass": ["Kanıtlanmış gereksiz export'ları daralt ve Expo-aware taramayı tekrarlanabilir yap"] }
+      ]
+    },
+    {
+      "id": "code-quality",
+      "name": "Kod kalitesi ve sadelik",
+      "controls": [
+        { "id": "CODE-01", "name": "Lint sıfır hata ile geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-09 npm run verify:full içindeki expo lint geçti"], "toPass": [] },
+        { "id": "CODE-02", "name": "Kaynakta yasaklı any, ts-ignore veya açıklamasız TODO yoktur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["rg kaynak taraması: explicit any, ts-ignore/expect-error ve TODO/FIXME/HACK yok"], "toPass": [] },
+        { "id": "CODE-03", "name": "Unused local ve parameter derleyici tarafından reddedilir", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["tsc --noUnusedLocals --noUnusedParameters: e2e/ui-consistency.spec.ts:457 unused style"], "toPass": ["Unused değişkeni kaldır; iki TypeScript bayrağını kalıcı aç"] },
+        { "id": "CODE-04", "name": "Kanıtlanmış kullanılmayan export/re-export kalmaz", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["interactionSurface re-export, isHovered, FieldError ve internal-only token/type export'ları dış caller'sız"], "toPass": ["Her caller'ı tekrar ara; yalnız dış caller'sız export niteleyicilerini kaldır"] },
+        { "id": "CODE-05", "name": "Aşırı karmaşık fonksiyonlar sorumluluk sınırı incelemesinden geçmiştir", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Tanısal ESLint: transaction form complexity 111, subscription 94, analysis 73; resmi eşik/inceleme yok"], "toPass": ["Fonksiyonları davranış bazında incele; yalnız ölçülebilir şekilde sadeleşen dilimleri ayır"] }
+      ]
+    },
+    {
+      "id": "type-safety",
+      "name": "TypeScript ve tip güvenliği",
+      "controls": [
+        { "id": "TYPE-01", "name": "strict TypeScript geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tsconfig strict=true; npm run typecheck geçti"], "toPass": [] },
+        { "id": "TYPE-02", "name": "Unchecked index erişimleri tipte görünür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tsconfig noUncheckedIndexedAccess=true"], "toPass": [] },
+        { "id": "TYPE-03", "name": "Uygulama kaynak kodunda explicit any yoktur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["rg AST/text taraması; src altında explicit any yok"], "toPass": [] },
+        { "id": "TYPE-04", "name": "Supabase ve SQLite sınırları generated/schema tipleri kullanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["src/types/database.ts, src/db/schema.ts ve repository tipleri"], "toPass": [] },
+        { "id": "TYPE-05", "name": "Unused local/parameter typecheck kapısında reddedilir", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["noUnusedLocals ve noUnusedParameters tsconfig'te kapalı; tanısal komut bir ihlal buldu"], "toPass": ["Bayrakları aç ve mevcut ihlali gider"] }
+      ]
+    },
+    {
+      "id": "test-engineering",
+      "name": "Test mühendisliği ve kalite kapıları",
+      "controls": [
+        { "id": "TEST-01", "name": "Birim ve kontrat suite'i tam geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-09: 104 dosya, 944/944 Vitest geçti"], "toPass": [] },
+        { "id": "TEST-02", "name": "Finans ve giriş doğrulamada generative/property testleri vardır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/financial-properties.test.ts ve backup-validation generative kontrolleri"], "toPass": [] },
+        { "id": "TEST-03", "name": "Geçmiş kritik bug sınıfları regression testiyle kilitlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["offline OPFS, transaction queue, account binding, restore atomicity ve source-boundary testleri"], "toPass": [] },
+        { "id": "TEST-04", "name": "Tam kalite kapısı build, budget ve E2E'yi birlikte çalıştırır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["npm run verify:full temiz HEAD'de geçti"], "toPass": [] },
+        { "id": "TEST-05", "name": "Testlerin hata yakalama gücü mutation testing ile ölçülür", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Mutation score veya eşdeğer changed-code fault seeding kapısı yok"], "toPass": ["Finans, repository ve auth çekirdeğinde mutation run ekle; yaşayan mutantları kapat ve eşik ilan et"] }
+      ]
+    },
+    {
+      "id": "web-e2e",
+      "name": "Web uçtan uca akışlar",
+      "controls": [
+        { "id": "WEB-01", "name": "Onboarding ve ledger CRUD/undo gerçek tarayıcıda geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium core-flow @smoke geçti"], "toPass": [] },
+        { "id": "WEB-02", "name": "Backup oluşturma, temiz restore ve invalid restore atomikliği geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium core-flow backup/restore geçti"], "toPass": [] },
+        { "id": "WEB-03", "name": "Offline relaunch, service worker ve deep-link dayanıklılığı geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium resilience.spec.ts geçti"], "toPass": [] },
+        { "id": "WEB-04", "name": "Semantik, focus, kontrast ve geometri E2E ile ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium a11y/visual/ui-consistency suite geçti"], "toPass": [] },
+        { "id": "WEB-05", "name": "Tam web E2E CI'da tekrarlanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["89/89 Playwright testi yerelde geçti; son HEAD CI shard'ları yeşil"], "toPass": [] }
+      ]
+    },
+    {
+      "id": "ios-native",
+      "name": "iOS native doğrulama",
+      "controls": [
+        { "id": "IOS-01", "name": "iPhone 16e hedefinde native local akış geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-08 iOS 26.5 iPhone 16e simulator Maestro local flow geçti"], "toPass": [] },
+        { "id": "IOS-02", "name": "iPad Air 11-inch M2 hedefinde native local akış geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-08 iOS 26.5 iPad Air 11-inch M2 simulator Maestro local flow geçti"], "toPass": [] },
+        { "id": "IOS-03", "name": "Native SQLite transaction ve yatırım satırları doğrudan doğrulanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Her iki simulator helix.db içinde 123456 minor TRY ve SASA 10×100 satırları sorgulandı"], "toPass": [] },
+        { "id": "IOS-04", "name": "Local finans verisi cold restart sonrası UI ve DB'de kalır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Local flow stopApp/launchApp sonrası finans assertion yapmıyor"], "toPass": ["Aynı akışı iki simulator tipinde cold restart ile tamamla"] },
+        { "id": "IOS-05", "name": "Fiziksel VoiceOver, Face ID, share sheet ve Mail deep-link turu geçer", "critical": true, "baseline": "manual", "status": "manual", "evidence": ["Fiziksel iPhone 16e/iPad kanıtı henüz kullanıcıdan alınmadı"], "toPass": ["Tanımlı fiziksel cihaz checklist'ini kullanıcıyla tamamla ve sonuç kaydet"] }
+      ]
+    },
+    {
+      "id": "android-native",
+      "name": "Android native doğrulama",
+      "controls": [
+        { "id": "AND-01", "name": "Android 16/API 36 toolchain deterministik olarak kullanılabilir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["HelixApi36 AVD boot_complete=1; SDK platform/build-tools 36 ve JDK 17 doğrulandı"], "toPass": [] },
+        { "id": "AND-02", "name": "Release APK derlenir, kurulur ve MainActivity açılır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-09 BUILD SUCCESSFUL 7m09; com.toprak.helix 1.0.0 targetSdk 36 topResumedActivity"], "toPass": [] },
+        { "id": "AND-03", "name": "Onboarding, ledger, ayarlar ve yatırım native akışı geçer", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Maestro 01-ledger-investments-settings 1m05'te platforma bağımlı Not seçicisinde kaldı"], "toPass": ["Selector'ı Android/iOS ortak erişilebilir kimliğe taşı; tüm akışı yeniden çalıştır"] },
+        { "id": "AND-04", "name": "Cold restart sonrası ledger ve yatırım verisi kalır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Android'da restart assertion henüz yok"], "toPass": ["stopApp/launchApp sonrası transaction ve SASA değerlerini doğrula"] },
+        { "id": "AND-05", "name": "TalkBack, font scale, rotation ve düşük bellek davranışı geçer", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Android accessibility/configuration test matrisi yok"], "toPass": ["API 36 emulator'da TalkBack semantiği, 200% font, rotation ve process death senaryolarını ölç"] }
+      ]
+    },
+    {
+      "id": "browser-matrix",
+      "name": "Tarayıcı ve viewport matrisi",
+      "controls": [
+        { "id": "BROWSER-01", "name": "Chromium tam suite geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["89/89 Playwright Chromium geçti"], "toPass": [] },
+        { "id": "BROWSER-02", "name": "Firefox kritik smoke sıfır runtime hata ile geçer", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["2026-08-09: 3/13 geçti; CSP console errors, offline navigation farkı ve bir page crash"], "toPass": ["Gerçek app hataları ile browser/test-runner farklarını ayır; desteklenen smoke setini sıfır hata ile geçir"] },
+        { "id": "BROWSER-03", "name": "WebKit/Safari kritik smoke geçer", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["2026-08-09: 0/13; uygulama başlangıçta Veritabanı hatası gösteriyor"], "toPass": ["expo-sqlite WebKit/OPFS uyumluluğunu çöz veya web veri katmanı için desteklenen fallback uygula"] },
+        { "id": "BROWSER-04", "name": "Telefon, kısa landscape ve desktop viewport geometrisi ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium 320/390/desktop ve kısa landscape E2E geçti"], "toPass": [] },
+        { "id": "BROWSER-05", "name": "Desteklenen browser matrisi CI'da her committe tekrarlanır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["playwright.config.ts yalnız Desktop Chrome"], "toPass": ["Firefox/WebKit kararını belgele ve desteklenen motorları CI smoke projesine ekle"] }
+      ]
+    },
+    {
+      "id": "ui-visual",
+      "name": "UI ve görsel tutarlılık",
+      "controls": [
+        { "id": "UI-01", "name": "Tema tokenları, rendered text contrast ve control boundary ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["theme/contrast contract testleri ve Chromium visual-a11y geçti"], "toPass": [] },
+        { "id": "UI-02", "name": "Page overflow, clipping ve modal erişimi gerçek geometriyle ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["ui-consistency ve visual-a11y viewport matrisi Chromium'da geçti"], "toPass": [] },
+        { "id": "UI-03", "name": "iPhone ve iPad native yüzeyleri hedef boyutlarda incelenmiştir", "critical": false, "baseline": "pass", "status": "pass", "evidence": ["2026-08-08 iki hedef simulator ekranı ve Maestro akışı incelendi"], "toPass": [] },
+        { "id": "UI-04", "name": "Android hedef boyutu ve büyük font görsel/geometri kontrolünden geçer", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Android akışı not alanında tamamlanmadı; büyük font matrisi yok"], "toPass": ["Android flow, 200% font ve rotation geometri assertion'larını geçir"] },
+        { "id": "UI-05", "name": "Fiziksel cihazlarda insan görsel kabul turu kayıtlıdır", "critical": false, "baseline": "manual", "status": "manual", "evidence": ["Fiziksel iPhone/iPad kullanıcı kabul sonucu yok"], "toPass": ["Karanlık/açık tema, iPad split-view, landscape ve klavye açık yüzeyleri checklist ile doğrula"] }
+      ]
+    },
+    {
+      "id": "ux",
+      "name": "UX ve görev başarısı",
+      "controls": [
+        { "id": "UX-01", "name": "Onboarding, işlem ve yatırım ana görevleri uçtan uca tamamlanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium core/investment E2E ve iOS local Maestro geçti"], "toPass": [] },
+        { "id": "UX-02", "name": "Dirty-exit, undo ve invalid import kullanıcıyı veri kaybından korur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["E2E ve kontrat testleri geçti"], "toPass": [] },
+        { "id": "UX-03", "name": "Kullanıcıya geliştirici hatası sızdırmadan eylemli hata yüzeyi sunulur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["diagnostics/error boundary/auth friendly error testleri geçti"], "toPass": [] },
+        { "id": "UX-04", "name": "Dead-letter/sync sorunu kullanıcı tarafından tanılanıp kurtarılabilir", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["UI yalnız genel 'Bazı kayıtlar yalnız bu cihazda' mesajı gösteriyor"], "toPass": ["Redacted ayrıntı, retry ve güvenli local-copy kurtarma eylemi ekle"] },
+        { "id": "UX-05", "name": "Fiziksel cihaz görevleri ölçülmüş kullanıcı başarısı ile doğrulanır", "critical": false, "baseline": "manual", "status": "manual", "evidence": ["Görev süresi, hata oranı veya kullanıcı notu kaydedilmedi"], "toPass": ["iPhone/iPad üzerinde tanımlı görev checklist'i, süre ve engel notlarını kaydet"] }
+      ]
+    },
+    {
+      "id": "accessibility",
+      "name": "Erişilebilirlik",
+      "controls": [
+        { "id": "A11Y-01", "name": "Ana web rotalarında WCAG A/AA otomatik ihlali yoktur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium axe smoke geçti"], "toPass": [] },
+        { "id": "A11Y-02", "name": "Klavye focus, modal ownership ve focus return doğrudan testlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["a11y-semantics.spec.ts geçti"], "toPass": [] },
+        { "id": "A11Y-03", "name": "Text contrast, control boundary ve target geometry ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["rendered contrast/boundary ve geometry assertion'ları geçti"], "toPass": [] },
+        { "id": "A11Y-04", "name": "iOS yaklaşık yüzde 200 Dynamic Type yüzeyi otomatik doğrulanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["e2e/native/05-large-text.yaml ve accessibility contract testleri"], "toPass": [] },
+        { "id": "A11Y-05", "name": "Fiziksel VoiceOver ve Android TalkBack görev turu geçer", "critical": true, "baseline": "manual", "status": "manual", "evidence": ["Screen-reader gerçek cihaz/emulator görev sonucu yok"], "toPass": ["Tüm primary tab, form hatası, modal ve backup akışını VoiceOver/TalkBack ile tamamla"] }
+      ]
+    },
+    {
+      "id": "performance",
+      "name": "Performans ve paket bütçesi",
+      "controls": [
+        { "id": "PERF-01", "name": "Production web bundle hard budget altında kalır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["check-web-budget geçti; entry yaklaşık 3,32 MB"], "toPass": [] },
+        { "id": "PERF-02", "name": "Web ilk ekran başlangıç bütçesi gerçek tarayıcıda geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium startup @smoke geçti"], "toPass": [] },
+        { "id": "PERF-03", "name": "Web vitals ve uzun görev regresyonları E2E ile ölçülür", "critical": false, "baseline": "pass", "status": "pass", "evidence": ["web-vitals/performance Playwright senaryoları tam suite'te geçti"], "toPass": [] },
+        { "id": "PERF-04", "name": "Bundle bütçesinde en az yüzde 10 sürdürülebilir headroom vardır", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Entry ve total JS hard budget'a yaklaşık yüzde 1 yakın; büyüme payı yetersiz"], "toPass": ["Bundle analyzer ile büyük modülleri ölç; davranış değiştirmeden en az yüzde 10 headroom sağla veya bütçe SLO'sunu gerekçeli yeniden tanımla"] },
+        { "id": "PERF-05", "name": "iOS ve Android cold/warm start ile route TTI p95 ölçülür", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Native release performans metriği veya EAS Observe ölçümü yok"], "toPass": ["İki platformda cold/warm launch ve ana route TTI örneklerini ölç, eşik ve regresyon kapısı ilan et"] }
+      ]
+    },
+    {
+      "id": "security-privacy",
+      "name": "Siber güvenlik ve gizlilik",
+      "controls": [
+        { "id": "SEC-01", "name": "Git geçmişi ve güncel ağaçta gerçek secret yoktur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Gitleaks 351 commit: yalnız public anon key ve mock false-positive; GitHub secret alerts 0"], "toPass": [] },
+        { "id": "SEC-02", "name": "Owner isolation ve RLS otomatik DB testleriyle geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Local 136/136 pgTAP ve linked db lint geçti"], "toPass": [] },
+        { "id": "SEC-03", "name": "Web CSP, referrer, source-map ve dış peer sınırları testlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["src/app/+html.tsx; tests/release-config.test.ts ve web-security kontratları geçti"], "toPass": [] },
+        { "id": "SEC-04", "name": "CodeQL high/critical açık bulgu bırakmaz", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["GitHub CodeQL alert #3 high: tests/product-terminology.test.ts:72 dynamic regex"], "toPass": ["Dynamic regex'i kaldır veya güvenli sınırlı algoritmayla değiştir; CodeQL'ın kapanmasını doğrula"] },
+        { "id": "SEC-05", "name": "Yetkili MASVS/DAST dinamik saldırı matrisi high/critical bulgusuzdur", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Local storage, deep link, session, network ve backup'a karşı dinamik güvenlik raporu yok"], "toPass": ["Tek test ortamında yazılı kapsamla MASVS tabanlı dinamik test yap; high/critical bulguları kapat"] }
+      ]
+    },
+    {
+      "id": "supabase-db",
+      "name": "Supabase ve veritabanı kalitesi",
+      "controls": [
+        { "id": "DB-01", "name": "Yerel ve linked migration sürümleri birebir eşleşir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Supabase CLI: 1-27 local/remote migration eşleşti"], "toPass": [] },
+        { "id": "DB-02", "name": "Local ve linked database lint temizdir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["supabase db lint local ve linked: hata yok"], "toPass": [] },
+        { "id": "DB-03", "name": "RLS ve owner integrity pgTAP suite'i geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Fresh local stack: 136/136 tests/database/owner_integrity_and_rls.sql geçti"], "toPass": [] },
+        { "id": "DB-04", "name": "Linked DB performans/index istatistikleri ölçülür ve kritik öneri kalmaz", "critical": false, "baseline": "blocked", "status": "blocked", "evidence": ["Remote inspect stats SUPABASE_DB_PASSWORD olmadığı için auth/circuit-breaker ile durduruldu"], "toPass": ["Kullanıcıdan linked DB parolasını al; advisor/index/bloat/slow-query ölçümlerini salt-okunur çalıştır"] },
+        { "id": "DB-05", "name": "İzole backup restore tatbikatı RPO/RTO ve pgTAP ile doğrulanır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Gerçek backup'tan izole restore ve satır sayımı tatbikatı yok"], "toPass": ["Linked projeye dokunmadan izole hedefe restore et; satır sayısı ve 136 pgTAP'ı tekrar çalıştır"] }
+      ]
+    },
+    {
+      "id": "sync-concurrency",
+      "name": "Senkronizasyon ve eşzamanlılık",
+      "controls": [
+        { "id": "SYNC-01", "name": "Push/pull, tombstone, retry ve merge policy kontrat testleri geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["sync-merge, sync-outbound, multi-client-sync ve dead-letter testleri geçti"], "toPass": [] },
+        { "id": "SYNC-02", "name": "İki client eşzamanlı edit/delete senaryosu deterministik sonuç verir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/multi-client-sync.test.ts gerçek SQLite dosyalarıyla geçti"], "toPass": [] },
+        { "id": "SYNC-03", "name": "Account isolation ve session epoch eski işlerin yazmasını engeller", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["session-epoch, privacy ve RLS testleri geçti"], "toPass": [] },
+        { "id": "SYNC-04", "name": "Dead-letter kayıtları owner tarafından tanılanıp güvenle retry/export edilebilir", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["UI neden/kayıt türü/son hata veya recovery action göstermiyor"], "toPass": ["PII içermeyen diagnostics, retry sonucu ve local-copy export ekle"] },
+        { "id": "SYNC-05", "name": "İki fiziksel cihaz offline çatışma ve reconnect turunu geçer", "critical": true, "baseline": "manual", "status": "manual", "evidence": ["iPhone/iPad aynı hesap fiziksel conflict testi yok"], "toPass": ["Aynı kaydı iki cihazda offline farklı düzenle; reconnect sonucunu ve UI durumunu doğrula"] }
+      ]
+    },
+    {
+      "id": "import-export",
+      "name": "İçe/dışa aktarma ve yedek",
+      "controls": [
+        { "id": "BACKUP-01", "name": "Gerçek JSON backup üretilir ve temiz workspace'e restore edilir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium core-flow backup dosyasını okuyup temiz context'e restore etti"], "toPass": [] },
+        { "id": "BACKUP-02", "name": "İlişkisel geçersiz backup atomik reddedilir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["E2E ve tests/restore-integrity.test.ts geçti"], "toPass": [] },
+        { "id": "BACKUP-03", "name": "Spreadsheet import mapping, duplicate ve finansal sınırlar testlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/spreadsheet-import.test.ts ve backup-validation geçti"], "toPass": [] },
+        { "id": "BACKUP-04", "name": "Max boyut, truncation, encoding ve duplicate-ID fault matrisi geçer", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["MAX_BACKUP_BYTES var; sınır-altı/üstü cihaz süre-memory ve bozuk encoding matrisi yok"], "toPass": ["Sınır-altı/üstü, truncated JSON, wrong encoding ve duplicate ID testlerini atomiklik + süre ile ekle"] },
+        { "id": "BACKUP-05", "name": "Fiziksel iOS Files/share-sheet export→sil→restore turu geçer", "critical": true, "baseline": "manual", "status": "manual", "evidence": ["Native suite yalnız butona erişimi doğruluyor; OS picker turu yok"], "toPass": ["iPhone'da Files'a kaydet, uygulama verisini temizle, dosyadan restore et ve finans satırlarını doğrula"] }
+      ]
+    },
+    {
+      "id": "auth-email",
+      "name": "Kimlik doğrulama ve e-posta",
+      "controls": [
+        { "id": "AUTH-01", "name": "Sign-in, sign-up, session cleanup ve account binding testlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/auth.test.ts, session-cleanup-order, privacy ve native sign-in surface"], "toPass": [] },
+        { "id": "AUTH-02", "name": "Recovery URL origin/type ve yabancı hesap binding'i güvenli testlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["password-recovery-security/session ve auth recovery URL testleri geçti"], "toPass": [] },
+        { "id": "AUTH-03", "name": "Gerçek Mail→deep-link→şifre değişimi uçtan uca geçer", "critical": true, "baseline": "manual", "status": "manual", "evidence": ["Fiziksel Mail uygulamasından tam tur kanıtı yok"], "toPass": ["iPhone'da gerçek recovery mailini aç; yeni şifreyi doğrula, eski ve ikinci kullanım linkini reddet"] },
+        { "id": "AUTH-04", "name": "Auth/recovery rate-limit ve replay/expiry entegrasyon testi geçer", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Friendly error unit testi var; gerçek test ortamı rate-limit/replay matrisi yok"], "toPass": ["Yetkili test hesabıyla limit, expired ve replayed token davranışını ölç"] },
+        { "id": "AUTH-05", "name": "Şifre değişimi ve sign-out diğer cihaz session'larını ürün kontratına göre revoke eder", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["İki cihazlı session revoke entegrasyon kanıtı yok"], "toPass": ["İki session aç; password change/sign-out sonrası diğer session davranışını doğrula"] }
+      ]
+    },
+    {
+      "id": "observability",
+      "name": "Gözlemlenebilirlik ve hata operasyonu",
+      "controls": [
+        { "id": "OBS-01", "name": "Kullanıcı hataları güvenli sınıflanır ve hassas veri loglanmaz", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["src/domain/diagnostics.ts, logger ve privacy testleri geçti"], "toPass": [] },
+        { "id": "OBS-02", "name": "CI, publish ve güvenlik koşuları merkezi olarak görülebilir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["GitHub Actions quality/E2E/gate/Pages/mobile/security son HEAD'de yeşil"], "toPass": [] },
+        { "id": "OBS-03", "name": "Release crash/runtime hataları privacy-aware telemetry ile görünür", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Sentry/Expo Observe veya eşdeğer runtime crash entegrasyonu yok"], "toPass": ["PII/tutar/not redaction ile crash reporting ekle ve test crash'ini doğrula"] },
+        { "id": "OBS-04", "name": "Sync hata sınıfı, tekrar oranı ve recovery sonucu redacted ölçülür", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Owner-facing veya merkezi redacted sync diagnostics yok"], "toPass": ["Hata sınıfı/version/retry sonucu metriklerini hassas payload olmadan ekle"] },
+        { "id": "OBS-05", "name": "Crash-free, sync latency ve mail başarısı için SLO/alarm/runbook vardır", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Ürün SLO'su, alarm eşiği ve incident sahibi tanımlı değil"], "toPass": ["Tek test ortamına uygun SLO, eşik, sahip ve aksiyon runbook'u ilan et"] }
+      ]
+    },
+    {
+      "id": "dependencies",
+      "name": "Bağımlılık ve tedarik zinciri",
+      "controls": [
+        { "id": "DEP-01", "name": "Lockfile deterministik ve registry signature doğrulaması temizdir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["package-lock.json; npm audit signatures: 1338 signature ve 240 attestation doğrulandı"], "toPass": [] },
+        { "id": "DEP-02", "name": "SBOM lisans incelemesinde yasaklı lisans yoktur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["542 production component; GPL/AGPL yok; metadata'sı eksik 3 paketin LICENSE dosyası mevcut"], "toPass": [] },
+        { "id": "DEP-03", "name": "High/critical advisory açık veya accepted-risk bırakmaz", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["npm audit: 10 high; image-size için 2026-09-08'e kadar iki no-patch accepted risk"], "toPass": ["Expo/Metro uyumlu patched sürüme geç veya upstream çözüm gelene kadar süresi dolmayan risk kaydını 10/10 dışı tut"] },
+        { "id": "DEP-04", "name": "Expo Doctor proje-uyumluluk uyarısı vermez", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["expo-doctor 16/18; bottom-tabs range ve local eas-cli uyarısı"], "toPass": ["SDK 54 matrisine uygun bottom-tabs declaration; EAS CLI pinini resmi/ölçülmüş istisna ile çöz"] },
+        { "id": "DEP-05", "name": "Uyumlu direct dependency patch/minor güncellemeleri değerlendirilmiştir", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Playwright, navigation, Supabase ve lucide için bekleyen compatible güncellemeler var"], "toPass": ["Expo guard'larını koruyarak küçük batch'lerle güncelle ve her batch'i full/native doğrula"] }
+      ]
+    },
+    {
+      "id": "repo-hygiene",
+      "name": "Repo temizliği ve gereksiz dosya",
+      "controls": [
+        { "id": "REPO-01", "name": "Denetim başlangıcında tracked çalışma ağacı temizdir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["git status --short boş; HEAD origin/main ile aynı"], "toPass": [] },
+        { "id": "REPO-02", "name": "Generated/native/secret çıktılar dar ignore kurallarıyla dışarıdadır", "critical": true, "baseline": "pass", "status": "pass", "evidence": [".gitignore dist, native generation, graphify, env ve test artifacts'ı dar yollarla kapsıyor"], "toPass": [] },
+        { "id": "REPO-03", "name": "Dosya düzeyinde doğrulanmış atıl runtime kaynak/dependency yoktur", "critical": false, "baseline": "pass", "status": "pass", "evidence": ["Knip dosya/dependency adayları Babel, Expo plugin, service worker, server ve font entrypoint'leri olarak false-positive doğrulandı"], "toPass": [] },
+        { "id": "REPO-04", "name": "Expo-aware unused taraması tekrarlanabilir ve düşük false-positive'lidir", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Knip config/script yok; on-demand tarama implicit Expo entrypoint'lerini yanlış işaretliyor"], "toPass": ["Expo config/plugin/SW/font/script entrypoint'lerini bilen Knip yapılandırması ve audit komutu ekle"] },
+        { "id": "REPO-05", "name": "Internal-only export ve stale referanslar sıfırdır", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Birden fazla caller'sız export ve stale docs/agent referansı doğrulandı"], "toPass": ["Caller doğrulamasıyla export'ları daralt; stale referansları güncelle veya kaldır"] }
+      ]
+    },
+    {
+      "id": "git-ci",
+      "name": "Git, CI ve yayın zinciri",
+      "controls": [
+        { "id": "CI-01", "name": "Commitler imzalı ve main force/delete/history rewrite'a kapalıdır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["HEAD good ED25519 signature; branch protection signatures, linear history, force/delete deny"], "toPass": [] },
+        { "id": "CI-02", "name": "Actions third-party kullanımları full SHA ile pinlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Workflow source taraması ve release-config tests geçti"], "toPass": [] },
+        { "id": "CI-03", "name": "Publish yalnız kalite/E2E gate sonrasında çalışır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["ci.yml gate dependencies; son Pages ve mobile preview publish yeşil"], "toPass": [] },
+        { "id": "CI-04", "name": "Başarısız kalite commitinin protected main'e kabulü engellenir", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Branch protection required status checks boş; gate publish'i durdurur ama commit main'e girebilir"], "toPass": ["Direct-main politikasıyla uyumlu admission tasarımını seç veya PR/merge-queue politikasına geç; required gate'i doğrula"] },
+        { "id": "CI-05", "name": "Web ve OTA rollback yolu tatbikatla süreli doğrulanmıştır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Revert politikası var; gerçek rollback drill/RTO kaydı yok"], "toPass": ["Zararsız update ile web ve OTA revert tatbikatı yap; komut, süre ve live smoke kaydet"] }
+      ]
+    },
+    {
+      "id": "agent-docs",
+      "name": "Dokümantasyon ve agent sürekliliği",
+      "controls": [
+        { "id": "DOC-01", "name": "Her session AGENTS ve güncel handoff ile başlar", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["AGENTS.md başlangıç kuralı; check-memory-freshness 5/5"], "toPass": [] },
+        { "id": "DOC-02", "name": "Skill sözleşmeleri otomatik doğrulanır", "critical": false, "baseline": "pass", "status": "pass", "evidence": ["node .ai/scripts/check-skills.mjs: 27 skill geçti"], "toPass": [] },
+        { "id": "DOC-03", "name": "Görev yönlendirme ve domain invariant otoriteleri ayrıdır", "critical": true, "baseline": "pass", "status": "pass", "evidence": [".ai/ROUTING.md ve .ai/INVARIANTS.md mevcut; AGENTS otorite sırasını tanımlıyor"], "toPass": [] },
+        { "id": "DOC-04", "name": "Human docs güncel davranış ve CI gerçeğiyle çelişmez", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["docs/SECURITY.md olmayan required quality check iddia ediyor; docs/TESTING.md Android SDK yok diyor"], "toPass": ["Stale snapshot'ı kaldır veya her sayfayı güncel source-of-truth ve doğrulama tarihiyle düzelt"] },
+        { "id": "DOC-05", "name": "Graphify çıktısı kendi memory/output dosyalarıyla kirlenmeden scoped query verir", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["manifest hâlâ graphify-out/memory/*.md içeriyor; broad query eski denetim memory node'una bağlanıyor"], "toPass": ["Graphı code-only temiz yeniden çıkar; memory self-contamination'ı kaldır ve örnek query precision'ını doğrula"] }
+      ]
+    },
+    {
+      "id": "localization",
+      "name": "Türkçe, tarih ve içerik kalitesi",
+      "controls": [
+        { "id": "LANG-01", "name": "TRY ve çoklu para formatları Türkçe locale ile testlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["money/locale ve E2E 1.234,56 TL assertion'ları geçti"], "toPass": [] },
+        { "id": "LANG-02", "name": "Europe/Istanbul tarih, ay ve recurrence sınırları testlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["locale-timezone, month-bounds, recurrence testleri geçti"], "toPass": [] },
+        { "id": "LANG-03", "name": "Subset font Türkçe karakterleri tüm platformlarda korur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/font-coverage.test.ts; native launch Türkçe karakter assertion'ı"], "toPass": [] },
+        { "id": "LANG-04", "name": "Ürün terminolojisi otomatik sözlük/kontrat testleriyle korunur", "critical": false, "baseline": "pass", "status": "pass", "evidence": ["tests/product-terminology.test.ts ve copy source sınırları"], "toPass": [] },
+        { "id": "LANG-05", "name": "Tüm kullanıcı metni yazım denetimi ve insan editör örneklemesinden geçmiştir", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["tr.ts için tam spellcheck sözlüğü ve kayıtlı insan editör onayı yok"], "toPass": ["Türkçe sözlük tabanlı tarama ekle; finans terimleri ve kritik hata metinlerini insanla örnekle"] }
+      ]
+    }
+  ],
+  "excludedCategories": [
+    {
+      "id": "release-readiness",
+      "name": "Production/store hazırlığı",
+      "status": "not_applicable",
+      "reason": "Kullanıcı tek test ortamında devam ediyor ve production/store binary şu an bilinçli olarak kapsam dışında."
+    }
+  ]
+}

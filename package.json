@@ -74,14 +74,16 @@
     "test:e2e:only": "playwright test",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "verify": "npm run typecheck && npm test && npx expo lint",
+    "verify": "npm run quality:audit && npm run typecheck && npm test && npx expo lint",
     "bundle:check": "node scripts/check-web-budget.mjs dist --require-supabase-config",
     "test:e2e:smoke": "npm run test:e2e:export && playwright test --grep @smoke",
     "verify:full": "npm run verify && npx expo export -p web --clear && npm run bundle:check && npm run test:e2e",
     "fonts:subset": "node scripts/subset-fonts.mjs",
     "test:native": "PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\" maestro test e2e/native",
     "test:native:local": "PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\" maestro test e2e/native-local",
-    "ios:build": "expo run:ios --device \"iPhone 17 Pro\""
+    "ios:build": "expo run:ios --device \"iPhone 17 Pro\"",
+    "quality:audit": "node scripts/quality-audit.mjs --check",
+    "quality:report": "node scripts/quality-audit.mjs --render"
   },
   "private": true,
   "overrides": {
