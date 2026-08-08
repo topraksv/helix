@@ -21,4 +21,9 @@ appId: com.toprak.helix
 - extendedWaitUntil:
     visible: "Tekrar hoş geldin"
     timeout: 90000
+- scrollUntilVisible:
+    element:
+      text: "Giriş yap"
+    direction: DOWN
+    timeout: 10000
 - assertVisible: "Giriş yap"

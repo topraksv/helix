@@ -16,15 +16,33 @@ appId: com.toprak.helix
     timeout: 90000
 - assertVisible: "E-posta"
 - assertVisible: "Şifre"
+# At Dynamic Type sizes the form is intentionally taller than the phone. The
+# control remains operable in the ScrollView; bring it into the viewport before
+# asserting it rather than treating a valid reflow as a missing control.
+- scrollUntilVisible:
+    element:
+      text: "Giriş yap"
+    direction: DOWN
+    timeout: 10000
 - assertVisible: "Giriş yap"
 - assertVisible: "Şifremi Unuttum"
 # The promise the product makes on its own front door.
 - assertVisible: "Verilerin cihazında saklanır, internet yokken de çalışır."
 # The mode switch is part of the mobile auth surface too. Keep both directions
 # exercised so the link cannot drift away from the form after a layout change.
+- scrollUntilVisible:
+    element:
+      text: "Kayıt ol"
+    direction: DOWN
+    timeout: 10000
 - tapOn: "Kayıt ol"
 - assertVisible: "Hesap oluştur"
 - assertVisible: "Zaten hesabın var mı?"
+- scrollUntilVisible:
+    element:
+      text: "Giriş yap"
+    direction: DOWN
+    timeout: 10000
 - assertVisible: "Giriş yap"
 - tapOn: "Giriş yap"
 - assertVisible: "Tekrar hoş geldin"

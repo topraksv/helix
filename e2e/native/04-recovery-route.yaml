@@ -13,14 +13,29 @@ appId: com.toprak.helix
 - launchApp:
     clearState: true
 - extendedWaitUntil:
-    visible: "Şifremi Unuttum"
+    visible: "Tekrar hoş geldin"
     timeout: 90000
+- scrollUntilVisible:
+    element:
+      text: "Şifremi Unuttum"
+    direction: DOWN
+    timeout: 10000
 - tapOn: "Şifremi Unuttum"
 - assertVisible: "Şifreni yenile"
+- scrollUntilVisible:
+    element:
+      text: "Yenileme Bağlantısı Gönder"
+    direction: DOWN
+    timeout: 10000
 - assertVisible: "Yenileme Bağlantısı Gönder"
 # Never reveal whether an address has an account: the form asks for one and
 # promises a link, and says nothing about who is registered.
 - assertNotVisible: "Tekrar hoş geldin"
+- scrollUntilVisible:
+    element:
+      text: "Giriş yap"
+    direction: DOWN
+    timeout: 10000
 - tapOn: "Giriş yap"
 - extendedWaitUntil:
     visible: "Tekrar hoş geldin"

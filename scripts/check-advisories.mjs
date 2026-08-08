@@ -22,7 +22,26 @@ import { execFileSync } from "node:child_process";
  * Before extending this list: confirm the advisory has no compatible fix,
  * prove the package is absent from the export, and date the check.
  */
-const ACKNOWLEDGED = [];
+const ACKNOWLEDGED = [
+  {
+    id: "GHSA-w3rx-r6r6-pgpr",
+    package: "image-size",
+    checkedOn: "2026-08-08",
+    expectedPaths: ["expo", "react-native"],
+    recheckAfter: "2026-09-08",
+    reason:
+      "image-size@1.2.1 remains only in Metro's build chain; image-size was absent from the production web export. image-size@2.0.2 was tested but rejected because Expo Metro failed on its unmatched.png asset path. The advisory has no upstream patched version; recheck the package and export before expiry.",
+  },
+  {
+    id: "GHSA-5p2g-fcmc-qvqq",
+    package: "image-size",
+    checkedOn: "2026-08-08",
+    expectedPaths: ["expo", "react-native"],
+    recheckAfter: "2026-09-08",
+    reason:
+      "image-size@1.2.1 remains only in Metro's build chain; image-size was absent from the production web export. image-size@2.0.2 was tested but rejected because Expo Metro failed on its unmatched.png asset path. The advisory has no upstream patched version; recheck the package and export before expiry.",
+  },
+];
 
 const BLOCKING = new Set(["high", "critical"]);
 
