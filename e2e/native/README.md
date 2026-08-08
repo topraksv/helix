@@ -30,6 +30,16 @@ npm run ios:build     # ~10 min cold; only after native/config/dependency change
 npm run test:native
 ```
 
+The ledger and investments need a local-only build whose Supabase values were
+empty at build time. They are kept in a separate suite so a normal configured
+build does not fail by design:
+
+```sh
+EXPO_PUBLIC_SUPABASE_URL="" EXPO_PUBLIC_SUPABASE_ANON_KEY="" EXPO_NO_DOTENV=1 \
+  npx expo run:ios --configuration Release --device "iPhone 16e" --no-bundler
+npm run test:native:local
+```
+
 The app must be installed and a simulator booted. A dev-client build downloads
 its JavaScript from Metro on every launch, which is why the first assertion in
 each flow waits up to 90s; a release build with an embedded bundle is up in a

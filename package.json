@@ -80,6 +80,7 @@
     "verify:full": "npm run verify && npx expo export -p web --clear && npm run bundle:check && npm run test:e2e",
     "fonts:subset": "node scripts/subset-fonts.mjs",
     "test:native": "PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\" maestro test e2e/native",
+    "test:native:local": "PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\" maestro test e2e/native-local",
     "ios:build": "expo run:ios --device \"iPhone 17 Pro\""
   },
   "private": true,

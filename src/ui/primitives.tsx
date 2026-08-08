@@ -403,6 +403,7 @@ export function Button({
   haptic: hapticKind = "none",
   accessibilityHint,
   expanded,
+  testID,
 }: {
   label: string;
   onPress: () => void;
@@ -423,6 +424,7 @@ export function Button({
   haptic?: HapticKind;
   accessibilityHint?: string;
   expanded?: boolean;
+  testID?: string;
 }) {
   const { palette } = useTheme();
   const enabledColors = {
@@ -443,6 +445,7 @@ export function Button({
   const small = size === "sm";
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}

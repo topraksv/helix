@@ -440,7 +440,13 @@ export default function InvestmentOperationScreen() {
         <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
       </Card>
 
-      <Button label={pageTitle} loading={busy} disabled={!canSave} onPress={() => void save()} />
+      <Button
+        testID="investment-operation-save"
+        label={pageTitle}
+        loading={busy}
+        disabled={!canSave}
+        onPress={() => void save()}
+      />
     </Screen>
   );
 }

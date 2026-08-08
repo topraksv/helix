@@ -1,0 +1,133 @@
+# Local-only native acceptance: onboarding, ledger persistence, settings and investments.
+#
+# This flow requires a build whose Supabase values were empty at build time; it
+# deliberately lives outside e2e/native so the cloud-entry suite can keep using
+# a normal configured build. It proves native SQLite writes, not just rendering.
+appId: com.toprak.helix
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Hoş geldin"
+    timeout: 30000
+- tapOn: "Hemen Kullanmaya Başla"
+- runFlow:
+    when:
+      visible: "Geç"
+    commands:
+      - tapOn: "Geç"
+- extendedWaitUntil:
+    visible: "Durum"
+    timeout: 30000
+
+# A real ledger write with a localized decimal amount and note.
+- tapOn: "Mali Tablo"
+- tapOn: "İşlem Ekle"
+- assertVisible: "Yeni İşlem"
+- tapOn:
+    text: "Tutar · TRY"
+    index: 1
+- inputText: "1234,56"
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- pressKey: ENTER
+- tapOn:
+    text: "Kategori"
+    index: 1
+- tapOn: ".*Market.*"
+- scrollUntilVisible:
+    element:
+      text: "Kaydet"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Not Ör\\..*"
+- inputText: "Native kabul testi"
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- tapOn: "Zamanlama"
+- scrollUntilVisible:
+    element:
+      text: "Kaydet"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Kaydet"
+- extendedWaitUntil:
+    visible: ".*1.234,56.*"
+    timeout: 30000
+
+# The settings hub and its device backup action are reachable after the write.
+- tapOn: "Ayarlar"
+- assertVisible: "Ayarlar"
+- scrollUntilVisible:
+    element:
+      text: ".*Yedek Oluştur.*"
+    direction: DOWN
+    timeout: 20000
+- assertVisible: ".*Yedek Oluştur.*"
+
+# Create an investment wallet, an equity product and a persisted purchase.
+- tapOn: "Yatırımlar"
+- assertVisible: "Yatırım alanını başlat"
+- tapOn: "Yatırım Alanını Aç"
+- tapOn:
+    text: "Bugünkü serbest yatırım bakiyesi"
+    index: 1
+- inputText: "10000"
+- pressKey: ENTER
+- tapOn: "Yatırım Alanını Aç"
+- extendedWaitUntil:
+    visible: "İşlem Ekle"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: ".*Yeni Ürün Tanımla.*"
+    direction: DOWN
+    timeout: 20000
+- tapOn: ".*Yeni Ürün Tanımla.*"
+- tapOn: "Borsa"
+- tapOn:
+    text: "Ürün adı"
+    index: 1
+- inputText: "SASA"
+- pressKey: ENTER
+- scrollUntilVisible:
+    element:
+      text: "Ürünü Kaydet"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Ürünü Kaydet"
+- tapOn: "İşlem Ekle"
+- tapOn:
+    text: "Miktar / adet · zorunlu"
+    index: 1
+- inputText: "10"
+- pressKey: ENTER
+- tapOn:
+    text: "Birim fiyat · zorunlu"
+    index: 1
+- inputText: "100"
+- pressKey: ENTER
+- scrollUntilVisible:
+    element:
+      id: "investment-operation-save"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "investment-operation-save"
+- extendedWaitUntil:
+    notVisible:
+      id: "investment-operation-save"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: ".*SASA.*"
+    direction: DOWN
+    timeout: 20000
+- assertVisible: ".*SASA.*"
+- assertVisible: ".*₺1.000,00.*"
