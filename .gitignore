@@ -19,6 +19,7 @@ node_modules/
 .kotlin/
 /dist/
 /dist-e2e/
+/graphify-out/
 expo-env.d.ts
 *.tsbuildinfo
 
