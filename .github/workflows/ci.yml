@@ -72,7 +72,12 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npx expo lint
-      - run: npm test
+      # Coverage runs the complete Vitest suite once, while enforcing per-file
+      # branch thresholds on the six financial domain modules.
+      - run: npm run test:coverage
+      # The focused mutation set costs ~29 seconds locally and catches weak
+      # assertions in investment, repository and recovery boundaries.
+      - run: npm run test:mutation
 
   # Gated on `run_web_build`, not `run_ci`: a test-only or CI-only commit still
   # has to be verified but cannot move a byte of the bundle, and exporting it

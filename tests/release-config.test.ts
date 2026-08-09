@@ -91,7 +91,8 @@ describe("release contract", () => {
     for (const command of [
       "npm run typecheck",
       "npx expo lint",
-      "npm test",
+      "npm run test:coverage",
+      "npm run test:mutation",
       "node scripts/check-advisories.mjs",
       "npx expo export -p web --clear",
       "npm run bundle:check",
