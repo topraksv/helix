@@ -170,8 +170,10 @@ function AllocationStrip({
 }) {
   const { palette } = useTheme();
   const ordered = [...slices].filter((slice) => slice.valueMinor > 0).sort((a, b) => b.valueMinor - a.valueMinor);
-  const visible = ordered.length <= 3
-    ? ordered
+  const visible = ordered.length === 0
+    ? [{ label: tr.investments.distributionEmpty, valueMinor: 0, color: palette.surfaceStrong }]
+    : ordered.length <= 3
+      ? ordered
     : [
         ...ordered.slice(0, 2),
         {
@@ -268,16 +270,18 @@ function InvestmentQuickAction({
 }) {
   const { palette } = useTheme();
   const metrics = actionTileMetrics(compact);
-  const foreground = tone === "primary"
-    ? palette.primaryText
+  const isPrimary = tone === "primary";
+  const foreground = isPrimary
+    ? palette.onPrimary
     : tone === "secondary"
       ? palette.secondaryText
       : palette.textSecondary;
-  const iconBackground = tone === "primary"
-    ? palette.primarySoft
+  const iconBackground = isPrimary
+    ? palette.primaryStrong
     : tone === "secondary"
       ? palette.secondarySoft
       : palette.surfaceStrong;
+  const iconForeground = disabled ? palette.textMuted : foreground;
   return (
     <Pressable
       accessibilityRole="button"
@@ -294,7 +298,10 @@ function InvestmentQuickAction({
         gap: metrics.gap,
         justifyContent: "flex-start",
         borderRadius: radius.md,
-        ...interactionSurface(palette, state),
+        ...interactionSurface(palette, state, {
+          base: isPrimary && !disabled ? palette.primary : palette.surface,
+          enabled: !disabled,
+        }),
         opacity: disabled ? 0.45 : 1,
         transform: [{ translateY: state.pressed && !disabled ? 1 : 0 }],
       })}
@@ -312,14 +319,14 @@ function InvestmentQuickAction({
           backgroundColor: iconBackground,
         }}
       >
-        <Icon accessible={false} size={iconSize.compact} color={foreground} strokeWidth={2.2} />
+        <Icon accessible={false} size={iconSize.compact} color={iconForeground} strokeWidth={2.2} />
       </View>
       <View
         testID="investment-action-label"
         style={{ width: "100%", height: metrics.labelHeight, alignItems: "center", justifyContent: "flex-start" }}
       >
         <Text
-          style={[type.micro, { color: disabled ? palette.textMuted : palette.text, lineHeight: metrics.lineBox, textAlign: "center", fontFamily: font.semibold }]}
+          style={[type.micro, { color: disabled ? palette.textMuted : isPrimary ? palette.onPrimary : palette.text, lineHeight: metrics.lineBox, textAlign: "center", fontFamily: font.semibold }]}
         >
           {label}
         </Text>

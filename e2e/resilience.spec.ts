@@ -203,6 +203,11 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
   await page.getByRole("tab", { name: "Durum" }).click();
   const forecastToggle = page.getByRole("button", { name: /Ay sonu tahmini/ }).first();
   await expect(forecastToggle).toBeVisible();
+  const forecastPadding = await forecastToggle.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { top: style.paddingTop, bottom: style.paddingBottom };
+  });
+  expect(forecastPadding.bottom).toBe(forecastPadding.top);
   const forecastDetails = page.getByText("Ay sonunda tahmini", { exact: true });
   await expect(forecastDetails).toHaveCount(0);
   for (let attempt = 0; attempt < 2; attempt += 1) {

@@ -33,10 +33,10 @@ import Wallet from "lucide-react-native/icons/wallet";
 import Wrench from "lucide-react-native/icons/wrench";
 import type { LucideIcon } from "lucide-react-native";
 import { SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
-import { useSettingsMapState, settingValue, useUserId } from "../../../data/hooks";
+import { useSettingsMapState, settingValue, useSyncDeadLettersState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
-import { pendingSyncChangeCount, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
+import { pendingSyncChangeCount, retrySyncDeadLetter, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
 import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
 import { syncNow } from "../../../sync/engine";
@@ -281,6 +281,7 @@ export default function SettingsScreen() {
   const { signOut, deleteAccount } = useSession();
   const settingsState = useSettingsMapState();
   const settingsData = combineLiveStates([settingsState]);
+  const deadLettersState = useSyncDeadLettersState();
   const settings = settingsState.data;
   const sync = useSyncStatus();
   const router = useRouter();
@@ -295,6 +296,7 @@ export default function SettingsScreen() {
   const notificationDetails = useDevicePreferences((state) => state.notificationDetails);
   const devicePreferencesLoaded = useDevicePreferences((state) => state.loaded);
   const [notificationBusy, setNotificationBusy] = useState(false);
+  const [deadLetterBusy, setDeadLetterBusy] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
   // Explicit dirty state, decided in `asyncFieldState` (domain/form-state.ts).
@@ -423,6 +425,28 @@ export default function SettingsScreen() {
         setDataBusy(null);
       }
     });
+  };
+
+  const retryDeadLetters = async () => {
+    if (deadLetterBusy || deadLettersState.data.length === 0) return;
+    setDeadLetterBusy(true);
+    try {
+      let requeued = 0;
+      let missing = 0;
+      for (const deadLetter of deadLettersState.data) {
+        const result = await retrySyncDeadLetter(userId, deadLetter.id);
+        if (result === "requeued") requeued += 1;
+        else missing += 1;
+      }
+      if (requeued > 0) void syncNow(userId);
+      if (missing > 0) void appAlert(tr.settings.syncQuarantineRetryMissing, tr.errors.title);
+      else if (requeued > 0) notify(tr.settings.syncQuarantineRetryDone(requeued));
+    } catch (error) {
+      devError("settings.sync-retry", error);
+      notify(`⚠ ${tr.errors.requestFailed}`);
+    } finally {
+      setDeadLetterBusy(false);
+    }
   };
 
   const exportJson = () =>
@@ -767,6 +791,28 @@ export default function SettingsScreen() {
           {tr.settings.syncExplain}
         </Body>
       </Card>
+      {deadLettersState.status !== "loading" && deadLettersState.data.length > 0 ? (
+        <Card tone="warning">
+          <SectionHeader>{tr.settings.syncQuarantineTitle}</SectionHeader>
+          <Body muted style={{ marginBottom: spacing.sm }}>{tr.settings.syncQuarantineBody(deadLettersState.data.length)}</Body>
+          <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
+            {deadLettersState.data.slice(0, 4).map((deadLetter) => {
+              const typeLabel = tr.settings.syncQuarantineTypes[deadLetter.tableName as keyof typeof tr.settings.syncQuarantineTypes] ?? "kayıt";
+              const reason = tr.settings.syncQuarantineReason[deadLetter.reason as keyof typeof tr.settings.syncQuarantineReason] ?? tr.settings.syncQuarantineReason.invalid_row;
+              return (
+                <View key={deadLetter.id} style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.xs }}>
+                  <Body style={{ flex: 1, minWidth: 180 }}>{tr.settings.syncQuarantineType(`${typeLabel} · ${reason}`)}</Body>
+                  <Body muted style={{ fontSize: type.small.fontSize }}>{dateTimeLabel(deadLetter.quarantinedAt)}</Body>
+                </View>
+              );
+            })}
+          </View>
+          <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
+            <Button size="sm" variant="secondary" label={tr.settings.syncQuarantineRetry} loading={deadLetterBusy} disabled={deadLetterBusy} onPress={() => void retryDeadLetters()} />
+            <Button size="sm" variant="secondary" label={tr.settings.syncQuarantineBackup} disabled={deadLetterBusy} onPress={() => void exportJson()} />
+          </Row>
+        </Card>
+      ) : null}
 
       <SectionHeader>{tr.settings.transferSection}</SectionHeader>
       <Card>

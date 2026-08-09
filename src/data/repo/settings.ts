@@ -1,5 +1,5 @@
 import { newId } from "../../db/ids";
-import { pendingOutboxCount, writeSetting } from "../../db/mutations";
+import { pendingOutboxCount, requeueSyncDeadLetter as requeueLocalSyncDeadLetter, writeSetting } from "../../db/mutations";
 
 export function createRecordId(): string {
   return newId();
@@ -7,6 +7,10 @@ export function createRecordId(): string {
 
 export function pendingSyncChangeCount(): Promise<number> {
   return pendingOutboxCount();
+}
+
+export function retrySyncDeadLetter(userId: string, deadLetterId: number): Promise<"requeued" | "missing" | "unsupported"> {
+  return requeueLocalSyncDeadLetter(userId, deadLetterId);
 }
 
 export function setAccountFrozen(userId: string, frozen: boolean): Promise<void> {

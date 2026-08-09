@@ -203,7 +203,7 @@ export function Donut({
     formatMinorCompact(displayTotal),
     [...slices, ...supplementalSlices]
       .map((slice) => `${slice.label}: ${formatMinorCompact(slice.valueMinor)}`)
-      .join(", "),
+      .join(", ") || tr.analysis.chartEmpty,
   );
 
   return (
@@ -312,6 +312,12 @@ export function Donut({
             <Text style={[type.small, { color: palette.text, fontFamily: font.semibold }]}>
               {tr.analysis.chartLargestShare(largest.label, largestPercent)}
             </Text>
+          </View>
+        ) : null}
+        {[...slices, ...supplementalSlices].length === 0 ? (
+          <View testID="donut-empty-state" style={{ gap: spacing.sm, marginBottom: 2 }}>
+            <Text style={[type.small, { color: palette.textSecondary }]}>{tr.analysis.chartEmpty}</Text>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: palette.surfaceAlt }} />
           </View>
         ) : null}
         {[...slices, ...supplementalSlices].map((s, i) => {

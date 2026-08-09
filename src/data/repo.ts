@@ -140,6 +140,7 @@ export {
 export {
   createRecordId,
   pendingSyncChangeCount,
+  retrySyncDeadLetter,
   setAccountFrozen,
   setBalanceDeclaration,
   setPendingTableVisibility,

@@ -98,6 +98,15 @@ describe("the month-end forecast carries one colour meaning", () => {
     expect(dashboard).toContain("tr.dashboard.forecastRising");
     expect(dashboard).toContain("tr.dashboard.forecastFalling");
   });
+
+  it("gives the forecast hover surface equal air above and below", () => {
+    const forecast = dashboard.slice(
+      dashboard.indexOf('testID="dashboard-forecast-toggle"'),
+      dashboard.indexOf("borderTopColor", dashboard.indexOf('testID="dashboard-forecast-toggle"')),
+    );
+    expect(forecast).toContain("paddingVertical: spacing.md");
+    expect(forecast).not.toContain("paddingTop: spacing.md");
+  });
 });
 
 /**

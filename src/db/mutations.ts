@@ -328,6 +328,43 @@ export async function pendingOutboxCount(): Promise<number> {
   return row?.n ?? 0;
 }
 
+/**
+ * Requeue the current local version of a quarantined row.
+ *
+ * The dead letter stores the rejected snapshot for forensics, not as an
+ * editable source of truth. Retrying that raw payload would repeat the same
+ * validation failure, so this reads the current owned row and lets the normal
+ * write boundary create a fresh outbox event. A missing row keeps its dead
+ * letter: dropping the only local recovery clue would be data loss.
+ */
+export async function requeueSyncDeadLetter(
+  userId: string,
+  deadLetterId: number,
+): Promise<"requeued" | "missing" | "unsupported"> {
+  const sqlite = await getSqliteAsync();
+  const dead = await sqlite.getFirstAsync<{ table_name: string; row_id: string }>(
+    `SELECT table_name, row_id FROM sync_dead_letters WHERE id = ?`,
+    [deadLetterId],
+  );
+  if (!dead) return "missing";
+  if (!Object.prototype.hasOwnProperty.call(SYNCED_TABLES, dead.table_name)) return "unsupported";
+  const table = dead.table_name as SyncedTableName;
+  const current = await sqlite.getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM ${table} WHERE id = ? AND user_id = ?`,
+    [dead.row_id, userId],
+  );
+  if (!current) return "missing";
+
+  // Keep the original quarantine until the new outbox write succeeds. If the
+  // local database changes between these two operations, the next retry uses
+  // the newest snapshot and the old clue remains harmlessly visible.
+  await writeRows(userId, [{ table, row: fromDbShape(table, current) }], false);
+  await withTransaction(async () => {
+    await sqlite.runAsync(`DELETE FROM sync_dead_letters WHERE id = ?`, [deadLetterId]);
+  });
+  return "requeued";
+}
+
 /** Tombstone delete. Returns the previous row snapshot for undo. */
 export async function softDelete(
   userId: string,

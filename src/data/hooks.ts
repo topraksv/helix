@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { addDatabaseChangeListener } from "expo-sqlite";
-import { and, asc, eq, getTableColumns, gte, isNull, lte } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import { useSession } from "../auth/session";
@@ -298,6 +298,21 @@ export function useInvestmentOperationsState() {
       .where(and(eq(s.investmentOperations.userId, userId), isNull(s.investmentOperations.deletedAt)))
       .orderBy(asc(s.investmentOperations.operationDate), asc(s.investmentOperations.id)),
     ["investment_operations"],
+  );
+}
+
+/** Local-only sync quarantine; userId scopes the shared subscription lifecycle. */
+export function useSyncDeadLettersState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `sync_dead_letters:${userId}`,
+    () => getDb().select({
+      id: s.syncDeadLetters.id,
+      tableName: s.syncDeadLetters.tableName,
+      reason: s.syncDeadLetters.reason,
+      quarantinedAt: s.syncDeadLetters.quarantinedAt,
+    }).from(s.syncDeadLetters).orderBy(desc(s.syncDeadLetters.quarantinedAt)),
+    ["sync_dead_letters"],
   );
 }
 
@@ -595,7 +610,7 @@ export function useTxLike(): TxLike[] {
 /**
  * The investment wallet as it stands right now.
  *
- * Two screens project it from the same five sources — the wallet itself and
+ * Two screens project it from the same six sources — the wallet itself and
  * the refund form that spends from it — and both had the same twenty lines
  * inline. A projection that drifts between them is a wallet that shows one
  * cash figure and refuses a refund for a different one.

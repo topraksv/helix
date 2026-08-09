@@ -347,12 +347,13 @@ export default function InvestmentOperationScreen() {
           }}
         />
         {products.length === 0 && baseKind !== "sell" ? (
-          <Button
-            icon={Plus}
-            variant="secondary"
-            label={tr.investments.addProduct}
-            onPress={() => router.push({ pathname: "/investments/product", params: { next: baseKind } })}
-          />
+          <View style={{ marginBottom: spacing.md }}>
+            <Button
+              icon={Plus}
+              label={tr.investments.addProduct}
+              onPress={() => router.push({ pathname: "/investments/product", params: { next: baseKind } })}
+            />
+          </View>
         ) : null}
         <DateField label={tr.investments.operationDate} value={date} onChange={setDate} max={todayISO()} />
         {kind === "contribution" ? (

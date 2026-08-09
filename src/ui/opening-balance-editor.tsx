@@ -361,7 +361,7 @@ export function OpeningBalanceEditor() {
             <Button label={tr.common.save} onPress={() => void saveOpening()} disabled={!openingDirty || openingMinor == null} loading={savingOpening} />
           </FadeIn>
         ) : (
-          <Button label={tr.settings.historyOpeningAction} variant="secondary" onPress={() => setShowHistory(true)} />
+          <Button label={tr.settings.historyOpeningAction} onPress={() => setShowHistory(true)} />
         )}
             </Card>
           </View>

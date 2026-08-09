@@ -218,6 +218,8 @@ test("returning from an investment editor keeps the tab scaffold settled", async
   });
   const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
   await expect.poll(opacity).toBeGreaterThan(0.99);
+  await expect(page.getByTestId("investment-distribution-chart")).toBeVisible();
+  await expect(page.getByTestId("donut-empty-state")).toBeVisible();
 
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await expect(page).toHaveURL(/investments\/product/);

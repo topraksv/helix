@@ -700,6 +700,7 @@ export default function DashboardScreen() {
               />
               {projected != null ? (
                 <Pressable
+                  testID="dashboard-forecast-toggle"
                   accessibilityRole="button"
                   accessibilityLabel={`${tr.dashboard.forecastToggle} ${
                     projectedDelta != null && projectedDelta >= 0 ? tr.dashboard.forecastRising : tr.dashboard.forecastFalling
@@ -711,7 +712,7 @@ export default function DashboardScreen() {
                     alignItems: "center",
                     gap: spacing.sm,
                     marginTop: spacing.md,
-                    paddingTop: spacing.md,
+                    paddingVertical: spacing.md,
                     borderTopWidth: StyleSheet.hairlineWidth,
                     borderTopColor: palette.border,
                     ...interactionSurface(palette, state),
