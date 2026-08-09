@@ -98,6 +98,7 @@ export default function InvestmentSetupScreen() {
       <Card style={{ marginBottom: spacing.lg }}>
         <PanelHeader icon={Banknote} title={tr.investments.setupDetails} description={tr.investments.setupDetailsHint} />
         <MoneyField
+          testID="investment-opening-cash"
           label={tr.investments.openingCash}
           value={cashRaw}
           placeholder={amountPlaceholder}

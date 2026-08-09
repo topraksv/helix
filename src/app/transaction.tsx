@@ -587,6 +587,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       </View>
 
       <MoneyField
+        testID="transaction-amount"
         label={`${tr.tx.amount} · ${currency}`}
         value={amountRaw}
         expression={entryType !== "transfer"}
@@ -764,7 +765,14 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       ) : null}
       <Divider />
       <SectionHeader>{tr.tx.completion}</SectionHeader>
-      <Field label={tr.common.note} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
+      <Field
+        testID="transaction-note"
+        label={tr.common.note}
+        value={note}
+        onChangeText={setNote}
+        multiline
+        placeholder={notePlaceholder}
+      />
       {/* The commit pair is a cluster, not a banner: across a desktop column
           each button ran to ~490px. */}
       {/* The form's own width. Bounded to what two buttons need, the primary

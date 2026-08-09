@@ -187,9 +187,10 @@ export function Screen({
   //
   // So the padding is ours and only ours: `contentContainerStyle` already
   // carries the safe-area space, and `automaticallyAdjustContentInsets={false}`
-  // stops UIKit adding to it. A focused field near the bottom of a long form
-  // can therefore sit under the keyboard — recorded as an open item rather than
-  // patched with a third mechanism in the same breath as removing the second.
+  // stops UIKit adding to it. The scroller dismisses the keyboard on a real
+  // drag instead of changing its inset; this is how an iOS decimal-pad form
+  // exposes a save action below the fold without reviving either failed inset
+  // mechanism.
   if (!scroll) {
     return (
       // The rail's space is taken here, by the content, and not by the tab scene:
@@ -233,6 +234,7 @@ export function Screen({
       <ScrollView
         ref={activeScrollRef}
         contentContainerStyle={inner}
+        keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         scrollEnabled={scrollEnabled}
         automaticallyAdjustContentInsets={false}

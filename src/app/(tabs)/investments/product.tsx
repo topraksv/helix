@@ -174,6 +174,7 @@ export default function InvestmentProductScreen() {
         ) : null}
         {!catalogMode || customCatalog ? (
           <Field
+            testID="investment-product-name"
             label={tr.investments.productName}
             value={name}
             onChangeText={setName}

@@ -25,8 +25,7 @@ appId: com.toprak.helix
 - tapOn: "İşlem Ekle"
 - assertVisible: "Yeni İşlem"
 - tapOn:
-    text: "Tutar · TRY"
-    index: 1
+    id: "transaction-amount"
 - inputText: "1234,56"
 - runFlow:
     when:
@@ -43,8 +42,22 @@ appId: com.toprak.helix
       text: "Kaydet"
     direction: DOWN
     timeout: 20000
-- tapOn: "Not Ör\\..*"
+- tapOn:
+    id: "transaction-note"
+- runFlow:
+    when:
+      visible: "Try out your stylus"
+    commands:
+      - tapOn: "Cancel"
 - inputText: "Native kabul testi"
+- runFlow:
+    when:
+      visible: "Try out your stylus"
+    commands:
+      - tapOn: "Cancel"
+      - tapOn:
+          id: "transaction-note"
+      - inputText: "Native kabul testi"
 - runFlow:
     when:
       visible: "Continue"
@@ -76,8 +89,7 @@ appId: com.toprak.helix
 - assertVisible: "Yatırım alanını başlat"
 - tapOn: "Yatırım Alanını Aç"
 - tapOn:
-    text: "Bugünkü serbest yatırım bakiyesi"
-    index: 1
+    id: "investment-opening-cash"
 - inputText: "10000"
 - pressKey: ENTER
 - tapOn: "Yatırım Alanını Aç"
@@ -92,8 +104,7 @@ appId: com.toprak.helix
 - tapOn: ".*Yeni Ürün Tanımla.*"
 - tapOn: "Borsa"
 - tapOn:
-    text: "Ürün adı"
-    index: 1
+    id: "investment-product-name"
 - inputText: "SASA"
 - pressKey: ENTER
 - scrollUntilVisible:
@@ -103,20 +114,31 @@ appId: com.toprak.helix
     timeout: 20000
 - tapOn: "Ürünü Kaydet"
 - tapOn: "İşlem Ekle"
+- scrollUntilVisible:
+    element:
+      id: "investment-quantity"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
 - tapOn:
-    text: "Miktar / adet · zorunlu"
-    index: 1
+    id: "investment-quantity"
 - inputText: "10"
-- pressKey: ENTER
+- scrollUntilVisible:
+    element:
+      id: "investment-unit-price"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
 - tapOn:
-    text: "Birim fiyat · zorunlu"
-    index: 1
-- inputText: "100"
-- pressKey: ENTER
+    id: "investment-unit-price"
+- inputText: "100,00"
+# Centre-scrolling performs a real drag. Screen's on-drag policy dismisses the
+# iOS decimal pad before Maestro targets the save action below it.
 - scrollUntilVisible:
     element:
       id: "investment-operation-save"
     direction: DOWN
+    centerElement: true
     timeout: 20000
 - tapOn:
     id: "investment-operation-save"
@@ -131,3 +153,28 @@ appId: com.toprak.helix
     timeout: 20000
 - assertVisible: ".*SASA.*"
 - assertVisible: ".*₺1.000,00.*"
+
+# Kill the process rather than reloading JavaScript. Both values above must be
+# read back from the native SQLite file after a fresh process owns it.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Durum"
+    timeout: 30000
+- tapOn: "Yatırımlar"
+- scrollUntilVisible:
+    element:
+      text: ".*SASA.*"
+    direction: DOWN
+    timeout: 20000
+- assertVisible: ".*SASA.*"
+- assertVisible: ".*₺1.000,00.*"
+- tapOn: "Mali Tablo"
+- extendedWaitUntil:
+    visible: ".*1.234,56.*"
+    timeout: 30000
+- tapOn: ".*Market.*1.234,56.*"
+- extendedWaitUntil:
+    visible: "Native kabul testi"
+    timeout: 30000
+- assertVisible: "Native kabul testi"

@@ -1039,6 +1039,19 @@ describe("returning to a screen is not a reload", () => {
   });
 });
 
+describe("native forms can uncover actions below the keyboard", () => {
+  const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+  const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
+  const scrollViewStart = screen.lastIndexOf("<ScrollView");
+  const scrollView = screen.slice(scrollViewStart, screen.indexOf(">", scrollViewStart));
+
+  it("dismisses the keyboard by dragging without delegating layout insets to UIKit", () => {
+    expect(scrollView).toContain('keyboardDismissMode="on-drag"');
+    expect(scrollView).toContain("automaticallyAdjustContentInsets={false}");
+    expect(scrollView).not.toContain("automaticallyAdjustKeyboardInsets");
+  });
+});
+
 /**
  * The remaining hard cuts, closed at their shared owner.
  *

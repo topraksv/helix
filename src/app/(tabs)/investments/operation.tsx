@@ -380,6 +380,7 @@ export default function InvestmentOperationScreen() {
               <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.xs }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Field
+                    testID="investment-quantity"
                     accessibilityLabel={tr.investments.requiredQuantity}
                     noMargin
                     value={quantity}
@@ -417,6 +418,7 @@ export default function InvestmentOperationScreen() {
               </View>
             </View>
             <MoneyField
+              testID="investment-unit-price"
               label={tr.investments.requiredUnitPrice}
               value={unitRaw}
               placeholder={unitPlaceholder}

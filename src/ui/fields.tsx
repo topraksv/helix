@@ -197,6 +197,7 @@ export function MoneyField({
   expression = false,
   disabled = false,
   accessibilityLabel,
+  testID,
   inline = false,
   error,
 }: {
@@ -208,6 +209,7 @@ export function MoneyField({
   disabled?: boolean;
   /** Screen-reader label when a nearby visible section heading labels the field. */
   accessibilityLabel?: string;
+  testID?: string;
   /** Keeps repeated amount rows compact without reducing the input target. */
   inline?: boolean;
   /** Domain validation message shown in addition to the input parser's own error. */
@@ -246,6 +248,7 @@ export function MoneyField({
             : undefined}
         >
           <TextInput
+            testID={testID}
             value={display}
             accessibilityLabel={accessibilityLabel ?? label}
             accessibilityLabelledBy={label ? labelId : undefined}
