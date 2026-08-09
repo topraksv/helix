@@ -30,7 +30,7 @@
         { "id": "FIN-02", "name": "Kart, taksit, yatırım ve döviz hesapları örnek-oracle ile uzlaşır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/installments.test.ts, tests/investments.test.ts, tests/money-fx-computed.test.ts"], "toPass": [] },
         { "id": "FIN-03", "name": "Ledger, dashboard ve analiz aynı veri üzerinde uzlaşır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/financial-consistency.test.ts; temiz verify:full geçti"], "toPass": [] },
         { "id": "FIN-04", "name": "Finansal yazımlar native SQLite satırlarıyla doğrulanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-08 iPhone 16e ve iPad Air 11-inch M2 simülatörlerinde transaction ve SASA satırları sorgulandı; .ai/AI_HANDOFF.md:57"], "toPass": [] },
-        { "id": "FIN-05", "name": "Uzun repository mutation dizileri bağımsız saf modelle adım adım karşılaştırılır", "critical": true, "baseline": "fail", "status": "pass", "evidence": ["100 seed × 50 mutation gerçek SQLite repository/model testi bulunamadı", "tests/repository-model.test.ts gerçek Node SQLite ve tüm migration'larla 100 deterministik journal çalıştırıyor; her mutation sonrasında bakiye, kategori toplamı, kart dönemi/tarihleri, yatırım cüzdanı ve satış cache'ini bağımsız oracle ile karşılaştırıyor", "2026-08-09 npm run test:coverage: 106 dosya ve 977/977 test geçti; hata mesajı seed ile ilk başarısız minimal mutation prefix'ini içeriyor"], "toPass": ["Bakiye, kart ekstresi, kategori toplamı ve yatırım cüzdanını her adımda oracle ile karşılaştıran deterministik model-tabanlı test ekle"] }
+        { "id": "FIN-05", "name": "Uzun repository mutation dizileri bağımsız saf modelle adım adım karşılaştırılır", "critical": true, "baseline": "fail", "status": "pass", "evidence": ["100 seed × 50 mutation gerçek SQLite repository/model testi bulunamadı", "tests/repository-model.test.ts gerçek Node SQLite ve tüm migration'larla 100 deterministik journal çalıştırıyor; her mutation sonrasında bakiye, kategori toplamı, kart dönemi/tarihleri, yatırım cüzdanı ve satış cache'ini bağımsız oracle ile karşılaştırıyor", "2026-08-09 nihai npm run verify:full koşusunda 106 dosya ve 980/980 Vitest geçti; hata mesajı seed ile ilk başarısız minimal mutation prefix'ini içeriyor"], "toPass": ["Bakiye, kart ekstresi, kategori toplamı ve yatırım cüzdanını her adımda oracle ile karşılaştıran deterministik model-tabanlı test ekle"] }
       ]
     },
     {
@@ -81,7 +81,7 @@
       "id": "test-engineering",
       "name": "Test mühendisliği ve kalite kapıları",
       "controls": [
-        { "id": "TEST-01", "name": "Birim ve kontrat suite'i tam geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-09: 106 dosya, 977/977 Vitest geçti"], "toPass": [] },
+        { "id": "TEST-01", "name": "Birim ve kontrat suite'i tam geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["2026-08-09 nihai risk-C kapısı: 106 dosya, 980/980 Vitest geçti"], "toPass": [] },
         { "id": "TEST-02", "name": "Finans ve giriş doğrulamada generative/property testleri vardır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["tests/financial-properties.test.ts ve backup-validation generative kontrolleri"], "toPass": [] },
         { "id": "TEST-03", "name": "Geçmiş kritik bug sınıfları regression testiyle kilitlidir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["offline OPFS, transaction queue, account binding, restore atomicity ve source-boundary testleri"], "toPass": [] },
         { "id": "TEST-04", "name": "Tam kalite kapısı build, budget ve E2E'yi birlikte çalıştırır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["npm run verify:full temiz HEAD'de geçti"], "toPass": [] },
@@ -96,7 +96,7 @@
         { "id": "WEB-02", "name": "Backup oluşturma, temiz restore ve invalid restore atomikliği geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium core-flow backup/restore geçti"], "toPass": [] },
         { "id": "WEB-03", "name": "Offline relaunch, service worker ve deep-link dayanıklılığı geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium resilience.spec.ts geçti"], "toPass": [] },
         { "id": "WEB-04", "name": "Semantik, focus, kontrast ve geometri E2E ile ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium a11y/visual/ui-consistency suite geçti"], "toPass": [] },
-        { "id": "WEB-05", "name": "Tam web E2E CI'da tekrarlanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["89/89 Playwright testi yerelde geçti; son HEAD CI shard'ları yeşil"], "toPass": [] }
+        { "id": "WEB-05", "name": "Tam web E2E CI'da tekrarlanır", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Nihai yerel kapıda 104/104 Playwright (92 Chromium + 12 Firefox) geçti; GitHub Actions 31305174676 üç temiz shard ve yayın gate'ini başarıyla tamamladı"], "toPass": [] }
       ]
     },
     {
@@ -125,11 +125,11 @@
       "id": "browser-matrix",
       "name": "Tarayıcı ve viewport matrisi",
       "controls": [
-        { "id": "BROWSER-01", "name": "Chromium tam suite geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["89/89 Playwright Chromium geçti"], "toPass": [] },
-        { "id": "BROWSER-02", "name": "Firefox kritik smoke sıfır runtime hata ile geçer", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["2026-08-09: 3/13 geçti; CSP console errors, offline navigation farkı ve bir page crash"], "toPass": ["Gerçek app hataları ile browser/test-runner farklarını ayır; desteklenen smoke setini sıfır hata ile geçir"] },
+        { "id": "BROWSER-01", "name": "Chromium tam suite geçer", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Nihai yerel ve CI kapılarında 92/92 Chromium testi geçti"], "toPass": [] },
+        { "id": "BROWSER-02", "name": "Firefox kritik smoke sıfır runtime hata ile geçer", "critical": true, "baseline": "fail", "status": "pass", "evidence": ["2026-08-09 ilk deneme: 3/13 geçti; CSP console errors, offline navigation farkı ve bir page crash", "Dış opsiyonel servisler deterministik 503 ile izole edildi, Zod CSP probu jitless çalıştırıldı ve browser'a özgü olmayan 12 kritik senaryo tanımlandı", "Nihai yerel koşu 12/12 geçti; GitHub Actions 31305174676 aynı Firefox projesini skip olmadan tamamladı"], "toPass": ["Gerçek app hataları ile browser/test-runner farklarını ayır; desteklenen smoke setini sıfır hata ile geçir"] },
         { "id": "BROWSER-03", "name": "WebKit/Safari kritik smoke geçer", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["2026-08-09: 0/13; uygulama başlangıçta Veritabanı hatası gösteriyor"], "toPass": ["expo-sqlite WebKit/OPFS uyumluluğunu çöz veya web veri katmanı için desteklenen fallback uygula"] },
         { "id": "BROWSER-04", "name": "Telefon, kısa landscape ve desktop viewport geometrisi ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["Chromium 320/390/desktop ve kısa landscape E2E geçti"], "toPass": [] },
-        { "id": "BROWSER-05", "name": "Desteklenen browser matrisi CI'da her committe tekrarlanır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["playwright.config.ts yalnız Desktop Chrome"], "toPass": ["Firefox/WebKit kararını belgele ve desteklenen motorları CI smoke projesine ekle"] }
+        { "id": "BROWSER-05", "name": "Desteklenen browser matrisi CI'da her committe tekrarlanır", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["Chromium tam suite ve Firefox kritik proje artık her CI commitinde çalışıyor; WebKit veri katmanı açılmadığı için desteklenen hedef matris henüz tamamlanmış sayılmıyor"], "toPass": ["Firefox/WebKit kararını belgele ve desteklenen motorları CI smoke projesine ekle"] }
       ]
     },
     {
@@ -139,7 +139,7 @@
         { "id": "UI-01", "name": "Tema tokenları, rendered text contrast ve control boundary ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["theme/contrast contract testleri ve Chromium visual-a11y geçti"], "toPass": [] },
         { "id": "UI-02", "name": "Page overflow, clipping ve modal erişimi gerçek geometriyle ölçülür", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["ui-consistency ve visual-a11y viewport matrisi Chromium'da geçti"], "toPass": [] },
         { "id": "UI-03", "name": "iPhone ve iPad native yüzeyleri hedef boyutlarda incelenmiştir", "critical": false, "baseline": "pass", "status": "pass", "evidence": ["2026-08-08 iki hedef simulator ekranı ve Maestro akışı incelendi"], "toPass": [] },
-        { "id": "UI-04", "name": "Android hedef boyutu ve büyük font görsel/geometri kontrolünden geçer", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Android akışı not alanında tamamlanmadı; büyük font matrisi yok"], "toPass": ["Android flow, 200% font ve rotation geometri assertion'larını geçir"] },
+        { "id": "UI-04", "name": "Android hedef boyutu ve büyük font görsel/geometri kontrolünden geçer", "critical": false, "baseline": "fail", "status": "fail", "evidence": ["Android API 36 çekirdek finans/restart akışı geçti; ancak %200 font ve rotation geometri matrisi hâlâ yok"], "toPass": ["Android flow, 200% font ve rotation geometri assertion'larını geçir"] },
         { "id": "UI-05", "name": "Fiziksel cihazlarda insan görsel kabul turu kayıtlıdır", "critical": false, "baseline": "manual", "status": "manual", "evidence": ["Fiziksel iPhone/iPad kullanıcı kabul sonucu yok"], "toPass": ["Karanlık/açık tema, iPad split-view, landscape ve klavye açık yüzeyleri checklist ile doğrula"] }
       ]
     },
@@ -246,7 +246,7 @@
       "id": "dependencies",
       "name": "Bağımlılık ve tedarik zinciri",
       "controls": [
-        { "id": "DEP-01", "name": "Lockfile deterministik ve registry signature doğrulaması temizdir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["package-lock.json; npm audit signatures: 1338 signature ve 240 attestation doğrulandı"], "toPass": [] },
+        { "id": "DEP-01", "name": "Lockfile deterministik ve registry signature doğrulaması temizdir", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["package-lock.json; nihai npm audit signatures 1.425 paket imzası ve 261 attestation doğruladı"], "toPass": [] },
         { "id": "DEP-02", "name": "SBOM lisans incelemesinde yasaklı lisans yoktur", "critical": true, "baseline": "pass", "status": "pass", "evidence": ["542 production component; GPL/AGPL yok; metadata'sı eksik 3 paketin LICENSE dosyası mevcut"], "toPass": [] },
         { "id": "DEP-03", "name": "High/critical advisory açık veya accepted-risk bırakmaz", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["npm audit: 10 high; image-size için 2026-09-08'e kadar iki no-patch accepted risk"], "toPass": ["Expo/Metro uyumlu patched sürüme geç veya upstream çözüm gelene kadar süresi dolmayan risk kaydını 10/10 dışı tut"] },
         { "id": "DEP-04", "name": "Expo Doctor proje-uyumluluk uyarısı vermez", "critical": true, "baseline": "fail", "status": "fail", "evidence": ["expo-doctor 16/18; bottom-tabs range ve local eas-cli uyarısı"], "toPass": ["SDK 54 matrisine uygun bottom-tabs declaration; EAS CLI pinini resmi/ölçülmüş istisna ile çöz"] },
