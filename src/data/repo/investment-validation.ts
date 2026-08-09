@@ -15,7 +15,7 @@ import { textLength } from "../../domain/input";
 type AnyRow = Record<string, unknown>;
 
 function live(row: AnyRow): boolean {
-  return (row.deletedAt ?? row.deleted_at) == null;
+  return ("deletedAt" in row ? row.deletedAt : row.deleted_at) == null;
 }
 
 function value<T>(row: AnyRow, camel: string, snake: string): T {
@@ -48,6 +48,7 @@ export async function assertInvestmentWrites(
     "investment_operations",
     "transactions",
     "categories",
+    "persons",
   ]);
   if (!force && !writes.some((write) => relevant.has(write.table))) return null;
 
@@ -62,15 +63,11 @@ export async function assertInvestmentWrites(
 
   const profiles = overlay(profileRows, writes, "investment_profiles").filter(live);
   if (profiles.length === 0) {
-    const hasLiveInvestmentRows =
-      overlay(productRows, writes, "investment_products").some(live)
-      || overlay(operationRows, writes, "investment_operations").some(live);
-    if (
-      hasLiveInvestmentRows
-      || writes.some((write) =>
-        write.table === "investment_products" || write.table === "investment_operations"
-      )
-    ) {
+    const hasLiveInvestmentRows = productRows.some(live) || operationRows.some(live);
+    const touchesInvestmentRows = writes.some((write) =>
+      write.table === "investment_products" || write.table === "investment_operations"
+    );
+    if (hasLiveInvestmentRows || touchesInvestmentRows) {
       throw new InvestmentDomainError("unknown_product");
     }
     return null;
@@ -92,7 +89,7 @@ export async function assertInvestmentWrites(
     .filter(live)
     .map((row) => {
       const assetType = value<InvestmentAssetType>(row, "assetType", "asset_type");
-      const name = value<string>(row, "name", "name")?.trim();
+      const name = typeof row.name === "string" ? row.name.trim() : "";
       if (!["metal", "currency", "equity", "fund", "crypto", "pension"].includes(assetType) || !name || textLength(name) > 120) {
         throw new InvestmentDomainError("unknown_product");
       }
@@ -102,16 +99,16 @@ export async function assertInvestmentWrites(
   const operations = overlay(operationRows, writes, "investment_operations")
     .filter(live)
     .map((row) => {
-      const kind = value<InvestmentOperationKind>(row, "kind", "kind");
+      const kind = row.kind as InvestmentOperationKind;
       const operationDate = value<string>(row, "operationDate", "operation_date");
-      const quantity = value<string | null>(row, "quantity", "quantity") ?? null;
+      const quantity = (row.quantity as string | null | undefined) ?? null;
       const unitPriceMinor = value<number | null>(row, "unitPriceMinor", "unit_price_minor") ?? null;
       const totalMinor = value<number>(row, "totalMinor", "total_minor");
       if (!["existing", "buy", "sell", "contribution"].includes(kind) || !isISODate(operationDate) || operationDate > todayISO()) {
         throw new InvestmentDomainError("invalid_money");
       }
       if (quantity == null) {
-        if (kind !== "contribution" || unitPriceMinor != null) throw new InvestmentDomainError("invalid_quantity");
+        if (unitPriceMinor != null) throw new InvestmentDomainError("invalid_quantity");
       } else {
         resolveInvestmentQuote({ quantity, unitPriceMinor, totalMinor });
       }
@@ -129,9 +126,10 @@ export async function assertInvestmentWrites(
       };
     });
 
-  const categories = overlay(categoryRows, writes, "categories");
+  const categories = overlay(categoryRows, writes, "categories").filter(live);
+  const people = overlay(personRows, writes, "persons");
   const selfPersonIds = new Set(
-    personRows
+    people
       .filter(live)
       .filter((row) => Boolean(value<boolean | number>(row, "isSelf", "is_self")))
       .map((row) => String(row.id)),
@@ -145,8 +143,8 @@ export async function assertInvestmentWrites(
   const cashEvents = overlay(transactionRows, writes, "transactions")
     .filter(live)
     .filter((row) =>
-      value<string>(row, "type", "type") === "transfer"
-      && value<string>(row, "status", "status") === "realized"
+      row.type === "transfer"
+      && row.status === "realized"
       && transferIds.has(value<string>(row, "categoryId", "category_id"))
       && selfPersonIds.has(String(value<string>(row, "personId", "person_id")))
       && value<string>(row, "effectiveDate", "effective_date") <= today,

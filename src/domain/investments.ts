@@ -48,17 +48,10 @@ interface ParsedInvestmentQuantity {
 }
 
 function normalizedDecimalInput(raw: string): string {
-  const compact = raw.trim().replace(/\s/g, "");
-  if (!compact || compact.startsWith("-") || compact.startsWith("+")) {
-    throw new InvestmentDomainError("invalid_quantity");
-  }
+  const compact = raw.replace(/\s/g, "");
   const comma = compact.lastIndexOf(",");
   const dot = compact.lastIndexOf(".");
-  const decimalIndex = comma >= 0 && dot >= 0
-    ? Math.max(comma, dot)
-    : comma >= 0
-      ? comma
-      : dot;
+  const decimalIndex = Math.max(comma, dot);
   const integerRaw = decimalIndex >= 0 ? compact.slice(0, decimalIndex) : compact;
   const fractionRaw = decimalIndex >= 0 ? compact.slice(decimalIndex + 1) : "";
   const integer = integerRaw.replace(/[.,]/g, "");
@@ -68,7 +61,7 @@ function normalizedDecimalInput(raw: string): string {
   if (fractionRaw.length > INVESTMENT_QUANTITY_SCALE) {
     throw new InvestmentDomainError("invalid_quantity");
   }
-  return `${integer.replace(/^0+(?=\d)/, "") || "0"}${fractionRaw ? `.${fractionRaw}` : ""}`;
+  return `${integer}${fractionRaw ? `.${fractionRaw}` : ""}`;
 }
 
 function quantityFromAtoms(atoms: bigint): string {
@@ -93,17 +86,15 @@ export function parseInvestmentQuantity(raw: string): ParsedInvestmentQuantity {
 }
 
 function positiveMoney(value: number | null | undefined): value is Minor {
-  return value != null && Number.isSafeInteger(value) && value > 0 && isSupportedMinorAmount(value);
+  return typeof value === "number" && value > 0 && isSupportedMinorAmount(value);
 }
 
 /** Positive-only round-half-away division. */
 function roundedDivision(numerator: bigint, denominator: bigint): bigint {
-  if (numerator < 0n || denominator <= 0n) throw new InvestmentDomainError("invalid_money");
   return (numerator * 2n + denominator) / (denominator * 2n);
 }
 
 function ceilDivision(numerator: bigint, denominator: bigint): bigint {
-  if (numerator < 0n || denominator <= 0n) throw new InvestmentDomainError("invalid_money");
   return (numerator + denominator - 1n) / denominator;
 }
 
@@ -164,30 +155,18 @@ export function resolveInvestmentQuote(input: InvestmentQuoteInput): ResolvedInv
     };
   }
 
-  if (quantity && totalMinor != null) {
+  if (quantity) {
     const derivedUnitPrice = safeMinor(
-      roundedDivision(BigInt(totalMinor) * QUANTITY_FACTOR, quantity.atoms),
+      roundedDivision(BigInt(totalMinor!) * QUANTITY_FACTOR, quantity.atoms),
     );
-    const reconstructedTotal = safeMinor(
-      roundedDivision(quantity.atoms * BigInt(derivedUnitPrice), QUANTITY_FACTOR),
-    );
-    if (Math.abs(reconstructedTotal - totalMinor) > Number(quoteToleranceMinor(quantity.atoms, derivedUnitPrice))) {
-      throw new InvestmentDomainError("quote_inconsistent");
-    }
     return {
       quantity: quantity.normalized,
       unitPriceMinor: derivedUnitPrice,
-      totalMinor,
+      totalMinor: totalMinor!,
     };
   }
 
   const derivedAtoms = roundedDivision(BigInt(totalMinor!) * QUANTITY_FACTOR, BigInt(unitPriceMinor!));
-  const reconstructedTotal = safeMinor(
-    roundedDivision(derivedAtoms * BigInt(unitPriceMinor!), QUANTITY_FACTOR),
-  );
-  if (Math.abs(reconstructedTotal - totalMinor!) > Number(quoteToleranceMinor(derivedAtoms, unitPriceMinor!))) {
-    throw new InvestmentDomainError("quote_inconsistent");
-  }
   return {
     quantity: quantityFromAtoms(derivedAtoms),
     unitPriceMinor: unitPriceMinor!,
@@ -243,17 +222,12 @@ export interface InvestmentState {
   operationResults: Map<string, { costBasisMinor: Minor; realizedProfitLossMinor: number }>;
 }
 
-function eventPriority(event: { source: "cash" | "operation"; amountMinor?: number; kind?: InvestmentOperationKind }): number {
-  if (event.source === "cash") return (event.amountMinor ?? 0) >= 0 ? 0 : 4;
-  if (event.kind === "existing") return 1;
-  if (event.kind === "sell") return 3;
-  return 2;
+function operationPriority(kind: InvestmentOperationKind): number {
+  return kind === "sell" ? 1 : 0;
 }
 
 function checkedCash(value: number): Minor {
-  if (!Number.isSafeInteger(value) || !isSupportedMinorAmount(value)) {
-    throw new InvestmentDomainError("invalid_money");
-  }
+  if (!isSupportedMinorAmount(value)) throw new InvestmentDomainError("invalid_money");
   if (value < 0) throw new InvestmentDomainError("insufficient_cash");
   return value;
 }
@@ -280,33 +254,17 @@ export function buildInvestmentState(input: {
     }]),
   );
   const operationResults = new Map<string, { costBasisMinor: Minor; realizedProfitLossMinor: number }>();
-  const events = [
-    ...input.cashEvents
-      .filter((event) => event.date >= input.startedOn)
-      .map((event) => ({ source: "cash" as const, id: event.id, date: event.date, amountMinor: event.amountMinor })),
-    ...input.operations.map((operation) => ({
-      source: "operation" as const,
-      id: operation.id,
-      date: operation.operationDate,
-      kind: operation.kind,
-      operation,
-    })),
-  ].sort((a, b) =>
-    a.date.localeCompare(b.date)
-    || eventPriority(a) - eventPriority(b)
+  for (const event of input.cashEvents.filter((candidate) => candidate.date >= input.startedOn)) {
+    if (!isSupportedMinorAmount(event.amountMinor)) throw new InvestmentDomainError("invalid_money");
+    cashMinorExact += BigInt(event.amountMinor);
+  }
+  const operations = [...input.operations].sort((a, b) =>
+    a.operationDate.localeCompare(b.operationDate)
+    || operationPriority(a.kind) - operationPriority(b.kind)
     || a.id.localeCompare(b.id),
   );
 
-  for (const event of events) {
-    if (event.source === "cash") {
-      if (!Number.isSafeInteger(event.amountMinor) || !isSupportedMinorAmount(event.amountMinor)) {
-        throw new InvestmentDomainError("invalid_money");
-      }
-      cashMinorExact += BigInt(event.amountMinor);
-      continue;
-    }
-
-    const operation = event.operation;
+  for (const operation of operations) {
     if (!positiveMoney(operation.totalMinor)) throw new InvestmentDomainError("invalid_money");
     const state = states.get(operation.productId);
     if (!state) throw new InvestmentDomainError("unknown_product");
@@ -319,10 +277,9 @@ export function buildInvestmentState(input: {
       if (state.quantityAtoms == null) throw new InvestmentDomainError("unknown_quantity");
       if (!quantity) throw new InvestmentDomainError("invalid_quantity");
       if (quantity.atoms > state.quantityAtoms) throw new InvestmentDomainError("oversold");
-      const costBasis = quantity.atoms === state.quantityAtoms
-        ? state.costMinor
-        : Number(roundedDivision(BigInt(state.costMinor) * quantity.atoms, state.quantityAtoms));
-      if (!Number.isSafeInteger(costBasis) || costBasis < 0) throw new InvestmentDomainError("invalid_money");
+      const costBasis = Number(
+        roundedDivision(BigInt(state.costMinor) * quantity.atoms, state.quantityAtoms),
+      );
       const realized = operation.totalMinor - costBasis;
       state.quantityAtoms -= quantity.atoms;
       state.costMinor -= costBasis;
@@ -339,9 +296,7 @@ export function buildInvestmentState(input: {
       cashMinorExact -= BigInt(operation.totalMinor);
     }
     state.costMinor += operation.totalMinor;
-    if (!Number.isSafeInteger(state.costMinor) || !isSupportedMinorAmount(state.costMinor)) {
-      throw new InvestmentDomainError("invalid_money");
-    }
+    if (!isSupportedMinorAmount(state.costMinor)) throw new InvestmentDomainError("invalid_money");
     if (!quantity) {
       if (operation.kind !== "contribution") throw new InvestmentDomainError("invalid_quantity");
       state.quantityAtoms = null;
@@ -359,7 +314,7 @@ export function buildInvestmentState(input: {
         : state.quantityAtoms === 0n
           ? "0"
           : quantityFromAtoms(state.quantityAtoms);
-      const averageCostMinor = state.quantityAtoms && state.quantityAtoms > 0n
+      const averageCostMinor = state.quantityAtoms != null && state.quantityAtoms > 0n
         ? Number(roundedDivision(BigInt(state.costMinor) * QUANTITY_FACTOR, state.quantityAtoms))
         : null;
       const realizedProfitLossMinor = Number(state.realizedProfitLossMinor);
@@ -374,7 +329,7 @@ export function buildInvestmentState(input: {
         costMinor: state.costMinor,
         averageCostMinor,
         realizedProfitLossMinor,
-        active: state.costMinor > 0 || state.quantityAtoms == null || (state.quantityAtoms ?? 0n) > 0n,
+        active: state.costMinor > 0,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "tr") || a.id.localeCompare(b.id));
