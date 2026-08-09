@@ -170,16 +170,27 @@ test("every local-mode reachable route stays accessible with real data", async (
  * `text-overflow: ellipsis` alone proves nothing — React Native Web sets it on
  * every Text node, so only an element whose content actually exceeds its box is
  * a real truncation. Because that makes a passing run indistinguishable from a
- * broken detector, the scan first injects two deliberately truncated elements
- * and asserts it finds them.
+ * broken detector, the scan first injects deliberately clipped, clamped and
+ * wrapped controls and asserts it finds all three.
  */
 test("layout non-negotiables hold on every route in both widths", async ({ page, context }, testInfo) => {
   test.setTimeout(180_000);
   await isolateExternalData(context);
+  // This audit owns settled geometry; entrance-motion behavior has a separate
+  // regression test. Waiting for fonts plus two paint frames prevents the app
+  // shell from being mistaken for the final Amount fit under full-suite load.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Yerleşim taraması");
   const routes = await localReachableRoutes(page);
+
+  const waitForSettledLayout = () => page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  });
 
   const scan = (withControl: boolean) =>
     page.evaluate((injectControl: boolean) => {
@@ -193,6 +204,11 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
         clamped.style.cssText =
           "width:60px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;position:fixed;top:20px";
         document.body.appendChild(clamped);
+        const wrappedMoney = document.createElement("div");
+        wrappedMoney.textContent = "₺123.456,78";
+        wrappedMoney.style.cssText =
+          "width:30px;overflow-wrap:anywhere;position:fixed;top:40px";
+        document.body.appendChild(wrappedMoney);
       }
       const truncated: string[] = [];
       const toggles = new Set<string>();
@@ -219,11 +235,18 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
         // wrap, but splitting the final digit of ₺12.500,00 onto another line
         // changes the number's visual meaning and made the matrix unreadable.
         if (/^-?[₺$€£¥][\d.,]+$/.test(text)) {
-          const range = document.createRange();
-          range.selectNodeContents(el);
-          const visualLines = new Set(
-            Array.from(range.getClientRects()).map((rect) => Math.round(rect.top)),
-          );
+          const visualLines = new Set<number>();
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (!node.textContent?.trim()) continue;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            for (const rect of Array.from(range.getClientRects())) {
+              visualLines.add(Math.round(rect.top));
+            }
+          }
+          // Selecting the element itself also returns the boxes of nested SVGs,
+          // buttons and wrappers. Only text-node rects represent painted lines.
           if (visualLines.size > 1) truncated.push(`money-wrap(${visualLines.size}): ${text}`);
         }
         const deliberateTableClamp =
@@ -246,9 +269,14 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
   // Detector self-check, once, before the real sweep.
   await page.goto("/helix/");
   await expect(page.locator("#root")).toBeVisible();
+  await waitForSettledLayout();
   const control = await scan(true);
   expect(control.truncated.filter((t) => t.includes("Bu satır")), "ellipsis detector is live").toHaveLength(1);
   expect(control.truncated.filter((t) => t.includes("line-clamp")), "line-clamp detector is live").toHaveLength(1);
+  expect(
+    control.truncated.filter((t) => t.includes("money-wrap") && t.includes("₺123.456,78")),
+    "money-wrap detector is live",
+  ).toHaveLength(1);
 
   const problems: string[] = [];
   for (const width of [390, 1440]) {
@@ -256,6 +284,7 @@ test("layout non-negotiables hold on every route in both widths", async ({ page,
     for (const route of routes) {
       await page.goto(route);
       await expect(page.locator("#root")).toBeVisible();
+      await waitForSettledLayout();
       const found = await scan(false);
       const tag = `${width}px ${route}`;
       for (const t of found.truncated) problems.push(`${tag} truncated: ${t}`);
