@@ -151,4 +151,23 @@ describe("backup import result counts", () => {
     })).rejects.toThrow("Geçersiz yedek dosyası");
     expect(dependencies.writeRowBatchesAtomically).not.toHaveBeenCalled();
   });
+
+  it("rejects duplicate ids before the atomic writer is called", async () => {
+    const row = {
+      id: settingId,
+      user_id: sourceUserId,
+      key: "theme",
+      value: JSON.stringify("dark"),
+      created_at: timestamp,
+      updated_at: "2026-07-21T10:00:00.000Z",
+      deleted_at: null,
+    };
+
+    await expect(importBundle(targetUserId, {
+      version: 1,
+      exportedAt: timestamp,
+      tables: { settings: [row, row] },
+    })).rejects.toThrow("Geçersiz yedek dosyası");
+    expect(dependencies.writeRowBatchesAtomically).not.toHaveBeenCalled();
+  });
 });

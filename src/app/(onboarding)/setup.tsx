@@ -279,7 +279,12 @@ export default function SetupScreen() {
           const picked = await DocumentPicker.getDocumentAsync({ type: "application/json", copyToCacheDirectory: true });
           if (picked.canceled || !picked.assets[0]) return;
           setBusy(true);
-          const content = await readPickedText(picked.assets[0], MAX_BACKUP_BYTES, tr.errors.backupTooLarge);
+          const content = await readPickedText(
+            picked.assets[0],
+            MAX_BACKUP_BYTES,
+            tr.errors.backupTooLarge,
+            tr.errors.invalidBackupFile,
+          );
           // Validate and restore the complete workspace atomically. Seeding first
           // would leave a partial starter workspace behind when a corrupt backup
           // is rejected or the restore write fails.

@@ -32,10 +32,21 @@ const sqlFor = (tag: string): string => readFileSync(join(MIGRATIONS_DIR, `${tag
 let database: DatabaseSync;
 /** How many journal entries the runner is allowed to see this time. */
 let visibleEntries = journal.entries.length;
+/** Fail after this many migration statements; the journal-table setup is excluded. */
+let failAfterStatements: number | null = null;
 
 vi.mock("../src/db/client", () => ({
   getSqliteAsync: async () => ({
-    execAsync: async (sql: string) => { database.exec(sql); },
+    execAsync: async (sql: string) => {
+      if (failAfterStatements != null && !sql.includes("__drizzle_migrations")) {
+        if (failAfterStatements === 0) {
+          failAfterStatements = null;
+          throw new Error("injected migration interruption");
+        }
+        failAfterStatements -= 1;
+      }
+      database.exec(sql);
+    },
     runAsync: async (sql: string, args: unknown[] = []) => { database.prepare(sql).run(...(args as never[])); },
     getFirstAsync: async (sql: string, args: unknown[] = []) => database.prepare(sql).get(...(args as never[])) ?? null,
     getAllAsync: async (sql: string, args: unknown[] = []) => database.prepare(sql).all(...(args as never[])),
@@ -85,6 +96,7 @@ describe("boot migration", () => {
   beforeEach(() => {
     database = new DatabaseSync(":memory:");
     visibleEntries = journal.entries.length;
+    failAfterStatements = null;
   });
 
   it("has a migration file behind every journal entry", () => {
@@ -145,6 +157,27 @@ describe("boot migration", () => {
 
     const row = database.prepare("SELECT id, amount_try_minor, effective_date FROM transactions WHERE id = ?").get("tx-1");
     expect(row).toMatchObject({ id: "tx-1", amount_try_minor: 12345, effective_date: "2026-01-15" });
+  });
+
+  it("rolls back an interrupted migration and resumes it without losing the ledger", async () => {
+    visibleEntries = journal.entries.length - 1;
+    await migrateDb();
+    database.prepare(
+      `INSERT INTO transactions (id, user_id, type, amount_minor, currency, amount_try_minor, entry_date, effective_date, status, person_id, created_at, updated_at)
+       VALUES (?, ?, 'expense', 54321, 'TRY', 54321, '2026-02-15', '2026-02-15', 'realized', 'person-1', '2026-02-15T00:00:00.000Z', '2026-02-15T00:00:00.000Z')`,
+    ).run("tx-interrupted", "user-1");
+    const before = schemaOf(database);
+
+    visibleEntries = journal.entries.length;
+    failAfterStatements = 1;
+    await expect(migrateDb()).rejects.toThrow("injected migration interruption");
+    expect(appliedCount(database)).toBe(journal.entries.length - 1);
+    expect(schemaOf(database)).toEqual(before);
+
+    await migrateDb();
+    expect(appliedCount(database)).toBe(journal.entries.length);
+    expect(database.prepare("SELECT amount_try_minor FROM transactions WHERE id = ?").get("tx-interrupted"))
+      .toEqual({ amount_try_minor: 54321 });
   });
 
   it("applies nothing on a second boot", async () => {

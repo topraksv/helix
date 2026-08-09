@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ExportTextBuilder, isValidImportRow, MAX_BACKUP_ROWS, parseExportBundleText, validateBundleRelationships, validateExportBundle } from "../src/services/backup-validation";
+import { ExportTextBuilder, isValidImportRow, MAX_BACKUP_BYTES, MAX_BACKUP_ROWS, parseExportBundleText, validateBundleRelationships, validateExportBundle } from "../src/services/backup-validation";
 import { SYNCED_TABLES, type SyncedTableName } from "../src/db/schema";
 import { LOCAL_ONLY_USER_ID } from "../src/domain/user-id";
 import { MAX_ABS_AMOUNT_MINOR } from "../src/domain/money";
@@ -217,6 +217,17 @@ describe("backup validation", () => {
     const bundle = { version: 1, exportedAt: timestamp, tables: { transactions: [transaction] } };
     expect(parseExportBundleText(JSON.stringify(bundle))).toEqual(bundle);
     expect(() => parseExportBundleText("{")).toThrow("Geçersiz yedek dosyası");
+  });
+
+  it("accepts the exact byte limit, rejects one byte more and stays inside its parse budget", () => {
+    const content = JSON.stringify({ version: 1, exportedAt: timestamp, tables: {} });
+    const exactLimit = content.padEnd(MAX_BACKUP_BYTES, " ");
+    const started = performance.now();
+
+    expect(parseExportBundleText(exactLimit).tables).toEqual({});
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(() => parseExportBundleText(`${exactLimit} `))
+      .toThrow("Yedek dosyası güvenli içe aktarma sınırını aşıyor.");
   });
 
   it("builds a restorable envelope for every synced table one table at a time", () => {

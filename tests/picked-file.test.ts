@@ -64,8 +64,33 @@ describe("picked file limits", () => {
       file: { size: 11, text },
     };
 
-    await expect(readPickedText(asset as never, 10, "Yedek çok büyük.")).rejects.toThrow("Yedek çok büyük.");
+    await expect(readPickedText(asset as never, 10, "Yedek çok büyük.", "Geçersiz yedek.")).rejects.toThrow("Yedek çok büyük.");
     expect(text).not.toHaveBeenCalled();
+  });
+
+  it("decodes valid UTF-8 text and rejects a legacy single-byte encoding", async () => {
+    const valid = new TextEncoder().encode('{"name":"Çağrı"}');
+    const invalid = Uint8Array.of(0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xfc, 0x22, 0x7d);
+    const asset = (bytes: Uint8Array) => ({
+      uri: "blob:backup",
+      name: "backup.json",
+      mimeType: "application/json",
+      file: { size: bytes.byteLength, arrayBuffer: vi.fn(async () => bytes.buffer) },
+    });
+
+    await expect(readPickedText(asset(valid) as never, 100, "Büyük.", "Kodlama geçersiz."))
+      .resolves.toBe('{"name":"Çağrı"}');
+    await expect(readPickedText(asset(invalid) as never, 100, "Büyük.", "Kodlama geçersiz."))
+      .rejects.toThrow("Kodlama geçersiz.");
+  });
+
+  it("validates native bytes before asking Expo to decode them", async () => {
+    platform.os = "ios";
+    nativeFile.bytes.mockResolvedValueOnce(Uint8Array.of(0xff));
+
+    await expect(readPickedText({ uri: "file:///backup.json" } as never, 100, "Büyük.", "Kodlama geçersiz."))
+      .rejects.toThrow("Kodlama geçersiz.");
+    expect(nativeFile.text).not.toHaveBeenCalled();
   });
 
   it("rejects a native asset from the filesystem size before reading it", async () => {

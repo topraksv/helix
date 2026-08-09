@@ -57,6 +57,14 @@ async function setAsideCorruptDb(): Promise<void> {
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+function isCorruptDatabaseError(error: unknown): boolean {
+  const code = typeof error === "object" && error != null && "code" in error ? String(error.code) : "";
+  const message = error instanceof Error ? error.message : String(error);
+  const details = `${code} ${message}`.toLowerCase();
+  return ["sqlite_corrupt", "not a database", "database disk image is malformed"]
+    .some((signal) => details.includes(signal));
+}
+
 /**
  * Open the database, tolerating two transient failure modes seen at launch:
  *   • "not a database" — a corrupt header; move it aside once and recreate.
@@ -75,7 +83,7 @@ async function openWithRetry(): Promise<SQLiteDatabase> {
       return await open();
     } catch (e) {
       lastErr = e;
-      if (String(e).includes("not a database") && !recoveredCorrupt) {
+      if (isCorruptDatabaseError(e) && !recoveredCorrupt) {
         recoveredCorrupt = true;
         await setAsideCorruptDb();
         continue; // retry immediately after moving the corrupt file aside

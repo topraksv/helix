@@ -454,7 +454,12 @@ export default function SettingsScreen() {
     if (picked.canceled || !picked.assets[0]) return;
     const asset = picked.assets[0];
     await runDataOperation("import", async ({ signal, report }) => {
-      const content = await readPickedText(asset, MAX_BACKUP_BYTES, tr.errors.backupTooLarge);
+      const content = await readPickedText(
+        asset,
+        MAX_BACKUP_BYTES,
+        tr.errors.backupTooLarge,
+        tr.errors.invalidBackupFile,
+      );
       if (signal.aborted) throw signal.reason;
       const result = await importBundle(userId, parseExportBundleText(content), {
         signal,

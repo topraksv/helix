@@ -8,17 +8,36 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null }));
+const harness = vi.hoisted(() => ({
+  db: null as DatabaseSync | null,
+  failOnPersonWrite: null as number | null,
+  personWrites: 0,
+}));
 
 vi.mock("../src/db/client", () => ({
   getSqliteAsync: async () => ({
     getFirstAsync: async (sql: string, args: unknown[]) => harness.db!.prepare(sql).get(...args as never[]),
     getAllAsync: async (sql: string, args: unknown[]) => harness.db!.prepare(sql).all(...args as never[]),
-    runAsync: async (sql: string, args: unknown[]) => ({
-      changes: Number(harness.db!.prepare(sql).run(...args as never[]).changes),
-    }),
+    runAsync: async (sql: string, args: unknown[]) => {
+      if (sql.trimStart().startsWith("INSERT INTO persons")) {
+        harness.personWrites += 1;
+        if (harness.personWrites === harness.failOnPersonWrite) {
+          throw Object.assign(new Error("database or disk is full"), { code: "SQLITE_FULL" });
+        }
+      }
+      return { changes: Number(harness.db!.prepare(sql).run(...args as never[]).changes) };
+    },
   }),
-  withTransaction: async (task: () => Promise<void>) => task(),
+  withTransaction: async (task: () => Promise<void>) => {
+    harness.db!.exec("BEGIN");
+    try {
+      await task();
+      harness.db!.exec("COMMIT");
+    } catch (error) {
+      harness.db!.exec("ROLLBACK");
+      throw error;
+    }
+  },
 }));
 
 vi.mock("../src/db/ids", () => ({
@@ -26,7 +45,7 @@ vi.mock("../src/db/ids", () => ({
   naturalKeys: new Proxy({}, { get: (_target, property) => (...parts: unknown[]) => `${String(property)}|${parts.join("|")}` }),
 }));
 
-import { restoreRow, restoreRows } from "../src/db/mutations";
+import { restoreRow, restoreRows, writeRowBatchesAtomically } from "../src/db/mutations";
 
 const INSERTED = "2026-07-01T00:00:00.000Z";
 const DELETED = "2026-07-02T00:00:00.000Z";
@@ -81,6 +100,8 @@ function person(id: string, userId: string, deletedAt: string | null) {
 describe("restore ownership and tombstone boundary", () => {
   beforeEach(() => {
     harness.db = new DatabaseSync(":memory:");
+    harness.failOnPersonWrite = null;
+    harness.personWrites = 0;
     createSchema(harness.db);
   });
 
@@ -138,6 +159,33 @@ describe("restore ownership and tombstone boundary", () => {
 
     expect((harness.db!.prepare("SELECT deleted_at FROM persons WHERE id = ?").get("person-1") as Record<string, unknown>).deleted_at)
       .toBe(DELETED);
+    expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
+  });
+
+  it("rolls back every row and outbox event when SQLite reports a full disk mid-batch", async () => {
+    const anchor = person("anchor", "user-1", null);
+    harness.db!.prepare(`
+      INSERT INTO persons (id, user_id, created_at, updated_at, deleted_at, tombstone_version, name, is_self)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(anchor.id, anchor.user_id, anchor.created_at, anchor.updated_at, anchor.deleted_at, 0, anchor.name, anchor.is_self);
+    harness.failOnPersonWrite = 2;
+    const row = (id: string) => ({
+      id,
+      userId: "user-1",
+      createdAt: INSERTED,
+      updatedAt: INSERTED,
+      deletedAt: null,
+      tombstoneVersion: 0,
+      name: id,
+      isSelf: false,
+    });
+
+    await expect(writeRowBatchesAtomically("user-1", [[
+      { table: "persons", row: row("person-1") },
+      { table: "persons", row: row("person-2") },
+    ]], false)).rejects.toMatchObject({ code: "SQLITE_FULL" });
+
+    expect(harness.db!.prepare("SELECT id FROM persons ORDER BY id").all()).toEqual([{ id: "anchor" }]);
     expect(harness.db!.prepare("SELECT COUNT(*) AS n FROM outbox").get()).toEqual({ n: 0 });
   });
 });
