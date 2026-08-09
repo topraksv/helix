@@ -23,6 +23,7 @@ import React, { useContext, useEffect, useRef, useState, useSyncExternalStore } 
 import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from "react-native";
 import { NavigationContext } from "@react-navigation/native";
 import { useReducedMotion } from "./motion";
+import { createScreenVisitStore, type ScreenVisitStore } from "./screen-visit";
 import { motion, spacing, useTheme } from "./theme";
 import { crossFadesNatively, peekThemeTransitionBackground, takeThemeTransitionBackground } from "./theme-transition";
 
@@ -87,7 +88,7 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
  * looked like a refresh.
  */
 
-export const ScreenVisitContext = React.createContext<number | null>(null);
+export const ScreenVisitContext = React.createContext<ScreenVisitStore | null>(null);
 
 /**
  * How many times this screen's tab has been entered.
@@ -104,10 +105,11 @@ export const ScreenVisitContext = React.createContext<number | null>(null);
  * the listener and shares the counter with hero children through context, so a
  * screen with a chart and a counting figure does not subscribe three times.
  */
-export function useScreenVisit(): number {
+export function useScreenVisitController(): ScreenVisitStore {
   const scopedVisit = useContext(ScreenVisitContext);
   const navigation = useContext(NavigationContext);
-  const [visit, setVisit] = useState(1);
+  const ownStore = useRef<ScreenVisitStore | null>(null);
+  const store = scopedVisit ?? (ownStore.current ??= createScreenVisitStore());
   useEffect(() => {
     if (scopedVisit != null || !navigation) return;
     let tabNavigation: typeof navigation | null = null;
@@ -121,11 +123,16 @@ export function useScreenVisit(): number {
     const arrive = () => {
       // A tab regaining focus does not mean a background stack screen is on
       // show; `isFocused()` rejects the index while its product editor is open.
-      if (navigation.isFocused()) setVisit((count) => count + 1);
+      if (navigation.isFocused()) store.increment();
     };
     return tabNavigation.addListener("focus", arrive);
-  }, [navigation, scopedVisit]);
-  return scopedVisit ?? visit;
+  }, [navigation, scopedVisit, store]);
+  return store;
+}
+
+export function useScreenVisit(): number {
+  const store = useScreenVisitController();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
 export function useScreenFocus(): boolean {

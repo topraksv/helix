@@ -995,12 +995,13 @@ describe("screen motion replays consistently", () => {
 
   it("re-runs both screen scaffold variants without remounting their children", () => {
     const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
-    expect([...screen.matchAll(/<FadeIn/g)]).toHaveLength(2);
-    expect([...screen.matchAll(/replayToken=\{visit\}/g)]).toHaveLength(2);
-    expect([...screen.matchAll(/testID="screen-entrance"/g)]).toHaveLength(2);
+    expect([...screen.matchAll(/<ScreenEntrance/g)]).toHaveLength(2);
     expect([...screen.matchAll(/<ScreenVisitContext.Provider/g)]).toHaveLength(2);
-    expect(screen).toContain("const visit = useScreenVisit();");
-    expect(motionPrimitives).toContain("progress.setValue(0)");
+    expect([...screen.matchAll(/value=\{visitStore\}/g)]).toHaveLength(2);
+    expect(screen).toContain("const visitStore = useScreenVisitController();");
+    expect(components).toContain("function ScreenEntrance");
+    expect(components).toContain("replayToken={screenVisit}");
+    expect(motionPrimitives).toContain("createScreenVisitStore");
   });
 
   /**
@@ -1014,20 +1015,22 @@ describe("screen motion replays consistently", () => {
    */
   it("counts tab arrivals rather than stack focus and shares one listener with hero children", () => {
     const visit = motionPrimitives.slice(
-      motionPrimitives.indexOf("export function useScreenVisit()"),
+      motionPrimitives.indexOf("export function useScreenVisitController()"),
       motionPrimitives.indexOf("export function useScreenFocus()"),
     );
-    expect(visit).toContain("setVisit((count) => count + 1)");
+    expect(visit).toContain("store.increment()");
     expect(visit).toContain('level.getState().type === "tab"');
     expect(visit).toContain('return tabNavigation.addListener("focus", arrive)');
     expect(visit).toContain("const scopedVisit = useContext(ScreenVisitContext);");
+    expect(visit).toContain("createScreenVisitStore");
+    expect(visit).toContain("useSyncExternalStore(store.subscribe");
     expect(visit).not.toContain("unsubscribes.push");
     for (const hook of ["useDrawIn", "useCountUp"]) {
       const body = motionPrimitives.slice(motionPrimitives.indexOf(`export function ${hook}(`));
       expect(body.slice(0, 1_400), `${hook} replays per visit`).toContain("const visit = useScreenVisit();");
     }
     // A tab regaining focus is not a background stack screen being on show.
-    expect(visit).toContain("if (navigation.isFocused()) setVisit");
+    expect(visit).toContain("if (navigation.isFocused()) store.increment");
   });
 
   it("tolerates the surfaces that render above the navigator", () => {

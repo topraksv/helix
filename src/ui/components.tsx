@@ -48,7 +48,7 @@ import { shouldStackListActions, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 import { KeyboardSafeScrollView } from "./keyboard-safe";
-import { ScreenVisitContext, useScreenVisit } from "./motion-primitives";
+import { ScreenVisitContext, useScreenVisit, useScreenVisitController } from "./motion-primitives";
 
 export {
   Amount,
@@ -72,6 +72,15 @@ export {
 
 export { Field, MoneyField, MonthStepper, Toggle } from "./fields";
 export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./selection-controls";
+
+function ScreenEntrance({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const screenVisit = useScreenVisit();
+  return (
+    <FadeIn testID="screen-entrance" replayToken={screenVisit} style={style}>
+      {children}
+    </FadeIn>
+  );
+}
 
 /**
  * The shared look of every control that accepts a value: text fields, selects
@@ -114,7 +123,9 @@ export function Screen({
   const { width, height } = useWindowDimensions();
   const maxWidth = contentWidth[widthName];
   const segments = useSegments();
-  const visit = useScreenVisit();
+  // The navigator's arrival event must not be React state owned by Screen:
+  // changing it would render the entire page just to restart an entrance.
+  const visitStore = useScreenVisitController();
   // Pressing the tab you are already on returns that screen to the top. The
   // navigator's own hook is used rather than a listener here because it also
   // resolves the cases a hand-rolled one gets wrong: nested stacks, whether
@@ -191,11 +202,11 @@ export function Screen({
         {/* A tab arrival replays only this wrapper; child state stays mounted.
             A Back navigation remains inside the same tab and therefore keeps
             the settled scaffold instead of making a completed form look reset. */}
-        <ScreenVisitContext.Provider value={visit}>
-          <FadeIn testID="screen-entrance" replayToken={visit} style={[{ flex: 1 }, inner]}>
+        <ScreenVisitContext.Provider value={visitStore}>
+          <ScreenEntrance style={[{ flex: 1 }, inner]}>
             {header}
             {children}
-          </FadeIn>
+          </ScreenEntrance>
         </ScreenVisitContext.Provider>
       </View>
     );
@@ -234,11 +245,11 @@ export function Screen({
         {/* Carries the container's grow through to the children, so a screen
             with one short block can centre it rather than stack it at the top
             of an empty page. */}
-        <ScreenVisitContext.Provider value={visit}>
-          <FadeIn testID="screen-entrance" replayToken={visit} style={{ flexGrow: 1 }}>
+        <ScreenVisitContext.Provider value={visitStore}>
+          <ScreenEntrance style={{ flexGrow: 1 }}>
             {header}
             {children}
-          </FadeIn>
+          </ScreenEntrance>
         </ScreenVisitContext.Provider>
       </KeyboardSafeScrollView>
     </View>

@@ -453,17 +453,21 @@ export default function InvestmentOperationScreen() {
       />
       {editing ? (
         <View
+          testID="investment-history-removal-row"
           style={{
+            width: "100%",
+            alignSelf: "stretch",
             marginTop: spacing.xl,
             paddingTop: spacing.md,
             borderTopWidth: StyleSheet.hairlineWidth,
             borderTopColor: palette.border,
             flexDirection: "row",
             alignItems: "center",
+            justifyContent: "space-between",
             gap: spacing.md,
           }}
         >
-          <Text style={[type.small, { color: palette.textSecondary, flex: 1, minWidth: 0, maxWidth: 520 }]}>
+          <Text style={[type.small, { color: palette.textSecondary, flex: 1, minWidth: 0, flexShrink: 1 }]}>
             {tr.investments.removeProductHistoryHint}
           </Text>
           <IconButton

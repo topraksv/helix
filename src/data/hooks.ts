@@ -601,21 +601,36 @@ export function useTxLike(): TxLike[] {
  * cash figure and refuses a refund for a different one.
  *
  * A projection that throws is a wallet whose history cannot be replayed
- * (a sale before its purchase arrived, say). It reports `null` rather than
- * taking the screen down; the screens above show their empty state.
+ * (a sale before its purchase arrived, say). The snapshot keeps the last
+ * verified wallet visible while the live sources converge and exposes the
+ * failure so money-changing forms can pause honestly.
  */
-export function useInvestmentWallet(): InvestmentState | null {
+export interface InvestmentWalletSnapshot {
+  data: InvestmentState | null;
+  error: unknown | null;
+}
+
+/**
+ * Project the wallet without allowing a transient multi-query snapshot to
+ * blank the screen. A valid previous projection remains visible while the six
+ * live sources converge; the error is still returned so a caller can show a
+ * stale notice and disable money-changing actions until retry succeeds.
+ */
+export function useInvestmentWalletSnapshot(): InvestmentWalletSnapshot {
+  const userId = useUserId();
   const profile = useInvestmentProfilesState().data[0];
   const products = useInvestmentProductsState().data;
   const operations = useInvestmentOperationsState().data;
   const transactions = useAllTransactionsState().data;
   const categories = useInvestmentCategoriesState().data;
   const persons = usePersonsState().data;
-  return useMemo(() => {
-    if (!profile) return null;
+  const lastGood = useRef<{ userId: string; data: InvestmentState } | null>(null);
+  const snapshot = useMemo(() => {
+    if (lastGood.current?.userId !== userId) lastGood.current = null;
+    if (!profile) return { data: null, error: null };
     const selfPersonIds = new Set(persons.filter((person) => person.isSelf).map((person) => person.id));
     try {
-      return projectInvestmentState(
+      const data = projectInvestmentState(
         profile,
         products,
         operations,
@@ -625,10 +640,19 @@ export function useInvestmentWallet(): InvestmentState | null {
         })),
         categories,
       );
-    } catch {
-      return null;
+      lastGood.current = { userId, data };
+      return { data, error: null };
+    } catch (error) {
+      return {
+        data: lastGood.current?.userId === userId ? lastGood.current.data : null,
+        error,
+      };
     }
-  }, [profile, products, operations, transactions, categories, persons]);
+  }, [userId, profile, products, operations, transactions, categories, persons]);
+  useEffect(() => {
+    if (snapshot.error) devError("investment-projection", snapshot.error);
+  }, [snapshot.error]);
+  return snapshot;
 }
 
 /**

@@ -25,7 +25,7 @@ import {
   useInvestmentOperationsState,
   useInvestmentProductsState,
   useInvestmentProfilesState,
-  useInvestmentWallet,
+  useInvestmentWalletSnapshot,
   usePersonsState,
   useUserId,
 } from "../../../data/hooks";
@@ -368,7 +368,8 @@ export default function InvestmentsScreen() {
     () => new Set(personsState.data.filter((person) => person.isSelf).map((person) => person.id)),
     [personsState.data],
   );
-  const state = useInvestmentWallet();
+  const wallet = useInvestmentWalletSnapshot();
+  const state = wallet.data;
   const productById = new Map(productsState.data.map((product) => [product.id, product]));
   const deleteOperation = async (id: string) => {
     if (!(await appConfirm(tr.investments.deleteOperation, tr.investments.deleteOperationBody, { confirmLabel: tr.common.delete, danger: true }))) return;
@@ -418,7 +419,7 @@ export default function InvestmentsScreen() {
   if (!state) {
     return (
       <Screen title={tr.investments.title}>
-        <DataStateNotice status={status} retry={retry} />
+        <DataStateNotice status={status === "ready" ? "error" : status} retry={retry} />
       </Screen>
     );
   }
@@ -544,7 +545,7 @@ export default function InvestmentsScreen() {
       width="workspace"
       right={<Button icon={Plus} size="sm" label={tr.investments.addOperation} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "buy" } })} />}
     >
-      <DataStateNotice status={status} retry={retry} />
+      <DataStateNotice status={wallet.error ? "stale" : status} retry={retry} />
       <View testID="investment-wallet-summary">
         <HeroCard style={{ marginBottom: spacing.lg }} onLayout={onHeroLayout}>
           {compact ? (

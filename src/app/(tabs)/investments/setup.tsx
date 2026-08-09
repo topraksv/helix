@@ -118,7 +118,7 @@ export default function InvestmentSetupScreen() {
 
       <View style={{ padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceAlt, flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
         <ShieldCheck accessible={false} size={20} color={palette.positiveText} />
-        <Body style={{ flex: 1 }}>{tr.investments.operationHint.existing}</Body>
+        <Body style={{ flex: 1 }}>{tr.investments.setupWithExistingHint}</Body>
       </View>
       <View style={{ gap: spacing.sm }}>
         <Button

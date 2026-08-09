@@ -695,6 +695,31 @@ test("a mistaken investment journal and its selected ledger refund are removed t
   await page.getByRole("button", { name: "Düzenle", exact: true }).first().click();
   const removeProduct = page.getByRole("button", { name: "Yatırım Ürününü Kaldır", exact: true });
   await expect(removeProduct).toBeVisible();
+  const removalRow = page.getByTestId("investment-history-removal-row");
+  const measureRemovalRow = () => removalRow.evaluate((element) => {
+    const row = element.getBoundingClientRect();
+    const parent = element.parentElement!.getBoundingClientRect();
+    const hint = element.firstElementChild!.getBoundingClientRect();
+    const action = element.lastElementChild!.getBoundingClientRect();
+    return {
+      row: { left: row.left, right: row.right, top: row.top, bottom: row.bottom },
+      parent: { left: parent.left, right: parent.right },
+      hint: { left: hint.left, right: hint.right, bottom: hint.bottom },
+      action: { left: action.left, right: action.right, top: action.top },
+    };
+  });
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }] as const) {
+    await page.setViewportSize(viewport);
+    await expect(removalRow).toBeVisible();
+    const geometry = await measureRemovalRow();
+    expect(Math.abs(geometry.row.left - geometry.parent.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.row.right - geometry.parent.right)).toBeLessThanOrEqual(1);
+    expect(geometry.hint.left).toBeGreaterThanOrEqual(geometry.row.left - 1);
+    expect(geometry.hint.right).toBeLessThanOrEqual(geometry.action.left);
+    expect(geometry.action.right).toBeLessThanOrEqual(geometry.row.right + 1);
+    expect(geometry.action.top).toBeGreaterThanOrEqual(geometry.row.top - 1);
+    expect(geometry.action.top).toBeLessThanOrEqual(geometry.row.bottom + 1);
+  }
   await removeProduct.click();
   await expect(page).toHaveURL(/investments\/correction/);
   await expect(page.getByRole("dialog")).toHaveCount(0);

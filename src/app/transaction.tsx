@@ -20,7 +20,7 @@ import {
   useInvestmentOperationsState,
   useInvestmentProductsState,
   useInvestmentProfilesState,
-  useInvestmentWallet,
+  useInvestmentWalletSnapshot,
   usePersonsState,
   useSourcesState,
   useUserId,
@@ -121,7 +121,8 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
   const personsState = usePersonsState();
   const { status, ready, retry } = combineLiveStates([profilesState, productsState, operationsState, categoriesState, personsState, transactionsState]);
   const profile = profilesState.data[0];
-  const wallet = useInvestmentWallet();
+  const walletSnapshot = useInvestmentWalletSnapshot();
+  const wallet = walletSnapshot.data;
   const transferCategories = categoriesState.data.filter((category) => category.isTransfer && category.deletedAt == null);
   const selfPerson = personsState.data.find((person) => person.isSelf) ?? personsState.data[0];
   const [amountMode, setAmountMode] = useState<"all" | "partial">("all");
@@ -202,6 +203,14 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
     );
   }
   if (!profile) return <Redirect href="/(tabs)/investments" />;
+  if (walletSnapshot.error) {
+    return (
+      <Screen>
+        <Stack.Screen options={{ title: tr.investments.refundTitle }} />
+        <DataStateNotice status="stale" retry={retry} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen width="workspace">
