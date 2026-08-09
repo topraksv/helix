@@ -18,8 +18,66 @@ import { Directory, File, Paths } from "expo-file-system";
 import * as schema from "./schema";
 
 const DB_NAME = "helix.db";
+const RECOVERY_MARKER_NAME = "helix.database-recovery.json";
+
+export interface DatabaseRecoveryNotice {
+  recoveredAt: number;
+  preservedFileName: string | null;
+  platform: "native" | "web";
+}
 
 let handle: Promise<SQLiteDatabase> | null = null;
+let volatileRecoveryNotice: DatabaseRecoveryNotice | null = null;
+
+function recoveryMarkerFile(): File {
+  return new File(Paths.document, RECOVERY_MARKER_NAME);
+}
+
+function validRecoveryNotice(value: unknown): value is DatabaseRecoveryNotice {
+  if (typeof value !== "object" || value == null) return false;
+  const notice = value as Partial<DatabaseRecoveryNotice>;
+  return typeof notice.recoveredAt === "number"
+    && Number.isSafeInteger(notice.recoveredAt)
+    && (notice.preservedFileName == null || typeof notice.preservedFileName === "string")
+    && (notice.platform === "native" || notice.platform === "web");
+}
+
+function recordDatabaseRecovery(notice: DatabaseRecoveryNotice): void {
+  volatileRecoveryNotice = notice;
+  if (Platform.OS === "web") return;
+  try {
+    recoveryMarkerFile().write(JSON.stringify(notice));
+  } catch {
+    // The in-memory marker still guarantees a notice in this launch. A marker
+    // write must never replace the successfully opened fresh database with a
+    // second startup failure.
+  }
+}
+
+export async function readDatabaseRecoveryNotice(): Promise<DatabaseRecoveryNotice | null> {
+  if (volatileRecoveryNotice) return volatileRecoveryNotice;
+  if (Platform.OS === "web") return null;
+  try {
+    const marker = recoveryMarkerFile();
+    if (!marker.exists) return null;
+    const parsed: unknown = JSON.parse(await marker.text());
+    return validRecoveryNotice(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function acknowledgeDatabaseRecoveryNotice(): void {
+  volatileRecoveryNotice = null;
+  if (Platform.OS === "web") return;
+  try {
+    const marker = recoveryMarkerFile();
+    if (marker.exists) marker.delete();
+  } catch {
+    // A stale marker may repeat the warning on the next launch, which is safer
+    // than hiding a recovery event whose acknowledgement could not be stored.
+  }
+}
 
 async function open(): Promise<SQLiteDatabase> {
   const db = await openDatabaseAsync(DB_NAME, { enableChangeListener: true });
@@ -38,21 +96,29 @@ async function open(): Promise<SQLiteDatabase> {
  * (sync re-hydrates from the cloud on the next pull).
  */
 async function setAsideCorruptDb(): Promise<void> {
+  const recoveredAt = Date.now();
   if (Platform.OS === "web") {
     await deleteDatabaseAsync(DB_NAME);
+    recordDatabaseRecovery({ recoveredAt, preservedFileName: null, platform: "web" });
     return;
   }
+  let preservedFileName: string | null = null;
   try {
     const dir = new Directory(Paths.document, "SQLite");
     const main = new File(dir, DB_NAME);
-    if (main.exists) main.move(new File(dir, `helix.corrupt-${Date.now()}.db`));
+    if (main.exists) {
+      preservedFileName = `helix.corrupt-${recoveredAt}.db`;
+      main.move(new File(dir, preservedFileName));
+    }
     for (const suffix of ["-wal", "-shm"]) {
       const side = new File(dir, `${DB_NAME}${suffix}`);
       if (side.exists) side.delete();
     }
   } catch {
+    preservedFileName = null;
     await deleteDatabaseAsync(DB_NAME); // fall back to the old behavior
   }
+  recordDatabaseRecovery({ recoveredAt, preservedFileName, platform: "native" });
 }
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

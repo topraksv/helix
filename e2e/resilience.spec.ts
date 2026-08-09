@@ -100,7 +100,7 @@ test("a second tab fails safely and its retry really recovers", async ({ page, c
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("protected and modal deep links keep deterministic navigation @smoke", async ({ page }, testInfo) => {
+test("protected and modal deep links keep deterministic navigation @smoke @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const routes: [string, string][] = [

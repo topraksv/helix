@@ -146,7 +146,13 @@ describe("release contract", () => {
 
   it("splits the browser suite by risk and shards the full run", () => {
     expect(ci).toContain("npm run test:e2e:smoke");
-    expect(ci).toContain("npx playwright install chromium --with-deps");
+    expect(ci).toContain("npx playwright install chromium firefox --with-deps");
+    expect(nightly).toContain("npx playwright install chromium firefox --with-deps");
+    const playwright = read("playwright.config.ts");
+    expect(playwright).toContain('name: "chromium"');
+    expect(playwright).toContain('name: "firefox-critical"');
+    expect(playwright).not.toContain('name: "webkit-critical"');
+    expect(playwright.match(/grep: \/@cross-browser\//g)).toHaveLength(1);
     // Sharding across runners is the only parallelism: this suite drives one
     // browser against one static server and goes flaky with two workers.
     expect(ci).not.toMatch(/workers:\s*[2-9]/);
@@ -161,7 +167,7 @@ describe("release contract", () => {
     // Playwright splits by FILE unless `fullyParallel` is set, and this suite's
     // specs are very unevenly sized — measured, two shards took 65 and 10 of
     // the 75 tests. Balance is what makes a shard count worth raising.
-    expect(read("playwright.config.ts")).toContain("fullyParallel: true");
+    expect(playwright).toContain("fullyParallel: true");
     expect(nightly.split("npm run test:e2e:export").length - 1).toBe(1);
     expect(nightly).toContain("nightly-dist-e2e-${{ github.run_id }}");
     expect(nightly).toContain("actions/upload-artifact");

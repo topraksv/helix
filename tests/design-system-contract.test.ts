@@ -989,24 +989,17 @@ describe("theme transition fallback stays active on partial browser APIs", () =>
   });
 });
 
-/**
- * What arrives again is the content, not the page.
- *
- * A focus-driven entrance on the whole screen scaffold was tried and removed:
- * on a phone, every return from a pushed page faded and lifted the entire
- * screen, which reads as the app reloading rather than as you coming back. The
- * replay belongs to the things that have something to say — a chart drawing
- * itself, a hero figure counting — and the page furniture around them simply
- * stays where it was.
- */
-describe("returning to a screen is not a reload", () => {
+describe("screen motion replays consistently", () => {
   const motionPrimitives = readFileSync(join(root, "src/ui/motion-primitives.tsx"), "utf8");
   const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
 
-  it("never re-runs the screen scaffold's own entrance", () => {
-    expect(motionPrimitives).not.toContain("ScreenEntrance");
+  it("re-runs both screen scaffold variants without remounting their children", () => {
     const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
     expect([...screen.matchAll(/<FadeIn/g)]).toHaveLength(2);
+    expect([...screen.matchAll(/replayToken=\{visit\}/g)]).toHaveLength(2);
+    expect([...screen.matchAll(/testID="screen-entrance"/g)]).toHaveLength(2);
+    expect(screen).toContain("const visit = useScreenVisit();");
+    expect(motionPrimitives).toContain("progress.setValue(0)");
   });
 
   /**
@@ -1019,7 +1012,7 @@ describe("returning to a screen is not a reload", () => {
    * phone. A count cannot be coalesced away.
    */
   it("counts arrivals rather than comparing a focus flag", () => {
-    expect(motionPrimitives).toContain("function useScreenVisit()");
+    expect(motionPrimitives).toContain("export function useScreenVisit()");
     expect(motionPrimitives).toContain("setVisit((count) => count + 1)");
     for (const hook of ["useDrawIn", "useCountUp"]) {
       const body = motionPrimitives.slice(motionPrimitives.indexOf(`export function ${hook}(`));

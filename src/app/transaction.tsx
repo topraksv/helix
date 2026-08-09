@@ -243,6 +243,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
       <Card style={{ marginBottom: spacing.lg }}>
         <PanelHeader icon={CalendarClock} title={tr.investments.refundDestinationTitle} description={tr.investments.refundDestinationHint} />
         <Select
+          testID="transaction-category"
           label={tr.tx.category}
           placeholder={tr.tx.categoryPlaceholder}
           options={transferCategories.map((category) => ({ value: category.id, label: category.name, icon: categoryIcon(category) }))}
@@ -667,6 +668,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       <SectionHeader>{tr.tx.assignment}</SectionHeader>
       {categoryOptions.length > 0 ? (
         <Select
+          testID="transaction-category"
           label={tr.tx.category}
           placeholder={tr.tx.categoryPlaceholder}
           options={categoryOptions}

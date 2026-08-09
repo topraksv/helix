@@ -46,6 +46,7 @@ import { circle, contentWidth, density, font, heroSurface, iconSize, radius, spa
 import { shouldStackListActions, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
+import { useScreenVisit } from "./motion-primitives";
 
 export {
   Amount,
@@ -111,6 +112,7 @@ export function Screen({
   const { width } = useWindowDimensions();
   const maxWidth = contentWidth[widthName];
   const segments = useSegments();
+  const visit = useScreenVisit();
   // Pressing the tab you are already on returns that screen to the top. The
   // navigator's own hook is used rather than a listener here because it also
   // resolves the cases a hand-rolled one gets wrong: nested stacks, whether
@@ -197,13 +199,10 @@ export function Screen({
     // a scene-level inset also shortened the nested stack's header, which is
     // chrome that belongs to the whole window.
     <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
-        {/* Mount-only, and deliberately. Replaying this on every focus made a
-            whole screen fade and rise each time you came back from a pushed
-            page, which on a phone reads as the app reloading rather than as you
-            returning. What arrives again is the CONTENT that has something to
-            say — a chart drawing itself, a hero figure counting — never the
-            page furniture around it. */}
-        <FadeIn style={[{ flex: 1 }, inner]}>
+        {/* The owner chose consistent replay across every route. The token
+            restarts only this animated wrapper; children keep their state, so
+            returning to a partially completed form does not reset its draft. */}
+        <FadeIn testID="screen-entrance" replayToken={visit} style={[{ flex: 1 }, inner]}>
           {header}
           {children}
         </FadeIn>
@@ -242,7 +241,7 @@ export function Screen({
         {/* Carries the container's grow through to the children, so a screen
             with one short block can centre it rather than stack it at the top
             of an empty page. */}
-        <FadeIn style={{ flexGrow: 1 }}>
+        <FadeIn testID="screen-entrance" replayToken={visit} style={{ flexGrow: 1 }}>
           {header}
           {children}
         </FadeIn>

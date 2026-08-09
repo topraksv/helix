@@ -43,6 +43,17 @@ export default function Root({ children }: PropsWithChildren) {
             "form-action 'self'",
           ].join("; ")}
         />
+        {/* Zod otherwise probes `new Function` even though it catches the
+            rejection. Strict-CSP browsers report that harmless probe as a
+            page error; preselect its documented interpreter path before the
+            application bundle loads. It stays after the CSP declaration and
+            uses the inline policy the static Expo bootstrap already requires.
+            Native keeps Zod's default fast path. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "globalThis.__zod_globalConfig={jitless:true};",
+          }}
+        />
         {/* No maximum-scale: locking pinch-zoom fails WCAG 1.4.4 and blocks
             low-vision users; the app's own scroll containers are unaffected
             by page zoom. */}

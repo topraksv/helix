@@ -13,6 +13,7 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import {
   Animated,
+  Platform,
   StyleSheet,
   Pressable,
   Text,
@@ -126,14 +127,23 @@ export function Field({
   );
   return (
     <View style={{ marginBottom: noMargin ? 0 : spacing.md }}>
-      {label ? <Label nativeID={labelId}>{label}</Label> : null}
+      {label ? (
+        <Label
+          nativeID={labelId}
+          accessible={Platform.OS === "web" ? undefined : false}
+          accessibilityElementsHidden={Platform.OS === "web" ? undefined : true}
+          importantForAccessibility={Platform.OS === "web" ? undefined : "no-hide-descendants"}
+        >
+          {label}
+        </Label>
+      ) : null}
       <View>
         <TextInput
           {...props}
           placeholder={examplePlaceholder(props.placeholder)}
           placeholderTextColor={numericPlaceholder ? numericPlaceholderColor(palette.textSecondary) : palette.textSecondary}
           accessibilityLabel={props.accessibilityLabel ?? label}
-          accessibilityLabelledBy={label ? labelId : props.accessibilityLabelledBy}
+          accessibilityLabelledBy={Platform.OS === "web" && label ? labelId : props.accessibilityLabelledBy}
           accessibilityHint={error ? [props.accessibilityHint, tr.a11y.fieldError(error)].filter(Boolean).join(". ") : props.accessibilityHint}
           accessibilityState={{ ...props.accessibilityState, disabled: props.editable === false }}
           maxLength={maxLength}
@@ -230,7 +240,15 @@ export function MoneyField({
       <View style={inline ? { flexDirection: "row", alignItems: "center", gap: spacing.sm } : undefined}>
         {label ? (
           <View style={inline ? { flex: 1, minWidth: 0 } : undefined}>
-            <Label nativeID={labelId} style={inline ? { marginBottom: 0 } : undefined}>{label}</Label>
+            <Label
+              nativeID={labelId}
+              accessible={Platform.OS === "web" ? undefined : false}
+              accessibilityElementsHidden={Platform.OS === "web" ? undefined : true}
+              importantForAccessibility={Platform.OS === "web" ? undefined : "no-hide-descendants"}
+              style={inline ? { marginBottom: 0 } : undefined}
+            >
+              {label}
+            </Label>
           </View>
         ) : null}
         <View
@@ -251,7 +269,7 @@ export function MoneyField({
             testID={testID}
             value={display}
             accessibilityLabel={accessibilityLabel ?? label}
-            accessibilityLabelledBy={label ? labelId : undefined}
+            accessibilityLabelledBy={Platform.OS === "web" && label ? labelId : undefined}
             accessibilityHint={resolvedError ? tr.a11y.fieldError(resolvedError) : undefined}
             accessibilityState={{ disabled }}
             maxLength={INPUT_LIMITS.money}

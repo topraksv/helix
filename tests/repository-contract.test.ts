@@ -81,6 +81,8 @@ const publicRuntimeExports = [
   "updateInvestmentOperation",
   "deleteInvestmentOperation",
   "restoreInvestmentOperation",
+  "deleteInvestmentProduct",
+  "restoreInvestmentProduct",
   "countTransactionsForCategory",
   "countInstallmentsForPlan",
   "createInstallmentPlan",

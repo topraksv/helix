@@ -14,7 +14,7 @@ import {
   makeMonthKey,
   monthRange,
 } from "../src/domain/dates";
-import { resolveYearColumns } from "../src/domain/year-columns";
+import { orderLedgerCategories, resolveYearColumns } from "../src/domain/year-columns";
 
 describe("addDaysISO", () => {
   it("adds and subtracts days without timezone drift", () => {
@@ -155,5 +155,32 @@ describe("resolveYearColumns", () => {
       new Set(["hidden"]),
     );
     expect(out.map((category) => category.id)).toEqual(["visible"]);
+  });
+});
+
+describe("orderLedgerCategories", () => {
+  it("keeps the two settings lists grouped and preserves each list's drag order", () => {
+    const categories = [
+      { id: "salary", kind: "income" as const, sortOrder: 1 },
+      { id: "rent", kind: "expense" as const, sortOrder: 4 },
+      { id: "freelance", kind: "income" as const, sortOrder: 0 },
+      { id: "market", kind: "expense" as const, sortOrder: 2 },
+      { id: "bills", kind: "expense" as const, sortOrder: 3 },
+    ];
+
+    expect(orderLedgerCategories(categories).map((category) => category.id)).toEqual([
+      "market",
+      "bills",
+      "rent",
+      "freelance",
+      "salary",
+    ]);
+    expect(categories.map((category) => category.id)).toEqual([
+      "salary",
+      "rent",
+      "freelance",
+      "market",
+      "bills",
+    ]);
   });
 });

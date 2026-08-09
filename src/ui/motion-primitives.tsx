@@ -102,7 +102,7 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
  * is listened to because a screen inside a nested stack is never told when only
  * its grandparent changed.
  */
-function useScreenVisit(): number {
+export function useScreenVisit(): number {
   const navigation = useContext(NavigationContext);
   const [visit, setVisit] = useState(1);
   useEffect(() => {

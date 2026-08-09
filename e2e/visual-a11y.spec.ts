@@ -70,7 +70,7 @@ async function offscreenControls(page: Page): Promise<string[]> {
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("main routes have no WCAG A/AA violations @smoke", async ({ page }, testInfo) => {
+test("main routes have no WCAG A/AA violations @smoke @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   const routes = ["/helix/", "/helix/cash-flow", "/helix/subscriptions", "/helix/investments", "/helix/settings", "/helix/transaction"];
@@ -353,7 +353,7 @@ test("dashboard reflows intact across the viewport and theme matrix", async ({ p
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("every primary tab lands on its own screen and fits the phone width @smoke", async ({ page }, testInfo) => {
+test("every primary tab lands on its own screen and fits the phone width @smoke @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
@@ -462,7 +462,7 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("modal actions stay reachable in a short landscape viewport @smoke", async ({ page }, testInfo) => {
+test("modal actions stay reachable in a short landscape viewport @smoke @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.setViewportSize({ width: 844, height: 390 });

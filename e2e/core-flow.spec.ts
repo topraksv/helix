@@ -12,7 +12,7 @@ import {
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("onboarding → add → edit → delete/undo → backup protects the core ledger flow @smoke", async ({ page }, testInfo) => {
+test("onboarding → add → edit → delete/undo → backup protects the core ledger flow @smoke @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "E2E market alışverişi");
@@ -72,7 +72,7 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("a clean browser restores a backup and a relationally invalid file writes nothing @smoke", async ({ browser, page }, testInfo) => {
+test("a clean browser restores a backup and a relationally invalid file writes nothing @smoke @cross-browser", async ({ browser, page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await addMarketExpense(page, "Atomik geri yükleme kanıtı", "345,67");

@@ -15,7 +15,12 @@ import Trash2 from "lucide-react-native/icons/trash-2";
 import Umbrella from "lucide-react-native/icons/umbrella";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import type { LucideIcon } from "lucide-react-native";
-import { deleteInvestmentOperation, restoreInvestmentOperation } from "../../../data/repo";
+import {
+  deleteInvestmentOperation,
+  deleteInvestmentProduct,
+  restoreInvestmentOperation,
+  restoreInvestmentProduct,
+} from "../../../data/repo";
 import {
   useAllTransactionsState,
   useInvestmentCategoriesState,
@@ -27,9 +32,7 @@ import {
   useUserId,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import {
-  type InvestmentAssetType,
-} from "../../../domain/investments";
+import { InvestmentDomainError, type InvestmentAssetType } from "../../../domain/investments";
 import { formatMinorCompact } from "../../../domain/money";
 import { todayISO } from "../../../domain/dates";
 import { tr } from "../../../i18n/tr";
@@ -383,6 +386,27 @@ export default function InvestmentsScreen() {
       void appAlert(userMessage(error, tr.investments.insufficientCash), tr.errors.title);
     }
   };
+  const deleteProduct = async (id: string, name: string) => {
+    if (!(await appConfirm(
+      tr.investments.deleteProductTitle,
+      tr.investments.deleteProductBody(name),
+      { confirmLabel: tr.common.delete, danger: true },
+    ))) return;
+    try {
+      const snapshot = await deleteInvestmentProduct(userId, id);
+      if (!snapshot) return;
+      scheduleSync(userId);
+      undo.show(tr.investments.productDeleted, async () => {
+        await restoreInvestmentProduct(userId, snapshot);
+        scheduleSync(userId);
+      });
+    } catch (error) {
+      const fallback = error instanceof InvestmentDomainError && error.code === "insufficient_cash"
+        ? tr.investments.productDeleteBlocked
+        : tr.errors.deleteFailed;
+      void appAlert(userMessage(error, fallback), tr.errors.title);
+    }
+  };
 
   if (ready && !profile) {
     return (
@@ -424,10 +448,10 @@ export default function InvestmentsScreen() {
   }
 
   const active = state.products.filter((product) => product.active);
-  const activeAssetTypes = ASSET_TYPES.filter((assetType) => active.some((product) => product.assetType === assetType));
-  const visibleActive = productFilter === "all"
-    ? active
-    : active.filter((product) => product.assetType === productFilter);
+  const productAssetTypes = ASSET_TYPES.filter((assetType) => state.products.some((product) => product.assetType === assetType));
+  const visibleProducts = productFilter === "all"
+    ? state.products
+    : state.products.filter((product) => product.assetType === productFilter);
   const byType = new Map<InvestmentAssetType, number>();
   for (const product of active) byType.set(product.assetType, (byType.get(product.assetType) ?? 0) + product.costMinor);
   const slices = [
@@ -497,6 +521,15 @@ export default function InvestmentsScreen() {
       <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.xs }]}>
         {tr.investments.portfolioTotal}: {formatMinorCompact(totalCapital)}
       </Text>
+      <View style={{ alignSelf: "flex-start", marginTop: spacing.xs }}>
+        <Button
+          icon={Pencil}
+          variant="ghost"
+          size="sm"
+          label={tr.investments.editOpening}
+          onPress={() => router.push({ pathname: "/investments/setup", params: { mode: "edit" } })}
+        />
+      </View>
     </View>
   );
   const distributionChart = (
@@ -614,32 +647,32 @@ export default function InvestmentsScreen() {
         <InvestmentQuickAction compact={compact} icon={WalletCards} tone="secondary" label={tr.investments.refundShort} caption={tr.investments.refundCaption} disabled={state.cashMinor <= 0} onPress={() => router.push({ pathname: "/transaction", params: { intent: "investment-refund" } })} />
       </View>
 
-      <SectionHeader>{tr.investments.activeProducts}</SectionHeader>
-      {active.length > 0 ? (
+      <SectionHeader>{tr.investments.products}</SectionHeader>
+      {state.products.length > 0 ? (
         <View testID="investment-product-filter" style={{ marginBottom: spacing.sm }}>
           <Text style={[type.small, { color: palette.textSecondary, marginBottom: spacing.xs }]}>{tr.investments.productFilter}</Text>
           <ChipPicker
             compact
             options={[
               { value: "all" as const, label: tr.common.all },
-              ...activeAssetTypes.map((assetType) => ({ value: assetType, label: tr.investments.types[assetType] })),
+              ...productAssetTypes.map((assetType) => ({ value: assetType, label: tr.investments.types[assetType] })),
             ]}
             value={productFilter}
             onChange={setProductFilter}
           />
         </View>
       ) : null}
-      {visibleActive.length === 0 ? (
+      {visibleProducts.length === 0 ? (
         <Card>
           <EmptyState
             icon={Landmark}
-            title={active.length === 0 ? tr.investments.noProducts : tr.investments.noFilteredProducts}
-            hint={active.length === 0 ? tr.investments.noProductsHint : tr.investments.noFilteredProductsHint}
+            title={state.products.length === 0 ? tr.investments.noProducts : tr.investments.noFilteredProducts}
+            hint={state.products.length === 0 ? tr.investments.noProductsHint : tr.investments.noFilteredProductsHint}
           />
         </Card>
       ) : (
         <WorkspaceGrid testID="investment-products" layout="stack">
-          {visibleActive.map((product) => {
+          {visibleProducts.map((product) => {
             const resultPositive = product.realizedProfitLossMinor >= 0;
             const ProductIcon = ASSET_ICONS[product.assetType];
             return (
@@ -652,10 +685,18 @@ export default function InvestmentsScreen() {
                     <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.types[product.assetType]}</Text>
                     <Text style={[type.heading, { color: palette.textStrong, marginTop: 2 }]}>{product.name}</Text>
                   </View>
-                  <View style={{ maxWidth: compact ? "42%" : "55%", paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.full, backgroundColor: palette.surfaceAlt }}>
-                    <Text style={[type.small, { color: palette.primaryText, fontFamily: font.semibold, textAlign: "center" }]}>
-                      {product.quantity ? tr.investments.quantityHeld(product.quantity) : tr.investments.quantityUnknown}
-                    </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                    <View style={{ maxWidth: compact ? 116 : 220, paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.full, backgroundColor: palette.surfaceAlt }}>
+                      <Text style={[type.small, { color: palette.primaryText, fontFamily: font.semibold, textAlign: "center" }]}>
+                        {product.quantity != null ? tr.investments.quantityHeld(product.quantity) : tr.investments.quantityUnknown}
+                      </Text>
+                    </View>
+                    <IconButton
+                      label={`${product.name}: ${tr.common.delete}`}
+                      icon={Trash2}
+                      tone="danger"
+                      onPress={() => void deleteProduct(product.id, product.name)}
+                    />
                   </View>
                 </Spread>
                 <Row style={{ marginTop: spacing.lg, alignItems: "stretch", justifyContent: "center" }}>

@@ -141,6 +141,45 @@ test("dragging across the footer still changes tabs", async ({ page }) => {
   await page.mouse.up();
 });
 
+test("every tab replays its screen entrance on return", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await onboard(page);
+
+  for (const { tab, heading } of [
+    { tab: "Mali Tablo", heading: "Mali Tablo" },
+    { tab: "Abonelikler", heading: "Abonelikler" },
+    { tab: "Ayarlar", heading: "Ayarlar" },
+  ] as const) {
+    await page.getByRole("tab", { name: tab, exact: true }).click();
+    const entrance = page.getByTestId("screen-entrance").filter({
+      has: page.getByRole("heading", { name: heading, exact: true }),
+    });
+    const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
+    await expect.poll(opacity).toBeGreaterThan(0.99);
+    await page.getByRole("tab", { name: "Durum", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "Durum", exact: true })).toHaveAttribute("aria-selected", "true");
+
+    await page.getByRole("tab", { name: tab, exact: true }).click();
+    await expect.poll(opacity, { timeout: 500 }).toBeLessThan(0.99);
+    await expect.poll(opacity).toBeGreaterThan(0.99);
+  }
+});
+
+test("a later expense stays before incomes in the financial table", async ({ page }) => {
+  await onboard(page);
+  await page.goto("/helix/columns-editor");
+  await page.getByRole("textbox", { name: "Kategori adı", exact: true }).fill("Sonradan eklenen gider");
+  await page.getByRole("button", { name: "Ekle", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Düzenle · Sonradan eklenen gider", exact: true })).toBeVisible();
+
+  await page.goto("/helix/cash-flow");
+  await page.getByRole("radio", { name: "Ay odaklı", exact: true }).click();
+  const labels = await page.getByTestId("table-row-label").allTextContents();
+  expect(labels.indexOf("Sonradan eklenen gider")).toBeGreaterThanOrEqual(0);
+  expect(labels.indexOf("Maaş")).toBeGreaterThanOrEqual(0);
+  expect(labels.indexOf("Sonradan eklenen gider")).toBeLessThan(labels.indexOf("Maaş"));
+});
+
 test("the footer keeps a restrained material in both themes", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
@@ -554,7 +593,47 @@ test("leaving the wallet transfer returns to Investments without inventing a dra
   await expect(page).toHaveURL(/investments/);
 });
 
-test("investment setup, weighted sale, BES contribution and wallet refund form one flow @smoke", async ({ page }) => {
+test("a mistaken investment opening and a fully sold product can be removed completely @smoke", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await onboard(page);
+  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("100.000");
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+
+  await page.getByRole("button", { name: "Başlangıç Bakiyesini Düzelt", exact: true }).click();
+  const opening = page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true });
+  await expect(opening).toHaveValue("100.000,00");
+  await opening.fill("0");
+  await page.getByRole("button", { name: "Başlangıcı Güncelle", exact: true }).click();
+  await expect(page.getByLabel("Serbest bakiye: ₺0,00", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
+  await page.getByRole("radio", { name: "Borsa", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Yanlış ürün");
+  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
+  await page.getByRole("button", { name: "Sahip Olduğumu Ekle" }).click();
+  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("1");
+  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
+  await page.getByRole("button", { name: "Mevcut yatırımı ekle", exact: true }).click();
+
+  await page.getByRole("button", { name: "Satış Yap" }).click();
+  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("1");
+  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
+  await page.getByRole("button", { name: "Satış yap", exact: true }).click();
+
+  const removeProduct = page.getByRole("button", { name: "Yanlış ürün: Sil", exact: true });
+  await expect(removeProduct).toBeVisible();
+  await removeProduct.click();
+  const confirmation = page.getByRole("dialog");
+  await expect(confirmation).toContainText("tüm yatırım hareketleri");
+  await confirmation.getByRole("button", { name: "Sil", exact: true }).click();
+  await expect(removeProduct).toHaveCount(0);
+  await expect(page.getByText("Henüz yatırım ürünü yok", { exact: true })).toBeVisible();
+  await expect(page.getByText("Yatırım hareketleri", { exact: true })).toHaveCount(0);
+});
+
+test("investment setup, weighted sale, BES contribution and wallet refund form one flow @smoke @cross-browser", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();

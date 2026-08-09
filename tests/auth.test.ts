@@ -61,6 +61,8 @@ describe("friendly auth errors", () => {
     expect(friendlyAuthError("Failed to fetch")).toBe(tr.auth.errNetwork);
     expect(friendlyAuthError("Password should be at least 6 characters")).toBe(tr.auth.errWeakPassword);
     expect(friendlyAuthError("Email not confirmed")).toBe(tr.auth.errEmailNotConfirmed);
+    expect(friendlyAuthError("Email address not authorized")).toBe(tr.auth.errEmailDelivery);
+    expect(friendlyAuthError("Error sending recovery email")).toBe(tr.auth.errEmailDelivery);
     expect(friendlyAuthError("Unable to validate email address: invalid format")).toBe(tr.auth.errInvalidEmail);
   });
 
@@ -261,6 +263,18 @@ describe("password recovery e-mail request", () => {
 
     expect(networkError).toBe(tr.auth.errNetwork);
     expect(rateLimitError).toBe(tr.auth.errRateLimit);
+  });
+
+  it("does not report success when the project's mail transport rejects delivery", async () => {
+    const error = await requestPasswordRecoveryEmail(
+      {
+        resetPasswordForEmail: async () => ({ error: { message: "Email address not authorized" } }),
+      },
+      "kisi@example.com",
+      "https://topraksv.github.io/helix/reset-password",
+    );
+
+    expect(error).toBe(tr.auth.errEmailDelivery);
   });
 });
 

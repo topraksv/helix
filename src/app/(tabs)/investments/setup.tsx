@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import ArrowRight from "lucide-react-native/icons/arrow-right";
 import Banknote from "lucide-react-native/icons/banknote";
@@ -6,10 +6,13 @@ import Check from "lucide-react-native/icons/check";
 import Landmark from "lucide-react-native/icons/landmark";
 import PackagePlus from "lucide-react-native/icons/package-plus";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { setupInvestments } from "../../../data/repo";
 import { useInvestmentProfilesState, useUserId } from "../../../data/hooks";
 import { todayISO } from "../../../domain/dates";
+import { InvestmentDomainError } from "../../../domain/investments";
+import { formatMinorInput } from "../../../domain/money";
+import { singleParam } from "../../../domain/route-params";
 import { userMessage } from "../../../domain/user-error";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
@@ -22,14 +25,26 @@ import { circle, radius, spacing, type, useTheme } from "../../../ui/theme";
 
 export default function InvestmentSetupScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string | string[] }>();
+  const editing = singleParam(params.mode) === "edit";
   const userId = useUserId();
   const profilesState = useInvestmentProfilesState();
+  const profile = profilesState.data[0];
   const { palette } = useTheme();
   const [date, setDate] = useState(todayISO());
   const [cashRaw, setCashRaw] = useState("");
   const [cashMinor, setCashMinor] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const initializedProfileId = useRef<string | null>(null);
   const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { prefix: false });
+
+  useEffect(() => {
+    if (!editing || !profile || initializedProfileId.current === profile.id) return;
+    initializedProfileId.current = profile.id;
+    setDate(profile.startedOn);
+    setCashRaw(formatMinorInput(profile.openingCashMinor));
+    setCashMinor(profile.openingCashMinor);
+  }, [editing, profile]);
 
   const save = async (addExisting = false) => {
     if (busy || cashMinor == null || cashMinor < 0) return;
@@ -37,13 +52,18 @@ export default function InvestmentSetupScreen() {
     try {
       await setupInvestments(userId, { startedOn: date, openingCashMinor: cashMinor });
       scheduleSync(userId);
-      if (addExisting) {
+      if (editing) {
+        navigateBack(router, "/(tabs)/investments");
+      } else if (addExisting) {
         router.replace({ pathname: "/investments/product", params: { next: "existing" } });
       } else {
         navigateBack(router, "/(tabs)/investments");
       }
     } catch (error) {
-      void appAlert(userMessage(error, tr.errors.saveFailed), tr.errors.title);
+      const fallback = error instanceof InvestmentDomainError && error.code === "insufficient_cash"
+        ? tr.investments.openingEditBlocked
+        : tr.errors.saveFailed;
+      void appAlert(userMessage(error, fallback), tr.errors.title);
     } finally {
       setBusy(false);
     }
@@ -52,10 +72,12 @@ export default function InvestmentSetupScreen() {
   if (profilesState.updatedAt == null) {
     return <Screen><DataStateNotice status={profilesState.status} retry={profilesState.retry} /></Screen>;
   }
-  if (profilesState.data.length > 0) return <Redirect href="/(tabs)/investments" />;
+  if (editing && !profile) return <Redirect href="/(tabs)/investments" />;
+  if (!editing && profile) return <Redirect href="/(tabs)/investments" />;
 
   return (
     <Screen width="form">
+      <Stack.Screen options={{ title: editing ? tr.investments.editSetupTitle : tr.investments.setupTitle }} />
       <View
         accessible
         accessibilityRole="image"
@@ -96,7 +118,11 @@ export default function InvestmentSetupScreen() {
       </View>
 
       <Card style={{ marginBottom: spacing.lg }}>
-        <PanelHeader icon={Banknote} title={tr.investments.setupDetails} description={tr.investments.setupDetailsHint} />
+        <PanelHeader
+          icon={Banknote}
+          title={tr.investments.setupDetails}
+          description={editing ? tr.investments.editSetupDetailsHint : tr.investments.setupDetailsHint}
+        />
         <MoneyField
           testID="investment-opening-cash"
           label={tr.investments.openingCash}
@@ -115,8 +141,16 @@ export default function InvestmentSetupScreen() {
         <Body style={{ flex: 1 }}>{tr.investments.operationHint.existing}</Body>
       </View>
       <View style={{ gap: spacing.sm }}>
-        <Button icon={cashMinor != null ? Check : Banknote} label={tr.investments.setupAction} loading={busy} disabled={cashMinor == null || cashMinor < 0 || busy} onPress={() => void save()} />
-        <Button variant="secondary" icon={Landmark} label={tr.investments.setupWithExisting} disabled={cashMinor == null || cashMinor < 0 || busy} onPress={() => void save(true)} />
+        <Button
+          icon={cashMinor != null ? Check : Banknote}
+          label={editing ? tr.investments.editSetupAction : tr.investments.setupAction}
+          loading={busy}
+          disabled={cashMinor == null || cashMinor < 0 || busy}
+          onPress={() => void save()}
+        />
+        {!editing ? (
+          <Button variant="secondary" icon={Landmark} label={tr.investments.setupWithExisting} disabled={cashMinor == null || cashMinor < 0 || busy} onPress={() => void save(true)} />
+        ) : null}
       </View>
     </Screen>
   );

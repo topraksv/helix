@@ -34,8 +34,7 @@ appId: com.toprak.helix
       - tapOn: "Continue"
 - pressKey: ENTER
 - tapOn:
-    text: "Kategori"
-    index: 1
+    id: "transaction-category"
 - tapOn: ".*Market.*"
 - scrollUntilVisible:
     element:

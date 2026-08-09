@@ -17,6 +17,7 @@ import {
   Animated,
   Easing,
   Modal,
+  Platform,
   useWindowDimensions,
   Pressable,
   ScrollView,
@@ -80,6 +81,7 @@ export function Select<T extends string>({
   onCreate,
   selectedOption,
   trigger,
+  testID,
 }: {
   label?: string;
   /**
@@ -106,6 +108,7 @@ export function Select<T extends string>({
   /** A value chosen through the pinned create action can remain visible in the
    * trigger without becoming a duplicate ordinary option in the list. */
   selectedOption?: { value: T; label: string; icon?: SelectOptionIcon };
+  testID?: string;
   /**
    * Render the control that opens the list. A caller whose control already
    * exists in another shape — a chip in a row of chips — uses this instead of
@@ -280,8 +283,17 @@ export function Select<T extends string>({
   }
   return (
     <View style={{ marginBottom: spacing.md }}>
-      {label ? <Label>{label}</Label> : null}
+      {label ? (
+        <Label
+          accessible={Platform.OS === "web" ? undefined : false}
+          accessibilityElementsHidden={Platform.OS === "web" ? undefined : true}
+          importantForAccessibility={Platform.OS === "web" ? undefined : "no-hide-descendants"}
+        >
+          {label}
+        </Label>
+      ) : null}
       <Pressable
+        testID={testID}
         ref={triggerRef}
         accessibilityRole="button"
         accessibilityLabel={label ?? placeholder ?? current?.label}

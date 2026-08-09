@@ -16,8 +16,10 @@ import {
   createCategory,
   createPerson,
   deleteInvestmentOperation,
+  deleteInvestmentProduct,
   deleteTransaction,
   restoreInvestmentOperation,
+  restoreInvestmentProduct,
   restoreTransaction,
   saveInvestmentProduct,
   setupInvestments,
@@ -545,4 +547,87 @@ describe("repository model oracle", () => {
       expect(mutationCount, `seed ${seed}: mutation count`).toBe(50);
     }
   }, 30_000);
+
+  it("corrects an opening balance and atomically removes a mistaken product journal", async () => {
+    harness.db?.close();
+    harness.nextId = 0;
+    harness.db = new DatabaseSync(":memory:");
+    for (const statement of migrationSql) harness.db.exec(statement);
+
+    const personId = await createPerson(USER, "Ben");
+    const transferCategoryId = await createCategory(USER, {
+      name: "Yatırım",
+      kind: "expense",
+      isTransfer: true,
+      sortOrder: 0,
+    });
+
+    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
+    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 0 });
+    expect(harness.db.prepare(
+      "SELECT COUNT(*) AS count, opening_cash_minor FROM investment_profiles WHERE user_id = ? AND deleted_at IS NULL",
+    ).get(USER)).toMatchObject({ count: 1, opening_cash_minor: 0 });
+
+    const productId = await saveInvestmentProduct(USER, { assetType: "equity", name: "Yanlış ürün" });
+    const existingId = await addInvestmentOperation(USER, {
+      productId,
+      kind: "existing",
+      operationDate: "2026-01-02",
+      quantity: "1",
+      unitPriceMinor: 10_000_000,
+      totalMinor: 10_000_000,
+    });
+    const saleId = await addInvestmentOperation(USER, {
+      productId,
+      kind: "sell",
+      operationDate: "2026-01-03",
+      quantity: "1",
+      unitPriceMinor: 10_000_000,
+      totalMinor: 10_000_000,
+    });
+    const refundId = await addTransaction(USER, {
+      type: "transfer",
+      amountMinor: -10_000_000,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: -10_000_000,
+      effectiveDate: "2026-01-04",
+      categoryId: transferCategoryId,
+      paymentSourceId: null,
+      personId,
+      note: null,
+    });
+
+    await expect(deleteInvestmentProduct(USER, productId)).rejects.toMatchObject({
+      name: "InvestmentDomainError",
+      code: "insufficient_cash",
+    });
+    expect(harness.db.prepare(
+      "SELECT deleted_at FROM investment_products WHERE id = ?",
+    ).get(productId)).toMatchObject({ deleted_at: null });
+
+    await deleteTransaction(USER, refundId);
+    const snapshot = await deleteInvestmentProduct(USER, productId);
+    expect(snapshot).toMatchObject({
+      product: { id: productId },
+      operations: expect.arrayContaining([
+        expect.objectContaining({ id: existingId }),
+        expect.objectContaining({ id: saleId }),
+      ]),
+    });
+    expect(harness.db.prepare(
+      "SELECT deleted_at FROM investment_products WHERE id = ?",
+    ).get(productId)?.deleted_at).toEqual(expect.any(String));
+    expect(harness.db.prepare(
+      "SELECT COUNT(*) AS count FROM investment_operations WHERE product_id = ? AND deleted_at IS NULL",
+    ).get(productId)).toMatchObject({ count: 0 });
+
+    await restoreInvestmentProduct(USER, snapshot!);
+    expect(harness.db.prepare(
+      "SELECT deleted_at FROM investment_products WHERE id = ?",
+    ).get(productId)).toMatchObject({ deleted_at: null });
+    expect(harness.db.prepare(
+      "SELECT COUNT(*) AS count FROM investment_operations WHERE product_id = ? AND deleted_at IS NULL",
+    ).get(productId)).toMatchObject({ count: 2 });
+  });
 });

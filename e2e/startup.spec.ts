@@ -25,7 +25,7 @@ const INITIAL_SCRIPT_BUDGET_BYTES = 4_500_000;
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
-test("opens within its measured startup budget @smoke", async ({ page }, testInfo) => {
+test("opens within its measured startup budget @smoke @cross-browser", async ({ page }, testInfo) => {
   const startedAt = Date.now();
   await page.goto("/helix/");
   // The first thing a new account is shown. Waiting on a real heading — not on

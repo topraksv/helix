@@ -18,7 +18,6 @@ export default defineConfig({
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "list",
   expect: { timeout: 15_000 },
   use: {
-    ...devices["Desktop Chrome"],
     baseURL: "http://127.0.0.1:4173/helix",
     locale: "tr-TR",
     timezoneId: "Europe/Istanbul",
@@ -31,6 +30,14 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "off",
   },
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "firefox-critical",
+      grep: /@cross-browser/,
+      use: { ...devices["Desktop Firefox"] },
+    },
+  ],
   webServer: {
     command: "node scripts/serve-static.mjs dist-e2e 4173 helix",
     url: "http://127.0.0.1:4173/helix/",

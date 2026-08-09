@@ -35,7 +35,7 @@ async function expectKeyboardFocusVisible(page: Page, target: Locator): Promise<
   expect(focus.outlineWidth, "keyboard focus outline must have measurable width").toBeGreaterThan(0);
 }
 
-test("canonical interactive primitives retain visible keyboard focus", async ({ page }, testInfo) => {
+test("canonical interactive primitives retain visible keyboard focus @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
 
@@ -58,7 +58,7 @@ test("canonical interactive primitives retain visible keyboard focus", async ({ 
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("form fields expose a programmatic label and announce their errors", async ({ page }, testInfo) => {
+test("form fields expose a programmatic label and announce their errors @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/transaction");
@@ -141,7 +141,7 @@ test("busy controls, spinners and decorative art are correctly exposed", async (
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
-test("an open dialog is a real modal that owns focus @smoke", async ({ page }, testInfo) => {
+test("an open dialog is a real modal that owns focus @smoke @cross-browser", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await onboard(page);
   await page.goto("/helix/settings");

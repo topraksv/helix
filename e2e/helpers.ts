@@ -36,7 +36,15 @@ export async function isolateExternalData(context: BrowserContext): Promise<void
     if (url.hostname === "127.0.0.1" || url.protocol === "blob:" || url.protocol === "data:") {
       await route.continue();
     } else {
-      await route.abort("blockedbyclient");
+      // Model an unavailable optional service with an HTTP response instead of
+      // a client-side abort. Firefox reports CORS/network aborts as page-level
+      // JavaScript errors even though the application catches them; a 503
+      // exercises the same offline fallback without manufacturing noise.
+      await route.fulfill({
+        status: 503,
+        contentType: "text/plain",
+        body: "External data disabled in browser tests",
+      });
     }
   });
 }

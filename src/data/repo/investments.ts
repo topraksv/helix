@@ -36,6 +36,11 @@ export interface InvestmentProductInput {
   note?: string | null;
 }
 
+export interface InvestmentProductDeleteSnapshot {
+  product: Record<string, unknown>;
+  operations: Record<string, unknown>[];
+}
+
 export interface InvestmentOperationInput extends InvestmentQuoteInput {
   id?: string;
   productId: string;
@@ -103,6 +108,63 @@ export async function saveInvestmentProduct(userId: string, input: InvestmentPro
   return id;
 }
 
+/**
+ * Remove one product and its complete journal as a single semantic write.
+ *
+ * A product's current balance is replayed from every operation, so deleting
+ * only the definition would leave orphan movements and deleting movements one
+ * by one can stop halfway at an oversold intermediate state. The projected
+ * wallet is validated before any tombstone lands; if sale proceeds have since
+ * been spent or transferred, the whole deletion is refused unchanged.
+ */
+export async function deleteInvestmentProduct(
+  userId: string,
+  productId: string,
+): Promise<InvestmentProductDeleteSnapshot | null> {
+  const sqlite = await getSqliteAsync();
+  const product = await sqlite.getFirstAsync<Record<string, unknown>>(
+    "SELECT * FROM investment_products WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+    [productId, userId],
+  );
+  if (!product) return null;
+  const operations = await sqlite.getAllAsync<Record<string, unknown>>(
+    "SELECT * FROM investment_operations WHERE product_id = ? AND user_id = ? AND deleted_at IS NULL",
+    [productId, userId],
+  );
+  const snapshot: InvestmentProductDeleteSnapshot = {
+    product: fromDbShape("investment_products", product),
+    operations: operations.map((row) => fromDbShape("investment_operations", row)),
+  };
+  const deletedAt = nowIso();
+  const writes: RowWrite[] = [
+    { table: "investment_products", row: { ...snapshot.product, deletedAt } },
+    ...snapshot.operations.map((row) => ({
+      table: "investment_operations" as const,
+      row: { ...row, deletedAt },
+    })),
+  ];
+  await writeRowsValidated(userId, writes, (db) => validateInvestmentMutation(db, userId, writes));
+  return snapshot;
+}
+
+export async function restoreInvestmentProduct(
+  userId: string,
+  snapshot: InvestmentProductDeleteSnapshot,
+): Promise<void> {
+  const writes: RowWrite[] = [
+    { table: "investment_products", row: { ...snapshot.product, deletedAt: null } },
+    ...snapshot.operations.map((row) => ({
+      table: "investment_operations" as const,
+      row: { ...row, deletedAt: null },
+    })),
+  ];
+  await writeRowsValidated(
+    userId,
+    writes,
+    (db) => validateInvestmentMutation(db, userId, writes, true),
+  );
+}
+
 function operationRow(input: InvestmentOperationInput, id: string): Record<string, unknown> {
   validateDate(input.operationDate);
   assertInputWithinLimit(input.note ?? null, "note");
@@ -146,12 +208,7 @@ function operationRow(input: InvestmentOperationInput, id: string): Record<strin
 
 async function writeOperation(userId: string, row: Record<string, unknown>): Promise<void> {
   const writes: RowWrite[] = [{ table: "investment_operations", row }];
-  await writeRowsValidated(userId, writes, async (sqlite) => {
-    const projected = await projectInvestmentWrites(sqlite, userId, writes);
-    if (!projected) throw new InvestmentDomainError("unknown_product");
-    await applySaleResults(sqlite, userId, writes, projected.operationResults);
-    await assertInvestmentWrites(sqlite, userId, writes);
-  });
+  await writeRowsValidated(userId, writes, (sqlite) => validateInvestmentMutation(sqlite, userId, writes));
 }
 
 async function applySaleResults(
@@ -197,6 +254,19 @@ async function applySaleResults(
   }
 }
 
+async function validateInvestmentMutation(
+  sqlite: SQLiteDatabase,
+  userId: string,
+  writes: RowWrite[],
+  restoring = false,
+): Promise<void> {
+  if (restoring) await assertRestorableRows(sqlite, userId, writes);
+  const projected = await projectInvestmentWrites(sqlite, userId, writes);
+  if (!projected) throw new InvestmentDomainError("unknown_product");
+  await applySaleResults(sqlite, userId, writes, projected.operationResults);
+  await assertInvestmentWrites(sqlite, userId, writes);
+}
+
 export async function addInvestmentOperation(userId: string, input: InvestmentOperationInput): Promise<string> {
   const id = input.id ?? newId();
   await writeOperation(userId, operationRow(input, id));
@@ -236,15 +306,7 @@ export async function deleteInvestmentOperation(
     table: "investment_operations",
     row: { ...fromDbShape("investment_operations", previous), deletedAt: nowIso() },
   }];
-  await writeRowsValidated(
-    userId,
-    writes,
-    async (db) => {
-      const projected = await projectInvestmentWrites(db, userId, writes);
-      if (projected) await applySaleResults(db, userId, writes, projected.operationResults);
-      await assertInvestmentWrites(db, userId, writes);
-    },
-  );
+  await writeRowsValidated(userId, writes, (db) => validateInvestmentMutation(db, userId, writes));
   return previous;
 }
 
@@ -259,11 +321,6 @@ export async function restoreInvestmentOperation(
   await writeRowsValidated(
     userId,
     writes,
-    async (db) => {
-      await assertRestorableRows(db, userId, writes);
-      const projected = await projectInvestmentWrites(db, userId, writes);
-      if (projected) await applySaleResults(db, userId, writes, projected.operationResults);
-      await assertInvestmentWrites(db, userId, writes);
-    },
+    (db) => validateInvestmentMutation(db, userId, writes, true),
   );
 }

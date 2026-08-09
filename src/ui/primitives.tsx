@@ -105,6 +105,8 @@ export function FadeIn({
   delay = 0,
   rise = true,
   style,
+  replayToken,
+  testID,
   accessibilityViewIsModal,
   accessibilityRole,
   accessibilityLiveRegion,
@@ -121,6 +123,9 @@ export function FadeIn({
    */
   rise?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** Reset and replay without remounting the child tree. */
+  replayToken?: string | number;
+  testID?: string;
   accessibilityViewIsModal?: boolean;
   accessibilityRole?: ViewProps["accessibilityRole"];
   accessibilityLiveRegion?: ViewProps["accessibilityLiveRegion"];
@@ -132,6 +137,7 @@ export function FadeIn({
       progress.setValue(1);
       return;
     }
+    progress.setValue(0);
     const anim = Animated.spring(progress, {
       toValue: 1,
       delay,
@@ -140,9 +146,10 @@ export function FadeIn({
     });
     anim.start();
     return () => anim.stop();
-  }, [progress, delay, reducedMotion]);
+  }, [progress, delay, reducedMotion, replayToken]);
   return (
     <Animated.View
+      testID={testID}
       accessibilityViewIsModal={accessibilityViewIsModal}
       accessibilityRole={accessibilityRole}
       accessibilityLiveRegion={accessibilityLiveRegion}

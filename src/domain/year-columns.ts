@@ -20,6 +20,26 @@ interface YearColumnCategory {
   isColumn: boolean;
 }
 
+interface LedgerCategoryOrder {
+  id: string;
+  kind: "expense" | "income";
+  sortOrder: number;
+}
+
+/**
+ * Settings exposes two independent sortable lists: expenses, then incomes.
+ * A single global sort-order pass can interleave those lists because their
+ * numeric slots were created at different times. Recreate the exact ordering
+ * contract the user edited before resolving each year's membership.
+ */
+export function orderLedgerCategories<T extends LedgerCategoryOrder>(categories: readonly T[]): T[] {
+  return [...categories].sort((left, right) =>
+    Number(left.kind === "income") - Number(right.kind === "income")
+    || left.sortOrder - right.sortOrder
+    || left.id.localeCompare(right.id),
+  );
+}
+
 export function resolveYearColumns<T extends YearColumnCategory>(
   categories: T[],
   columnYears: Record<string, string[]>,

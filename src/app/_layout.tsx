@@ -12,6 +12,11 @@ import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 import { migrateDb } from "../db/migrate";
+import {
+  acknowledgeDatabaseRecoveryNotice,
+  readDatabaseRecoveryNotice,
+  type DatabaseRecoveryNotice,
+} from "../db/client";
 import { useSession } from "../auth/session";
 import { useSyncStatus } from "../sync/status";
 import { useAccountFrozenState, useOnboardedState } from "../data/hooks";
@@ -20,12 +25,15 @@ import { kv } from "../services/kv";
 import {
   controlSize,
   darkPalette,
+  font,
+  radius,
   spacing,
   stateOpacity,
   resolvePaletteId,
   lightPalette,
   PALETTES,
   ThemeContext,
+  type,
   type PaletteId,
   type ThemePreference,
 } from "../ui/theme";
@@ -117,6 +125,7 @@ export default function RootLayout() {
   // Open + migrate the database (async API on every platform) before the app.
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [databaseRecovery, setDatabaseRecovery] = useState<DatabaseRecoveryNotice | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Fonts are cosmetic: never let a slow/flaky web font fetch hold the whole
   // app on a blank screen — after a short grace we render with the system
@@ -134,7 +143,13 @@ export default function RootLayout() {
     let cancelled = false;
     setDbError(null);
     migrateDb().then(
-      () => !cancelled && setDbReady(true),
+      async () => {
+        const recovery = await readDatabaseRecoveryNotice();
+        if (!cancelled) {
+          setDatabaseRecovery(recovery);
+          setDbReady(true);
+        }
+      },
       (error) => {
         devError("database-migration", error);
         if (!cancelled) setDbError(String(error));
@@ -163,7 +178,43 @@ export default function RootLayout() {
         </Head>
       )}
       {dbReady && fontsReady ? (
-        <RootLayoutInner />
+        databaseRecovery ? (
+          <View
+            style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: spacing.xl }}
+          >
+            <View style={{ width: "100%", maxWidth: 520, gap: spacing.md }}>
+              <Text accessibilityRole="header" style={[type.title, { color: foreground, fontFamily: font.bold }]}>
+                {tr.databaseRecovery.title}
+              </Text>
+              <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={[type.body, { color: foreground }]}>
+                {databaseRecovery.preservedFileName
+                  ? tr.databaseRecovery.preserved(databaseRecovery.preservedFileName)
+                  : tr.databaseRecovery.recreated}
+              </Text>
+              <Text style={[type.body, { color: foreground }]}>{tr.databaseRecovery.next}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  acknowledgeDatabaseRecoveryNotice();
+                  setDatabaseRecovery(null);
+                }}
+                style={({ pressed }) => ({
+                  minHeight: controlSize.minimumTarget,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: radius.md,
+                  backgroundColor: systemScheme === "dark" ? darkPalette.primary : lightPalette.primary,
+                  opacity: pressed ? stateOpacity.pressed : 1,
+                  paddingHorizontal: spacing.lg,
+                })}
+              >
+                <Text style={[type.label, { color: primaryForeground, fontFamily: font.semibold }]}>{tr.databaseRecovery.continue}</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <RootLayoutInner />
+        )
       ) : (
         <View
           style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: 24, gap: 16 }}
