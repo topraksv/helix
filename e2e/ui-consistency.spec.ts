@@ -141,6 +141,45 @@ test("dragging across the footer still changes tabs", async ({ page }) => {
   await page.mouse.up();
 });
 
+test("mobile web recentres a focused form field without accumulating focus work", async ({ page }) => {
+  await page.addInitScript(() => {
+    type ScrollCall = boolean | ScrollIntoViewOptions | undefined;
+    const target = window as Window & { __helixKeyboardScrollCalls?: ScrollCall[] };
+    target.__helixKeyboardScrollCalls = [];
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function scrollIntoView(options?: boolean | ScrollIntoViewOptions) {
+      target.__helixKeyboardScrollCalls!.push(options);
+      return original.call(this, options);
+    };
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await page.goto("/helix/subscription-form");
+
+  const note = page.getByRole("textbox", { name: "Not", exact: true });
+  await expect(note).toBeVisible();
+  // Let the single root effect attach after the route's first paint; the test
+  // then measures the input focus rather than React's mount timing.
+  await page.waitForTimeout(250);
+  await note.scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    (window as Window & { __helixKeyboardScrollCalls?: unknown[] }).__helixKeyboardScrollCalls = [];
+  });
+  await note.focus();
+  await expect.poll(() => page.evaluate(
+    () => (window as Window & { __helixKeyboardScrollCalls?: unknown[] }).__helixKeyboardScrollCalls?.length ?? 0,
+  )).toBeGreaterThan(0);
+  await page.waitForTimeout(280);
+
+  const calls = await page.evaluate(() =>
+    (window as Window & { __helixKeyboardScrollCalls?: Array<boolean | ScrollIntoViewOptions | undefined> }).__helixKeyboardScrollCalls ?? [],
+  );
+  expect(calls).toContainEqual(expect.objectContaining({ block: "center", inline: "nearest" }));
+  // One immediate pass plus one after the mobile visual viewport settles. More
+  // would reveal that a screen/list mount has registered duplicate listeners.
+  expect(calls).toHaveLength(2);
+});
+
 test("every tab replays its screen entrance on return", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
@@ -163,6 +202,41 @@ test("every tab replays its screen entrance on return", async ({ page }) => {
     await expect.poll(opacity, { timeout: 500 }).toBeLessThan(0.99);
     await expect.poll(opacity).toBeGreaterThan(0.99);
   }
+});
+
+test("returning from an investment editor keeps the tab scaffold settled", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await onboard(page);
+  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("0");
+  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+
+  const entrance = page.getByTestId("screen-entrance").filter({
+    has: page.getByRole("heading", { name: "Yatırımlar", exact: true }),
+  });
+  const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
+  await expect.poll(opacity).toBeGreaterThan(0.99);
+
+  await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
+  await expect(page).toHaveURL(/investments\/product/);
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
+  await expect(page).toHaveURL(/investments\/?$/);
+  await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
+
+  // Back is a continuation inside this tab, not a new tab arrival. Sampling
+  // consecutive frames catches an accidental full-screen fade without relying
+  // on a screenshot or a timing-sensitive exact duration.
+  const returnedFrames = await entrance.evaluate(async (element) => {
+    const samples: number[] = [];
+    for (let frame = 0; frame < 4; frame += 1) {
+      samples.push(Number.parseFloat(getComputedStyle(element).opacity));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    return samples;
+  });
+  expect(Math.min(...returnedFrames)).toBeGreaterThan(0.99);
 });
 
 test("a later expense stays before incomes in the financial table", async ({ page }) => {
@@ -593,20 +667,13 @@ test("leaving the wallet transfer returns to Investments without inventing a dra
   await expect(page).toHaveURL(/investments/);
 });
 
-test("a mistaken investment opening and a fully sold product can be removed completely @smoke", async ({ page }) => {
+test("a mistaken investment journal and its selected ledger refund are removed together @smoke", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
   await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("100.000");
+  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("0");
   await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-
-  await page.getByRole("button", { name: "Başlangıç Bakiyesini Düzelt", exact: true }).click();
-  const opening = page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true });
-  await expect(opening).toHaveValue("100.000,00");
-  await opening.fill("0");
-  await page.getByRole("button", { name: "Başlangıcı Güncelle", exact: true }).click();
-  await expect(page.getByLabel("Serbest bakiye: ₺0,00", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await page.getByRole("radio", { name: "Borsa", exact: true }).click();
@@ -622,12 +689,23 @@ test("a mistaken investment opening and a fully sold product can be removed comp
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100.000");
   await page.getByRole("button", { name: "Satış yap", exact: true }).click();
 
-  const removeProduct = page.getByRole("button", { name: "Yanlış ürün: Sil", exact: true });
+  await page.getByRole("button", { name: "Serbest Bakiyeyi Aktar" }).click();
+  await page.getByRole("button", { name: "Mali Tabloya Aktar", exact: true }).click();
+
+  await page.getByRole("button", { name: "Düzenle", exact: true }).first().click();
+  const removeProduct = page.getByRole("button", { name: "Yatırım Ürününü Kaldır", exact: true });
   await expect(removeProduct).toBeVisible();
   await removeProduct.click();
+  await expect(page).toHaveURL(/investments\/correction/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const transfer = page.locator('[data-testid^="investment-correction-transfer-"]');
+  await expect(transfer).toHaveCount(1);
+  await transfer.click();
+  await page.getByRole("button", { name: "Ürünü Tamamen Kaldır", exact: true }).click();
   const confirmation = page.getByRole("dialog");
-  await expect(confirmation).toContainText("tüm yatırım hareketleri");
-  await confirmation.getByRole("button", { name: "Sil", exact: true }).click();
+  await expect(confirmation).toContainText("Mali Tablo aktarımı");
+  await confirmation.getByRole("button", { name: "Ürünü Tamamen Kaldır", exact: true }).click();
+  await expect(page).toHaveURL(/investments\/?$/);
   await expect(removeProduct).toHaveCount(0);
   await expect(page.getByText("Henüz yatırım ürünü yok", { exact: true })).toBeVisible();
   await expect(page.getByText("Yatırım hareketleri", { exact: true })).toHaveCount(0);

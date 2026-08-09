@@ -5,6 +5,7 @@ import ArrowDownToLine from "lucide-react-native/icons/arrow-down-to-line";
 import ArrowUpFromLine from "lucide-react-native/icons/arrow-up-from-line";
 import Landmark from "lucide-react-native/icons/landmark";
 import Plus from "lucide-react-native/icons/plus";
+import Trash2 from "lucide-react-native/icons/trash-2";
 import { addInvestmentOperation, updateInvestmentOperation } from "../../../data/repo";
 import {
   useInvestmentOperationsState,
@@ -32,6 +33,7 @@ import {
   DataStateNotice,
   FadeIn,
   Field,
+  IconButton,
   Label,
   MoneyField,
   PanelHeader,
@@ -449,6 +451,29 @@ export default function InvestmentOperationScreen() {
         disabled={!canSave}
         onPress={() => void save()}
       />
+      {editing ? (
+        <View
+          style={{
+            marginTop: spacing.xl,
+            paddingTop: spacing.md,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: palette.border,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.md,
+          }}
+        >
+          <Text style={[type.small, { color: palette.textSecondary, flex: 1, minWidth: 0, maxWidth: 520 }]}>
+            {tr.investments.removeProductHistoryHint}
+          </Text>
+          <IconButton
+            icon={Trash2}
+            tone="danger"
+            label={tr.investments.removeProductHistory}
+            onPress={() => router.push({ pathname: "/investments/correction", params: { productId: editing.productId } })}
+          />
+        </View>
+      ) : null}
     </Screen>
   );
 }

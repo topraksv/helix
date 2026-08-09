@@ -26,20 +26,20 @@ const ACKNOWLEDGED = [
   {
     id: "GHSA-w3rx-r6r6-pgpr",
     package: "image-size",
-    checkedOn: "2026-08-08",
-    expectedPaths: ["expo", "react-native"],
-    recheckAfter: "2026-09-08",
+    checkedOn: "2026-08-09",
+    expectedPaths: ["expo", "react-native", "react-native-reanimated"],
+    recheckAfter: "2026-09-09",
     reason:
-      "image-size@1.2.1 remains only in Metro's build chain; image-size was absent from the production web export. image-size@2.0.2 was tested but rejected because Expo Metro failed on its unmatched.png asset path. The advisory has no upstream patched version; recheck the package and export before expiry.",
+      "image-size@1.2.1 remains only in Metro's build chain; `react-native-reanimated` is an audit peer-dependency path through React Native, not a second installed image-size path (`npm ls image-size` resolves only expo -> @expo/metro -> metro). image-size was absent from the production web export and iOS Release app bundle. image-size@2.0.2 was tested but rejected because Expo Metro failed on its unmatched.png asset path. The advisory has no upstream patched version; recheck the package and both exports before expiry.",
   },
   {
     id: "GHSA-5p2g-fcmc-qvqq",
     package: "image-size",
-    checkedOn: "2026-08-08",
-    expectedPaths: ["expo", "react-native"],
-    recheckAfter: "2026-09-08",
+    checkedOn: "2026-08-09",
+    expectedPaths: ["expo", "react-native", "react-native-reanimated"],
+    recheckAfter: "2026-09-09",
     reason:
-      "image-size@1.2.1 remains only in Metro's build chain; image-size was absent from the production web export. image-size@2.0.2 was tested but rejected because Expo Metro failed on its unmatched.png asset path. The advisory has no upstream patched version; recheck the package and export before expiry.",
+      "image-size@1.2.1 remains only in Metro's build chain; `react-native-reanimated` is an audit peer-dependency path through React Native, not a second installed image-size path (`npm ls image-size` resolves only expo -> @expo/metro -> metro). image-size was absent from the production web export and iOS Release app bundle. image-size@2.0.2 was tested but rejected because Expo Metro failed on its unmatched.png asset path. The advisory has no upstream patched version; recheck the package and both exports before expiry.",
   },
 ];
 

@@ -36,11 +36,6 @@ export interface InvestmentProductInput {
   note?: string | null;
 }
 
-export interface InvestmentProductDeleteSnapshot {
-  product: Record<string, unknown>;
-  operations: Record<string, unknown>[];
-}
-
 export interface InvestmentOperationInput extends InvestmentQuoteInput {
   id?: string;
   productId: string;
@@ -58,6 +53,20 @@ export async function setupInvestments(userId: string, input: InvestmentSetupInp
   assertSupportedMinorAmount(input.openingCashMinor);
   if (input.openingCashMinor < 0) throw new InvestmentDomainError("invalid_money");
   const id = await deterministicId(naturalKeys.investmentProfile(userId));
+  const sqlite = await getSqliteAsync();
+  const existing = await sqlite.getFirstAsync<Record<string, unknown>>(
+    "SELECT started_on, opening_cash_minor FROM investment_profiles WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+    [id, userId],
+  );
+  if (existing) {
+    if (
+      existing.started_on === input.startedOn
+      && Number(existing.opening_cash_minor) === input.openingCashMinor
+    ) return;
+    // Opening cash is a starting fact, not a current-balance control. Rewriting
+    // it after journal rows exist changes prior history instead of correcting it.
+    throw new InvestmentDomainError("invalid_operation");
+  }
   const writes: RowWrite[] = [{
     table: "investment_profiles",
     row: {
@@ -108,61 +117,90 @@ export async function saveInvestmentProduct(userId: string, input: InvestmentPro
   return id;
 }
 
+async function selectedInvestmentRefunds(
+  sqlite: SQLiteDatabase,
+  userId: string,
+  transactionIds: readonly string[],
+  firstSaleDate: ISODate | null,
+): Promise<Record<string, unknown>[]> {
+  const uniqueIds = [...new Set(transactionIds)];
+  if (uniqueIds.length !== transactionIds.length || uniqueIds.some((id) => !id)) {
+    throw new InvestmentDomainError("invalid_operation");
+  }
+  if (uniqueIds.length === 0) return [];
+  // A ledger transfer before the product's first sale cannot be sale proceeds.
+  // The UI applies the same boundary; keeping it here prevents a stale client
+  // or a direct repository caller from selecting an unrelated transfer.
+  if (!firstSaleDate) throw new InvestmentDomainError("invalid_operation");
+  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
+    `SELECT t.*
+       FROM transactions t
+       JOIN investment_profiles p
+         ON p.user_id = t.user_id AND p.deleted_at IS NULL
+       JOIN categories c
+         ON c.id = t.category_id AND c.user_id = t.user_id
+        AND c.deleted_at IS NULL AND c.is_transfer = 1
+       JOIN persons person
+         ON person.id = t.person_id AND person.user_id = t.user_id
+        AND person.deleted_at IS NULL AND person.is_self = 1
+      WHERE t.user_id = ?
+        AND t.id IN (${uniqueIds.map(() => "?").join(", ")})
+        AND t.deleted_at IS NULL
+        AND t.type = 'transfer'
+        AND t.status = 'realized'
+        AND t.amount_try_minor < 0
+        AND t.effective_date >= p.started_on
+        AND t.effective_date BETWEEN ? AND ?`,
+    [userId, ...uniqueIds, firstSaleDate, todayISO()],
+  );
+  if (rows.length !== uniqueIds.length) throw new InvestmentDomainError("invalid_operation");
+  return rows;
+}
+
 /**
- * Remove one product and its complete journal as a single semantic write.
+ * Remove one erroneous product journal and only the ledger transfers the user
+ * explicitly identifies as created to empty that journal's proceeds.
  *
- * A product's current balance is replayed from every operation, so deleting
- * only the definition would leave orphan movements and deleting movements one
- * by one can stop halfway at an oversold intermediate state. The projected
- * wallet is validated before any tombstone lands; if sale proceeds have since
- * been spent or transferred, the whole deletion is refused unchanged.
+ * A generic transfer has no persisted causal product link, so guessing would
+ * risk deleting a legitimate ledger record. The proposed owner graph is replayed
+ * before any tombstone commits; a wrong or insufficient selection leaves every
+ * row unchanged.
  */
-export async function deleteInvestmentProduct(
+export async function removeInvestmentProductHistory(
   userId: string,
   productId: string,
-): Promise<InvestmentProductDeleteSnapshot | null> {
+  transactionIds: readonly string[],
+): Promise<boolean> {
   const sqlite = await getSqliteAsync();
   const product = await sqlite.getFirstAsync<Record<string, unknown>>(
     "SELECT * FROM investment_products WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
     [productId, userId],
   );
-  if (!product) return null;
+  if (!product) return false;
   const operations = await sqlite.getAllAsync<Record<string, unknown>>(
     "SELECT * FROM investment_operations WHERE product_id = ? AND user_id = ? AND deleted_at IS NULL",
     [productId, userId],
   );
-  const snapshot: InvestmentProductDeleteSnapshot = {
-    product: fromDbShape("investment_products", product),
-    operations: operations.map((row) => fromDbShape("investment_operations", row)),
-  };
+  const firstSaleDate = operations.reduce<ISODate | null>((earliest, operation) => {
+    const date = operation.operation_date;
+    if (operation.kind !== "sell" || typeof date !== "string" || !isISODate(date)) return earliest;
+    return earliest == null || date < earliest ? date : earliest;
+  }, null);
+  const refunds = await selectedInvestmentRefunds(sqlite, userId, transactionIds, firstSaleDate);
   const deletedAt = nowIso();
   const writes: RowWrite[] = [
-    { table: "investment_products", row: { ...snapshot.product, deletedAt } },
-    ...snapshot.operations.map((row) => ({
+    { table: "investment_products", row: { ...fromDbShape("investment_products", product), deletedAt } },
+    ...operations.map((row) => ({
       table: "investment_operations" as const,
-      row: { ...row, deletedAt },
+      row: { ...fromDbShape("investment_operations", row), deletedAt },
+    })),
+    ...refunds.map((row) => ({
+      table: "transactions" as const,
+      row: { ...fromDbShape("transactions", row), deletedAt },
     })),
   ];
   await writeRowsValidated(userId, writes, (db) => validateInvestmentMutation(db, userId, writes));
-  return snapshot;
-}
-
-export async function restoreInvestmentProduct(
-  userId: string,
-  snapshot: InvestmentProductDeleteSnapshot,
-): Promise<void> {
-  const writes: RowWrite[] = [
-    { table: "investment_products", row: { ...snapshot.product, deletedAt: null } },
-    ...snapshot.operations.map((row) => ({
-      table: "investment_operations" as const,
-      row: { ...row, deletedAt: null },
-    })),
-  ];
-  await writeRowsValidated(
-    userId,
-    writes,
-    (db) => validateInvestmentMutation(db, userId, writes, true),
-  );
+  return true;
 }
 
 function operationRow(input: InvestmentOperationInput, id: string): Record<string, unknown> {

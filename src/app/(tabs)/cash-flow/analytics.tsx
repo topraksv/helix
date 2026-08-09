@@ -36,6 +36,7 @@ import { shouldPairFilterCards, shouldUseNarrowAnalytics, shouldUseWideWorkspace
 import { useContentWidth } from "../../../ui/viewport";
 import { interactionSurface } from "../../../ui/interaction";
 import { radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
+import { renderKeyboardSafeListScroll } from "../../../ui/keyboard-safe";
 
 type Period = "1m" | "3m" | "6m" | "12m" | "year" | "custom";
 
@@ -723,6 +724,7 @@ export default function AnalysisScreen() {
         renderItem={renderResult}
         ListHeaderComponent={searchHeader}
         ListFooterComponent={analysisFooter}
+        renderScrollComponent={renderKeyboardSafeListScroll}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}

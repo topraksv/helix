@@ -12,7 +12,7 @@
  */
 
 import React, { useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { create } from "zustand";
 import { Button, FadeIn } from "./components";
 import { font, radius, spacing, themeShadow, type, useTheme } from "./theme";
@@ -24,6 +24,7 @@ import { useReducedMotion } from "./motion";
 import { modalAnimationType } from "./modal-motion";
 import { examplePlaceholder } from "./input-placeholder";
 import { OperationDialogHeader, type OperationFlowKind } from "./operation-flow";
+import { KeyboardSafeScrollView } from "./keyboard-safe";
 
 interface DialogRequest {
   title: string;
@@ -145,6 +146,7 @@ function DialogShell({
 }) {
   const { palette } = useTheme();
   const reducedMotion = useReducedMotion();
+  const { height } = useWindowDimensions();
   return (
     <Modal transparent animationType={modalAnimationType(reducedMotion)} visible onRequestClose={onDismiss}>
       <Pressable
@@ -153,9 +155,13 @@ function DialogShell({
         style={{ flex: 1, backgroundColor: palette.scrim, justifyContent: "center" }}
         onPress={onDismiss}
       >
-        <ScrollView
+        <KeyboardSafeScrollView
           contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: spacing.lg }}
+          bottomOffset={Math.min(140, Math.round(height * 0.22))}
+          extraKeyboardSpace={spacing.lg}
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustContentInsets={false}
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
@@ -175,7 +181,7 @@ function DialogShell({
               {children}
             </FadeIn>
           </Pressable>
-        </ScrollView>
+        </KeyboardSafeScrollView>
       </Pressable>
     </Modal>
   );

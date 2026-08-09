@@ -80,15 +80,17 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
  * no navigation object at all. Absent one, a screen is always "focused", which
  * is exactly the mount-only behaviour those surfaces had before.
  *
- * The whole PARENT CHAIN is subscribed to, not just this screen. Yatırımlar is
- * a stack inside a tab, and leaving that tab does not change which screen the
- * inner stack has active — so the inner stack never re-emits, and its screen
- * was never told the user had come back. Measured: Durum replayed its ring and
- * its figure, Yatırımlar replayed neither. `isFocused()` already answers for
- * the whole chain; it is the notification that has to come from all of it.
+ * The tab navigator is the arrival boundary. A child stack's focus event also
+ * fires when a user returns from an editor, which is a continuation of the
+ * same screen rather than a fresh arrival. Listening to every parent made the
+ * complete Screen scaffold fade from zero after Back, so a small route change
+ * looked like a refresh.
  */
+
+export const ScreenVisitContext = React.createContext<number | null>(null);
+
 /**
- * How many times this screen has been arrived at.
+ * How many times this screen's tab has been entered.
  *
  * A boolean was tried and works on the web only. `react-native-screens` FREEZES
  * an inactive screen, so a blurred tab never renders the `focused: false` in
@@ -98,30 +100,32 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
  *
  * A counter cannot be coalesced away: however many renders the freeze swallows,
  * the number the effect last saw is not the number it sees now. The focus
- * EVENT is the trigger rather than a rendered transition, and the parent chain
- * is listened to because a screen inside a nested stack is never told when only
- * its grandparent changed.
+ * EVENT is the trigger rather than a rendered transition. One `Screen` owns
+ * the listener and shares the counter with hero children through context, so a
+ * screen with a chart and a counting figure does not subscribe three times.
  */
 export function useScreenVisit(): number {
+  const scopedVisit = useContext(ScreenVisitContext);
   const navigation = useContext(NavigationContext);
   const [visit, setVisit] = useState(1);
   useEffect(() => {
-    if (!navigation) return;
-    const unsubscribes: (() => void)[] = [];
+    if (scopedVisit != null || !navigation) return;
+    let tabNavigation: typeof navigation | null = null;
+    for (let level = navigation; level; level = level.getParent()) {
+      if (level.getState().type === "tab") {
+        tabNavigation = level;
+        break;
+      }
+    }
+    if (!tabNavigation) return;
     const arrive = () => {
-      // A parent regaining focus does not mean THIS screen is the one on show:
-      // returning to Yatırımlar while its stack sits on a product page must not
-      // replay the index behind it.
+      // A tab regaining focus does not mean a background stack screen is on
+      // show; `isFocused()` rejects the index while its product editor is open.
       if (navigation.isFocused()) setVisit((count) => count + 1);
     };
-    for (let level = navigation; level; level = level.getParent()) {
-      unsubscribes.push(level.addListener("focus", arrive));
-    }
-    return () => {
-      for (const unsubscribe of unsubscribes) unsubscribe();
-    };
-  }, [navigation]);
-  return visit;
+    return tabNavigation.addListener("focus", arrive);
+  }, [navigation, scopedVisit]);
+  return scopedVisit ?? visit;
 }
 
 export function useScreenFocus(): boolean {

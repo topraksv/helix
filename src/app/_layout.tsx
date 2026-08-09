@@ -54,6 +54,7 @@ import { HeaderBackButton, TransactionBackButton } from "../ui/header-back";
 import { cardScreenOptions, primaryScreenOptions, sheetScreenOptions } from "../ui/header-bar";
 
 import { devError } from "../services/logger";
+import { KeyboardSafeRoot } from "../ui/keyboard-safe";
 import { PrivacyCover } from "../ui/privacy-cover";
 import {
   useBiometricLock,
@@ -171,7 +172,8 @@ export default function RootLayout() {
   const fontsReady = fontsLoaded || fontsError != null || fontGrace;
 
   return (
-    <>
+    <KeyboardSafeRoot>
+      <>
       {Platform.OS === "web" && (
         <Head>
           <title>{tr.app.name}</title>
@@ -257,7 +259,8 @@ export default function RootLayout() {
           )}
         </View>
       )}
-    </>
+      </>
+    </KeyboardSafeRoot>
   );
 }
 

@@ -34,6 +34,10 @@ export default function TabsLayout() {
         // imply a direction between them. The navigator honours Reduce Motion
         // through the platform's own accessibility settings.
         animation: "fade" as const,
+        // A keyboard is an editing state, not navigation. Hiding the floating
+        // bar gives the active field room and avoids a second opaque strip
+        // competing with the keyboard on compact devices.
+        tabBarHideOnKeyboard: true,
         // No left inset here. The rail is a floating panel centred on its own
         // axis, not a column the scene stands beside, so a nested stack's header
         // spans the whole window as a header should; padding the scene cut that

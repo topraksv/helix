@@ -62,12 +62,15 @@ appId: com.toprak.helix
       visible: "Continue"
     commands:
       - tapOn: "Continue"
-- tapOn: "Zamanlama"
+# "Zamanlama" is a static heading that has already scrolled above the viewport
+# here. Targeting it made Maestro tap the native header instead of exercising
+# the visible save action a person can actually reach.
 - scrollUntilVisible:
     element:
       text: "Kaydet"
     direction: DOWN
     timeout: 20000
+- waitForAnimationToEnd
 - tapOn: "Kaydet"
 - extendedWaitUntil:
     visible: ".*1.234,56.*"

@@ -60,9 +60,8 @@ export type { NewTransaction, TransactionPatch } from "./repo/transactions";
 
 export {
   addInvestmentOperation,
-  deleteInvestmentProduct,
   deleteInvestmentOperation,
-  restoreInvestmentProduct,
+  removeInvestmentProductHistory,
   restoreInvestmentOperation,
   saveInvestmentProduct,
   setupInvestments,
@@ -70,7 +69,6 @@ export {
 } from "./repo/investments";
 export type {
   InvestmentOperationInput,
-  InvestmentProductDeleteSnapshot,
   InvestmentProductInput,
   InvestmentSetupInput,
 } from "./repo/investments";

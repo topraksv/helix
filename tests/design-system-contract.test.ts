@@ -998,6 +998,7 @@ describe("screen motion replays consistently", () => {
     expect([...screen.matchAll(/<FadeIn/g)]).toHaveLength(2);
     expect([...screen.matchAll(/replayToken=\{visit\}/g)]).toHaveLength(2);
     expect([...screen.matchAll(/testID="screen-entrance"/g)]).toHaveLength(2);
+    expect([...screen.matchAll(/<ScreenVisitContext.Provider/g)]).toHaveLength(2);
     expect(screen).toContain("const visit = useScreenVisit();");
     expect(motionPrimitives).toContain("progress.setValue(0)");
   });
@@ -1011,15 +1012,22 @@ describe("screen motion replays consistently", () => {
    * chart and the figure animated on every return in a browser and never on a
    * phone. A count cannot be coalesced away.
    */
-  it("counts arrivals rather than comparing a focus flag", () => {
-    expect(motionPrimitives).toContain("export function useScreenVisit()");
-    expect(motionPrimitives).toContain("setVisit((count) => count + 1)");
+  it("counts tab arrivals rather than stack focus and shares one listener with hero children", () => {
+    const visit = motionPrimitives.slice(
+      motionPrimitives.indexOf("export function useScreenVisit()"),
+      motionPrimitives.indexOf("export function useScreenFocus()"),
+    );
+    expect(visit).toContain("setVisit((count) => count + 1)");
+    expect(visit).toContain('level.getState().type === "tab"');
+    expect(visit).toContain('return tabNavigation.addListener("focus", arrive)');
+    expect(visit).toContain("const scopedVisit = useContext(ScreenVisitContext);");
+    expect(visit).not.toContain("unsubscribes.push");
     for (const hook of ["useDrawIn", "useCountUp"]) {
       const body = motionPrimitives.slice(motionPrimitives.indexOf(`export function ${hook}(`));
       expect(body.slice(0, 1_400), `${hook} replays per visit`).toContain("const visit = useScreenVisit();");
     }
-    // A parent regaining focus is not this screen being on show.
-    expect(motionPrimitives).toContain("if (navigation.isFocused()) setVisit");
+    // A tab regaining focus is not a background stack screen being on show.
+    expect(visit).toContain("if (navigation.isFocused()) setVisit");
   });
 
   it("tolerates the surfaces that render above the navigator", () => {
@@ -1034,14 +1042,40 @@ describe("screen motion replays consistently", () => {
 
 describe("native forms can uncover actions below the keyboard", () => {
   const components = readFileSync(join(root, "src/ui/components.tsx"), "utf8");
+  const keyboardSafe = readFileSync(join(root, "src/ui/keyboard-safe.tsx"), "utf8");
+  const keyboardSafeNative = readFileSync(join(root, "src/ui/keyboard-safe.native.tsx"), "utf8");
+  const dialog = readFileSync(join(root, "src/ui/dialog.tsx"), "utf8");
+  const rootLayout = readFileSync(join(root, "src/app/_layout.tsx"), "utf8");
   const screen = components.slice(components.indexOf("export function Screen("), components.indexOf("export function Card("));
-  const scrollViewStart = screen.lastIndexOf("<ScrollView");
+  const scrollViewStart = screen.lastIndexOf("<KeyboardSafeScrollView");
   const scrollView = screen.slice(scrollViewStart, screen.indexOf(">", scrollViewStart));
 
-  it("dismisses the keyboard by dragging without delegating layout insets to UIKit", () => {
-    expect(scrollView).toContain('keyboardDismissMode="on-drag"');
+  it("uses one animated native scroller without delegating persistent insets to UIKit", () => {
+    expect(scrollView).toContain("bottomOffset={Math.min(160, Math.round(height * 0.24))}");
+    expect(scrollView).toContain("extraKeyboardSpace={bottomPad}");
+    expect(scrollView).toContain('keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}');
     expect(scrollView).toContain("automaticallyAdjustContentInsets={false}");
     expect(scrollView).not.toContain("automaticallyAdjustKeyboardInsets");
+    expect(keyboardSafeNative).toContain("<KeyboardAwareScrollView");
+    expect(keyboardSafeNative).toContain("disableScrollOnKeyboardHide");
+    expect(keyboardSafeNative).toContain('keyboardShouldPersistTaps="handled"');
+    expect(keyboardSafe).not.toContain("react-native-keyboard-controller");
+    expect(keyboardSafeNative).toContain("renderKeyboardSafeListScroll");
+    expect(keyboardSafeNative).not.toContain("function KeyboardSafeListScroll");
+  });
+
+  it("covers mobile web focus, prompts, and virtualized form lists at their shared owners", () => {
+    expect(rootLayout).toContain("<KeyboardSafeRoot>");
+    expect(keyboardSafe).toContain('block: "center"');
+    expect(keyboardSafe).toContain('document.addEventListener("focusin", scheduleReveal, true)');
+    expect(keyboardSafe).toContain("const focusedTarget = editableElement(event?.target ?? null) ?? activeEditableElement();");
+    expect(keyboardSafe).toContain("window.visualViewport?.addEventListener");
+    expect(keyboardSafe).toContain("renderKeyboardSafeListScroll");
+    expect(keyboardSafe).not.toContain("function KeyboardSafeListScroll");
+    expect(dialog).toContain("<KeyboardSafeScrollView");
+    for (const file of ["src/app/cell-editor.tsx", "src/app/(tabs)/cash-flow/[month].tsx", "src/app/(tabs)/cash-flow/analytics.tsx"]) {
+      expect(readFileSync(join(root, file), "utf8"), file).toContain("renderScrollComponent={renderKeyboardSafeListScroll}");
+    }
   });
 });
 

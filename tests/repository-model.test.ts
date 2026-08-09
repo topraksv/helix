@@ -16,10 +16,9 @@ import {
   createCategory,
   createPerson,
   deleteInvestmentOperation,
-  deleteInvestmentProduct,
   deleteTransaction,
+  removeInvestmentProductHistory,
   restoreInvestmentOperation,
-  restoreInvestmentProduct,
   restoreTransaction,
   saveInvestmentProduct,
   setupInvestments,
@@ -548,7 +547,7 @@ describe("repository model oracle", () => {
     }
   }, 30_000);
 
-  it("corrects an opening balance and atomically removes a mistaken product journal", async () => {
+  it("removes a mistaken product journal and its explicitly selected ledger refund atomically", async () => {
     harness.db?.close();
     harness.nextId = 0;
     harness.db = new DatabaseSync(":memory:");
@@ -563,24 +562,41 @@ describe("repository model oracle", () => {
     });
 
     await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
-    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 0 });
+    await expect(setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 0 })).rejects.toMatchObject({
+      name: "InvestmentDomainError",
+      code: "invalid_operation",
+    });
     expect(harness.db.prepare(
       "SELECT COUNT(*) AS count, opening_cash_minor FROM investment_profiles WHERE user_id = ? AND deleted_at IS NULL",
-    ).get(USER)).toMatchObject({ count: 1, opening_cash_minor: 0 });
+    ).get(USER)).toMatchObject({ count: 1, opening_cash_minor: 10_000_000 });
 
     const productId = await saveInvestmentProduct(USER, { assetType: "equity", name: "Yanlış ürün" });
     const existingId = await addInvestmentOperation(USER, {
       productId,
       kind: "existing",
       operationDate: "2026-01-02",
-      quantity: "1",
+      quantity: "2",
       unitPriceMinor: 10_000_000,
-      totalMinor: 10_000_000,
+      totalMinor: 20_000_000,
     });
-    const saleId = await addInvestmentOperation(USER, {
+    const unrelatedTransferId = await addTransaction(USER, {
+      type: "transfer",
+      amountMinor: -1_000_000,
+      currency: "TRY",
+      fxRate: null,
+      amountTryMinor: -1_000_000,
+      effectiveDate: "2026-01-02",
+      categoryId: transferCategoryId,
+      paymentSourceId: null,
+      personId,
+      note: null,
+    });
+    // Insert the later sale first. SQL row order is not chronology, and an
+    // earlier refund must remain selectable when a later sale is written first.
+    const laterSaleId = await addInvestmentOperation(USER, {
       productId,
       kind: "sell",
-      operationDate: "2026-01-03",
+      operationDate: "2026-01-05",
       quantity: "1",
       unitPriceMinor: 10_000_000,
       totalMinor: 10_000_000,
@@ -597,37 +613,49 @@ describe("repository model oracle", () => {
       personId,
       note: null,
     });
+    const earliestSaleId = await addInvestmentOperation(USER, {
+      productId,
+      kind: "sell",
+      operationDate: "2026-01-03",
+      quantity: "1",
+      unitPriceMinor: 10_000_000,
+      totalMinor: 10_000_000,
+    });
 
-    await expect(deleteInvestmentProduct(USER, productId)).rejects.toMatchObject({
+    await expect(removeInvestmentProductHistory(USER, productId, [])).rejects.toMatchObject({
       name: "InvestmentDomainError",
       code: "insufficient_cash",
     });
     expect(harness.db.prepare(
       "SELECT deleted_at FROM investment_products WHERE id = ?",
     ).get(productId)).toMatchObject({ deleted_at: null });
+    expect(harness.db.prepare(
+      "SELECT deleted_at FROM transactions WHERE id = ?",
+    ).get(refundId)).toMatchObject({ deleted_at: null });
 
-    await deleteTransaction(USER, refundId);
-    const snapshot = await deleteInvestmentProduct(USER, productId);
-    expect(snapshot).toMatchObject({
-      product: { id: productId },
-      operations: expect.arrayContaining([
-        expect.objectContaining({ id: existingId }),
-        expect.objectContaining({ id: saleId }),
-      ]),
+    await expect(removeInvestmentProductHistory(USER, productId, ["not-a-refund"])).rejects.toMatchObject({
+      name: "InvestmentDomainError",
+      code: "invalid_operation",
     });
+    await expect(removeInvestmentProductHistory(USER, productId, [unrelatedTransferId])).rejects.toMatchObject({
+      name: "InvestmentDomainError",
+      code: "invalid_operation",
+    });
+    await expect(removeInvestmentProductHistory(USER, productId, [refundId])).resolves.toBe(true);
     expect(harness.db.prepare(
       "SELECT deleted_at FROM investment_products WHERE id = ?",
     ).get(productId)?.deleted_at).toEqual(expect.any(String));
     expect(harness.db.prepare(
       "SELECT COUNT(*) AS count FROM investment_operations WHERE product_id = ? AND deleted_at IS NULL",
     ).get(productId)).toMatchObject({ count: 0 });
-
-    await restoreInvestmentProduct(USER, snapshot!);
     expect(harness.db.prepare(
-      "SELECT deleted_at FROM investment_products WHERE id = ?",
-    ).get(productId)).toMatchObject({ deleted_at: null });
+      "SELECT deleted_at FROM transactions WHERE id = ?",
+    ).get(refundId)?.deleted_at).toEqual(expect.any(String));
     expect(harness.db.prepare(
-      "SELECT COUNT(*) AS count FROM investment_operations WHERE product_id = ? AND deleted_at IS NULL",
-    ).get(productId)).toMatchObject({ count: 2 });
+      "SELECT deleted_at FROM transactions WHERE id = ?",
+    ).get(unrelatedTransferId)).toMatchObject({ deleted_at: null });
+    expect(harness.db.prepare(
+      "SELECT COUNT(*) AS count FROM investment_operations WHERE id IN (?, ?, ?) AND deleted_at IS NOT NULL",
+    ).get(existingId, laterSaleId, earliestSaleId)).toMatchObject({ count: 3 });
   });
 });

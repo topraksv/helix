@@ -113,3 +113,19 @@ describe("cross-tab screens are reachable at the root", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("completed investment corrections", () => {
+  const correction = readFileSync(join(root, "src/app/(tabs)/investments/correction.tsx"), "utf8");
+
+  it("unwinds its own stack without racing the missing-product redirect", () => {
+    // Completing this action tombstones the very product the screen reads. The
+    // invalid-route redirect is still correct for a stale deep link, but it
+    // must not dispatch a second navigation while a completed correction is
+    // popping its editor and correction screens on native.
+    expect(correction).toContain("const removalCompleted = useRef(false);");
+    expect(correction).toContain("if (!removalCompleted.current && (!profile || !productId || !productName))");
+    expect(correction).toContain("if (router.canDismiss()) router.dismissAll();");
+    expect(correction).toContain('else router.replace("/(tabs)/investments");');
+    expect(correction).not.toContain("router.dismissTo(");
+  });
+});

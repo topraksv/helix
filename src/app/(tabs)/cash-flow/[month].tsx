@@ -41,6 +41,7 @@ import { controlSize, motion, radius, spacing, type, useTheme } from "../../../u
 import { navigateBack } from "../../../ui/navigation";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { appAlert } from "../../../ui/dialog";
+import { renderKeyboardSafeListScroll } from "../../../ui/keyboard-safe";
 
 type Categories = ReturnType<typeof useCategoriesState>["data"];
 type MonthTransactions = ReturnType<typeof useTransactionsBetweenState>["data"];
@@ -464,6 +465,7 @@ export default function MonthDetailScreen() {
               : `${item.kind}:${item.categoryId}`
         }
         renderItem={renderItem}
+        renderScrollComponent={renderKeyboardSafeListScroll}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}

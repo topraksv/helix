@@ -12,6 +12,7 @@
 
 import React, { useRef, type ReactNode } from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -46,7 +47,8 @@ import { circle, contentWidth, density, font, heroSurface, iconSize, radius, spa
 import { shouldStackListActions, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
-import { useScreenVisit } from "./motion-primitives";
+import { KeyboardSafeScrollView } from "./keyboard-safe";
+import { ScreenVisitContext, useScreenVisit } from "./motion-primitives";
 
 export {
   Amount,
@@ -109,7 +111,7 @@ export function Screen({
 }) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const maxWidth = contentWidth[widthName];
   const segments = useSegments();
   const visit = useScreenVisit();
@@ -176,36 +178,25 @@ export function Screen({
     { flexGrow: 1 },
   ];
 
-  // Nothing here adjusts a content inset, and that is the point.
-  //
-  // Two attempts at keyboard avoidance both made things worse.
-  // `KeyboardAvoidingView` with `behavior="padding"` measured the keyboard in
-  // window coordinates while a stack screen starts below the native header, so
-  // it over-padded by the header height and collapsed the content. Replacing it
-  // with `automaticallyAdjustKeyboardInsets` handed the same job to UIKit, and
-  // UIKit's bottom inset survived an app switch without being taken back: the
-  // scrollable area grew every time the app returned from the background, which
-  // is the "scrolls downwards forever" the owner reported.
-  //
-  // So the padding is ours and only ours: `contentContainerStyle` already
-  // carries the safe-area space, and `automaticallyAdjustContentInsets={false}`
-  // stops UIKit adding to it. The scroller dismisses the keyboard on a real
-  // drag instead of changing its inset; this is how an iOS decimal-pad form
-  // exposes a save action below the fold without reviving either failed inset
-  // mechanism.
+  // Navigation and keyboard insets have different owners. `bottomPad` remains
+  // our static safe-area/tab-bar contract; KeyboardSafeScrollView adds only the
+  // temporary keyboard room and follows its native animation. This avoids the
+  // old UIKit inset accumulation that grew a screen after every app switch.
   if (!scroll) {
     return (
       // The rail's space is taken here, by the content, and not by the tab scene:
     // a scene-level inset also shortened the nested stack's header, which is
     // chrome that belongs to the whole window.
     <View style={{ flex: 1, backgroundColor: palette.background, paddingLeft: navLeft }}>
-        {/* The owner chose consistent replay across every route. The token
-            restarts only this animated wrapper; children keep their state, so
-            returning to a partially completed form does not reset its draft. */}
-        <FadeIn testID="screen-entrance" replayToken={visit} style={[{ flex: 1 }, inner]}>
-          {header}
-          {children}
-        </FadeIn>
+        {/* A tab arrival replays only this wrapper; child state stays mounted.
+            A Back navigation remains inside the same tab and therefore keeps
+            the settled scaffold instead of making a completed form look reset. */}
+        <ScreenVisitContext.Provider value={visit}>
+          <FadeIn testID="screen-entrance" replayToken={visit} style={[{ flex: 1 }, inner]}>
+            {header}
+            {children}
+          </FadeIn>
+        </ScreenVisitContext.Provider>
       </View>
     );
   }
@@ -230,10 +221,12 @@ export function Screen({
           style={{ position: "absolute", top: 0, left: 0, right: 0, height: insets.top, backgroundColor: palette.background, zIndex: 2 }}
         />
       ) : null}
-      <ScrollView
+      <KeyboardSafeScrollView
         ref={activeScrollRef}
         contentContainerStyle={inner}
-        keyboardDismissMode="on-drag"
+        bottomOffset={Math.min(160, Math.round(height * 0.24))}
+        extraKeyboardSpace={bottomPad}
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         keyboardShouldPersistTaps="handled"
         scrollEnabled={scrollEnabled}
         automaticallyAdjustContentInsets={false}
@@ -241,11 +234,13 @@ export function Screen({
         {/* Carries the container's grow through to the children, so a screen
             with one short block can centre it rather than stack it at the top
             of an empty page. */}
-        <FadeIn testID="screen-entrance" replayToken={visit} style={{ flexGrow: 1 }}>
-          {header}
-          {children}
-        </FadeIn>
-      </ScrollView>
+        <ScreenVisitContext.Provider value={visit}>
+          <FadeIn testID="screen-entrance" replayToken={visit} style={{ flexGrow: 1 }}>
+            {header}
+            {children}
+          </FadeIn>
+        </ScreenVisitContext.Provider>
+      </KeyboardSafeScrollView>
     </View>
   );
 }

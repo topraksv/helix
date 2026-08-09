@@ -1,0 +1,114 @@
+# Native regression: completing an investment correction returns to the tab
+# stack's index. This used to leave UIKit on an empty scene when the removed
+# product's Redirect raced the correction screen's POP_TO action.
+appId: com.toprak.helix
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Hoş geldin"
+    timeout: 30000
+- tapOn: "Hemen Kullanmaya Başla"
+- runFlow:
+    when:
+      visible: "Geç"
+    commands:
+      - tapOn: "Geç"
+- extendedWaitUntil:
+    visible: "Durum"
+    timeout: 30000
+
+- tapOn: "Yatırımlar"
+- extendedWaitUntil:
+    visible: "Yatırım alanını başlat"
+    timeout: 30000
+- tapOn: "Yatırım Alanını Aç"
+- tapOn:
+    id: "investment-opening-cash"
+- inputText: "10000"
+- pressKey: ENTER
+- tapOn: "Yatırım Alanını Aç"
+- extendedWaitUntil:
+    visible: "İşlem Ekle"
+    timeout: 30000
+
+- scrollUntilVisible:
+    element:
+      text: ".*Yeni Ürün Tanımla.*"
+    direction: DOWN
+    timeout: 20000
+- tapOn: ".*Yeni Ürün Tanımla.*"
+- tapOn: "Borsa"
+- tapOn:
+    id: "investment-product-name"
+- inputText: "Yanlış ürün"
+- pressKey: ENTER
+- scrollUntilVisible:
+    element:
+      text: "Ürünü Kaydet"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Ürünü Kaydet"
+
+- tapOn: "İşlem Ekle"
+- scrollUntilVisible:
+    element:
+      id: "investment-quantity"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- tapOn:
+    id: "investment-quantity"
+- inputText: "10"
+- scrollUntilVisible:
+    element:
+      id: "investment-unit-price"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- tapOn:
+    id: "investment-unit-price"
+- inputText: "100,00"
+- scrollUntilVisible:
+    element:
+      id: "investment-operation-save"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- tapOn:
+    id: "investment-operation-save"
+- scrollUntilVisible:
+    element:
+      text: "Yatırım hareketleri"
+    direction: DOWN
+    timeout: 30000
+
+# The compact product-level affordance exists inside a deliberately chosen
+# movement editor, so it cannot be confused with this movement's own trash.
+- scrollUntilVisible:
+    element:
+      text: "Düzenle"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Düzenle"
+- scrollUntilVisible:
+    element:
+      text: "Yatırım Ürününü Kaldır"
+    direction: DOWN
+    timeout: 20000
+- tapOn: "Yatırım Ürününü Kaldır"
+- extendedWaitUntil:
+    visible: "Ürünü Tamamen Kaldır"
+    timeout: 30000
+- tapOn: "Ürünü Tamamen Kaldır"
+- extendedWaitUntil:
+    visible: "Ürünü Tamamen Kaldır"
+    timeout: 10000
+- tapOn: "Ürünü Tamamen Kaldır"
+
+# This is the regression boundary: a usable tab index, not a blank native
+# scene and not the now-invalid correction route.
+- extendedWaitUntil:
+    visible: "Henüz yatırım ürünü yok"
+    timeout: 30000
+- assertVisible: "Yatırımlar"

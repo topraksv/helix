@@ -20,6 +20,7 @@ export default function InvestmentsLayout() {
       <Stack.Screen name="setup" options={{ title: tr.investments.setupTitle }} />
       <Stack.Screen name="product" options={{ title: tr.investments.addProduct }} />
       <Stack.Screen name="operation" options={{ title: tr.investments.title }} />
+      <Stack.Screen name="correction" options={{ title: tr.investments.removeProductHistoryTitle }} />
     </Stack>
   );
 }

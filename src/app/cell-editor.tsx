@@ -36,6 +36,7 @@ import { spacing, type, useTheme } from "../ui/theme";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { appAlert } from "../ui/dialog";
+import { renderKeyboardSafeListScroll } from "../ui/keyboard-safe";
 import { WorkspaceGrid } from "../ui/workspace-layout";
 
 /**
@@ -264,6 +265,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
       <FlatList
         data={cellTx}
         keyExtractor={(t) => t.id}
+        renderScrollComponent={renderKeyboardSafeListScroll}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}
