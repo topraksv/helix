@@ -60,6 +60,9 @@ export default function CatchUpScreen() {
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
   const incomeById = new Map(incomes.map((income) => [income.id, income]));
+  const isVariableSubscription = (e: (typeof expected)[number]) =>
+    e.kind === "subscription" && subscriptionById.get(e.refId)?.amountMode === "variable";
+  const needsAmountEntry = (e: (typeof expected)[number]) => isVariableSubscription(e) && e.amountIsEstimated === true;
   const items = expected
     .filter((e) => (e.status === "pending" || e.status === "late") && e.dueDate <= today)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -177,17 +180,18 @@ export default function CatchUpScreen() {
                 <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
                   {e.dueDate < today ? <Badge text={tr.dashboard.late} tone="error" /> : null}
                   {e.direction === "in" ? <Badge text={tr.dashboard.expectedIncome} tone="positive" /> : null}
+                  {e.amountIsEstimated ? <Badge text={tr.subs.variableAmountBadge} tone="warning" /> : null}
                   <Body>{nameOf(e)}</Body>
                 </Row>
                 <Body muted style={{ marginTop: spacing.xs }}>
-                  {dateLabel(e.dueDate)} · {formatMinorCompact(e.amountMinor, e.currency)}
+                  {dateLabel(e.dueDate)} · {formatMinorCompact(e.amountMinor, e.currency)}{e.amountIsEstimated ? ` · ${tr.subs.estimatedAmount}` : ""}
                 </Body>
               </View>
             </Spread>
             {editing === e.id ? (
               <View style={{ marginTop: spacing.md }}>
                 <MoneyField
-                  label={`${tr.catchup.fixAmount} (${e.currency})`}
+                  label={`${isVariableSubscription(e) ? tr.subs.amountEntryTitle : tr.catchup.fixAmount} (${e.currency})`}
                   value={amountRaw}
                   onChangeMinor={(raw, minor) => {
                     setAmountRaw(raw);
@@ -220,17 +224,27 @@ export default function CatchUpScreen() {
                 <View>
                   <Button
                     size="sm"
-                    label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                    label={needsAmountEntry(e) ? tr.subs.enterAmount : e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                     loading={confirmingId === e.id}
                     disabled={confirmingId != null}
                     haptic="none"
-                    onPress={() => void confirm(e)}
+                    onPress={() => {
+                      if (needsAmountEntry(e)) {
+                        confirmDiscard(() => {
+                          setEditing(e.id);
+                          setAmountRaw("");
+                          setAmountMinor(null);
+                        });
+                      } else {
+                        void confirm(e);
+                      }
+                    }}
                   />
                 </View>
                 <View>
                   <Button
                     size="sm"
-                    label={tr.catchup.fixAmount}
+                    label={needsAmountEntry(e) ? tr.subs.enterAmount : tr.catchup.fixAmount}
                     variant="secondary"
                     onPress={() => confirmDiscard(() => {
                       setEditing(e.id);

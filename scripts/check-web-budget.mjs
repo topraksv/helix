@@ -46,9 +46,18 @@ const root = process.argv[2] ?? "dist";
 // and symbol blocks the UI draws, measured 791_272 and total export 8_037_750
 // -> 7_269_039. Advance widths, OpenType features and the measured digit
 // spreads are unchanged; `tests/font-coverage.test.ts` holds all three.
+//
+// Then variable-amount subscriptions shipped: a per-occurrence invoice entry
+// sheet shared by the dashboard, upcoming list and reconciliation screens, a
+// subscription-rule toggle that forecasts instead of auto-paying, and a
+// category-delete flow that reassigns every live subscription/income/note/
+// installment reference (or merges cell notes) instead of only counting
+// transactions. Measured 3_364_521 entry / 3_994_286 total, both past the
+// line below. Ceilings move once, together, to the measured figures plus the
+// same ~1% of slack every prior line here carries.
 const limits = {
-  entryJavaScript: 3_352_000,
-  totalJavaScript: 3_988_000,
+  entryJavaScript: 3_398_000,
+  totalJavaScript: 4_034_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.

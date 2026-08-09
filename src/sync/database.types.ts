@@ -333,6 +333,7 @@ export type Database = {
       expected_payments: {
         Row: {
           amount_minor: number
+          amount_is_estimated: boolean
           auto_confirmed: boolean
           created_at: string
           currency: string
@@ -351,6 +352,7 @@ export type Database = {
         }
         Insert: {
           amount_minor: number
+          amount_is_estimated?: boolean
           auto_confirmed?: boolean
           created_at?: string
           currency?: string
@@ -369,6 +371,7 @@ export type Database = {
         }
         Update: {
           amount_minor?: number
+          amount_is_estimated?: boolean
           auto_confirmed?: boolean
           created_at?: string
           currency?: string
@@ -932,6 +935,7 @@ export type Database = {
       subscriptions: {
         Row: {
           amount_minor: number
+          amount_mode: string
           auto_pay: boolean
           billing_day: number
           canceled_at: string | null
@@ -958,6 +962,7 @@ export type Database = {
         }
         Insert: {
           amount_minor: number
+          amount_mode?: string
           auto_pay?: boolean
           billing_day: number
           canceled_at?: string | null
@@ -984,6 +989,7 @@ export type Database = {
         }
         Update: {
           amount_minor?: number
+          amount_mode?: string
           auto_pay?: boolean
           billing_day?: number
           canceled_at?: string | null
@@ -1297,4 +1303,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-

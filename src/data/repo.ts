@@ -98,6 +98,7 @@ export type {
 export {
   confirmExpected,
   revertExpected,
+  setExpectedAmount,
   skipExpected,
   unskipExpected,
 } from "./repo/expected";
@@ -116,10 +117,12 @@ export { saveCellNote } from "./cell-notes";
 export {
   restoreCategoryBudget,
   deleteCategoryBudget,
+  categoryReferenceUsage,
   deleteCategoryWithBudgets,
   restoreCategoryWithBudgets,
   upsertCategoryBudget,
   type CategoryDeleteSnapshot,
+  type CategoryReferenceUsage,
 } from "./repo/budgets";
 
 export {

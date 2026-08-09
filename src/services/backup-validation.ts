@@ -161,6 +161,11 @@ export function isValidImportRow(
       // Backups created before persisted transfer semantics default ordinary
       // categories to false; legacy "Yatırım" rows are backfilled by migration.
       if (table === "categories" && column.name === "is_transfer" && !(column.name in raw)) continue;
+      // Variable subscription support is additive. Older exports have no mode
+      // or per-occurrence estimate flag; the database defaults them to the
+      // pre-feature fixed/known semantics during restore.
+      if (table === "subscriptions" && column.name === "amount_mode" && !(column.name in raw)) continue;
+      if (table === "expected_payments" && column.name === "amount_is_estimated" && !(column.name in raw)) continue;
       if (column.notNull) return false;
       continue;
     }

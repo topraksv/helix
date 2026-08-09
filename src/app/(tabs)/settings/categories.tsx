@@ -6,7 +6,8 @@ import { StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useCategoriesState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { countTransactionsForCategory, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, updateCategory } from "../../../data/repo";
+import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, updateCategory } from "../../../data/repo";
+import type { CategoryReferenceUsage } from "../../../data/repo";
 import { categoryIcon } from "../../../data/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
@@ -18,7 +19,7 @@ import LayoutTemplate from "lucide-react-native/icons/layout-template";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash2 from "lucide-react-native/icons/trash-2";
-import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread, Toggle } from "../../../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../../../ui/components";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -26,6 +27,9 @@ import { radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
+
+const UNCATEGORIZED_CHOICE = "__uncategorized__";
+type CategoryItem = ReturnType<typeof useCategoriesState>["data"][number];
 
 function CategoryLedgerMap({ expenseCount, incomeCount }: { expenseCount: number; incomeCount: number }) {
   const { palette } = useTheme();
@@ -89,6 +93,11 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   // name. It is persisted as `isTransfer` — the product concept is investment,
   // the stored column keeps its original name (see ARCHITECTURE.md).
   const [editInvestment, setEditInvestment] = useState(false);
+  const [deleteResolution, setDeleteResolution] = useState<{
+    category: CategoryItem;
+    usage: CategoryReferenceUsage;
+    replacementId: string | null;
+  } | null>(null);
   // Freeze the screen's scroll while a row is being dragged, so the vertical
   // drag reorders instead of scrolling the page.
   const [dragging, setDragging] = useState(false);
@@ -151,31 +160,67 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     }
   };
 
-  const remove = async (c: (typeof categories)[number]) => {
+  const deleteCategory = async (c: CategoryItem, replacementChoice?: string | null) => {
+    const replacementId = replacementChoice === UNCATEGORIZED_CHOICE ? null : replacementChoice;
+    const snapshot = replacementChoice === undefined
+      ? await deleteCategoryWithBudgets(userId, c.id)
+      : await deleteCategoryWithBudgets(userId, c.id, replacementId);
+    scheduleSync(userId);
+    setDeleteResolution(null);
+    if (snapshot) {
+      undo.show(`${c.name} · ${tr.common.deleted}`, () => {
+        return restoreCategoryWithBudgets(userId, snapshot).then(() => scheduleSync(userId));
+      }, "warning");
+    }
+  };
+
+  const remove = async (c: CategoryItem) => {
     try {
-      // A category with records is never a one-tap delete: warn with the count so
-      // the user knows the rows survive (as "uncategorized") rather than vanishing.
-      const usage = await countTransactionsForCategory(userId, c.id);
-      if (usage > 0) {
-        const ok = await appConfirm(tr.settings.deleteCategoryTitle, tr.settings.deleteCategoryBody(usage), {
-          confirmLabel: tr.common.delete,
-          danger: true,
+      const usage = await categoryReferenceUsage(userId, c.id);
+      if (usage.total > 0) {
+        const candidates = categories.filter((candidate) =>
+          candidate.id !== c.id && candidate.kind === c.kind && candidate.isTransfer === c.isTransfer,
+        );
+        const normalizedName = c.name.trim().toLocaleLowerCase("tr-TR");
+        const sameName = candidates.find((candidate) => candidate.name.trim().toLocaleLowerCase("tr-TR") === normalizedName);
+        const canLeaveUncategorized = usage.subscriptions === 0 && usage.recurringIncomes === 0 && usage.cellNotes === 0;
+        setDeleteResolution({
+          category: c,
+          usage,
+          // Same-name columns (the common Excel year split) are selected first,
+          // but the user can choose any compatible live column before confirming.
+          replacementId: sameName?.id ?? (canLeaveUncategorized ? UNCATEGORIZED_CHOICE : candidates[0]?.id ?? null),
         });
-        if (!ok) return;
+        return;
       }
-      // The category's monthly budgets go with it in the same atomic write, so
-      // no orphan budget row can linger in lists or totals; undo restores both.
-      const snapshot = await deleteCategoryWithBudgets(userId, c.id);
-      scheduleSync(userId);
-      if (snapshot) {
-        undo.show(`${c.name} · ${tr.common.deleted}`, () => {
-          return restoreCategoryWithBudgets(userId, snapshot).then(() => scheduleSync(userId));
-        }, "warning");
-      }
+      const ok = await appConfirm(tr.settings.deleteCategoryTitle, tr.settings.deleteCategoryBody(0), {
+        confirmLabel: tr.common.delete,
+        danger: true,
+      });
+      if (ok) await deleteCategory(c);
     } catch {
       void appAlert(tr.errors.saveFailed, tr.errors.title);
     }
   };
+
+  const replacementCandidates = deleteResolution
+    ? categories.filter((candidate) =>
+        candidate.id !== deleteResolution.category.id
+        && candidate.kind === deleteResolution.category.kind
+        && candidate.isTransfer === deleteResolution.category.isTransfer,
+      )
+    : [];
+  const canLeaveUncategorized = deleteResolution
+    ? deleteResolution.usage.subscriptions === 0
+      && deleteResolution.usage.recurringIncomes === 0
+      && deleteResolution.usage.cellNotes === 0
+    : false;
+  const replacementOptions = deleteResolution
+    ? [
+        ...(canLeaveUncategorized ? [{ value: UNCATEGORIZED_CHOICE, label: tr.settings.deleteCategoryUncategorized }] : []),
+        ...replacementCandidates.map((candidate) => ({ value: candidate.id, label: candidate.name })),
+      ]
+    : [];
 
   if (!dataReady) {
     return (
@@ -190,6 +235,48 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     <Screen scrollEnabled={!dragging} width="workspace">
       {header}
       <DataStateNotice status={dataStatus} retry={retryData} />
+      {deleteResolution ? (
+        <Card tone="warning" testID="category-delete-resolution">
+          <PanelHeader
+            icon={Trash2}
+            title={tr.settings.deleteCategoryReplacementTitle}
+            description={tr.settings.deleteCategoryReplacementHint(deleteResolution.category.name, deleteResolution.usage.total)}
+            tone="warning"
+          />
+          <Select
+            label={tr.settings.deleteCategoryReplacementLabel}
+            options={replacementOptions}
+            value={deleteResolution.replacementId}
+            onChange={(replacementId) => setDeleteResolution((current) => current ? { ...current, replacementId } : current)}
+            placeholder={tr.settings.deleteCategoryReplacementPlaceholder}
+            disabled={replacementOptions.length === 0}
+            testID="category-delete-replacement"
+          />
+          {replacementOptions.length === 0 ? <Body muted style={{ marginTop: spacing.sm }}>{tr.settings.deleteCategoryReplacementMissing}</Body> : null}
+          <Row gap={spacing.sm} style={{ marginTop: spacing.md, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={() => setDeleteResolution(null)} />
+            <Button
+              label={tr.common.delete}
+              size="sm"
+              variant="danger"
+              disabled={!deleteResolution.replacementId || replacementOptions.length === 0}
+              onPress={() => {
+                const current = deleteResolution;
+                if (!current?.replacementId) return;
+                void appConfirm(
+                  tr.settings.deleteCategoryTitle,
+                  tr.settings.deleteCategoryReplacementConfirm(current.category.name, current.replacementId === UNCATEGORIZED_CHOICE
+                    ? tr.settings.deleteCategoryUncategorized
+                    : categories.find((candidate) => candidate.id === current.replacementId)?.name ?? tr.common.none),
+                  { confirmLabel: tr.common.delete, danger: true },
+                ).then((ok) => ok ? deleteCategory(current.category, current.replacementId) : undefined).catch(() => {
+                  void appAlert(tr.errors.saveFailed, tr.errors.title);
+                });
+              }}
+            />
+          </Row>
+        </Card>
+      ) : null}
       <WorkspaceSplit
         testID="categories-workspace"
         wideLayout={categories.length === 0 ? "stack" : "split"}

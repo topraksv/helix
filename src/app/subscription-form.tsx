@@ -43,6 +43,7 @@ function SubscriptionFormArtwork({
   cycle,
   intervalMonths,
   amountMinor,
+  amountMode,
   currency,
   schedule,
   nextDueDate,
@@ -52,6 +53,7 @@ function SubscriptionFormArtwork({
   cycle: "monthly" | "yearly" | "custom";
   intervalMonths: number;
   amountMinor: number | null;
+  amountMode: "fixed" | "variable";
   currency: string;
   schedule: string;
   nextDueDate: ISODate | null;
@@ -134,6 +136,7 @@ function SubscriptionFormArtwork({
           ) : (
             <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
           )}
+          {amountMode === "variable" ? <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.subs.variableAmountBadge}</Text> : null}
         </View>
         <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -186,6 +189,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const [name, setName] = useState(existing?.name ?? "");
   const [amountRaw, setAmountRaw] = useState(existing ? formatMinorInput(existing.amountMinor) : "");
   const [amountMinor, setAmountMinor] = useState<number | null>(existing?.amountMinor ?? null);
+  const [amountMode, setAmountMode] = useState<"fixed" | "variable">(existing?.amountMode ?? "fixed");
   const [currency, setCurrency] = useState(existing?.currency ?? "TRY");
   const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
   const [cycle, setCycle] = useState<"monthly" | "yearly" | "custom">(existing?.cycle ?? "monthly");
@@ -216,6 +220,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const draftSnapshot = JSON.stringify({
     name,
     amountRaw,
+    amountMode,
     currency,
     cycle,
     intervalStr,
@@ -237,6 +242,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     : Number(billingDayStr);
   const intervalMonths = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Number(intervalStr);
   const trialValid = !isTrial || trialDate != null;
+  const effectiveAutoPay = amountMode === "variable" ? false : autoPay;
   const selectedSource = sources.find((source) => source.id === sourceId);
   const sourceValid = !selectedSource || selectedSource.type !== "credit_card" || Boolean(
     selectedSource.statementDay != null && selectedSource.statementDay >= 1 && selectedSource.statementDay <= 31 &&
@@ -286,6 +292,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       id: existing ? draftId : undefined,
       name: name.trim(),
       amountMinor: amountMinor!,
+      amountMode,
       currency,
       cycle,
       intervalMonths,
@@ -296,7 +303,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
       personId,
       isActive,
       trialEndDate: isTrial ? trialDate : null,
-      autoPay,
+      autoPay: effectiveAutoPay,
       websiteDomain: domain || null,
       note: note.trim() || null,
     });
@@ -365,6 +372,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
               cycle={cycle}
               intervalMonths={Number(intervalStr)}
               amountMinor={amountMinor}
+              amountMode={amountMode}
               currency={currency}
               nextDueDate={previewDueDate}
               followingDueDate={followingDueDate}
@@ -374,13 +382,27 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
             />
             <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
             <MoneyField
-              label={`${tr.tx.amount} · ${currency}`}
+              label={`${amountMode === "variable" ? tr.subs.estimatedAmount : tr.tx.amount} · ${currency}`}
               value={amountRaw}
               onChangeMinor={(raw, minor) => {
                 setAmountRaw(raw);
                 setAmountMinor(minor);
               }}
             />
+            <Spread style={{ marginBottom: spacing.md }}>
+              <View style={{ flex: 1, paddingRight: spacing.md }}>
+                <Body>{tr.subs.variableAmount}</Body>
+                <Body muted style={{ fontSize: type.small.fontSize }}>{tr.subs.variableAmountHint}</Body>
+              </View>
+              <Toggle
+                label={tr.subs.variableAmount}
+                value={amountMode === "variable"}
+                onValueChange={(value) => {
+                  setAmountMode(value ? "variable" : "fixed");
+                  if (value) setAutoPay(false);
+                }}
+              />
+            </Spread>
             {showCurrency ? (
               <>
                 <Label>{tr.tx.currency}</Label>
@@ -511,9 +533,9 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
         <Spread style={{ marginBottom: spacing.md }}>
           <View style={{ flex: 1 }}>
             <Body>{tr.subs.autoPay}</Body>
-            <Body muted>{tr.subs.autoPayHint}</Body>
+            <Body muted>{amountMode === "variable" ? tr.subs.variableAutoPayHint : tr.subs.autoPayHint}</Body>
           </View>
-          <Toggle label={tr.subs.autoPay} value={autoPay} onValueChange={setAutoPay} />
+          <Toggle label={tr.subs.autoPay} value={effectiveAutoPay} onValueChange={setAutoPay} disabled={amountMode === "variable"} />
         </Spread>
         <Spread style={{ marginBottom: spacing.lg }}>
           <Body>{tr.common.active}</Body>

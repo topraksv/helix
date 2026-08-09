@@ -187,6 +187,8 @@ export const subscriptions = sqliteTable("subscriptions", {
   ...syncColumns,
   name: text("name").notNull(),
   amountMinor: integer("amount_minor").notNull(),
+  /** Fixed charges use the amount as truth; variable charges use it as a forecast. */
+  amountMode: text("amount_mode", { enum: ["fixed", "variable"] }).notNull().default("fixed"),
   currency: text("currency").notNull().default("TRY"),
   cycle: text("cycle", { enum: ["monthly", "yearly", "custom"] }).notNull(),
   intervalMonths: integer("interval_months").notNull().default(1),
@@ -252,6 +254,8 @@ export const expectedPayments = sqliteTable(
     refId: text("ref_id").notNull(),
     dueDate: text("due_date").notNull(),
     amountMinor: integer("amount_minor").notNull(),
+    /** Variable subscription rows start with the rule's estimate until the user enters the invoice. */
+    amountIsEstimated: integer("amount_is_estimated", { mode: "boolean" }).notNull().default(false),
     currency: text("currency").notNull().default("TRY"),
     status: text("status", { enum: ["pending", "paid", "late", "skipped"] }).notNull().default("pending"),
     paidAt: text("paid_at"),

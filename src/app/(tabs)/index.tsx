@@ -36,7 +36,7 @@ import {
   useUserId,
 } from "../../data/hooks";
 import { combineLiveStates } from "../../data/live-state";
-import { confirmExpected, FxRateUnavailableError, revertExpected } from "../../data/repo";
+import { confirmExpected, FxRateUnavailableError, revertExpected, setExpectedAmount } from "../../data/repo";
 import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
@@ -46,6 +46,7 @@ import { Amount, Badge, Body, Button, Card, DataStateNotice, DisclosureChevron, 
 import { Collapse, useScreenFocus, useValueFlash } from "../../ui/motion-primitives";
 import { Bars, ChartFrame, Donut, distributionDonutData, useSeriesColors } from "../../ui/charts";
 import { CalendarSheet } from "../../ui/calendar";
+import { ExpectedAmountSheet } from "../../ui/expected-amount-sheet";
 import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
@@ -511,9 +512,19 @@ export default function DashboardScreen() {
   const [showForecast, setShowForecast] = React.useState(false);
   const [chartType, setChartType] = React.useState<"pie" | "bars">("pie");
   const [paying, setPaying] = React.useState<(typeof expected)[number] | null>(null);
+  const [amountEditing, setAmountEditing] = React.useState<(typeof expected)[number] | null>(null);
   const defaultPaidDate = (dueDate: string): ISODate => (dueDate <= today ? (dueDate as ISODate) : today);
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
   const operationGuard = useOperationGuard();
+  const isVariableSubscription = (e: (typeof expected)[number]) =>
+    e.kind === "subscription" && subscriptionById.get(e.refId)?.amountMode === "variable";
+  const needsAmountEntry = (e: (typeof expected)[number]) => isVariableSubscription(e) && e.amountIsEstimated === true;
+  const saveExpectedAmount = async (amountMinor: number) => {
+    if (!amountEditing) return;
+    await setExpectedAmount(userId, amountEditing.id, amountMinor);
+    scheduleSync(userId);
+    undo.show(tr.subs.amountEntrySaved);
+  };
   const confirm = async (e: (typeof expected)[number], paidOn: ISODate) => {
     if (!selfPersonId) return;
     await operationGuard.run(async () => {
@@ -634,6 +645,19 @@ export default function DashboardScreen() {
           max={today}
           onSelect={(iso) => void confirm(paying, iso)}
           onClose={() => setPaying(null)}
+        />
+      ) : null}
+      {amountEditing ? (
+        <ExpectedAmountSheet
+          currency={amountEditing.currency}
+          currentMinor={amountEditing.amountMinor}
+          isEstimated={amountEditing.amountIsEstimated === true}
+          onSave={saveExpectedAmount}
+          onClose={() => setAmountEditing(null)}
+          onError={(error) => {
+            devError("dashboard.amount", error);
+            void appAlert(tr.errors.saveFailed);
+          }}
         />
       ) : null}
       {/* Reconciliation nudge — shown only when payments are actually overdue and
@@ -793,8 +817,9 @@ export default function DashboardScreen() {
           above, so the panel has to be seen to come out of it. */}
       <Collapse open={Boolean(bundle) && showForecast && projected != null}>
         {bundle && projected != null ? (
-        <Card>
-          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
+        <Card style={{ marginBottom: 0 }}>
+          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.xs }}>{tr.dashboard.forecastHint}</Body>
+          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.dashboard.forecastBalanceNotice}</Body>
           <Spread style={{ marginBottom: spacing.xs }}>
             <Body muted>{tr.dashboard.forecastCurrent}</Body>
             <Amount minor={bundle.actualBalanceMinor} />
@@ -852,17 +877,17 @@ export default function DashboardScreen() {
                 icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
                 iconColor={palette.error}
                 title={nameOf(e)}
-                subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinorCompact(e.amountMinor, e.currency)}`}
+                subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinorCompact(e.amountMinor, e.currency)}${e.amountIsEstimated ? ` · ${tr.subs.estimatedAmount}` : ""}`}
                 right={(
                   <View style={{ width: STATUS_W }}>
                     <Button
                       size="sm"
-                      label={e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                      label={needsAmountEntry(e) ? tr.subs.enterAmount : e.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                       variant="secondary"
                       tone={e.direction === "in" ? "positive" : "primary"}
                       loading={confirmingId === e.id}
                       disabled={confirmingId != null}
-                      onPress={() => setPaying(e)}
+                      onPress={() => needsAmountEntry(e) ? setAmountEditing(e) : setPaying(e)}
                     />
                   </View>
                 )}
@@ -874,19 +899,22 @@ export default function DashboardScreen() {
                 icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
                 iconColor={u.direction === "in" ? palette.positive : undefined}
                 title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${formatMinorCompact(u.amountMinor, u.currency)}`}
+                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${formatMinorCompact(u.amountMinor, u.currency)}${u.amountIsEstimated ? ` · ${tr.subs.estimatedAmount}` : ""}`}
                 right={u.kind === "expected" && u.expectedId ? (
                   <View style={{ width: STATUS_W }}>
                     <Button
                       size="sm"
-                      label={u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
+                      label={u.amountIsEstimated ? tr.subs.enterAmount : u.direction === "in" ? tr.dashboard.received : tr.dashboard.markPaid}
                       variant="secondary"
                       tone={u.direction === "in" ? "positive" : "primary"}
                       loading={confirmingId === u.expectedId}
                       disabled={confirmingId != null}
                       onPress={() => {
                         const expectedItem = expected.find((item) => item.id === u.expectedId);
-                        if (expectedItem) setPaying(expectedItem);
+                        if (expectedItem) {
+                          if (needsAmountEntry(expectedItem)) setAmountEditing(expectedItem);
+                          else setPaying(expectedItem);
+                        }
                       }}
                     />
                   </View>

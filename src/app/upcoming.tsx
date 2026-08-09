@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -12,20 +12,29 @@ import {
   useRecurringIncomesState,
   useSourcesState,
   useSubscriptionsState,
+  useUserId,
   useTxLike,
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { monthKeyOf, todayISO } from "../domain/dates";
 import { buildUpcomingTimeline, type UpcomingTimelineItem } from "../domain/upcoming";
 import { formatMinorCompact } from "../domain/money";
+import { setExpectedAmount } from "../data/repo";
 import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
+import { scheduleSync } from "../sync/engine";
+import { devError } from "../services/logger";
 import { useSyncStatus } from "../sync/status";
+import { appAlert } from "../ui/dialog";
+import { ExpectedAmountSheet } from "../ui/expected-amount-sheet";
+import { useUndo } from "../ui/undo";
 import { Amount, Badge, Body, Card, DataStateNotice, EmptyState, ListRow, Row, Screen, SectionHeader } from "../ui/components";
 import { font, iconSize, radius, spacing, type, useTheme } from "../ui/theme";
 
 export default function UpcomingScreen() {
+  const userId = useUserId();
   const router = useRouter();
   const { palette } = useTheme();
+  const undo = useUndo();
   const sync = useSyncStatus();
   const transactionsState = useAllTransactionsState();
   const categoriesState = useCategoriesState();
@@ -71,9 +80,18 @@ export default function UpcomingScreen() {
     groups.set(month, current);
     return groups;
   }, new Map<string, UpcomingTimelineItem[]>()).entries()], [timeline]);
+  const subscriptionById = useMemo(() => new Map(subscriptionsState.data.map((subscription) => [subscription.id, subscription])), [subscriptionsState.data]);
+  const [editingAmount, setEditingAmount] = useState<UpcomingTimelineItem | null>(null);
+
+  const isVariableSubscription = (item: UpcomingTimelineItem) =>
+    item.kind === "expected"
+    && item.sourceType === "subscription"
+    && item.expectedId != null
+    && subscriptionById.get(item.refId)?.amountMode === "variable";
 
   const openItem = (item: UpcomingTimelineItem) => {
     if (item.status === "late") return router.push("/reconciliation");
+    if (isVariableSubscription(item)) return setEditingAmount(item);
     if (item.kind === "transaction") return router.push({ pathname: "/transaction", params: { id: item.refId } });
     if (item.sourceType === "subscription") return router.push({ pathname: "/subscription-form", params: { id: item.refId } });
     if (item.sourceType === "recurring_income") return router.push("/incomes");
@@ -86,6 +104,13 @@ export default function UpcomingScreen() {
     card_statement: tr.dashboard.cardStatement,
   })[item.sourceType];
 
+  const saveAmount = async (amountMinor: number) => {
+    if (!editingAmount?.expectedId) return;
+    await setExpectedAmount(userId, editingAmount.expectedId, amountMinor);
+    scheduleSync(userId);
+    undo.show(tr.subs.amountEntrySaved);
+  };
+
   return (
     <Screen width="form">
       <DataStateNotice status={status} retry={retry} />
@@ -93,6 +118,19 @@ export default function UpcomingScreen() {
         <Card tone="warning">
           <Body accessibilityRole="alert" style={{ color: palette.warningText }}>{tr.upcoming.offline}</Body>
         </Card>
+      ) : null}
+      {editingAmount ? (
+        <ExpectedAmountSheet
+          currency={editingAmount.currency}
+          currentMinor={editingAmount.amountMinor}
+          isEstimated={editingAmount.amountIsEstimated === true}
+          onSave={saveAmount}
+          onClose={() => setEditingAmount(null)}
+          onError={(error) => {
+            devError("upcoming.amount", error);
+            void appAlert(tr.errors.saveFailed);
+          }}
+        />
       ) : null}
       {status === "loading" || status === "error" ? null : grouped.length === 0 ? (
         <EmptyState icon={PartyPopper} title={tr.dashboard.noUpcoming} hint={tr.dashboard.upcomingHint} />
@@ -130,7 +168,7 @@ export default function UpcomingScreen() {
                   </View>
                 )}
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}`}
+                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}${item.amountIsEstimated ? ` · ${tr.subs.estimatedAmount}` : ""}`}
                 /* The amount is a column, not the tail of a sentence. Buried in
                    the subtitle it left the middle of every row empty while the
                    figures it should be scanned against stayed unaligned. Same
@@ -143,6 +181,7 @@ export default function UpcomingScreen() {
                 right={(
                   <Row gap={spacing.sm}>
                     {item.status === "late" ? <Badge tone="error" text={tr.dashboard.late} /> : null}
+                    {item.amountIsEstimated ? <Badge tone="warning" text={tr.subs.variableAmountBadge} /> : null}
                     <Amount
                       minor={item.amountMinor}
                       currency={item.currency}

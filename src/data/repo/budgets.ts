@@ -1,8 +1,31 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
-import { assertLiveRow, fromDbShape, nowIso, restoreRows, softDelete, writeRows } from "../../db/mutations";
+import { assertLiveRow, assertRestorableRows, fromDbShape, nowIso, restoreRows, softDelete, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { isMonthKey, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
+
+const CATEGORY_REFERENCE_TABLES = [
+  "transactions",
+  "subscriptions",
+  "recurring_incomes",
+  "installment_plans",
+  "cell_notes",
+] as const;
+type CategoryReferenceTable = (typeof CATEGORY_REFERENCE_TABLES)[number];
+
+export interface CategoryReferenceUsage {
+  transactions: number;
+  subscriptions: number;
+  recurringIncomes: number;
+  installmentPlans: number;
+  cellNotes: number;
+  total: number;
+}
+
+export interface CategoryReferenceSnapshot {
+  table: CategoryReferenceTable;
+  row: Record<string, unknown>;
+}
 
 export async function upsertCategoryBudget(
   userId: string,
@@ -48,6 +71,35 @@ export function restoreCategoryBudget(userId: string, snapshot: Record<string, u
 export interface CategoryDeleteSnapshot {
   category: Record<string, unknown>;
   budgets: Record<string, unknown>[];
+  /** Original rows are retained so undo restores every reassigned reference. */
+  reassigned?: CategoryReferenceSnapshot[];
+  /** Cell notes receive their natural target id when they move to a new column. */
+  created?: CategoryReferenceSnapshot[];
+}
+
+/** Count every live row that would otherwise keep a deleted column alive. */
+export async function categoryReferenceUsage(userId: string, categoryId: string): Promise<CategoryReferenceUsage> {
+  const sqlite = await getSqliteAsync();
+  const counts = await Promise.all(CATEGORY_REFERENCE_TABLES.map(async (table) => {
+    const row = await sqlite.getFirstAsync<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ? AND category_id = ? AND deleted_at IS NULL`,
+      [userId, categoryId],
+    );
+    return row?.n ?? 0;
+  }));
+  const transactions = counts[0] ?? 0;
+  const subscriptions = counts[1] ?? 0;
+  const recurringIncomes = counts[2] ?? 0;
+  const installmentPlans = counts[3] ?? 0;
+  const cellNotes = counts[4] ?? 0;
+  return {
+    transactions,
+    subscriptions,
+    recurringIncomes,
+    installmentPlans,
+    cellNotes,
+    total: counts.reduce((sum, count) => sum + count, 0),
+  };
 }
 
 /**
@@ -59,6 +111,7 @@ export interface CategoryDeleteSnapshot {
 export async function deleteCategoryWithBudgets(
   userId: string,
   categoryId: string,
+  replacementId?: string | null,
 ): Promise<CategoryDeleteSnapshot | null> {
   const sqlite = await getSqliteAsync();
   const category = await sqlite.getFirstAsync<Record<string, unknown>>(
@@ -74,18 +127,151 @@ export async function deleteCategoryWithBudgets(
   const snapshot: CategoryDeleteSnapshot = {
     category: fromDbShape("categories", category),
     budgets: budgets.map((row) => fromDbShape("category_budgets", row)),
+    reassigned: [],
+    created: [],
   };
-  await writeRows(userId, [
+
+  // An omitted third argument is the legacy uncategorized delete path used by
+  // older callers. The settings screen passes null explicitly when the user
+  // chooses “Kategorisiz”; that distinction lets the old API remain safe while
+  // the new reassignment path can atomically move every reference.
+  const hasReassignmentChoice = replacementId !== undefined;
+  let references: CategoryReferenceSnapshot[] = [];
+  const writes: RowWrite[] = [
     { table: "categories", row: { ...snapshot.category, deletedAt } },
     ...snapshot.budgets.map((row) => ({ table: "category_budgets" as const, row: { ...row, deletedAt } })),
-  ]);
+  ];
+
+  if (hasReassignmentChoice) {
+    if (replacementId === categoryId) throw new Error("Category cannot be reassigned to itself");
+    const target = replacementId == null
+      ? null
+      : await sqlite.getFirstAsync<{ id: string; kind: string; is_transfer: number | boolean }>(
+          `SELECT id, kind, is_transfer FROM categories WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+          [replacementId, userId],
+        );
+    if (replacementId != null && !target) throw new Error("Replacement category does not exist");
+    if (target && (target.kind !== category.kind || Boolean(target.is_transfer) !== Boolean(category.is_transfer))) {
+      throw new Error("Replacement category does not match the deleted category");
+    }
+
+    const sourceRows = await Promise.all(CATEGORY_REFERENCE_TABLES.map(async (table) => ({
+      table,
+      rows: await sqlite.getAllAsync<Record<string, unknown>>(
+        `SELECT * FROM ${table} WHERE user_id = ? AND category_id = ? AND deleted_at IS NULL`,
+        [userId, categoryId],
+      ),
+    })));
+    const referencesByTable = sourceRows.flatMap(({ table, rows }) => rows.map((row) => ({ table, row: fromDbShape(table, row) })));
+    const blockingNullReferences = referencesByTable.some(({ table }) =>
+      replacementId == null && (table === "subscriptions" || table === "recurring_incomes" || table === "cell_notes"));
+    if (blockingNullReferences) {
+      throw new Error("A replacement category is required for rules and cell notes");
+    }
+
+    references = referencesByTable;
+    if (replacementId != null) {
+      const targetNotes = await sqlite.getAllAsync<Record<string, unknown>>(
+        `SELECT * FROM cell_notes WHERE user_id = ? AND category_id = ? AND deleted_at IS NULL`,
+        [userId, replacementId],
+      );
+      const targetNoteByMonth = new Map(targetNotes.map((row) => [String(row.month), fromDbShape("cell_notes", row)]));
+      const referenceIds = new Set<string>();
+      for (const reference of references) {
+        const original = reference.row;
+        referenceIds.add(`${reference.table}:${String(original.id)}`);
+        if (reference.table !== "cell_notes") {
+          writes.push({ table: reference.table, row: { ...original, categoryId: replacementId } });
+          continue;
+        }
+        const targetNote = targetNoteByMonth.get(String(original.month));
+        if (!targetNote) {
+          // Cell notes are naturally keyed by (month, category). Keeping the
+          // source id after a move would make the next edit create a duplicate
+          // target note on Postgres, whose natural-key index is stricter than
+          // the local SQLite schema.
+          const targetId = await deterministicId(naturalKeys.cellNote(userId, String(original.month), replacementId));
+          const movedNote = { ...original, id: targetId, categoryId: replacementId, deletedAt: null };
+          writes.push({ table: "cell_notes", row: { ...original, deletedAt } });
+          writes.push({ table: "cell_notes", row: movedNote });
+          snapshot.created?.push({ table: "cell_notes", row: movedNote });
+          continue;
+        }
+        const mergedBody = `${String(targetNote.body)}\n\n${String(original.body)}`;
+        if (mergedBody.length > 1000) throw new Error("Category notes are too long to merge");
+        const targetKey = `cell_notes:${String(targetNote.id)}`;
+        if (!referenceIds.has(targetKey)) {
+          snapshot.reassigned?.push({ table: "cell_notes", row: targetNote });
+          referenceIds.add(targetKey);
+        }
+        writes.push({ table: "cell_notes", row: { ...targetNote, body: mergedBody } });
+        writes.push({ table: "cell_notes", row: { ...original, deletedAt } });
+      }
+    } else {
+      // `transactions.category_id` is `not null` at the Postgres boundary
+      // (initial schema, reinforced by the category-kind trigger): nulling it
+      // here would pass local SQLite and then dead-letter forever on sync.
+      // Leaving the row untouched reproduces the pre-existing orphan behavior
+      // that the cash-flow matrix already reconciles as "uncategorized".
+      references = references.filter((reference) => reference.table !== "transactions");
+      for (const reference of references) {
+        writes.push({ table: reference.table, row: { ...reference.row, categoryId: null } });
+      }
+    }
+    snapshot.reassigned = [
+      ...(snapshot.reassigned ?? []),
+      ...references.filter((reference) => !snapshot.reassigned?.some((item) => item.table === reference.table && item.row.id === reference.row.id)),
+    ];
+  }
+
+  await writeRowsValidated(
+    userId,
+    writes,
+    async (db) => {
+      await assertLiveRow(db, "categories", userId, categoryId);
+      if (replacementId != null) await assertLiveRow(db, "categories", userId, replacementId);
+      if (hasReassignmentChoice) {
+        await Promise.all((snapshot.reassigned ?? []).map((reference) => assertLiveRow(db, reference.table, userId, String(reference.row.id))));
+      }
+    },
+  );
   return snapshot;
 }
 
 /** Undo for `deleteCategoryWithBudgets`: one write restores the whole set. */
 export async function restoreCategoryWithBudgets(userId: string, snapshot: CategoryDeleteSnapshot): Promise<void> {
-  await restoreRows(userId, [
+  const categoryWrites: RowWrite[] = [
     { table: "categories", row: { ...snapshot.category, deletedAt: null } },
     ...snapshot.budgets.map((row) => ({ table: "category_budgets" as const, row: { ...row, deletedAt: null } })),
-  ]);
+  ];
+  if (!snapshot.reassigned?.length && !snapshot.created?.length) {
+    await restoreRows(userId, categoryWrites);
+    return;
+  }
+  const createdTombstones = (snapshot.created ?? []).map((reference) => ({
+    table: reference.table,
+    row: { ...reference.row, deletedAt: nowIso() },
+  }));
+  await writeRowsValidated(userId, [...categoryWrites, ...snapshot.reassigned?.map((reference) => ({
+    table: reference.table,
+    row: { ...reference.row, deletedAt: null },
+  })) ?? [], ...createdTombstones], async (db) => {
+    await assertRestorableRows(db, userId, categoryWrites);
+    await Promise.all((snapshot.reassigned ?? []).map(async (reference) => {
+      const current = await db.getFirstAsync<{ user_id: string }>(
+        `SELECT user_id FROM ${reference.table} WHERE id = ?`,
+        [String(reference.row.id)],
+      );
+      if (!current || current.user_id !== userId) throw new Error(`Cannot restore ${reference.table} row from another account`);
+    }));
+    await Promise.all((snapshot.created ?? []).map(async (reference) => {
+      const current = await db.getFirstAsync<{ user_id: string; deleted_at: string | null }>(
+        `SELECT user_id, deleted_at FROM ${reference.table} WHERE id = ?`,
+        [String(reference.row.id)],
+      );
+      if (!current || current.user_id !== userId || current.deleted_at != null) {
+        throw new Error(`Cannot remove reassigned ${reference.table} row from another account`);
+      }
+    }));
+  });
 }

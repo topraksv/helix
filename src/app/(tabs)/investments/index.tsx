@@ -63,6 +63,10 @@ import { userMessage } from "../../../domain/user-error";
 import { useUndo } from "../../../ui/undo";
 
 const ASSET_TYPES: InvestmentAssetType[] = ["metal", "currency", "equity", "fund", "crypto", "pension"];
+// Every peer section inside the wallet uses the same 16pt boundary. Internal
+// label/value gaps stay smaller; mixing those two scales was what made the
+// transfer panel look twice as far from the bar on the desktop layout.
+const INVESTMENT_SECTION_GAP = spacing.lg;
 const ASSET_ICONS: Record<InvestmentAssetType, LucideIcon> = {
   metal: Coins,
   currency: WalletCards,
@@ -192,7 +196,7 @@ function AllocationStrip({
       accessible
       accessibilityRole="image"
       accessibilityLabel={summary}
-      style={{ marginTop: spacing.lg }}
+      style={{ marginTop: INVESTMENT_SECTION_GAP }}
     >
       <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.distribution}</Text>
       {/* A ranked bar per holding, not one stacked strip.
@@ -524,8 +528,8 @@ export default function InvestmentsScreen() {
         // Side by side they were a second, unrelated strip; only a phone, where
         // a column would cost two more rows of height, keeps them paired.
         flexDirection: compact ? "row" : "column",
-        gap: compact ? spacing.sm : spacing.md,
-        marginTop: spacing.lg,
+        gap: spacing.sm,
+        marginTop: INVESTMENT_SECTION_GAP,
         padding: spacing.md,
         borderRadius: radius.md,
         backgroundColor: palette.surfaceAlt,
@@ -538,6 +542,7 @@ export default function InvestmentsScreen() {
   const portfolioMetrics = (
     <MetricStrip
       testID="investment-portfolio-metrics"
+      style={{ marginTop: INVESTMENT_SECTION_GAP }}
       items={[
         { label: tr.investments.investedCost, minor: state.investedCostMinor, color: palette.text },
         { label: tr.investments.activeProducts, node: <Text style={[type.amount, { color: palette.text }]}>{active.length}</Text> },

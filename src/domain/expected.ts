@@ -20,6 +20,7 @@ interface ExpectedDraft {
   refId: string;
   dueDate: ISODate;
   amountMinor: number;
+  amountIsEstimated: boolean;
   currency: string;
 }
 
@@ -89,6 +90,7 @@ export function generateExpected(
         refId: sub.id,
         dueDate,
         amountMinor: sub.amountMinor,
+        amountIsEstimated: sub.amountMode === "variable",
         currency: sub.currency,
       };
       if (!seen.has(expectedKey(draft))) drafts.push(draft);
@@ -107,6 +109,7 @@ export function generateExpected(
           refId: income.id,
           dueDate,
           amountMinor: income.defaultAmountMinor,
+          amountIsEstimated: false,
           currency: income.currency,
         };
         if (!seen.has(expectedKey(draft))) drafts.push(draft);
@@ -126,6 +129,7 @@ export function generateExpected(
           refId: income.id,
           dueDate,
           amountMinor: income.defaultAmountMinor,
+          amountIsEstimated: false,
           currency: income.currency,
         };
         if (!seen.has(expectedKey(draft))) drafts.push(draft);
@@ -170,6 +174,7 @@ export function findAutoConfirmable(
       e.status === "pending" &&
       e.dueDate <= today &&
       e.kind === "subscription" &&
+      e.amountIsEstimated !== true &&
       autoPayRefIds.has(e.refId),
   );
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { required } from "./helpers";
+import { addDaysISO, todayISO } from "../src/domain/dates";
 
 const dependencies = vi.hoisted(() => ({
   getSqliteAsync: vi.fn(),
@@ -83,6 +84,7 @@ const publicRuntimeExports = [
   "restoreInvestmentOperation",
   "removeInvestmentProductHistory",
   "countTransactionsForCategory",
+  "categoryReferenceUsage",
   "countInstallmentsForPlan",
   "createInstallmentPlan",
   "updateInstallmentPlan",
@@ -94,6 +96,7 @@ const publicRuntimeExports = [
   "deleteRecurringIncomeWithExpected",
   "restoreDeletedRule",
   "confirmExpected",
+  "setExpectedAmount",
   "skipExpected",
   "revertExpected",
   "bulkMonthEntry",
@@ -472,6 +475,80 @@ describe("repository compatibility contract", () => {
       categoryId: "income-category",
     })).rejects.toThrow("Transaction person does not exist");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("requires a variable subscription's real amount before confirmation", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM expected_payments")) {
+          return {
+            id: "expected-1", direction: "out", kind: "subscription", ref_id: "subscription-1",
+            due_date: "2026-07-15", amount_minor: 5_000, amount_is_estimated: 1,
+            currency: "TRY", status: "pending", transaction_id: null,
+          };
+        }
+        if (sql.includes("FROM subscriptions")) return { amount_mode: "variable" };
+        return null;
+      },
+    });
+
+    await expect(repository.confirmExpected("user-1", "expected-1", {
+      personId: "person-1",
+      categoryId: "category-1",
+    })).rejects.toThrow("Variable subscription amount must be entered before confirmation");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("saves a variable subscription amount on only the pending expected row", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM expected_payments")
+        ? {
+            id: "expected-1", direction: "out", kind: "subscription", ref_id: "subscription-1",
+            due_date: "2026-07-15", amount_minor: 5_000, amount_is_estimated: 1,
+            currency: "TRY", status: "pending", transaction_id: null,
+          }
+        : { amount_mode: "variable" },
+    });
+
+    await repository.setExpectedAmount("user-1", "expected-1", 7_250);
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.table).toBe("expected_payments");
+    expect(writes[0]?.row).toMatchObject({ amountMinor: 7_250, amountIsEstimated: false });
+  });
+
+  it("confirms a variable subscription using the entered amount in both ledger rows", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM expected_payments")) {
+          return {
+            id: "expected-1", direction: "out", kind: "subscription", ref_id: "subscription-1",
+            due_date: "2026-07-15", amount_minor: 5_000, amount_is_estimated: 1,
+            currency: "TRY", status: "pending", transaction_id: null,
+          };
+        }
+        if (sql.includes("FROM subscriptions")) {
+          return {
+            person_id: "person-1", category_id: "category-1", amount_mode: "variable",
+            payment_source_id: null, next_due_date: "2026-07-15", interval_months: 1, billing_day: 15,
+          };
+        }
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM categories")) return { kind: "expense", is_transfer: 0 };
+        return null;
+      },
+    });
+
+    await repository.confirmExpected("user-1", "expected-1", {
+      personId: "person-1", categoryId: "category-1", actualAmountMinor: 7_250,
+    });
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes.find((write: { table: string }) => write.table === "transactions")?.row.amountMinor).toBe(7_250);
+    expect(writes.find((write: { table: string }) => write.table === "expected_payments")?.row).toMatchObject({
+      amountMinor: 7_250,
+      amountIsEstimated: false,
+      status: "paid",
+    });
   });
 
   it("does not let a confirmation reassign a rule to another live person", async () => {
@@ -881,6 +958,81 @@ describe("repository compatibility contract", () => {
     await expect(repository.upsertSubscription("user-1", { ...input, nextDueDate: "2026-02-31" as never }))
       .rejects.toThrow("Invalid subscription due date");
     expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("rejects a variable-amount subscription that also enables auto-pay", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
+        ? { id: "cat-1" }
+        : sql.includes("FROM persons") ? { is_self: 1 } : null,
+      getAllAsync: async () => [],
+    });
+    await expect(repository.upsertSubscription("user-1", {
+      name: "Elektrik",
+      amountMinor: 1_000_00,
+      amountMode: "variable",
+      currency: "TRY",
+      cycle: "monthly",
+      intervalMonths: 1,
+      billingDay: 5,
+      nextDueDate: "2026-08-05",
+      paymentSourceId: null,
+      categoryId: "cat-1",
+      personId: "person-1",
+      isActive: true,
+      trialEndDate: null,
+      autoPay: true,
+      websiteDomain: null,
+      note: null,
+    })).rejects.toThrow("Variable subscriptions cannot use auto-pay");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("preserves a manually entered invoice amount when a variable subscription's rule is edited", async () => {
+    // A bill due a few days out is inside every horizon this repository
+    // generates, regardless of which real date the suite runs on.
+    const dueDate = addDaysISO(todayISO(), 5);
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) =>
+        sql.includes("FROM categories") ? { id: "cat-1" }
+        : sql.includes("FROM persons") ? { is_self: 1 }
+        : sql.includes("FROM subscriptions")
+          ? { id: "sub-1", amount_minor: 1_000_00, currency: "TRY", canceled_at: null, amount_mode: "variable" }
+          : null,
+      getAllAsync: async (sql: string) => sql.includes("FROM expected_payments")
+        ? [{
+            id: "expected-1", direction: "out", kind: "subscription", ref_id: "sub-1",
+            due_date: dueDate, amount_minor: 1_247_50, amount_is_estimated: 0,
+            currency: "TRY", status: "pending",
+          }]
+        : [],
+    });
+
+    await repository.upsertSubscription("user-1", {
+      id: "sub-1",
+      name: "Elektrik",
+      amountMinor: 1_100_00, // a new forecast entered while editing the rule
+      amountMode: "variable",
+      currency: "TRY",
+      cycle: "monthly",
+      intervalMonths: 1,
+      billingDay: 5,
+      nextDueDate: dueDate,
+      paymentSourceId: null,
+      categoryId: "cat-1",
+      personId: "person-1",
+      isActive: true,
+      trialEndDate: null,
+      autoPay: false,
+      websiteDomain: null,
+      note: null,
+    });
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const expectedWrite = writes.find((write: { table: string }) => write.table === "expected_payments");
+    // The already-entered invoice amount survives the edit; the new forecast
+    // (1_100_00) must not silently overwrite what the user already typed in.
+    expect(expectedWrite?.row).toMatchObject({ amountMinor: 1_247_50, amountIsEstimated: false });
   });
 
   it("rejects invalid recurring-income scheduling before writing a rule", async () => {

@@ -8,11 +8,15 @@ const dependencies = vi.hoisted(() => ({
   writeRows: vi.fn(),
   restoreRow: vi.fn(),
   restoreRows: vi.fn(),
+  writeRowsValidated: vi.fn(),
 }));
 vi.mock("../src/db/client", () => ({ getSqliteAsync: dependencies.getSqliteAsync }));
 vi.mock("../src/db/ids", () => ({
   deterministicId: vi.fn(async (key: string) => `id:${key}`),
-  naturalKeys: { categoryBudget: (...parts: unknown[]) => parts.join("|") },
+  naturalKeys: {
+    categoryBudget: (...parts: unknown[]) => parts.join("|"),
+    cellNote: (...parts: unknown[]) => parts.join("|"),
+  },
 }));
 vi.mock("../src/db/mutations", () => ({
   assertLiveRow: dependencies.assertLiveRow,
@@ -22,9 +26,10 @@ vi.mock("../src/db/mutations", () => ({
   writeRows: dependencies.writeRows,
   restoreRow: dependencies.restoreRow,
   restoreRows: dependencies.restoreRows,
+  writeRowsValidated: dependencies.writeRowsValidated,
 }));
 
-import { deleteCategoryWithBudgets, restoreCategoryBudget, restoreCategoryWithBudgets, upsertCategoryBudget } from "../src/data/repo/budgets";
+import { categoryReferenceUsage, deleteCategoryWithBudgets, restoreCategoryBudget, restoreCategoryWithBudgets, upsertCategoryBudget } from "../src/data/repo/budgets";
 
 const tx = (id: string, categoryId: string, amountTryMinor: number, effectiveDate = "2026-07-10"): TxLike => ({
   id, type: "expense", amountTryMinor, effectiveDate, status: "realized", categoryId,
@@ -35,7 +40,16 @@ const tx = (id: string, categoryId: string, amountTryMinor: number, effectiveDat
 describe("category deletion cascades to its budgets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dependencies.assertLiveRow.mockResolvedValue(undefined);
     dependencies.restoreRows.mockImplementation(async (userId: string, writes: unknown[]) => {
+      dependencies.writeRows(userId, writes);
+    });
+    dependencies.writeRowsValidated.mockImplementation(async (
+      userId: string,
+      writes: unknown[],
+      validate: (sqlite: unknown) => Promise<void>,
+    ) => {
+      await validate(await dependencies.getSqliteAsync());
       dependencies.writeRows(userId, writes);
     });
   });
@@ -91,6 +105,91 @@ describe("category deletion cascades to its budgets", () => {
       id: "budget-1", userId: "user-1", categoryId: "cat-1", deletedAt: "x",
     })).rejects.toThrow("Cannot edit missing categories row");
     expect(dependencies.restoreRow).not.toHaveBeenCalled();
+  });
+
+  it("counts every live category reference, not only ledger transactions", async () => {
+    const counts = new Map([
+      ["transactions", 2],
+      ["subscriptions", 1],
+      ["recurring_incomes", 3],
+      ["installment_plans", 4],
+      ["cell_notes", 5],
+    ]);
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: vi.fn(async (sql: string) => ({ n: counts.get(sql.match(/FROM (\w+)/)?.[1] ?? "") ?? 0 })),
+      getAllAsync: vi.fn(async () => []),
+    });
+
+    await expect(categoryReferenceUsage("user-1", "cat-1")).resolves.toEqual({
+      transactions: 2,
+      subscriptions: 1,
+      recurringIncomes: 3,
+      installmentPlans: 4,
+      cellNotes: 5,
+      total: 15,
+    });
+  });
+
+  it("moves live references to the selected compatible category in one write", async () => {
+    const sqlite = {
+      getFirstAsync: vi.fn(async (sql: string) => {
+        if (sql.includes("SELECT * FROM categories")) return { id: "cat-1", name: "Market", kind: "expense", is_transfer: 0 };
+        if (sql.includes("SELECT id, kind, is_transfer")) return { id: "cat-2", kind: "expense", is_transfer: 0 };
+        return null;
+      }),
+      getAllAsync: vi.fn(async (sql: string, args: unknown[]) => {
+        if (sql.includes("category_budgets")) return [{ id: "budget-1", category_id: "cat-1" }];
+        if (sql.includes("FROM transactions")) return [{ id: "tx-1", category_id: "cat-1" }];
+        if (sql.includes("FROM subscriptions")) return [{ id: "sub-1", category_id: "cat-1" }];
+        if (sql.includes("FROM recurring_incomes")) return [{ id: "income-1", category_id: "cat-1" }];
+        if (sql.includes("FROM installment_plans")) return [{ id: "plan-1", category_id: "cat-1" }];
+        if (sql.includes("FROM cell_notes")) return args[1] === "cat-2" ? [] : [{ id: "note-1", month: "2026-07", category_id: "cat-1", body: "Eski not" }];
+        return [];
+      }),
+    };
+    dependencies.getSqliteAsync.mockResolvedValue(sqlite);
+
+    const snapshot = await deleteCategoryWithBudgets("user-1", "cat-1", "cat-2");
+    const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    const moved = writes.filter((write) => write.table !== "categories" && write.table !== "category_budgets");
+    expect(moved.map((write) => write.table)).toEqual([
+      "transactions",
+      "subscriptions",
+      "recurring_incomes",
+      "installment_plans",
+      "cell_notes",
+      "cell_notes",
+    ]);
+    for (const write of moved.filter((write) => write.table !== "cell_notes")) expect(write.row.categoryId).toBe("cat-2");
+    expect(moved.filter((write) => write.table === "cell_notes" && write.row.categoryId === "cat-2")).toHaveLength(1);
+    expect(moved.filter((write) => write.table === "cell_notes" && write.row.deletedAt === "2026-07-18T00:00:00.000Z")).toHaveLength(1);
+    expect(snapshot?.reassigned).toHaveLength(5);
+    expect(snapshot?.created).toHaveLength(1);
+  });
+
+  it("never nulls a transaction's category: Postgres requires it not null", async () => {
+    const sqlite = {
+      getFirstAsync: vi.fn(async (sql: string) => {
+        if (sql.includes("SELECT * FROM categories")) return { id: "cat-1", name: "Market", kind: "expense", is_transfer: 0 };
+        return null;
+      }),
+      getAllAsync: vi.fn(async (sql: string) => {
+        if (sql.includes("category_budgets")) return [];
+        if (sql.includes("FROM transactions")) return [{ id: "tx-1", category_id: "cat-1" }];
+        if (sql.includes("FROM installment_plans")) return [{ id: "plan-1", category_id: "cat-1" }];
+        return [];
+      }),
+    };
+    dependencies.getSqliteAsync.mockResolvedValue(sqlite);
+
+    const snapshot = await deleteCategoryWithBudgets("user-1", "cat-1", null);
+    const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    const moved = writes.filter((write) => write.table !== "categories" && write.table !== "category_budgets");
+    // The transaction row is left untouched (orphaned, same as the legacy
+    // delete path); only installment_plans — nullable on Postgres — is nulled.
+    expect(moved.map((write) => write.table)).toEqual(["installment_plans"]);
+    expect(moved[0]?.row.categoryId).toBeNull();
+    expect(snapshot?.reassigned).toEqual([{ table: "installment_plans", row: { id: "plan-1", category_id: "cat-1" } }]);
   });
 });
 

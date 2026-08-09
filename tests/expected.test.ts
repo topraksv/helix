@@ -23,6 +23,7 @@ function sub(overrides: Partial<SubscriptionLike>): SubscriptionLike {
     autoPay: false,
     personIsSelf: true,
     trialEndDate: null,
+    amountMode: "fixed",
     ...overrides,
   };
 }
@@ -60,6 +61,13 @@ describe("generateExpected", () => {
     const dues = drafts.filter((d) => d.kind === "subscription").map((d) => d.dueDate);
     expect(dues).toEqual(["2026-07-10", "2026-08-10", "2026-09-10"]);
     expect(drafts.every((d) => d.direction === "out" || d.kind === "recurring_income")).toBe(true);
+  });
+
+  it("marks variable subscription dues as estimates while fixed dues stay known", () => {
+    const fixed = generateExpected([sub({})], [], [], "2026-07-05", 0);
+    const variable = generateExpected([sub({ amountMode: "variable" })], [], [], "2026-07-05", 0);
+    expect(fixed[0]?.amountIsEstimated).toBe(false);
+    expect(variable[0]?.amountIsEstimated).toBe(true);
   });
 
   it("is idempotent: existing items are not re-drafted", () => {
@@ -122,7 +130,7 @@ describe("state transitions", () => {
       expected({ id: "future-kept", dueDate: "2026-08-10" }),
       expected({ id: "paid", dueDate: "2026-09-10", status: "paid" }),
     ];
-    const drafts = [{ direction: "out" as const, kind: "subscription" as const, refId: "sub-1", dueDate: "2026-08-10", amountMinor: 1, currency: "TRY" }];
+    const drafts = [{ direction: "out" as const, kind: "subscription" as const, refId: "sub-1", dueDate: "2026-08-10", amountMinor: 1, amountIsEstimated: false, currency: "TRY" }];
     expect(obsoleteExpectedIds(rows, drafts, "2026-07-15", true)).toEqual(["future-old"]);
     expect(obsoleteExpectedIds(rows, [], "2026-07-15", false)).toEqual(["late", "future-old", "future-kept"]);
   });
@@ -145,6 +153,11 @@ describe("state transitions", () => {
     ];
     const confirmable = findAutoConfirmable(items, new Set(["sub-auto"]), "2026-07-05");
     expect(confirmable.map((e) => e.id)).toEqual(["auto-due"]);
+  });
+
+  it("never auto-confirms a variable subscription before its actual amount is entered", () => {
+    const items = [expected({ refId: "sub-auto", amountIsEstimated: true, dueDate: "2026-07-05" })];
+    expect(findAutoConfirmable(items, new Set(["sub-auto"]), "2026-07-05")).toEqual([]);
   });
 });
 

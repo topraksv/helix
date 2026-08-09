@@ -285,6 +285,7 @@ export default function SubscriptionsScreen() {
     const badges: RuleBadge[] = s.isActive
       ? [
           { text: tr.subs.nextDue(shortDateLabel(s.nextDueDate)) },
+          ...(s.amountMode === "variable" ? [{ text: tr.subs.variableAmountBadge, tone: "warning" as const }] : []),
           ...(inTrial ? [{ text: tr.subs.trialEnds(shortDateLabel(s.trialEndDate!)), tone: "warning" as const }] : []),
           ...(s.autoPay ? [{ text: tr.subs.autoPay, tone: "primary" as const, icon: Repeat }] : []),
         ]

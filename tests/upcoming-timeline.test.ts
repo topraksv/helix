@@ -45,4 +45,17 @@ describe("unified upcoming timeline", () => {
     });
     expect(result).toEqual([]);
   });
+
+  it("carries a variable subscription's estimate marker to the timeline", () => {
+    const result = buildUpcomingTimeline({
+      today: "2026-07-18",
+      expected: [{
+        id: "variable", direction: "out", kind: "subscription", refId: "sub", dueDate: "2026-07-20",
+        amountMinor: 1000, amountIsEstimated: true, currency: "TRY", status: "pending",
+      }],
+      expectedSources: [{ id: "sub", name: "Elektrik", sourceType: "subscription", categoryName: null }],
+      categories: [], cards: [], statements: [], transactions: [],
+    });
+    expect(result[0]?.amountIsEstimated).toBe(true);
+  });
 });

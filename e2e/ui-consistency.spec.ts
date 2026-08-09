@@ -5,7 +5,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { addMarketExpense, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
+import { addMarketExpense, assertNoRuntimeErrors, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
 
@@ -254,6 +254,75 @@ test("a later expense stays before incomes in the financial table", async ({ pag
   expect(labels.indexOf("Sonradan eklenen gider")).toBeGreaterThanOrEqual(0);
   expect(labels.indexOf("Maaş")).toBeGreaterThanOrEqual(0);
   expect(labels.indexOf("Sonradan eklenen gider")).toBeLessThan(labels.indexOf("Maaş"));
+});
+
+test("deleting an imported column can move its records to a compatible column", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.goto("/helix/columns-editor");
+
+  for (const name of ["2025 Gider", "2026 Gider"]) {
+    await page.getByRole("textbox", { name: "Kategori adı", exact: true }).fill(name);
+    await page.getByRole("button", { name: "Ekle", exact: true }).click();
+    await expect(page.getByRole("button", { name: `Düzenle · ${name}`, exact: true })).toBeVisible();
+  }
+
+  await page.goto("/helix/");
+  await openCashFlow(page);
+  await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("321,00");
+  await pickOption(page, "Kategori", "2025 Gider");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  await expect(page.getByText(/321,00/u).first()).toBeVisible();
+  await page.goto("/helix/columns-editor");
+
+  await page.getByRole("button", { name: "Sil · 2025 Gider", exact: true }).click();
+  const resolution = page.getByTestId("category-delete-resolution");
+  await expect(resolution).toBeVisible();
+  await expect(resolution.getByText(/bağlı 1 kayıt bulundu/)).toBeVisible();
+  await page.getByRole("button", { name: "Yeni kalem", exact: true }).click();
+  await page.locator('[aria-modal="true"]').getByRole("radio", { name: "2026 Gider", exact: true }).click();
+  await resolution.getByRole("button", { name: "Sil", exact: true }).click();
+  await page.getByRole("button", { name: "Sil", exact: true }).last().click();
+  await expect(resolution).toHaveCount(0);
+
+  await page.goto("/helix/cash-flow");
+  await expect(page.getByText("2026 Gider", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("2025 Gider", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/321,00/u).first()).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("row and column pins persist independently", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await onboard(page);
+  await openCashFlow(page);
+
+  await page.getByRole("radio", { name: "Satır odaklı", exact: true }).click();
+  const rowPin = page.getByRole("button", { name: /kolonunu sabitle$/u }).first();
+  await expect(rowPin).toBeVisible();
+  const rowPinLabel = await rowPin.getAttribute("aria-label");
+  expect(rowPinLabel).toBeTruthy();
+  await rowPin.click();
+  await expect(page.getByRole("button", { name: /kolonunun sabitlemesini kaldır$/u }).first()).toBeVisible();
+
+  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
+  const columnPin = page.getByRole("button", { name: /kolonunu sabitle$/u }).first();
+  await expect(columnPin).toBeVisible();
+  const columnPinLabel = await columnPin.getAttribute("aria-label");
+  expect(columnPinLabel).toBeTruthy();
+  await columnPin.click();
+  await expect(page.getByRole("button", { name: /kolonunun sabitlemesini kaldır$/u }).first()).toBeVisible();
+
+  await page.getByRole("radio", { name: "Satır odaklı", exact: true }).click();
+  const rowUnpinLabel = rowPinLabel!.replace("kolonunu sabitle", "kolonunun sabitlemesini kaldır");
+  await expect(page.getByRole("button", { name: rowUnpinLabel, exact: true })).toBeVisible();
+  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
+  const columnUnpinLabel = columnPinLabel!.replace("kolonunu sabitle", "kolonunun sabitlemesini kaldır");
+  await expect(page.getByRole("button", { name: columnUnpinLabel, exact: true })).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
 });
 
 test("the footer keeps a restrained material in both themes", async ({ page }) => {
@@ -518,6 +587,38 @@ test("subscriptions explain recurrence and summarize the next payment path", asy
   const summary = await page.getByTestId("subscription-cycle-summary").boundingBox();
   expect(summary).not.toBeNull();
   expect(summary!.width).toBeGreaterThan(700);
+});
+
+test("variable subscriptions accept the invoice amount from the upcoming calendar", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  const balanceBeforeSubscription = await page.getByTestId("dashboard-current-balance").getAttribute("aria-label");
+  await page.goto("/helix/subscription-form");
+  await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Elektrik");
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("1.000,00");
+  await page.getByRole("switch", { name: "Tutar her ay değişebilir", exact: true }).click();
+  await pickOption(page, "Kategori", "Market");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
+  await page.goto("/helix/");
+  await expect(page.getByTestId("dashboard-current-balance")).toHaveAttribute("aria-label", balanceBeforeSubscription!);
+  await page.getByTestId("dashboard-forecast-toggle").click();
+  await expect(page.getByText("Bu yalnızca ay sonu tahminidir; güncel bakiye ödeme tarihi gelene kadar değişmez.", { exact: true })).toBeVisible();
+
+  await page.goto("/helix/upcoming");
+  const bill = page.getByText("Elektrik", { exact: true }).first();
+  await expect(bill).toBeVisible();
+  await expect(page.getByText("Tahmini", { exact: true }).first()).toBeVisible();
+  await bill.click();
+  await expect(page.getByTestId("expected-amount-sheet")).toBeVisible();
+  const invoiceAmount = page.getByRole("textbox", { name: "Bu ayın gerçek tutarı · TRY", exact: true });
+  await invoiceAmount.fill("1.247,50");
+  await page.getByTestId("expected-amount-sheet").getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByTestId("expected-amount-sheet")).toHaveCount(0);
+  await expect(page.getByText("Gerçek tutar kaydedildi.", { exact: true })).toBeVisible();
+  await expect(page.getByText(/1\.247,50/).first()).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
 });
 
 test("a dirty subscription can be dismissed without saving", async ({ page }) => {

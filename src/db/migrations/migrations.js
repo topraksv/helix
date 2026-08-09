@@ -10,6 +10,7 @@ import m0005 from './0005_category_transfer_semantics.sql';
 import m0006 from './0006_odd_darwin.sql';
 import m0007 from './0007_tombstone_generation.sql';
 import m0008 from './0008_investments_v1.sql';
+import m0009 from './0009_tiresome_ma_gnuci.sql';
 
   export default {
     journal,
@@ -22,7 +23,8 @@ m0004,
 m0005,
 m0006,
 m0007,
-m0008
+m0008,
+m0009
     }
   }
   

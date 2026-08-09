@@ -70,6 +70,8 @@ export interface SubscriptionLike {
   id: string;
   name: string;
   amountMinor: Minor;
+  /** Omitted legacy fixtures/rows are fixed by contract. */
+  amountMode?: "fixed" | "variable";
   currency: string;
   cycle: SubscriptionCycle;
   intervalMonths: number; // 1 for monthly, 12 for yearly, n for custom
@@ -112,6 +114,8 @@ export interface ExpectedPaymentLike {
   refId: string;
   dueDate: ISODate;
   amountMinor: Minor;
+  /** Omitted legacy fixtures/rows are known amounts. */
+  amountIsEstimated?: boolean;
   currency: string;
   status: ExpectedStatus;
 }

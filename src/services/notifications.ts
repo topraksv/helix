@@ -118,8 +118,9 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
     direction: string;
     kind: string;
     ref_id: string;
+    amount_is_estimated: number | boolean;
   }>(
-    `SELECT due_date, amount_minor, currency, direction, kind, ref_id FROM expected_payments
+    `SELECT due_date, amount_minor, currency, direction, kind, ref_id, amount_is_estimated FROM expected_payments
      WHERE user_id = ? AND status = 'pending' AND due_date <= ? AND deleted_at IS NULL`,
     [userId, horizonIso],
   );
@@ -142,7 +143,9 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
 
   for (const e of expected) {
     const name = subNames.get(e.ref_id) ?? incomeNames.get(e.ref_id) ?? tr.common.paymentFallback;
-    const amount = formatMinorCompact(e.amount_minor, e.currency);
+    const amount = e.amount_is_estimated
+      ? `${tr.subs.estimatedAmount} · ${formatMinorCompact(e.amount_minor, e.currency)}`
+      : formatMinorCompact(e.amount_minor, e.currency);
     if (e.direction === "in") {
       if (e.due_date >= today) planned.push({ date: e.due_date, title: tr.notif.salaryTitle, body: tr.notif.salaryBody(name, amount) });
       continue;

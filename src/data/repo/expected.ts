@@ -28,6 +28,7 @@ export interface ExpectedRow {
   ref_id: string;
   due_date: string;
   amount_minor: number;
+  amount_is_estimated: number | boolean;
   currency: string;
   status: string;
   transaction_id: string | null;
@@ -72,6 +73,9 @@ export async function confirmExpected(
       : null;
   if ((row.kind === "subscription" || row.kind === "recurring_income") && !rule) {
     throw new Error("Expected payment source rule does not exist");
+  }
+  if (row.kind === "subscription" && String(rule?.amount_mode ?? "fixed") === "variable" && Boolean(row.amount_is_estimated) && opts.actualAmountMinor == null) {
+    throw new Error("Variable subscription amount must be entered before confirmation");
   }
   const rulePersonId = row.kind === "subscription" || row.kind === "recurring_income"
     ? String(rule?.person_id ?? "")
@@ -161,7 +165,8 @@ export async function confirmExpected(
         kind: row.kind,
         refId: row.ref_id,
         dueDate: row.due_date,
-        amountMinor: row.amount_minor,
+        amountMinor: amount,
+        amountIsEstimated: false,
         currency: row.currency,
         status: "paid",
         paidAt: nowIso(),
@@ -185,6 +190,29 @@ export async function confirmExpected(
     }
   }
   await writeRows(userId, writes, !opts.auto);
+}
+
+/** Save the invoice amount for a variable subscription without confirming it. */
+export async function setExpectedAmount(userId: string, expectedId: string, amountMinor: Minor): Promise<void> {
+  const row = await getExpectedRow(userId, expectedId);
+  if (!row || (row.status !== "pending" && row.status !== "late")) return;
+  if (!isSupportedMinorAmount(amountMinor, false)) throw new Error("Invalid expected payment amount");
+  if (row.kind !== "subscription") throw new Error("Only subscription amounts can be edited");
+  const sqlite = await getSqliteAsync();
+  const subscription = await sqlite.getFirstAsync<{ amount_mode?: string }>(
+    `SELECT amount_mode FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [row.ref_id, userId],
+  );
+  if (!subscription) throw new Error("Expected payment source rule does not exist");
+  if (String(subscription.amount_mode ?? "fixed") !== "variable") throw new Error("Only variable subscription amounts can be edited");
+  await writeRows(userId, [{
+    table: "expected_payments",
+    row: {
+      ...fromDbShape("expected_payments", row),
+      amountMinor,
+      amountIsEstimated: false,
+    },
+  }]);
 }
 
 export async function skipExpected(userId: string, expectedId: string): Promise<void> {

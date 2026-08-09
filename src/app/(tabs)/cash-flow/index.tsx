@@ -130,8 +130,13 @@ function FlowStat({
 
 /** The pivot's three orientations, named so the control and the wrapper that
  *  bounds it cannot disagree about how many segments there are. */
-/** Device-local, beside `helix.matrix.mode` and `helix.matrix.pinned`. */
+/** Device-local preferences for the matrix's independent orientations. */
 const GUIDE_KEY = "helix.matrix.guide";
+const LEGACY_PIN_KEY = "helix.matrix.pinned";
+const ROW_PIN_KEY = "helix.matrix.pinned.rows";
+const COLUMN_PIN_KEY = "helix.matrix.pinned.columns";
+const PIN_KEYS = { rows: ROW_PIN_KEY, columns: COLUMN_PIN_KEY } as const;
+type PinMode = keyof typeof PIN_KEYS;
 
 const PIVOT_MODES = [
   { value: "rows" as MatrixMode, label: tr.cashflow.monthsAsRows },
@@ -175,7 +180,7 @@ export default function CashflowScreen() {
   const [mode, setMode] = useState<MatrixMode>(defaultMode);
   const [hasSavedMode, setHasSavedMode] = useState<boolean | null>(null);
   const [focusMonthNumber, setFocusMonthNumber] = useState(Number(monthKeyOf(todayISO()).slice(5, 7)));
-  const [pinnedKey, setPinnedKey] = useState<string | null>(null);
+  const [pinnedByMode, setPinnedByMode] = useState<Record<PinMode, string | null>>({ rows: null, columns: null });
   const [tableAreaH, setTableAreaH] = useState(0);
   // Rounded, so a sub-pixel layout report cannot rebuild the grid.
   const onTableAreaLayout = React.useCallback((event: LayoutChangeEvent) => {
@@ -197,8 +202,24 @@ export default function CashflowScreen() {
       setHasSavedMode(Boolean(v));
       setMode(v ? resolveMatrixMode(v) : defaultMode);
     });
-    void kv.get("helix.matrix.pinned").then((v) => {
-      if (v) setPinnedKey(v);
+    void Promise.all([kv.get(PIN_KEYS.rows), kv.get(PIN_KEYS.columns), kv.get(LEGACY_PIN_KEY)]).then(async ([rowsPin, columnsPin, legacyPin]) => {
+      // The old single key was valid for whichever orientation happened to be
+      // open. Seed both slots only when neither new slot exists. Falling back
+      // to the legacy key one slot at a time would resurrect a pin the user
+      // had deliberately cleared after the migration.
+      const hasNewPreferences = rowsPin !== null || columnsPin !== null;
+      const migratedPin = !hasNewPreferences ? legacyPin || null : null;
+      setPinnedByMode({
+        rows: hasNewPreferences ? rowsPin || null : migratedPin,
+        columns: hasNewPreferences ? columnsPin || null : migratedPin,
+      });
+      if (migratedPin) {
+        await Promise.all([
+          kv.set(ROW_PIN_KEY, migratedPin),
+          kv.set(COLUMN_PIN_KEY, migratedPin),
+          kv.remove(LEGACY_PIN_KEY),
+        ]);
+      }
     });
     void kv.get(GUIDE_KEY).then((v) => {
       if (v) setShowTableDetails(v === "true");
@@ -214,9 +235,12 @@ export default function CashflowScreen() {
     void kv.set("helix.matrix.mode", v);
   };
   const togglePin = (key: string) => {
-    const next = pinnedKey === key ? null : key;
-    setPinnedKey(next);
-    void kv.set("helix.matrix.pinned", next ?? "");
+    if (mode === "cards") return;
+    const pinMode: PinMode = mode === "columns" ? "columns" : "rows";
+    const next = pinnedByMode[pinMode] === key ? null : key;
+    setPinnedByMode((current) => ({ ...current, [pinMode]: next }));
+    if (pinMode === "rows") void kv.set(ROW_PIN_KEY, next ?? "");
+    else void kv.set(COLUMN_PIN_KEY, next ?? "");
   };
   const focusMonth = `${year}-${String(focusMonthNumber).padStart(2, "0")}` as MonthKey;
 
@@ -443,7 +467,7 @@ export default function CashflowScreen() {
                   orientation={orientation}
                   compact={!wide}
                   measuredHeight={tableAreaH}
-                  pinnedKey={pinnedKey}
+                  pinnedKey={pinnedByMode[mode === "columns" ? "columns" : "rows"]}
                   onTogglePin={togglePin}
                 />
               ) : null}

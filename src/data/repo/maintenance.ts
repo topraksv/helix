@@ -308,6 +308,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       id: s.id as string,
       name: s.name as string,
       amountMinor: s.amount_minor as number,
+      amountMode: (s.amount_mode as "fixed" | "variable" | undefined) ?? "fixed",
       currency: s.currency as string,
       cycle: s.cycle as "monthly" | "yearly" | "custom",
       intervalMonths: s.interval_months as number,
@@ -344,6 +345,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
           refId: d.refId,
           dueDate: d.dueDate,
           amountMinor: d.amountMinor,
+          amountIsEstimated: d.amountIsEstimated,
           currency: d.currency,
           status: "pending",
           paidAt: null,
@@ -368,10 +370,15 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     refId: r.ref_id,
     dueDate: r.due_date,
     amountMinor: r.amount_minor,
+    amountIsEstimated: Boolean(r.amount_is_estimated),
     currency: r.currency,
     status: r.status as ExpectedPaymentLike["status"],
   }));
-  const autoPayIds = new Set(subs.filter((s) => Boolean(s.auto_pay) && Boolean(s.is_self)).map((s) => s.id as string));
+  const autoPayIds = new Set(
+    subs
+      .filter((s) => Boolean(s.auto_pay) && Boolean(s.is_self) && s.amount_mode !== "variable")
+      .map((s) => s.id as string),
+  );
   const subscriptionById = new Map(subs.map((subscription) => [subscription.id as string, subscription]));
   const selfPersonId = (
     await sqlite.getFirstAsync<{ id: string }>(

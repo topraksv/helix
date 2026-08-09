@@ -22,6 +22,7 @@ export interface SubscriptionInput {
   id?: string;
   name: string;
   amountMinor: Minor;
+  amountMode?: "fixed" | "variable";
   currency: string;
   cycle: "monthly" | "yearly" | "custom";
   intervalMonths: number;
@@ -44,6 +45,7 @@ async function refreshRuleExpectedWrites(
   kind: RuleKind,
   refId: string,
   source: { subscription?: SubscriptionLike; income?: RecurringIncomeLike },
+  options: { preserveVariableAmounts?: boolean } = {},
 ): Promise<RowWrite[]> {
   const sqlite = await getSqliteAsync();
   const today = todayISO();
@@ -84,6 +86,7 @@ async function refreshRuleExpectedWrites(
     sourceActive,
   ));
   const writes: RowWrite[] = [];
+  const existingByKey = new Map(rows.map((row) => [`${row.kind}:${row.ref_id}:${row.due_date}`, row]));
   for (const row of rows) {
     if (obsoleteIds.has(String(row.id))) {
       writes.push({
@@ -93,6 +96,19 @@ async function refreshRuleExpectedWrites(
     }
   }
   for (const draft of drafts) {
+    const existing = existingByKey.get(`${draft.kind}:${draft.refId}:${draft.dueDate}`);
+    // A variable bill can be corrected before it is paid. Editing the rule
+    // must not silently replace that invoice amount with the forecast again;
+    // switching modes or currencies deliberately starts a fresh estimate.
+    const preserveEnteredAmount = Boolean(
+      options.preserveVariableAmounts
+      && existing
+      && existing.status !== "paid"
+      && existing.status !== "skipped"
+      && !Boolean(existing.amount_is_estimated)
+      && String(existing.currency) === draft.currency,
+    );
+    const amountMinor = preserveEnteredAmount && existing ? Number(existing.amount_minor) : draft.amountMinor;
     writes.push({
       table: "expected_payments",
       row: {
@@ -101,7 +117,8 @@ async function refreshRuleExpectedWrites(
         kind: draft.kind,
         refId: draft.refId,
         dueDate: draft.dueDate,
-        amountMinor: draft.amountMinor,
+        amountMinor,
+        amountIsEstimated: preserveEnteredAmount ? false : draft.amountIsEstimated,
         currency: draft.currency,
         status: "pending",
         paidAt: null,
@@ -159,9 +176,12 @@ export async function ensureSubscriptionCategory(
 
 export async function upsertSubscription(userId: string, input: SubscriptionInput): Promise<string> {
   const sqlite = await getSqliteAsync();
+  const amountMode = input.amountMode ?? "fixed";
   assertInputWithinLimit(input.name, "text");
   assertInputWithinLimit(input.note, "note");
   if (!isSupportedCurrency(input.currency)) throw new Error("Invalid subscription currency");
+  if (amountMode !== "fixed" && amountMode !== "variable") throw new Error("Invalid subscription amount mode");
+  if (amountMode === "variable" && input.autoPay) throw new Error("Variable subscriptions cannot use auto-pay");
   assertSupportedMinorAmount(input.amountMinor, false);
   if (input.amountMinor <= 0) throw new Error("Subscription amount must be positive");
   if (!["monthly", "yearly", "custom"].includes(input.cycle)) {
@@ -198,8 +218,8 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   ) throw new CreditCardCycleRequiredError();
   const id = input.id ?? newId();
   const previous = input.id
-    ? await sqlite.getFirstAsync<{ amount_minor: number; currency: string; canceled_at: string | null }>(
-        `SELECT amount_minor, currency, canceled_at FROM subscriptions WHERE id = ? AND user_id = ?`,
+    ? await sqlite.getFirstAsync<{ amount_minor: number; currency: string; canceled_at: string | null; amount_mode?: string }>(
+        `SELECT amount_minor, currency, canceled_at, amount_mode FROM subscriptions WHERE id = ? AND user_id = ?`,
         [id, userId],
       )
     : null;
@@ -223,6 +243,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
       id,
       name: input.name,
       amountMinor: input.amountMinor,
+      amountMode,
       currency: input.currency,
       cycle: input.cycle,
       intervalMonths: input.intervalMonths,
@@ -237,7 +258,7 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
       // the original cancellation date.
       canceledAt: input.isActive ? null : (previous?.canceled_at ?? nowIso()),
       trialEndDate: input.trialEndDate,
-      autoPay: input.autoPay,
+      autoPay: amountMode === "variable" ? false : input.autoPay,
       websiteDomain: input.websiteDomain,
       logoSource: "initials",
       logoRef: null,
@@ -251,16 +272,19 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
         id,
         name: input.name,
         amountMinor: input.amountMinor,
+        amountMode,
         currency: input.currency,
         cycle: input.cycle,
         intervalMonths: input.intervalMonths,
         billingDay: input.billingDay,
         nextDueDate: input.nextDueDate,
         isActive: input.isActive,
-        autoPay: input.autoPay,
+        autoPay: amountMode === "variable" ? false : input.autoPay,
         personIsSelf: Boolean(person.is_self),
         trialEndDate: input.trialEndDate,
       },
+    }, {
+      preserveVariableAmounts: amountMode === "variable" && previous?.amount_mode === "variable",
     })),
   );
   await writeRowsValidated(

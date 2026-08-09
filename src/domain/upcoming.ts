@@ -112,6 +112,7 @@ export interface UpcomingTimelineItem {
   name: string | null;
   categoryName: string | null;
   amountMinor: number;
+  amountIsEstimated?: boolean;
   currency: string;
   date: ISODate;
   status: "late" | "upcoming";
@@ -147,6 +148,7 @@ export function buildUpcomingTimeline(input: {
       name: source?.name ?? null,
       categoryName: source?.categoryName ?? null,
       amountMinor: row.amountMinor,
+      amountIsEstimated: row.amountIsEstimated === true,
       currency: row.currency,
       date: row.dueDate,
       status: late ? "late" as const : "upcoming" as const,
