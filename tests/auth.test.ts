@@ -91,12 +91,20 @@ describe("password recovery links", () => {
     expect(webPasswordRecoveryRedirectUrl("https://topraksv.github.io", "/helix")).toBe(
       "https://topraksv.github.io/helix/reset-password",
     );
+    expect(webPasswordRecoveryRedirectUrl("https://example.com", "/nested//path/")).toBe(
+      "https://example.com/nested/path/reset-password",
+    );
   });
 
   it("uses the stable HTTPS recovery screen for Expo Go requests", () => {
     expect(passwordRecoveryRequestRedirect({ platform: "native" })).toBe(
       "https://topraksv.github.io/helix/reset-password",
     );
+    expect(passwordRecoveryRequestRedirect({
+      platform: "web",
+      origin: "https://example.com",
+      baseUrl: "/preview",
+    })).toBe("https://example.com/preview/reset-password");
   });
 
   it("returns to the latest compatible Expo Go preview channel after recovery", () => {
@@ -129,11 +137,28 @@ describe("password recovery links", () => {
       "https://topraksv.github.io/reset-password?code=wrong-base",
       "https://topraksv.github.io/helix/other?code=wrong-route",
       "javascript://reset-password?code=script",
+      "helix://evil/reset-password?code=stolen",
     ]) {
-      expect(parsePasswordRecoveryUrl(url, webTarget), url).toEqual({ kind: "invalid" });
+      const target = url.startsWith("helix:") ? nativeTarget : webTarget;
+      expect(parsePasswordRecoveryUrl(url, target), url).toEqual({ kind: "invalid" });
     }
     expect(parsePasswordRecoveryUrl("other://reset-password?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
     expect(parsePasswordRecoveryUrl("helix://other?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
+  });
+
+  it("rejects malformed targets and URLs containing authority credentials", () => {
+    expect(parsePasswordRecoveryUrl(null, webTarget)).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl("not a URL", webTarget)).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl(
+      "https://topraksv.github.io/helix/reset-password?code=one-time-code",
+      { ...webTarget, origin: "not an origin" },
+    )).toEqual({ kind: "invalid" });
+    for (const authority of ["user@", "user:secret@", ":secret@"] as const) {
+      expect(parsePasswordRecoveryUrl(
+        `https://${authority}topraksv.github.io/helix/reset-password?code=stolen`,
+        webTarget,
+      ), authority).toEqual({ kind: "invalid" });
+    }
   });
 
   it("accepts native triple-slash callbacks but rejects non-recovery token links", () => {
@@ -143,6 +168,41 @@ describe("password recovery links", () => {
     });
     expect(parsePasswordRecoveryUrl(
       "helix://reset-password#access_token=access&refresh_token=refresh&type=signup",
+      nativeTarget,
+    )).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl("helix://reset-password/?code=with-slash", nativeTarget)).toEqual({
+      kind: "code",
+      code: "with-slash",
+    });
+    expect(parsePasswordRecoveryUrl("helix://reset-password/other?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl("helix:///other?code=stolen", nativeTarget)).toEqual({ kind: "invalid" });
+  });
+
+  it("requires complete recovery tokens and handles each Supabase error channel", () => {
+    for (const fragment of [
+      "access_token=access&type=recovery",
+      "refresh_token=refresh&type=recovery",
+    ]) {
+      expect(parsePasswordRecoveryUrl(`helix://reset-password#${fragment}`, nativeTarget)).toEqual({ kind: "invalid" });
+    }
+    expect(parsePasswordRecoveryUrl(
+      "helix://reset-password?error_description=OTP+expired",
+      nativeTarget,
+    )).toEqual({ kind: "expired" });
+    expect(parsePasswordRecoveryUrl(
+      "helix://reset-password?error=access_denied",
+      nativeTarget,
+    )).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl(
+      "helix://reset-password?error_code=access_denied",
+      nativeTarget,
+    )).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl(
+      "helix://reset-password?error=access_denied&code=must-not-be-exchanged",
+      nativeTarget,
+    )).toEqual({ kind: "invalid" });
+    expect(parsePasswordRecoveryUrl(
+      "helix://reset-password?error_code=access_denied&code=must-not-be-exchanged",
       nativeTarget,
     )).toEqual({ kind: "invalid" });
   });

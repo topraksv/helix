@@ -49,48 +49,47 @@ export function expoGoPreviewUrl(): string {
  * callback target the app generated; a matching query on an attacker-owned
  * host, another app's custom scheme, or a sibling route is not a Helix
  * recovery link. */
-function hasExpectedRecoveryTarget(url: string, target: RecoveryTarget): boolean {
+function expectedRecoveryUrl(url: string | null, target: RecoveryTarget): URL | null {
   let parsed: URL;
   try {
-    parsed = new URL(url);
+    parsed = new URL(url ?? "");
   } catch {
-    return false;
+    return null;
   }
-  if (parsed.username || parsed.password || parsed.port) return false;
+  if (parsed.username || parsed.password || parsed.port) return null;
   if (target.platform === "web") {
     let expected: URL;
     try {
       expected = new URL(webPasswordRecoveryRedirectUrl(target.origin, target.baseUrl));
     } catch {
-      return false;
+      return null;
     }
-    return parsed.origin === expected.origin && parsed.pathname === expected.pathname;
+    return parsed.origin === expected.origin && parsed.pathname === expected.pathname
+      ? parsed
+      : null;
   }
 
-  if (parsed.protocol !== `${target.scheme}:`) return false;
-  return (
+  if (parsed.protocol !== `${target.scheme}:`) return null;
+  const matches = (
     (parsed.hostname === "reset-password" && (parsed.pathname === "" || parsed.pathname === "/")) ||
     (parsed.hostname === "" && parsed.pathname === "/reset-password")
   );
+  return matches ? parsed : null;
 }
 
-function linkParams(url: string): URLSearchParams {
-  const params = new URLSearchParams();
-  const query = url.includes("?") ? url.slice(url.indexOf("?") + 1).split("#")[0] : "";
-  const hash = url.includes("#") ? url.slice(url.indexOf("#") + 1) : "";
-  for (const raw of [query, hash]) {
-    const source = new URLSearchParams(raw);
-    source.forEach((value, key) => params.set(key, value));
-  }
+function linkParams(url: URL): URLSearchParams {
+  const params = new URLSearchParams(url.search);
+  new URLSearchParams(url.hash.slice(1)).forEach((value, key) => params.set(key, value));
   return params;
 }
 
 export function parsePasswordRecoveryUrl(url: string | null, target: RecoveryTarget): RecoveryLink {
-  if (!url) return { kind: "invalid" };
-  if (!hasExpectedRecoveryTarget(url, target)) return { kind: "invalid" };
-  const params = linkParams(url);
-  const error = `${params.get("error_code") ?? ""} ${params.get("error_description") ?? ""}`;
-  if (/expired|otp_expired/i.test(error)) return { kind: "expired" };
+  const parsed = expectedRecoveryUrl(url, target);
+  if (!parsed) return { kind: "invalid" };
+  const params = linkParams(parsed);
+  const expired = ["error_code", "error_description"]
+    .some((key) => /expired|otp_expired/i.test(params.get(key) ?? ""));
+  if (expired) return { kind: "expired" };
   if (params.has("error") || params.has("error_code")) return { kind: "invalid" };
 
   const code = params.get("code");
