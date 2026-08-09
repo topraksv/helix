@@ -519,6 +519,12 @@ export default function DashboardScreen() {
   const isVariableSubscription = (e: (typeof expected)[number]) =>
     e.kind === "subscription" && subscriptionById.get(e.refId)?.amountMode === "variable";
   const needsAmountEntry = (e: (typeof expected)[number]) => isVariableSubscription(e) && e.amountIsEstimated === true;
+  // 0 is the "no estimate entered" sentinel on a still-estimated row — never
+  // a real ₺0,00 charge, so it reads as "Tutar belirtilmedi" instead.
+  const amountFragment = (item: { amountMinor: number; currency: string; amountIsEstimated?: boolean }) =>
+    item.amountIsEstimated
+      ? (item.amountMinor === 0 ? tr.subs.unknownAmount : `${formatMinorCompact(item.amountMinor, item.currency)} · ${tr.subs.estimatedAmount}`)
+      : formatMinorCompact(item.amountMinor, item.currency);
   const saveExpectedAmount = async (amountMinor: number) => {
     if (!amountEditing) return;
     await setExpectedAmount(userId, amountEditing.id, amountMinor);
@@ -877,7 +883,7 @@ export default function DashboardScreen() {
                 icon={e.direction === "in" ? ArrowDownLeft : ArrowUpRight}
                 iconColor={palette.error}
                 title={nameOf(e)}
-                subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${formatMinorCompact(e.amountMinor, e.currency)}${e.amountIsEstimated ? ` · ${tr.subs.estimatedAmount}` : ""}`}
+                subtitle={`${tr.dashboard.late} · ${dateLabel(e.dueDate)} · ${amountFragment(e)}`}
                 right={(
                   <View style={{ width: STATUS_W }}>
                     <Button
@@ -899,7 +905,7 @@ export default function DashboardScreen() {
                 icon={u.direction === "in" ? ArrowDownLeft : CalendarClock}
                 iconColor={u.direction === "in" ? palette.positive : undefined}
                 title={u.name ?? u.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${formatMinorCompact(u.amountMinor, u.currency)}${u.amountIsEstimated ? ` · ${tr.subs.estimatedAmount}` : ""}`}
+                subtitle={`${timelineTypeLabel(u.sourceType)} · ${tr.dashboard.inDays(daysBetweenISO(today, u.date))} · ${amountFragment(u)}`}
                 right={u.kind === "expected" && u.expectedId ? (
                   <View style={{ width: STATUS_W }}>
                     <Button

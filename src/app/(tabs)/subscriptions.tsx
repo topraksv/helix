@@ -4,6 +4,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import { useContentWidth } from "../../ui/viewport";
 import { useRouter } from "expo-router";
+import Activity from "lucide-react-native/icons/activity";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import MousePointerClick from "lucide-react-native/icons/mouse-pointer-click";
 import Plus from "lucide-react-native/icons/plus";
@@ -14,7 +15,7 @@ import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
 import { addDaysISO, daysBetweenISO, todayISO, type ISODate } from "../../domain/dates";
 import { formatMinorCompact } from "../../domain/money";
 import { shortDateLabel, tr } from "../../i18n/tr";
-import { usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
+import { useAllTransactionsState, usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
 import { combineLiveStates } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
@@ -245,12 +246,13 @@ export default function SubscriptionsScreen() {
   const userId = useUserId();
   const subscriptionsState = useSubscriptionsState();
   const personsState = usePersonsState();
+  const transactionsState = useAllTransactionsState();
   const subscriptions = subscriptionsState.data;
   const persons = personsState.data;
   const router = useRouter();
   const undo = useUndo();
   const today = todayISO();
-  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([subscriptionsState, personsState]);
+  const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([subscriptionsState, personsState, transactionsState]);
 
   if (!dataReady) {
     return (
@@ -258,6 +260,22 @@ export default function SubscriptionsScreen() {
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
+  }
+
+  // The last realized charge per rule, so "Sıradaki: 20 Ağu" cannot be read as
+  // "nothing has been paid yet" when auto-pay already settled this cycle and
+  // only advanced the rule to the next one.
+  const lastChargeBySubscription = new Map<string, { date: ISODate; amountMinor: number; currency: string }>();
+  for (const transaction of transactionsState.data) {
+    if (!transaction.subscriptionId || transaction.status !== "realized") continue;
+    const current = lastChargeBySubscription.get(transaction.subscriptionId);
+    if (!current || transaction.effectiveDate > current.date) {
+      lastChargeBySubscription.set(transaction.subscriptionId, {
+        date: transaction.effectiveDate,
+        amountMinor: transaction.amountMinor,
+        currency: transaction.currency,
+      });
+    }
   }
 
   const activeSubs = subscriptions.filter((s) => s.isActive);
@@ -282,10 +300,13 @@ export default function SubscriptionsScreen() {
 
   const renderSub = (s: (typeof subscriptions)[number]) => {
     const inTrial = s.trialEndDate != null && s.trialEndDate >= today;
+    const lastCharge = lastChargeBySubscription.get(s.id);
+    const amountUnknown = s.amountMode === "variable" && s.amountMinor === 0;
     const badges: RuleBadge[] = s.isActive
       ? [
           { text: tr.subs.nextDue(shortDateLabel(s.nextDueDate)) },
-          ...(s.amountMode === "variable" ? [{ text: tr.subs.variableAmountBadge, tone: "warning" as const }] : []),
+          ...(lastCharge ? [{ text: tr.subs.lastCharged(shortDateLabel(lastCharge.date)), tone: "muted" as const }] : []),
+          ...(s.amountMode === "variable" ? [{ text: tr.subs.variableAmountBadge, tone: "warning" as const, icon: Activity }] : []),
           ...(inTrial ? [{ text: tr.subs.trialEnds(shortDateLabel(s.trialEndDate!)), tone: "warning" as const }] : []),
           ...(s.autoPay ? [{ text: tr.subs.autoPay, tone: "primary" as const, icon: Repeat }] : []),
         ]
@@ -298,9 +319,10 @@ export default function SubscriptionsScreen() {
         title={s.name}
         badges={badges}
         amountMinor={s.amountMinor}
+        amountUnknown={amountUnknown}
         currency={s.currency}
         amountNote={
-          s.intervalMonths > 1
+          !amountUnknown && s.intervalMonths > 1
             ? tr.subs.perMonth(formatMinorCompact(normalizedMonthlyLoadMinor(s.amountMinor, s.intervalMonths), s.currency))
             : undefined
         }

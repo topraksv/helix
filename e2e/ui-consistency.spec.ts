@@ -204,7 +204,7 @@ test("every tab replays its screen entrance on return", async ({ page }) => {
   }
 });
 
-test("returning from an investment editor keeps the tab scaffold settled", async ({ page }) => {
+test("returning from an investment editor replays the entrance gently, never as a blank reload", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
@@ -223,22 +223,28 @@ test("returning from an investment editor keeps the tab scaffold settled", async
 
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await expect(page).toHaveURL(/investments\/product/);
-  await page.getByRole("button", { name: "Geri", exact: true }).click();
-  await expect(page).toHaveURL(/investments\/?$/);
-  await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
 
-  // Back is a continuation inside this tab, not a new tab arrival. Sampling
-  // consecutive frames catches an accidental full-screen fade without relying
-  // on a screenshot or a timing-sensitive exact duration.
+  // Back is still an arrival — the entrance is meant to replay — but it must
+  // settle back into place rather than blank to a near-invisible frame and
+  // fade in again, which is what made a Back press read as a page reload.
+  // Sampling consecutive frames right through the transition catches both:
+  // a dip proves the replay actually ran, and its floor proves it stayed
+  // gentle instead of vanishing.
+  await page.getByRole("button", { name: "Geri", exact: true }).click();
   const returnedFrames = await entrance.evaluate(async (element) => {
     const samples: number[] = [];
-    for (let frame = 0; frame < 4; frame += 1) {
+    for (let frame = 0; frame < 30; frame += 1) {
       samples.push(Number.parseFloat(getComputedStyle(element).opacity));
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
     return samples;
   });
-  expect(Math.min(...returnedFrames)).toBeGreaterThan(0.99);
+  await expect(page).toHaveURL(/investments\/?$/);
+  await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
+
+  expect(Math.min(...returnedFrames), "the return replays, it is not skipped").toBeLessThan(0.98);
+  expect(Math.min(...returnedFrames), "the return never blanks like a reload").toBeGreaterThan(0.5);
+  await expect.poll(opacity, { message: "the entrance settles back to fully visible" }).toBeGreaterThan(0.99);
 });
 
 test("a later expense stays before incomes in the financial table", async ({ page }) => {
@@ -291,6 +297,77 @@ test("deleting an imported column can move its records to a compatible column", 
   await expect(page.getByText("2026 Gider", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("2025 Gider", { exact: true })).toHaveCount(0);
   await expect(page.getByText(/321,00/u).first()).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("a column with only transactions can be deleted and left uncategorized", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.goto("/helix/columns-editor");
+  await page.getByRole("textbox", { name: "Kategori adı", exact: true }).fill("Dernek Aidatı");
+  await page.getByRole("button", { name: "Ekle", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Düzenle · Dernek Aidatı", exact: true })).toBeVisible();
+
+  await page.goto("/helix/");
+  await openCashFlow(page);
+  await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("150,00");
+  await pickOption(page, "Kategori", "Dernek Aidatı");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  await page.goto("/helix/columns-editor");
+
+  await page.getByRole("button", { name: "Sil · Dernek Aidatı", exact: true }).click();
+  const resolution = page.getByTestId("category-delete-resolution");
+  await expect(resolution).toBeVisible();
+  // No other compatible column exists, so "Kategorisiz bırak" is already the
+  // selected default — the whole point of the option this test exercises.
+  await resolution.getByRole("button", { name: "Sil", exact: true }).click();
+  await page.getByRole("button", { name: "Sil", exact: true }).last().click();
+  await expect(resolution).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Düzenle · Dernek Aidatı", exact: true })).toHaveCount(0);
+
+  await page.goto("/helix/cash-flow");
+  await expect(page.getByText(/150,00/u).first()).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("deleting one of two identically-named columns still offers the other as a merge target", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.goto("/helix/columns-editor");
+  const addField = page.getByRole("textbox", { name: "Kategori adı", exact: true });
+  const addButton = page.getByRole("button", { name: "Ekle", exact: true });
+  for (let i = 0; i < 2; i += 1) {
+    await addField.fill("Market Alışverişi");
+    await addButton.click();
+    await expect(page.getByRole("button", { name: "Düzenle · Market Alışverişi", exact: true })).toHaveCount(i + 1);
+  }
+
+  await page.goto("/helix/");
+  await openCashFlow(page);
+  await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("75,00");
+  await page.getByRole("button", { name: "Kategori", exact: true }).click();
+  await page.locator('[aria-modal="true"]').getByRole("radio", { name: "Market Alışverişi", exact: true }).first().click();
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  await page.goto("/helix/columns-editor");
+
+  await page.getByRole("button", { name: "Sil · Market Alışverişi", exact: true }).first().click();
+  const resolution = page.getByTestId("category-delete-resolution");
+  await expect(resolution).toBeVisible();
+  // The remaining "Market Alışverişi" is the only compatible target and is
+  // auto-selected (same-name columns are picked first), so this is a
+  // same-tap delete — exactly the "same name, two years" import scenario.
+  await resolution.getByRole("button", { name: "Sil", exact: true }).click();
+  await page.getByRole("button", { name: "Sil", exact: true }).last().click();
+  await expect(resolution).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Düzenle · Market Alışverişi", exact: true })).toHaveCount(1);
+
+  await page.goto("/helix/cash-flow");
+  await expect(page.getByText("Market Alışverişi", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/75,00/u).first()).toBeVisible();
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
@@ -597,7 +674,7 @@ test("variable subscriptions accept the invoice amount from the upcoming calenda
   await page.goto("/helix/subscription-form");
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Elektrik");
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("1.000,00");
-  await page.getByRole("switch", { name: "Tutar her ay değişebilir", exact: true }).click();
+  await page.getByRole("switch", { name: "Tutarı sabit değil", exact: true }).click();
   await pickOption(page, "Kategori", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
@@ -618,6 +695,30 @@ test("variable subscriptions accept the invoice amount from the upcoming calenda
   await expect(page.getByTestId("expected-amount-sheet")).toHaveCount(0);
   await expect(page.getByText("Gerçek tutar kaydedildi.", { exact: true })).toBeVisible();
   await expect(page.getByText(/1\.247,50/).first()).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+test("a variable subscription can be saved with no amount estimate at all", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await page.goto("/helix/subscription-form");
+  await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Doğalgaz");
+  await page.getByRole("switch", { name: "Tutarı sabit değil", exact: true }).click();
+  await pickOption(page, "Kategori", "Market");
+  // No amount typed anywhere — the whole point of this flow.
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
+  await expect(page.getByText("Tutar belirtilmedi", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: /Düzenle · Doğalgaz/, exact: true }).click();
+  const artwork = page.getByRole("img", { name: /Doğalgaz/ });
+  await expect(artwork.getByText("Aylık karşılığı", { exact: true })).toBeVisible();
+  // The equivalent figures stay hidden (an em dash) rather than drawing a
+  // ₺0,00 that would read as a real, free charge; the field itself reopens
+  // empty rather than pre-filling the stored 0 sentinel.
+  await expect(artwork.getByText("—")).toHaveCount(2);
+  await expect(artwork.getByText(/₺/)).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Tahmini tutar (opsiyonel) · TRY", exact: true })).toHaveValue("");
   await assertNoRuntimeErrors(errors, testInfo);
 });
 

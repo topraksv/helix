@@ -1013,14 +1013,14 @@ describe("screen motion replays consistently", () => {
    * chart and the figure animated on every return in a browser and never on a
    * phone. A count cannot be coalesced away.
    */
-  it("counts tab arrivals rather than stack focus and shares one listener with hero children", () => {
+  it("counts every return to a screen's own navigator, not only tab switches, and shares one listener with hero children", () => {
     const visit = motionPrimitives.slice(
       motionPrimitives.indexOf("export function useScreenVisitController()"),
       motionPrimitives.indexOf("export function useScreenFocus()"),
     );
     expect(visit).toContain("store.increment()");
-    expect(visit).toContain('level.getState().type === "tab"');
-    expect(visit).toContain('return tabNavigation.addListener("focus", arrive)');
+    expect(visit).toContain('navigation.addListener("blur", blur)');
+    expect(visit).toContain('navigation.addListener("focus", arrive)');
     expect(visit).toContain("const scopedVisit = useContext(ScreenVisitContext);");
     expect(visit).toContain("createScreenVisitStore");
     expect(visit).toContain("useSyncExternalStore(store.subscribe");
@@ -1029,8 +1029,25 @@ describe("screen motion replays consistently", () => {
       const body = motionPrimitives.slice(motionPrimitives.indexOf(`export function ${hook}(`));
       expect(body.slice(0, 1_400), `${hook} replays per visit`).toContain("const visit = useScreenVisit();");
     }
-    // A tab regaining focus is not a background stack screen being on show.
-    expect(visit).toContain("if (navigation.isFocused()) store.increment");
+    // The focus right after mount is the first entrance, not a return; only a
+    // focus that follows a real blur increments the counter.
+    expect(visit).toContain("if (blurredSinceMount) store.increment()");
+  });
+
+  it("measures a collapsible's height fresh on every open instead of reusing a stale one", () => {
+    // MeasuredCollapse never unmounts its own component instance — only its
+    // rendered output — so `contentHeight` state survives a close/reopen
+    // cycle unless cleared. Reusing a measurement taken before a close (a
+    // device still settling web fonts or a wrapped hint line reflowing) let
+    // the animated height and the real content height briefly disagree,
+    // which reads as extra space under the panel.
+    const collapse = motionPrimitives.slice(
+      motionPrimitives.indexOf("function MeasuredCollapse("),
+      motionPrimitives.indexOf("function NativeCollapse("),
+    );
+    expect(collapse).toContain("if (finished && !open)");
+    expect(collapse).toContain("setMounted(false);");
+    expect(collapse).toContain("setContentHeight(null);");
   });
 
   it("tolerates the surfaces that render above the navigator", () => {

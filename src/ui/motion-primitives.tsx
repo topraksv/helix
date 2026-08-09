@@ -81,17 +81,18 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
  * no navigation object at all. Absent one, a screen is always "focused", which
  * is exactly the mount-only behaviour those surfaces had before.
  *
- * The tab navigator is the arrival boundary. A child stack's focus event also
- * fires when a user returns from an editor, which is a continuation of the
- * same screen rather than a fresh arrival. Listening to every parent made the
- * complete Screen scaffold fade from zero after Back, so a small route change
- * looked like a refresh.
+ * A screen's own navigator is the arrival boundary — a tab switch, a
+ * root-level push/pop and a nested stack push/pop all count as an arrival,
+ * because the owner wants the entrance to replay every time the screen is
+ * returned to, not only on the first visit. What the entrance itself must
+ * never do on a return is drop to a blank frame the way a real reload would;
+ * see `ScreenEntrance`'s `subtle` replay for how that stays true.
  */
 
 export const ScreenVisitContext = React.createContext<ScreenVisitStore | null>(null);
 
 /**
- * How many times this screen's tab has been entered.
+ * How many times this screen has been arrived at.
  *
  * A boolean was tried and works on the web only. `react-native-screens` FREEZES
  * an inactive screen, so a blurred tab never renders the `focused: false` in
@@ -112,20 +113,25 @@ export function useScreenVisitController(): ScreenVisitStore {
   const store = scopedVisit ?? (ownStore.current ??= createScreenVisitStore());
   useEffect(() => {
     if (scopedVisit != null || !navigation) return;
-    let tabNavigation: typeof navigation | null = null;
-    for (let level = navigation; level; level = level.getParent()) {
-      if (level.getState().type === "tab") {
-        tabNavigation = level;
-        break;
-      }
-    }
-    if (!tabNavigation) return;
+    // The screen's OWN navigator is the arrival boundary, not a specific
+    // ancestor type: a tab switch, a root-level push/pop and a nested stack
+    // push/pop all fire focus/blur on this exact screen. Listening here once
+    // — rather than walking every ancestor — is what keeps a single
+    // navigation action from firing more than one increment.
+    let blurredSinceMount = false;
+    const blur = () => { blurredSinceMount = true; };
     const arrive = () => {
-      // A tab regaining focus does not mean a background stack screen is on
-      // show; `isFocused()` rejects the index while its product editor is open.
-      if (navigation.isFocused()) store.increment();
+      // The initial focus right after mount is the first entrance, already
+      // played by the mount effect; only a focus that follows a real blur is
+      // a return.
+      if (blurredSinceMount) store.increment();
     };
-    return tabNavigation.addListener("focus", arrive);
+    const unsubscribeBlur = navigation.addListener("blur", blur);
+    const unsubscribeFocus = navigation.addListener("focus", arrive);
+    return () => {
+      unsubscribeBlur();
+      unsubscribeFocus();
+    };
   }, [navigation, scopedVisit, store]);
   return store;
 }
@@ -319,7 +325,16 @@ function MeasuredCollapse({
       useNativeDriver: false,
     });
     animation.start(({ finished }) => {
-      if (finished && !open) setMounted(false);
+      if (finished && !open) {
+        setMounted(false);
+        // A closed panel keeps no opinion about its old height: the content
+        // is unmounted next, and the next open measures fresh rather than
+        // animating to whatever this instance last happened to measure —
+        // which, on a device slow enough to still be settling web fonts or
+        // reflowing a wrapped hint line, was not always this content's real
+        // height and briefly left true content and animated height apart.
+        setContentHeight(null);
+      }
     });
     return () => animation.stop();
   }, [open, mounted, contentHeight, progress, reducedMotion]);

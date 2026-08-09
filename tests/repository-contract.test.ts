@@ -988,6 +988,63 @@ describe("repository compatibility contract", () => {
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
+  it("accepts a variable-amount subscription saved with no estimate at all", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
+        ? { id: "cat-1" }
+        : sql.includes("FROM persons") ? { is_self: 1 } : null,
+      getAllAsync: async () => [],
+    });
+    await repository.upsertSubscription("user-1", {
+      name: "Elektrik",
+      amountMinor: 0, // the "no estimate yet" sentinel — a real bill amount is never known
+      amountMode: "variable",
+      currency: "TRY",
+      cycle: "monthly",
+      intervalMonths: 1,
+      billingDay: 5,
+      nextDueDate: "2026-08-05",
+      paymentSourceId: null,
+      categoryId: "cat-1",
+      personId: "person-1",
+      isActive: true,
+      trialEndDate: null,
+      autoPay: false,
+      websiteDomain: null,
+      note: null,
+    });
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const subscriptionWrite = writes.find((write: { table: string }) => write.table === "subscriptions");
+    expect(subscriptionWrite?.row).toMatchObject({ amountMinor: 0, amountMode: "variable" });
+  });
+
+  it("still rejects a zero amount for a fixed subscription", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM categories")
+        ? { id: "cat-1" }
+        : sql.includes("FROM persons") ? { is_self: 1 } : null,
+      getAllAsync: async () => [],
+    });
+    await expect(repository.upsertSubscription("user-1", {
+      name: "Netflix",
+      amountMinor: 0,
+      currency: "TRY",
+      cycle: "monthly",
+      intervalMonths: 1,
+      billingDay: 5,
+      nextDueDate: "2026-08-05",
+      paymentSourceId: null,
+      categoryId: "cat-1",
+      personId: "person-1",
+      isActive: true,
+      trialEndDate: null,
+      autoPay: false,
+      websiteDomain: null,
+      note: null,
+    })).rejects.toThrow("Amount is outside the supported range");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("preserves a manually entered invoice amount when a variable subscription's rule is edited", async () => {
     // A bill due a few days out is inside every horizon this repository
     // generates, regardless of which real date the suite runs on.

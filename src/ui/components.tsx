@@ -75,8 +75,14 @@ export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./sele
 
 function ScreenEntrance({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const screenVisit = useScreenVisit();
+  // The first paint of this mounted instance is a true arrival and gets the
+  // full entrance; every later replay is this same frozen screen being
+  // returned to, so it settles back in instead of blanking and reappearing.
+  const hasEnteredOnce = useRef(false);
+  const subtle = hasEnteredOnce.current;
+  hasEnteredOnce.current = true;
   return (
-    <FadeIn testID="screen-entrance" replayToken={screenVisit} style={style}>
+    <FadeIn testID="screen-entrance" replayToken={screenVisit} subtle={subtle} style={style}>
       {children}
     </FadeIn>
   );

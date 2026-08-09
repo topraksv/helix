@@ -35,6 +35,7 @@ export function RuleRow({
   meta,
   badges,
   amountMinor,
+  amountUnknown = false,
   currency = "TRY",
   amountNote,
   onPress,
@@ -47,6 +48,9 @@ export function RuleRow({
   meta?: string;
   badges: RuleBadge[];
   amountMinor: number;
+  /** A variable rule with no estimate yet: replaces the figure with a label
+   *  instead of drawing a "₺0,00" that reads as a real, free charge. */
+  amountUnknown?: boolean;
   currency?: string;
   /** Small muted note under the amount (e.g. the normalized "…/ay" cost). */
   amountNote?: string;
@@ -131,7 +135,11 @@ export function RuleRow({
           : { flexDirection: "row", alignItems: "center", gap: spacing.lg }}
       >
         <View style={stackActions ? { alignItems: "flex-end" } : { alignItems: "flex-end", gap: 1 }}>
-          <Amount minor={amountMinor} currency={currency} colorized={false} />
+          {amountUnknown ? (
+            <Body muted style={{ fontSize: type.small.fontSize, textAlign: "right" }}>{tr.subs.unknownAmount}</Body>
+          ) : (
+            <Amount minor={amountMinor} currency={currency} colorized={false} />
+          )}
           {amountNote ? (
             <Body muted style={{ fontSize: type.small.fontSize }}>
               {amountNote}

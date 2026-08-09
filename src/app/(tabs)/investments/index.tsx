@@ -579,23 +579,23 @@ export default function InvestmentsScreen() {
               </View>
             </View>
           ) : (
-            <>
-              {/* The middle band is the desktop arrangement at a smaller scale,
-                  not a third layout: balance and its transfer lines in one
-                  column, the ring in the other. The transfers used to sit in a
-                  full-width strip below both, which read as a separate section
-                  rather than as two facts about the balance above them. */}
-              <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.lg }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  {cashSummary}
-                  {transferSummary}
-                </View>
-                <View testID="investment-distribution-chart" style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
-                  {distributionChart}
-                </View>
+            // The middle band is the desktop arrangement at a smaller scale,
+            // not a third layout: balance, its transfer lines and the metric
+            // strip in one column, the ring in the other. The metrics used to
+            // sit in a full-width strip below both columns instead of inside
+            // the left one — the ring centred against a shorter column there
+            // than it did on desktop, so it sat at a different height in the
+            // card depending on the breakpoint alone.
+            <View style={{ flexDirection: "row", alignItems: "stretch", gap: spacing.lg }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                {cashSummary}
+                {transferSummary}
+                {portfolioMetrics}
               </View>
-              {portfolioMetrics}
-            </>
+              <View testID="investment-distribution-chart" style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
+                {distributionChart}
+              </View>
+            </View>
           )}
         </HeroCard>
       </View>
@@ -621,7 +621,7 @@ export default function InvestmentsScreen() {
           marginBottom: spacing.lg,
         }}
       >
-        <InvestmentQuickAction compact={compact} icon={PackagePlus} tone="primary" label={tr.investments.addProduct} caption={tr.investments.addProductCaption} onPress={() => router.push("/investments/product")} />
+        <InvestmentQuickAction compact={compact} icon={PackagePlus} tone="secondary" label={tr.investments.addProduct} caption={tr.investments.addProductCaption} onPress={() => router.push("/investments/product")} />
         <InvestmentQuickAction compact={compact} icon={ArrowDownToLine} tone="secondary" label={tr.investments.addExisting} caption={tr.investments.addExistingCaption} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "existing" } })} />
         <InvestmentQuickAction compact={compact} icon={ArrowUpFromLine} tone="quiet" label={tr.investments.sell} caption={tr.investments.sellCaption} disabled={active.length === 0} onPress={() => router.push({ pathname: "/investments/operation", params: { kind: "sell" } })} />
         <InvestmentQuickAction compact={compact} icon={WalletCards} tone="secondary" label={tr.investments.refundShort} caption={tr.investments.refundCaption} disabled={state.cashMinor <= 0} onPress={() => router.push({ pathname: "/transaction", params: { intent: "investment-refund" } })} />

@@ -182,8 +182,13 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
   if (!isSupportedCurrency(input.currency)) throw new Error("Invalid subscription currency");
   if (amountMode !== "fixed" && amountMode !== "variable") throw new Error("Invalid subscription amount mode");
   if (amountMode === "variable" && input.autoPay) throw new Error("Variable subscriptions cannot use auto-pay");
-  assertSupportedMinorAmount(input.amountMinor, false);
-  if (input.amountMinor <= 0) throw new Error("Subscription amount must be positive");
+  // A variable bill's cost is genuinely unknown until the first invoice
+  // arrives — 0 is a deliberate "no estimate yet" sentinel there, not a real
+  // price. A fixed subscription always names a real recurring charge.
+  assertSupportedMinorAmount(input.amountMinor, amountMode === "variable");
+  if (amountMode === "variable" ? input.amountMinor < 0 : input.amountMinor <= 0) {
+    throw new Error("Subscription amount must be positive");
+  }
   if (!["monthly", "yearly", "custom"].includes(input.cycle)) {
     throw new Error("Invalid subscription cycle");
   }

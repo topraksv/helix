@@ -104,6 +104,7 @@ export function FadeIn({
   children,
   delay = 0,
   rise = true,
+  subtle = false,
   style,
   replayToken,
   testID,
@@ -122,6 +123,13 @@ export function FadeIn({
    * lifts; something taking another's seat only fades.
    */
   rise?: boolean;
+  /**
+   * A return trip, not a first arrival: starts most of the way there instead
+   * of from nothing, so a screen that was already on screen a moment ago
+   * settles back in rather than visibly blanking and reappearing — which is
+   * what made a `Back` press read as a reload of the whole page.
+   */
+  subtle?: boolean;
   style?: StyleProp<ViewStyle>;
   /** Reset and replay without remounting the child tree. */
   replayToken?: string | number;
@@ -132,12 +140,13 @@ export function FadeIn({
 }) {
   const [progress] = useState(() => new Animated.Value(0));
   const reducedMotion = useReducedMotion();
+  const start = subtle ? 0.92 : 0;
   useEffect(() => {
     if (reducedMotion) {
       progress.setValue(1);
       return;
     }
-    progress.setValue(0);
+    progress.setValue(start);
     const anim = Animated.spring(progress, {
       toValue: 1,
       delay,
@@ -146,7 +155,8 @@ export function FadeIn({
     });
     anim.start();
     return () => anim.stop();
-  }, [progress, delay, reducedMotion, replayToken]);
+  }, [progress, delay, reducedMotion, replayToken, start]);
+  const riseDistance = rise ? (subtle ? 3 : 10) : 0;
   return (
     <Animated.View
       testID={testID}
@@ -156,7 +166,7 @@ export function FadeIn({
       style={[
         {
           opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: "clamp" }),
-          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [rise ? 10 : 0, 0] }) }],
+          transform: [{ translateY: progress.interpolate({ inputRange: [start, 1], outputRange: [riseDistance, 0], extrapolate: "clamp" }) }],
         },
         style,
       ]}

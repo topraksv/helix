@@ -63,6 +63,12 @@ export default function CatchUpScreen() {
   const isVariableSubscription = (e: (typeof expected)[number]) =>
     e.kind === "subscription" && subscriptionById.get(e.refId)?.amountMode === "variable";
   const needsAmountEntry = (e: (typeof expected)[number]) => isVariableSubscription(e) && e.amountIsEstimated === true;
+  // 0 is the "no estimate entered" sentinel on a still-estimated row — never
+  // a real ₺0,00 charge, so it reads as "Tutar belirtilmedi" instead.
+  const amountFragment = (e: (typeof expected)[number]) =>
+    e.amountIsEstimated
+      ? (e.amountMinor === 0 ? tr.subs.unknownAmount : `${formatMinorCompact(e.amountMinor, e.currency)} · ${tr.subs.estimatedAmount}`)
+      : formatMinorCompact(e.amountMinor, e.currency);
   const items = expected
     .filter((e) => (e.status === "pending" || e.status === "late") && e.dueDate <= today)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -180,11 +186,11 @@ export default function CatchUpScreen() {
                 <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
                   {e.dueDate < today ? <Badge text={tr.dashboard.late} tone="error" /> : null}
                   {e.direction === "in" ? <Badge text={tr.dashboard.expectedIncome} tone="positive" /> : null}
-                  {e.amountIsEstimated ? <Badge text={tr.subs.variableAmountBadge} tone="warning" /> : null}
+                  {e.amountIsEstimated && e.amountMinor !== 0 ? <Badge text={tr.subs.estimatedBadge} tone="warning" /> : null}
                   <Body>{nameOf(e)}</Body>
                 </Row>
                 <Body muted style={{ marginTop: spacing.xs }}>
-                  {dateLabel(e.dueDate)} · {formatMinorCompact(e.amountMinor, e.currency)}{e.amountIsEstimated ? ` · ${tr.subs.estimatedAmount}` : ""}
+                  {dateLabel(e.dueDate)} · {amountFragment(e)}
                 </Body>
               </View>
             </Spread>

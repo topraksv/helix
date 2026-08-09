@@ -88,6 +88,9 @@ export default function UpcomingScreen() {
     && item.sourceType === "subscription"
     && item.expectedId != null
     && subscriptionById.get(item.refId)?.amountMode === "variable";
+  // 0 is the "no estimate entered yet" sentinel on a still-estimated row —
+  // never a real ₺0,00 charge.
+  const amountUnknown = (item: UpcomingTimelineItem) => item.amountIsEstimated === true && item.amountMinor === 0;
 
   const openItem = (item: UpcomingTimelineItem) => {
     if (item.status === "late") return router.push("/reconciliation");
@@ -168,7 +171,7 @@ export default function UpcomingScreen() {
                   </View>
                 )}
                 title={item.name ?? item.categoryName ?? tr.common.paymentFallback}
-                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}${item.amountIsEstimated ? ` · ${tr.subs.estimatedAmount}` : ""}`}
+                subtitle={`${sourceLabel(item)} · ${dateLabel(item.date)}${item.amountIsEstimated ? ` · ${amountUnknown(item) ? tr.subs.unknownAmount : tr.subs.estimatedAmount}` : ""}`}
                 /* The amount is a column, not the tail of a sentence. Buried in
                    the subtitle it left the middle of every row empty while the
                    figures it should be scanned against stayed unaligned. Same
@@ -181,15 +184,19 @@ export default function UpcomingScreen() {
                 right={(
                   <Row gap={spacing.sm}>
                     {item.status === "late" ? <Badge tone="error" text={tr.dashboard.late} /> : null}
-                    {item.amountIsEstimated ? <Badge tone="warning" text={tr.subs.variableAmountBadge} /> : null}
-                    <Amount
-                      minor={item.amountMinor}
-                      currency={item.currency}
-                      colorized={false}
-                      color={item.status === "late" ? palette.errorText : palette.text}
-                      accessibilityLabel={formatMinorCompact(item.amountMinor, item.currency)}
-                      style={[type.amountSm, { textAlign: "right" }]}
-                    />
+                    {item.amountIsEstimated && !amountUnknown(item) ? <Badge tone="warning" text={tr.subs.estimatedBadge} /> : null}
+                    {amountUnknown(item) ? (
+                      <Body muted style={[type.amountSm, { textAlign: "right" }]}>{tr.subs.unknownAmount}</Body>
+                    ) : (
+                      <Amount
+                        minor={item.amountMinor}
+                        currency={item.currency}
+                        colorized={false}
+                        color={item.status === "late" ? palette.errorText : palette.text}
+                        accessibilityLabel={formatMinorCompact(item.amountMinor, item.currency)}
+                        style={[type.amountSm, { textAlign: "right" }]}
+                      />
+                    )}
                     <ChevronRight accessible={false} size={iconSize.control} color={palette.textSecondary} />
                   </Row>
                 )}

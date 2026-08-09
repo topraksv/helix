@@ -62,7 +62,9 @@ function SubscriptionFormArtwork({
   const { palette } = useTheme();
   const cycleLabel = cycle === "monthly" ? tr.subs.monthly : cycle === "yearly" ? tr.subs.yearly : tr.subs.custom;
   const interval = cycle === "monthly" ? 1 : cycle === "yearly" ? 12 : Math.max(1, Math.min(12, intervalMonths || 1));
-  const monthlyMinor = amountMinor == null ? null : normalizedMonthlyLoadMinor(amountMinor, interval);
+  // 0 is the "no estimate yet" sentinel for a variable subscription, not a
+  // real forecast — treat it the same as unset rather than showing "₺0,00".
+  const monthlyMinor = amountMinor == null || amountMinor === 0 ? null : normalizedMonthlyLoadMinor(amountMinor, interval);
   return (
     <View
       accessible
@@ -136,7 +138,11 @@ function SubscriptionFormArtwork({
           ) : (
             <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
           )}
-          {amountMode === "variable" ? <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>{tr.subs.variableAmountBadge}</Text> : null}
+          {amountMode === "variable" ? (
+            <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>
+              {monthlyMinor == null ? tr.subs.unknownAmount : tr.subs.variableAmountBadge}
+            </Text>
+          ) : null}
         </View>
         <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -187,8 +193,11 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
   const close = () => navigateBack(router, "/(tabs)/subscriptions");
 
   const [name, setName] = useState(existing?.name ?? "");
-  const [amountRaw, setAmountRaw] = useState(existing ? formatMinorInput(existing.amountMinor) : "");
-  const [amountMinor, setAmountMinor] = useState<number | null>(existing?.amountMinor ?? null);
+  // 0 on a variable rule is the "no estimate yet" sentinel, not a real
+  // amount — the field reopens empty rather than pre-filling "0,00".
+  const existingAmountKnown = existing != null && !(existing.amountMode === "variable" && existing.amountMinor === 0);
+  const [amountRaw, setAmountRaw] = useState(existingAmountKnown ? formatMinorInput(existing!.amountMinor) : "");
+  const [amountMinor, setAmountMinor] = useState<number | null>(existingAmountKnown ? existing!.amountMinor : null);
   const [amountMode, setAmountMode] = useState<"fixed" | "variable">(existing?.amountMode ?? "fixed");
   const [currency, setCurrency] = useState(existing?.currency ?? "TRY");
   const [showCurrency, setShowCurrency] = useState((existing?.currency ?? "TRY") !== "TRY");
@@ -248,11 +257,16 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     selectedSource.statementDay != null && selectedSource.statementDay >= 1 && selectedSource.statementDay <= 31 &&
     selectedSource.dueDay != null && selectedSource.dueDay >= 1 && selectedSource.dueDay <= 31
   );
+  // A variable bill's cost is genuinely unknown until the first invoice
+  // arrives, so it is the one field that may stay empty; a fixed
+  // subscription always names a real recurring charge.
+  const amountValid = amountMode === "variable"
+    ? amountMinor == null || amountMinor >= 0
+    : amountMinor != null && amountMinor > 0;
   const baseValid =
     dataReady &&
     name.trim() !== "" &&
-    amountMinor != null &&
-    amountMinor > 0 &&
+    amountValid &&
     isMonthDay(billingDay) &&
     (cycle !== "yearly" || yearlyRenewalDate != null) &&
     Number.isInteger(intervalMonths) &&
@@ -291,7 +305,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
     await upsertSubscription(userId, {
       id: existing ? draftId : undefined,
       name: name.trim(),
-      amountMinor: amountMinor!,
+      amountMinor: amountMinor ?? 0,
       amountMode,
       currency,
       cycle,
@@ -381,14 +395,9 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                 : (billingDayStr ? tr.subs.daySchedule(billingDayStr) : "")}
             />
             <Field label={tr.subs.name} value={name} onChangeText={setName} placeholder={namePlaceholder} />
-            <MoneyField
-              label={`${amountMode === "variable" ? tr.subs.estimatedAmount : tr.tx.amount} · ${currency}`}
-              value={amountRaw}
-              onChangeMinor={(raw, minor) => {
-                setAmountRaw(raw);
-                setAmountMinor(minor);
-              }}
-            />
+            {/* The choice between a fixed and a variable amount changes what the
+                field below it is for — asked first, "tahmini tutar" and an
+                empty field both read as intentional instead of unfinished. */}
             <Spread style={{ marginBottom: spacing.md }}>
               <View style={{ flex: 1, paddingRight: spacing.md }}>
                 <Body>{tr.subs.variableAmount}</Body>
@@ -403,6 +412,14 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                 }}
               />
             </Spread>
+            <MoneyField
+              label={`${amountMode === "variable" ? tr.subs.estimatedAmountFieldLabel : tr.tx.amount} · ${currency}`}
+              value={amountRaw}
+              onChangeMinor={(raw, minor) => {
+                setAmountRaw(raw);
+                setAmountMinor(minor);
+              }}
+            />
             {showCurrency ? (
               <>
                 <Label>{tr.tx.currency}</Label>

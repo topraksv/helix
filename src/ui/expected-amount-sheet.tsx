@@ -76,19 +76,24 @@ export function ExpectedAmountSheet({
                 <Text style={[type.heading, { color: palette.text }]}>{tr.subs.amountEntryTitle}</Text>
               </View>
               <Body muted style={{ marginTop: spacing.xs, marginBottom: spacing.lg }}>{tr.subs.amountEntryHint}</Body>
-              <View
-                accessible
-                accessibilityRole="text"
-                accessibilityLabel={`${isEstimated ? tr.subs.estimatedAmount : tr.subs.currentAmount}: ${formatMinorCompact(currentMinor, currency)}`}
-                style={{ marginBottom: spacing.md }}
-              >
-                <Text style={[type.small, { color: palette.textSecondary }]}>{isEstimated ? tr.subs.estimatedAmount : tr.subs.currentAmount}</Text>
-                <Amount minor={currentMinor} currency={currency} colorized={false} style={{ marginTop: 2, textAlign: "left" }} />
-              </View>
+              {/* 0 is the "no estimate entered" sentinel for a still-estimated
+                  row — a real ₺0,00 never reaches this sheet, so there is
+                  nothing to compare the invoice against yet. */}
+              {isEstimated && currentMinor === 0 ? null : (
+                <View
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLabel={`${isEstimated ? tr.subs.estimatedAmount : tr.subs.currentAmount}: ${formatMinorCompact(currentMinor, currency)}`}
+                  style={{ marginBottom: spacing.md }}
+                >
+                  <Text style={[type.small, { color: palette.textSecondary }]}>{isEstimated ? tr.subs.estimatedAmount : tr.subs.currentAmount}</Text>
+                  <Amount minor={currentMinor} currency={currency} colorized={false} style={{ marginTop: 2, textAlign: "left" }} />
+                </View>
+              )}
               <MoneyField
                   label={`${tr.subs.amountEntryTitle} · ${currency}`}
                   value={amountRaw}
-                  placeholder={formatMinorCompact(currentMinor, currency)}
+                  placeholder={currentMinor === 0 ? undefined : formatMinorCompact(currentMinor, currency)}
                 onChangeMinor={(raw, minor) => {
                   setAmountRaw(raw);
                   setAmountMinor(minor);
