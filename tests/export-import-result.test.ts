@@ -17,7 +17,9 @@ vi.mock("../src/db/mutations", () => ({
 
 import { importBundle } from "../src/services/export-import";
 
-const sourceUserId = "00000000-0000-4000-8000-000000000001";
+// A backup restores into the account that wrote it — a bundle from another
+// account is refused outright (see backup-round-trip.test.ts), so these
+// fixtures carry the importing account's id.
 const targetUserId = "00000000-0000-4000-8000-000000000002";
 const settingId = "00000000-0000-4000-8000-000000000003";
 const timestamp = "2026-07-20T10:00:00.000Z";
@@ -47,7 +49,7 @@ describe("backup import result counts", () => {
       tables: {
         settings: [{
           id: settingId,
-          user_id: sourceUserId,
+          user_id: targetUserId,
           key: "theme",
           value: JSON.stringify("dark"),
           created_at: timestamp,
@@ -70,7 +72,7 @@ describe("backup import result counts", () => {
         settings: [
           {
             id: settingId,
-            user_id: sourceUserId,
+            user_id: targetUserId,
             key: "theme",
             value: JSON.stringify("dark"),
             created_at: timestamp,
@@ -79,7 +81,7 @@ describe("backup import result counts", () => {
           },
           {
             id: newerId,
-            user_id: sourceUserId,
+            user_id: targetUserId,
             key: "palette",
             value: JSON.stringify("sand"),
             created_at: timestamp,
@@ -113,7 +115,7 @@ describe("backup import result counts", () => {
       tables: {
         persons: [{
           id: personId,
-          user_id: sourceUserId,
+          user_id: targetUserId,
           created_at: timestamp,
           updated_at: timestamp,
           deleted_at: null,
@@ -123,7 +125,7 @@ describe("backup import result counts", () => {
         }],
         transactions: [{
           id: "00000000-0000-4000-8000-000000000012",
-          user_id: sourceUserId,
+          user_id: targetUserId,
           created_at: timestamp,
           updated_at: timestamp,
           deleted_at: null,
@@ -155,7 +157,7 @@ describe("backup import result counts", () => {
   it("rejects duplicate ids before the atomic writer is called", async () => {
     const row = {
       id: settingId,
-      user_id: sourceUserId,
+      user_id: targetUserId,
       key: "theme",
       value: JSON.stringify("dark"),
       created_at: timestamp,

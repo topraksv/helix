@@ -778,7 +778,19 @@ export default function DashboardScreen() {
               accessible={false}
               style={wideDashboard
                 ? { width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.xl }
-                : { height: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginVertical: spacing.lg }}
+                : {
+                    height: StyleSheet.hairlineWidth,
+                    backgroundColor: palette.border,
+                    // Stacked spacing, phone only: the forecast row above is a
+                    // tap target and already ends with its own 16pt padding,
+                    // so a full 24pt margin here put ~40pt of empty card
+                    // between that row and this line. The wide layout draws
+                    // this divider vertically and never had the problem. Only
+                    // the remainder is added back, and the full gap returns
+                    // when that row is absent.
+                    marginTop: projected != null ? spacing.sm : spacing.lg,
+                    marginBottom: spacing.lg,
+                  }}
             />
 
             <View style={wideDashboard ? { flex: 1, paddingLeft: spacing.xl, justifyContent: "space-between" } : undefined}>
@@ -824,8 +836,9 @@ export default function DashboardScreen() {
       <Collapse open={Boolean(bundle) && showForecast && projected != null}>
         {bundle && projected != null ? (
         <Card style={{ marginBottom: 0 }}>
-          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.xs }}>{tr.dashboard.forecastHint}</Body>
-          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.dashboard.forecastBalanceNotice}</Body>
+          {/* One sentence: what the figure is, and that today's balance is not
+              it. Two stacked notices read as fine print nobody finishes. */}
+          <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>{tr.dashboard.forecastHint}</Body>
           <Spread style={{ marginBottom: spacing.xs }}>
             <Body muted>{tr.dashboard.forecastCurrent}</Body>
             <Amount minor={bundle.actualBalanceMinor} />

@@ -254,28 +254,30 @@ export default function SubscriptionsScreen() {
   const today = todayISO();
   const { status: dataStatus, ready: dataReady, retry: retryData } = combineLiveStates([subscriptionsState, personsState, transactionsState]);
 
+  // The date of the last realized charge per rule, so "Sıradaki: 20 Ağu"
+  // cannot be read as "nothing has been paid yet" when auto-pay already
+  // settled this cycle and only advanced the rule to the next one.
+  //
+  // Memoized: this walks the whole transaction table, and the screen
+  // re-renders on every filter, undo and live-query tick.
+  const lastChargeBySubscription = React.useMemo(() => {
+    const latest = new Map<string, ISODate>();
+    for (const transaction of transactionsState.data) {
+      if (!transaction.subscriptionId || transaction.status !== "realized") continue;
+      const current = latest.get(transaction.subscriptionId);
+      if (!current || transaction.effectiveDate > current) {
+        latest.set(transaction.subscriptionId, transaction.effectiveDate);
+      }
+    }
+    return latest;
+  }, [transactionsState.data]);
+
   if (!dataReady) {
     return (
       <Screen title={tr.subs.title}>
         <DataStateNotice status={dataStatus} retry={retryData} />
       </Screen>
     );
-  }
-
-  // The last realized charge per rule, so "Sıradaki: 20 Ağu" cannot be read as
-  // "nothing has been paid yet" when auto-pay already settled this cycle and
-  // only advanced the rule to the next one.
-  const lastChargeBySubscription = new Map<string, { date: ISODate; amountMinor: number; currency: string }>();
-  for (const transaction of transactionsState.data) {
-    if (!transaction.subscriptionId || transaction.status !== "realized") continue;
-    const current = lastChargeBySubscription.get(transaction.subscriptionId);
-    if (!current || transaction.effectiveDate > current.date) {
-      lastChargeBySubscription.set(transaction.subscriptionId, {
-        date: transaction.effectiveDate,
-        amountMinor: transaction.amountMinor,
-        currency: transaction.currency,
-      });
-    }
   }
 
   const activeSubs = subscriptions.filter((s) => s.isActive);
@@ -305,7 +307,7 @@ export default function SubscriptionsScreen() {
     const badges: RuleBadge[] = s.isActive
       ? [
           { text: tr.subs.nextDue(shortDateLabel(s.nextDueDate)) },
-          ...(lastCharge ? [{ text: tr.subs.lastCharged(shortDateLabel(lastCharge.date)), tone: "muted" as const }] : []),
+          ...(lastCharge ? [{ text: tr.subs.lastCharged(shortDateLabel(lastCharge)), tone: "muted" as const }] : []),
           ...(s.amountMode === "variable" ? [{ text: tr.subs.variableAmountBadge, tone: "warning" as const, icon: Activity }] : []),
           ...(inTrial ? [{ text: tr.subs.trialEnds(shortDateLabel(s.trialEndDate!)), tone: "warning" as const }] : []),
           ...(s.autoPay ? [{ text: tr.subs.autoPay, tone: "primary" as const, icon: Repeat }] : []),

@@ -14,6 +14,7 @@ import { InvestmentDomainError } from "../domain/investments";
 import { UserFacingError } from "../domain/user-error";
 import { tr } from "../i18n/tr";
 import {
+  bundleSourceUserId,
   csvCell,
   ExportTextBuilder,
   validateBundleRelationships,
@@ -128,6 +129,16 @@ export async function importBundle(
 ): Promise<{ imported: number; skipped: number }> {
   throwIfAborted(options?.signal);
   const bundle = validateExportBundle(input);
+  // Restore keeps every row's original id, and a large share of those ids are
+  // derived from the account that made them. Pointed at a second account they
+  // collide with the first account's rows on a shared device — the write layer
+  // refuses that outright — and where they do not collide they stop matching
+  // what the new account's own writes derive. Say so, instead of failing on an
+  // ownership conflict several hundred rows in.
+  const sourceUserId = bundleSourceUserId(bundle);
+  if (sourceUserId != null && sourceUserId !== userId) {
+    throw new UserFacingError(tr.errors.backupOtherAccount);
+  }
   const sqlite = await getSqliteAsync();
   let imported = 0;
   let skipped = 0;

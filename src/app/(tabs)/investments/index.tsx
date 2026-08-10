@@ -198,7 +198,19 @@ function AllocationStrip({
       accessibilityLabel={summary}
       style={{ marginTop: INVESTMENT_SECTION_GAP }}
     >
-      <Text style={[type.small, { color: palette.textSecondary }]}>{tr.investments.distribution}</Text>
+      {/* The same section eyebrow the dashboard's month block uses. As plain
+          secondary body text this heading was the same size and weight as the
+          holding names directly under it, so the group had no visible start. */}
+      <Text
+        style={[type.label, {
+          color: palette.textSecondary,
+          textTransform: "uppercase",
+          letterSpacing: 1.1,
+          fontSize: type.caption.fontSize,
+        }]}
+      >
+        {tr.investments.distribution}
+      </Text>
       {/* A ranked bar per holding, not one stacked strip.
           The strip answered "what is the split" and nothing else: three clay
           tones in a 9pt track cannot be compared to each other, and the legend
@@ -206,11 +218,14 @@ function AllocationStrip({
           them directly — the longest bar IS the largest position — and costs
           the same height, which is what keeps the actions under this card above
           the fold on a phone. */}
-      <View accessible={false} style={{ marginTop: spacing.sm, gap: spacing.sm }}>
+      {/* One rhythm: the heading, each holding and the gap between holdings all
+          step on the same scale, so a row's label and its own bar read as one
+          unit instead of floating between two neighbours. */}
+      <View accessible={false} style={{ marginTop: spacing.md, gap: spacing.md }}>
         {visible.map((slice) => {
           const share = totalMinor > 0 ? slice.valueMinor / totalMinor : 0;
           return (
-            <View key={slice.label} style={{ gap: 3 }}>
+            <View key={slice.label} style={{ gap: spacing.xs }}>
               <Row gap={spacing.sm}>
                 <Text
                   style={[type.small, { flex: 1, minWidth: 0, color: palette.textSecondary, fontSize: type.caption.fontSize }]}
@@ -524,10 +539,12 @@ export default function InvestmentsScreen() {
     <View
       testID="investment-transfer-summary"
       style={{
-        // Two transfer lines read as rows under the balance they belong to.
-        // Side by side they were a second, unrelated strip; only a phone, where
-        // a column would cost two more rows of height, keeps them paired.
-        flexDirection: compact ? "row" : "column",
+        // Two transfer lines read as rows under the balance they belong to, at
+        // every width. Paired side by side to save height, a phone gave each
+        // one about 120pt of text column and "Yatırımdan çekilen" wrapped, so
+        // the two halves of one box were different heights and neither label
+        // finished on its own line.
+        flexDirection: "column",
         gap: spacing.sm,
         marginTop: INVESTMENT_SECTION_GAP,
         padding: spacing.md,
@@ -535,13 +552,18 @@ export default function InvestmentsScreen() {
         backgroundColor: palette.surfaceAlt,
       }}
     >
-      <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} stacked={!compact} />
-      <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} stacked={!compact} />
+      <TransferMetric direction="in" label={tr.investments.transferredIn} minor={transferredInMinor} stacked />
+      <TransferMetric direction="out" label={tr.investments.transferredOut} minor={transferredOutMinor} stacked />
     </View>
   );
   const portfolioMetrics = (
     <MetricStrip
       testID="investment-portfolio-metrics"
+      // These three labels are long enough to wrap unevenly on a phone
+      // ("Yatırılmış maliyet" over two lines beside a one-line "Aktif
+      // ürünler"), which left-aligned reads as three columns that failed to
+      // line up rather than as one row of figures.
+      align="center"
       style={{ marginTop: INVESTMENT_SECTION_GAP }}
       items={[
         { label: tr.investments.investedCost, minor: state.investedCostMinor, color: palette.text },

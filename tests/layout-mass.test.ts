@@ -109,7 +109,7 @@ describe("the month-end forecast carries one colour meaning", () => {
   });
 
   it("makes the balance-versus-forecast boundary explicit and removes the trailing card gap", () => {
-    expect(dashboard).toContain("tr.dashboard.forecastBalanceNotice");
+    expect(dashboard).toContain("tr.dashboard.forecastHint");
     expect(dashboard).toContain('<Card style={{ marginBottom: 0 }}>');
   });
 });

@@ -130,30 +130,41 @@ function SubscriptionFormArtwork({
         ))}
       </View>
 
-      <View style={{ flexDirection: "row", alignItems: "stretch" }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.monthlyEquivalent}</Text>
-          {monthlyMinor == null ? (
-            <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
-          ) : (
-            <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
-          )}
-          {amountMode === "variable" ? (
-            <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>
-              {monthlyMinor == null ? tr.subs.unknownAmount : tr.subs.variableAmountBadge}
-            </Text>
-          ) : null}
+      {/* A variable bill has no monthly or annual equivalent to state: the
+          number in the field is a guess, and multiplying a guess by twelve
+          presents it as a commitment. That column pair is replaced by what is
+          actually true about the rule. */}
+      {amountMode === "variable" ? (
+        <View>
+          <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.tx.amount}</Text>
+          <Text style={[type.label, { color: palette.text, marginTop: 2 }]}>{tr.subs.variesEachMonth}</Text>
+          <Text style={[type.small, { color: palette.textSecondary, marginTop: 2 }]}>
+            {monthlyMinor == null
+              ? tr.subs.noEstimateYet
+              : tr.subs.estimatePerMonth(formatMinorCompact(monthlyMinor, currency))}
+          </Text>
         </View>
-        <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.annualEquivalent}</Text>
-          {monthlyMinor == null ? (
-            <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
-          ) : (
-            <Amount minor={monthlyMinor * 12} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
-          )}
+      ) : (
+        <View style={{ flexDirection: "row", alignItems: "stretch" }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.monthlyEquivalent}</Text>
+            {monthlyMinor == null ? (
+              <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
+            ) : (
+              <Amount minor={monthlyMinor} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
+            )}
+          </View>
+          <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: palette.border, marginHorizontal: spacing.sm }} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.annualEquivalent}</Text>
+            {monthlyMinor == null ? (
+              <Text style={[type.amountSm, { color: palette.text, marginTop: 2 }]}>—</Text>
+            ) : (
+              <Amount minor={monthlyMinor * 12} currency={currency} colorized={false} style={{ fontSize: type.label.fontSize, textAlign: "left", marginTop: 2 }} />
+            )}
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 }

@@ -228,8 +228,12 @@ export function isValidImportRow(
     }
   }
   if (table === "subscriptions") {
+    // A variable bill (electricity, gas) may legitimately carry no estimate
+    // yet, and 0 is that sentinel. Fixed subscriptions still name a real
+    // recurring charge, so zero stays invalid there.
+    const allowsUnknownAmount = raw.amount_mode === "variable";
     if (
-      !isPositiveMoney(raw.amount_minor)
+      !(allowsUnknownAmount ? isSupportedMoney(raw.amount_minor) && Number(raw.amount_minor) >= 0 : isPositiveMoney(raw.amount_minor))
       || !isPositiveInteger(raw.interval_months)
       || raw.interval_months > MAX_SUBSCRIPTION_INTERVAL_MONTHS
       || (enforceInputLimits && (
@@ -242,7 +246,15 @@ export function isValidImportRow(
   }
   if (table === "price_history" && !isPositiveMoney(raw.amount_minor)) return false;
   if (table === "recurring_incomes" && !isPositiveMoney(raw.default_amount_minor)) return false;
-  if (table === "expected_payments" && !isPositiveMoney(raw.amount_minor)) return false;
+  // A still-estimated occurrence of a variable bill carries 0 until the user
+  // enters the invoice; a known occurrence always names a real amount.
+  if (table === "expected_payments") {
+    const estimated = raw.amount_is_estimated === true || raw.amount_is_estimated === 1;
+    const amountValid = estimated
+      ? isSupportedMoney(raw.amount_minor) && Number(raw.amount_minor) >= 0
+      : isPositiveMoney(raw.amount_minor);
+    if (!amountValid) return false;
+  }
   if (table === "balance_adjustments" && !isSupportedMoney(raw.amount_minor)) return false;
   if (table === "category_budgets" && !isPositiveMoney(raw.amount_minor)) return false;
   if (table === "fx_rates" && !isSupportedRate(raw.rate_try)) return false;
@@ -437,6 +449,27 @@ export function validateExportBundle(raw: unknown): ExportBundle {
   }
   if (sourceUsers.size > 1) invalidBackup();
   return bundle as ExportBundle;
+}
+
+/**
+ * Which account a bundle was written from, or null for an empty backup.
+ *
+ * Restore rebinds rows to the importing account but keeps their original
+ * ids, and many of those ids are DERIVED from the account they were made in
+ * (`naturalKeys.setting`, `cellNote`, `categoryBudget`, `expected`, …). Into
+ * a different account they would collide with the source account's rows on a
+ * shared device, and where they did not collide they would no longer match
+ * what that account's own writes derive — one settings key would end up with
+ * two rows. Callers use this to refuse that restore in words rather than to
+ * half-apply it.
+ */
+export function bundleSourceUserId(bundle: ExportBundle): string | null {
+  for (const table of Object.keys(SYNCED_TABLES) as SyncedTableName[]) {
+    for (const row of bundle.tables[table] ?? []) {
+      if (typeof row.user_id === "string") return row.user_id;
+    }
+  }
+  return null;
 }
 
 /** Parse a picked backup with a hard pre-JSON size bound. */

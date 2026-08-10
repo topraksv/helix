@@ -22,7 +22,7 @@ export interface CategoryReferenceUsage {
   total: number;
 }
 
-export interface CategoryReferenceSnapshot {
+interface CategoryReferenceSnapshot {
   table: CategoryReferenceTable;
   row: Record<string, unknown>;
 }
@@ -163,10 +163,14 @@ export async function deleteCategoryWithBudgets(
       ),
     })));
     const referencesByTable = sourceRows.flatMap(({ table, rows }) => rows.map((row) => ({ table, row: fromDbShape(table, row) })));
+    // A subscription or income rule with no column cannot be confirmed later
+    // (`confirmExpected` requires a live category), so those are the only
+    // references that genuinely need a replacement. Transactions, plans and
+    // cell notes all have a safe answer without one.
     const blockingNullReferences = referencesByTable.some(({ table }) =>
-      replacementId == null && (table === "subscriptions" || table === "recurring_incomes" || table === "cell_notes"));
+      replacementId == null && (table === "subscriptions" || table === "recurring_incomes"));
     if (blockingNullReferences) {
-      throw new Error("A replacement category is required for rules and cell notes");
+      throw new Error("A replacement category is required for rules");
     }
 
     references = referencesByTable;
@@ -215,7 +219,13 @@ export async function deleteCategoryWithBudgets(
       // that the cash-flow matrix already reconciles as "uncategorized".
       references = references.filter((reference) => reference.table !== "transactions");
       for (const reference of references) {
-        writes.push({ table: reference.table, row: { ...reference.row, categoryId: null } });
+        // A cell note is keyed by (month, category) and its column is going
+        // away, so there is no cell left for it to annotate and its own
+        // `category_id` is not null either. It is tombstoned with the
+        // category and comes back with it on undo.
+        writes.push(reference.table === "cell_notes"
+          ? { table: "cell_notes", row: { ...reference.row, deletedAt } }
+          : { table: reference.table, row: { ...reference.row, categoryId: null } });
       }
     }
     snapshot.reassigned = [

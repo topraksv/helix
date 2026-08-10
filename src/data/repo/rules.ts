@@ -229,7 +229,12 @@ export async function upsertSubscription(userId: string, input: SubscriptionInpu
       )
     : null;
   const writes: RowWrite[] = [];
-  if (!input.id || (previous && (previous.amount_minor !== input.amountMinor || previous.currency !== input.currency))) {
+  // Price history is the record of what this subscription HAS cost. A variable
+  // bill with no estimate yet has no price to record — writing 0 would both
+  // invent a "it was free once" data point and produce a row the backup
+  // validator rejects, which quietly makes the whole account un-restorable.
+  const recordsPrice = input.amountMinor > 0;
+  if (recordsPrice && (!input.id || (previous && (previous.amount_minor !== input.amountMinor || previous.currency !== input.currency)))) {
     writes.push({
       table: "price_history",
       row: {

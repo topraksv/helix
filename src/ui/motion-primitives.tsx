@@ -83,10 +83,10 @@ export function useDrawIn(active = true, duration = motion.draw, token?: string 
  *
  * A screen's own navigator is the arrival boundary — a tab switch, a
  * root-level push/pop and a nested stack push/pop all count as an arrival,
- * because the owner wants the entrance to replay every time the screen is
- * returned to, not only on the first visit. What the entrance itself must
- * never do on a return is drop to a blank frame the way a real reload would;
- * see `ScreenEntrance`'s `subtle` replay for how that stays true.
+ * because the entrance replays every time the screen is returned to, not
+ * only on the first visit. React Navigation only emits focus/blur on a
+ * screen once every ancestor agrees it is on show, which is what makes one
+ * listener here correct for all three cases.
  */
 
 export const ScreenVisitContext = React.createContext<ScreenVisitStore | null>(null);

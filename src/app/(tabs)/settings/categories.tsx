@@ -19,7 +19,8 @@ import LayoutTemplate from "lucide-react-native/icons/layout-template";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
 import Trash2 from "lucide-react-native/icons/trash-2";
-import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../../../ui/components";
+import { Badge, Body, Button, Card, ChipPicker, DataStateNotice, Divider, EmptyState, FadeIn, Field, IconButton, PanelHeader, Row, Screen, Spread, Toggle } from "../../../ui/components";
+import { CategoryDeleteSheet, UNCATEGORIZED_CHOICE } from "../../../ui/category-delete-sheet";
 import { DraggableList, ReorderGrip } from "../../../ui/draggable-list";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
@@ -28,7 +29,6 @@ import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 
-const UNCATEGORIZED_CHOICE = "__uncategorized__";
 type CategoryItem = ReturnType<typeof useCategoriesState>["data"][number];
 
 function CategoryLedgerMap({ expenseCount, incomeCount }: { expenseCount: number; incomeCount: number }) {
@@ -96,7 +96,6 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
   const [deleteResolution, setDeleteResolution] = useState<{
     category: CategoryItem;
     usage: CategoryReferenceUsage;
-    replacementId: string | null;
   } | null>(null);
   // Freeze the screen's scroll while a row is being dragged, so the vertical
   // drag reorders instead of scrolling the page.
@@ -178,19 +177,7 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
     try {
       const usage = await categoryReferenceUsage(userId, c.id);
       if (usage.total > 0) {
-        const candidates = categories.filter((candidate) =>
-          candidate.id !== c.id && candidate.kind === c.kind && candidate.isTransfer === c.isTransfer,
-        );
-        const normalizedName = c.name.trim().toLocaleLowerCase("tr-TR");
-        const sameName = candidates.find((candidate) => candidate.name.trim().toLocaleLowerCase("tr-TR") === normalizedName);
-        const canLeaveUncategorized = usage.subscriptions === 0 && usage.recurringIncomes === 0 && usage.cellNotes === 0;
-        setDeleteResolution({
-          category: c,
-          usage,
-          // Same-name columns (the common Excel year split) are selected first,
-          // but the user can choose any compatible live column before confirming.
-          replacementId: sameName?.id ?? (canLeaveUncategorized ? UNCATEGORIZED_CHOICE : candidates[0]?.id ?? null),
-        });
+        setDeleteResolution({ category: c, usage });
         return;
       }
       const ok = await appConfirm(tr.settings.deleteCategoryTitle, tr.settings.deleteCategoryBody(0), {
@@ -210,17 +197,6 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
         && candidate.isTransfer === deleteResolution.category.isTransfer,
       )
     : [];
-  const canLeaveUncategorized = deleteResolution
-    ? deleteResolution.usage.subscriptions === 0
-      && deleteResolution.usage.recurringIncomes === 0
-      && deleteResolution.usage.cellNotes === 0
-    : false;
-  const replacementOptions = deleteResolution
-    ? [
-        ...(canLeaveUncategorized ? [{ value: UNCATEGORIZED_CHOICE, label: tr.settings.deleteCategoryUncategorized }] : []),
-        ...replacementCandidates.map((candidate) => ({ value: candidate.id, label: candidate.name })),
-      ]
-    : [];
 
   if (!dataReady) {
     return (
@@ -236,46 +212,20 @@ export default function CategoriesScreen({ header }: { header?: ReactNode } = {}
       {header}
       <DataStateNotice status={dataStatus} retry={retryData} />
       {deleteResolution ? (
-        <Card tone="warning" testID="category-delete-resolution">
-          <PanelHeader
-            icon={Trash2}
-            title={tr.settings.deleteCategoryReplacementTitle}
-            description={tr.settings.deleteCategoryReplacementHint(deleteResolution.category.name, deleteResolution.usage.total)}
-            tone="warning"
-          />
-          <Select
-            label={tr.settings.deleteCategoryReplacementLabel}
-            options={replacementOptions}
-            value={deleteResolution.replacementId}
-            onChange={(replacementId) => setDeleteResolution((current) => current ? { ...current, replacementId } : current)}
-            placeholder={tr.settings.deleteCategoryReplacementPlaceholder}
-            disabled={replacementOptions.length === 0}
-            testID="category-delete-replacement"
-          />
-          {replacementOptions.length === 0 ? <Body muted style={{ marginTop: spacing.sm }}>{tr.settings.deleteCategoryReplacementMissing}</Body> : null}
-          <Row gap={spacing.sm} style={{ marginTop: spacing.md, justifyContent: "flex-end", flexWrap: "wrap" }}>
-            <Button label={tr.common.cancel} size="sm" variant="ghost" onPress={() => setDeleteResolution(null)} />
-            <Button
-              label={tr.common.delete}
-              size="sm"
-              variant="danger"
-              disabled={!deleteResolution.replacementId || replacementOptions.length === 0}
-              onPress={() => {
-                const current = deleteResolution;
-                if (!current?.replacementId) return;
-                void appConfirm(
-                  tr.settings.deleteCategoryTitle,
-                  tr.settings.deleteCategoryReplacementConfirm(current.category.name, current.replacementId === UNCATEGORIZED_CHOICE
-                    ? tr.settings.deleteCategoryUncategorized
-                    : categories.find((candidate) => candidate.id === current.replacementId)?.name ?? tr.common.none),
-                  { confirmLabel: tr.common.delete, danger: true },
-                ).then((ok) => ok ? deleteCategory(current.category, current.replacementId) : undefined).catch(() => {
-                  void appAlert(tr.errors.saveFailed, tr.errors.title);
-                });
-              }}
-            />
-          </Row>
-        </Card>
+        <CategoryDeleteSheet
+          categoryName={deleteResolution.category.name}
+          usage={deleteResolution.usage}
+          candidates={replacementCandidates.map((candidate) => ({ id: candidate.id, name: candidate.name }))}
+          onCancel={() => setDeleteResolution(null)}
+          onConfirm={async (choice) => {
+            try {
+              await deleteCategory(deleteResolution.category, choice);
+            } catch {
+              setDeleteResolution(null);
+              void appAlert(tr.errors.saveFailed, tr.errors.title);
+            }
+          }}
+        />
       ) : null}
       <WorkspaceSplit
         testID="categories-workspace"

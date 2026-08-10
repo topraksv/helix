@@ -204,7 +204,42 @@ test("every tab replays its screen entrance on return", async ({ page }) => {
   }
 });
 
-test("returning from an investment editor replays the entrance gently, never as a blank reload", async ({ page }) => {
+test("the subscriptions tab replays its entrance after a root-level editor and after a tab switch", async ({ page }) => {
+  // The reported case, verbatim: open Abonelikler (animation), go to the add
+  // form or to Mali Tablo, come back — and see the animation again. The
+  // subscription form is a ROOT-level route, so this also covers the case
+  // where the whole tab navigator blurs rather than a nested stack.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await onboard(page);
+  await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
+  const entrance = page.getByTestId("screen-entrance").filter({
+    has: page.getByRole("heading", { name: "Abonelikler", exact: true }),
+  });
+  const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
+  const sampleFrames = () => entrance.evaluate(async (element) => {
+    const samples: number[] = [];
+    for (let frame = 0; frame < 30; frame += 1) {
+      samples.push(Number.parseFloat(getComputedStyle(element).opacity));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    return samples;
+  });
+  await expect.poll(opacity).toBeGreaterThan(0.99);
+
+  await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
+  await expect(page).toHaveURL(/subscription-form/);
+  await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
+  expect(Math.min(...(await sampleFrames())), "returning from the root-level form replays").toBeLessThan(0.5);
+  await expect.poll(opacity).toBeGreaterThan(0.99);
+
+  await page.getByRole("tab", { name: "Mali Tablo", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
+  expect(Math.min(...(await sampleFrames())), "returning by tab switch replays").toBeLessThan(0.5);
+  await expect.poll(opacity).toBeGreaterThan(0.99);
+});
+
+test("returning from an investment editor replays the entrance visibly", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
@@ -224,12 +259,13 @@ test("returning from an investment editor replays the entrance gently, never as 
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await expect(page).toHaveURL(/investments\/product/);
 
-  // Back is still an arrival — the entrance is meant to replay — but it must
-  // settle back into place rather than blank to a near-invisible frame and
-  // fade in again, which is what made a Back press read as a page reload.
-  // Sampling consecutive frames right through the transition catches both:
-  // a dip proves the replay actually ran, and its floor proves it stayed
-  // gentle instead of vanishing.
+  // Back is an arrival and the entrance replays in full. A "gentler on
+  // return" variant that started at 0.92 opacity was indistinguishable from
+  // no animation at all, so the floor is asserted LOW here on purpose: the
+  // replay has to be something a person can actually see. What must not
+  // happen on a return is the page rebuilding, which is a different
+  // property — `replayToken` restarts the fade without remounting, and the
+  // settled form state in the editor tests covers that side.
   await page.getByRole("button", { name: "Geri", exact: true }).click();
   const returnedFrames = await entrance.evaluate(async (element) => {
     const samples: number[] = [];
@@ -242,8 +278,7 @@ test("returning from an investment editor replays the entrance gently, never as 
   await expect(page).toHaveURL(/investments\/?$/);
   await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
 
-  expect(Math.min(...returnedFrames), "the return replays, it is not skipped").toBeLessThan(0.98);
-  expect(Math.min(...returnedFrames), "the return never blanks like a reload").toBeGreaterThan(0.5);
+  expect(Math.min(...returnedFrames), "the return replays a visible entrance").toBeLessThan(0.5);
   await expect.poll(opacity, { message: "the entrance settles back to fully visible" }).toBeGreaterThan(0.99);
 });
 
@@ -286,11 +321,9 @@ test("deleting an imported column can move its records to a compatible column", 
   await page.getByRole("button", { name: "Sil · 2025 Gider", exact: true }).click();
   const resolution = page.getByTestId("category-delete-resolution");
   await expect(resolution).toBeVisible();
-  await expect(resolution.getByText(/bağlı 1 kayıt bulundu/)).toBeVisible();
-  await page.getByRole("button", { name: "Yeni kalem", exact: true }).click();
-  await page.locator('[aria-modal="true"]').getByRole("radio", { name: "2026 Gider", exact: true }).click();
+  await expect(resolution.getByText(/bağlı 1 kayıt var/)).toBeVisible();
+  await resolution.getByRole("radio", { name: "2026 Gider", exact: true }).click();
   await resolution.getByRole("button", { name: "Sil", exact: true }).click();
-  await page.getByRole("button", { name: "Sil", exact: true }).last().click();
   await expect(resolution).toHaveCount(0);
 
   await page.goto("/helix/cash-flow");
@@ -302,6 +335,11 @@ test("deleting an imported column can move its records to a compatible column", 
 
 test("a column with only transactions can be deleted and left uncategorized", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
+  // Phone width, where the trash icon sits far below the fold: the resolution
+  // used to render as a card at the very top of the scrolled page — measured
+  // ~2000px above the viewport — so the delete button read as dead. It is a
+  // sheet now, and this asserts it actually lands on screen.
+  await page.setViewportSize({ width: 390, height: 844 });
   await onboard(page);
   await page.goto("/helix/columns-editor");
   await page.getByRole("textbox", { name: "Kategori adı", exact: true }).fill("Dernek Aidatı");
@@ -317,13 +355,18 @@ test("a column with only transactions can be deleted and left uncategorized", as
   await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
   await page.goto("/helix/columns-editor");
 
-  await page.getByRole("button", { name: "Sil · Dernek Aidatı", exact: true }).click();
+  const trash = page.getByRole("button", { name: "Sil · Dernek Aidatı", exact: true });
+  await trash.scrollIntoViewIfNeeded();
+  await trash.click();
   const resolution = page.getByTestId("category-delete-resolution");
   await expect(resolution).toBeVisible();
-  // No other compatible column exists, so "Kategorisiz bırak" is already the
-  // selected default — the whole point of the option this test exercises.
+  const sheetBox = await resolution.boundingBox();
+  expect(sheetBox, "the resolution sheet is laid out").not.toBeNull();
+  expect(sheetBox!.y, "the sheet lands inside the viewport, not above it").toBeGreaterThan(-1);
+  expect(sheetBox!.y, "the sheet lands inside the viewport, not below it").toBeLessThan(844);
+  // "Kategorisiz bırak" is preselected when nothing else is compatible.
+  await expect(resolution.getByRole("radio", { name: "Kategorisiz bırak", exact: true })).toHaveAttribute("aria-checked", "true");
   await resolution.getByRole("button", { name: "Sil", exact: true }).click();
-  await page.getByRole("button", { name: "Sil", exact: true }).last().click();
   await expect(resolution).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Düzenle · Dernek Aidatı", exact: true })).toHaveCount(0);
 
@@ -360,8 +403,8 @@ test("deleting one of two identically-named columns still offers the other as a 
   // The remaining "Market Alışverişi" is the only compatible target and is
   // auto-selected (same-name columns are picked first), so this is a
   // same-tap delete — exactly the "same name, two years" import scenario.
+  await expect(resolution.getByRole("radio", { name: "Market Alışverişi", exact: true })).toHaveAttribute("aria-checked", "true");
   await resolution.getByRole("button", { name: "Sil", exact: true }).click();
-  await page.getByRole("button", { name: "Sil", exact: true }).last().click();
   await expect(resolution).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Düzenle · Market Alışverişi", exact: true })).toHaveCount(1);
 
@@ -674,14 +717,14 @@ test("variable subscriptions accept the invoice amount from the upcoming calenda
   await page.goto("/helix/subscription-form");
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Elektrik");
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("1.000,00");
-  await page.getByRole("switch", { name: "Tutarı sabit değil", exact: true }).click();
+  await page.getByRole("switch", { name: "Tutar her ay değişir", exact: true }).click();
   await pickOption(page, "Kategori", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Abonelikler", exact: true })).toBeVisible();
   await page.goto("/helix/");
   await expect(page.getByTestId("dashboard-current-balance")).toHaveAttribute("aria-label", balanceBeforeSubscription!);
   await page.getByTestId("dashboard-forecast-toggle").click();
-  await expect(page.getByText("Bu yalnızca ay sonu tahminidir; güncel bakiye ödeme tarihi gelene kadar değişmez.", { exact: true })).toBeVisible();
+  await expect(page.getByText(/güncel bakiyen bugün için değişmez/)).toBeVisible();
 
   await page.goto("/helix/upcoming");
   const bill = page.getByText("Elektrik", { exact: true }).first();
@@ -703,7 +746,7 @@ test("a variable subscription can be saved with no amount estimate at all", asyn
   await onboard(page);
   await page.goto("/helix/subscription-form");
   await page.getByRole("textbox", { name: "Ad", exact: true }).fill("Doğalgaz");
-  await page.getByRole("switch", { name: "Tutarı sabit değil", exact: true }).click();
+  await page.getByRole("switch", { name: "Tutar her ay değişir", exact: true }).click();
   await pickOption(page, "Kategori", "Market");
   // No amount typed anywhere — the whole point of this flow.
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
@@ -712,13 +755,14 @@ test("a variable subscription can be saved with no amount estimate at all", asyn
 
   await page.getByRole("button", { name: /Düzenle · Doğalgaz/, exact: true }).click();
   const artwork = page.getByRole("img", { name: /Doğalgaz/ });
-  await expect(artwork.getByText("Aylık karşılığı", { exact: true })).toBeVisible();
-  // The equivalent figures stay hidden (an em dash) rather than drawing a
-  // ₺0,00 that would read as a real, free charge; the field itself reopens
-  // empty rather than pre-filling the stored 0 sentinel.
-  await expect(artwork.getByText("—")).toHaveCount(2);
+  // A variable bill has no monthly/annual equivalent to state — multiplying a
+  // guess by twelve would present it as a commitment — so the preview says
+  // what is actually true and never draws a ₺0,00.
+  await expect(artwork.getByText("Her ay değişir", { exact: true })).toBeVisible();
+  await expect(artwork.getByText("Aylık karşılığı", { exact: true })).toHaveCount(0);
+  await expect(artwork.getByText("Yıllık karşılığı", { exact: true })).toHaveCount(0);
   await expect(artwork.getByText(/₺/)).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "Tahmini tutar (opsiyonel) · TRY", exact: true })).toHaveValue("");
+  await expect(page.getByRole("textbox", { name: "Tahmini tutar · istersen boş bırak · TRY", exact: true })).toHaveValue("");
   await assertNoRuntimeErrors(errors, testInfo);
 });
 

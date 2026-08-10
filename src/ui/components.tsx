@@ -75,14 +75,14 @@ export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./sele
 
 function ScreenEntrance({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const screenVisit = useScreenVisit();
-  // The first paint of this mounted instance is a true arrival and gets the
-  // full entrance; every later replay is this same frozen screen being
-  // returned to, so it settles back in instead of blanking and reappearing.
-  const hasEnteredOnce = useRef(false);
-  const subtle = hasEnteredOnce.current;
-  hasEnteredOnce.current = true;
+  // Every arrival plays the same entrance. A "gentler on return" variant was
+  // tried and starting it at 0.92 opacity made the replay invisible — the
+  // screen simply never animated again after its first mount. What must not
+  // happen on a return is the page REBUILDING (remount, refetch); the fade
+  // itself is the part the owner wants to see, and `replayToken` restarts it
+  // without touching the mounted subtree.
   return (
-    <FadeIn testID="screen-entrance" replayToken={screenVisit} subtle={subtle} style={style}>
+    <FadeIn testID="screen-entrance" replayToken={screenVisit} style={style}>
       {children}
     </FadeIn>
   );
@@ -358,6 +358,7 @@ export function HeroCard({ children, style, onLayout }: { children: ReactNode; s
  */
 export function MetricStrip({
   items,
+  align = "start",
   style,
   testID,
 }: {
@@ -379,10 +380,20 @@ export function MetricStrip({
     /** Anything that is not money — a count, a badge. */
     node?: ReactNode;
   }[];
+  /**
+   * How each column's label and figure sit inside their equal share.
+   *
+   * Left is right when the strip reads as a continuation of the block above
+   * it. Centred is right when the labels are long enough to wrap unevenly —
+   * three columns of ragged left-aligned text read as a layout accident,
+   * where the same columns centred read as a deliberate row of figures.
+   */
+  align?: "start" | "center";
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
   const { palette } = useTheme();
+  const centered = align === "center";
   return (
     <View
       testID={testID}
@@ -399,7 +410,7 @@ export function MetricStrip({
       ]}
     >
       {items.map((item) => (
-        <View key={item.label} style={{ flex: 1, flexBasis: 0, minWidth: 0, paddingTop: spacing.sm }}>
+        <View key={item.label} style={{ flex: 1, flexBasis: 0, minWidth: 0, paddingTop: spacing.sm, alignItems: centered ? "center" : "stretch" }}>
           <Text
             style={[
               type.small,
@@ -411,6 +422,7 @@ export function MetricStrip({
                 // reaches the same value floor at phone widths.
                 minHeight: Math.round(type.small.fontSize * 2.2),
                 lineHeight: type.small.fontSize * 1.1,
+                textAlign: centered ? "center" : "left",
               },
             ]}
           >
@@ -428,7 +440,7 @@ export function MetricStrip({
                 minor={item.minor}
                 colorized={false}
                 color={item.color ?? palette.textStrong}
-                style={{ textAlign: "left" }}
+                style={{ textAlign: centered ? "center" : "left" }}
               />
             ) : item.node}
           </View>
