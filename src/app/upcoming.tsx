@@ -19,6 +19,7 @@ import { combineLiveStates } from "../data/live-state";
 import { monthKeyOf, todayISO } from "../domain/dates";
 import { buildUpcomingTimeline, type UpcomingTimelineItem } from "../domain/upcoming";
 import { formatMinorCompact } from "../domain/money";
+import { hasUnknownAmount } from "../domain/subscriptions";
 import { setExpectedAmount } from "../data/repo";
 import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
@@ -88,9 +89,7 @@ export default function UpcomingScreen() {
     && item.sourceType === "subscription"
     && item.expectedId != null
     && subscriptionById.get(item.refId)?.amountMode === "variable";
-  // 0 is the "no estimate entered yet" sentinel on a still-estimated row —
-  // never a real ₺0,00 charge.
-  const amountUnknown = (item: UpcomingTimelineItem) => item.amountIsEstimated === true && item.amountMinor === 0;
+  const amountUnknown = hasUnknownAmount;
 
   const openItem = (item: UpcomingTimelineItem) => {
     if (item.status === "late") return router.push("/reconciliation");

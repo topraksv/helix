@@ -19,6 +19,7 @@ import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../domain/b
 import { buildDashboardModel } from "../../domain/dashboard";
 import { daysBetweenISO, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinorCompact } from "../../domain/money";
+import { AMOUNT_LABELS, occurrenceAmountText } from "../../domain/subscriptions";
 import { buildUpcomingTimeline } from "../../domain/upcoming";
 import { clockOrDateTimeLabel, dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
@@ -519,12 +520,10 @@ export default function DashboardScreen() {
   const isVariableSubscription = (e: (typeof expected)[number]) =>
     e.kind === "subscription" && subscriptionById.get(e.refId)?.amountMode === "variable";
   const needsAmountEntry = (e: (typeof expected)[number]) => isVariableSubscription(e) && e.amountIsEstimated === true;
-  // 0 is the "no estimate entered" sentinel on a still-estimated row — never
-  // a real ₺0,00 charge, so it reads as "Tutar belirtilmedi" instead.
+  // One rule for how an estimated amount reads, shared with the catch-up and
+  // upcoming screens so the three cannot drift apart.
   const amountFragment = (item: { amountMinor: number; currency: string; amountIsEstimated?: boolean }) =>
-    item.amountIsEstimated
-      ? (item.amountMinor === 0 ? tr.subs.unknownAmount : `${formatMinorCompact(item.amountMinor, item.currency)} · ${tr.subs.estimatedAmount}`)
-      : formatMinorCompact(item.amountMinor, item.currency);
+    occurrenceAmountText(item, formatMinorCompact, AMOUNT_LABELS);
   const saveExpectedAmount = async (amountMinor: number) => {
     if (!amountEditing) return;
     await setExpectedAmount(userId, amountEditing.id, amountMinor);

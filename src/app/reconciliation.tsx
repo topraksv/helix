@@ -18,6 +18,7 @@ import {
 import { combineLiveStates } from "../data/live-state";
 import { todayISO } from "../domain/dates";
 import { formatMinorCompact } from "../domain/money";
+import { AMOUNT_LABELS, occurrenceAmountText } from "../domain/subscriptions";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
@@ -63,12 +64,8 @@ export default function CatchUpScreen() {
   const isVariableSubscription = (e: (typeof expected)[number]) =>
     e.kind === "subscription" && subscriptionById.get(e.refId)?.amountMode === "variable";
   const needsAmountEntry = (e: (typeof expected)[number]) => isVariableSubscription(e) && e.amountIsEstimated === true;
-  // 0 is the "no estimate entered" sentinel on a still-estimated row — never
-  // a real ₺0,00 charge, so it reads as "Tutar belirtilmedi" instead.
   const amountFragment = (e: (typeof expected)[number]) =>
-    e.amountIsEstimated
-      ? (e.amountMinor === 0 ? tr.subs.unknownAmount : `${formatMinorCompact(e.amountMinor, e.currency)} · ${tr.subs.estimatedAmount}`)
-      : formatMinorCompact(e.amountMinor, e.currency);
+    occurrenceAmountText(e, formatMinorCompact, AMOUNT_LABELS);
   const items = expected
     .filter((e) => (e.status === "pending" || e.status === "late") && e.dueDate <= today)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
