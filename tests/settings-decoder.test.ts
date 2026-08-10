@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeSettingValue } from "../src/domain/settings";
+import { decodeSettingValue, type SettingKey } from "../src/domain/settings";
 
 describe("synced settings runtime decoding", () => {
   it("accepts the supported shape for each consumed key", () => {
@@ -20,6 +20,29 @@ describe("synced settings runtime decoding", () => {
     expect(decodeSettingValue("computed_columns_hidden", "{}", [])).toEqual([]);
     expect(decodeSettingValue("column_years", "null", {})).toEqual({});
     expect(decodeSettingValue("last_entry_at", '"not-a-date"', null)).toBeNull();
-    expect(decodeSettingValue("unknown", "true", "safe")).toBe("safe");
+    // A newer build can sync a key this one has never declared. The cast is
+    // the subject of the test, not a convenience: it proves the runtime still
+    // falls back where the compiler would otherwise have stopped us.
+    expect(decodeSettingValue("unknown" as SettingKey, "true", "safe")).toBe("safe");
+  });
+
+  /**
+   * Every key the app itself writes must be readable again.
+   *
+   * `balance_declared` was written by `setBalanceDeclaration` and read at three
+   * screens, but it was never added to this decoder — so it fell through to the
+   * unknown-key branch and every read returned the caller's fallback. The
+   * declared balance was stored and then permanently invisible, which silently
+   * disabled the drift warning that is its only purpose.
+   */
+  it("reads back every key the app writes", () => {
+    expect(decodeSettingValue("balance_declared", JSON.stringify({ minor: 1_000_00, at: "2026-07-21" }), null))
+      .toEqual({ minor: 1_000_00, at: "2026-07-21" });
+  });
+
+  it("still refuses a malformed declared balance", () => {
+    expect(decodeSettingValue("balance_declared", '{"minor":"x","at":"2026-07-21"}', null)).toBeNull();
+    expect(decodeSettingValue("balance_declared", '{"minor":100}', null)).toBeNull();
+    expect(decodeSettingValue("balance_declared", "null", null)).toBeNull();
   });
 });

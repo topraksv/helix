@@ -15,7 +15,7 @@ import type { InvestmentState } from "../domain/investments";
 import { daysBetweenISO, todayISO, type MonthKey } from "../domain/dates";
 import type { TxLike } from "../domain/types";
 import { devError } from "../services/logger";
-import { decodeSettingValue } from "../domain/settings";
+import { decodeSettingValue, type SettingKey } from "../domain/settings";
 import {
   combineLiveStates,
   completeLiveQuery,
@@ -543,7 +543,7 @@ export function useCellNotesState(): LiveResult<typeof s.cellNotes.$inferSelect>
   );
 }
 
-export function settingValue<T>(map: Map<string, string>, key: string, fallback: T): T {
+export function settingValue<T>(map: Map<string, string>, key: SettingKey, fallback: T): T {
   return decodeSettingValue(key, map.get(key), fallback);
 }
 

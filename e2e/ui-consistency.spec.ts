@@ -806,6 +806,36 @@ test("a dirty balance correction can be cancelled, cleared and reopened safely",
   await expect(page).toHaveURL(/\/helix\/cash-flow$/);
 });
 
+test("a declared balance is remembered, so the drift warning can fire", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+
+  // Confirm a balance the ledger does not currently show.
+  await page.goto("/helix/opening-balance");
+  await page.getByRole("textbox", { name: "Gerçek güncel bakiyen", exact: true }).fill("1.000,00");
+  // The current-balance block owns the first "Kaydet"; the opening-balance
+  // block below it has its own.
+  await page.getByRole("button", { name: "Kaydet", exact: true }).first().click();
+  await expect(page.getByText("Bakiye güncellendi", { exact: false }).first()).toBeVisible();
+
+  // Move the ledger away from it. The editor deliberately stays put after a
+  // save, so the ledger is reached by route rather than by tapping its tab.
+  await page.goto("/helix/cash-flow");
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "İşlem Ekle", exact: true }).click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("250,00");
+  await pickOption(page, "Kategori", "Market");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
+
+  // The declaration used to be written and then permanently unreadable: it was
+  // missing from the settings decoder, so every read returned the fallback and
+  // this warning could never appear no matter how far the ledger drifted.
+  await page.getByRole("tab", { name: "Durum", exact: true }).click();
+  await expect(page.getByText("Uyuşmuyor", { exact: true })).toBeVisible();
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
 test("stack headers keep navigation titles on one line at narrow width", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await onboard(page);

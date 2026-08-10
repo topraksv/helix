@@ -12,6 +12,7 @@ import { getTableColumns } from "drizzle-orm";
 import type { SQLiteBindValue, SQLiteDatabase } from "expo-sqlite";
 import { getSqliteAsync, withTransaction } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
+import type { AnySettingKey } from "../domain/settings";
 import { deterministicId, naturalKeys } from "./ids";
 import { resolveTombstoneVersion } from "../sync/tombstone-policy";
 
@@ -408,7 +409,7 @@ export function fromDbShape(table: SyncedTableName, dbRow: object): Record<strin
 }
 
 /** Read a setting value (JSON-decoded) or null. */
-export async function readSetting<T>(userId: string, key: string): Promise<T | null> {
+export async function readSetting<T>(userId: string, key: AnySettingKey): Promise<T | null> {
   const sqlite = await getSqliteAsync();
   const row = await sqlite.getFirstAsync<{ value: string }>(
     `SELECT value FROM settings WHERE user_id = ? AND key = ? AND deleted_at IS NULL`,
@@ -433,6 +434,6 @@ export async function settingRow(userId: string, key: string, value: unknown): P
   return { table: "settings", row: { id, key, value: JSON.stringify(value), deletedAt: null } };
 }
 
-export async function writeSetting(userId: string, key: string, value: unknown, isUserEntry = false): Promise<void> {
+export async function writeSetting(userId: string, key: AnySettingKey, value: unknown, isUserEntry = false): Promise<void> {
   await writeRows(userId, [await settingRow(userId, key, value)], isUserEntry);
 }

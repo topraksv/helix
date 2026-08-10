@@ -1,6 +1,7 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { fromDbShape, nowIso, readSetting, writeRowsValidated, type RowWrite } from "../../db/mutations";
+import type { ImportBatchKey } from "../../domain/settings";
 import { addMonthsToKey, todayISO, yearOf, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
@@ -40,7 +41,7 @@ export interface ImportRequest {
   cardCycles?: Record<string, CardCycle>;
 }
 
-const importBatchKey = (year: number) => `import_batch:${year}`;
+const importBatchKey = (year: number): ImportBatchKey => `import_batch:${year}`;
 const COLUMN_YEARS_KEY = "column_years";
 
 function parseImportBatch(value: string): ImportBatch | null {
