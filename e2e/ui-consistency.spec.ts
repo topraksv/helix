@@ -204,11 +204,12 @@ test("every tab replays its screen entrance on return", async ({ page }) => {
   }
 });
 
-test("the subscriptions tab replays its entrance after a root-level editor and after a tab switch", async ({ page }) => {
-  // The reported case, verbatim: open Abonelikler (animation), go to the add
-  // form or to Mali Tablo, come back — and see the animation again. The
-  // subscription form is a ROOT-level route, so this also covers the case
-  // where the whole tab navigator blurs rather than a nested stack.
+test("the subscriptions tab replays its entrance after a root-level editor", async ({ page }) => {
+  // Half of the reported case: open Abonelikler, open the add form, come back
+  // — and see the animation again. The subscription form is a ROOT-level
+  // route, so the whole tab navigator blurs rather than a nested stack, which
+  // is the arrival shape neither other motion test covers. The tab-switch half
+  // is already covered by "every tab replays its screen entrance on return".
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
   await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
@@ -216,27 +217,39 @@ test("the subscriptions tab replays its entrance after a root-level editor and a
     has: page.getByRole("heading", { name: "Abonelikler", exact: true }),
   });
   const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
-  const sampleFrames = () => entrance.evaluate(async (element) => {
-    const samples: number[] = [];
-    for (let frame = 0; frame < 30; frame += 1) {
-      samples.push(Number.parseFloat(getComputedStyle(element).opacity));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-    return samples;
+  // The recorder is ARMED BEFORE the navigation and keeps its own minimum on
+  // the page. Sampling a fixed number of frames after the click instead is a
+  // race with however long that navigation takes, and it lost that race on
+  // CI — twice — while passing every local run.
+  const armRecorder = () => entrance.evaluate((element) => {
+    const store = window as unknown as { __entranceMin?: number; __entranceStop?: () => void };
+    store.__entranceMin = 1;
+    let running = true;
+    const tick = () => {
+      if (!running) return;
+      const value = Number.parseFloat(getComputedStyle(element).opacity);
+      if (Number.isFinite(value) && value < (store.__entranceMin ?? 1)) store.__entranceMin = value;
+      requestAnimationFrame(tick);
+    };
+    store.__entranceStop = () => { running = false; };
+    requestAnimationFrame(tick);
   });
+  const readRecordedMin = async () => {
+    await expect.poll(opacity).toBeGreaterThan(0.99);
+    return page.evaluate(() => {
+      const store = window as unknown as { __entranceMin?: number; __entranceStop?: () => void };
+      store.__entranceStop?.();
+      return store.__entranceMin ?? 1;
+    });
+  };
   await expect.poll(opacity).toBeGreaterThan(0.99);
 
+  await armRecorder();
   await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
   await expect(page).toHaveURL(/subscription-form/);
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
-  expect(Math.min(...(await sampleFrames())), "returning from the root-level form replays").toBeLessThan(0.5);
-  await expect.poll(opacity).toBeGreaterThan(0.99);
-
-  await page.getByRole("tab", { name: "Mali Tablo", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Mali Tablo", exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
-  expect(Math.min(...(await sampleFrames())), "returning by tab switch replays").toBeLessThan(0.5);
-  await expect.poll(opacity).toBeGreaterThan(0.99);
+  await expect(page).toHaveURL(/subscriptions/);
+  expect(await readRecordedMin(), "returning from the root-level form replays").toBeLessThan(0.5);
 });
 
 test("returning from an investment editor replays the entrance visibly", async ({ page }) => {
