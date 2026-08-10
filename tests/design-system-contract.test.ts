@@ -1000,8 +1000,27 @@ describe("screen motion replays consistently", () => {
     expect([...screen.matchAll(/value=\{visitStore\}/g)]).toHaveLength(2);
     expect(screen).toContain("const visitStore = useScreenVisitController();");
     expect(components).toContain("function ScreenEntrance");
-    expect(components).toContain("replayToken={screenVisit}");
     expect(motionPrimitives).toContain("createScreenVisitStore");
+
+    const entrance = components.slice(
+      components.indexOf("function ScreenEntrance("),
+      components.indexOf("const SCREEN_ARRIVAL_RISE"),
+    );
+    // The arrival replays per visit and never remounts what it wraps.
+    expect(entrance).toContain("screenVisit]");
+    expect(entrance).not.toContain("key={");
+    /**
+     * The page must never animate its own opacity.
+     *
+     * A whole screen fading up from zero is the shape of a reload — blank
+     * window, then everything paints at once — and it was reported as "the
+     * page refreshes" three times running. Softening it to 0.92 instead made
+     * the replay invisible. Movement is the only axis that can be both seen
+     * and not mistaken for a refresh, so the entrance is a transform and this
+     * keeps it one.
+     */
+    expect(entrance).not.toContain("opacity");
+    expect(entrance).toContain("translateY");
   });
 
   /**

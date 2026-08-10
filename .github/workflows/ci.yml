@@ -313,4 +313,4 @@ jobs:
             echo "::error::EXPO_TOKEN is not configured; the preview OTA was not published."
             exit 1
           fi
-          ./node_modules/.bin/eas update --branch preview --platform all --message "main $GITHUB_SHA" --clear-cache --non-interactive
+          npx --yes eas-cli@21.4.0 update --branch preview --platform all --message "main $GITHUB_SHA" --clear-cache --non-interactive

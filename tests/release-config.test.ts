@@ -75,9 +75,9 @@ describe("release contract", () => {
   it("publishes one Expo Go preview update and never searches for or creates a binary", () => {
     expect(existsSync(easPreviewPath)).toBe(false);
     const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
-    const deploy = mobile.split("\n").find((line) => line.includes(".bin/eas update"));
+    const deploy = mobile.split("\n").find((line) => line.includes("eas-cli@") && line.includes(" update "));
     expect(deploy).toBeDefined();
-    expect(deploy).toMatch(/\.\/node_modules\/\.bin\/eas update /);
+    expect(deploy).toMatch(/npx --yes eas-cli@\d+\.\d+\.\d+ update /);
     expect(deploy).toContain("--branch preview");
     expect(deploy).toContain("--platform all");
     expect(deploy).toContain("--clear-cache");
@@ -233,29 +233,35 @@ describe("release contract", () => {
     }
   });
 
-  it("pins the EAS CLI that publishes after the gate", () => {
+  it("pins the EAS CLI that publishes after the gate, without installing it", () => {
+    /**
+     * The publisher is fetched at publish time rather than installed.
+     *
+     * It used to be a lockfile-pinned devDependency, which bought an
+     * integrity hash. It also dragged eas-cli's whole tree into every
+     * `npm ci` — and with it `dtrace-provider`, a package that COMPILES A
+     * NATIVE ADDON at install time on the machine that holds EXPO_TOKEN, plus
+     * a standing set of advisories (uuid, joi, yaml, ajv, ts-deepmerge) that
+     * no product code could ever reach. `expo-doctor` had been asking for
+     * this move for the same reason.
+     *
+     * What replaces the lockfile hash is an EXACT version, taken from
+     * `eas.json` so the two cannot drift, and a hard ban on any floating
+     * range. A publisher that resolves at runtime is only acceptable while it
+     * cannot resolve to something new.
+     */
     const mobile = ci.slice(ci.indexOf("  deploy-mobile:"));
-    const deploy = mobile.split("\n").find((line) => line.includes(".bin/eas update"));
+    const deploy = mobile.split("\n").find((line) => line.includes("eas-cli@") && line.includes(" update "));
     expect(deploy).toBeDefined();
-    expect(deploy).toMatch(/\.\/node_modules\/\.bin\/eas update/);
+    expect(deploy).toContain(`npx --yes eas-cli@${eas.cli.version} update`);
     expect(deploy).not.toContain("@latest");
-    expect(mobile).not.toMatch(/npx\s+eas-cli@/);
+    expect(deploy).not.toMatch(/eas-cli@[\^~]/);
 
-    const expectedVersion = eas.cli.version;
-    expect(packageJson.devDependencies["eas-cli"]).toBe(expectedVersion);
-    const locked = packageLock.packages["node_modules/eas-cli"];
-    expect(locked.version).toBe(expectedVersion);
-    expect(locked.resolved).toBe(`https://registry.npmjs.org/eas-cli/-/eas-cli-${expectedVersion}.tgz`);
-    expect(locked.integrity).toMatch(/^sha512-/);
-
-    expect(packageJson.overrides["eas-cli@21.4.0"]["minimatch@5.1.2"]).toBe("5.1.9");
-    const patchedMinimatch = packageLock.packages["node_modules/eas-cli/node_modules/minimatch"];
-    expect(patchedMinimatch.version).toBe("5.1.9");
-    expect(patchedMinimatch.integrity).toMatch(/^sha512-/);
-    const unrelatedMinimatch = packageLock.packages[
-      "node_modules/eas-cli/node_modules/@expo/prebuild-config/node_modules/minimatch"
-    ];
-    expect(unrelatedMinimatch.version).toBe("9.0.9");
+    // Not installed anywhere: that is the point of the move.
+    expect(packageJson.devDependencies["eas-cli"]).toBeUndefined();
+    expect(packageJson.dependencies?.["eas-cli"]).toBeUndefined();
+    expect(packageLock.packages["node_modules/eas-cli"]).toBeUndefined();
+    expect(Object.keys(packageJson.overrides)).not.toContain("eas-cli@21.4.0");
   });
 
   it("withholds the Expo publish credential from dependency installation", () => {
@@ -269,7 +275,7 @@ describe("release contract", () => {
     expect(publishAt).toBeGreaterThan(installAt);
     const publishStep = mobile.slice(publishAt);
     expect(publishStep).toContain("EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}");
-    expect(publishStep).toContain("./node_modules/.bin/eas update");
+    expect(publishStep).toContain("npx --yes eas-cli@");
   });
 
   it("denies the repository token to the standalone keepalive job", () => {

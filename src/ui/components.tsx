@@ -12,6 +12,7 @@
 
 import React, { useRef, type ReactNode } from "react";
 import {
+  Animated,
   Platform,
   Pressable,
   ScrollView,
@@ -34,6 +35,7 @@ import type { TrackedOperationState } from "./operation-guard";
 import { tr } from "../i18n/tr";
 import type { LiveQueryStatus } from "../data/live-state";
 import { interactionSurface } from "./interaction";
+import { useReducedMotion } from "./motion";
 import {
   Amount,
   Body,
@@ -43,7 +45,7 @@ import {
   Row,
   useLedeAlignment,
 } from "./primitives";
-import { circle, contentWidth, density, font, heroSurface, iconSize, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
+import { circle, contentWidth, density, font, heroSurface, iconSize, motion, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
 import { shouldStackListActions, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
@@ -73,20 +75,61 @@ export {
 export { Field, MoneyField, MonthStepper, Toggle } from "./fields";
 export { ChipPicker, ChoiceTile, Segmented, Select, SelectionGrid } from "./selection-controls";
 
+/**
+ * A screen arriving, said with movement instead of with opacity.
+ *
+ * Fading a whole page up from zero IS what reads as a refresh: for a few
+ * frames the window is empty and then the entire document paints at once,
+ * which is exactly the shape of a reload. Two earlier attempts moved along
+ * the wrong axis — a full 0→1 fade looked like a reload, and starting it at
+ * 0.92 instead made the replay invisible.
+ *
+ * The page never changes opacity now. It rises into place, which is motion a
+ * reload cannot produce, and it is a transform, so it is composited rather
+ * than repainted and costs nothing on a long list. The per-element replays
+ * that make Durum and Yatırımlar feel alive — `useDrawIn` for charts,
+ * `useCountUp` for figures — hang off the same visit counter and continue to
+ * fire on every arrival, on top of this.
+ */
 function ScreenEntrance({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const screenVisit = useScreenVisit();
-  // Every arrival plays the same entrance. A "gentler on return" variant was
-  // tried and starting it at 0.92 opacity made the replay invisible — the
-  // screen simply never animated again after its first mount. What must not
-  // happen on a return is the page REBUILDING (remount, refetch); the fade
-  // itself is the part the owner wants to see, and `replayToken` restarts it
-  // without touching the mounted subtree.
+  const reducedMotion = useReducedMotion();
+  const [progress] = React.useState(() => new Animated.Value(1));
+  React.useEffect(() => {
+    if (reducedMotion) {
+      progress.setValue(1);
+      return;
+    }
+    progress.setValue(0);
+    const animation = Animated.spring(progress, {
+      toValue: 1,
+      useNativeDriver: Platform.OS !== "web",
+      ...motion.spring.entrance,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, reducedMotion, screenVisit]);
   return (
-    <FadeIn testID="screen-entrance" replayToken={screenVisit} style={style}>
+    <Animated.View
+      testID="screen-entrance"
+      style={[
+        { transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_ARRIVAL_RISE, 0] }) }] },
+        style,
+      ]}
+    >
       {children}
-    </FadeIn>
+    </Animated.View>
   );
 }
+
+/**
+ * How far a screen rises as it arrives.
+ *
+ * Large enough to be unmistakably motion at a glance — 3pt was tried and read
+ * as nothing — and small enough that it never uncovers the edge of the
+ * scroller or looks like a page transition.
+ */
+const SCREEN_ARRIVAL_RISE = 14;
 
 /**
  * The shared look of every control that accepts a value: text fields, selects

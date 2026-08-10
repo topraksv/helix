@@ -75,12 +75,14 @@ function packagesWithInstallScripts(root = "node_modules"): string[] {
  *                    optionalDependency matches the host. Four copies in the
  *                    tree, all through the toolchain.
  * - `unrs-resolver` — the native resolver behind `eslint-plugin-import`.
- * - `dtrace-provider` — compiles a native addon, reached only through
- *                    `eas-cli → @expo/logger → bunyan`. It runs on a machine
- *                    that publishes an OTA, which is the most sensitive place
- *                    in this list and the reason this test exists.
+ *
+ * `dtrace-provider` used to sit here: a native addon compiled at install time
+ * on the machine that publishes the OTA, which is the most sensitive place a
+ * build script can run and the reason this test exists. It arrived only
+ * through `eas-cli → @expo/logger → bunyan`, and the publisher is no longer
+ * installed at all — see release-config's EAS pinning test.
  */
-const ALLOWED = ["dtrace-provider", "esbuild", "unrs-resolver"];
+const ALLOWED = ["esbuild", "unrs-resolver"];
 
 describe("install-time code execution", () => {
   it("runs install scripts only from the packages that are meant to", () => {

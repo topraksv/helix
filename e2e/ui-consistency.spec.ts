@@ -4,10 +4,30 @@
  * persistence, and one stable wait indicator.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addMarketExpense, assertNoRuntimeErrors, collectRuntimeErrors, currentMonthKey, isolateExternalData, onboard, openCashFlow, pickOption } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
+
+/**
+ * How far a screen's arrival wrapper is still offset, in px.
+ *
+ * The entrance is a transform now, deliberately: fading a whole page up from
+ * zero is the shape of a reload, which is the thing the owner does not want to
+ * see. Motion is read off the composited matrix instead of off opacity.
+ */
+async function arrivalOffset(entrance: Locator): Promise<number> {
+  return entrance.evaluate((element) => {
+    const transform = getComputedStyle(element).transform;
+    if (!transform || transform === "none") return 0;
+    const flat = transform.match(/^matrix\(([^)]+)\)$/);
+    if (flat?.[1]) return Math.abs(Number.parseFloat(flat[1].split(",")[5] ?? "0"));
+    const spatial = transform.match(/^matrix3d\(([^)]+)\)$/);
+    if (spatial?.[1]) return Math.abs(Number.parseFloat(spatial[1].split(",")[13] ?? "0"));
+    return 0;
+  });
+}
+
 
 /** Distance from a container's edge to the first/last child's own text. */
 async function verticalInsets(page: Page, insideText: RegExp) {
@@ -193,66 +213,45 @@ test("every tab replays its screen entrance on return", async ({ page }) => {
     const entrance = page.getByTestId("screen-entrance").filter({
       has: page.getByRole("heading", { name: heading, exact: true }),
     });
-    const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
-    await expect.poll(opacity).toBeGreaterThan(0.99);
+    const offset = () => arrivalOffset(entrance);
+    await expect.poll(offset).toBeLessThan(0.5);
     await page.getByRole("tab", { name: "Durum", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Durum", exact: true })).toHaveAttribute("aria-selected", "true");
 
     await page.getByRole("tab", { name: tab, exact: true }).click();
-    await expect.poll(opacity, { timeout: 500 }).toBeLessThan(0.99);
-    await expect.poll(opacity).toBeGreaterThan(0.99);
+    // It moves on the way in, and it is never invisible while it does.
+    await expect.poll(offset, { timeout: 1_000 }).toBeGreaterThan(1);
+    await expect.poll(offset).toBeLessThan(0.5);
   }
 });
 
 test("the subscriptions tab replays its entrance after a root-level editor", async ({ page }) => {
   // Half of the reported case: open Abonelikler, open the add form, come back
-  // — and see the animation again. The subscription form is a ROOT-level
-  // route, so the whole tab navigator blurs rather than a nested stack, which
-  // is the arrival shape neither other motion test covers. The tab-switch half
-  // is already covered by "every tab replays its screen entrance on return".
+  // — and see the arrival again. The subscription form is a ROOT-level route,
+  // so the whole tab navigator blurs rather than a nested stack, which is the
+  // arrival shape neither other motion test covers. The tab-switch half is
+  // covered by "every tab replays its screen entrance on return".
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
   await page.getByRole("tab", { name: "Abonelikler", exact: true }).click();
   const entrance = page.getByTestId("screen-entrance").filter({
     has: page.getByRole("heading", { name: "Abonelikler", exact: true }),
   });
+  const offset = () => arrivalOffset(entrance);
   const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
-  // The recorder is ARMED BEFORE the navigation and keeps its own minimum on
-  // the page. Sampling a fixed number of frames after the click instead is a
-  // race with however long that navigation takes, and it lost that race on
-  // CI — twice — while passing every local run.
-  const armRecorder = () => entrance.evaluate((element) => {
-    const store = window as unknown as { __entranceMin?: number; __entranceStop?: () => void };
-    store.__entranceMin = 1;
-    let running = true;
-    const tick = () => {
-      if (!running) return;
-      const value = Number.parseFloat(getComputedStyle(element).opacity);
-      if (Number.isFinite(value) && value < (store.__entranceMin ?? 1)) store.__entranceMin = value;
-      requestAnimationFrame(tick);
-    };
-    store.__entranceStop = () => { running = false; };
-    requestAnimationFrame(tick);
-  });
-  const readRecordedMin = async () => {
-    await expect.poll(opacity).toBeGreaterThan(0.99);
-    return page.evaluate(() => {
-      const store = window as unknown as { __entranceMin?: number; __entranceStop?: () => void };
-      store.__entranceStop?.();
-      return store.__entranceMin ?? 1;
-    });
-  };
-  await expect.poll(opacity).toBeGreaterThan(0.99);
+  await expect.poll(offset).toBeLessThan(0.5);
 
-  await armRecorder();
   await page.getByRole("button", { name: "Abonelik Ekle", exact: true }).click();
   await expect(page).toHaveURL(/subscription-form/);
   await page.getByRole("button", { name: "Vazgeç", exact: true }).click();
   await expect(page).toHaveURL(/subscriptions/);
-  expect(await readRecordedMin(), "returning from the root-level form replays").toBeLessThan(0.5);
+  await expect.poll(offset, { timeout: 1_000 }).toBeGreaterThan(1);
+  // The page is never blanked on the way in — that is what read as a reload.
+  expect(await opacity()).toBeGreaterThan(0.99);
+  await expect.poll(offset).toBeLessThan(0.5);
 });
 
-test("returning from an investment editor replays the entrance visibly", async ({ page }) => {
+test("returning from an investment editor replays the entrance without blanking the page", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await onboard(page);
@@ -264,35 +263,24 @@ test("returning from an investment editor replays the entrance visibly", async (
   const entrance = page.getByTestId("screen-entrance").filter({
     has: page.getByRole("heading", { name: "Yatırımlar", exact: true }),
   });
+  const offset = () => arrivalOffset(entrance);
   const opacity = () => entrance.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
-  await expect.poll(opacity).toBeGreaterThan(0.99);
+  await expect.poll(offset).toBeLessThan(0.5);
   await expect(page.getByTestId("investment-distribution-chart")).toBeVisible();
   await expect(page.getByTestId("donut-empty-state")).toBeVisible();
 
   await page.getByRole("button", { name: "Yeni Ürün Tanımla" }).click();
   await expect(page).toHaveURL(/investments\/product/);
-
-  // Back is an arrival and the entrance replays in full. A "gentler on
-  // return" variant that started at 0.92 opacity was indistinguishable from
-  // no animation at all, so the floor is asserted LOW here on purpose: the
-  // replay has to be something a person can actually see. What must not
-  // happen on a return is the page rebuilding, which is a different
-  // property — `replayToken` restarts the fade without remounting, and the
-  // settled form state in the editor tests covers that side.
   await page.getByRole("button", { name: "Geri", exact: true }).click();
-  const returnedFrames = await entrance.evaluate(async (element) => {
-    const samples: number[] = [];
-    for (let frame = 0; frame < 30; frame += 1) {
-      samples.push(Number.parseFloat(getComputedStyle(element).opacity));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-    return samples;
-  });
   await expect(page).toHaveURL(/investments\/?$/);
-  await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
 
-  expect(Math.min(...returnedFrames), "the return replays a visible entrance").toBeLessThan(0.5);
-  await expect.poll(opacity, { message: "the entrance settles back to fully visible" }).toBeGreaterThan(0.99);
+  // A nested-stack pop is an arrival too: it moves, and it stays visible while
+  // it does. Two earlier designs failed one of those halves each — a full fade
+  // read as a reload, and a 0.92 fade could not be seen at all.
+  await expect.poll(offset, { timeout: 1_000 }).toBeGreaterThan(1);
+  expect(await opacity()).toBeGreaterThan(0.99);
+  await expect.poll(offset).toBeLessThan(0.5);
+  await expect(page.getByRole("tab", { name: "Yatırımlar", selected: true })).toBeVisible();
 });
 
 test("a later expense stays before incomes in the financial table", async ({ page }) => {
