@@ -14,7 +14,14 @@ name: ci
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      release_target:
+        description: "Explicitly choose the release target; none only runs checks."
+        required: true
+        type: choice
+        options: [none, web, mobile]
+        default: none
 
 permissions:
   contents: read
@@ -248,13 +255,15 @@ jobs:
     if: >-
       ${{ !cancelled()
       && needs.gate.result == 'success'
+      && github.event_name == 'workflow_dispatch'
+      && inputs.release_target == 'web'
       && needs.classify.outputs.deploy_web == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
       id-token: write
     environment:
-      name: github-pages
+      name: helix
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       # Publishes the artifact `web-build` produced. No second export: a
@@ -294,8 +303,12 @@ jobs:
     if: >-
       ${{ !cancelled()
       && needs.gate.result == 'success'
+      && github.event_name == 'workflow_dispatch'
+      && inputs.release_target == 'mobile'
       && needs.classify.outputs.deploy_mobile == 'true' }}
     runs-on: ubuntu-latest
+    environment:
+      name: helix
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

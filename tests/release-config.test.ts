@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 const app = JSON.parse(read("app.json"));
 const eas = JSON.parse(read("eas.json"));
 const ci = read(".github/workflows/ci.yml");
+const agents = read("AGENTS.md");
 const security = read(".github/workflows/security.yml");
 const nightly = read(".github/workflows/nightly.yml");
 const keepalive = read(".github/workflows/keepalive.yml");
@@ -121,6 +122,30 @@ describe("release contract", () => {
       expect(condition, job).toContain(`needs.classify.outputs.${decision} == 'true'`);
     }
     expect(ci).not.toContain("needs.gate.outputs");
+  });
+
+  it("requires a target-specific manual dispatch and the existing helix environment", () => {
+    expect(ci).toMatch(/workflow_dispatch:\n\s+inputs:\n\s+release_target:/);
+    expect(ci).toContain("type: choice");
+    expect(ci).toContain("options: [none, web, mobile]");
+    expect(ci).not.toContain("release_approval");
+    expect(ci).not.toContain("helix-release-approval");
+    expect(ci).not.toContain("github-pages");
+    expect(agents).toMatch(/existing `helix` deployment\s+environment/);
+    expect(agents).not.toContain("helix-release-approval");
+
+    for (const [job, target] of [
+      ["deploy-web", "web"],
+      ["deploy-mobile", "mobile"],
+    ] as const) {
+      const start = ci.indexOf(`  ${job}:\n`);
+      const condition = ci.slice(start, ci.indexOf("    runs-on:", start));
+      expect(condition, job).toContain("github.event_name == 'workflow_dispatch'");
+      expect(condition, job).toContain(`inputs.release_target == '${target}'`);
+      const jobEnd = job === "deploy-web" ? ci.indexOf("\n  deploy-mobile:", start) : -1;
+      const jobBlock = ci.slice(start, jobEnd === -1 ? undefined : jobEnd);
+      expect(jobBlock, job).toContain("environment:\n      name: helix");
+    }
   });
 
   it("builds the E2E export once and shares it with both shards", () => {

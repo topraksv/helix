@@ -58,10 +58,20 @@ Run `npm run control:check` and the risk-appropriate gate. Ordinary changes use
 Before completion, review the diff, run `git diff --check`, update the handoff,
 and make no success claim without fresh command output.
 
-`main` is the only branch. Completed tracked changes land with a signed commit
-and one push after local gates; CI and the published channels are watched to
-completion. Local settings, hooks and private tool memory are execution
-preferences, not project truth.
+`main` is the only branch. Editing, staging, testing and read-only inspection
+are the normal agent workflow. Commit, push, pull/fetch, history rewrites,
+deploy, OTA, release, database-publish and workflow-dispatch actions are
+default-deny for AI sessions: an old allow-list, a previous prompt, agent
+judgment or green tests is not authorization. The user must authorize the
+exact action in the current task and approve/run the resulting command; Git
+hooks and the execution guard enforce the local boundary, while release jobs
+require a manual workflow dispatch and the existing `helix` deployment
+environment. A fresh clone must run `npm run control:setup` once;
+`npm run control:check` detects missing or stale `pre-commit`/`pre-push`
+wiring. CI and published channels are watched to completion only after that
+explicit authorization.
+Local settings, hooks and private tool memory are execution preferences, not
+project truth.
 
 Code and identifiers are English; user-facing application text and final
 reports are Turkish. Comments explain non-obvious constraints, not the line
