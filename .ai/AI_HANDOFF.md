@@ -7,7 +7,7 @@ memory. Stable contracts live in `AGENTS.md`, `.ai/ROUTING.md` and
 
 ## Current state
 
-updated_at: 2026-08-11T16:45:24+0300
+updated_at: 2026-08-11T16:51:27+0300
 verified_at_commit: 4b2fbfb
 working_tree: RUN 1 control-plane reconstruction is locally complete; signed commit and push remain
 branch: main, currently at 4b2fbfb
@@ -81,6 +81,10 @@ source_paths:
   three repeats, and a fresh full-E2E rerun all passed. No product source
   changed in response; the failed measurement remains recorded here.
 - `git diff --check` passed before the final staging review.
+- Remote CI now passes the control and quality steps but mutation failed when
+  Stryker attempted to copy the `.agents/skills` symlink bridge (`ENOTSUP`).
+  `stryker.config.mjs` now excludes `/.agents/**`; local mutation rerun passes
+  729 mutants with 720 killed and 9 documented survivors (98.77%).
 
 ## Open work
 
@@ -90,12 +94,12 @@ source_paths:
   - .github/workflows/ci.yml
   - package.json
 
-- Commit and push the pending Graphify freshness fix; the CI checkout fix is
-  already in local commit `51794a0` but is not yet on `origin/main`. Then watch
-  the replacement CI/release channels to completion. The first remote run
-  reached `classify` and `control:check` but stopped at `quality:audit` because
-  the quality job's shallow checkout could not resolve the audited parent; the
-  security workflow passed.
+- Commit and push the pending Stryker bridge-exclusion fix, then watch the
+  replacement CI/release channels to completion. The first remote run stopped
+  at `quality:audit` because the quality job's shallow checkout could not
+  resolve the audited parent; the second passed quality and stopped at mutation
+  because Stryker copied a symlink. Both causes have local reproductions and
+  fixes; security passed.
 - Claude runtime activation could not be exercised locally because no `claude`
   binary is installed; official symlink support and the filesystem bridge were
   checked, while Codex discovery was exercised directly.
@@ -147,9 +151,8 @@ source_paths:
   - package.json
   - .github/workflows/ci.yml
 
-- Local `main` is at signed commit `51794a0`; `origin/main` is at `a845382`.
-  The RUN 1 control-plane change and CI checkout fix are pushed only through
-  `a845382`; the Graphify freshness fix is staged for the next signed push.
+- Local `main` and `origin/main` are synchronized at signed commit `120c3b2`;
+  the Stryker bridge-exclusion fix is staged for the next signed push.
 - Web remains published on GitHub Pages and mobile remains an Expo Go preview
   OTA; no standalone binary or store submission exists.
 - No linked/remote Supabase migration or production database mutation is part of

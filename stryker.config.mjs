@@ -13,6 +13,7 @@ export default {
     "/.expo/**",
     "/.codex/**",
     "/.ai/**",
+    "/.agents/**",
     "/.claude/**",
     "/docs/**",
     "/coverage/**",
