@@ -7,7 +7,7 @@ memory. Stable contracts live in `AGENTS.md`, `.ai/ROUTING.md` and
 
 ## Current state
 
-updated_at: 2026-08-11T16:51:27+0300
+updated_at: 2026-08-11T16:54:15+0300
 verified_at_commit: 4b2fbfb
 working_tree: RUN 1 control-plane reconstruction is locally complete; signed commit and push remain
 branch: main, currently at 4b2fbfb
@@ -94,7 +94,7 @@ source_paths:
   - .github/workflows/ci.yml
   - package.json
 
-- Commit and push the pending Stryker bridge-exclusion fix, then watch the
+- Commit and push the pending Graphify and quality-audit allow-list fixes, then watch the
   replacement CI/release channels to completion. The first remote run stopped
   at `quality:audit` because the quality job's shallow checkout could not
   resolve the audited parent; the second passed quality and stopped at mutation
@@ -151,8 +151,9 @@ source_paths:
   - package.json
   - .github/workflows/ci.yml
 
-- Local `main` and `origin/main` are synchronized at signed commit `120c3b2`;
-  the Stryker bridge-exclusion fix is staged for the next signed push.
+- Local `main` is at signed commit `1463160`; `origin/main` is at `120c3b2`.
+  The Stryker bridge-exclusion fix is committed locally; the Graphify and
+  quality-audit allow-list fixes are staged for the next signed push.
 - Web remains published on GitHub Pages and mobile remains an Expo Go preview
   OTA; no standalone binary or store submission exists.
 - No linked/remote Supabase migration or production database mutation is part of

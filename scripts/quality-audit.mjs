@@ -36,6 +36,7 @@ const qualityOnlyPaths = new Set([
   ".github/workflows/ci.yml",
   "quality/audit.json",
   "scripts/quality-audit.mjs",
+  "stryker.config.mjs",
 ]);
 let packageScriptsOnly = false;
 if (sourceDelta.includes("package.json")) {

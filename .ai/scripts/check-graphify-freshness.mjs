@@ -43,6 +43,7 @@ const isControlPlanePath = (path) => [
   ".gitignore",
   "quality/audit.json",
   "scripts/quality-audit.mjs",
+  "stryker.config.mjs",
 ].includes(path)
   || path.startsWith(".github/")
   || path.startsWith(".ai/")
