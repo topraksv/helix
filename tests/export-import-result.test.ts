@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 
 const dependencies = vi.hoisted(() => ({
   getAllAsync: vi.fn(),
@@ -13,6 +14,25 @@ vi.mock("../src/db/client", () => ({
 vi.mock("../src/db/mutations", () => ({
   fromDbShape: (_table: string, row: Record<string, unknown>) => row,
   writeRowBatchesAtomically: dependencies.writeRowBatchesAtomically,
+}));
+// `importBundle` now runs every bundle through the cross-account id remap
+// (`backup-remap.ts`), which calls the real `deterministicId`/`naturalKeys`
+// from `../src/db/ids` — previously unreachable from this test because
+// `../src/db/mutations` (the only other importer) was fully mocked above.
+// Mirrors the mock in `backup-round-trip.test.ts`: a real SHA-256 mirror of
+// `deterministicId` so a genuinely-deterministic fixture id round-trips.
+vi.mock("../src/db/ids", () => ({
+  deterministicId: async (naturalKey: string) => {
+    const hex = createHash("sha256").update(naturalKey).digest("hex");
+    const nibbles = hex.slice(0, 32).split("");
+    nibbles[12] = "8";
+    nibbles[16] = "8";
+    const s = nibbles.join("");
+    return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20, 32)}`;
+  },
+  naturalKeys: new Proxy({}, {
+    get: (_target, property) => (...parts: unknown[]) => `${String(property)}|${parts.join("|")}`,
+  }),
 }));
 
 import { importBundle } from "../src/services/export-import";

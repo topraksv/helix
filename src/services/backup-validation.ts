@@ -12,13 +12,15 @@ import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
 import { UserFacingError, userMessage } from "../domain/user-error";
 import { textLength, utf8ByteLength } from "../domain/input";
 import { MAX_SUBSCRIPTION_INTERVAL_MONTHS } from "../domain/recurrence";
+import { LEGACY_EXPECTED_PAYMENT_KINDS, type ExpectedKind } from "../domain/types";
+import { RELATIONS } from "../db/relations";
 
 const EXPORT_VERSION = 1;
 export const MAX_BACKUP_BYTES = 15 * 1024 * 1024;
 export const MAX_BACKUP_ROWS = 100_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-interface ExportBundle {
+export interface ExportBundle {
   version: number;
   exportedAt: string;
   tables: Record<string, Record<string, unknown>[]>;
@@ -61,30 +63,6 @@ const DATE_COLUMNS = new Set([
 ]);
 
 const TIMESTAMP_COLUMNS = new Set(["created_at", "updated_at", "deleted_at", "canceled_at", "paid_at"]);
-
-const RELATIONS = [
-  ["payment_sources", "person_id", "persons"],
-  ["installment_plans", "payment_source_id", "payment_sources"],
-  ["installment_plans", "person_id", "persons"],
-  ["installment_plans", "category_id", "categories"],
-  ["credit_card_statements", "payment_source_id", "payment_sources"],
-  ["transactions", "category_id", "categories"],
-  ["transactions", "payment_source_id", "payment_sources"],
-  ["transactions", "person_id", "persons"],
-  ["transactions", "installment_plan_id", "installment_plans"],
-  ["transactions", "card_statement_id", "credit_card_statements"],
-  ["transactions", "subscription_id", "subscriptions"],
-  ["subscriptions", "payment_source_id", "payment_sources"],
-  ["subscriptions", "category_id", "categories"],
-  ["subscriptions", "person_id", "persons"],
-  ["price_history", "subscription_id", "subscriptions"],
-  ["recurring_incomes", "person_id", "persons"],
-  ["recurring_incomes", "category_id", "categories"],
-  ["category_budgets", "category_id", "categories"],
-  ["investment_operations", "product_id", "investment_products"],
-  ["expected_payments", "transaction_id", "transactions"],
-  ["cell_notes", "category_id", "categories"],
-] as const satisfies readonly (readonly [SyncedTableName, string, SyncedTableName])[];
 
 export type ExistingImportIds = Partial<Record<SyncedTableName, ReadonlySet<string>>>;
 
@@ -172,7 +150,14 @@ export function isValidImportRow(
     if (column.columnType === "SQLiteInteger" && !Number.isSafeInteger(value)) return false;
     if (column.columnType === "SQLiteBoolean" && value !== 0 && value !== 1 && typeof value !== "boolean") return false;
     if (column.dataType === "string" && typeof value !== "string") return false;
-    if (column.enumValues && !column.enumValues.includes(value as never)) return false;
+    if (column.enumValues && !column.enumValues.includes(value as never)) {
+      const legacyExpectedKind = table === "expected_payments"
+        && column.name === "kind"
+        && raw.deleted_at != null
+        && typeof value === "string"
+        && LEGACY_EXPECTED_PAYMENT_KINDS.includes(value as (typeof LEGACY_EXPECTED_PAYMENT_KINDS)[number]);
+      if (!legacyExpectedKind) return false;
+    }
     if (typeof value === "string" && textLength(value) > 50_000) return false;
   }
   for (const [key, value] of Object.entries(raw)) {
@@ -393,14 +378,16 @@ export function validateBundleRelationships(bundle: ExportBundle, existing: Exis
     }
   }
 
-  const expectedTargets: Record<string, SyncedTableName> = {
+  const expectedTargets: Record<ExpectedKind, SyncedTableName> = {
     subscription: "subscriptions",
-    installment: "installment_plans",
-    loan: "installment_plans",
     recurring_income: "recurring_incomes",
   };
   for (const row of bundle.tables.expected_payments ?? []) {
-    const target = expectedTargets[String(row.kind)];
+    // Legacy installment/loan rows can remain as tombstones for sync and
+    // backup recovery. They have no live meaning and must not be allowed back
+    // into the active expected-payment graph.
+    if (row.deleted_at != null) continue;
+    const target = expectedTargets[String(row.kind) as ExpectedKind];
     if (!target || !available[target].has(String(row.ref_id))) invalidBackup();
   }
 

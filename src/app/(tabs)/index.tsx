@@ -19,7 +19,7 @@ import { balanceDeclarationDrift, parseBalanceDeclaration } from "../../domain/b
 import { buildDashboardModel } from "../../domain/dashboard";
 import { daysBetweenISO, firstDayOf, lastDayOf, monthKeyOf, todayISO, yearOf, type ISODate } from "../../domain/dates";
 import { formatMinorCompact } from "../../domain/money";
-import { AMOUNT_LABELS, occurrenceAmountText } from "../../domain/subscriptions";
+import { AMOUNT_LABELS, needsVariableAmountEntry, occurrenceAmountText } from "../../domain/subscriptions";
 import { buildUpcomingTimeline } from "../../domain/upcoming";
 import { clockOrDateTimeLabel, dateLabel, dateTimeLabel, monthName, tr } from "../../i18n/tr";
 import { useSession } from "../../auth/session";
@@ -517,9 +517,7 @@ export default function DashboardScreen() {
   const defaultPaidDate = (dueDate: string): ISODate => (dueDate <= today ? (dueDate as ISODate) : today);
   const [confirmingId, setConfirmingId] = React.useState<string | null>(null);
   const operationGuard = useOperationGuard();
-  const isVariableSubscription = (e: (typeof expected)[number]) =>
-    e.kind === "subscription" && subscriptionById.get(e.refId)?.amountMode === "variable";
-  const needsAmountEntry = (e: (typeof expected)[number]) => isVariableSubscription(e) && e.amountIsEstimated === true;
+  const needsAmountEntry = (e: (typeof expected)[number]) => needsVariableAmountEntry(e, subscriptionById);
   // One rule for how an estimated amount reads, shared with the catch-up and
   // upcoming screens so the three cannot drift apart.
   const amountFragment = (item: { amountMinor: number; currency: string; amountIsEstimated?: boolean }) =>

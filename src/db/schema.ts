@@ -15,6 +15,7 @@
  */
 
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { EXPECTED_PAYMENT_KINDS } from "../domain/types";
 
 const syncColumns = {
   id: text("id").primaryKey(),
@@ -250,7 +251,9 @@ export const expectedPayments = sqliteTable(
   {
     ...syncColumns,
     direction: text("direction", { enum: ["in", "out"] }).notNull(),
-    kind: text("kind", { enum: ["subscription", "installment", "loan", "recurring_income"] }).notNull(),
+    // Legacy installment/loan expecteds remain in old tombstones, but only
+    // subscription and recurring-income rows are live producers now.
+    kind: text("kind", { enum: EXPECTED_PAYMENT_KINDS }).notNull(),
     refId: text("ref_id").notNull(),
     dueDate: text("due_date").notNull(),
     amountMinor: integer("amount_minor").notNull(),

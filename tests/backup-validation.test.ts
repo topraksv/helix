@@ -320,6 +320,24 @@ describe("backup validation", () => {
     )).toBe(false);
   });
 
+  it("rejects legacy expected kinds while they are live but keeps their tombstones restorable", () => {
+    const legacy = {
+      id: id(40), user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null,
+      direction: "out", kind: "installment", ref_id: id(41), due_date: "2026-07-15",
+      amount_minor: 100_00, currency: "TRY", status: "pending", paid_at: null,
+      auto_confirmed: 0, transaction_id: null,
+    };
+    expect(() => validateExportBundle({ version: 1, exportedAt: timestamp, tables: { expected_payments: [legacy] } }))
+      .toThrow("Geçersiz yedek dosyası");
+
+    const tombstoneBundle = validateExportBundle({
+      version: 1,
+      exportedAt: timestamp,
+      tables: { expected_payments: [{ ...legacy, deleted_at: timestamp }] },
+    });
+    expect(() => validateBundleRelationships(tombstoneBundle)).not.toThrow();
+  });
+
   it("keeps legacy user text restorable while new outbound writes use current limits", () => {
     const legacy = { ...transaction, note: "x".repeat(1_001) };
     expect(isValidImportRow("transactions", legacy)).toBe(true);

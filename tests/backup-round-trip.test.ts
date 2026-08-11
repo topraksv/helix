@@ -57,10 +57,15 @@ import {
   addTransaction,
   createCategory,
   createPerson,
+  saveComputedColumn,
+  seedWorkspace,
   upsertCategoryBudget,
   upsertSubscription,
 } from "../src/data/repo";
 import { saveCellNote } from "../src/data/cell-notes";
+import { deterministicId, naturalKeys } from "../src/db/ids";
+import { resetLocalWorkspace, writeSetting } from "../src/db/mutations";
+import { buildIdRemap, isDeterministicId } from "../src/services/backup-remap";
 import { buildExportText, importBundle, parseExportBundleText } from "../src/services/export-import";
 
 // Accounts are uuids in the product; the validator enforces that too.
@@ -145,14 +150,146 @@ describe("backup round trip", () => {
     expect(countFor("price_history", SOURCE_USER)).toBe(0);
   });
 
-  it("refuses another account's backup instead of half-applying it", async () => {
+  it("computes an empty remap when source and target account are the same (regression guard)", async () => {
+    // The safety property the cross-account remap depends on: same account in
+    // and out means every candidate's source-hash and target-hash are built
+    // from IDENTICAL inputs, so no row is ever a source of a map entry. This
+    // is what guarantees a same-account restore cannot regress — proven by
+    // actually running the algorithm, not by special-casing it away.
     await seedSourceAccount();
     const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
+    const idMap = await buildIdRemap(bundle, SOURCE_USER, SOURCE_USER);
+    expect(idMap.size).toBe(0);
+  });
 
-    await expect(importBundle(TARGET_USER, bundle)).rejects.toThrow(/başka bir hesaba ait/);
-    // Nothing landed, and the source account is untouched.
-    expect(countFor("transactions", TARGET_USER)).toBe(0);
-    expect(countFor("transactions", SOURCE_USER)).toBe(1);
+  it("maps every deterministic id produced by the real export path", async () => {
+    await seedSourceAccount();
+    const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
+    const idMap = await buildIdRemap(bundle, SOURCE_USER, TARGET_USER);
+    const deterministicRows = Object.entries(bundle.tables).flatMap(([table, rows]) =>
+      rows.filter((row) => isDeterministicId(row.id)).map((row) => ({ table, id: String(row.id) })),
+    );
+
+    expect(deterministicRows.length, "the real seed must exercise at least one deterministic row").toBeGreaterThan(0);
+    expect(
+      deterministicRows.filter(({ id }) => !idMap.has(id)),
+      "a deterministic id from the real repository/export path has no resolver",
+    ).toEqual([]);
+  });
+
+  it("restores another account's backup, re-deriving deterministic ids and staying idempotent on retry", async () => {
+    await seedSourceAccount();
+    const before = {
+      persons: countFor("persons", SOURCE_USER),
+      categories: countFor("categories", SOURCE_USER),
+      transactions: countFor("transactions", SOURCE_USER),
+      category_budgets: countFor("category_budgets", SOURCE_USER),
+      cell_notes: countFor("cell_notes", SOURCE_USER),
+      subscriptions: countFor("subscriptions", SOURCE_USER),
+    };
+    const sourceBudgetId = (harness.db!.prepare(
+      `SELECT id FROM category_budgets WHERE user_id = ?`,
+    ).get(SOURCE_USER) as { id: string }).id;
+    const sourceNoteId = (harness.db!.prepare(
+      `SELECT id FROM cell_notes WHERE user_id = ?`,
+    ).get(SOURCE_USER) as { id: string }).id;
+    // A plain uuidv7 row (created via `addTransaction`'s `newId()`) carries no
+    // account identity and must survive the remap byte-for-byte.
+    const sourceTxId = (harness.db!.prepare(
+      `SELECT id FROM transactions WHERE user_id = ?`,
+    ).get(SOURCE_USER) as { id: string }).id;
+
+    const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
+    // The real app wipes local SQLite on an account switch (`resetLocalWorkspace`,
+    // called from session.ts when a different account signs in on this
+    // device — the cloud is RLS-scoped source of truth, so local storage only
+    // ever holds ONE account at a time). Simulate that here: a plain uuidv7
+    // id from account A must not still be physically present as account A's
+    // OWN row when account B restores it, or the write layer's (deliberate,
+    // untouched-by-this-change) ownership guard refuses the write.
+    await resetLocalWorkspace();
+    const result = await importBundle(TARGET_USER, bundle);
+    expect(result.imported).toBeGreaterThan(0);
+
+    for (const [table, expected] of Object.entries(before)) {
+      expect(countFor(table, TARGET_USER), `${table} fully landed under the target account`).toBe(expected);
+    }
+
+    const targetBudget = harness.db!.prepare(
+      `SELECT id, category_id FROM category_budgets WHERE user_id = ?`,
+    ).get(TARGET_USER) as { id: string; category_id: string };
+    const targetNote = harness.db!.prepare(
+      `SELECT id, category_id FROM cell_notes WHERE user_id = ?`,
+    ).get(TARGET_USER) as { id: string; category_id: string };
+    const targetCategory = harness.db!.prepare(
+      `SELECT id FROM categories WHERE user_id = ? AND name = 'Market'`,
+    ).get(TARGET_USER) as { id: string };
+    const targetTx = harness.db!.prepare(
+      `SELECT id FROM transactions WHERE user_id = ? AND id = ?`,
+    ).get(TARGET_USER, sourceTxId) as { id: string } | undefined;
+
+    // Deterministic ids that embed the account id are re-derived, not copied.
+    expect(targetBudget.id, "budget id no longer carries account A's derived id").not.toBe(sourceBudgetId);
+    expect(targetNote.id, "cell note id no longer carries account A's derived id").not.toBe(sourceNoteId);
+    // Their foreign key still resolves against the (unremapped, plain-uuid) category row.
+    expect(targetBudget.category_id).toBe(targetCategory.id);
+    expect(targetNote.category_id).toBe(targetCategory.id);
+    // A uuidv7 id is untouched by the remap.
+    expect(targetTx?.id, "a uuidv7 transaction id is untouched by the remap").toBe(sourceTxId);
+
+    // Re-running the SAME import must converge, not duplicate: the remap is a
+    // pure function of (bundle, source, target), so a second pass computes
+    // the identical target ids and the upsert lands on the same rows.
+    const second = await importBundle(TARGET_USER, bundle);
+    expect(second.imported).toBe(0);
+    for (const [table, expected] of Object.entries(before)) {
+      expect(countFor(table, TARGET_USER), `${table} did not duplicate on a repeat import`).toBe(expected);
+    }
+  });
+
+  it("remaps ids embedded inside computed_columns.definition and settings.column_years", async () => {
+    const categoryName = "Bütçe Sütunu";
+    await seedWorkspace(SOURCE_USER, {
+      templateCategories: [{ name: categoryName, kind: "expense", isColumn: true }],
+      startMonth: "2026-07" as never,
+      openingBalanceMinor: 0,
+      persons: [{ name: "Ben", isSelf: true }],
+      sources: [],
+    });
+    const sourceCategoryId = (harness.db!.prepare(
+      `SELECT id FROM categories WHERE user_id = ? AND name = ?`,
+    ).get(SOURCE_USER, categoryName) as { id: string }).id;
+
+    await saveComputedColumn(SOURCE_USER, {
+      name: "Toplam",
+      definition: { op: "sum", categoryIds: [sourceCategoryId] },
+      sortOrder: 0,
+    });
+    await writeSetting(SOURCE_USER, "column_years", { "2026": [sourceCategoryId] });
+
+    const bundle = parseExportBundleText(await buildExportText(SOURCE_USER));
+    // See the previous test: local SQLite holds one account at a time in the
+    // real app, so simulate the account-switch wipe before restoring account
+    // A's backup under account B.
+    await resetLocalWorkspace();
+    await importBundle(TARGET_USER, bundle);
+
+    // `seedCategory` embeds the account id, so the category is re-seeded under
+    // a DIFFERENT id for the target account — computed independently here
+    // (not read off the target DB) to prove the remap actually recomputed the
+    // embedded reference rather than merely copying whatever landed.
+    const targetCategoryId = await deterministicId(naturalKeys.seedCategory(TARGET_USER, categoryName));
+    expect(targetCategoryId).not.toBe(sourceCategoryId);
+
+    const definitionRow = harness.db!.prepare(
+      `SELECT definition FROM computed_columns WHERE user_id = ? AND name = 'Toplam'`,
+    ).get(TARGET_USER) as { definition: string };
+    expect(JSON.parse(definitionRow.definition)).toEqual({ op: "sum", categoryIds: [targetCategoryId] });
+
+    const settingsRow = harness.db!.prepare(
+      `SELECT value FROM settings WHERE user_id = ? AND key = 'column_years'`,
+    ).get(TARGET_USER) as { value: string };
+    expect(JSON.parse(settingsRow.value)).toEqual({ "2026": [targetCategoryId] });
   });
 
   it("accepts a backup written before the variable-amount columns existed", async () => {

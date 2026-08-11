@@ -18,7 +18,7 @@ import {
 import { combineLiveStates } from "../data/live-state";
 import { todayISO } from "../domain/dates";
 import { formatMinorCompact } from "../domain/money";
-import { AMOUNT_LABELS, occurrenceAmountText } from "../domain/subscriptions";
+import { AMOUNT_LABELS, needsVariableAmountEntry, isVariableSubscriptionOccurrence, occurrenceAmountText } from "../domain/subscriptions";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
@@ -61,9 +61,8 @@ export default function CatchUpScreen() {
   const selfPersonId = persons.find((p) => p.isSelf)?.id;
   const subscriptionById = new Map(subscriptions.map((subscription) => [subscription.id, subscription]));
   const incomeById = new Map(incomes.map((income) => [income.id, income]));
-  const isVariableSubscription = (e: (typeof expected)[number]) =>
-    e.kind === "subscription" && subscriptionById.get(e.refId)?.amountMode === "variable";
-  const needsAmountEntry = (e: (typeof expected)[number]) => isVariableSubscription(e) && e.amountIsEstimated === true;
+  const isVariableSubscription = (e: (typeof expected)[number]) => isVariableSubscriptionOccurrence(e, subscriptionById);
+  const needsAmountEntry = (e: (typeof expected)[number]) => needsVariableAmountEntry(e, subscriptionById);
   const amountFragment = (e: (typeof expected)[number]) =>
     occurrenceAmountText(e, formatMinorCompact, AMOUNT_LABELS);
   const items = expected

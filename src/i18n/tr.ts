@@ -127,7 +127,6 @@ export const tr = {
     signUpFailed: "Kayıt oluşturulamadı",
     invalidBackupFile: "Geçersiz yedek dosyası",
     backupTooLarge: "Yedek dosyası güvenli içe aktarma sınırını aşıyor.",
-    backupOtherAccount: "Bu yedek başka bir hesaba ait. Verilerin bozulmaması için yedek yalnızca oluşturulduğu hesapta geri yüklenebilir; o hesapla giriş yapıp tekrar dene.",
     workspaceResetFailed: "Cihazdaki önceki hesabın verileri temizlenemedi; giriş yapılamadı. Lütfen tekrar dene.",
     fxUnavailable: "Döviz kuru henüz alınamadı. İnternete bağlanınca tekrar dene.",
     saveFailed: "Kaydedilemedi. Lütfen tekrar dene.",

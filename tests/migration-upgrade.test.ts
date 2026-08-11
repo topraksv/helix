@@ -159,6 +159,33 @@ describe("boot migration", () => {
     expect(row).toMatchObject({ id: "tx-1", amount_try_minor: 12345, effective_date: "2026-01-15" });
   });
 
+  it("retires a legacy installment expected row without deleting its tombstone", async () => {
+    visibleEntries = journal.entries.length - 1;
+    await migrateDb();
+    database.prepare(
+      `INSERT INTO expected_payments (
+        id, user_id, created_at, updated_at, deleted_at, tombstone_version,
+        direction, kind, ref_id, due_date, amount_minor, amount_is_estimated,
+        currency, status, paid_at, auto_confirmed, transaction_id
+      ) VALUES (?, ?, ?, ?, NULL, 0, 'out', 'installment', ?, ?, ?, 0, 'TRY', 'pending', NULL, 0, NULL)`,
+    ).run(
+      "legacy-expected",
+      "user-1",
+      "2026-08-10T00:00:00.000Z",
+      "2026-08-10T00:00:00.000Z",
+      "plan-1",
+      "2026-08-15",
+      10_000,
+    );
+
+    visibleEntries = journal.entries.length;
+    await migrateDb();
+
+    expect(database.prepare(
+      "SELECT deleted_at IS NOT NULL AS deleted, tombstone_version FROM expected_payments WHERE id = ?",
+    ).get("legacy-expected")).toMatchObject({ deleted: 1, tombstone_version: 1 });
+  });
+
   it("rolls back an interrupted migration and resumes it without losing the ledger", async () => {
     visibleEntries = journal.entries.length - 1;
     await migrateDb();

@@ -30,7 +30,11 @@ export const PAYMENT_SOURCE_TYPES: readonly PaymentSourceType[] = [
 type SubscriptionCycle = "monthly" | "yearly" | "custom";
 type ExpectedStatus = "pending" | "paid" | "late" | "skipped";
 type ExpectedDirection = "in" | "out";
-type ExpectedKind = "subscription" | "installment" | "loan" | "recurring_income";
+/** Active expected-payment producers. Installment plans materialize transactions directly. */
+export const EXPECTED_PAYMENT_KINDS = ["subscription", "recurring_income"] as const;
+export type ExpectedKind = (typeof EXPECTED_PAYMENT_KINDS)[number];
+/** Compatibility values accepted only on retired tombstones during restore. */
+export const LEGACY_EXPECTED_PAYMENT_KINDS = ["installment", "loan"] as const;
 type PlanKind = "card_installment" | "loan";
 
 /** The slice of a transaction the engines need. */

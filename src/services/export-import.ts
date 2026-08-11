@@ -21,6 +21,7 @@ import {
   validateExportBundle,
   type ExistingImportIds,
 } from "./backup-validation";
+import { applyIdRemap, buildIdRemap } from "./backup-remap";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
 
 interface RestoreOperationOptions {
@@ -128,17 +129,21 @@ export async function importBundle(
   options?: RestoreOperationOptions,
 ): Promise<{ imported: number; skipped: number }> {
   throwIfAborted(options?.signal);
-  const bundle = validateExportBundle(input);
+  const parsedBundle = validateExportBundle(input);
   // Restore keeps every row's original id, and a large share of those ids are
   // derived from the account that made them. Pointed at a second account they
-  // collide with the first account's rows on a shared device — the write layer
-  // refuses that outright — and where they do not collide they stop matching
-  // what the new account's own writes derive. Say so, instead of failing on an
-  // ownership conflict several hundred rows in.
-  const sourceUserId = bundleSourceUserId(bundle);
-  if (sourceUserId != null && sourceUserId !== userId) {
-    throw new UserFacingError(tr.errors.backupOtherAccount);
-  }
+  // would collide with that account's own rows on a shared device, or simply
+  // stop matching what the new account's own future writes derive. Re-derive
+  // every provably-deterministic id under the importing account before this
+  // account ever sees the original ones — see `backup-remap.ts` for how a
+  // row's id is proven to come from a specific natural-key template instead
+  // of guessed at.
+  const sourceUserId = bundleSourceUserId(parsedBundle);
+  const idMap = sourceUserId != null && sourceUserId !== userId
+    ? await buildIdRemap(parsedBundle, sourceUserId, userId)
+    : new Map<string, string>();
+  throwIfAborted(options?.signal);
+  const bundle = applyIdRemap(parsedBundle, idMap);
   const sqlite = await getSqliteAsync();
   let imported = 0;
   let skipped = 0;

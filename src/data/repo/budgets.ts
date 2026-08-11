@@ -1,17 +1,19 @@
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys } from "../../db/ids";
+import { RELATIONS } from "../../db/relations";
 import { assertLiveRow, assertRestorableRows, fromDbShape, nowIso, restoreRows, softDelete, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { isMonthKey, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, type Minor } from "../../domain/money";
 
-const CATEGORY_REFERENCE_TABLES = [
-  "transactions",
-  "subscriptions",
-  "recurring_incomes",
-  "installment_plans",
-  "cell_notes",
-] as const;
-type CategoryReferenceTable = (typeof CATEGORY_REFERENCE_TABLES)[number];
+// Budgets have the same FK as the other category references, but are derived
+// targets and are tombstoned with their category rather than reassigned.
+type CategoryRelation = Extract<(typeof RELATIONS)[number], readonly [string, "category_id", "categories"]>;
+type CategoryReferenceTable = Exclude<CategoryRelation[0], "category_budgets">;
+
+const CATEGORY_REFERENCE_TABLES: CategoryReferenceTable[] = RELATIONS
+  .filter(([, column, target]) => column === "category_id" && target === "categories")
+  .map(([table]) => table)
+  .filter((table): table is CategoryReferenceTable => table !== "category_budgets");
 
 export interface CategoryReferenceUsage {
   transactions: number;
@@ -87,11 +89,12 @@ export async function categoryReferenceUsage(userId: string, categoryId: string)
     );
     return row?.n ?? 0;
   }));
-  const transactions = counts[0] ?? 0;
-  const subscriptions = counts[1] ?? 0;
-  const recurringIncomes = counts[2] ?? 0;
-  const installmentPlans = counts[3] ?? 0;
-  const cellNotes = counts[4] ?? 0;
+  const countByTable = new Map(CATEGORY_REFERENCE_TABLES.map((table, index) => [table, counts[index] ?? 0]));
+  const transactions = countByTable.get("transactions") ?? 0;
+  const subscriptions = countByTable.get("subscriptions") ?? 0;
+  const recurringIncomes = countByTable.get("recurring_incomes") ?? 0;
+  const installmentPlans = countByTable.get("installment_plans") ?? 0;
+  const cellNotes = countByTable.get("cell_notes") ?? 0;
   return {
     transactions,
     subscriptions,

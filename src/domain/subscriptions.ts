@@ -35,6 +35,26 @@ interface OccurrenceAmount {
   amountIsEstimated?: boolean;
 }
 
+interface SubscriptionAmountModeLike {
+  amountMode?: "fixed" | "variable";
+}
+
+/** One shared predicate for every surface that opens a variable invoice. */
+export function isVariableSubscriptionOccurrence(
+  occurrence: { kind: string; refId: string },
+  subscriptionsById: ReadonlyMap<string, SubscriptionAmountModeLike>,
+): boolean {
+  return occurrence.kind === "subscription" && subscriptionsById.get(occurrence.refId)?.amountMode === "variable";
+}
+
+/** A variable occurrence needs entry only while its estimate flag is set. */
+export function needsVariableAmountEntry(
+  occurrence: { kind: string; refId: string; amountIsEstimated?: boolean },
+  subscriptionsById: ReadonlyMap<string, SubscriptionAmountModeLike>,
+): boolean {
+  return occurrence.amountIsEstimated === true && isVariableSubscriptionOccurrence(occurrence, subscriptionsById);
+}
+
 /**
  * A variable bill whose invoice has not been entered yet.
  *

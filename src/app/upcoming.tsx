@@ -19,7 +19,7 @@ import { combineLiveStates } from "../data/live-state";
 import { monthKeyOf, todayISO } from "../domain/dates";
 import { buildUpcomingTimeline, type UpcomingTimelineItem } from "../domain/upcoming";
 import { formatMinorCompact } from "../domain/money";
-import { hasUnknownAmount } from "../domain/subscriptions";
+import { hasUnknownAmount, isVariableSubscriptionOccurrence } from "../domain/subscriptions";
 import { setExpectedAmount } from "../data/repo";
 import { dateLabel, monthLabel, shortMonthLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
@@ -86,9 +86,8 @@ export default function UpcomingScreen() {
 
   const isVariableSubscription = (item: UpcomingTimelineItem) =>
     item.kind === "expected"
-    && item.sourceType === "subscription"
     && item.expectedId != null
-    && subscriptionById.get(item.refId)?.amountMode === "variable";
+    && isVariableSubscriptionOccurrence({ kind: item.sourceType, refId: item.refId }, subscriptionById);
   const amountUnknown = hasUnknownAmount;
 
   const openItem = (item: UpcomingTimelineItem) => {

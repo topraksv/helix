@@ -71,6 +71,13 @@
       "when": 1786294443760,
       "tag": "0009_tiresome_ma_gnuci",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786429092873,
+      "tag": "0010_retire_legacy_expected_payments",
+      "breakpoints": true
     }
   ]
 }

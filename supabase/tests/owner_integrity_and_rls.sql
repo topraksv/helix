@@ -11,7 +11,7 @@ set local role postgres;
 -- first for the assertion helpers.
 set local search_path = extensions, public, pg_catalog;
 
-select extensions.plan(136);
+select extensions.plan(138);
 
 -- A small invoker-rights helper lets tests assert SQLSTATE without coupling to
 -- PostgreSQL's localized/full error text. The dynamic statement still runs as
@@ -913,6 +913,33 @@ select is(
   $command$),
   '23514',
   'expected payment rejects a mismatched polymorphic reference'
+);
+
+select is(
+  pg_temp.exec_sqlstate($command$
+    insert into public.expected_payments (
+      id, user_id, direction, kind, ref_id, due_date, amount_minor
+    ) values (
+      '20000000-0000-4000-8000-000000000099',
+      '20000000-0000-4000-8000-000000000002',
+      'out', 'installment', '20000000-0000-4000-8000-000000000098', '2026-08-01', 10000
+    )
+  $command$),
+  '23514',
+  'retired installment expecteds cannot be created as live rows'
+);
+
+select lives_ok(
+  $$insert into public.expected_payments (
+      id, user_id, direction, kind, ref_id, due_date, amount_minor,
+      deleted_at, tombstone_version
+    ) values (
+      '20000000-0000-4000-8000-000000000100',
+      '20000000-0000-4000-8000-000000000002',
+      'out', 'installment', '20000000-0000-4000-8000-000000000098', '2026-08-01', 10000,
+      now(), 1
+    )$$,
+  'legacy installment tombstones remain syncable'
 );
 
 select is(
