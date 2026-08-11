@@ -51,12 +51,20 @@ supabase/.temp/
 # Nothing here is an input to a build or test.
 .codex/
 
-# Local AI working set. The skills, the per-tool instruction files and the
-# handoff note are real inputs to a local Claude/Codex session, but they are
-# not inputs to a build, a test or a deploy — keeping them out of Git stops CI
-# from reacting to them and stops the history from carrying vendored prose.
-/.claude/
-/.ai/
+# Source-owned AI control plane. Tool settings remain machine-local, while the
+# small shared truth package and symlink bridges are recoverable from Git.
+/.claude/*
+!/.claude/skills/
+!/.claude/skills/**
+/.ai/*
+!/.ai/INVARIANTS.md
+!/.ai/ROUTING.md
+!/.ai/AI_HANDOFF.md
+!/.ai/scripts/
+!/.ai/scripts/*.mjs
+!/.ai/skills/
+!/.ai/skills/**
+/.agents/*
+!/.agents/skills/
+!/.agents/skills/**
 /docs/
-/AGENTS.md
-/CLAUDE.md

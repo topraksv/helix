@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "title": "Helix kanıt tabanlı kalite denetimi",
   "environment": "Tek test ortamı; production ve store release kapsam dışı",
-  "auditedCommit": "0b29d0e734ce081d4a118f0ff4a86d0b127ddb69",
-  "auditedAt": "2026-08-09",
+  "auditedCommit": "4b2fbfb452de0c52a79be298f865585e6d9c8112",
+  "auditedAt": "2026-08-11",
   "methodology": {
     "formula": "Kategori puanı = 10 × geçen kontrol / uygulanabilir kontrol. Her puanlanan kategoride tam 5 kontrol vardır; her geçen kontrol 2 puandır.",
     "overallFormula": "Genel puan = 10 × tüm geçen kontroller / tüm uygulanabilir kontroller. N/A kategoriler paydaya girmez.",

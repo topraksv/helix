@@ -70,6 +70,8 @@ jobs:
       # executes. A new high/critical advisory blocks the delivery gate.
       - run: node scripts/check-advisories.mjs
       - run: npm ci
+      - run: npm run control:check
+      - run: npm run quality:audit
       - run: npm run typecheck
       - run: npx expo lint
       # Coverage runs the complete Vitest suite once, while enforcing per-file

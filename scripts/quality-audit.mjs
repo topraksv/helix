@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
+import { execFile as execFileCallback } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
 const sourcePath = resolve(root, "quality/audit.json");
 const reportPath = resolve(root, "graphify-out/QUALITY_KANBAN.html");
+const execFile = promisify(execFileCallback);
 const allowedStatuses = new Set(["pass", "fail", "manual", "blocked"]);
 const expectedCategoryIds = [
   "financial-domain", "data-integrity", "architecture", "code-quality", "type-safety",
@@ -17,6 +20,45 @@ const expectedCategoryIds = [
 const expectedDefinitionHash = "11797d76c820cab4798e2132872348200233b72ee0b7f889f1c50c27546410ea";
 
 const audit = JSON.parse(await readFile(sourcePath, "utf8"));
+
+const { stdout: headOutput } = await execFile("git", ["rev-parse", "HEAD"], { cwd: root });
+const head = headOutput.trim();
+const { stdout: changedOutput } = await execFile(
+  "git",
+  ["diff", "--name-only", `${audit.auditedCommit}..${head}`],
+  { cwd: root },
+);
+const sourceDelta = changedOutput.split("\n").map((path) => path.trim()).filter(Boolean);
+const qualityOnlyPaths = new Set([
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".gitignore",
+  ".github/workflows/ci.yml",
+  "quality/audit.json",
+  "scripts/quality-audit.mjs",
+]);
+let packageScriptsOnly = false;
+if (sourceDelta.includes("package.json")) {
+  try {
+    const { stdout: previousPackage } = await execFile("git", ["show", `${audit.auditedCommit}:package.json`], { cwd: root });
+    const previous = JSON.parse(previousPackage);
+    const current = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
+    const withoutScripts = (value) => {
+      const copy = { ...value };
+      delete copy.scripts;
+      return JSON.stringify(copy);
+    };
+    packageScriptsOnly = withoutScripts(previous) === withoutScripts(current);
+  } catch {
+    packageScriptsOnly = false;
+  }
+}
+const isControlPlanePath = (path) => qualityOnlyPaths.has(path)
+  || path.startsWith(".ai/")
+  || path.startsWith(".agents/")
+  || path.startsWith(".claude/")
+  || (path === "package.json" && packageScriptsOnly);
+const staleSourceDelta = sourceDelta.filter((path) => !isControlPlanePath(path));
 
 function definitionHash(input) {
   const frozen = input.categories.map((category) => ({
@@ -64,6 +106,9 @@ function validate(input) {
   }
   if (input.excludedCategories?.length !== 1 || input.excludedCategories[0]?.id !== "release-readiness") {
     errors.push("release-readiness must remain the single explicit N/A category");
+  }
+  if (input.auditedCommit !== head && staleSourceDelta.length > 0) {
+    errors.push(`quality evidence is stale for product paths after ${input.auditedCommit}: ${[...new Set(staleSourceDelta)].join(", ")}`);
   }
   if (errors.length > 0) throw new Error(`quality audit validation failed:\n- ${errors.join("\n- ")}`);
 }
@@ -128,7 +173,10 @@ function render() {
 validate(audit);
 const baseline = totals("baseline");
 const current = totals("status");
-process.stdout.write(`Quality audit: ${current.passed}/${current.total} controls, ${current.score.toFixed(2)}/10 (baseline ${baseline.score.toFixed(2)})\n`);
+const freshness = audit.auditedCommit === head
+  ? `HEAD ${head.slice(0, 12)}`
+  : `source-fresh through HEAD ${head.slice(0, 12)} (metadata-only delta)`;
+process.stdout.write(`Quality audit: ${current.passed}/${current.total} controls, ${current.score.toFixed(2)}/10 (baseline ${baseline.score.toFixed(2)}; ${freshness})\n`);
 if (process.argv.includes("--render")) {
   await mkdir(dirname(reportPath), { recursive: true });
   await writeFile(reportPath, render(), "utf8");
