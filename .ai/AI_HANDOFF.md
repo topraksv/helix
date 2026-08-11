@@ -7,7 +7,7 @@ memory. Stable contracts live in `AGENTS.md`, `.ai/ROUTING.md` and
 
 ## Current state
 
-updated_at: 2026-08-11T16:27:42+0300
+updated_at: 2026-08-11T16:38:14+0300
 verified_at_commit: 4b2fbfb
 working_tree: RUN 1 control-plane reconstruction is locally complete; signed commit and push remain
 branch: main, currently at 4b2fbfb
@@ -90,8 +90,11 @@ source_paths:
   - .github/workflows/ci.yml
   - package.json
 
-- Review and stage the control-plane diff, create the required signed commit,
-  push `main` once, and watch remote CI/release channels to completion.
+- Commit and push the corrective CI checkout change, then watch the replacement
+  CI/release channels to completion. The first remote run reached `classify`
+  and `control:check` but stopped at `quality:audit` because the quality job's
+  shallow checkout could not resolve the audited parent; the security workflow
+  passed. The fix is staged in `.github/workflows/ci.yml`.
 - Claude runtime activation could not be exercised locally because no `claude`
   binary is installed; official symlink support and the filesystem bridge were
   checked, while Codex discovery was exercised directly.
@@ -144,7 +147,8 @@ source_paths:
   - .github/workflows/ci.yml
 
 - `main` and `origin/main` are currently synchronized at signed commit
-  `4b2fbfb`; the RUN 1 control-plane change is pending its signed commit/push.
+  `a845382`; the RUN 1 control-plane change is pushed, with the corrective CI
+  checkout change pending its signed commit/push.
 - Web remains published on GitHub Pages and mobile remains an Expo Go preview
   OTA; no standalone binary or store submission exists.
 - No linked/remote Supabase migration or production database mutation is part of
