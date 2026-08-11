@@ -394,6 +394,37 @@ export default function InvestmentsScreen() {
     () => new Set(personsState.data.filter((person) => person.isSelf).map((person) => person.id)),
     [personsState.data],
   );
+  // Hoisted so a per-row filter below never rebuilds a Date and formats a
+  // string once per transaction; hook order stays unconditional, so this
+  // block sits above both early returns further down.
+  const today = todayISO();
+  const transferCategoryIds = useMemo(
+    () => new Set(categoriesState.data.filter((category) => category.isTransfer).map((category) => category.id)),
+    [categoriesState.data],
+  );
+  const startedOn = profile?.startedOn;
+  const walletTransfers = useMemo(
+    () => transactionsState.data.filter((transaction) =>
+      transaction.type === "transfer"
+      && transaction.status === "realized"
+      && transaction.deletedAt == null
+      && selfPersonIds.has(transaction.personId)
+      && startedOn != null
+      && transaction.effectiveDate >= startedOn
+      && transaction.effectiveDate <= today
+      && transaction.categoryId != null
+      && transferCategoryIds.has(transaction.categoryId),
+    ),
+    [transactionsState.data, selfPersonIds, transferCategoryIds, startedOn, today],
+  );
+  const transferredInMinor = useMemo(
+    () => walletTransfers.reduce((sum, transaction) => sum + Math.max(0, transaction.amountTryMinor), 0),
+    [walletTransfers],
+  );
+  const transferredOutMinor = useMemo(
+    () => walletTransfers.reduce((sum, transaction) => sum + Math.max(0, -transaction.amountTryMinor), 0),
+    [walletTransfers],
+  );
   const wallet = useInvestmentWalletSnapshot();
   const state = wallet.data;
   const productById = new Map(productsState.data.map((product) => [product.id, product]));
@@ -467,27 +498,6 @@ export default function InvestmentsScreen() {
     }),
   ];
   const totalCapital = state.cashMinor + state.investedCostMinor;
-  const transferCategoryIds = new Set(
-    categoriesState.data.filter((category) => category.isTransfer).map((category) => category.id),
-  );
-  const walletTransfers = transactionsState.data.filter((transaction) =>
-    transaction.type === "transfer"
-    && transaction.status === "realized"
-    && transaction.deletedAt == null
-    && selfPersonIds.has(transaction.personId)
-    && transaction.effectiveDate >= profile!.startedOn
-    && transaction.effectiveDate <= todayISO()
-    && transaction.categoryId != null
-    && transferCategoryIds.has(transaction.categoryId),
-  );
-  const transferredInMinor = walletTransfers.reduce(
-    (sum, transaction) => sum + Math.max(0, transaction.amountTryMinor),
-    0,
-  );
-  const transferredOutMinor = walletTransfers.reduce(
-    (sum, transaction) => sum + Math.max(0, -transaction.amountTryMinor),
-    0,
-  );
   const cashSummary = (
     <View style={compact ? { width: "100%" } : { flex: 1, minWidth: 0 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>

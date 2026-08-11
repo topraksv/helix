@@ -1,6 +1,6 @@
 /** Accessible SVG chart primitives shared by native and web. */
 
-import React, { type ReactNode } from "react";
+import React, { useMemo, type ReactNode } from "react";
 import { Animated, Text, View } from "react-native";
 import Svg, { Circle, ClipPath, Defs, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import type { Distribution } from "../domain/analytics";
@@ -80,16 +80,21 @@ type SeriesColors = readonly [string, string, string, string, string, string, st
  */
 export function useSeriesColors(): SeriesColors {
   const { palette } = useTheme();
-  return [
-    palette.primary,
-    palette.secondary,
-    palette.surfaceStrong,
-    palette.tertiary,
-    palette.primaryStrong,
-    palette.secondaryStrong,
-    palette.tertiaryStrong,
-    palette.textSecondary,
-  ];
+  // Identity must be stable: a chart memo keying on this array would never
+  // hold if it were a fresh literal every render.
+  return useMemo(
+    () => [
+      palette.primary,
+      palette.secondary,
+      palette.surfaceStrong,
+      palette.tertiary,
+      palette.primaryStrong,
+      palette.secondaryStrong,
+      palette.tertiaryStrong,
+      palette.textSecondary,
+    ],
+    [palette],
+  );
 }
 
 function seriesColor(colors: SeriesColors, index: number): string {

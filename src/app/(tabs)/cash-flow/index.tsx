@@ -48,7 +48,7 @@ import { combineLiveStates } from "../../../data/live-state";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { useScrollToTop } from "@react-navigation/native";
-import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT, type StickyColumn, type StickyRow } from "../../../ui/sticky-table";
+import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT } from "../../../ui/sticky-table";
 import { interactionSurface } from "../../../ui/interaction";
 import { circle, controlSize, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { ledgerCellWidth, shouldUseWideWorkspace } from "../../../ui/responsive";
@@ -234,14 +234,17 @@ export default function CashflowScreen() {
     setHasSavedMode(true);
     void kv.set("helix.matrix.mode", v);
   };
-  const togglePin = (key: string) => {
+  // MatrixTable is memoized below; an inline arrow here would recreate
+  // `onTogglePin` — and defeat that memo — on every unrelated render (resize,
+  // layout measurement, live query).
+  const togglePin = React.useCallback((key: string) => {
     if (mode === "cards") return;
     const pinMode: PinMode = mode === "columns" ? "columns" : "rows";
     const next = pinnedByMode[pinMode] === key ? null : key;
     setPinnedByMode((current) => ({ ...current, [pinMode]: next }));
     if (pinMode === "rows") void kv.set(ROW_PIN_KEY, next ?? "");
     else void kv.set(COLUMN_PIN_KEY, next ?? "");
-  };
+  }, [mode, pinnedByMode]);
   const focusMonth = `${year}-${String(focusMonthNumber).padStart(2, "0")}` as MonthKey;
 
   // Everything from here to `tableMatrix` is derived from the whole ledger, and
@@ -764,7 +767,12 @@ function TableDetailsPanel({
   );
 }
 
-function MatrixTable({
+// Memoized: this builds ~300 cell elements (25 columns × 12 months) plus their
+// row/column wrappers. Unmemoized, every parent render — a resize event, the
+// table-area layout measurement, a pin/pivot toggle, any of the ~8 live
+// queries the screen subscribes to — rebuilt the whole tree from scratch even
+// though the arithmetic behind it (`tableMatrix`) was already memoized.
+const MatrixTable = React.memo(function MatrixTable({
   year,
   bundle,
   matrix,
@@ -792,22 +800,24 @@ function MatrixTable({
   const today = todayISO();
   const currentMonth = monthKeyOf(today);
 
-  const noteByCell = new Map(cellNotes.map((note) => [`${note.month}:${note.categoryId}`, note.body]));
+  // Rebuilt from scratch every render before, same cost class as the grid
+  // itself. Keyed off the same `cellNotes`/`bundle` references the live
+  // queries already hand down, so an unrelated render is a no-op here too.
+  const noteByCell = useMemo(
+    () => new Map(cellNotes.map((note) => [`${note.month}:${note.categoryId}`, note.body])),
+    [cellNotes],
+  );
   // A reconciled month looks exactly like an ordinary one in this table, so the
   // closing figure silently stopped matching the flows above it. It carries the
   // same marker a cell note does — the cell has something extra behind it.
-  const adjustmentByMonth = new Map(
-    bundle.yearMonths
-      .filter((month) => month.adjustmentMinor !== 0)
-      .map((month) => [month.month, tr.cashflow.adjustedCell(formatMinorCompact(month.adjustmentMinor))]),
+  const adjustmentByMonth = useMemo(
+    () => new Map(
+      bundle.yearMonths
+        .filter((month) => month.adjustmentMinor !== 0)
+        .map((month) => [month.month, tr.cashflow.adjustedCell(formatMinorCompact(month.adjustmentMinor))]),
+    ),
+    [bundle.yearMonths],
   );
-  const noteFor = (column: { key: string; categoryId?: string | null }, month: MonthKey): string | undefined =>
-    column.key === "closing"
-      ? adjustmentByMonth.get(month)
-      : column.categoryId
-        ? noteByCell.get(`${month}:${column.categoryId}`)
-        : undefined;
-
   const { months, columns } = matrix;
 
   /**
@@ -881,7 +891,7 @@ function MatrixTable({
 
   // Tapping a category/computed column opens its month-by-month breakdown.
   // Opening/closing balances are derived summaries — intentionally not tappable.
-  const openBreakdown = (key: string) => {
+  const openBreakdown = React.useCallback((key: string) => {
     const col = columns.find((c) => c.key === key);
     if (!col || col.key === "opening" || col.key === "closing") return;
     router.push({
@@ -893,106 +903,111 @@ function MatrixTable({
         kind: col.categoryId ? "category" : "computed",
       },
     });
-  };
+  }, [columns, year, router]);
 
-  // Category cells open the month's cell editor; computed columns are derived
-  // (no transactions to edit) so their cells open the breakdown — the same as
-  // tapping their header — so no visible cell is ever a dead tap. Opening/
-  // closing stay non-interactive by design.
-  const pressFor = (c: CashFlowMatrixColumn, month: MonthKey): (() => void) | undefined => {
-    if (c.categoryId) return () => router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId! } });
+  // One dispatcher shared by every cell, keyed by (columnKey, month) at press
+  // time, instead of a fresh `() => router.push(...)` closure built per cell
+  // per render (the old `pressFor`). MatrixCell is memoized below; a
+  // per-render closure prop would defeat that memo regardless of `useCallback`
+  // on the function that *returns* it, since each call still allocates a new
+  // function.
+  const onCellPress = React.useCallback((columnKey: string, month: MonthKey) => {
+    const c = columns.find((col) => col.key === columnKey);
+    if (!c) return;
+    if (c.categoryId) {
+      router.push({ pathname: "/cell-editor", params: { month, categoryId: c.categoryId } });
+      return;
+    }
     // A reconciled closing figure is the one system cell with somewhere to go:
     // the adjustment that moved it. Root-level route, so what sits underneath
     // is this screen and both the back button and the edge swipe return here.
-    if (c.key === "closing" && adjustmentByMonth.has(month)) return () => router.push("/opening-balance" as Href);
-    if (c.system) return undefined;
-    return () => openBreakdown(c.key); // computed column cell → its breakdown
-  };
+    if (c.key === "closing" && adjustmentByMonth.has(month)) {
+      router.push("/opening-balance" as Href);
+      return;
+    }
+    if (c.system) return;
+    openBreakdown(c.key); // computed column cell → its breakdown
+  }, [columns, adjustmentByMonth, router, openBreakdown]);
 
-  const cell = (
-    value: number | null,
-    note: string | undefined,
-    onPress: (() => void) | undefined,
-    highlighted: boolean,
-    month: MonthKey,
-    columnLabel: string,
-    markerTone: "note" | "adjustment" = "note",
-  ) => (
-    <MatrixCell
-      value={value}
-      note={note}
-      markerTone={markerTone}
-      onPress={onPress}
-      highlighted={highlighted}
-      fontSize={fontSize}
-      accessibilityLabel={tr.a11y.matrixCell(
-        monthLabel(month),
-        columnLabel,
-        value == null ? tr.a11y.emptyValue : formatMinorCompact(value),
-        Boolean(note),
-      )}
-    />
-  );
-  const breakdownFor = (key: string): (() => void) | undefined =>
-    key === "opening" || key === "closing" ? undefined : () => openBreakdown(key);
+  // Builds the ~300 cell elements plus their row/column wrappers. Honest
+  // deps: only what can actually change a cell's value, note, press target or
+  // label. A resize, the table-area layout measurement, or a pin toggle
+  // touches none of these, so the memo skips rebuilding the tree entirely —
+  // StickyTable then receives the exact same row/column arrays it had before,
+  // not just shallow-equal ones.
+  const { cornerLabel, stickyColumns, stickyRows, currentColumnKey } = useMemo(() => {
+    const noteFor = (column: { key: string; categoryId?: string | null }, month: MonthKey): string | undefined =>
+      column.key === "closing"
+        ? adjustmentByMonth.get(month)
+        : column.categoryId
+          ? noteByCell.get(`${month}:${column.categoryId}`)
+          : undefined;
+    const canPressCell = (c: CashFlowMatrixColumn, month: MonthKey): boolean => {
+      if (c.categoryId) return true;
+      if (c.key === "closing" && adjustmentByMonth.has(month)) return true;
+      return !c.system;
+    };
+    const cellNode = (column: CashFlowMatrixColumn, month: MonthKey, highlighted: boolean): React.ReactNode => {
+      const value = column.values.get(month) ?? null;
+      const note = noteFor(column, month);
+      return (
+        <MatrixCell
+          columnKey={column.key}
+          month={month}
+          canPress={canPressCell(column, month)}
+          onCellPress={onCellPress}
+          value={value}
+          note={note}
+          markerTone={column.key === "closing" ? "adjustment" : "note"}
+          highlighted={highlighted}
+          fontSize={fontSize}
+          accessibilityLabel={tr.a11y.matrixCell(
+            monthLabel(month),
+            column.label,
+            value == null ? tr.a11y.emptyValue : formatMinorCompact(value),
+            Boolean(note),
+          )}
+        />
+      );
+    };
 
-  let cornerLabel: string;
-  let stickyColumns: StickyColumn[];
-  let stickyRows: StickyRow[];
-  let currentColumnKey: string | undefined;
-
-  if (orientation === "monthsAsRows") {
-    cornerLabel = tr.cashflow.monthHeader;
-    stickyColumns = columns.map((c) => ({
-      key: c.key,
-      label: c.label,
-      icon: c.computed ? Sigma : undefined,
-    }));
-    stickyRows = months.map((slot) => ({
-      key: slot.month,
-      label: monthName(slot.month),
-      accessibilityLabel: monthLabel(slot.month),
-      onLabelPress: () => router.push(`/cash-flow/${slot.month}`),
-      labelHighlight: slot.month === currentMonth,
-      rowHighlight: slot.month === currentMonth,
-      cells: columns.map((c) =>
-        cell(
-          c.values.get(slot.month) ?? null,
-          noteFor(c, slot.month),
-          pressFor(c, slot.month),
-          false,
-          slot.month,
-          c.label,
-          c.key === "closing" ? "adjustment" : "note",
-        ),
-      ),
-    }));
-  } else {
-    cornerLabel = tr.cashflow.itemHeader;
-    stickyColumns = months.map((slot) => ({
-      key: slot.month,
-      label: compact ? shortMonthLabel(slot.month) : monthName(slot.month),
-      accessibilityLabel: monthName(slot.month),
-    }));
-    currentColumnKey = currentMonth;
-    stickyRows = columns.map((c) => ({
-      key: c.key,
-      label: c.label,
-      icon: c.computed ? Sigma : undefined,
-      onLabelPress: breakdownFor(c.key),
-      cells: months.map((slot) =>
-        cell(
-          c.values.get(slot.month) ?? null,
-          noteFor(c, slot.month),
-          pressFor(c, slot.month),
-          slot.month === currentMonth,
-          slot.month,
-          c.label,
-          c.key === "closing" ? "adjustment" : "note",
-        ),
-      ),
-    }));
-  }
+    if (orientation === "monthsAsRows") {
+      return {
+        cornerLabel: tr.cashflow.monthHeader,
+        currentColumnKey: undefined as string | undefined,
+        stickyColumns: columns.map((c) => ({
+          key: c.key,
+          label: c.label,
+          icon: c.computed ? Sigma : undefined,
+        })),
+        stickyRows: months.map((slot) => ({
+          key: slot.month,
+          label: monthName(slot.month),
+          accessibilityLabel: monthLabel(slot.month),
+          onLabelPress: () => router.push(`/cash-flow/${slot.month}`),
+          labelHighlight: slot.month === currentMonth,
+          rowHighlight: slot.month === currentMonth,
+          cells: columns.map((c) => cellNode(c, slot.month, false)),
+        })),
+      };
+    }
+    return {
+      cornerLabel: tr.cashflow.itemHeader,
+      currentColumnKey: currentMonth,
+      stickyColumns: months.map((slot) => ({
+        key: slot.month,
+        label: compact ? shortMonthLabel(slot.month) : monthName(slot.month),
+        accessibilityLabel: monthName(slot.month),
+      })),
+      stickyRows: columns.map((c) => ({
+        key: c.key,
+        label: c.label,
+        icon: c.computed ? Sigma : undefined,
+        onLabelPress: c.key === "opening" || c.key === "closing" ? undefined : () => openBreakdown(c.key),
+        cells: months.map((slot) => cellNode(c, slot.month, slot.month === currentMonth)),
+      })),
+    };
+  }, [orientation, columns, months, compact, fontSize, noteByCell, adjustmentByMonth, onCellPress, openBreakdown, router, currentMonth]);
 
   const isColumns = orientation === "monthsAsColumns";
   const validPin = pinnedKey && stickyColumns.some((c) => c.key === pinnedKey) ? pinnedKey : null;
@@ -1019,27 +1034,38 @@ function MatrixTable({
       />
     </Card>
   );
-}
+});
 
-function MatrixCell({
+// Memoized: each cell is a leaf in a ~300-node grid, re-rendered only when
+// its own props change. `onCellPress` is the one non-primitive prop — it must
+// stay referentially stable (see MatrixTable's `useCallback`) or this memo is
+// a no-op.
+const MatrixCell = React.memo(function MatrixCell({
+  columnKey,
+  month,
+  canPress,
+  onCellPress,
   value,
   note,
   markerTone = "note",
   highlighted,
-  onPress,
   fontSize,
   accessibilityLabel,
 }: {
+  columnKey: string;
+  month: MonthKey;
+  canPress: boolean;
+  onCellPress: (columnKey: string, month: MonthKey) => void;
   value: number | null;
   note?: string;
   /** What the corner dot means, so the two never look alike. */
   markerTone?: "note" | "adjustment";
   highlighted?: boolean;
-  onPress?: () => void;
   fontSize: number;
   accessibilityLabel: string;
 }) {
   const { palette } = useTheme();
+  const onPress = canPress ? () => onCellPress(columnKey, month) : undefined;
   return (
     <Pressable
       disabled={!onPress}
@@ -1089,4 +1115,4 @@ function MatrixCell({
       ) : null}
     </Pressable>
   );
-}
+});

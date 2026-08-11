@@ -797,7 +797,10 @@ export default function SettingsScreen() {
           <Body muted style={{ marginBottom: spacing.sm }}>{tr.settings.syncQuarantineBody(deadLettersState.data.length)}</Body>
           <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
             {deadLettersState.data.slice(0, 4).map((deadLetter) => {
-              const typeLabel = tr.settings.syncQuarantineTypes[deadLetter.tableName as keyof typeof tr.settings.syncQuarantineTypes] ?? "kayıt";
+              // deadLetter.tableName is a raw DB string, not the finite SyncedTableName
+              // union — a dead-letter row can carry a table name from a newer build
+              // than this client's i18n map, so the lookup can still miss at runtime.
+              const typeLabel = (tr.settings.syncQuarantineTypes as Record<string, string>)[deadLetter.tableName] ?? "kayıt";
               const reason = tr.settings.syncQuarantineReason[deadLetter.reason as keyof typeof tr.settings.syncQuarantineReason] ?? tr.settings.syncQuarantineReason.invalid_row;
               return (
                 <View key={deadLetter.id} style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.xs }}>

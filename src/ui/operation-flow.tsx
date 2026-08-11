@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 import Check from "lucide-react-native/icons/check";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
@@ -95,8 +95,11 @@ export function OperationFlow({
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
-        Animated.timing(pulse, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+        // opacity/scale only, so this loop is native-driver eligible; it must
+        // not run on the JS bridge exactly when sign-out/deletion/freeze are
+        // busy on that thread. Web has no native driver, hence the OS check.
+        Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== "web" }),
+        Animated.timing(pulse, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: Platform.OS !== "web" }),
       ]),
     );
     loop.start();

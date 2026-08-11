@@ -1,5 +1,31 @@
 /** All user-facing strings live here (UI is Turkish; code is English). */
 
+import type { SyncedTableName } from "../db/schema";
+
+/** One entry per synced table, typed so a table added to SYNCED_TABLES
+ *  without a label here is a compile error rather than a silent "kayıt". */
+const syncQuarantineTypes: Record<SyncedTableName, string> = {
+  persons: "kişi",
+  transactions: "işlem",
+  categories: "kalem",
+  category_budgets: "kalem bütçesi",
+  investment_profiles: "yatırım hesabı",
+  investment_products: "yatırım ürünü",
+  investment_operations: "yatırım hareketi",
+  payment_sources: "ödeme kaynağı",
+  computed_columns: "hesaplanan kolon",
+  installment_plans: "taksit planı",
+  credit_card_statements: "kart ekstresi",
+  subscriptions: "abonelik",
+  price_history: "fiyat geçmişi",
+  recurring_incomes: "düzenli gelir",
+  expected_payments: "beklenen ödeme",
+  balance_adjustments: "bakiye düzeltmesi",
+  cell_notes: "hücre notu",
+  settings: "ayar",
+  fx_rates: "döviz kuru",
+};
+
 export const productTerms = {
   appName: "Helix",
   financialTable: "Mali Tablo",
@@ -847,26 +873,7 @@ export const tr = {
       wrong_user: "hesap eşleşmiyor",
       invalid_row: "geçersiz veri",
     },
-    syncQuarantineTypes: {
-      transactions: "işlem",
-      categories: "kalem",
-      category_budgets: "kalem bütçesi",
-      investment_profiles: "yatırım hesabı",
-      investment_products: "yatırım ürünü",
-      investment_operations: "yatırım hareketi",
-      payment_sources: "ödeme kaynağı",
-      computed_columns: "hesaplanan kolon",
-      installment_plans: "taksit planı",
-      credit_card_statements: "kart ekstresi",
-      subscriptions: "abonelik",
-      price_history: "fiyat geçmişi",
-      recurring_incomes: "düzenli gelir",
-      expected_payments: "beklenen ödeme",
-      balance_adjustments: "bakiye düzeltmesi",
-      cell_notes: "hücre notu",
-      settings: "ayar",
-      fx_rates: "döviz kuru",
-    },
+    syncQuarantineTypes,
     columnVisible: "Mali Tablo'da göster",
     deleteCategoryTitle: "Kalemi sil",
     deleteCategoryBody: (count: number) =>

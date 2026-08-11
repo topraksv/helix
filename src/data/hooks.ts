@@ -38,6 +38,15 @@ interface LiveValueResult<T> extends LiveSnapshot<T> {
   retry: () => void;
 }
 
+/** Local-only tables that never sync to Supabase but still emit SQLite
+ *  change events the live-query invalidation below listens for. */
+type LocalTableName = "outbox" | "sync_dead_letters" | "sync_state";
+/** Every table name a live query can scope its invalidation to. A raw
+ *  `string` here still compiled on a typo'd table name, and a typo'd name
+ *  never matches a change event — the screen silently stopped refreshing
+ *  after a write. */
+type TableScope = s.SyncedTableName | LocalTableName;
+
 /**
  * The engine both live hooks run on: execute the query, re-run it (debounced)
  * when a relevant local table changes, and retry forever with capped backoff
@@ -62,7 +71,7 @@ interface LiveValueResult<T> extends LiveSnapshot<T> {
  */
 function startLiveQueryRunner<T>(
   query: () => PromiseLike<T[]>,
-  tables: readonly string[] | undefined,
+  tables: readonly TableScope[] | undefined,
   apply: (transition: (previous: LiveSnapshot<T[]>) => LiveSnapshot<T[]>) => void,
 ): { retry: () => void; stop: () => void } {
   let attempt = 0;
@@ -89,7 +98,9 @@ function startLiveQueryRunner<T>(
 
   const listener = addDatabaseChangeListener((event) => {
     // Unknown table (or platform without table info) → conservative re-run.
-    if (tables && event?.tableName && !tables.includes(event.tableName)) return;
+    // event.tableName is a raw string from SQLite's update hook, not our
+    // closed TableScope union, so the membership check must widen it back.
+    if (tables && event?.tableName && !(tables as readonly string[]).includes(event.tableName)) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(run, 60); // coalesce bursts of change events
   });
@@ -110,7 +121,7 @@ function startLiveQueryRunner<T>(
 }
 
 /** Per-screen live query, parameterised by `deps` (a user, a month, a range). */
-function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly string[]): LiveResult<T> {
+function useLive<T>(query: PromiseLike<T[]>, deps: unknown[], tables?: readonly TableScope[]): LiveResult<T> {
   const retryRef = useRef<() => void>(() => {});
   const retry = useCallback(() => retryRef.current(), []);
   const [state, setState] = useState<LiveResult<T>>({ ...initialLiveSnapshot<T[]>([]), retry });
@@ -190,7 +201,7 @@ const sharedLive = new Map<string, SharedLiveEntry>();
 function acquireSharedLive<T>(
   key: string,
   query: () => PromiseLike<T[]>,
-  tables: readonly string[],
+  tables: readonly TableScope[],
 ): SharedLiveEntry {
   const existing = sharedLive.get(key);
   if (existing) return existing;
@@ -214,7 +225,7 @@ function acquireSharedLive<T>(
   return entry;
 }
 
-function useSharedLive<T>(key: string, query: () => PromiseLike<T[]>, tables: readonly string[]): LiveResult<T> {
+function useSharedLive<T>(key: string, query: () => PromiseLike<T[]>, tables: readonly TableScope[]): LiveResult<T> {
   const subscribe = useCallback(
     (onChange: () => void) => {
       const entry = acquireSharedLive(key, query, tables);
@@ -671,6 +682,28 @@ export function useInvestmentWalletSnapshot(): InvestmentWalletSnapshot {
 }
 
 /**
+ * Same rationale as `txLikeCache` just above: the tab navigator keeps
+ * Dashboard, Mali Tablo, item breakdown, `[month]` and others mounted at
+ * once, and a per-hook `useMemo` rebuilt the whole chain once per mounted
+ * screen on every write AND handed each screen a different `LedgerBundle`
+ * identity, which invalidated every downstream memo built on it too. Keyed
+ * on the exact inputs `buildLedgerBundle` receives — note that's the raw
+ * `adjustments` array (stable identity from the shared live query), not the
+ * `{ date, amountMinor }` array mapped from it below, which is a fresh
+ * identity every render and would never hit.
+ *
+ * Keyed by year rather than held in one slot: Dashboard pins the current year
+ * while Mali Tablo's year is user-selectable, and both stay mounted in the tab
+ * navigator. A single slot alternates between the two the moment those years
+ * differ and rebuilds the chain on every render of either — worse than the
+ * per-hook `useMemo` this replaces. Bounded to the handful of years that can
+ * be on screen at once so it stays a cache, not a leak.
+ */
+const LEDGER_CACHE_LIMIT = 4;
+type LedgerCacheEntry = { inputs: readonly unknown[]; value: LedgerBundle | null };
+const ledgerBundleCache = new Map<number, LedgerCacheEntry>();
+
+/**
  * Full chained ledger from start month through the requested year.
  *
  * Six screens read this, and the chain walks every transaction the account
@@ -698,18 +731,34 @@ export function useLedgerState(year: number): LiveValueResult<LedgerBundle | nul
   ]);
 
   const today = todayISO();
-  const data = useMemo(
-    () => buildLedgerBundle({
-      configuredStart: settingValue<MonthKey | null>(settings, "start_month", null),
-      openingBalanceMinor: settingValue<number>(settings, "opening_balance_minor", 0),
-      includePendingInCells: settingValue<boolean>(settings, "show_pending_in_table", true),
+  const configuredStart = settingValue<MonthKey | null>(settings, "start_month", null);
+  const openingBalanceMinor = settingValue<number>(settings, "opening_balance_minor", 0);
+  const includePendingInCells = settingValue<boolean>(settings, "show_pending_in_table", true);
+  const inputs = [configuredStart, openingBalanceMinor, includePendingInCells, txLike, adjustments, today] as const;
+  const cached = ledgerBundleCache.get(year);
+  let data: LedgerBundle | null;
+  if (cached && cached.inputs.length === inputs.length && cached.inputs.every((input, index) => input === inputs[index])) {
+    data = cached.value;
+  } else {
+    data = buildLedgerBundle({
+      configuredStart,
+      openingBalanceMinor,
+      includePendingInCells,
       transactions: txLike,
       adjustments: adjustments.map((row) => ({ date: row.date, amountMinor: row.amountMinor })),
       year,
       today,
-    }),
-    [settings, txLike, adjustments, year, today],
-  );
+    });
+    // Delete before set so the re-inserted year moves to the end of Map's
+    // insertion order, making the eviction below least-recently-used.
+    ledgerBundleCache.delete(year);
+    ledgerBundleCache.set(year, { inputs, value: data });
+    while (ledgerBundleCache.size > LEDGER_CACHE_LIMIT) {
+      const oldest = ledgerBundleCache.keys().next();
+      if (oldest.done) break;
+      ledgerBundleCache.delete(oldest.value);
+    }
+  }
   return { data, status, error, updatedAt, retry };
 }
 

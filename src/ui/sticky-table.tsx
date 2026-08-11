@@ -11,7 +11,7 @@
  * scrolling once the table has focus.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
 import Pin from "lucide-react-native/icons/pin";
 import type { LucideIcon } from "lucide-react-native";
@@ -293,16 +293,43 @@ export function StickyTable({
   const horizontalFocusSig = useRef("");
   const verticalFocusSig = useRef("");
 
+  // Every column header and row label reports its own height via `onLayout`.
+  // On first mount that is ~38 calls (25 columns + 12 rows + the corner), and
+  // each used to be its own `setLabelHeights` — ~38 re-renders of the whole
+  // non-virtualized grid before anything settled, repeating on every pivot or
+  // year change. Accumulate in a ref (no render) and flush once per frame, so
+  // the whole storm collapses to one state update per animation frame.
+  const labelHeightsRef = useRef<Record<string, number>>({});
+  const labelFlushHandle = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+  // Re-armed on setup, not only cleared on teardown: an effect that runs twice
+  // (StrictMode, fast refresh) would otherwise leave the flag false forever and
+  // silently stop every later flush, freezing the table at its default heights.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (labelFlushHandle.current != null) cancelAnimationFrame(labelFlushHandle.current);
+    };
+  }, []);
+  const measureLabel = useCallback((key: string, textHeight: number, extraHeight = 0) => {
+    const measured = Math.ceil(textHeight + spacing.xs * 2 + extraHeight);
+    if (labelHeightsRef.current[key] === measured) return;
+    labelHeightsRef.current[key] = measured;
+    if (labelFlushHandle.current != null) return;
+    labelFlushHandle.current = requestAnimationFrame(() => {
+      labelFlushHandle.current = null;
+      if (!mountedRef.current) return;
+      setLabelHeights({ ...labelHeightsRef.current });
+    });
+  }, []);
+
   const pinnedIndex = pinnedKey ? columns.findIndex((c) => c.key === pinnedKey) : -1;
   const pinnedCol = pinnedIndex >= 0 ? columns[pinnedIndex] : null;
   const scrollCols = columns.filter((_, i) => i !== pinnedIndex);
   const colIndexByKey = new Map(columns.map((c, i) => [c.key, i]));
   const cellCenter = { justifyContent: "center" as const, paddingHorizontal: headHorizontalPadding };
   const leftWidth = headWidth + (pinnedCol ? cellWidth : 0);
-  const measureLabel = (key: string, textHeight: number, extraHeight = 0) => {
-    const measured = Math.ceil(textHeight + spacing.xs * 2 + extraHeight);
-    setLabelHeights((current) => current[key] === measured ? current : { ...current, [key]: measured });
-  };
   const headerKeys = ["header:corner", ...columns.map((column) => `header:${column.key}`)];
   const resolvedHeaderHeight = Math.max(headerHeight, ...headerKeys.map((key) => labelHeights[key] ?? 0));
   const resolvedRowHeights = rows.map((row) => Math.max(rowHeight, labelHeights[`row:${row.key}`] ?? 0));
