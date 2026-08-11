@@ -37,8 +37,34 @@ const head = stdout.trim();
 const graph = JSON.parse(await readFile(graphPath, "utf8"));
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
+const isControlPlanePath = (path) => [
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".gitignore",
+  "quality/audit.json",
+  "scripts/quality-audit.mjs",
+].includes(path)
+  || path.startsWith(".github/")
+  || path.startsWith(".ai/")
+  || path.startsWith(".agents/")
+  || path.startsWith(".claude/");
+let graphNote = "";
 if (graph.built_at_commit !== head) {
-  errors.push(`built_at_commit ${graph.built_at_commit ?? "missing"} does not equal HEAD ${head}`);
+  try {
+    const { stdout: graphDeltaOutput } = await execFile(
+      "git",
+      ["diff", "--name-only", `${graph.built_at_commit}..${head}`],
+      { cwd: root },
+    );
+    const graphDelta = graphDeltaOutput.split("\n").map((path) => path.trim()).filter(Boolean);
+    if (graph.built_at_commit && graphDelta.length > 0 && graphDelta.every(isControlPlanePath)) {
+      graphNote = `; graph at ${graph.built_at_commit.slice(0, 12)}, control-plane-only delta through HEAD`;
+    } else {
+      errors.push(`built_at_commit ${graph.built_at_commit ?? "missing"} does not equal HEAD ${head}`);
+    }
+  } catch {
+    errors.push(`built_at_commit ${graph.built_at_commit ?? "missing"} cannot be compared with HEAD ${head}`);
+  }
 }
 const entries = Object.entries(manifest);
 if (entries.length === 0) errors.push("manifest is empty");
@@ -65,4 +91,4 @@ if (errors.length > 0) {
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
-console.log(`Graphify freshness: CURRENT (${head.slice(0, 12)}, ${entries.length} manifest sources)`);
+console.log(`Graphify freshness: CURRENT (${head.slice(0, 12)}, ${entries.length} manifest sources${graphNote})`);

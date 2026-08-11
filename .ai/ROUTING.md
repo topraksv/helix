@@ -80,7 +80,8 @@ Before relying on `graphify-out/graph.json`, run:
 node .ai/scripts/check-graphify-freshness.mjs --required
 ```
 
-The check requires the graph commit, manifest coverage and manifest scan
-timestamp to match the current source snapshot. Query/path/explain are read-only. `graphify
+The check requires the graph commit to match the source snapshot, or to differ
+only by a declared control-plane delta; it also checks manifest coverage and
+the manifest scan timestamp. Query/path/explain are read-only. `graphify
 update .` is a separate, visible refresh step after source edits; it may mutate
 ignored generated output and must never silently run during a query.

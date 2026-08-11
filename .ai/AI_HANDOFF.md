@@ -7,7 +7,7 @@ memory. Stable contracts live in `AGENTS.md`, `.ai/ROUTING.md` and
 
 ## Current state
 
-updated_at: 2026-08-11T16:38:14+0300
+updated_at: 2026-08-11T16:45:24+0300
 verified_at_commit: 4b2fbfb
 working_tree: RUN 1 control-plane reconstruction is locally complete; signed commit and push remain
 branch: main, currently at 4b2fbfb
@@ -90,11 +90,12 @@ source_paths:
   - .github/workflows/ci.yml
   - package.json
 
-- Commit and push the corrective CI checkout change, then watch the replacement
-  CI/release channels to completion. The first remote run reached `classify`
-  and `control:check` but stopped at `quality:audit` because the quality job's
-  shallow checkout could not resolve the audited parent; the security workflow
-  passed. The fix is staged in `.github/workflows/ci.yml`.
+- Commit and push the pending Graphify freshness fix; the CI checkout fix is
+  already in local commit `51794a0` but is not yet on `origin/main`. Then watch
+  the replacement CI/release channels to completion. The first remote run
+  reached `classify` and `control:check` but stopped at `quality:audit` because
+  the quality job's shallow checkout could not resolve the audited parent; the
+  security workflow passed.
 - Claude runtime activation could not be exercised locally because no `claude`
   binary is installed; official symlink support and the filesystem bridge were
   checked, while Codex discovery was exercised directly.
@@ -146,9 +147,9 @@ source_paths:
   - package.json
   - .github/workflows/ci.yml
 
-- `main` and `origin/main` are currently synchronized at signed commit
-  `a845382`; the RUN 1 control-plane change is pushed, with the corrective CI
-  checkout change pending its signed commit/push.
+- Local `main` is at signed commit `51794a0`; `origin/main` is at `a845382`.
+  The RUN 1 control-plane change and CI checkout fix are pushed only through
+  `a845382`; the Graphify freshness fix is staged for the next signed push.
 - Web remains published on GitHub Pages and mobile remains an Expo Go preview
   OTA; no standalone binary or store submission exists.
 - No linked/remote Supabase migration or production database mutation is part of
