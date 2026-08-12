@@ -1,12 +1,31 @@
 import { defineConfig } from "vitest/config";
 
 const criticalDomainFiles = [
+  "src/data/repo/investment-validation.ts",
+  "src/data/repo/rule-validation.ts",
+  "src/domain/analytics.ts",
+  "src/domain/balance-declaration.ts",
   "src/domain/money.ts",
   "src/domain/balance.ts",
+  "src/domain/cash-flow-matrix.ts",
   "src/domain/card-statements.ts",
+  "src/domain/dashboard.ts",
+  "src/domain/dates.ts",
+  "src/domain/expected.ts",
+  "src/domain/fx.ts",
+  "src/domain/investment-projection.ts",
   "src/domain/recurrence.ts",
   "src/domain/transaction-draft.ts",
   "src/domain/investments.ts",
+  "src/domain/market.ts",
+  "src/domain/onboarding.ts",
+  "src/domain/privacy.ts",
+  "src/domain/route-params.ts",
+  "src/domain/serial-queue.ts",
+  "src/domain/transaction-search.ts",
+  "src/domain/types.ts",
+  "src/domain/user-id.ts",
+  "src/domain/year-columns.ts",
 ];
 
 export default defineConfig({
