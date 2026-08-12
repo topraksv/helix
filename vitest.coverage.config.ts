@@ -39,6 +39,7 @@ const criticalDomainFiles = [
   "src/domain/transaction-search.ts",
   "src/domain/transactions.ts",
   "src/domain/types.ts",
+  "src/domain/undo-outcome.ts",
   "src/domain/upcoming.ts",
   "src/domain/user-id.ts",
   "src/domain/web-security.ts",
