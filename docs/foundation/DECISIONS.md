@@ -67,3 +67,26 @@ skills cover testing, debugging, design, documentation, review, and Git
 fallbacks. Store release remains a separately authorized task; Expo feedback
 uses the command already embedded in the installed Expo skills. This preserves
 upstream updateability without leaving routing ambiguous.
+
+### D008 — Execute no Phase 2 deletion
+
+The deletion proof produced no repository-owned candidate. `npm run
+audit:unused` exited 1 only for two files inside vendored skill bodies, which
+are outside the editable scope; it reported no unused application file or
+dependency. A tracked-file hash scan found only the two splash/brand image
+pairs whose separate native and OTA lifecycles are documented in
+`ARCHITECTURE.md`. Every asset is referenced by app configuration, source,
+README, font generation, or a contract test. The only empty directories found
+belong to ignored Supabase CLI state. Root scripts and configuration are
+reached by package scripts, app configuration, tests, workflows, or their
+tool's root-discovery contract. Deleting nothing is safer than turning an
+advisory absence of imports into authority.
+
+### D009 — Rank only moves that improve an actual seam
+
+`PROPOSED-MOVES.md` proposes three changes with concrete dependency evidence:
+consolidating backup persistence ownership, isolating live-query internals
+behind the current interface, and relocating pure category-icon policy. Large
+files were not proposed for splitting when they already concentrate related
+behavior behind a small interface. All three remain owner-approval work; this
+reset changes no path or import under `src/`.

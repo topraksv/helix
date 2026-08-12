@@ -80,9 +80,47 @@ This file is the cold-resume log for the unattended foundation reset on
 - Left: commit and push the instruction-layer checkpoint, then inventory Phase
   2 hygiene candidates and prove every executable deletion independently.
 
+## 2026-08-12 — Repository hygiene inventory completed
+
+- Did: scanned empty directories, tracked-file hashes, assets, root scripts and
+  configuration, source entry points, workflow references, and historical
+  compatibility markers. Ran knip as advisory evidence and traced every
+  candidate through source, tests, E2E, scripts, workflows, config, and the
+  architecture rationale.
+- Proved: knip's non-zero result named only two files inside immutable vendored
+  skills and no repository-owned code or dependency; the only tracked duplicate
+  hashes are the documented native-splash/OTA-brand pairs; the only empty
+  directories are ignored Supabase CLI state. No safe deletion exists, so no
+  deletion commit is warranted. Decision D008 records the full judgment.
+- Left: commit the proposal-only source-move report, run the Phase 2 gate, then
+  perform the required second sweep and final verification.
+
+## 2026-08-12 — Source moves proposed, not executed
+
+- Did: read the architecture contract and ranked three changes in
+  `docs/foundation/PROPOSED-MOVES.md` by value and risk: backup/restore
+  ownership, live-query internals, and category-icon policy placement.
+- Proved: each proposal names its present dependencies, intended interface,
+  preserved callers, risk, and approval conditions. The report also excludes
+  intentional duplicate assets, root navigation aliases, root configuration,
+  and size-only file splitting.
+- Left: run the Phase 2 gate. No file, import, rename, or layer under `src/` was
+  changed.
+
+## 2026-08-12 — Phase 2 gate passed
+
+- Did: ran `npm run control:check && npx tsc --noEmit && npx vitest run` after
+  the hygiene verdict and proposal-only move report were complete.
+- Proved: control check validated all 34 skills and both control-plane layers;
+  TypeScript exited cleanly; Vitest passed 110 files / 970 tests in 5.25
+  seconds. The Phase 2 diff contains documentation only.
+- Left: commit and push the Phase 2 report, perform the required second sweep,
+  run final verification, and record final status plus rollback instructions.
+
 ## Current phase status
 
 - Phase 0: done — gate passed (34 skills; clean typecheck; 110/970 tests).
 - Phase 1: done — gate passed (34 skills; clean typecheck; 110/970 tests).
-- Phase 2: pending.
+- Phase 2: done — no safe deletion; proposals recorded; gate passed (34 skills;
+  clean typecheck; 110/970 tests).
 - Final verification: pending.
