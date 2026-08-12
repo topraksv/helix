@@ -55,6 +55,8 @@ describe("identity and network boundary validation", () => {
     expect(nameMentions("Netflix", "flix")).toBe(false);
     expect(nameMentions("Netflix", "")).toBe(false);
     expect(nameMentions("Müzik", "video")).toBe(false);
+    expect(nameMentions("", "")).toBe(false);
+    expect(nameMentions("", "video")).toBe(false);
   });
 
   it("rejects absent, oversized, malformed, and invalid-label favicon domains", () => {
@@ -73,6 +75,7 @@ describe("identity and network boundary validation", () => {
     expect(trustedSupabaseOrigin("https://project.supabase.co?token=x")).toBeNull();
     expect(trustedSupabaseOrigin("https://project.supabase.co#fragment")).toBeNull();
     expect(trustedSupabaseOrigin("https://project.supabase.co:444")).toBeNull();
+    expect(trustedSupabaseOrigin("https://evil.project.supabase.co")).toBeNull();
     expect(trustedSupabaseOrigin("https://project.supabase.co/")).toBe("https://project.supabase.co");
   });
 });
