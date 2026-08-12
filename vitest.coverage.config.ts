@@ -1,8 +1,10 @@
 import { defineConfig } from "vitest/config";
 
 const criticalDomainFiles = [
+  "src/data/repo/import-plan.ts",
   "src/data/repo/investment-validation.ts",
   "src/data/repo/rule-validation.ts",
+  "src/data/repo/settings.ts",
   "src/domain/analytics.ts",
   "src/domain/app-guard.ts",
   "src/domain/balance-declaration.ts",
@@ -30,6 +32,7 @@ const criticalDomainFiles = [
   "src/domain/privacy.ts",
   "src/domain/route-params.ts",
   "src/domain/serial-queue.ts",
+  "src/domain/settings.ts",
   "src/domain/subscriptions.ts",
   "src/domain/transaction-search.ts",
   "src/domain/transactions.ts",
