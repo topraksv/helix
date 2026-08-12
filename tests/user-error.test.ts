@@ -14,7 +14,9 @@ import { tr } from "../src/i18n/tr";
 
 describe("userMessage", () => {
   it("passes an authored user-facing message through", () => {
-    expect(userMessage(new UserFacingError(tr.errors.backupTooLarge), tr.errors.saveFailed))
+    const authored = new UserFacingError(tr.errors.backupTooLarge);
+    expect(authored.name).toBe("UserFacingError");
+    expect(userMessage(authored, tr.errors.saveFailed))
       .toBe(tr.errors.backupTooLarge);
     expect(userMessage(new UserFacingError(tr.importer.fileTooLarge), tr.errors.requestFailed))
       .toBe(tr.importer.fileTooLarge);
