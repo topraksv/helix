@@ -16,8 +16,11 @@ import { createSerialQueue } from "../src/domain/serial-queue";
 
 let runMaintenanceQueued: ReturnType<typeof createSerialQueue<void>>;
 
-/** Let every queued microtask settle. */
-const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** Let the promise chain advance without depending on a real timer turn. */
+async function flushQueue(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 /** A controllable pass: resolves only when its deferred is released. */
 function deferredPass() {
@@ -39,7 +42,7 @@ describe("runMaintenanceQueued", () => {
   it("runs a single request immediately", async () => {
     const { pass, starts, releases } = deferredPass();
     const run = runMaintenanceQueued("u1", pass);
-    await tick();
+    await flushQueue();
     expect(starts).toEqual(["u1"]);
     releases[0]?.();
     await expect(run).resolves.toBeUndefined();
@@ -49,12 +52,12 @@ describe("runMaintenanceQueued", () => {
     const { pass, starts, releases } = deferredPass();
     const first = runMaintenanceQueued("u1", pass);
     const second = runMaintenanceQueued("u1", pass);
-    await tick();
+    await flushQueue();
     // The second must NOT have started while the first is unresolved.
     expect(starts).toEqual(["u1"]);
     releases[0]?.();
     await first;
-    await tick();
+    await flushQueue();
     expect(starts).toEqual(["u1", "u1"]);
     releases[1]?.();
     await expect(second).resolves.toBeUndefined();
@@ -69,11 +72,11 @@ describe("runMaintenanceQueued", () => {
     const second = runMaintenanceQueued("u1", pass).then(() => {
       secondSettled = true;
     });
-    await tick();
+    await flushQueue();
     expect(secondSettled).toBe(false);
     releases[0]?.();
     await first;
-    await tick();
+    await flushQueue();
     // A real second pass exists and the caller is still waiting for it.
     expect(starts).toHaveLength(2);
     expect(secondSettled).toBe(false);
@@ -86,7 +89,7 @@ describe("runMaintenanceQueued", () => {
     const { pass, starts, releases } = deferredPass();
     const a = runMaintenanceQueued("user-a", pass);
     const b = runMaintenanceQueued("user-b", pass);
-    await tick();
+    await flushQueue();
     // Both start: the chain is per user, not global.
     expect(starts).toEqual(["user-a", "user-b"]);
     releases[0]?.();
@@ -116,7 +119,7 @@ describe("runMaintenanceQueued", () => {
         rejectFirst = reject;
       }));
     const second = runMaintenanceQueued("u1", async (userId: string) => { ran.push(userId); });
-    await tick();
+    await flushQueue();
     expect(ran).toEqual([]);
     rejectFirst?.(new Error("boom"));
     await expect(first).rejects.toThrow();
@@ -129,7 +132,7 @@ describe("runMaintenanceQueued", () => {
     await runMaintenanceQueued("u1", async () => {});
     const { pass, starts, releases } = deferredPass();
     const later = runMaintenanceQueued("u1", pass);
-    await tick();
+    await flushQueue();
     // Nothing pending from before, so this starts on the next microtask.
     expect(starts).toEqual(["u1"]);
     releases[0]?.();

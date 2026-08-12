@@ -17,10 +17,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = new Map<string, string>();
+let nextSetObserver: ((write: { key: string; value: string }) => void) | null = null;
 vi.mock("../src/services/kv", () => ({
   kv: {
     get: async (key: string) => store.get(key) ?? null,
-    set: async (key: string, value: string) => { store.set(key, value); },
+    set: async (key: string, value: string) => {
+      store.set(key, value);
+      nextSetObserver?.({ key, value });
+      nextSetObserver = null;
+    },
     remove: async (key: string) => { store.delete(key); },
   },
 }));
@@ -36,6 +41,16 @@ const UPLOADED_KEY = "helix.diagnostic_events.uploaded.v1";
 
 const event = (at: string, scope = "sync.push", code = "network") =>
   ({ at, scope, severity: "error" as const, code: code as "network" });
+
+function observeNextSet(): Promise<{ key: string; value: string }> {
+  return new Promise((resolve) => { nextSetObserver = resolve; });
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 function port(rows: DiagnosticUpload[][], fail = false) {
   return {
@@ -112,9 +127,9 @@ describe("uploadDiagnostics", () => {
     store.set(EVENTS_KEY, JSON.stringify([event("2026-08-01T00:00:00.000Z")]));
     const before = store.get(EVENTS_KEY);
     await uploadDiagnostics(port([], true), "user-1", "web", "1.0.0");
-    // Give the ring's serialized writer a turn; `recordDiagnostic` is fire and
-    // forget, so a regression here would land just after the await above.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // A diagnostic write is a microtask-only chain. Drain that queue without a
+    // wall-clock turn so a self-recording regression cannot land after assert.
+    await flushMicrotasks();
     expect(store.get(EVENTS_KEY), "an upload failure must not become an incident").toBe(before);
   });
 
@@ -132,8 +147,9 @@ describe("uploadDiagnostics", () => {
   });
 
   it("uploads what the recorder actually wrote, end to end", async () => {
+    const recorded = observeNextSet();
     recordDiagnostic("sync.push", "error", new Error("fetch failed: offline"));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((await recorded).key).toBe(EVENTS_KEY);
     const batches: DiagnosticUpload[][] = [];
     expect(await uploadDiagnostics(port(batches), "user-1", "android", "1.2.3")).toBe(1);
     const row = batches[0]![0]!;
