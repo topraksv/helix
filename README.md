@@ -82,27 +82,13 @@ finansal veri dışarı çıkmaz.
 
 | Platform | Durum |
 |---|---|
-| Web | Uygulamayı etkileyen `main` değişiklikleri yeşil kapıdan sonra GitHub Pages'e otomatik yayımlanır — [canlı sürüm](https://topraksv.github.io/helix/) |
-| iOS | Uygulama değişiklikleri yeşil kapıdan sonra EAS `preview` branch'ine yayımlanır ve Expo Go'dan açılır |
-| Android | Aynı `preview` update Expo Go için yayımlanır; fiziksel cihaz kabulü **henüz yapılmadı** |
+| Web | GitHub Pages'teki [canlı sürüm](https://topraksv.github.io/helix/) yalnız açıkça yetkilendirilmiş manuel release ile güncellenir |
+| iOS / Android | Yetkilendirilmiş EAS `preview` update'i Expo Go ile açılır; fiziksel cihaz kabulü **henüz yapılmadı** |
 
 Mobil kullanım Expo Go'nun SDK 54 içinde sunduğu native kütüphanelerle sınırlıdır.
 EAS Build, development client, TestFlight ve store submission bu teslim yolunun
 parçası değildir; fiziksel cihazda açılış yapılmadan cihaz kabulü doğrulanmış
 sayılmaz.
-
-## Mimari özet
-
-| Katman | Karar |
-|---|---|
-| Uygulama | Expo SDK 54, React Native 0.81, React 19, Expo Router |
-| Yerel veri | `expo-sqlite` (async) + Drizzle; UI doğrudan SQL çağırmaz |
-| Veri erişimi | [`src/data/repo.ts`](src/data/repo.ts) kararlı facade; implementasyonlar `src/data/repo/` altında |
-| Saf mantık | `src/domain/` — para, tarih, bakiye, taksit, recurrence; React ve I/O içermez |
-| Sync | Atomik yazım + outbox, server-authoritative `updated_at`, dead-letter karantinası |
-| Remote | Supabase Auth/Postgres; owner-only RLS |
-| Para/tarih | Integer kuruş; `YYYY-MM-DD` tarih, `YYYY-MM` ay anahtarları |
-| Arayüz | Ortak primitive'ler + tek tema kaynağı ([`src/ui/theme.ts`](src/ui/theme.ts)) |
 
 ## Tasarım
 
@@ -148,18 +134,17 @@ npm run test:e2e:smoke   # kritik tarayıcı senaryoları
 npm run verify:full      # + production export, bundle bütçesi, tüm Playwright
 ```
 
-GitHub Actions aynı adımları `main` push'unda değişikliğin riskine göre koşar:
-düşük riskli değişiklikte smoke E2E, yüksek riskli değişiklikte iki shard'a
-bölünmüş tam E2E paketi. Web ancak hepsi geçtiğinde yayımlanır.
+GitHub Actions `main` push'unda kalite, web export/bütçe ve smoke E2E'yi koşar;
+tam browser paketi nightly veya açıkça istenen çalıştırmada üç shard'a bölünür.
+Yayın ayrı, hedefi belirtilmiş manuel dispatch ister.
 
 ## Teslim modeli
 
-`main`'e push değişiklikleri önce tek risk kapısından geçirir. Web, aynı koşuda
-export edilip bütçesi ölçülen immutable artefaktı yayımlar. Uygulama kodu,
-shipped asset veya bundle yapılandırması değiştiğinde aynı commit sabitlenmiş
-EAS CLI ile iOS ve Android için `preview` branch'ine yayımlanır; Expo Go SDK 54
-runtime'ı kullanılır ve hiçbir binary oluşturulmaz. Geri alma `git revert`
-iledir; force push ve history rewrite kullanılmaz.
+`main`'e push kalite kapısını çalıştırır, yayınlamaz. Yetkilendirilmiş web
+dispatch'i aynı koşuda export edilip bütçesi ölçülen immutable artefaktı;
+yetkilendirilmiş mobile dispatch'i aynı commit'i sabit EAS CLI ile `preview`
+branch'ine yollar. Hiçbir binary oluşturulmaz. Ayrıntı ve rollback sınırı
+[`docs/RELEASE.md`](docs/RELEASE.md) belgesindedir.
 
 ## Lisans / License
 

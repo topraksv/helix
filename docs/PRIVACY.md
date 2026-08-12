@@ -1,168 +1,113 @@
 # Helix gizlilik ve veri kullanımı
 
-Bu belge Helix’in mevcut kodunun teknik veri davranışını açıklar; hukukî danışmanlık
-veya üçüncü taraf hizmetlerin kendi gizlilik politikalarının yerine geçmez. Kod ile
-bu metin ayrışırsa sorun olarak raporlanmalı, metin sessizce daha güçlü bir garanti
-vermemelidir. Güven sınırlarının mühendislik tarafı ve doğrulama matrisi
-[SECURITY.md](SECURITY.md) belgesindedir.
+Bu belge uygulamanın mevcut teknik veri davranışını açıklar; hukukî danışmanlık
+ve üçüncü taraf politikalarının yerine geçmez. Kod ile metin ayrışırsa daha
+güçlü bir garanti varsayılmaz, ayrışma hata olarak düzeltilir. Güven sınırları ve
+artık riskler [`SECURITY.md`](SECURITY.md) belgesindedir.
 
 ## Kısa cevap
 
-- Finansal kayıtların önce cihazdaki SQLite veritabanına yazılır.
-- Supabase yapılandırılmamışsa uygulama local-only çalışır; Helix sync backend’ine
-  finansal veri göndermez.
-- Hesaplı modda kayıtlar bağlantı olduğunda Supabase’e eşitlenir ve her satır
-  kullanıcı kimliğiyle owner-only RLS altında tutulur.
-- Helix reklam SDK’sı, davranışsal izleme veya production analytics/crash SDK’sı
-  içermez.
-- Bildirim izni boot sırasında istenmez; kilit ekranı finansal ayrıntıyı varsayılan
-  olarak göstermez.
-- Export edilen JSON/CSV dosyaları şifrelenmiş kasa değildir. Paylaşıldığı konumun
-  korunması kullanıcının ve işletim sisteminin sorumluluğundadır.
+- Finansal kayıtlar önce cihazdaki SQLite veritabanına yazılır.
+- Supabase yapılandırılmamışsa uygulama local-only çalışır ve finansal veriyi
+  Helix sync backend'ine göndermez.
+- Hesaplı modda kayıtlar bağlantı olduğunda Supabase'e eşitlenir; owner-only RLS
+  her hesabı diğerinden ayırır.
+- Reklam, davranış analitiği, session recording veya production crash SDK'sı
+  yoktur.
+- Bildirim izni açılışta istenmez; finansal lock-screen ayrıntısı varsayılan
+  olarak kapalıdır.
+- JSON ve CSV export şifreli kasa değildir.
 
-## Hangi veri nerede tutulur?
+## Verinin yeri
 
-| Veri | Local-only | Hesaplı mod | Not |
-|---|---|---|---|
-| İşlem, kategori, taksit, abonelik, düzenli gelir, kişi, ödeme yöntemi, bütçe, not, ayar | Cihaz SQLite | Cihaz SQLite + Supabase Postgres | Uygulamanın temel finansal verisi |
-| Sync outbox/dead-letter/cursor | Cihaz SQLite | Cihaz SQLite; geçerli satırlar sync için Supabase’e gider | Bozuk event local karantinada kalır; payload UI’da gösterilmez |
-| E-posta, auth identity | Yok | Supabase Auth | Kimlik doğrulamayı Supabase Auth yürütür; parola uygulama tarafından okunabilir biçimde saklanmaz ve hiçbir Helix tablosunda tutulmaz |
-| Auth session | Yok | Native’de SecureStore; web’de Supabase’in browser storage’ı | Web browser profiline erişebilen kişi session’a erişebilir |
-| Bildirim tercihi ve planı | Cihaz | Cihaz | Device-local; hesap değişiminde temizlenir |
-| Kur cache’i | Cihaz | Kullanıcı-scoped cihaz/remote satırları | Kaynak tarihiyle tutulur |
-| İç hata kırıntısı halkası | Cihaz | Cihaz | Bounded ve redacted; tutar/not/e-posta/token/payload kabul etmez; son kullanıcı ekranı değildir |
+| Veri | Local-only | Hesaplı mod |
+|---|---|---|
+| İşlemler, kategoriler, bütçeler, notlar ve diğer finansal kayıtlar | Cihaz SQLite | Cihaz SQLite + kullanıcıya ait Supabase satırları |
+| Sync outbox, cursor ve bozuk-satır karantinası | Cihaz | Cihaz; yalnız doğrulanmış satırlar gönderilir |
+| E-posta ve auth identity | Yok | Supabase Auth |
+| Auth session | Yok | Native'de SecureStore; web'de browser storage |
+| Bildirim, biyometrik ve görünüm tercihleri | Cihaz | Cihaz |
+| Tarihli döviz kuru snapshot'ları | Cihaz | Cihaz + kullanıcıya ait Supabase `fx_rates` satırları |
+| Canlı piyasa fiyatı cache'i | Cihaz | Cihaz; kişisel finans payload'ı içermez |
+| Redacted hata olayları | Son 12 olay cihazda | Cihaz + giriş yapılmışsa kullanıcıya ait Supabase `diagnostic_events` satırları |
 
-İşletim sistemi ve browser kendi backup/cache davranışına sahip olabilir.
-Bugün kanıtlanmış olan koruma şudur: oturum materyali iOS'ta `expo-secure-store`
-üzerinden Keychain'de tutulur, finansal veri uygulamanın kendi sandbox'ındaki
-SQLite dosyasındadır ve uygulama kendi şifreleme katmanını (ör. SQLCipher)
-yazmaz. iOS native build `NSFileProtectionComplete` entitlement'ı ile
-yapılandırılmıştır, ancak bu yalnız yerel cihaz build'inde etkinleşir ve
-**gerçek cihazda henüz doğrulanmadı** — bu yüzden "cihaz kilitliyken tüm
-finansal dosyalar okunamaz" garantisi verilmez; ayrıntı
-[SECURITY.md](SECURITY.md) ve [TESTING.md](TESTING.md) cihaz matrisindedir.
-Web'de SQLite/OPFS ve `localStorage` güvenliği browser profili ve cihaz
-hesabının güvenliğine bağlıdır.
+İşletim sistemi ve browser kendi backup/cache davranışına sahip olabilir. iOS
+build'i `NSFileProtectionComplete` ister, Android app backup'ı kapalıdır; Helix
+SQLCipher gibi ayrı bir uygulama şifreleme katmanı kullanmaz. Web güvenliği
+browser profili ve cihaz hesabına bağlıdır. Donanım ve OS davranışı ancak o
+build'de yapılan cihaz kabulüyle doğrulanmış sayılır.
 
-## Sync ve yetkilendirme
+## Sync ve hesap sınırı
 
-Kullanıcı yazıları önce tek local transaction’da veri + outbox olarak kaydolur.
-Bağlantıda push edilir, server’ın normalize ettiği `updated_at` cevabı alınır ve
-sonra ilgili outbox event’i kaldırılır. Pull satırları runtime’da doğrulanır; bozuk
-veya foreign veri cursor’ın arkasına saklanmaz. Tombstone nesli duvar saatinden
-önceliklidir; silmeyi görmemiş eski bir cihaz daha ileri saatle yazsa bile kaydı
-diriltemez.
+Her yazma veri + outbox olarak tek local transaction'a iner. Server'ın
+normalize ettiği zaman damgası alınmadan event kaldırılmaz. Pull satırları
+sahiplik ve şekil açısından doğrulanır; bozuk veya yabancı satır cursor'ın
+arkasına saklanmaz. Tombstone nesli, uzun süre offline kalan eski bir cihazın
+silinmiş kaydı ileri saatiyle diriltmesini engeller.
 
-Remote tarafta erişim sınırı tek yerde, Postgres satır güvenliğindedir: her satır
-kendi sahibine bağlıdır, başka bir hesap onu okuyamaz veya sahipliğini
-değiştiremez, oturumsuz istek hiçbir satıra ulaşamaz. Client’taki gizli buton veya
-route guard yetkilendirme sayılmaz. Uygulama yalnız publishable anon anahtarını
-taşır; service-role anahtarı uygulamaya veya `EXPO_PUBLIC_*` env’e konmaz.
-Policy, trigger ve grant ayrıntısı: [SECURITY.md](SECURITY.md).
+Yetkilendirme client butonunda değil Postgres RLS'tedir. Uygulama yalnız public
+Supabase URL'i ve publishable anon anahtarını taşır; service-role anahtarı
+client'a veya `EXPO_PUBLIC_*` değişkenine konmaz.
 
-## Üçüncü taraf ağ istekleri
+## Üçüncü taraf bağlantıları
 
-| Hizmet | Neden | Gönderilen/verilen | Sınır |
-|---|---|---|---|
-| Supabase | Auth ve isteğe bağlı sync | E-posta/auth protokolü; kullanıcıya ait finance satırları | Hesaplı modda; RLS owner-only |
-| Expo EAS Update | Kurulu uygulamaya JS/asset update | Runtime/channel ve update istemi; ağ sağlayıcısı normal bağlantı metadata’sını görebilir | Finansal payload update isteğine eklenmez |
-| GitHub Pages | Web uygulamasını sunmak | Normal HTTP metadata | Finansal veri app tarafında browser storage/Supabase akışındadır |
-| TCMB | Resmî TRY kuru — **yalnız native**; `today.xml` CORS başlığı göndermediği için web bu kaynağı hiç çağırmaz | Salt okunur GET | Timeout, boyut/şekil/tarih doğrulaması |
-| exchangerate-api (open uç nokta) | Web’de tek kur kaynağı; native’de TCMB alınamazsa fallback | Salt okunur GET; hiçbir kullanıcı verisi gönderilmez | Anahtarsız; yanıtın kendi yayın zamanı saklanır, “bugün” uydurulmaz |
-| Harem Altın websocket | Canlı altın/döviz piyasa kartı | Salt okunur socket bağlantısı | Resmî SLA yok; 60 sn feed sessizliğinde veri canlı sayılmaz. Son geçerli fiyatlar zaman damgasıyla cihazda saklanır (kişisel veri içermez); hesap makinesi çevirisi bu son kuru ancak zaman damgasını açıkça göstererek kullanır, deftere yazan dönüşümler yalnız 60 sn içinde teyitli canlı kuru kabul eder |
-| Google favicon | Bilinen abonelik logosu | Sıkı doğrulanmış/encode edilmiş public domain | İstek `google.com/s2`'ye gider ve Google `*.gstatic.com`'a yönlendirir; utility, unknown, IP/local/invalid host gönderilmez; disk cache + local fallback var |
+| Hizmet | Amaç | Gönderilen veri |
+|---|---|---|
+| Supabase | İsteğe bağlı auth, sync ve redacted hata kaydı | E-posta/auth protokolü, hesaba ait finans satırları ve aşağıda sınırlanan hata metadata'sı |
+| Expo EAS Update | Preview JS/asset update | Runtime/channel isteği; finansal payload yok |
+| GitHub Pages | Statik web uygulaması | Normal HTTP bağlantı bilgisi |
+| TCMB / exchangerate-api | TRY kurları | Salt okunur istek; kullanıcı verisi yok |
+| Harem Altın websocket | Canlı piyasa kartı | Salt okunur bağlantı; kullanıcı verisi yok |
+| Google favicon | Doğrulanmış abonelik domain'i için logo | Encode edilmiş public domain; bilinmeyen/local/IP host gönderilmez |
 
-Uygulama production'da kendi doğrudan console log'unu üretmez. Development logger
-token, şifre veya ham import verisi almamalıdır. Şu anda merkezi crash reporting
-yoktur; yalnız kapsam, hata sınıfı ve zamanı içeren küçük bir cihaz-içi halka tutulur.
+Kur ve piyasa yanıtları timeout, boyut, şekil, tarih ve tazelik sınırlarından
+geçer. Resmî SLA'sı olmayan Harem verisi 60 saniye sessizlikten sonra canlı
+sayılmaz. Uygulama kendi production console log'una finansal payload yazmaz.
 
-## Bildirim ve ekran gizliliği
+Hata olayı; olay zamanı, internal scope, önem sınıfı, altı sabit hata kodundan
+biri, platform ve app version taşır. Remote satır hesap kimliğiyle bağlıdır ama
+mesaj, stack, e-posta, finansal değer, not, row payload veya cihaz kimliği
+taşımaz. Yalnız sahibi RLS altında okuyup ekleyebilir; client değiştiremez veya
+silemez. Remote kayıtlar genel süreyle purge edilmez, hesap silinince cascade
+ile silinir. Bu first-party kayıtların otomatik alarmı veya üçüncü taraf crash
+SDK'sı yoktur.
 
-- Bildirimler opt-in’dir; izin yalnız Ayarlar’daki kullanıcı eyleminden sonra
-  istenir.
-- Varsayılan preview genel bir yaklaşan ödeme mesajıdır. Ad/tutar yalnız ayrı
-  device-local ayrıntı tercihi açılırsa kullanılır.
-- Kapatma, çıkış ve hesap değişimi scheduled/presented hesap ayrıntılarını temizler.
-- Supabase oturumu server tarafından geçersizleştirildiğinde aynı temizlik local
-  workspace, cache ve offline oturum anahtarlarını da kapsar; ağ kesintisi tek
-  başına local veriyi silmez.
-- Scheduler en yakın 60 kaydı sınırlar; OS limitini sonsuz retry ile zorlamaz.
-- Native app inactive/background olduğunda app switcher için finansal içeriği örten
-  privacy surface çizilir. OS snapshot zamanlaması gerçek cihazda ayrıca kabul
-  edilmelidir.
-- Helix ekran görüntüsü almayı sistem çapında engellemez. Kullanıcı hassas ekranın
-  screenshot’ını paylaşırken bunu açık veri paylaşımı olarak değerlendirmelidir.
+## Bildirim, export ve import
 
-## Import, export ve yedekler
+Bildirimler opt-in'dir. Varsayılan preview nötrdür; ad ve tutar için ayrı
+device-local tercih gerekir. Çıkış, hesap değişimi ve remote session iptali
+hesaba ait bildirim ve cache durumunu temizler. App inactive/background iken
+finansal içeriğin üstüne privacy cover çizilir; gerçek snapshot zamanlaması
+cihazda kabul edilmelidir.
 
-JSON restore bütün bundle’ı sahiplik, UUID, duplicate ve referential integrity
-açısından doğrulamadan yazı başlatmaz. Excel/CSV import satır/hücre/dosya ve ZIP
-açılmış boyut/oran limitleriyle sınırlıdır; replace planı tek atomik transaction’da
-uygulanır. Picker boyut bilgisini vermese bile browser/native dosya boyutu
-okumadan önce kontrol edilir; web fallback akışı limitte durdurulur ve gerçek
-byte sayısı okuma sonrasında tekrar doğrulanır.
+Restore, bundle'ın sahiplik, UUID, duplicate ve referential-integrity kontrolü
+bitmeden yazmaz. Spreadsheet ve JSON yollarında dosya, açılmış ZIP, satır, hücre
+ve metin limitleri vardır. Export açık metindir; güvenilmeyen cloud klasörüne
+veya mesajlaşma kanalına yüklememek, paylaşılan kopyayı silmek ve cihazı
+devretmeden önce çıkış/browser verisi temizlemek kullanıcının sorumluluğundadır.
 
-Export dosyaları açık metindir:
+## Saklama ve silme
 
-- güvenilmeyen cloud klasörü veya mesajlaşma kanalına yüklememek;
-- iş bitince paylaşılan kopyaları silmek;
-- formül çalıştırabilen spreadsheet uygulamalarında dış veriyi temkinli açmak;
-- cihazı devretmeden önce Helix’ten çıkmak ve browser site data’sını temizlemek
+- Bir kaydı silmek onu sync/undo için tombstone yapar; hesap silme değildir.
+- Çıkış local workspace'i ve hesaba ait cache/bildirimleri temizler, remote
+  finansal veriyi silmez. Senkronize edilmemiş satır kaybı ayrıca onaylanır.
+- Hesap dondurma veri veya token silmez; diğer cihazların da gördüğü kilit
+  bayrağını yazar ve bu cihazın oturumunu kapatır. Çalınmış token için parola
+  değişimi veya hesap silme gerekir.
+- **Hesabı Sil**, yalnız oturum sahibini hedefleyen argümansız
+  `delete_own_account` RPC'siyle auth identity'yi ve cascade edilen app
+  satırlarını tek server transaction'ında kaldırır. Remote işlem başarısızsa
+  local veri başarı gibi silinmez.
+- Genel süreli fiziksel purge yoktur; cihaz-ack watermark olmadan böyle bir
+  purge eski offline cihazların silinen veriyi yeniden üretmesine yol açabilir.
 
-kullanıcının sorumluluğundadır. Helix export’u parola ile şifrelediğini iddia etmez.
+Otomatik crash alarmı olmadığı için sessiz hata maintainer'a otomatik ulaşmaz.
+Destek sırasında finansal veri veya backup yerine yalnız sürüm ve yeniden üretim
+adımları paylaşılmalıdır. Android store build'i ve fiziksel cihaz kabulü henüz
+kanıtlanmış değildir. Native suite'in kapsamı ve sınırları
+[`e2e/native/README.md`](../e2e/native/README.md) dosyasındadır.
 
-## Saklama, silme ve taşınabilirlik
-
-- Canlı satırlar ve sync için gereken tombstone’lar hesap var olduğu sürece otomatik
-  süre dolumuyla silinmez. Şu anda genel amaçlı scheduled retention/purge job’ı yoktur.
-- Satır bazında kör süreli purge eklenmez: uzun süre offline kalan cihazların
-  silinmiş finansal veriyi yeniden üretmesini önlemek için cihaz-ack watermark'ı
-  gerekir ve mevcut protokol bunu taşımaz. Gerçek fiziksel purge yolu aşağıdaki
-  hesap silme işlemidir.
-- Bir satırı uygulamada silmek onu geri alınabilir tombstone yapar; bu, hesabı
-  kalıcı silmekle aynı değildir. Normal authenticated client fiziksel satır
-  DELETE yetkisi taşımaz.
-- Çıkış; background işi durdurur, bildirim/kur state’ini temizler ve local finance
-  workspace’i siler. Hesaplı modda sonraki giriş remote veriyi yeniden çeker. Çıkış
-  remote veriyi silmez. Hesaba ait cihaz-yerel izler (sync durum çubuğu, giriş
-  formunun son kullanılan kategori/ödeme yöntemi kısayolu) workspace ile birlikte
-  temizlenir; tema, biometric ve tablo yerleşimi gibi cihaz tercihleri kalır.
-- **Dondurma** silme değildir ve token iptali de değildir: senkronize edilen
-  `account_frozen` ayarı sunucuya yazılır, sonra bu cihazın oturumu kapanır. Ayarı
-  çeken her cihaz uygulamayı yeniden etkinleştirme ekranının arkasına kilitler; hiç
-  finansal kayıt silinmez. Kilidi açan şey yeniden giriş yapmaktır — parola kontrolü
-  başarılı olunca bayrak temizlenir. Bu, cihazı eline geçiren birine karşı bir
-  kilittir; geçerli bir erişim jetonunu çalmış birine karşı sunucu tarafı bir engel
-  değildir. Böyle bir durumda doğru işlem parolayı değiştirmek veya hesabı silmektir.
-- **Hesabı Sil** yalnız çağıranın kendi kimliğini hedefleyen, sabit `search_path`’li
-  `SECURITY DEFINER`
-  `delete_own_account` RPC ile `auth.users` identity’sini siler; `ON DELETE CASCADE`
-  bütün app satırlarını aynı server transaction’ında kaldırır. Remote silme başarısızsa
-  local veri silinmez ve işlem başarı gibi gösterilmez.
-- JSON yedek ve CSV export veri taşınabilirliği yoludur. Import limiti dışındaki çok
-  büyük hesaplar için henüz stream’li server export hizmeti yoktur.
-
-## Kullanıcının yapabileceği kontroller
-
-- Hesapsız/local-only kullanmak veya Supabase sync hesabı açmak.
-- Bildirimleri ve ayrıntılı lock-screen preview’ı ayrı ayrı açıp kapatmak.
-- Biometric app lock’ı desteklenen native cihazda açmak.
-- JSON yedek ve CSV export almak; restore/import sonucunu uygulamada doğrulamak.
-- Ayarlar → Hesap Güvenliği’nden çıkış, dondurma veya kalıcı hesap silme.
-
-## Bilinen sınırlar ve iletişim
-
-- Production telemetry/crash reporting olmadığı için sessiz hata maintainer'a
-  otomatik ulaşmaz; destek sırasında kullanıcıdan yalnız sürüm ve yeniden üretim
-  adımları istenir, finansal veri veya yedek istenmez.
-- Android production store build’i ve fiziksel TalkBack/notification kabulü henüz
-  doğrulanmış değildir; ayrıntı [TESTING.md](TESTING.md) cihaz matrisindedir.
-- Harem akışı resmî değildir; yatırım kararı için kaynak kabul edilmemelidir.
-- Bu belge bir uygulama mağazası privacy nutrition label’ı değildir. Store release
-  öncesi dağıtım bölgesi ve güncel SDK davranışıyla hukukî/mağaza beyanı ayrıca
-  hazırlanmalıdır.
-
-Gizlilik veya veri silme problemi için repository maintainer’ına
+Gizlilik veya veri silme sorusu için repository maintainer'ına
 [GitHub üzerinden](https://github.com/topraksv) ulaşılabilir. Güvenlik açığı
-bildirimi ayrı bir yoldur ve public issue’ya yazılmaz — kuralları
-[SECURITY.md](SECURITY.md) belgesindedir.
+public issue yerine [`SECURITY.md`](SECURITY.md) içindeki özel kanaldan
+bildirilmelidir.

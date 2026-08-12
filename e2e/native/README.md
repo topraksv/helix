@@ -1,24 +1,14 @@
 # iOS acceptance flows
 
-## Contents
-- Why these exist
-- Running them
-- What each flow proves
-- What they cannot reach yet, and why
-- What they found
-
 ## Why these exist
 
-Every one of the 86 Playwright tests runs in Chromium, and the app ships to
-iOS. The paths that differ are not small: SQLite is a native driver rather than
-the wasm build, fonts load from the app bundle rather than over HTTP, Keychain
+Browser tests cannot exercise native SQLite, bundled fonts, Keychain, UIKit
+navigation, OS dialogs, or app lifecycle. The paths that differ are not small:
+SQLite is a native driver rather than the wasm build, fonts load from the app
+bundle rather than over HTTP, Keychain
 replaces `localStorage`, and the navigator, the modals and the animations are
 UIKit rather than DOM. A defect in any of those is invisible to the browser
 suite and reaches the owner as a broken phone.
-
-There were four Maestro files under `.ai/tmp/audit/native/` before these. They
-took screenshots and asserted nothing, which makes them probes for a human to
-look at once. These assert.
 
 ## Running them
 
@@ -47,7 +37,7 @@ fraction of that.
 
 ## What each flow proves
 
-**`01-launch.yaml` — the app opens on a real device.**
+**`01-launch.yaml` — the app opens in a native runtime.**
 Four things at once, all silent in the browser suite: JavaScript ran,
 `migrateDb` completed against the NATIVE SQLite driver, the splash dismissed,
 and the vendored subset fonts loaded from the app bundle. The font assertion is
@@ -61,45 +51,31 @@ The first screen a phone shows, and one the browser suite never sees at all:
 local-only path, so nothing had ever exercised this screen.
 
 **`03-restart-persistence.yaml` — the app survives a cold start.**
-On iOS the database is a file in an app container sealed while the device is
-locked (`NSFileProtectionComplete`). That entitlement is the one thing that
-could make it unreadable on a real relaunch, and no browser test can ask.
+On iOS the database is a file in an app container rather than IndexedDB. The
+flow proves a native process can reopen it; it does not prove file protection
+while physical hardware is locked.
 
 **`04-recovery-route.yaml` — recovery, and the way back out of it.**
 The recovery routes are exempt from the signed-in and onboarding guards,
 which makes "can the user still leave" a real question.
 
+**`05-text-size.yaml` — native text scaling.**
+Exercises the iOS content-size behavior that React Native Web cannot reproduce.
+
+The separate `e2e/native-local/` suite proves local-only ledger and investment
+writes survive a native process restart, and protects the investment-correction
+return path.
+
 ## What they cannot reach yet, and why
-
-The ledger itself — onboarding, entering a transaction, the matrix — sits
-behind authentication on a native build, because the app compiles the Supabase
-configuration in. Emptying it in Metro is not enough; it has to be empty at
-BUILD time, the same way `scripts/export-e2e-web.mjs` does for the web
-artifact:
-
-```sh
-EXPO_PUBLIC_SUPABASE_URL="" EXPO_PUBLIC_SUPABASE_ANON_KEY="" EXPO_NO_DOTENV=1 \
-  npx expo run:ios --device "iPhone 17 Pro"
-```
-
-That is untested — it is the obvious next step, not a verified recipe. Until it
-is, the ledger flows are covered on web only.
 
 Face ID, notification permission and the share sheet raise OS-owned UI a
 simulator cannot answer deterministically. Their pure logic is unit-tested
 (`biometric-name.ts`, `domain/notifications.ts`); the prompts stay a manual
 check before a store build.
 
-## What they found
-
-Writing them was worth it before they ever ran green:
-
-- **A baseline defect on the sign-in screen.** "Hesabın yok mu?" and "Kayıt ol"
-  sat on different baselines, because the row defaulted to `alignItems:
-  stretch` and the plain text grew to the 44px touch target beside it. The
-  repository's own invariant says a paired row shares one baseline. The browser
-  suite could never have caught it — it never loads this screen.
-- **Recovery is a state, not a push.** An edge-swipe assertion would have
-  passed on Android and meant nothing on iOS.
-- **The card merges its accessibility label**, so a screen reader announces
-  "…seni bekliyor.. E-posta…" with two full stops.
+No run here proves a physical iOS/Android install, locked-device file access,
+app-switcher snapshot timing, notification delivery, biometric enforcement,
+live two-device convergence, low-memory import behavior, or store delivery.
+VoiceOver/TalkBack physical acceptance is owner-scoped out of the current
+preview model. Report these as unverified unless a specific device/build run is
+recorded in the task handoff.

@@ -1,398 +1,136 @@
-# Helix güvenlik modeli
+# Helix security model
 
-Bu belge Helix'in **mevcut** güvenlik tasarımını ve güven sınırlarını anlatır.
-Kanıtı repository'de olmayan hiçbir kontrol "uygulanıyor" diye yazılmaz;
-doğrulanmamış uyumluluk iddiası (OWASP/ASVS/MASVS "compliant") burada yer almaz.
-Kullanıcıya dönük veri davranışı [PRIVACY.md](PRIVACY.md), yayın ve secret
-prosedürü [RELEASE.md](RELEASE.md), test katmanları [TESTING.md](TESTING.md),
-kod sınırları [ARCHITECTURE.md](ARCHITECTURE.md) belgesindedir.
+This document defines the current trust boundaries, disclosure route, and
+accepted residual risks. It is not an OWASP/ASVS/MASVS compliance claim.
+User-visible data handling is described in [`PRIVACY.md`](PRIVACY.md); release
+authority and recovery procedures are in [`RELEASE.md`](RELEASE.md).
 
-## Güvenlik açığı bildirimi
+## Reporting a vulnerability
 
-Yalnız `main` dalındaki güncel GitHub Pages sürümü ile en güncel imzalı native
-build/runtime desteklenir; eski commit, preview ve geliştirme build'leri güvenlik
-desteği almaz. Bir açıkta token, şifre, kişisel veya finansal veri paylaşmadan
-[GitHub'ın özel güvenlik bildirimi](https://github.com/topraksv/helix/security/advisories/new)
-kullanılmalıdır; hassas ayrıntılar public issue'ya yazılmamalıdır. Bildirimler
-maintainer tarafından incelenir, ancak sabit yanıt veya düzeltme süresi taahhüt
-edilmez.
+Report security issues through
+[GitHub private vulnerability reporting](https://github.com/topraksv/helix/security/advisories/new).
+Do not include tokens, passwords, personal data, financial records, or backups
+in a public issue. Helix has one maintainer and makes no fixed response-time
+promise.
 
-Triage ve yayın kararı tek maintainer'a aittir. Doğrulanmış critical/high veya
-çalışan akıştan erişilebilen ve dispozisyonu olmayan moderate bulgu release'i
-bloklar; false positive, erişilemez yol ve kabul edilen risk kararı kanıtıyla
-kaydedilir. Private report, Dependabot, CodeQL ve Sonar aynı kurala girer.
-Bağımlılık bulgusunda etkilenen sürüm/yol/bundle erişilebilirliği; kod bulgusunda
-girdi, yetki ve production yürütme yolu doğrulanır. Hassas düzeltme önce private
-branch/advisory'de hazırlanır; public açıklama secret veya kullanıcı verisi
-içermez ve düzeltme hazır olmadan sömürü ayrıntısı yayımlanmaz.
+A reachable critical/high issue, or a reachable moderate issue without a
+recorded disposition, blocks release. Scanner labels are leads: severity,
+affected version, production reachability, and the proposed fix must be checked
+before changing the dependency tree.
 
-## Güven sınırları
+## Trust boundaries
 
-| Sınır | Güvenilen | Güvenilmeyen |
+| Boundary | Authority | Untrusted input |
 |---|---|---|
-| Cihaz | OS dosya koruması, keychain/SecureStore | uygulama içi girdi, import dosyası, route param |
-| Client → Supabase | JWT'nin `auth.uid()` claim'i | client'ın gönderdiği `user_id`, gizlenmiş buton, route guard |
-| Supabase | RLS policy'leri, owner-aware FK/trigger | anon rolü, service-role dışı ayrıcalık varsayımı |
-| Dış feed (TCMB, exchangerate-api, Harem, favicon) | hiçbiri | yanıt boyutu, şekli, tarihi, host'u |
-| Yayın hattı | protected `main`: required `quality` check (strict), imzalı commit, lineer geçmiş, `enforce_admins`, force-push/silme kapalı | doğrulanmamış artefact, elle Pages/OTA müdahalesi |
+| Device | OS sandbox and Keychain/SecureStore | forms, route params, imports |
+| Client → Supabase | Postgres RLS using `auth.uid()` | client `user_id`, UI guards |
+| External feeds | none | response host, size, shape, date, freshness |
+| Delivery | the checked Git SHA and gated artifact | manual or rebuilt artifacts |
 
-Client tarafındaki hiçbir kontrol yetkilendirme sayılmaz. Yetki tek yerde,
-Postgres RLS'te uygulanır.
+Client-side route guards and hidden controls are not authorization. Remote
+authorization lives in owner-only RLS, owner-aware constraints, explicit table
+grants, and narrowly scoped RPCs in `supabase/migrations/`.
 
-## Kimlik doğrulama ve oturum
+## Authentication and local data
 
-- Supabase Auth; e-posta/şifre. Şifre Helix tablolarında tutulmaz.
-- Şifre sıfırlama PKCE akışıdır. Web redirect'i Router'ın `/helix` base path'ini
-  korumak zorundadır; kurulu build `helix://` şemasını kullanır. Recovery
-  route'ları normal signed-in/onboarding guard'larından bilinçli olarak muaftır.
-  Callback içindeki bearer materyali yalnız runtime'ın birebir web
-  origin/base-path'i veya `helix://reset-password` hedefi eşleşirse kabul edilir;
-  farklı host, port, userinfo, scheme ve sibling route fail-closed reddedilir.
-- Bir e-postanın hesaba ait olup olmadığı sıfırlama akışında açığa çıkarılmaz
-  (user enumeration).
-- Oturum saklama: native'de bounded, bozuk chunk marker’larında fail-closed
-  `expo-secure-store` adapter’ı; web'de Supabase'in browser storage'ı
-  (`src/sync/secure-chunked-storage.ts`, `src/sync/supabase.ts`). Web'de browser
-  profiline erişen kişi oturuma erişebilir — bu kabul edilmiş bir sınırdır.
-- Her authenticated arka plan işi session-scoped'dır: auth bir epoch açar
-  (`startSyncSession`), çıkış/hesap silme `stopSyncSession`'ı bekler ve render'ı
-  aşabilen her async iş `runSyncSessionTask` üzerinden koşar. A kullanıcısının
-  geç dönen cevabı B aktifken yazamaz. Test: `session-epoch`, `session-task`.
-- Supabase gerçek bir `SIGNED_OUT` olayı bildirdiğinde owner-captured cleanup eski
-  epoch'i durdurur, bildirim/cache'i temizler, local workspace'i siler ve offline
-  bootstrap anahtarlarını kaldırır. Sıradan ağ kesintisi bu olayı üretmediği için
-  local-first offline erişim devam eder.
-- Açık çıkış global revoke sonucundaki hem throw'u hem `{ error }` değerini işler;
-  global revoke yapılamazsa persisted Supabase session'ı local scope'ta siler.
-  App workspace temizliği bu ağ sonucundan bağımsız olarak tamamlanır.
-- Native cihazda opsiyonel biyometrik app lock (`expo-local-authentication`).
+- Supabase Auth handles e-mail/password and PKCE recovery. Recovery callbacks
+  accept only the exact web origin/base path or `helix://reset-password`.
+- Native sessions use bounded, complete-read chunking over SecureStore. Web
+  sessions use the browser profile's storage; browser-profile access therefore
+  implies session access.
+- Session epochs stop late account-scoped work before account switch, sign-out,
+  or deletion can expose it to another account.
+- Financial data is in async SQLite. iOS builds request
+  `NSFileProtectionComplete`; this is OS file protection, not SQLCipher, and is
+  not a verified hardware guarantee until tested on that build.
+- Android backup is disabled in `app.json`. JSON and CSV exports remain clear
+  text and must be protected after they leave the app.
+- Production diagnostics buffer the last 12 redacted events on-device and, after
+  a successful authenticated sync, upload new events to the owner's
+  `diagnostic_events` rows. The upload contains account id, occurrence time,
+  internal scope, severity, fixed error code, platform, and app version—never a
+  message, stack, e-mail, financial value, note, row payload, or device id. RLS
+  is owner-only; client rows are append-only and expire with account deletion.
 
-## Yerel veri
+The six controls most likely to look redundant during cleanup—session epoch,
+`tombstone_version`, verification brake, account freeze, chunked SecureStore,
+and the install-script allowlist—are indexed with their rationale and authority
+in [`ARCHITECTURE.md`](ARCHITECTURE.md#security-controls-that-must-survive-simplification).
 
-- Bütün finansal veri cihazdaki SQLite'ta (async, `expo-sqlite`).
-- iOS: `app.json` `com.apple.developer.default-data-protection =
-  NSFileProtectionComplete`. Uygulama-üretimi dosyalar cihaz kilitliyken
-  okunamaz. Entitlement yalnız yeni bir yerel `npx expo run:ios --device`
-  build'iyle etkinleşir. Bu **uygulama seviyesinde SQLCipher şifrelemesi
-  değildir**.
-- Web'de SQLite/OPFS ve `localStorage` güvenliği browser profiline bağlıdır.
-- Export edilen JSON/CSV açık metindir; şifreli kasa iddiası yoktur.
-- CSV export formül enjeksiyonuna karşı nötrlenir (`csv-export-safety` testi).
+## Input, network, and privacy defenses
 
-## Supabase yetkilendirme
+- Restore validates ownership, ids, duplicates, references, and the whole plan
+  before the first write. Spreadsheet/JSON paths impose pre-read, streamed, ZIP,
+  row, cell, text, and expanded-size bounds.
+- CSV cells neutralize spreadsheet formulas. Route params are validated before
+  date or query helpers.
+- External requests use fixed or strictly validated public hosts, TLS/WSS,
+  timeout/abort, response-size, shape, and date/freshness checks.
+- Web CSP is generated in `src/app/+html.tsx`. Public exports reject source maps
+  and source-map references. The static bootstrap currently requires
+  `script-src 'unsafe-inline'`; narrow `connect-src`, `object-src 'none'`, and
+  `form-action 'self'` reduce that accepted risk.
+- Notification permission is requested only from Settings. Lock-screen detail
+  is opt-in and account cleanup clears scheduled and delivered detail.
+- App-switcher masking and OS-owned biometric/notification behavior remain
+  device acceptance items, not browser-test claims.
 
-- Policy'ler `authenticated` rolüne ve `(select auth.uid()) = user_id`
-  sahipliğine dayanır; insert/update `WITH CHECK` ile owner değişimini engeller.
-- Owner-aware FK ve category/reference trigger'ları cross-account ilişkiyi
-  reddeder.
-- Tablo ayrıcalıkları migration `00000000000009_table_privileges.sql` ile açıkça
-  belirtilir; `00000000000013_least_privilege_public_grants.sql` Supabase'in
-  daha geniş eski varsayılanlarını sıfırlar ve gelecekteki public objeleri
-  fail-closed bırakır; `00000000000010_tombstone_only_client_deletes.sql`
-  `authenticated` için fiziksel DELETE’i ve DELETE policy’lerini kaldırır.
-  Client yalnız select/insert/update + tombstone kullanır; `anon` hiçbir tablo
-  yetkisi almaz, `service_role` tam yetkilidir. RLS satırları filtreler ama
-  ayrıcalık **vermez**; anonim ve hard-delete çağrıları `42501` reddi alır.
-  Linked rollout durumu [RELEASE.md](RELEASE.md#5--supabase-migration) içindedir.
-- `keep_alive` tablosu kullanıcı verisi tutmaz ve yalnız service-role
-  heartbeat'ine açıktır.
-- Migration `00000000000012_tombstone_generation.sql` bütün 16 synced tabloda
-  monotonik `tombstone_version` taşır. Server trigger eski nesil write'ı mevcut
-  satırla ACK eder; böylece eski client'ın ileri saati silinmiş satırı diriltemez.
-- RPC: `delete_own_account` SECURITY DEFINER'dır ve öyle olmak zorundadır —
-  kullanıcının `auth.users` üzerinde yetkisi yoktur. Gövde `auth.uid()` ile
-  sınırlı, argümansız, `search_path = ''`, `execute` yalnız `authenticated`.
-- Trigger/RPC fonksiyonları sabit `search_path` ile yazılır (migration 3, 6, 7,
-  8).
-- Kanıt: `supabase/tests/owner_integrity_and_rls.sql`, `plan(59)` — 16 tablo için
-  RLS/policy/grant envanteri, A/B izolasyonu, owner değiştirme,
-  anon/hard-delete reddi, cross-owner FK, tombstone nesli, transfer constraint’i
-  ve hesap-silme RPC davranışı.
+## Supply chain
 
-## Rol ayrımı ve secret'lar
+- GitHub Actions use full commit SHAs. Checkout credentials are removed before
+  dependency or build code runs.
+- `package-lock.json` is authoritative. `tests/install-scripts.test.ts` fails if
+  a new package family begins executing an install hook.
+- Skills are executable supply-chain input: upstream bodies are committed
+  unmodified, their source/hash is locked in `skills-lock.json`, and
+  `npm run control:check` verifies the canonical copy and Claude symlink. It
+  does not review skill semantics; changes still require human diff review.
+- `xlsx` comes from the SheetJS CDN, outside npm advisory matching. Its upstream
+  advisories must be checked manually when import code or the tarball changes.
 
-| Anahtar | Nerede | Not |
-|---|---|---|
-| `EXPO_PUBLIC_SUPABASE_URL` | `.env`, CI workflow, client bundle | public endpoint |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | `.env`, CI workflow, client bundle | publishable; güvenlik sınırı RLS |
-| service-role / `sb_secret_*` | yalnız GitHub Actions secret (keepalive workflow) | client, log, README, artefact'a girmez |
-| EAS oturumu | maintainer makinesi veya güvenli CI secret | commit edilmez |
-| Signing material | OS keychain / provisioning | repo'ya ve OTA artefact'ına girmez |
+## Accepted and external residual risks
 
-`.env.example` yalnız iki `EXPO_PUBLIC_*` değişkeni taşır ve service-role'ün
-oraya konmaması dosyanın kendi başlığında yazılıdır.
-
-## Web dağıtımı
-
-Statik GitHub Pages'te server header yoktur; bu yüzden CSP `src/app/+html.tsx`
-içinde meta olarak taşınır ve `tests/release-config.test.ts` ile korunur:
-
-- `default-src 'self'`, `object-src 'none'`, `base-uri 'self'`,
-  `form-action 'self'`;
-- `connect-src` yalnız Supabase, exchangerate-api'nin open uç noktası ve Harem
-  websocket'ine izin verir —
-  XSS exfiltration hedeflerini kısıtlayan asıl kontrol budur. TCMB listede
-  yoktur çünkü `today.xml` CORS başlığı göndermez ve web zaten yalnız
-  o uç noktayı çağırır (`src/services/fx-fetch.ts`);
-- `script-src` `'unsafe-inline'` içerir: export her build'de inline bootstrap
-  script'i üretir, statik hash mümkün değildir. **Bilinen zayıflık.**
-- `img-src` `https://*.gstatic.com`'a izin vermek zorundadır; favicon servisi
-  oraya 301 yönlendirir.
-
-Production web export source-map bayrağı kullanmaz. `bundle:check`, public
-`dist/` içinde hem `.map` dosyasını hem JS/CSS `sourceMappingURL` referansını
-release-bloklayan hata sayar. İleride crash servisi onaylanırsa haritalar yalnız
-provider'ın private symbolication alanına, dar kapsamlı upload token'ıyla gider;
-Pages veya test artefact'ına eklenmez.
-
-## Girdi ve dış veri
-
-- Route param'ları düşmanca kabul edilir; domain predicate'iyle doğrulanmadan
-  sorguya girmez.
-- Recovery URL'si query/hash parse edilmeden önce birebir callback origin/scheme/
-  path doğrulamasından geçer; token biçimi ayrıca `type=recovery` ister.
-- DocumentPicker'ın `size` alanı opsiyoneldir. JSON ve workbook dosyaları ortak
-  picked-file sınırında browser `File.size` / native filesystem stat ile
-  **okumadan önce**, fallback web yanıtında ise stream ilerlerken sınırlanır;
-  gerçek UTF-8/byte boyutu okuma sonrasında yeniden doğrulanır. Böylece parser'ın
-  15 MiB kontrolü, büyük dosyanın önce bütünüyle belleğe alınmasına dayanmaz.
-- Workbook byte'ları SheetJS'e verilmeden önce ZIP central-directory
-  entry/boyut/oran limitlerinden geçer; ardından sheet/row/cell/text limitleri
-  uygulanır. XLSX dynamic import'tur.
-- JSON restore tamamen doğrulanmadan tek satır yazılmaz.
-- Dış feed'ler: abort signal, timeout, boyut/şekil/tarih doğrulaması. Sağlayıcının
-  beyan ettiği iş günü saklanır, "bugün" uydurulmaz. Eksik kur eksik kalır;
-  yabancı tutar asla TRY sayılmaz. Favicon host'u sıkı public-host
-  doğrulaması/encode'undan geçer.
-- Kanıt: `external-services`, `picked-file`, `spreadsheet-import`,
-  `backup-validation`, `import-plan`, `navigation`, `app-guard` testleri.
-
-## Loglama ve PII
-
-- Production'da uygulama kendi console log'unu üretmez.
-- `src/services/logger.ts` production'da yalnız sınırlı, cihaz-içi
-  `{time, scope, severity, category}` kaydı tutar. Token, şifre, satır payload'ı,
-  not, e-posta, id veya tutar persist edilmez. Kullanıcıya dönük diagnostics
-  route'u/export'u yoktur.
-- Kanıt: `tests/privacy.test.ts`, `tests/diagnostics.test.ts`.
-- PII içermeyen release korelasyonu yalnız Git SHA, Pages run kimliği, EAS
-  update group/update kimliği, runtime ve platformdan oluşur; user id/e-posta,
-  route girdisi, tutar ve payload tag/breadcrumb yapılmaz.
-- Uygulama dışı yüzey: native `inactive`/`background` durumunda `PrivacyCover`
-  app-switcher snapshot'ından önce finansal içeriği kapatır.
-
-## Bağımlılık ve tedarik zinciri
-
-- Actions SHA'ları full commit'e pinlidir; repository policy de SHA pinini
-  uzaktan zorunlu kılar ve yalnız GitHub-owned Action'lara izin verir.
-- Dependabot npm + Actions için haftalık çalışır; güvenlik güncellemeleri açıktır,
-  yalnız Expo-yönetimli matris için rutin sürüm yükseltmeleri guard'lıdır
-  (gerekçe: [ARCHITECTURE.md](ARCHITECTURE.md#stack)).
-- Rutin Dependabot version update’leri ve doğrudan npm çözümlemeleri yeni
-  yayımlanan paketleri yedi gün bekletir; Dependabot security update’leri bu
-  cooldown’dan etkilenmez. Acil npm security fix’i açık bir
-  `min-release-age-exclude`/komut override’ı gerektirir.
-- `xlsx` SheetJS CDN tarball'ından gelir; `npm audit` ve Dependabot bunu
-  **görmez** — import kodu her değiştiğinde upstream release elle kontrol edilir.
-- CodeQL v4 `javascript-typescript` + `security-extended` üzerinde PR'da,
-  haftalık cron'da ve gerektiğinde elle koşar; Action aynı doğrulanmış full SHA'ya
-  pinlidir.
-- Dependency Review her `main` PR'ında runtime, development ve unknown scope'ları
-  moderate ve üstü severity'de bloklar. Secret kullanan bağımsız keepalive işi
-  `GITHUB_TOKEN` için açıkça sıfır yetki alır.
-- Agent skill'leri de executable tedarik zinciri girdisidir. Skill gövdeleri
-  yayıncısından değiştirilmeden `.agents/skills/` altına vendor edilir ve
-  commit'lenir; kaynak ve içerik hash'i `skills-lock.json` içinde tutulur.
-  Böylece bir upstream değişikliği sessizce gelmez, diff olarak incelenir.
-  `npm run control:check` (CI'da `ci.yml`, ayrıca `pre-commit`) yapı, symlink
-  köprüsü ve lockfile kapsamını doğrular; **gövde içeriğini denetlemez.**
-  Instruction, script, hook, tool, credential ve dış yazma yüzeyi incelemesi
-  hâlâ elle yapılır — skill ekleme/güncelleme diff'i bunun tetikleyicisidir.
-- Değerlendirilmiş advisory kararları [RELEASE.md](RELEASE.md) "Dependabot
-  bulguları" tablosundadır.
-
-## Migration ve ayrıcalık yönetimi
-
-Şema değişikliği [RELEASE.md](RELEASE.md) "Supabase migration" sırasını izler:
-protected PR → linked push → policy/constraint/RPC davranışının remote'ta testi →
-generated type commit'i. Güncel linked version/lint/pgTAP sonucu tek yerde,
-[RELEASE.md](RELEASE.md#5--supabase-migration) ve paket handoff’unda tutulur.
-
-## Preview / production ayrımı
-
-- OTA `preview` channel'ı tek ve koşulsuz bir mapping ile `preview` branch'ine
-  bağlıdır, runtime `1.0.0`. `production` channel `eas.json`'da tanımlıdır ama
-  bu repoda yayımlanmış bir production store build'i yoktur.
-- E2E export'u Supabase env'ini bilinçli olarak boşaltır ve ayrı `dist-e2e/`
-  artefact'ı üretir; test env'i Pages artefact'ına karışamaz.
-- Testler production Supabase'e bağlanmaz ve gerçek kullanıcı verisi yazmaz.
-
-## OTA / runtime bütünlüğü
-
-Update bütünlüğü Expo'nun imzalı update protokolüne ve `expo-updates`'in runtime
-eşleşmesine dayanır. Bu repo **ek bir code-signing anahtarı yapılandırmaz**;
-güven sınırı EAS hesabının kendisidir. Runtime `appVersion` policy'sine bağlıdır,
-bu yüzden eski runtime'a yanlış bundle ulaşamaz. Native config, icon/splash, SDK
-ve runtime değişiklikleri OTA-able değildir.
-
-Update metadata'sındaki Git commit hash'i protected release commit'iyle eşleşir;
-group, iki platform update kimliği, runtime, branch ve channel mapping birlikte
-kanıtlanır. Repo'da otomatik OTA workflow'u veya EAS secret'ı yoktur: publish
-yalnız owner'ın yerel EAS oturumundan, temiz `main` üzerinden yapılır.
-`expo-updates` başlangıç hatasında önceki çalışan/embedded update'e dönebilir,
-ama bu release-health kanıtı sayılmaz; bilinen kötü grup ayrıca
-[RELEASE.md](RELEASE.md#ota-rollback) prosedürüyle geri alınır. Embedded'e dönüş
-de yeni update grubu ve aynı iki-cold-start kabulünü gerektirir.
-
-## Bilinen zayıflık ve dış kontrol dispozisyonları
-
-`Release etkisi`, mevcut web ve runtime-uyumlu JS-only preview teslimini ifade
-eder. Cihazda veya production store/OTA'da doğrulanmış teslim iddiası için ayrı
-blokajlar [TESTING.md](TESTING.md#gerçek-cihaz-kabulü) matrisindedir.
-
-| Konu | Sınıf | Release etkisi | Mevcut kontrol / sonraki adım |
-|---|---|---|---|
-| `script-src 'unsafe-inline'` | `ACCEPTED RESIDUAL RISK` | Bloklamaz | Static bootstrap için gerekli; dar `connect-src`, `object-src` ve `form-action` telafi eder |
-| Web oturum saklama | `ACCEPTED RESIDUAL RISK` | Bloklamaz | Browser profile erişimi oturum erişimidir; kullanıcıya açıkça beyan edilir |
-| Uygulama seviyesi DB şifrelemesi | `ACCEPTED RESIDUAL RISK` | Bloklamaz | iOS OS file protection; web browser sandbox. SQLCipher garantisi verilmez |
-| Merkezi crash/release-health servisi | `BLOCKED_EXTERNAL` | Bloklamaz; otomatik sağlık iddiası yapılamaz | Owner onayı, provider hesabı ve privacy kararı gerekir; minimum plan [RELEASE.md](RELEASE.md#gözlemlenebilirlik-ve-incident) içinde |
-| OTA ek code-signing | `ACCEPTED RESIDUAL RISK` | Preview'i bloklamaz | EAS hesabı güven sınırıdır; anahtar eklemek runtime/native değişikliği ve yeni build gerektirir |
-| Android production store build | `DEVICE_ONLY` | Web/preview'i bloklamaz; Android shipped iddiasını bloklar | İmza, store build ve fiziksel kabul yok |
-| Supabase kayıt e-posta doğrulaması | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Confirmation-aware UI ve mevcut hesapları kırmayan web/native rollout önce gelmeli |
-| Supabase şifre tabanı | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | App + remote sınır aynı release planında 8+ yapılmalı; tek taraflı değişiklik kayıt/form akışını kırar |
-| SMTP | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Provider/domain/credential owner seçimi yok; secret eklenmeden önce teslimat ve rotation sahipliği gerekir |
-| CAPTCHA | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Provider/site-key/secret ve web/native UX rollout'u owner kararıdır |
-| MFA zorunluluğu | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Enrollment/recovery UI yok; zorunluluk mevcut hesapları kilitler |
-| Direct database SSL enforcement | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Kısa DB restart'ı ve bütün direct client'ların TLS kanıtı için bakım penceresi gerekir |
-| Database network restrictions | `BLOCKED_EXTERNAL` | Mevcut release'i bloklamaz | Maintainer/CI kaynak aralıkları sabitlenip owner onayı alınmadan daraltılmaz |
-| MASVS-RESILIENCE | `N/A` | Bloklamaz | Anti-tamper/obfuscation/root tespiti threat model'de gerekçeli kapsam dışıdır |
-| `xlsx` otomatik npm uyarı kapsamı | `ACCEPTED RESIDUAL RISK` | Bloklamaz | CDN tarball'ı OSV + manuel upstream advisory kontrolüyle izlenir |
-| `brace-expansion` DoS (GHSA-mh99-v99m-4gvg, High) | `ACCEPTED RESIDUAL RISK` | Bloklamaz | **Kayıt 2026-07-26'da düzeltildi: "1.x ve 2.x'e backport yok" iddiası artık yanlış.** Bakım sürümleri yayımlandı ve ağaç onlara sabitlendi: `brace-expansion@1.1.16`, `2.1.2`, `5.0.8`. 1.1.16/2.1.2 iki şey yapıyor — `{a},b}` yeniden yazımındaki özyinelemeyi döngüye çevirip **yığın tükenmesi vektörünü kapatıyor** (ölçüldü: 60 000 kademeli `{,` zinciri artık patlamıyor), ve `options.max` ekliyor. Ama `max` varsayılanı `Infinity` ve `minimatch@3.1.5` ile `9.0.9` `expand(pattern)` diyip seçenek geçmiyor, yani **sayı/bellek vektörü açık kalıyor** — ölçüldü: 256 MB heap'te `minimatch.braceExpand("{1..20000000}")` süreci hâlâ öldürüyor. 5.0.8 zorlanamıyor: CommonJS girişi `exports.expand` ile **nesne** döndürüyor, `minimatch@3` ise `var expand = require('brace-expansion')` deyip `expand(pattern)` çağırıyor; `minimatch@10`'a çıkmak da aynı duvara toslar (`glob@7` kırılır). GitHub advisory'si yalnız 5.0.8'i "fixed" saydığı için **bu sabitlemeler Dependabot uyarısını kapatmaz**; kapanışı `BACKLOG-SDK-01` (Expo/RN/eslint major) yükseltmesine bağlı. Erişilebilirlik ölçüldü: dışa aktarılan `dist/` içinde `brace-expansion`/`minimatch` izi **yok** — kod yalnız lint/build sırasında, bu repo'nun kendi yazdığı glob pattern'leri üzerinde koşuyor; web bundle'ına, OTA payload'ına veya kullanıcı girdisine temas etmiyor |
-
-## Plan sınırlı opsiyonel kontroller
-
-Bunlar uygulama kusuru veya çözülmemiş kod açığı değildir; barındırma planının
-sunmadığı ek kontrollerdir. Bulgu olarak açılmaz, plan değişirse etkinleştirilir.
-
-| Kontrol | Sınıf | Release etkisi | Durum |
-|---|---|---|---|
-| `auth_leaked_password_protection` (HIBP) | `PLAN_LIMITED` | Bloklamaz | Supabase Free plan'de yok; app şifre sınırı korunur |
-| Auth session timebox / inactivity / single-session | `PLAN_LIMITED` | Bloklamaz | Free plan'de yok; refresh rotation + 10 saniye reuse detection korunur |
-| Automatic database backup / PITR | `PLAN_LIMITED` | Bloklamaz; restore edilebilirlik iddiasını bloklar | Free plan'de yok; onaylı off-site logical restore prosedürü [RELEASE.md](RELEASE.md#database-backup-ve-geri-yükleme) içinde |
-| Log drain ve uzun log retention | `PLAN_LIMITED` | Bloklamaz | Ücretli add-on; merkezi app telemetry olmadığı ayrıca kayıtlıdır |
-
-## Doğrulama matrisi
-
-Bu tablo **uyumluluk beyanı değil, değerlendirilmiş kapsam kaydıdır**. Hiçbir
-satır "compliant" veya "certified" demez; her satır repository'deki dosya, test
-veya scanner çıktısına dayanır. Biçim:
-
-`KONTROL → APPLICABLE / N/A / DEVICE-BINARY ONLY → DOSYA/AKIŞ → TEST/SCANNER KANITI → ARTIK RİSK`
-
-Bu matris kalıcı kontrol kapsamını gösterir; SHA, scanner sürümü ve değişken test
-sayıları burada dondurulmaz. Güncel koşu kanıtı GitHub Actions `ci` iş
-akışındadır.
-
-### OWASP Top 10 (2021)
-
-| # | Durum | Dosya / akış | Test / scanner kanıtı | Artık risk |
-|---|---|---|---|---|
-| A01 Broken Access Control | APPLICABLE | 16 tabloda owner-only RLS; `WITH CHECK`; owner-aware FK; tombstone-only client grant’ları; `delete_own_account`; `src/domain/route-params.ts` | linked pgTAP: A/B izolasyonu, owner değiştirme, client DELETE/anon reddi (`42501`), cross-owner FK (`23503`), scoped RPC. `tests/route-params.test.ts`, `tests/navigation.test.ts`, hostile-route E2E | Yetki tek yerde (RLS). Client guard'ları yetkilendirme sayılmıyor |
-| A02 Cryptographic Failures | APPLICABLE | `expo-secure-store`; iOS `NSFileProtectionComplete`; TLS-only endpoint'ler; uygulama kendi kriptosunu yazmaz | `tests/privacy.test.ts` `kv.set` anahtar sınırı; Semgrep `p/insecure-transport` **0**; Gitleaks **0 gerçek secret** | **Bilinen:** uygulama seviyesinde SQLCipher yok; web'de oturum browser storage'ında. İkisi de aşağıda açıkça kabul edilmiş |
-| A03 Injection | APPLICABLE | Drizzle parametre bağlama; ham SQL yok; `csvCell`; `isUuidShaped` PostgREST filtre grameri | Semgrep `p/sql-injection`+`p/command-injection`+`p/xss` **0 bulgu**; `tests/csv-export-safety.test.ts` (7 test, mutasyon kanıtlı); `tests/sync-merge.test.ts` filtre-grameri enjeksiyonu | React Native metin render'ı `dangerouslySetInnerHTML` kullanmıyor |
-| A04 Insecure Design | APPLICABLE | outbox + `sync_dead_letters` karantina; all-or-nothing import; session epoch; `writeRows` tek transaction | `tests/sync-dead-letters.test.ts` (gerçek migration DDL'ine karşı), `tests/backup-validation.test.ts`, `tests/session-epoch.test.ts`, `tests/repository-contract.test.ts` (tek `writeRows`) | — |
-| A05 Security Misconfiguration | APPLICABLE | `src/app/+html.tsx` CSP; `dist/404.html` = root shell; sabit function `search_path`; açık table grant’ları; workflow token yetkileri | `tests/release-config.test.ts`; `actionlint`; Trivy config/secret taraması; linked migration list + public-schema lint | **Bilinen:** `script-src 'unsafe-inline'` — statik export inline bootstrap üretiyor, `connect-src` daraltmasıyla telafi |
-| A06 Vulnerable Components | APPLICABLE | `package-lock.json`; SheetJS CDN pin; Dependabot guard'ları; PR Dependency Review | clean `npm ci`; geçerli `npm ls --all`; OSV + npm audit + Trivy'nin ortak advisory dispozisyonu; `node scripts/check-advisories.mjs` | `nanoid` 3.3.18'e dar override ile sabit; `image-size` 1.2.1 yalnız Metro build zincirinde, web export'ta yok. image-size advisory'leri süreli kanıtlı residual risk olarak izleniyor; ayrıntı aşağıdaki tabloda |
-| A07 Identification & Auth Failures | APPLICABLE | Supabase Auth; exact-target PKCE recovery; remote `SIGNED_OUT` cleanup; `src/auth/verification-brake.ts`; `src/auth/session.ts` epoch'ları | `tests/auth.test.ts` (expired/reused/malformed/hostile-target link), `tests/privacy.test.ts`, `tests/verification-brake.test.ts` (18 vaka), `tests/session-task.test.ts` | E-posta enumeration sıfırlama akışında açığa çıkmıyor |
-| A08 Software & Data Integrity | APPLICABLE | Action'lar full-SHA pinli; skill gövdeleri vendor edilip commit'lenir, kaynak/hash `skills-lock.json`'da; PR Dependency Review; OTA runtime `appVersion` + channel ayrımı; lockfile integrity; imzalı commit + korumalı `main` | `tests/release-config.test.ts`; `npm run control:check` (yapı + köprü + lockfile); clean `npm ci`; lockfile bütünlük taraması; GitHub verified signature/check | **Bilinen:** ek OTA code-signing anahtarı yapılandırılmadı; güven sınırı EAS hesabı. Skill *içeriği* otomatik denetlenmez; upstream değişikliği commit diff'inde elle incelenir |
-| A09 Logging & Monitoring Failures | APPLICABLE | `src/services/logger.ts`, `src/services/diagnostics.ts` (12 kayıtlık bounded ring) | `tests/diagnostics.test.ts` (tam anahtar kümesi + negatif PII regex), `tests/privacy.test.ts` | **Bilinen:** merkezi crash/telemetry alerting yok — sessiz hata maintainer'a otomatik ulaşmıyor |
-| A10 SSRF | APPLICABLE | `src/domain/logo-domain.ts` public-host doğrulaması; sabit FX/market endpoint listesi; CSP `connect-src` | `tests/external-services.test.ts` (credential/port/localhost/IP reddi), `e2e/helpers.ts` host-eşleşmesi (substring değil) | Kullanıcı serbest URL giremiyor; yalnız domain adı |
-
-### OWASP API Security Top 10 (2023)
-
-Helix'in kendi API'si yoktur; tüketilen yüzey Supabase PostgREST + üç dış
-feed'dir. Satırlar bu yüzeye göre değerlendirildi.
-
-| # | Durum | Dosya / akış | Test / scanner kanıtı | Artık risk |
-|---|---|---|---|---|
-| API1 Broken Object Level Auth | APPLICABLE | owner-only RLS, owner-aware FK | pgTAP: B, A'nın satırını okuyamaz/güncelleyemez/silemez (3 assertion) | — |
-| API2 Broken Authentication | APPLICABLE | Supabase Auth, token yenileme, session epoch | `tests/auth.test.ts`, `tests/session-epoch.test.ts` | — |
-| API3 Broken Object Property Level Auth | APPLICABLE | insert/update `WITH CHECK` | pgTAP: owner değiştirme denemesi `42501` | — |
-| API4 Unrestricted Resource Consumption | APPLICABLE | picked-file pre-read/stream/post-read byte sınırı, `MAX_BACKUP_ROWS`, `MAX_BACKUP_BYTES`, ZIP oran/boyut preflight, lineer Excel yorum parser'ı, `INPUT_LIMITS`, `MAX_INSTALLMENT_COUNT`, 60 bildirim tavanı, pull batch sınırı | `tests/picked-file.test.ts`, `tests/backup-validation.test.ts`, `tests/spreadsheet-import.test.ts` (ZIP bomb + iki regex-DoS mutasyonu), `tests/input-policy.test.ts`, `tests/installments.test.ts` | — |
-| API5 Broken Function Level Auth | APPLICABLE | `delete_own_account` `execute` yalnız `authenticated`, argümansız, `search_path = ''` | migration 3 + pgTAP grant assertion'ları | SECURITY DEFINER zorunlu — kullanıcının `auth.users` yetkisi yok |
-| API6 Sensitive Business Flow | APPLICABLE | hesap dondurma ve kalıcı silme | `tests/account-freeze.test.ts` (9 test: rollback, rollback hatası, fail-closed ilk yazma) | — |
-| API7 SSRF | APPLICABLE | favicon host doğrulaması, sabit endpoint listesi | A10 ile aynı kanıt | — |
-| API8 Security Misconfiguration | APPLICABLE | `anon` grant'ı kaldırıldı, CSP, sabit `search_path` | pgTAP: anon `42501` (sessiz boş sonuç değil); `db lint --linked` Helix şemasında 0 | — |
-| API9 Improper Inventory Management | APPLICABLE | tek Supabase projesi; `preview`/`production` channel ayrımı `eas.json`'da | `tests/release-config.test.ts`; `preview` → branch `preview` koşulsuz mapping doğrulandı | Yayımlanmış production store build'i yok |
-| API10 Unsafe Consumption of APIs | APPLICABLE | TCMB/exchangerate-api/Harem yanıt doğrulaması; abort signal + timeout + boyut sınırı | `tests/external-services.test.ts`: tarihsiz TCMB reddi, sağlayıcının kendi `result: error` yanıtının ve tarihsiz payload'ın reddi, quote şekil/tazelik kontratı (7 invariant mutasyon kanıtlı) | Harem feed'i resmî SLA'sız — 60 sn sonrası canlı sayılmıyor |
-
-### OWASP ASVS v5.0.0 — kategori düzeyi uzlaştırma
-
-[Güncel kararlı ASVS v5.0.0](https://owasp.org/www-project-application-security-verification-standard/)
-esas alınır. Bu tablo tek kullanıcılı, kendi uygulama sunucusu olmayan Helix için
-uygulanabilir alanları kanıta bağlar; bütün requirement kimliklerinin tek tek
-doğrulandığı veya L1 uyumluluğu sağlandığı iddiası değildir.
-
-| Alan | Durum | Kanıt / gerekçe |
-|---|---|---|
-| Architecture | APPLICABLE | `docs/ARCHITECTURE.md` bağımlılık yönü + güven sınırları tablosu (bu belgenin başı) |
-| Authentication | APPLICABLE | Supabase Auth; `tests/auth.test.ts`; şifre gücü form doğrulamasında (plan sınırı: leaked-password kontrolü Free plan'de yok) |
-| Session Management | APPLICABLE | SecureStore + session epoch; `tests/session-epoch.test.ts`, `tests/session-task.test.ts` |
-| Access Control | APPLICABLE | RLS; 59 assertion'lı linked pgTAP |
-| Validation / Encoding | APPLICABLE | `route-params`, `backup-validation`, `spreadsheet-import`, `csvCell`; Semgrep 0 |
-| Stored Cryptography | **DEVICE/BINARY ONLY** | `NSFileProtectionComplete` yalnız yerel `npx expo run:ios --device` build'inde etkinleşir; doğrulaması cihazda yapılır |
-| Error Handling & Logging | APPLICABLE | `tests/diagnostics.test.ts`, `tests/privacy.test.ts`, `tests/undo-outcome.test.ts` (yanıltıcı başarı yok) |
-| Data Protection | APPLICABLE | `PrivacyCover`, `tests/privacy.test.ts`; export açık metin olarak beyan ediliyor |
-| Communications | APPLICABLE | yalnız HTTPS/WSS; CSP `connect-src` beyaz listesi |
-| Malicious-Code Controls | APPLICABLE | Gitleaks 0 gerçek secret; Semgrep 0; CodeQL 0 açık alert; install-script envanteri (2 paket ailesi / 5 çalışan instance, ağ fallback'i tetiklenmedi) |
-| Business Logic | APPLICABLE | `tests/account-freeze.test.ts`, `tests/repository-contract.test.ts`, `tests/balance.test.ts` (Excel golden) |
-| Files & Resources | APPLICABLE | ZIP preflight, satır/hücre/metin tavanları; `tests/spreadsheet-import.test.ts` |
-| API / Web Services | APPLICABLE | API Security tablosu |
-| Configuration | APPLICABLE | `tests/release-config.test.ts`; `.env.example` yalnız `EXPO_PUBLIC_*` |
-
-### OWASP MASVS ve seçilmiş MASTG kontrolleri
-
-| Kategori | Durum | Kanıt / gerekçe |
-|---|---|---|
-| MASVS-STORAGE | APPLICABLE + kısmen DEVICE/BINARY ONLY | Finansal veri SQLite'ta; secret yok. `tests/privacy.test.ts` `kv.set` anahtarlarını `helix.*` literal/sabitiyle sınırlıyor ve `token|password|secret|credential|jwt` desenini reddediyor. Güncel `MASTG-TEST-0207` (Android) ve `MASTG-TEST-0302` (iOS) sandbox incelemesi ile `NSFileProtectionComplete` kanıtı cihaz/binary ister; çalıştırılmış sayılmaz |
-| MASVS-CRYPTO | APPLICABLE | Uygulama kendi kripto ilkelini yazmıyor; `expo-crypto` + `uuidv7`. Semgrep `p/secrets` 0. Güncel `MASTG-TEST-0204` tehdidine göre id üretimi `uuidv7`; `Math.random` finansal/kimlik yolunda kullanılmıyor |
-| MASVS-AUTH | APPLICABLE + DEVICE/BINARY ONLY | `expo-local-authentication` biyometrik app lock; oturum yaşam döngüsü test edilmiş. Biyometrik akışın kendisi cihazda kabul edilecek |
-| MASVS-NETWORK | APPLICABLE + kısmen DEVICE/BINARY ONLY | Yalnız TLS/WSS; sabit endpoint listesi; `app.json` içinde `usesCleartextTraffic`/ATS istisnası yok. `MASTG-TEST-0236` canlı trafik gözlemi cihaz ister; çalıştırılmış sayılmaz |
-| MASVS-PLATFORM | APPLICABLE + DEVICE/BINARY ONLY | `PrivacyCover` (`tests/privacy.test.ts`), bildirim izni boot'ta istenmiyor, deep link şeması `helix://`. Güncel app-switcher snapshot kontrolleri `MASTG-TEST-0289` (Android) ve `MASTG-TEST-0290` (iOS) OS zamanlaması gerektirdiği için cihazda |
-| MASVS-CODE | APPLICABLE | Bağımlılık envanteri/SBOM; advisory dispozisyonları; SHA-pinli Action'lar; vendor edilmiş skill gövdeleri + `skills-lock.json` kaynak/hash kaydı; `npm ci` reproduktibl |
-| MASVS-PRIVACY | APPLICABLE | Veri akışları ve üçüncü taraflar `docs/PRIVACY.md` içinde; notification/detail opt-in, diagnostics redaction ve account cleanup `tests/privacy.test.ts` ile korunuyor |
-| MASVS-RESILIENCE | **N/A — gerekçeli** | Anti-tamper, obfuscation, root/jailbreak tespiti ve emülatör tespiti bilinçli olarak yok. Helix tek kullanıcılık kendi finansal verisini tutar; koruduğu sır cihaz sahibinin kendi verisidir, o yüzden cihaz sahibine karşı bir savunma modeli anlamsızdır. DRM/lisans zorlaması da yoktur |
-
-### Araç kapsamı
-
-| Araç | Durum |
+| Risk | Status and boundary |
 |---|---|
-| SonarQube / SonarCloud | **APPLICABLE.** Gerçek kaynak/test kapsamıyla yerel SonarQube analizi ve V8 LCOV koşar. Son Quality Gate geçti; iki gerçek regex-DoS yolu ve kalan maddi async/sort bulguları düzeltildi, güvenlik hotspot'u/açık bug veya vulnerability kalmadı |
-| OWASP ZAP | **N/A — kullanıcı tarafından açıkça kapsam dışı bırakıldı.** CSP, source map yokluğu, service worker ve route davranışı statik export üzerinde elle doğrulandı |
-| MobSF | **N/A — kullanıcı tarafından açıkça kapsam dışı bırakıldı.** Kaynak seviyesi MASVS kontrolleri yukarıda tamamlandı; binary-only kontroller cihaz matrisinde |
+| Web `script-src 'unsafe-inline'` | Accepted for Expo's static bootstrap; outbound CSP remains narrow |
+| Browser session storage | Accepted; browser-profile access is session access |
+| No application-level database encryption | Accepted; OS sandbox/file protection is the stated control |
+| No third-party crash or automatic release-health alerting | Redacted first-party events exist, but silent failures do not alert the maintainer |
+| No additional EAS code-signing key | Accepted for the current Expo Go preview model; the EAS account is the trust boundary |
+| No production store build or physical-device acceptance | Release claim is limited to web/preview artifacts |
+| Supabase leaked-password check, session timebox, PITR, and long log retention | Plan-limited; do not claim they are enabled |
+| SMTP, CAPTCHA, mandatory MFA, DB network restriction | Blocked on an owner/provider/rollout decision, not silently added |
 
-Son Sonar incelemesinde iki güvenlik kaydı kanıtla false positive kapatıldı:
-`typescript:S2068` içindeki `1Password` sabit bir ürün adı ve public logo hostudur,
-credential değildir; `typescript:S2245` içindeki `Math.random` yalnız dönen form
-placeholder'ının ilk görsel örneğini seçer, token/id/yetki kararı veya persisted
-değer üretmez. Kural/severity veya kaynak kapsamı değiştirilmedi.
+Current lockfile exceptions that must be re-evaluated when their version, path,
+or deadline changes:
 
-### Değerlendirilmiş bağımlılık advisory'leri
+- `esbuild` under `drizzle-kit` is a development-server advisory. The affected
+  server is not run; npm's proposed fix is a breaking Drizzle Kit downgrade.
+- `image-size@1.2.1` is reachable only through the Metro build chain, not the
+  exported application bundle. Moving to 2.x broke Expo asset handling in the
+  measured attempt. This temporary acceptance expires **2026-09-08** and must
+  be re-proved or removed then.
+- `xlsx@0.20.3` is newer than the vendor-fixed versions for the two legacy
+  SheetJS advisories, although npm/OSV can continue to flag the abandoned npm
+  version range because releases moved to the vendor CDN.
 
-| Advisory | Paket | Yol | Sınıf | Bundle'da? | Karar |
-|---|---|---|---|---|---|
-| GHSA-67mh-4wv8-2f99 | `esbuild@0.18.20` | `drizzle-kit` → `@esbuild-kit/esm-loader` → `core-utils` → `esbuild` | devDependency | **hayır (0 dosya)** | **NOT REACHABLE — RETAINED.** `esbuild serve` gerektiriyor; drizzle-kit yalnız config transpile ediyor. Önerilen düzeltme `drizzle-kit@0.18.1` major downgrade'i |
-| GHSA-4r6h-8v6p-xvw6 (CVE-2023-30533) | `xlsx@0.20.3` | doğrudan (SheetJS CDN) | production | evet | **NOT AFFECTED.** Satıcı bildirimi: "0.19.2'ye kadar tüm sürümler", düzeltme **0.19.3**. Kurulu 0.20.3 |
-| GHSA-5pgg-2g8v-p4x9 (CVE-2024-22363) | `xlsx@0.20.3` | doğrudan (SheetJS CDN) | production | evet | **NOT AFFECTED.** Satıcı bildirimi: "0.20.1'e kadar tüm sürümler", düzeltme **0.20.2**. Kurulu 0.20.3 |
-| GHSA-w3rx-r6r6-pgpr (CVE-2025-71330) | `image-size@1.2.1` | `expo`/`react-native` → Metro → `image-size` | build-only | **hayır** | **ACCEPTED RESIDUAL RISK — 2026-09-08'e kadar.** Upstream patched sürüm bildirmiyor. `2.0.2` denemesi `unmatched.png` üzerinde Expo Metro export'unu bozduğu için korunmadı; mevcut paket üretim web export'unda yok ve advisory gate yolu/süre sonu ile yeniden kanıt istiyor |
-| GHSA-5p2g-fcmc-qvqq (CVE-2025-71329) | `image-size@1.2.1` | `expo`/`react-native` → Metro → `image-size` | build-only | **hayır** | **ACCEPTED RESIDUAL RISK — 2026-09-08'e kadar.** Upstream patched sürüm bildirmiyor. JXL/HEIF parser'ı yalnız Metro build sınırında kalıyor; `2.0.2` Metro uyumsuzluğu nedeniyle reddedildi; gerçek export'ta paket yok; advisory gate aynı yolları ve süreyi yeniden kontrol ediyor |
-| GHSA-28wg-ghj8-5hjv (CVE-2026-67214) | `nanoid@3.3.18` | Expo Router/React Navigation/EAS/PostCSS → `nanoid` | runtime + build tree | evet | **FIXED IN TREE.** Tüm 3.x tüketicileri için dar override ile 3.3.18'e birleşti; negative-size non-secure generator vakası ve lockfile çözümü test edildi |
-| GHSA-2v37-7h3g-55p8 (CVE-2026-67213) | `nanoid@3.3.18` | Expo Router/React Navigation/EAS/PostCSS → `nanoid` | runtime + build tree | evet | **FIXED IN TREE.** 3.3.18'in `customAlphabet(..., 0)` ve negatif boyut davranışı boş sonuç veriyor; sonsuz döngü yolu yok; gate artık bu advisory'yi raporlamıyor |
+## Executable evidence
 
-**OSV'nin xlsx satırlarını neden kalıcı olarak "affected" göstereceği:** SheetJS
-npm yayınını **0.18.5**'te bıraktı; bütün düzeltmeler yalnız CDN'de. GitHub
-advisory veritabanı npm paketini izlediği için kayıtların SEMVER aralığı
-`introduced: 0` ile açık uçlu kalıyor ve `fixed` olayı hiç yazılamıyor — bu
-yüzden **her** sürüm eşleşiyor. Otoriter alan `last_known_affected_version_range`
-(`< 0.19.3` ve `< 0.20.2`) ve satıcının kendi advisory sayfalarıdır. Bu satırlar
-scanner'ı susturmak için sürüm düşürülerek "çözülmemelidir".
+The durable evidence is in tests rather than frozen counts:
+
+- auth/session/recovery: `tests/auth.test.ts`, `tests/session-epoch.test.ts`,
+  `tests/session-task.test.ts`, `tests/verification-brake.test.ts`;
+- storage/privacy: `tests/secure-chunked-storage.test.ts`,
+  `tests/privacy.test.ts`, `tests/diagnostics.test.ts`,
+  `tests/diagnostics-upload.test.ts`;
+- sync/ownership: `tests/sync-merge.test.ts`,
+  `tests/tombstone-generation.test.ts`, and
+  `supabase/tests/owner_integrity_and_rls.sql`;
+- hostile input/network: `tests/backup-validation.test.ts`,
+  `tests/spreadsheet-import.test.ts`, `tests/csv-export-safety.test.ts`,
+  `tests/external-services.test.ts`;
+- release surface: `tests/release-config.test.ts`,
+  `tests/web-security.test.ts`, and the pinned workflows.
+
+Fresh command and scanner output belongs in the CI run or task handoff, not in
+this file.
