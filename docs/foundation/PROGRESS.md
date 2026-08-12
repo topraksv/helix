@@ -24,9 +24,41 @@ This file is the cold-resume log for the unattended foundation reset on
   5.22 seconds.
 - Left: commit and push this checkpoint, then begin Phase 0 evidence recovery.
 
+## 2026-08-12 — Missing specification reconstructed
+
+- Did: read every file containing a section citation plus the direct domain,
+  repository, sync, auth, privacy, and integration tests that assert those
+  contracts. Reconstructed only the cited sections in `docs/SPEC.md`.
+- Proved: the 14 `spec §` source files account for the prompt's count; a wider
+  citation search also found direct `§2.8` references, so the spec includes that
+  tenth cited section and records the discrepancy in Decision D003.
+- Left: verify Phase 0 after the baseline and security inventory are committed.
+
+## 2026-08-12 — Baseline measurements captured
+
+- Did: ran fresh timed unit, typecheck, coverage, clean web-export, and bundle
+  checks under Node 22; recorded raw evidence plus coverage/mutation scope in
+  `docs/foundation/BASELINE.md`. Inventoried all six named security controls in
+  Decision D004.
+- Proved: unit run 110 files / 970 tests, 5.57s wall; typecheck 4.40s wall;
+  coverage 97.88% statements / 95.29% branches / 100% functions / 99.71%
+  lines; bundle 3,380,216 entry JS / 4,009,981 total JS / 7,376,506 export
+  bytes, within every enforced budget.
+- Left: run the Phase 0 gate, commit the spec separately from measurement and
+  decision evidence, and push both commits.
+
+## 2026-08-12 — Phase 0 gate passed
+
+- Did: ran `npm run control:check && npx tsc --noEmit && npx vitest run` after
+  all Phase 0 artifacts were present.
+- Proved: control check validated 34 skills and both lock/bridge layers;
+  TypeScript exited cleanly; Vitest passed 110 files / 970 tests in 5.30s.
+- Left: commit and push the reconstructed spec and the baseline/control record
+  as separate concerns, then begin the instruction-layer audit.
+
 ## Current phase status
 
-- Phase 0: pending.
+- Phase 0: done — gate passed (34 skills; clean typecheck; 110/970 tests).
 - Phase 1: pending.
 - Phase 2: pending.
 - Final verification: pending.
