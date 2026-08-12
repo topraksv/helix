@@ -72,12 +72,14 @@ describe("setting repository delegation", () => {
   it("writes each supported setting under its stable sync key", async () => {
     await setAccountFrozen("user-1", true);
     await setReminderDays("user-1", 30);
+    await setReminderDays("user-1", 0);
     await setPendingTableVisibility("user-1", false);
     await setBalanceDeclaration("user-1", 123_45, "2026-07-21");
 
     expect(dependencies.writeSetting.mock.calls).toEqual([
       ["user-1", "account_frozen", true],
       ["user-1", "reminder_days", 30],
+      ["user-1", "reminder_days", 0],
       ["user-1", "show_pending_in_table", false],
       ["user-1", "balance_declared", { minor: 123_45, at: "2026-07-21" }],
     ]);
