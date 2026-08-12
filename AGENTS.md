@@ -46,6 +46,13 @@ Uninstalled names used by upstream prose resolve as follows:
   this file as `code-review` inputs. Expo feedback uses the command embedded in
   the Expo skill that requested it.
 
+## Routing
+
+For work with more than one step, use `brainstorming` → `writing-plans` →
+`executing-plans` or `subagent-driven-development` → `requesting-code-review`
+→ `verification-before-completion`. Collapse a stage only when the work is
+genuinely one step; never collapse the final verification stage.
+
 ## Verification
 
 Use Node 22:
