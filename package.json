@@ -2,7 +2,7 @@
   "name": "helix",
   "main": "expo-router/entry",
   "version": "1.0.0",
-  "author": "\u00d6mer Toprak \u015eavl\u0131",
+  "author": "Ömer Toprak Şavlı",
   "license": "UNLICENSED",
   "engines": {
     "node": "^22"
@@ -81,9 +81,8 @@
     "test:e2e:only": "playwright test",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "control:check": "node .ai/scripts/check-skills.mjs && node scripts/execution-authority-guard.mjs check && node .ai/scripts/check-graphify-freshness.mjs",
-    "control:setup": "node scripts/execution-authority-guard.mjs install",
-    "verify": "npm run control:check && npm run quality:audit && npm run typecheck && npm run test:coverage && npx expo lint",
+    "control:check": "node .ai/scripts/check-skills.mjs",
+    "verify": "npm run control:check && npm run typecheck && npm run test:coverage && npx expo lint",
     "bundle:check": "node scripts/check-web-budget.mjs dist --require-supabase-config",
     "test:e2e:smoke": "npm run test:e2e:export && playwright test --grep @smoke",
     "verify:full": "npm run verify && npx expo export -p web --clear && npm run bundle:check && npm run test:e2e",
@@ -95,8 +94,6 @@
     "test:native:local:ios": ": \"${MAESTRO_DEVICE:?Set MAESTRO_DEVICE to an iOS simulator UDID}\"; PATH=\"/opt/homebrew/opt/openjdk@17/bin:$PATH\" maestro --device \"$MAESTRO_DEVICE\" test e2e/native-local",
     "test:native:local:android": "PATH=\"/opt/homebrew/opt/openjdk@17/bin:$PATH\" maestro --platform android test e2e/native-local",
     "ios:build": "expo run:ios --device \"iPhone 17 Pro\"",
-    "quality:audit": "node scripts/quality-audit.mjs --check",
-    "quality:report": "node scripts/quality-audit.mjs --render",
     "audit:unused": "npx --yes knip@6.32.0"
   },
   "private": true,

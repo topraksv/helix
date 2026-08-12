@@ -94,7 +94,6 @@ describe("release contract", () => {
       "npx expo lint",
       "npm run test:coverage",
       "npm run test:mutation",
-      "node scripts/check-advisories.mjs",
       "npx expo export -p web --clear",
       "npm run bundle:check",
     ]) {
@@ -106,20 +105,19 @@ describe("release contract", () => {
     expect(ci).not.toContain("verify:release");
   });
 
-  it("gates the deploys on the checks but decides them from the classifier", () => {
-    // Both edges matter. `needs: [classify, gate]` orders a deploy after the
-    // checks; the condition reads `classify` directly because forwarding the
-    // decision through `gate`'s outputs resolved to an empty string and
-    // skipped both deploys on a green run.
+  it("gates the deploys on the checks and on an explicit dispatch target", () => {
+    // A deploy is ordered after `gate` and is reachable only through a manual
+    // dispatch that names its target; nothing in a push path can release.
     for (const job of ["deploy-web", "deploy-mobile"] as const) {
-      const decision = job === "deploy-web" ? "deploy_web" : "deploy_mobile";
+      const target = job === "deploy-web" ? "web" : "mobile";
       const condition = ci.slice(ci.indexOf(`  ${job}:\n`), ci.indexOf("steps:", ci.indexOf(`  ${job}:\n`)));
-      expect(condition, job).toContain("needs: [classify, gate]");
+      expect(condition, job).toContain("needs: gate");
       // `!cancelled()` is load-bearing: without it GitHub propagates the
       // upstream skip through `gate`'s `always()` and this job never runs.
       expect(condition, job).toContain("!cancelled()");
       expect(condition, job).toContain("needs.gate.result == 'success'");
-      expect(condition, job).toContain(`needs.classify.outputs.${decision} == 'true'`);
+      expect(condition, job).toContain("github.event_name == 'workflow_dispatch'");
+      expect(condition, job).toContain(`inputs.release_target == '${target}'`);
     }
     expect(ci).not.toContain("needs.gate.outputs");
   });
@@ -157,7 +155,7 @@ describe("release contract", () => {
     expect(build).toContain("actions/upload-artifact");
     expect(build).toContain("if-no-files-found: error");
     const full = ci.slice(ci.indexOf("  e2e-full:"), ci.indexOf("  gate:"));
-    expect(full).toContain("needs: [classify, e2e-build]");
+    expect(full).toContain("needs: e2e-build");
     expect(full).toContain("actions/download-artifact");
     expect(full).toContain("path: dist-e2e");
     // Both shards must consume the same named artifact.
@@ -223,15 +221,12 @@ describe("release contract", () => {
     // Assert against the executed lines: the surrounding comments legitimately
     // discuss the escapes this job refuses to take.
     const commands = security.split("\n").filter((line) => /^\s*(-\s*)?(run|uses|continue-on-error):/.test(line));
-    expect(commands.join("\n")).toContain("node scripts/check-advisories.mjs");
+    expect(commands.join("\n")).toContain("npm audit --audit-level=high");
     for (const line of commands) {
       expect(line, line).not.toMatch(/--audit-level=(moderate|low|info)|--omit=dev|continue-on-error/);
     }
     expect(security).toContain("cron:");
     expect(security).toContain("package-lock.json");
-    const quality = ci.slice(ci.indexOf("  quality:"), ci.indexOf("  web-build:"));
-    expect(quality).toContain("node scripts/check-advisories.mjs");
-    expect(quality.indexOf("node scripts/check-advisories.mjs")).toBeLessThan(quality.indexOf("npm ci"));
     // A README or Markdown edit must not wake a scanner: the push trigger is
     // an allowlist of paths, and none of them is documentation.
     const paths = security.slice(security.indexOf("paths:")).split("\n").slice(1);

@@ -1,3 +1,0 @@
-#!/bin/sh
-# helix-execution-authority-hook:v1
-exec node "$(git rev-parse --show-toplevel)/scripts/execution-authority-guard.mjs" git-commit

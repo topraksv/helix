@@ -66,8 +66,8 @@ locked (`NSFileProtectionComplete`). That entitlement is the one thing that
 could make it unreadable on a real relaunch, and no browser test can ask.
 
 **`04-recovery-route.yaml` — recovery, and the way back out of it.**
-`.ai/INVARIANTS.md` exempts the recovery routes from the signed-in and
-onboarding guards, which makes "can the user still leave" a real question.
+The recovery routes are exempt from the signed-in and onboarding guards,
+which makes "can the user still leave" a real question.
 
 ## What they cannot reach yet, and why
 

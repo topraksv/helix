@@ -19,7 +19,7 @@
  *
  * What must not change, and is asserted by `tests/font-coverage.test.ts`:
  * every character the app renders survives, advance widths are untouched, and
- * the digit spread stays exactly what `.ai/INVARIANTS.md` measured — Inter at
+ * the digit spread stays exactly what was measured — Inter at
  * 37% (proportional, and every ledger width is calibrated against it), IBM
  * Plex Serif at 0% (tabular by construction). Subsetting removes glyphs; it
  * must never reshape the ones it keeps.

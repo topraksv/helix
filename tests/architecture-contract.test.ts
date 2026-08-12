@@ -6,8 +6,8 @@ import { dirname, join, relative, resolve } from "node:path";
 /**
  * The module graph, asserted rather than described.
  *
- * `.ai/INVARIANTS.md` states these directions and `AGENTS.md` asks that the
- * repository keep one proven pattern instead of a third style, but nothing
+ * These directions are the repository's one proven pattern rather than a
+ * third style, but nothing
  * failed when a file drifted the other way. A dependency direction is cheap to
  * break by accident (one convenient import in a screen) and expensive to
  * unwind later, so it is checked here — statically, with no runtime cost.

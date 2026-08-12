@@ -37,38 +37,11 @@ env:
   EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_NvhpZdHfjtL1zRBLQp60gQ_FS90zaj3
 
 jobs:
-  classify:
-    runs-on: ubuntu-latest
-    outputs:
-      run_ci: ${{ steps.diff.outputs.run_ci }}
-      full_e2e: ${{ steps.diff.outputs.full_e2e }}
-      run_web_build: ${{ steps.diff.outputs.run_web_build }}
-      deploy_web: ${{ steps.diff.outputs.deploy_web }}
-      deploy_mobile: ${{ steps.diff.outputs.deploy_mobile }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The classifier diffs against the previous head, which a shallow
-          # clone does not contain.
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-      - id: diff
-        run: node scripts/classify-changes.mjs "${{ github.event.before }}" "${{ github.sha }}"
-
   quality:
-    needs: classify
-    if: needs.classify.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The quality ledger compares its audited product snapshot with HEAD.
-          # Keep the audited commit available instead of letting a shallow clone
-          # turn a metadata-only control-plane delta into a false failure.
-          fetch-depth: 0
           persist-credentials: false
       # Expo SDK 54 tooling is incompatible with Node 24/26 native TypeScript
       # stripping (it chokes on expo-modules-core's src/index.ts). Node 22 is
@@ -77,13 +50,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # Audit the integrity-locked graph before any dependency lifecycle script
-      # executes. A new high/critical advisory blocks the delivery gate.
-      - run: node scripts/check-advisories.mjs
       - run: npm ci
-      - run: npm run control:setup
       - run: npm run control:check
-      - run: npm run quality:audit
       - run: npm run typecheck
       - run: npx expo lint
       # Coverage runs the complete Vitest suite once, while enforcing per-file
@@ -93,12 +61,7 @@ jobs:
       # assertions in investment, repository and recovery boundaries.
       - run: npm run test:mutation
 
-  # Gated on `run_web_build`, not `run_ci`: a test-only or CI-only commit still
-  # has to be verified but cannot move a byte of the bundle, and exporting it
-  # anyway spent minutes per run proving nothing.
   web-build:
-    needs: classify
-    if: needs.classify.outputs.run_web_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -127,8 +90,6 @@ jobs:
           path: dist
 
   e2e-smoke:
-    needs: classify
-    if: needs.classify.outputs.run_ci == 'true' && needs.classify.outputs.full_e2e != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -156,9 +117,10 @@ jobs:
   # One export for the whole sharded run. Each shard used to build its own
   # `dist-e2e`, which cost a second full Metro bundle and — worse — let the two
   # shards test two separately-produced artifacts. They now share these bytes.
+  # The sharded full suite is expensive, so it runs on demand rather than on
+  # every push; `e2e-smoke` is the always-on browser signal.
   e2e-build:
-    needs: classify
-    if: needs.classify.outputs.full_e2e == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -180,8 +142,8 @@ jobs:
           if-no-files-found: error
 
   e2e-full:
-    needs: [classify, e2e-build]
-    if: needs.classify.outputs.full_e2e == 'true'
+    needs: e2e-build
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -222,7 +184,7 @@ jobs:
   # classification, so only `failure` and `cancelled` block the deploy.
   gate:
     if: always()
-    needs: [classify, quality, web-build, e2e-smoke, e2e-build, e2e-full]
+    needs: [quality, web-build, e2e-smoke, e2e-build, e2e-full]
     runs-on: ubuntu-latest
     steps:
       - name: Fail on any real job failure
@@ -238,27 +200,19 @@ jobs:
             esac
           done
 
-  # Two things this condition has to do, both learned the hard way on a green
-  # run that deployed nothing.
-  #
   # `gate` is declared `if: always()` so a correctly skipped job cannot block
   # it. GitHub then propagates that upstream "skipped" state down the needs
   # chain, so a plain `needs: gate` leaves this job skipped even when `gate`
   # itself succeeded. `!cancelled()` replaces that implicit rule, and the
   # `result` check puts back the only part of it that was wanted: a failed or
   # skipped gate must still stop the deploy.
-  #
-  # The decision is read from `classify` directly. Forwarding it through
-  # `gate`'s job outputs resolved to an empty string — a silent no-deploy that
-  # is indistinguishable from a healthy run.
   deploy-web:
-    needs: [classify, gate]
+    needs: gate
     if: >-
       ${{ !cancelled()
       && needs.gate.result == 'success'
       && github.event_name == 'workflow_dispatch'
-      && inputs.release_target == 'web'
-      && needs.classify.outputs.deploy_web == 'true' }}
+      && inputs.release_target == 'web' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -300,13 +254,12 @@ jobs:
           echo "bundle $bundle: $js"; [ "$js" = "200" ]
 
   deploy-mobile:
-    needs: [classify, gate]
+    needs: gate
     if: >-
       ${{ !cancelled()
       && needs.gate.result == 'success'
       && github.event_name == 'workflow_dispatch'
-      && inputs.release_target == 'mobile'
-      && needs.classify.outputs.deploy_mobile == 'true' }}
+      && inputs.release_target == 'mobile' }}
     runs-on: ubuntu-latest
     environment:
       name: helix

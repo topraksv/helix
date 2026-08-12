@@ -180,7 +180,7 @@ describe("shipped fonts", () => {
     }
   });
 
-  it("keeps the digit spread `.ai/INVARIANTS.md` measured", () => {
+  it("keeps the measured digit spread", () => {
     // The serif is tabular by construction (0%), which is why figures may use
     // it; Inter is proportional (37%) and every ledger width in the app is
     // calibrated against exactly that. Either number moving invalidates a

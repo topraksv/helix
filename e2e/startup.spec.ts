@@ -50,8 +50,8 @@ test("opens within its measured startup budget @smoke @cross-browser", async ({ 
   );
 
   // Every script the document itself pulls in — the initial load, before any
-  // navigation. Route code lives in here on purpose (see the asyncRoutes
-  // decision in `.ai/INVARIANTS.md`), so this is the honest figure.
+  // navigation. Route code lives in here on purpose (asyncRoutes), so this is
+  // the honest figure.
   const initialScriptBytes = await page.evaluate(() =>
     performance
       .getEntriesByType("resource")

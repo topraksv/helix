@@ -52,18 +52,15 @@ supabase/.temp/
 .codex/
 
 # Source-owned AI control plane. Tool settings remain machine-local, while the
-# small shared truth package and symlink bridges are recoverable from Git.
+# check script and the vendored skills are recoverable from Git.
+# Skills are committed rather than restored on demand so that an upstream
+# change is reviewable as a diff instead of arriving silently at install time.
 /.claude/*
 !/.claude/skills/
 !/.claude/skills/**
 /.ai/*
-!/.ai/INVARIANTS.md
-!/.ai/ROUTING.md
-!/.ai/AI_HANDOFF.md
 !/.ai/scripts/
 !/.ai/scripts/*.mjs
-!/.ai/skills/
-!/.ai/skills/**
 /.agents/*
 !/.agents/skills/
 !/.agents/skills/**

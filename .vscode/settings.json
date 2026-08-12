@@ -3,5 +3,12 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
+  },
+  "search.followSymlinks": false,
+  "search.exclude": {
+    "**/.claude/skills": true
+  },
+  "files.watcherExclude": {
+    "**/.claude/skills/**": true
   }
 }

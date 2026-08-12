@@ -1,8 +1,8 @@
 /**
  * The rules that must hold for EVERY input, not for the ones someone thought of.
  *
- * `.ai/ROUTING.md` has routed serialization, ordering and normalization work to
- * property-based testing for a long time, and no test in this suite ever
+ * Serialization, ordering and normalization have long belonged to
+ * property-based testing here, and no test in this suite ever
  * generated an input. The example-based tests around these functions are good —
  * they pin real defects with real numbers — but they can only assert what their
  * author already suspected. These assert the shape of the answer over the whole
