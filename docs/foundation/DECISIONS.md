@@ -37,3 +37,33 @@ nine section numbers; `docs/SPEC.md` includes §2.8 and no uncited section.
 - **Account freeze** — marks and proves the synced freeze before ending the session, and rolls the flag back on every failed path so the account cannot be half-frozen; lives in `src/auth/freeze.ts` and the account-security/guard flow.
 - **Chunked SecureStore** — keeps oversized Supabase auth sessions inside native secure storage with bounded chunk count, complete-read checks, stale-chunk cleanup, and legacy single-value compatibility; lives in `src/sync/secure-chunked-storage.ts`.
 - **Install-script allowlist** — fails the test suite if a new dependency begins executing code during `npm ci`, while retaining the two reviewed native build-tool families that require hooks; lives in `tests/install-scripts.test.ts` (`esbuild`, `unrs-resolver`).
+
+### D005 — Keep all 34 installed skills
+
+No installed skill is genuinely inapplicable or redundant. The repository has
+active Expo native and web targets, Supabase migrations and auth, Playwright
+and native E2E suites, property-based tests, CI/release workflows, security and
+supply-chain controls, and documented architecture. Apparent overlaps describe
+different workflow stages or surfaces (for example, diff review versus
+receiving feedback, native UI versus native performance, and Supabase services
+versus Postgres schema work). Removing one would leave a real task class
+without its specialist. No skill was added, removed, copied, or edited.
+
+### D006 — Make `AGENTS.md` the single instruction source
+
+Anthropic's current guidance favors concise, specific, non-derivable project
+instructions and warns that contradictory instruction files produce arbitrary
+selection. `CLAUDE.md` therefore contains only its supported import of
+`AGENTS.md`. `AGENTS.md` retains Helix-specific language, safety, routing,
+verification, and authorization rules; it drops explanatory duplication and
+records exact fallbacks for every uninstalled sibling named by an upstream
+skill.
+
+### D007 — Resolve missing skill references locally
+
+Vendored skill bodies must remain upstream-clean, so their missing sibling
+references are resolved in `AGENTS.md`, not patched in place. Existing Helix
+skills cover testing, debugging, design, documentation, review, and Git
+fallbacks. Store release remains a separately authorized task; Expo feedback
+uses the command already embedded in the installed Expo skills. This preserves
+upstream updateability without leaving routing ambiguous.

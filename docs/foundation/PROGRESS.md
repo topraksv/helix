@@ -56,9 +56,33 @@ This file is the cold-resume log for the unattended foundation reset on
 - Left: commit and push the reconstructed spec and the baseline/control record
   as separate concerns, then begin the instruction-layer audit.
 
+## 2026-08-12 — Instruction layer consolidated
+
+- Did: audited `AGENTS.md`, `CLAUDE.md`, all 34 installed skill names, and every
+  upstream reference to a missing sibling. Reduced Claude's entry point to one
+  imported source of truth, tightened routing to real tie-breaks, and stated a
+  local substitute for each unavailable sibling without editing vendored
+  content.
+- Proved: lockfile, `.agents/skills/`, and `.claude/skills/` each resolve the
+  same 34 skills; package, workflow, migration, browser/native E2E, and
+  property-test evidence gives every installed specialist a distinct task
+  surface. Decisions D005–D007 record why none were removed.
+- Left: run the Phase 1 gate, commit and push the instruction audit, then begin
+  the repository-hygiene inventory.
+
+## 2026-08-12 — Phase 1 gate passed
+
+- Did: ran `npm run control:check && npx tsc --noEmit && npx vitest run` after
+  consolidating agent instructions and resolving missing-sibling routing.
+- Proved: control check validated all 34 vendored skills, the Claude bridge,
+  and the lockfile; TypeScript exited cleanly; Vitest passed 110 files / 970
+  tests in 5.24 seconds.
+- Left: commit and push the instruction-layer checkpoint, then inventory Phase
+  2 hygiene candidates and prove every executable deletion independently.
+
 ## Current phase status
 
 - Phase 0: done — gate passed (34 skills; clean typecheck; 110/970 tests).
-- Phase 1: pending.
+- Phase 1: done — gate passed (34 skills; clean typecheck; 110/970 tests).
 - Phase 2: pending.
 - Final verification: pending.

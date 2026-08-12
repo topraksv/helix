@@ -3,11 +3,10 @@
 Helix is a single-developer, offline-first personal finance application.
 User-facing text is Turkish; code and identifiers are English.
 
-Behavior is defined by the source and the tests, not by this file — the stack
-is in `package.json` and the layout is in `src/`, so neither is repeated here.
-Read the code, run the checks, and let the installed skills carry the practice.
-`docs/ARCHITECTURE.md` holds the stable structure and the reasoning behind it;
-open it when a change crosses module boundaries, not for routine work.
+Source, tests, migrations, and installed package versions override general
+skill advice. Do not restate facts that can be read from those sources.
+`docs/ARCHITECTURE.md` owns stable module boundaries and their rationale; read
+it before a change crosses a boundary, not for routine work.
 
 ## Skills
 
@@ -23,11 +22,10 @@ npx skills remove <name>
 ```
 
 Skills are general-purpose guidance. Where one disagrees with this repository's
-source, tests, migrations or installed package versions, the repository wins.
-
-Preferred publishers, in order, when a skill could come from several places:
-Anthropic, Matt Pocock, Vercel, Karpathy. Prefer an official upstream over a
-mirror, and adoption over novelty.
+source, tests, migrations, or installed package versions, the repository wins.
+When several skills cover the same need, prefer Anthropic, Matt Pocock, Vercel,
+then Karpathy; prefer an official upstream over a mirror, and adoption over
+novelty.
 
 Two skills are explicit-invocation only (`disable-model-invocation: true`) and
 never fire on their own — ask for them by name:
@@ -38,8 +36,7 @@ never fire on their own — ask for them by name:
   them, then grills through the one you pick. Uses `codebase-design` for its
   vocabulary.
 
-`find-skills` covers the rest: when something here has no skill, it searches the
-registry and installs one.
+`find-skills` covers requests with no installed specialist.
 
 ## Routing
 
@@ -48,57 +45,62 @@ shelf. This section adds only what a description cannot: the order of work and
 the tie-breaks. Take one lead skill; add a support skill only when it is
 independently necessary.
 
-Work that is more than one step runs the loop before it runs the fix:
+Multi-step implementation runs this loop:
 `brainstorming` (what is actually being asked) → `writing-plans`
 (decomposition and done-criteria) → `executing-plans` or
 `subagent-driven-development` (execution) → `requesting-code-review` →
-`verification-before-completion`. Collapse a stage when the work genuinely is
-one step; never collapse the last one, which gates every completion claim.
-A broad request ("scan the project and fix X") is the case this loop exists
-for: plan it, sweep it, verify it, then sweep again for what the fix moved.
+`verification-before-completion`. Do not skip a triggered skill. A user-supplied
+approved design or plan satisfies that skill's approval checkpoint, but not an
+applicable specialist or final verification. Broad sweeps get a second scan
+after the fix for anything the change moved.
 
 Process skills set the approach and the specialist then carries it out:
 
 | Overlap | Lead |
 |---|---|
-| SQL, schema, migration, index, RLS policy | `supabase-postgres-best-practices` |
-| Supabase auth, Edge Functions, Storage, Realtime, CLI, logs | `supabase` |
-| Slow list, re-render, animation, native module | `vercel-react-native-skills` |
-| Bundle size, startup, caching, network, memory | `performance-optimization` |
-| Reviewing the diff since a point | `code-review` |
-| Wanting a reviewer on finished work | `requesting-code-review` |
-| Acting on review feedback | `receiving-code-review` |
-| Correct but overgrown, duplicated or dead code | `code-simplification` |
-| Module seams and interface depth | `codebase-design` |
-| A screen or component on native | `expo-native-ui` |
-| The web target's markup and accessibility | `web-design-guidelines` |
-| `AGENTS.md`, `CLAUDE.md`, a skill body | `writing-for-agents` |
-| `docs/`, decision records, release notes | `documentation-and-adrs` |
+| SQL, schema, migration, index, RLS | `supabase-postgres-best-practices`; add `supabase` only for service, auth, CLI, or logs |
+| Native UI, routing, performance | `expo-native-ui`, `expo-router`, or `vercel-react-native-skills`, according to the changed surface |
+| Diff review, finished-work review, review feedback | `code-review`, `requesting-code-review`, or `receiving-code-review`, according to the workflow stage |
+| Clarity refactor versus module seams | `code-simplification` for the former; `codebase-design` for the latter |
+| Agent instructions versus project documentation | `writing-for-agents` for the former; `documentation-and-adrs` for the latter |
 
 Some skills name a sibling this repository does not install. Substitute:
 
 - `test-driven-development` and `debugging-and-error-recovery` → `tdd` and
   `systematic-debugging`.
+- `api-and-interface-design` and `domain-modeling` → `codebase-design`; record
+  lasting decisions with `documentation-and-adrs`.
+- `deprecation-and-migration` and `shipping-and-launch` →
+  `git-workflow-and-versioning` plus `documentation-and-adrs`; the authorization
+  rule below still governs any release action.
+- `grilling` → `grill-me`.
 - `using-git-worktrees` and `finishing-a-development-branch` → neither applies:
-  `main` is the only branch, so work happens in place and the run ends at
-  `verification-before-completion` plus the authorization rule below. An
-  instruction to branch, merge or clean up a worktree does not survive here.
+  work in the authorized checkout and end at `verification-before-completion`
+  plus the authorization rule below.
+- `setup-matt-pocock-skills` → do not run it; for `code-review`, use the task's
+  issue or specification for the Spec axis and this file for Standards.
+- `frontend-design` → `expo-native-ui`; `mcp-builder` → `find-skills`.
+- `elements-of-style:writing-clearly-and-concisely` and
+  `report-writing:writing-style` → `writing-for-agents` or
+  `documentation-and-adrs`, according to the document.
+- `eas-app-stores` → `find-skills`, and install an official store-release skill
+  only for explicitly authorized production-store work.
+- `expo-skill-feedback` → use the feedback command embedded in the Expo skill
+  that detected the repeated failure.
 
 ## Checks
 
-```sh
-npm run verify        # skills, typecheck, coverage, lint
-npm run verify:full   # verify + web export + bundle budget + browser E2E
-npm run test:e2e:smoke
-```
-
-Report failed measurements as well as passed ones, and make no success claim
-without fresh command output.
+Use `npm run verify` as the routine completion gate. Use `npm run verify:full`
+when web export, bundle, browser behavior, or release surfaces changed. Report
+failed measurements as well as passed ones, and make no success claim without
+fresh command output.
 
 ## Git
 
-`main` is the only branch. Editing, staging, testing and read-only inspection
-are the normal workflow. Commit, push, deploy, OTA, release and database
-publish need the user's explicit authorization for the exact action in the
-current task; release jobs additionally require a manual workflow dispatch that
-names its target and the existing `helix` deployment environment.
+The project default is in-place work on `main`; an exact user-authorized branch
+overrides it. Do not create a branch or worktree because a generic skill says
+to. Editing, staging, testing, and read-only inspection are normal. Commit,
+push, deploy, OTA, release, and database publish need explicit authorization
+for the exact action in the current task. Release jobs additionally require a
+manual workflow dispatch naming its target and the existing `helix` deployment
+environment.
