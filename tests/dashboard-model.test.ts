@@ -45,5 +45,38 @@ describe("dashboard model parity", () => {
 
   // The correct assertion is intentionally pending until the projection defect
   // documented in docs/SPEC.md, "Known defects" §2.7, is fixed.
-  it.todo("counts one future obligation represented by both transaction and expected rows only once");
+  it.todo("counts one future obligation represented by both transaction and expected rows only once", () => {
+    const futureTransaction = tx({
+      id: "future-subscription",
+      type: "expense",
+      amountTryMinor: 125_00,
+      effectiveDate: "2026-07-28",
+      status: "pending",
+      subscriptionId: "electricity",
+    });
+    const model = buildDashboardModel({
+      transactions: [futureTransaction],
+      expected: [{
+        id: "electricity-expected",
+        direction: "out",
+        kind: "subscription",
+        refId: "electricity",
+        dueDate: "2026-07-28",
+        amountMinor: 125_00,
+        currency: "TRY",
+        status: "pending",
+      }],
+      ledger: [],
+      actualBalanceMinor: 1_000_00,
+      today: "2026-07-18",
+      monthStart: "2026-07-01",
+      monthEnd: "2026-07-31",
+      currentMonth: "2026-07",
+      year: 2026,
+      expectedTryMinor: (_currency, amount) => amount,
+    });
+
+    expect(model.outgoingMinor).toBe(125_00);
+    expect(model.projectedMinor).toBe(875_00);
+  });
 });

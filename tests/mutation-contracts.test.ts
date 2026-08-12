@@ -91,7 +91,11 @@ describe("mutation-sensitive external contracts", () => {
   });
 
   // Correct behavior is pending under docs/SPEC.md, "Known defect — malformed TCMB unit values".
-  it.todo("rejects a decimal TCMB Unit instead of treating it as the implicit unit");
+  it.todo("rejects a decimal TCMB Unit instead of treating it as the implicit unit", () => {
+    expect(() => parseTcmbRates(
+      '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1.5</Unit><ForexSelling>60</ForexSelling></Currency></Tarih_Date>',
+    )).toThrow("TCMB response has no supported rates");
+  });
 
   it("enforces quote boundaries rather than accepting zero or over-limit rates", () => {
     const published = 1_784_332_800;
