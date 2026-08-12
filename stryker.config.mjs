@@ -19,6 +19,7 @@ export default {
     "src/domain/expected.ts",
     "src/domain/fx-provider.ts",
     "src/domain/fx.ts",
+    "src/domain/form-state.ts",
     "src/domain/input.ts",
     "src/domain/investment-projection.ts",
     "src/domain/installments.ts",
