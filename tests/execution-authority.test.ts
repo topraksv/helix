@@ -137,6 +137,45 @@ describe("execution authority guard", () => {
     });
   });
 
+  it("detects guarded command forms without backtracking-sensitive patterns", () => {
+    const guardedCommands = [
+      "git -c core.hooksPath=.githooks commit -m cleanup",
+      "git --no-pager push origin main",
+      "git -c core.hooksPath=.githooks reset --hard HEAD",
+      "git branch -D temporary",
+      "git branch --delete temporary",
+      "git -C /tmp branch -d temporary",
+      "git tag --delete release",
+      "gh workflow run ci.yml",
+      "gh --repo topraksv/helix workflow run ci.yml",
+      "npx --yes eas-cli@21.4.0 update --branch preview",
+      "npm run deploy",
+      "expo publish",
+      "supabase db migration up",
+      "npx supabase db push",
+      `git ${"-x ".repeat(2_000)}commit`,
+    ];
+
+    for (const command of guardedCommands) {
+      const denied = run(["tool-hook"], JSON.stringify({ tool_input: { command } }));
+      expect(denied.status, command).toBe(0);
+      expect(JSON.parse(denied.stdout), command).toMatchObject({
+        continue: false,
+        hookSpecificOutput: { permissionDecision: "deny" },
+      });
+    }
+
+    const compound = run(
+      ["tool-hook"],
+      JSON.stringify({ tool_input: { command: "git commit -m cleanup && npm run deploy" } }),
+    );
+    expect(compound.status).toBe(0);
+    expect(JSON.parse(compound.stdout)).toMatchObject({
+      continue: false,
+      hookSpecificOutput: { permissionDecision: "deny" },
+    });
+  });
+
   it("enforces commit/push authorization, staged-diff invalidation, and replay resistance in isolation", () => {
     const { temp, repo } = createSeedRepository();
     const remote = join(temp, "remote.git");
@@ -230,6 +269,19 @@ describe("execution authority guard", () => {
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
+  });
+
+  it("rejects multi-ref pushes instead of authorizing only the first update", () => {
+    const result = run(
+      ["git-push", "origin"],
+      [
+        "refs/heads/main 0123456789012345678901234567890123456789 refs/heads/main 0000000000000000000000000000000000000000",
+        "refs/heads/release 1234567890123456789012345678901234567890 refs/heads/release 0000000000000000000000000000000000000000",
+      ].join("\n") + "\n",
+      { HELIX_USER_AUTHORIZATION: "push:origin:refs/heads/main:0123456789012345678901234567890123456789" },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("exactly one ref update");
   });
 
   it("recovers tracked hooks in a fresh clone without existing local hooks", () => {

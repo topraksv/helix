@@ -4,13 +4,17 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
+  closeSync,
   copyFileSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   lstatSync,
+  openSync,
   readFileSync,
   realpathSync,
   statSync,
+  constants as fsConstants,
 } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -23,41 +27,187 @@ const LEGACY_HOOKS = {
     "#!/bin/sh\nexec node \"$(git rev-parse --show-toplevel)/scripts/execution-authority-guard.mjs\" git-push \"$@\"\n",
 };
 
-const dangerousMatchers = [
-  {
-    action: "git-commit",
-    pattern: /\bgit\b(?:\s+(?:(?:-[^\s]+|--[\w-]+)(?:\s+[^\s;&|]+)?))*\s+commit\b/i,
-  },
-  {
-    action: "git-push",
-    pattern: /\bgit\b(?:\s+(?:(?:-[^\s]+|--[\w-]+)(?:\s+[^\s;&|]+)?))*\s+push\b/i,
-  },
-  {
-    action: "git-external",
-    pattern: /\bgit\b(?:\s+(?:(?:-[^\s]+|--[\w-]+)(?:\s+[^\s;&|]+)?))*\s+(?:pull|fetch|ls-remote|remote)\b/i,
-  },
-  {
-    action: "git-history",
-    pattern: /\bgit\b(?:\s+(?:(?:-[^\s]+|--[\w-]+)(?:\s+[^\s;&|]+)?))*\s+(?:reset|restore|rebase|merge|revert|cherry-pick|clean|checkout|update-ref|filter-repo|filter-branch)\b/i,
-  },
-  { action: "git-history", pattern: /\bgit\s+(?:branch\s+-[dD]|tag\s+-d)\b/i },
-  {
-    action: "github-release",
-    pattern: /\bgh\s+(?:workflow\s+run|release\s+(?:create|upload|delete)|pr\s+(?:create|merge|close|reopen))\b/i,
-  },
-  {
-    action: "expo-release",
-    pattern: /\b(?:eas|npx\s+(?:--\S+\s+)*eas-cli(?:@\S+)?|npm\s+(?:exec\s+)?eas-cli(?:@\S+)?)\s+(?:\S+\s+)*(?:update|build|submit)\b/i,
-  },
-  {
-    action: "release-command",
-    pattern: /\b(?:npm\s+run\s+(?:deploy|release|ota|publish|ship)|(?:npx\s+)?expo\s+publish|(?:vercel|netlify|firebase)\s+deploy)\b/i,
-  },
-  {
-    action: "database-release",
-    pattern: /\b(?:npx\s+)?supabase\s+(?:db\s+push|migration\s+up)\b/i,
-  },
+const GIT_ACTIONS = {
+  commit: "git-commit",
+  push: "git-push",
+  pull: "git-external",
+  fetch: "git-external",
+  "ls-remote": "git-external",
+  remote: "git-external",
+  reset: "git-history",
+  restore: "git-history",
+  rebase: "git-history",
+  merge: "git-history",
+  revert: "git-history",
+  "cherry-pick": "git-history",
+  clean: "git-history",
+  checkout: "git-history",
+  "update-ref": "git-history",
+  "filter-repo": "git-history",
+  "filter-branch": "git-history",
+};
+const GITHUB_RELEASE_SEQUENCES = [
+  ["gh", "workflow", "run"],
+  ["gh", "release", "create"],
+  ["gh", "release", "upload"],
+  ["gh", "release", "delete"],
+  ["gh", "pr", "create"],
+  ["gh", "pr", "merge"],
+  ["gh", "pr", "close"],
+  ["gh", "pr", "reopen"],
 ];
+const EXPO_RELEASE_ACTIONS = new Set(["update", "build", "submit"]);
+const RELEASE_COMMAND_SEQUENCES = [
+  ["expo", "publish"],
+  ["npx", "expo", "publish"],
+  ["vercel", "deploy"],
+  ["netlify", "deploy"],
+  ["firebase", "deploy"],
+];
+const DATABASE_RELEASE_SEQUENCES = [
+  ["supabase", "db", "push"],
+  ["supabase", "db", "migration", "up"],
+  ["npx", "supabase", "db", "push"],
+  ["npx", "supabase", "migration", "up"],
+];
+const SHELL_SEPARATORS = new Set([";", "&", "|", "<", ">", "`"]);
+
+function commandTokens(command) {
+  return command.match(/[^\s;&|<>`]+|[;&|<>`]/g) || [];
+}
+
+function isOption(token) {
+  return token.startsWith("-") && token.length > 1;
+}
+
+function isEasCli(token) {
+  const normalized = token.toLowerCase();
+  return normalized === "eas-cli" || normalized.startsWith("eas-cli@");
+}
+
+function hasSequence(tokens, sequence) {
+  for (let index = 0; index <= tokens.length - sequence.length; index += 1) {
+    if (sequence.every((part, offset) => tokens[index + offset].toLowerCase() === part.toLowerCase())) return true;
+  }
+  return false;
+}
+
+function hasGitAction(tokens, actions) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].toLowerCase() !== "git") continue;
+
+    const pending = [index + 1];
+    const visited = new Set();
+    for (let pendingIndex = 0; pendingIndex < pending.length; pendingIndex += 1) {
+      const position = pending[pendingIndex];
+      if (visited.has(position) || position >= tokens.length) continue;
+      visited.add(position);
+
+      const token = tokens[position];
+      if (SHELL_SEPARATORS.has(token)) continue;
+      const action = GIT_ACTIONS[token.toLowerCase()];
+      if (action && actions.has(action)) return true;
+      if (!isOption(token)) continue;
+
+      pending.push(position + 1);
+      if (position + 1 < tokens.length && !SHELL_SEPARATORS.has(tokens[position + 1])) {
+        pending.push(position + 2);
+      }
+    }
+  }
+  return false;
+}
+
+function hasGitDelete(tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].toLowerCase() !== "git") continue;
+
+    const pending = [index + 1];
+    const visited = new Set();
+    for (let pendingIndex = 0; pendingIndex < pending.length; pendingIndex += 1) {
+      const position = pending[pendingIndex];
+      if (visited.has(position) || position >= tokens.length) continue;
+      visited.add(position);
+
+      const token = tokens[position];
+      if (SHELL_SEPARATORS.has(token)) continue;
+      if (token.toLowerCase() === "branch" || token.toLowerCase() === "tag") {
+        for (let argument = position + 1; argument < tokens.length && !SHELL_SEPARATORS.has(tokens[argument]); argument += 1) {
+          if (["-d", "-D", "--delete"].includes(tokens[argument])) return true;
+        }
+        continue;
+      }
+      if (!isOption(token)) continue;
+
+      pending.push(position + 1);
+      if (position + 1 < tokens.length && !SHELL_SEPARATORS.has(tokens[position + 1])) {
+        pending.push(position + 2);
+      }
+    }
+  }
+  return false;
+}
+
+function hasGithubRelease(tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].toLowerCase() !== "gh") continue;
+    const pending = [index + 1];
+    const visited = new Set();
+    for (let pendingIndex = 0; pendingIndex < pending.length; pendingIndex += 1) {
+      const position = pending[pendingIndex];
+      if (visited.has(position) || position >= tokens.length) continue;
+      visited.add(position);
+
+      const token = tokens[position];
+      if (SHELL_SEPARATORS.has(token)) continue;
+      if (GITHUB_RELEASE_SEQUENCES.some((sequence) => hasSequence(tokens.slice(position), sequence.slice(1)))) {
+        return true;
+      }
+      if (!isOption(token)) continue;
+
+      pending.push(position + 1);
+      if (position + 1 < tokens.length && !SHELL_SEPARATORS.has(tokens[position + 1])) {
+        pending.push(position + 2);
+      }
+    }
+  }
+  return false;
+}
+
+function hasEasRelease(tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const launcher = tokens[index].toLowerCase();
+    let position = index + 1;
+    if (launcher === "npx") {
+      while (position < tokens.length && tokens[position].startsWith("--")) position += 1;
+      if (!isEasCli(tokens[position] || "")) continue;
+      position += 1;
+    } else if (launcher === "npm") {
+      if (tokens[position]?.toLowerCase() === "exec") position += 1;
+      if (!isEasCli(tokens[position] || "")) continue;
+      position += 1;
+    } else if (launcher === "eas") {
+      // `eas` is already the CLI executable; scan its arguments below.
+    } else {
+      continue;
+    }
+
+    while (position < tokens.length && !SHELL_SEPARATORS.has(tokens[position])) {
+      if (EXPO_RELEASE_ACTIONS.has(tokens[position].toLowerCase())) return true;
+      position += 1;
+    }
+  }
+  return false;
+}
+
+function hasReleaseCommand(tokens) {
+  return RELEASE_COMMAND_SEQUENCES.some((sequence) => hasSequence(tokens, sequence))
+    || ["deploy", "release", "ota", "publish", "ship"].some((action) => hasSequence(tokens, ["npm", "run", action]));
+}
+
+function hasDatabaseRelease(tokens) {
+  return DATABASE_RELEASE_SEQUENCES.some((sequence) => hasSequence(tokens, sequence));
+}
 
 function repoGit(...args) {
   try {
@@ -83,8 +233,14 @@ function trackedHookPath(root, hook) {
   return join(root, ".githooks", hook);
 }
 
-function hookBytes(path) {
-  return readFileSync(path);
+function readRegularHook(path) {
+  const descriptor = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    if (!fstatSync(descriptor).isFile()) throw new Error(`active ${path} is not a regular file`);
+    return readFileSync(descriptor, "utf8");
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function isExecutable(path) {
@@ -102,17 +258,19 @@ function hookState(root, hook) {
   }
   if (!isExecutable(source)) problems.push(`tracked ${source} is not executable`);
 
-  if (!existsSync(target)) {
-    problems.push(`active ${target} is missing`);
+  let targetStat;
+  try {
+    targetStat = lstatSync(target);
+  } catch (error) {
+    if (error?.code === "ENOENT") problems.push(`active ${target} is missing`);
+    else problems.push(`active ${target} could not be inspected: ${error.message}`);
     return { source, target, problems };
   }
-
-  const targetStat = lstatSync(target);
   if (targetStat.isSymbolicLink()) {
     if (realpathSync(target) !== realpathSync(source)) {
       problems.push(`active ${target} is not a symlink to tracked ${source}`);
     }
-  } else if (!hookBytes(target).equals(hookBytes(source))) {
+  } else if (readRegularHook(target) !== readFileSync(source, "utf8")) {
     problems.push(`active ${target} does not match tracked ${source}`);
   }
   if (!isExecutable(target)) problems.push(`active ${target} is not executable`);
@@ -158,21 +316,27 @@ function installHooks() {
         continue;
       }
 
-      if (existsSync(target)) {
-        const targetStat = lstatSync(target);
-        if (targetStat.isSymbolicLink()) {
-          if (realpathSync(target) !== realpathSync(source)) {
-            throw new Error(`refusing to replace existing non-Helix symlink ${target}`);
-          }
-          chmodSync(target, 0o755);
-          continue;
-        }
+      let targetStat;
+      try {
+        targetStat = lstatSync(target);
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+        copyFileSync(source, target, fsConstants.COPYFILE_EXCL);
+        chmodSync(target, 0o755);
+        continue;
+      }
 
-        const current = readFileSync(target, "utf8");
-        const expected = readFileSync(source, "utf8");
-        if (current !== expected && current !== LEGACY_HOOKS[hook]) {
-          throw new Error(`refusing to replace existing non-Helix hook ${target}`);
+      if (targetStat.isSymbolicLink()) {
+        if (realpathSync(target) !== realpathSync(source)) {
+          throw new Error(`refusing to replace existing non-Helix symlink ${target}`);
         }
+        continue;
+      }
+
+      const current = readRegularHook(target);
+      const expected = readFileSync(source, "utf8");
+      if (current !== expected && current !== LEGACY_HOOKS[hook]) {
+        throw new Error(`refusing to replace existing non-Helix hook ${target}`);
       }
 
       copyFileSync(source, target);
@@ -244,7 +408,17 @@ function isSingleCommand(command) {
 }
 
 function detectedActions(command) {
-  return dangerousMatchers.filter(({ pattern }) => pattern.test(command)).map(({ action }) => action);
+  const tokens = commandTokens(command);
+  const actions = [];
+  if (hasGitAction(tokens, new Set(["git-commit"]))) actions.push("git-commit");
+  if (hasGitAction(tokens, new Set(["git-push"]))) actions.push("git-push");
+  if (hasGitAction(tokens, new Set(["git-external"]))) actions.push("git-external");
+  if (hasGitAction(tokens, new Set(["git-history"])) || hasGitDelete(tokens)) actions.push("git-history");
+  if (GITHUB_RELEASE_SEQUENCES.some((sequence) => hasSequence(tokens, sequence)) || hasGithubRelease(tokens)) actions.push("github-release");
+  if (hasEasRelease(tokens)) actions.push("expo-release");
+  if (hasReleaseCommand(tokens)) actions.push("release-command");
+  if (hasDatabaseRelease(tokens)) actions.push("database-release");
+  return actions;
 }
 
 function hookDecision(decision, reason) {
@@ -307,6 +481,11 @@ function failGitHook(expected, action) {
   process.exitCode = 1;
 }
 
+function rejectGitHook(reason, action) {
+  process.stderr.write(`Helix default-deny: ${action} is blocked: ${reason}.\n`);
+  process.exitCode = 1;
+}
+
 function runCommitHook() {
   const expected = commitAuthorization();
   if (process.env[AUTHORIZATION_ENV] !== expected) failGitHook(expected, "git commit");
@@ -315,7 +494,11 @@ function runCommitHook() {
 function runPushHook() {
   const remote = process.argv[3] || "unknown";
   const lines = readFileSync(0, "utf8").trim().split(/\r?\n/).filter(Boolean);
-  const [, localSha, remoteRef] = (lines[0] || "").split(/\s+/);
+  if (lines.length !== 1) {
+    rejectGitHook("push authorization covers exactly one ref update; push one ref at a time", "git push");
+    return;
+  }
+  const [, localSha, remoteRef] = lines[0].split(/\s+/);
   const expected = `push:${remote}:${remoteRef || "unknown"}:${localSha || "unknown"}`;
   if (process.env[AUTHORIZATION_ENV] !== expected) failGitHook(expected, "git push");
 }
