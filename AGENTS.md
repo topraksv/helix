@@ -1,12 +1,13 @@
 # Helix
 
-Helix is a single-developer Expo SDK 54 application: React Native plus React
-Native Web, Supabase/Postgres with Drizzle and local `expo-sqlite`, Turkish
-user-facing text, English code and identifiers.
+Helix is a single-developer, offline-first personal finance application.
+User-facing text is Turkish; code and identifiers are English.
 
-Behavior is defined by the source and the tests, not by this file. There is no
-separate rulebook, invariant document or handoff ritual: read the code, run the
-checks, and let the installed skills carry the practice.
+Behavior is defined by the source and the tests, not by this file — the stack
+is in `package.json` and the layout is in `src/`, so neither is repeated here.
+Read the code, run the checks, and let the installed skills carry the practice.
+`docs/ARCHITECTURE.md` holds the stable structure and the reasoning behind it;
+open it when a change crosses module boundaries, not for routine work.
 
 ## Skills
 

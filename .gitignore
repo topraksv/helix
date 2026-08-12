@@ -64,4 +64,3 @@ supabase/.temp/
 /.agents/*
 !/.agents/skills/
 !/.agents/skills/**
-/docs/
