@@ -182,3 +182,36 @@ This file is the cold-resume log for the unattended foundation reset on
 - Phase 2: done — no safe deletion; proposals recorded; gate passed (34 skills;
   clean typecheck; 110/970 tests).
 - Final verification: pending.
+
+## 2026-08-12 — Scoped re-review and final gate passed
+
+- Did: the independent reviewer rechecked only `177661c..7081b41` after the
+  fixes, then the required final command ran under Node 22:
+  `npm run control:check && npx tsc --noEmit && npx vitest run`.
+- Proved: scoped re-review reported no remaining or new Critical, Important,
+  or Minor findings and declared the branch ready for the final gate. The gate
+  validated 35 installed/bridged/locked skills, TypeScript exited cleanly, and
+  Vitest passed 110 files / 970 tests in 5.29 seconds.
+- Left: commit and push this final ledger only, then rerun the same gate against
+  the exact pushed head. No implementation, cleanup, release, PR, merge,
+  deploy, OTA, database publish, or workflow dispatch remains in scope.
+
+## Final phase status
+
+- Phase 0: done — reconstructed all ten actually cited sections; recorded raw
+  unit/type/coverage/clean-export/bundle evidence and six security controls;
+  required gate green.
+- Phase 1: done — `AGENTS.md` is 109 lines, `CLAUDE.md` is one import, every
+  upstream skill reference resolves, and the official `grilling` sibling is
+  installed; required gate green.
+- Phase 2: done — no deletion met the proof threshold; three source moves are
+  proposal-only and ranked by value/risk; required gate green.
+- Final verification: done — independent scoped review clean; 35-skill control
+  check, clean typecheck, and 110/970 tests green. A same-command post-commit
+  rerun is the final branch check.
+
+Exact non-rewriting rollback command for the whole branch:
+
+```sh
+git switch chore/foundation-reset && git revert --no-commit 1c22d5f..HEAD && git commit -m "revert: roll back foundation reset" && git push origin chore/foundation-reset
+```
