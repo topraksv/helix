@@ -293,7 +293,7 @@ Incidents that produced a rule. Kept so the rule is not "simplified" away.
 
 Not a backlog. Each of these is a thing a reviewer will expect to find, and each
 is missing on purpose. Adding one is a decision with a cost, not a gap to close
-quietly. `AGENTS.md` § Who Helix is for is the reasoning; this is the list.
+quietly.
 
 | Absent | Why, and what stands in for it |
 |---|---|
