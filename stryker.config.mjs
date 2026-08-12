@@ -22,6 +22,7 @@ export default {
     "src/domain/form-state.ts",
     "src/domain/input.ts",
     "src/domain/investment-projection.ts",
+    "src/domain/investment-catalog.ts",
     "src/domain/installments.ts",
     "src/domain/investments.ts",
     "src/domain/logo-domain.ts",

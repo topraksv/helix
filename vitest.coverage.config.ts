@@ -23,6 +23,7 @@ const criticalDomainFiles = [
   "src/domain/form-state.ts",
   "src/domain/input.ts",
   "src/domain/investment-projection.ts",
+  "src/domain/investment-catalog.ts",
   "src/domain/installments.ts",
   "src/domain/recurrence.ts",
   "src/domain/transaction-draft.ts",
