@@ -123,6 +123,9 @@ class FakeServer {
 }
 
 /** One device: its own SQLite file, outbox and pull cursor. */
+let logicalClock = 0;
+const nextTimestamp = (): string => new Date(Date.UTC(2026, 0, 1, 0, 0, logicalClock++)).toISOString();
+
 class Client {
   readonly db = new DatabaseSync(":memory:");
   private cursorTs = "1970-01-01T00:00:00.000Z";
@@ -135,7 +138,7 @@ class Client {
 
   /** A local write: the row plus its outbox event, exactly like `writeRows`. */
   write(row: Partial<Row> & { id: string }): void {
-    const now = new Date().toISOString();
+    const now = nextTimestamp();
     const full: Row = {
       user_id: this.userId,
       updated_at: now,
@@ -177,9 +180,9 @@ class Client {
     this.write({
       ...(current as Row),
       id,
-      deleted_at: new Date().toISOString(),
+      deleted_at: nextTimestamp(),
       tombstone_version: Number(current?.tombstone_version ?? 0) + 1,
-      updated_at: new Date().toISOString(),
+      updated_at: nextTimestamp(),
     });
   }
 
@@ -279,6 +282,7 @@ describe("two clients on one account", () => {
   let b: Client;
 
   beforeEach(() => {
+    logicalClock = 0;
     server = new FakeServer();
     a = new Client(USER);
     b = new Client(USER);
@@ -373,7 +377,7 @@ describe("two clients on one account", () => {
 
     // B goes offline and keeps editing the row it still believes is alive.
     b.online = false;
-    b.write({ ...(b.row(ROW) as Row), note: "B çevrimdışı düzenledi", updated_at: new Date(Date.now() + 60_000).toISOString() });
+    b.write({ ...(b.row(ROW) as Row), note: "B çevrimdışı düzenledi", updated_at: "2026-01-02T00:00:00.000Z" });
 
     a.softDelete(ROW);
     a.sync(server);

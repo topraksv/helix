@@ -55,7 +55,7 @@ describe("haptic feedback", () => {
     mocks.impactAsync.mockImplementationOnce(() => {
       throw new Error("unavailable");
     });
-    expect(() => haptic("light")).not.toThrow();
+    haptic("light");
     await Promise.resolve();
     await Promise.resolve();
     expect(mocks.impactAsync).toHaveBeenCalledTimes(1);

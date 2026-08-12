@@ -143,9 +143,11 @@ describe("resolveYearColumns", () => {
     // so a non-array entry threw "ids is not iterable" during render.
     for (const malformed of [5, "abc", null, { nested: true }]) {
       const record = { "2026": malformed } as unknown as Record<string, string[]>;
-      expect(() => resolveYearColumns(categories, record, 2026, 2026, new Set())).not.toThrow();
+      expect(resolveYearColumns(categories, record, 2026, 2026, new Set()).map((category) => category.id))
+        .toEqual(["a", "b"]);
     }
     const otherYearMalformed = { "2025": 5, "2026": ["a"] } as unknown as Record<string, string[]>;
-    expect(() => resolveYearColumns(categories, otherYearMalformed, 2026, 2030, new Set())).not.toThrow();
+    expect(resolveYearColumns(categories, otherYearMalformed, 2026, 2030, new Set()).map((category) => category.id))
+      .toEqual(["a"]);
   });
 });

@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SQLiteDatabase } from "expo-sqlite";
 import { assertInvestmentWrites, projectInvestmentWrites } from "../src/data/repo/investment-validation";
 import type { RowWrite } from "../src/db/mutations";
 import { MAX_ABS_AMOUNT_MINOR } from "../src/domain/money";
 
 const USER = "11111111-1111-4111-8111-111111111111";
+
+afterEach(() => vi.useRealTimers());
 
 type Rows = Record<string, Record<string, unknown>[]>;
 
@@ -187,6 +189,8 @@ describe("investment owner-graph validation", () => {
   });
 
   it("accepts amount-only pension contributions and today's dates", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T12:00:00Z"));
     const rows = ownerGraph();
     rows.investment_profiles![0]!.started_on = "2026-08-09";
     rows.investment_products![0]!.asset_type = "pension";
@@ -242,6 +246,8 @@ describe("investment owner-graph validation", () => {
   });
 
   it("includes only realized self-owned transfer cash on or before today", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T12:00:00Z"));
     const rows = ownerGraph();
     rows.persons!.push({ id: "watch", user_id: USER, is_self: 0, deleted_at: null });
     rows.persons!.push({

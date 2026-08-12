@@ -89,7 +89,7 @@ describe("prompt queue", () => {
 
   it("is idempotent when closed with nothing open", () => {
     const q = createQueue<string | null>();
-    expect(() => q.close(null)).not.toThrow();
+    q.close(null);
     expect(q.state.current).toBeNull();
     expect(q.state.queue).toEqual([]);
   });

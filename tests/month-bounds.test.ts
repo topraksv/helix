@@ -54,8 +54,7 @@ describe("isMonthKey guards route params against the throwing range helpers", ()
     for (const bad of ["garbage", "2026-13", "", "../etc"]) {
       expect(() => lastDayOf(bad)).toThrow(/Invalid month/);
     }
-    // A valid key never throws, so the guard's accept-set is safe to pass on.
-    expect(() => lastDayOf("2026-02")).not.toThrow();
+    // Direct values prove the guard's accept-set is safe to pass on.
     expect(lastDayOf("2026-02")).toBe("2026-02-28");
     expect(lastDayOf("2028-02")).toBe("2028-02-29"); // leap year
   });

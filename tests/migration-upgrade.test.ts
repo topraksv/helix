@@ -103,7 +103,7 @@ describe("boot migration", () => {
     // The runner throws "Missing migration" at boot for a journal entry with no
     // bundle — a failure the user meets as a dead app, not as a build error.
     expect(journal.entries.length).toBeGreaterThanOrEqual(9);
-    for (const entry of journal.entries) expect(() => sqlFor(entry.tag)).not.toThrow();
+    for (const entry of journal.entries) expect(sqlFor(entry.tag).trim().length, entry.tag).toBeGreaterThan(0);
     // Applied in `when` order, which is what the resume rule compares against.
     const times = journal.entries.map((entry) => entry.when);
     expect([...times].sort((a, b) => a - b)).toEqual(times);

@@ -24,6 +24,8 @@ import { addMonthsToKey, monthKeyOf, monthRange, type ISODate, type MonthKey } f
 import { resolveTombstoneVersion } from "../src/sync/tombstone-policy";
 import type { TxLike } from "../src/domain/types";
 
+const PROPERTY_SEED = 20_260_812;
+
 /** Amounts the app accepts: whole minor units inside the entry ceiling. */
 const minorAmount = fc.integer({ min: 1, max: 1_000_000_00 });
 
@@ -60,7 +62,7 @@ describe("money input round-trip", () => {
       fc.property(fc.integer({ min: -MAX_ABS_AMOUNT_MINOR, max: MAX_ABS_AMOUNT_MINOR }), (amountMinor) => {
         expect(parseAmountExpression(formatMinorInput(amountMinor))).toBe(amountMinor);
       }),
-      { numRuns: 500 },
+      { numRuns: 500, seed: PROPERTY_SEED },
     );
   });
 
@@ -74,7 +76,7 @@ describe("money input round-trip", () => {
         // Whatever it accepted, it must round-trip — no silent truncation.
         expect(parseAmountExpression(formatMinorInput(parsed))).toBe(parsed);
       }),
-      { numRuns: 1_000 },
+      { numRuns: 1_000, seed: PROPERTY_SEED },
     );
   });
 });
@@ -101,7 +103,7 @@ describe("balance chain", () => {
           expect(ledger[index]?.projectedOpeningMinor).toBe(ledger[index - 1]?.projectedClosingMinor);
         }
       }),
-      { numRuns: 200 },
+      { numRuns: 200, seed: PROPERTY_SEED },
     );
   });
 
@@ -122,7 +124,7 @@ describe("balance chain", () => {
           );
         }
       }),
-      { numRuns: 200 },
+      { numRuns: 200, seed: PROPERTY_SEED },
     );
   });
 
@@ -148,7 +150,7 @@ describe("balance chain", () => {
         // said it does, or there was no earlier data and nothing moved.
         expect(january?.openingMinor ?? configuredOpening).toBe(configuredOpening);
       }),
-      { numRuns: 200 },
+      { numRuns: 200, seed: PROPERTY_SEED },
     );
   });
 
@@ -183,7 +185,7 @@ describe("balance chain", () => {
           today,
         }));
       }),
-      { numRuns: 200 },
+      { numRuns: 200, seed: PROPERTY_SEED },
     );
   });
 });
@@ -200,7 +202,7 @@ describe("search result ordering", () => {
         expect(sorted).toHaveLength(rows.length);
         expect([...sorted].map((row) => row.id).sort()).toEqual([...rows].map((row) => row.id).sort());
       }),
-      { numRuns: 300 },
+      { numRuns: 300, seed: PROPERTY_SEED },
     );
   });
 
@@ -212,7 +214,7 @@ describe("search result ordering", () => {
         expect(sortTransactions(rows, mode).map((row) => row.id))
           .toEqual(sortTransactions([...rows].reverse(), mode).map((row) => row.id));
       }),
-      { numRuns: 300 },
+      { numRuns: 300, seed: PROPERTY_SEED },
     );
   });
 });
@@ -224,7 +226,7 @@ describe("month arithmetic", () => {
         const month = monthKeyOf(date);
         expect(addMonthsToKey(addMonthsToKey(month, offset), -offset)).toBe(month);
       }),
-      { numRuns: 500 },
+      { numRuns: 500, seed: PROPERTY_SEED },
     );
   });
 
@@ -242,7 +244,7 @@ describe("month arithmetic", () => {
           expect(range[index]).toBe(addMonthsToKey(range[index - 1] as MonthKey, 1));
         }
       }),
-      { numRuns: 300 },
+      { numRuns: 300, seed: PROPERTY_SEED },
     );
   });
 });
@@ -262,7 +264,7 @@ describe("tombstone generation", () => {
           expect(next).toBeGreaterThanOrEqual(requestedVersion);
         },
       ),
-      { numRuns: 500 },
+      { numRuns: 500, seed: PROPERTY_SEED },
     );
   });
 
@@ -276,7 +278,7 @@ describe("tombstone generation", () => {
         );
         expect(next).toBe(Math.max(existingVersion, requestedVersion) + 1);
       }),
-      { numRuns: 300 },
+      { numRuns: 300, seed: PROPERTY_SEED },
     );
   });
 });

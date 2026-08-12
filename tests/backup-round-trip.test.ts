@@ -10,7 +10,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null, nextId: 0 }));
@@ -36,7 +36,7 @@ vi.mock("../src/db/client", () => ({
 // `*_id` column that is not one, so a `row-0001` style stub would fail the
 // import for reasons the product never has.
 vi.mock("../src/db/ids", () => ({
-  newId: () => randomUUID(),
+  newId: () => `00000000-0000-4000-8000-${String(++harness.nextId).padStart(12, "0")}`,
   deterministicId: async (naturalKey: string) => {
     const hex = createHash("sha256").update(naturalKey).digest("hex");
     const nibbles = hex.slice(0, 32).split("");
