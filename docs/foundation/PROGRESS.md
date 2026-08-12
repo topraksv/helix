@@ -117,6 +117,64 @@ This file is the cold-resume log for the unattended foundation reset on
 - Left: commit and push the Phase 2 report, perform the required second sweep,
   run final verification, and record final status plus rollback instructions.
 
+## 2026-08-12 — Second sweep tightened routing
+
+- Did: rechecked every cited spec section, raw baseline transcript, changed
+  path, commit, installed/bridged/locked skill name, and upstream skill-name
+  reference across the complete branch diff.
+- Proved: the branch changes only two root instruction files and five new
+  documentation artifacts; source, tests, dependencies, configs, assets,
+  workflows, and vendored skills remain byte-unchanged. Local/remote `main` and
+  the peeled safety tag remain at `98a4789`. The sweep found two unresolved
+  upstream aliases, now closed by Decision D010 and `AGENTS.md`.
+- Left: obtain the independent review verdict, run final verification, record
+  the ending status and rollback command, then commit and push the final log.
+
+## 2026-08-12 — Independent review findings corrected
+
+- Did: accepted the review's Important finding that `grill-me` and the missing
+  `grilling` fallback formed a loop. Used the skills registry and CLI to add
+  Matt Pocock's official `grilling` primitive for both Codex and Claude. Also
+  corrected reconstructed §2.7 to match the dashboard's tested no-deduplication
+  behavior and corrected the live-hook importer count from 35 to 34.
+- Proved: registry/upstream evidence identifies `grilling` as the shared
+  primitive behind `grill-me` and `improve-codebase-architecture`;
+  `tests/dashboard-model.test.ts` expects 250.00 outgoing when the same 125.00
+  subscription exists in both inputs; an exhaustive `rg -l` finds 34 source
+  importers of `data/hooks`.
+- Failure and recovery: a Claude-only CLI install created a copied skill
+  directory, and `control:check` correctly failed because Helix requires a
+  symlink. The directory was removed with the skills CLI and the skill was
+  re-added in one Codex+Claude CLI operation, which produced the required
+  canonical copy and symlink. A fresh control check then passed for 35 skills.
+- Left: receive the review's final verdict, commit and push these corrections,
+  run final verification, and record final status plus rollback instructions.
+
+## 2026-08-12 — Clean-export evidence gap closed
+
+- Did: accepted the review finding that `BASELINE.md` contained the bundle
+  check but not the clean web-export transcript that produced `dist`. Reran
+  `/usr/bin/time -p npx expo export -p web --clear` under Node 22 and inserted
+  its complete raw output before the existing bundle transcript.
+- Proved: the clean export completed 66 static routes and three web bundles in
+  25.62 seconds wall time; its entry hash and sizes match the artifact measured
+  by the recorded bundle check. Decision D013 records why the evidence was
+  supplemented after review.
+- Left: receive the final review verdict, commit and push all corrections, run
+  final verification, and record final status plus rollback instructions.
+
+## 2026-08-12 — Pinned-head review completed
+
+- Did: received the independent read-only review of `1c22d5f..177661c`. Its
+  verdict was not ready, with no Critical findings, three Important substantive
+  findings, one Important expected finish-state gap, and one Minor count error.
+- Proved: the substantive findings map exactly to the corrections above:
+  missing/circular skill routing, the incorrect §2.7 deduplication claim, the
+  missing clean-export transcript, and the hook-importer count. The remaining
+  finish-state finding is resolved only by the final gate and status entry.
+- Left: commit and push the evidence/spec corrections, obtain a scoped
+  re-review, run final verification, and record rollback instructions.
+
 ## Current phase status
 
 - Phase 0: done — gate passed (34 skills; clean typecheck; 110/970 tests).

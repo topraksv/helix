@@ -349,8 +349,9 @@ export interface UpcomingFlow {
 /**
  * Projected balance at `horizon` (spec §2.7 dashboard): actual balance plus
  * every known future flow (pending transactions and unpaid expected
- * payments) due on or before the horizon. Callers de-duplicate flows that
- * exist both as pending transaction and expected payment.
+ * payments) due on or before the horizon. It performs no identity de-duplication;
+ * the dashboard currently includes a pending transaction and expected payment
+ * independently even when they represent one obligation.
  */
 export function projectedBalance(actualMinor: Minor, flows: UpcomingFlow[], horizon: ISODate): Minor {
   let projected = actualMinor;

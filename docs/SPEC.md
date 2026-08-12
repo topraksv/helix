@@ -123,8 +123,10 @@ opening plus income, minus expense and transfer, plus dated adjustments.
 Negative balances are valid. Pending self-owned rows may be shown in planned
 month/category views without entering the realized chain. Projected balance is
 actual balance plus known pending and expected inflows/outflows through the
-requested horizon; callers remove duplicates where the same obligation appears
-in both sources.
+requested horizon. The projection sums every flow it is given without
+identity-based deduplication; the current dashboard includes both entries when
+the same subscription is present as a pending transaction and an expected
+payment.
 
 ## §2.8 — Self and watch-only people (RECONSTRUCTED)
 

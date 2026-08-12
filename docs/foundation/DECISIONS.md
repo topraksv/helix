@@ -90,3 +90,43 @@ behind the current interface, and relocating pure category-icon policy. Large
 files were not proposed for splitting when they already concentrate related
 behavior behind a small interface. All three remain owner-approval work; this
 reset changes no path or import under `src/`.
+
+### D010 — Resolve namespaced and legacy review-skill names generically
+
+The second routing sweep found `superpowers:verification-before-completion` and
+`code-review-and-quality` in upstream prose. The former is a namespace alias
+for the installed same-named skill; the latter splits cleanly between Helix's
+installed fixed-range `code-review` and completed-work
+`requesting-code-review`. A generic namespace rule plus the explicit legacy
+review mapping closes these gaps without copying or editing vendored skills.
+
+### D011 — Install the official `grilling` sibling
+
+Independent review proved the original `grilling` → `grill-me` fallback was
+circular: `grill-me` is only a user-invoked wrapper that redirects to
+`/grilling`. The upstream Matt Pocock registry now publishes `grilling` as the
+model-invoked primitive used by both `grill-me` and
+`improve-codebase-architecture`, so it was added with `npx skills add
+mattpocock/skills --skill grilling --agent codex claude-code -y`. The CLI
+produced the canonical `.agents/skills/grilling` body, the Claude symlink, and
+the locked upstream hash. This increases the installed set from 34 to 35 and
+resolves the wrapper without modifying any upstream body.
+
+### D012 — Let tested behavior overrule a stale projection comment
+
+`src/domain/balance.ts` says callers deduplicate pending transactions and
+expected payments, but `src/domain/dashboard.ts` appends both and
+`tests/dashboard-model.test.ts` explicitly requires both amounts in the
+forecast. The reconstructed §2.7 therefore states the tested behavior: the
+projection sums every supplied flow and the dashboard currently performs no
+identity deduplication. The stale source comment was corrected to the same fact
+without removing any measurement, incident, or rationale.
+
+### D013 — Complete the baseline with a raw clean-export transcript
+
+Independent review confirmed the Phase 0 progress claim named a clean export
+but the baseline artifact persisted only the downstream bundle-check output.
+The exact Node 22 command was rerun with `--clear`; its complete raw transcript
+and wall time now precede the existing raw bundle-budget transcript in
+`BASELINE.md`. This makes the provenance of the measured `dist` bytes explicit
+without changing an application artifact.

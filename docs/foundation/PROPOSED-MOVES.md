@@ -45,7 +45,7 @@ download code must remain outside the data interface.
 **Current seam:** `src/data/hooks.ts` is 772 lines and has three independently
 changing implementations: the retry/change-listener engine and shared
 subscription registry, table-specific live queries, and financial projection
-caches. Thirty-five source modules import its public hooks.
+caches. Thirty-four source modules import its public hooks.
 
 **Proposed move:** keep `src/data/hooks.ts` as the stable interface and move the
 three implementation clusters into private files under `src/data/live/`. Do
