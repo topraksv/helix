@@ -66,14 +66,16 @@ Process skills set the approach and the specialist then carries it out:
 
 Some skills name a sibling this repository does not install. Substitute:
 
+- A `superpowers:<name>` pointer → the installed `<name>` skill when it exists.
 - `test-driven-development` and `debugging-and-error-recovery` → `tdd` and
-  `systematic-debugging`.
+  `systematic-debugging`, including namespaced references.
+- `code-review-and-quality` → `code-review` for a fixed Git range or
+  `requesting-code-review` for a completed-work reviewer.
 - `api-and-interface-design` and `domain-modeling` → `codebase-design`; record
   lasting decisions with `documentation-and-adrs`.
 - `deprecation-and-migration` and `shipping-and-launch` →
   `git-workflow-and-versioning` plus `documentation-and-adrs`; the authorization
   rule below still governs any release action.
-- `grilling` → `grill-me`.
 - `using-git-worktrees` and `finishing-a-development-branch` → neither applies:
   work in the authorized checkout and end at `verification-before-completion`
   plus the authorization rule below.
