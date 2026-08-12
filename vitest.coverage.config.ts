@@ -16,6 +16,7 @@ const criticalDomainFiles = [
   "src/domain/computed-columns.ts",
   "src/domain/dashboard.ts",
   "src/domain/dates.ts",
+  "src/domain/diagnostics.ts",
   "src/domain/expected.ts",
   "src/domain/fx-provider.ts",
   "src/domain/fx.ts",
