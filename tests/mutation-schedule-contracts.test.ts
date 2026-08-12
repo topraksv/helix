@@ -64,6 +64,8 @@ describe("mutation-sensitive recurrence boundaries", () => {
     }
     expect(dayIntervalDatesInRange("2000-01-01", 1, "2200-01-01", "2200-01-01"))
       .toEqual(["2200-01-01"]);
+    expect(dayIntervalDatesInRange("2000-01-01", 2, "2200-01-01", "2200-01-02"))
+      .toEqual(["2200-01-02"]);
   });
 });
 
@@ -111,6 +113,12 @@ describe("mutation-sensitive expected-item contract", () => {
       { direction: "in", kind: "recurring_income", refId: "monthly", dueDate: "2026-07-18", amountMinor: 200, amountIsEstimated: false, currency: "TRY" },
       { direction: "out", kind: "subscription", refId: "trial-ended", dueDate: "2026-07-20", amountMinor: 100, amountIsEstimated: false, currency: "TRY" },
     ]);
+  });
+
+  it("does not move the stored next due date backward after a trial already ended", () => {
+    expect(generateExpected([
+      subscription({ id: "ended", nextDueDate: "2026-08-20", billingDay: 20, trialEndDate: "2026-07-01" }),
+    ], [], [], "2026-07-18", 1).map((draft) => draft.dueDate)).toEqual(["2026-08-20"]);
   });
 
   it("anchors trials on or after their exact end boundary", () => {

@@ -122,6 +122,16 @@ describe("mutation-sensitive dashboard contract", () => {
     expect(model.distribution.expenseByCategory).toEqual(new Map([["food", 100]]));
   });
 
+  it("excludes realized rows after a historical report window", () => {
+    const model = buildDashboardModel({
+      transactions: [tx({ type: "expense", amountTryMinor: 100, effectiveDate: "2026-08-01", categoryId: "food", categoryKind: "expense" })],
+      expected: [], ledger: [], actualBalanceMinor: 0, today: "2026-08-31", monthStart: "2026-07-01", monthEnd: "2026-07-31",
+      currentMonth: "2026-08", year: 2026, expectedTryMinor: () => null,
+    });
+    expect(model.distribution.expenseTotalMinor).toBe(0);
+    expect(model.distribution.expenseByCategory).toEqual(new Map());
+  });
+
   it("keeps a missing actual balance null even when a forecast flow exists", () => {
     const model = buildDashboardModel({
       transactions: [tx({ type: "income", amountTryMinor: 100, effectiveDate: "2026-07-18", status: "pending", categoryKind: "income" })],

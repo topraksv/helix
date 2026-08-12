@@ -77,6 +77,8 @@ describe("mutation-sensitive external contracts", () => {
       .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
     expect(parseTcmbRates('<Tarih_Date Source="TCMB" Tarih="18.07.2026"><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
       .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
+    expect(parseTcmbRates('<Tarih_Date Date="07/18/2026" CurrencyCode="EUR"><ForexSelling>50</ForexSelling><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+      .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
     for (const xml of [
       '<Tarih_Date Date="07/18/2026"><Currency><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
       '<Tarih_Date Date="07/18/2026"><Currency Foo="bar"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',

@@ -59,7 +59,10 @@ describe("mutation-sensitive balance contract", () => {
     const withPendingCells = buildLedger({
       openingBalanceMinor: 1_000, startMonth: "2026-07", endMonth: "2026-07", today: "2026-07-18",
       includePendingInCells: true,
-      transactions: [tx({ status: "realized", personIsSelf: false, type: "expense", amountTryMinor: 100, effectiveDate: "2026-07-18", categoryId: "food", categoryKind: "expense" })],
+      transactions: [
+        tx({ status: "realized", personIsSelf: false, type: "expense", amountTryMinor: 100, effectiveDate: "2026-07-18", categoryId: "food", categoryKind: "expense" }),
+        tx({ status: "realized", personIsSelf: true, type: "expense", amountTryMinor: 200, effectiveDate: "2026-07-19", categoryId: "food", categoryKind: "expense" }),
+      ],
       adjustments: [],
     });
     expect(withPendingCells[0]?.byCategory).toEqual(new Map());
