@@ -81,6 +81,7 @@ jobs:
       # executes. A new high/critical advisory blocks the delivery gate.
       - run: node scripts/check-advisories.mjs
       - run: npm ci
+      - run: npm run control:setup
       - run: npm run control:check
       - run: npm run quality:audit
       - run: npm run typecheck
