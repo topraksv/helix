@@ -235,3 +235,12 @@ quarantined dead letters remains `attention`; only a zero quarantine count is
 auth-service refusal is an expired session. When a pull replaces a row already
 visible on the device, the store records a one-time remote-change timestamp;
 initial hydration and the device's own acknowledged writes do not trigger it.
+
+## Known defect — malformed TCMB unit values
+
+`parseTcmbRates` accepts a decimal `<Unit>` such as `1.5` as if the element
+were absent, because the integer-only extraction does not match and the parser
+then applies its default unit of `1`. The affected TRY rate is therefore
+mis-scaled instead of rejected as malformed provider data. A production fix is
+deferred; the pending regression contract in
+`tests/mutation-contracts.test.ts` records the correct fail-closed behavior.
