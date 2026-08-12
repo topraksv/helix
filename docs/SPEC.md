@@ -123,10 +123,17 @@ opening plus income, minus expense and transfer, plus dated adjustments.
 Negative balances are valid. Pending self-owned rows may be shown in planned
 month/category views without entering the realized chain. Projected balance is
 actual balance plus known pending and expected inflows/outflows through the
-requested horizon. The projection sums every flow it is given without
-identity-based deduplication; the current dashboard includes both entries when
-the same subscription is present as a pending transaction and an expected
-payment.
+requested horizon. The projection sums every flow it is given; the defect below
+describes a caller that can supply two representations of one obligation.
+
+### Known defects
+
+**Duplicate obligation in projected balance.** When one obligation is present
+as both a pending transaction and an expected payment, the dashboard passes
+both entries to `projectedBalance` without identity deduplication. The affected
+projected-balance value counts that obligation twice. The behavior fix is
+deferred to a later phase; this reconstruction does not treat the double count
+as intended product behavior.
 
 ## §2.8 — Self and watch-only people (RECONSTRUCTED)
 
