@@ -1,10 +1,9 @@
-# The whole gate for a push to main, branched on what actually changed.
+# The gate for every push to main and every explicit release dispatch.
 #
-# This replaced one serial `quality` job that ran typecheck, unit tests, lint,
-# a production export, a budget check and the entire browser suite for every
-# commit — a README typo included. `classify` reads the diff and the jobs below
-# opt in from it; `gate` is the single required check so branch protection has
-# one name to point at no matter which jobs ran.
+# Quality, production web export/budget, and browser smoke always run. The full
+# browser suite is opt-in here because nightly.yml already runs it daily. `gate`
+# is the single required result so branch protection and both manual deploys
+# share one answer.
 #
 # The EXPO_PUBLIC_* values are client-side keys: they ship inside the JS bundle
 # by design (same values as .env), so they are safe here. The service role key
@@ -180,8 +179,8 @@ jobs:
             playwright-report
           retention-days: 7
 
-  # The one required check. A skipped job is a correct outcome of
-  # classification, so only `failure` and `cancelled` block the deploy.
+  # The one required check. On a push, the dispatch-only full-suite jobs are
+  # correctly skipped, so only `failure` and `cancelled` block a deploy.
   gate:
     if: always()
     needs: [quality, web-build, e2e-smoke, e2e-build, e2e-full]

@@ -1,10 +1,8 @@
 # The complete browser suite, once a day, regardless of what changed.
 #
-# CI only runs the full E2E paket when the diff is high risk, which is right for
-# the common case and wrong for slow drift: a route that quietly stops being
-# accessible, a layout that only breaks at one width, a resilience path nobody
-# touched for a month. This catches those without making every ordinary commit
-# pay for them.
+# CI runs smoke tests on every push and the full suite only on an explicit
+# dispatch. The nightly catches slow drift without making every ordinary commit
+# pay for the complete browser matrix.
 #
 # It deploys nothing. A red nightly is a bug report, not a rollback trigger.
 name: nightly

@@ -1,4 +1,4 @@
-# The app opens on a real device.
+# The app opens in a native iOS runtime.
 #
 # The most valuable native assertion available, and the only one that covers
 # these four at once: JavaScript ran, `migrateDb` completed against the NATIVE

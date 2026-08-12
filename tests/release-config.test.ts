@@ -146,7 +146,7 @@ describe("release contract", () => {
     }
   });
 
-  it("builds the E2E export once and shares it with both shards", () => {
+  it("builds the E2E export once and shares it with every shard", () => {
     // Each shard used to run its own `test:e2e:export`: a second full Metro
     // bundle, and two shards testing two separately-produced artifacts.
     expect(ci.split("npm run test:e2e:export").length - 1, "one E2E export per run").toBe(1);
@@ -158,7 +158,7 @@ describe("release contract", () => {
     expect(full).toContain("needs: e2e-build");
     expect(full).toContain("actions/download-artifact");
     expect(full).toContain("path: dist-e2e");
-    // Both shards must consume the same named artifact.
+    // Every shard must consume the same named artifact.
     const artifact = "dist-e2e-${{ github.run_id }}";
     expect(build).toContain(artifact);
     expect(full).toContain(artifact);
@@ -167,7 +167,7 @@ describe("release contract", () => {
     expect(full).toContain("npx playwright test --shard=");
   });
 
-  it("splits the browser suite by risk and shards the full run", () => {
+  it("runs smoke on every push and shards the on-demand full suite", () => {
     expect(ci).toContain("npm run test:e2e:smoke");
     expect(ci).toContain("npx playwright install chromium firefox --with-deps");
     expect(nightly).toContain("npx playwright install chromium firefox --with-deps");

@@ -1,10 +1,8 @@
 # The app survives a cold start against its own container.
 #
-# On iOS the database is a file in an app container sealed while the device is
-# locked (`NSFileProtectionComplete`). That entitlement is the one thing that
-# could make it unreadable on a real relaunch, and no browser test can ask the
-# question — web persistence is IndexedDB and is covered by
-# `e2e/resilience.spec.ts`.
+# On iOS the database is a file in the app container rather than IndexedDB.
+# This proves a native cold-start read; it does not prove
+# `NSFileProtectionComplete` while physical hardware is locked.
 appId: com.toprak.helix
 ---
 - launchApp:

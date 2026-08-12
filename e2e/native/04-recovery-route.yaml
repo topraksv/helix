@@ -1,8 +1,8 @@
 # Password recovery and the way back out of it.
 #
-# `.ai/INVARIANTS.md` exempts the recovery routes from the signed-in and
-# onboarding guards, which makes "can the user still leave" a real question —
-# a recovery screen that cannot be left is an account that cannot be reached.
+# `src/app/_layout.tsx` exempts recovery routes from the signed-in and
+# onboarding guards, and `tests/app-guard.test.ts` protects that boundary. A
+# recovery screen that cannot be left is an account that cannot be reached.
 #
 # Recovery is a STATE of the auth surface here, not a native Stack push, so the
 # way back is the screen's own return link and not an edge swipe. Finding that
