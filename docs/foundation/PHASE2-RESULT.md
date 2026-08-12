@@ -55,7 +55,7 @@ precondition can be satisfied in a separately authorized refactor.
 
 ## Gate evidence
 
-Every commit in this run was followed by the required full gate:
+Completed post-commit gates available before this evidence update:
 
 ```text
 $ npm run control:check && npx tsc --noEmit && npx vitest run
@@ -68,10 +68,15 @@ f579cc9  control: 35 skills/bridge/lock clean; tsc: exit 0
 
 2db87ac  control: 35 skills/bridge/lock clean; tsc: exit 0
          Test Files 110 passed (110); Tests 970 passed (970); Duration 5.16s
+
+84c912f  control: 35 skills/bridge/lock clean; tsc: exit 0
+         Test Files 110 passed (110); Tests 970 passed (970); Duration 5.09s
 ```
 
-No move commit exists, so no per-move gate was applicable. A fresh full gate is
-run after this result is committed and before the branch is pushed.
+No move commit exists, so no per-move gate was applicable. The evidence-update
+commit is followed by the same full gate before the branch is pushed; its fresh
+result is reported in the final handoff because a post-commit result cannot be
+embedded in the commit it verifies.
 
 ## Deliberately left alone
 
