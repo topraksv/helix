@@ -67,6 +67,20 @@ export interface SeedInput {
   }[];
 }
 
+function tombstoneRemovedRows(
+  table: "persons" | "payment_sources" | "categories",
+  liveRows: Record<string, unknown>[],
+  candidateIds: ReadonlySet<string>,
+  desiredIds: ReadonlySet<string>,
+): RowWrite[] {
+  return liveRows
+    .filter((row) => typeof row.id === "string" && candidateIds.has(row.id) && !desiredIds.has(row.id))
+    .map((row) => ({
+      table,
+      row: { ...fromDbShape(table, row), deletedAt: nowIso() },
+    }));
+}
+
 /**
  * Re-seeding is also the commit step after an importer. Rows removed from the
  * draft must therefore be tombstoned in the same write as the rows that remain;
@@ -85,12 +99,7 @@ async function removedSeedRows(
     [userId],
   );
   const candidateIds = new Set(await Promise.all(candidateKeys.map((key) => deterministicId(key))));
-  return liveRows
-    .filter((row) => typeof row.id === "string" && candidateIds.has(row.id) && !desiredIds.has(row.id))
-    .map((row) => ({
-      table,
-      row: { ...fromDbShape(table, row), deletedAt: nowIso() },
-    }));
+  return tombstoneRemovedRows(table, liveRows, candidateIds, desiredIds);
 }
 
 async function removedOnboardingSlotRows(
@@ -112,12 +121,7 @@ async function removedOnboardingSlotRows(
       Array.from({ length: slotCount }, (_, offset) => deterministicId(naturalKey(firstIndex + offset))),
     ),
   );
-  return liveRows
-    .filter((row) => typeof row.id === "string" && candidateIds.has(row.id) && !desiredIds.has(row.id))
-    .map((row) => ({
-      table,
-      row: { ...fromDbShape(table, row), deletedAt: nowIso() },
-    }));
+  return tombstoneRemovedRows(table, liveRows, candidateIds, desiredIds);
 }
 
 /**

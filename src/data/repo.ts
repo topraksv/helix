@@ -112,7 +112,7 @@ export type { ImportRequest } from "./repo/imports";
 
 export { runMaintenance } from "./repo/maintenance";
 
-export { saveCellNote } from "./cell-notes";
+export { saveCellNote } from "./repo/cell-notes";
 
 export {
   restoreCategoryBudget,

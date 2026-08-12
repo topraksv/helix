@@ -30,7 +30,7 @@ vi.mock("../src/db/ids", () => ({
   newId: () => "new-id",
 }));
 
-import { assertLiveRow, assertNotTombstonedRow, upsertSql } from "../src/db/mutations";
+import { assertLiveRow, upsertSql } from "../src/db/mutations";
 
 const CREATE = `CREATE TABLE categories (
   id text PRIMARY KEY NOT NULL,
@@ -76,16 +76,6 @@ describe("created_at integrity", () => {
   it("sets created_at once, on insert", () => {
     apply(db, row());
     expect(read(db).created_at).toBe(INSERTED);
-  });
-
-  it("distinguishes a new upsert id from a deleted edit target", async () => {
-    const sqlite = { getFirstAsync: vi.fn() };
-    sqlite.getFirstAsync.mockResolvedValueOnce(null);
-    await expect(assertNotTombstonedRow(sqlite as never, "categories", "user-1", "new-id")).resolves.toBeUndefined();
-
-    sqlite.getFirstAsync.mockResolvedValueOnce({ deleted_at: EDITED });
-    await expect(assertNotTombstonedRow(sqlite as never, "categories", "user-1", "cat-1"))
-      .rejects.toThrow("Cannot revive deleted categories row through an edit");
   });
 
   it("requires an actually live row for explicit edits", async () => {

@@ -14,10 +14,6 @@ const dependencies = vi.hoisted(() => ({
     const row = await sqlite.getFirstAsync(`SELECT id FROM ${table} WHERE id = ? AND user_id = ? AND deleted_at IS NULL`, [id, userId]);
     if (!row || typeof row !== "object" || !("id" in row)) throw new Error(`Cannot edit missing ${table} row`);
   }),
-  assertNotTombstonedRow: vi.fn(async (sqlite: { getFirstAsync: (sql: string, args: unknown[]) => Promise<{ deleted_at: string | null } | null> }, table: string, userId: string, id: string) => {
-    const row = await sqlite.getFirstAsync(`SELECT deleted_at FROM ${table} WHERE id = ? AND user_id = ?`, [id, userId]);
-    if (row?.deleted_at != null) throw new Error(`Cannot revive deleted ${table} row through an edit`);
-  }),
   assertRestorableRows: vi.fn(async () => {}),
   deterministicId: vi.fn(async (key: string) => `id:${key}`),
   settingRow: vi.fn(async (userId: string, key: string, value: unknown) => ({ table: "settings", row: { id: `id:setting|${userId}|${key}`, key, value: JSON.stringify(value), deletedAt: null } })),
@@ -42,7 +38,6 @@ vi.mock("../src/db/mutations", () => ({
   restoreRow: dependencies.restoreRow,
   writeRowsValidated: dependencies.writeRowsValidated,
   assertLiveRow: dependencies.assertLiveRow,
-  assertNotTombstonedRow: dependencies.assertNotTombstonedRow,
   assertRestorableRows: dependencies.assertRestorableRows,
   writeSetting: dependencies.writeSetting,
 }));

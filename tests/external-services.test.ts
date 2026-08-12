@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isMarketFeedSocket } from "../e2e/helpers";
 import { FETCHED_FX_CURRENCIES, parseOpenExchangeRates, parseTcmbRates } from "../src/domain/fx-provider";
+import { MARKET_SYMBOLS } from "../src/domain/investment-catalog";
 import { normalizeLogoDomain, remoteFaviconUrl } from "../src/domain/logo-domain";
 import { freshMarketQuote, validMarketQuote } from "../src/domain/market";
 import { boundedScheduledNotifications, createNotificationReplacementQueue, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../src/domain/notifications";
@@ -23,7 +24,6 @@ import {
   markMarketConnectionInterrupted,
   marketLastKnownRateTry,
   marketSellRateTry,
-  MARKET_SYMBOLS,
   suspendMarkets,
   useMarkets,
 } from "../src/services/markets";

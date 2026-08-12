@@ -127,20 +127,6 @@ export async function assertLiveRow(
   if (!row) throw new Error(`Cannot edit missing ${table} row`);
 }
 
-/** Validate an upsert id without rejecting a genuinely new id. */
-export async function assertNotTombstonedRow(
-  sqlite: SQLiteDatabase,
-  table: SyncedTableName,
-  userId: string,
-  id: string,
-): Promise<void> {
-  const row = await sqlite.getFirstAsync<{ deleted_at: string | null }>(
-    `SELECT deleted_at FROM ${table} WHERE id = ? AND user_id = ?`,
-    [id, userId],
-  );
-  if (row?.deleted_at != null) throw new Error(`Cannot revive deleted ${table} row through an edit`);
-}
-
 /**
  * Explicit undo is allowed to clear only a tombstone owned by this session.
  * A snapshot can outlive its screen or arrive from a stale callback; letting

@@ -38,7 +38,8 @@ import {
 } from "../../data/hooks";
 import { combineLiveStates } from "../../data/live-state";
 import { confirmExpected, FxRateUnavailableError, revertExpected, setExpectedAmount } from "../../data/repo";
-import { marketSellRateTry, MARKET_SYMBOLS, useMarkets } from "../../services/markets";
+import { MARKET_SYMBOLS } from "../../domain/investment-catalog";
+import { marketSellRateTry, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";

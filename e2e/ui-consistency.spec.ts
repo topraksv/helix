@@ -1035,9 +1035,14 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("10");
   await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100");
-  await page.getByRole("textbox", { name: "Toplam TRY · isteğe bağlı", exact: true }).fill("2.000");
+  const total = page.getByRole("textbox", { name: "Toplam TRY · isteğe bağlı", exact: true });
+  await total.fill("");
+  await total.pressSequentially("2000");
+  await expect(total).toHaveValue("2.000");
   await expect(page.getByRole("alert")).toContainText("birbiriyle uyuşmuyor");
-  await page.getByRole("textbox", { name: "Toplam TRY · isteğe bağlı", exact: true }).fill("1.000");
+  await total.fill("");
+  await total.pressSequentially("1000");
+  await expect(total).toHaveValue("1.000");
   await page.getByRole("button", { name: "Alış ekle", exact: true }).click();
   await expect(page.getByText("SASA", { exact: true }).first()).toBeVisible();
 

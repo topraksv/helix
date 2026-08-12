@@ -34,7 +34,7 @@ vi.mock("../src/db/mutations", () => ({
 }));
 vi.mock("../src/sync/engine", () => ({ scheduleSync: dependencies.scheduleSync }));
 
-import { saveCellNote } from "../src/data/cell-notes";
+import { saveCellNote } from "../src/data/repo/cell-notes";
 
 describe("cell-note repository boundary", () => {
   beforeEach(() => {

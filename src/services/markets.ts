@@ -18,8 +18,6 @@ const LIFECYCLE_GRACE_MS = 5000;
 const SNAPSHOT_KEY = "helix.markets.snapshot";
 const SNAPSHOT_PERSIST_MS = 30_000;
 
-export { MARKET_SYMBOLS } from "../domain/investment-catalog";
-
 interface MarketPrice {
   code: string;
   buyTry: number;

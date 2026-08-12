@@ -146,35 +146,6 @@ export function cardScreenOptions(palette: Palette) {
   };
 }
 
-/**
- * The task routes: add a transaction, a past month's entries, an
- * opening-balance correction, a subscription, a cell note.
- *
- * These used to slide up as a UIKit sheet on iOS and open as an ordinary card
- * everywhere else, and that one difference cost more than it bought:
- *
- * 1. A sheet is a separate presented view controller. React Native's `Modal` —
- *    which every confirmation, prompt and picker in this app is built on — is
- *    presented from the root tree, and iOS will not present a second modal from
- *    a controller that is already presenting one. So the "discard your
- *    changes?" confirmation never appeared over a sheet, while the navigation
- *    guard went on refusing to leave: the screen simply trapped the user, which
- *    is exactly what the owner reported on Geçmiş Ay Girişi and Bakiye
- *    Düzeltme.
- * 2. A sheet begins below the status bar, so its header needed a different
- *    inset rule from every other screen — a second geometry to keep correct.
- * 3. The same task looked and dismissed differently depending on the device.
- *
- * One presentation on every platform fixes all three, and the back control,
- * the header and the dismissal contract become one thing to reason about. A
- * bottom sheet stays available for what it is actually good at — the short
- * contextual choices in `ui/dialog` and `ui/calendar`, which are RN modals and
- * therefore present correctly.
- */
-export function sheetScreenOptions(palette: Palette) {
-  return cardScreenOptions(palette);
-}
-
 interface StackHeaderArgs {
   options: {
     title?: string;

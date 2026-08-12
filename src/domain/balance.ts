@@ -19,11 +19,6 @@ export function countsTowardBalance(tx: TxLike, today: ISODate): boolean {
   return tx.status === "realized" && tx.effectiveDate <= today && tx.personIsSelf;
 }
 
-/** Signed effect of a transaction on the cash balance. */
-function balanceEffect(tx: TxLike): Minor {
-  return signedBalanceEffect(tx);
-}
-
 /** Replacement value for today's deterministic reconciliation row. The
  * displayed balance already includes the existing row, so remove that effect
  * before measuring the new delta. */
@@ -151,7 +146,7 @@ export function resolveLedgerAnchor(
   const anchorDay = `${configuredStart}-01`;
   let beforeAnchor = 0;
   for (const tx of transactions) {
-    if (tx.effectiveDate < anchorDay && countsTowardBalance(tx, today)) beforeAnchor += balanceEffect(tx);
+    if (tx.effectiveDate < anchorDay && countsTowardBalance(tx, today)) beforeAnchor += signedBalanceEffect(tx);
   }
   for (const a of adjustments) {
     if (a.date < anchorDay && a.date <= today) beforeAnchor += a.amountMinor;
@@ -337,7 +332,7 @@ export function currentBalance(
   const { openingBalanceMinor, transactions, adjustments, today } = input;
   let balance = openingBalanceMinor;
   for (const tx of transactions) {
-    if (countsTowardBalance(tx, today)) balance += balanceEffect(tx);
+    if (countsTowardBalance(tx, today)) balance += signedBalanceEffect(tx);
   }
   for (const adj of adjustments) {
     if (adj.date <= today) balance += adj.amountMinor;

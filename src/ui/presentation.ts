@@ -5,10 +5,7 @@
  */
 export type PresentationClass =
   | "primary-page"
-  | "drill-down"
-  | "task-sheet"
-  | "bottom-sheet"
-  | "contextual-overlay";
+  | "drill-down";
 
 export const PRESENTATION_TAXONOMY: Record<PresentationClass, {
   description: string;
@@ -21,17 +18,5 @@ export const PRESENTATION_TAXONOMY: Record<PresentationClass, {
   "drill-down": {
     description: "A detail or editor reached from a parent workspace.",
     backAction: "back",
-  },
-  "task-sheet": {
-    description: "A focused task that returns to its owning workspace.",
-    backAction: "close",
-  },
-  "bottom-sheet": {
-    description: "A short contextual choice anchored to the current task.",
-    backAction: "dismiss",
-  },
-  "contextual-overlay": {
-    description: "A temporary alert, prompt or picker with focus restoration.",
-    backAction: "dismiss",
   },
 };

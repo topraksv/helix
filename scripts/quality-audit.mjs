@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { execFile as execFileCallback } from "node:child_process";
+import { isControlPlanePath } from "./quality-audit-paths.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const sourcePath = resolve(root, "quality/audit.json");
@@ -29,15 +30,6 @@ const { stdout: changedOutput } = await execFile(
   { cwd: root },
 );
 const sourceDelta = changedOutput.split("\n").map((path) => path.trim()).filter(Boolean);
-const qualityOnlyPaths = new Set([
-  "AGENTS.md",
-  "CLAUDE.md",
-  ".gitignore",
-  ".github/workflows/ci.yml",
-  "quality/audit.json",
-  "scripts/quality-audit.mjs",
-  "stryker.config.mjs",
-]);
 let packageScriptsOnly = false;
 if (sourceDelta.includes("package.json")) {
   try {
@@ -54,12 +46,7 @@ if (sourceDelta.includes("package.json")) {
     packageScriptsOnly = false;
   }
 }
-const isControlPlanePath = (path) => qualityOnlyPaths.has(path)
-  || path.startsWith(".ai/")
-  || path.startsWith(".agents/")
-  || path.startsWith(".claude/")
-  || (path === "package.json" && packageScriptsOnly);
-const staleSourceDelta = sourceDelta.filter((path) => !isControlPlanePath(path));
+const staleSourceDelta = sourceDelta.filter((path) => !isControlPlanePath(path, packageScriptsOnly));
 
 function definitionHash(input) {
   const frozen = input.categories.map((category) => ({

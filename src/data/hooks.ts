@@ -493,17 +493,18 @@ export function useAdjustmentsState() {
   );
 }
 
-/**
- * Live onboarded flag for the route guard. Reactive on purpose: on a second
- * device the flag arrives via sync after sign-in, and the guard must lift
- * without an app restart. `null` = still resolving (or signed out).
- */
-export function useOnboardedState(userId: string | null): LiveValueResult<boolean | null> {
+type SyncedBooleanSetting = "onboarded" | "account_frozen";
+
+/** Shared live contract for the two synced boolean settings used by the root guard. */
+function useSyncedBooleanSettingState(
+  userId: string | null,
+  key: SyncedBooleanSetting,
+): LiveValueResult<boolean | null> {
   const res = useLive(
     getDb()
       .select()
       .from(s.settings)
-      .where(and(eq(s.settings.userId, userId ?? ""), eq(s.settings.key, "onboarded"), isNull(s.settings.deletedAt))),
+      .where(and(eq(s.settings.userId, userId ?? ""), eq(s.settings.key, key), isNull(s.settings.deletedAt))),
     [userId],
     ["settings"],
   );
@@ -512,21 +513,21 @@ export function useOnboardedState(userId: string | null): LiveValueResult<boolea
 }
 
 /**
+ * Live onboarded flag for the route guard. Reactive on purpose: on a second
+ * device the flag arrives via sync after sign-in, and the guard must lift
+ * without an app restart. `null` = still resolving (or signed out).
+ */
+export function useOnboardedState(userId: string | null): LiveValueResult<boolean | null> {
+  return useSyncedBooleanSettingState(userId, "onboarded");
+}
+
+/**
  * Live "account frozen" flag. Synced setting so a freeze on one device gates
  * every device. `null` while still resolving (or signed out) so the gate never
  * flashes before the real value is known.
  */
 export function useAccountFrozenState(userId: string | null): LiveValueResult<boolean | null> {
-  const res = useLive(
-    getDb()
-      .select()
-      .from(s.settings)
-      .where(and(eq(s.settings.userId, userId ?? ""), eq(s.settings.key, "account_frozen"), isNull(s.settings.deletedAt))),
-    [userId],
-    ["settings"],
-  );
-  if (!userId) return { data: null, status: "ready", error: null, updatedAt: res.updatedAt, retry: res.retry };
-  return { ...res, data: readSyncedFlag(res, true) };
+  return useSyncedBooleanSettingState(userId, "account_frozen");
 }
 
 export function useSettingsMapState(): LiveValueResult<Map<string, string>> {

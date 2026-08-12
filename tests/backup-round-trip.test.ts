@@ -62,7 +62,7 @@ import {
   upsertCategoryBudget,
   upsertSubscription,
 } from "../src/data/repo";
-import { saveCellNote } from "../src/data/cell-notes";
+import { saveCellNote } from "../src/data/repo/cell-notes";
 import { deterministicId, naturalKeys } from "../src/db/ids";
 import { resetLocalWorkspace, writeSetting } from "../src/db/mutations";
 import { buildIdRemap, isDeterministicId } from "../src/services/backup-remap";
