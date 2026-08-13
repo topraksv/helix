@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 const criticalDomainFiles = [
   "src/data/repo/categories.ts",
   "src/data/repo/cell-notes.ts",
+  "src/data/repo/computed.ts",
   "src/data/repo/import-plan.ts",
   "src/data/repo/investment-validation.ts",
   "src/data/repo/rule-validation.ts",
