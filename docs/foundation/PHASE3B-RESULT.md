@@ -55,8 +55,8 @@ including the unchanged architecture contract; the full gate passed 128 files
 and 1,079 tests with two todos. Proposal 3 now records the executed result.
 
 `src/domain/category-icons.ts` is not among the 59 files in
-`stryker.config.mjs`, so neither Track B nor the final broad mutation score is
-presented as mutation evidence for that pure move.
+`stryker.config.mjs`, so neither Track B nor the one-shot broad measurement at
+`6c8f4aa` is presented as mutation evidence for that pure move.
 
 ## Track B — repository hardening
 
