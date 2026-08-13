@@ -36,7 +36,7 @@ const HIGH_RISK = [
   /^stryker(?:\.[^.]+)?\.config\.mjs$/,
   /^playwright\.config\.ts$/,
   /^knip\.json$/,
-  /^src\/app\/(?:\([^)]+\)\/)*_layout\.tsx$/,
+  /^src\/app\/(?:.*\/)?_layout\.tsx$/,
   /^src\/app\/\+html\.tsx$/,
   /^\.github\//,
   /^scripts\//,
@@ -51,7 +51,7 @@ const NO_APP_IMPACT = [
   /^\.vscode\//,
   /^docs\//,
   /^assets\/screenshots\//,
-  /^assets\/brand\//,
+  /^assets\/brand\/horizontal-(?:light|dark)\.png$/,
   /^\.(ai|agents|claude|codex)\//,
   /^(AGENTS|CLAUDE)\.md$/,
   /^skills-lock\.json$/,
@@ -182,7 +182,9 @@ const UNRESOLVABLE_BASE = "0000000000000000000000000000000000000000";
 const hasBase = (base) => Boolean(base) && base !== UNRESOLVABLE_BASE;
 
 function changedFiles(base, head) {
-  return execFileSync("git", ["diff", "--name-only", `${base}..${head}`], { encoding: "utf8" })
+  // Rename detection can return only the destination. If a shipped path moves
+  // into a no-impact area, classify both the deletion and addition instead.
+  return execFileSync("git", ["diff", "--no-renames", "--name-only", `${base}..${head}`], { encoding: "utf8" })
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);

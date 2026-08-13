@@ -46,11 +46,13 @@ file list. The final tracked-tree survey was:
 | `src/i18n/` | 1 | 0 | 1 |
 | `src/app/**/*.tsx` route leaves | 40 | 0 | 40 |
 
-Across all 789 tracked paths, isolated changes classify as 187 full, 277
-light-impact, and 325 no-application-impact paths. The last category still
+Across all 790 tracked paths, isolated changes classify as 187 full, 279
+light-impact, and 324 no-application-impact paths. The last category still
 runs the light gate when it is part of a `main` push. Route layouts and
 `src/app/+html.tsx` are explicit high-risk exceptions to route-leaf handling.
-`src/domain/category-icons.ts` is covered by the current domain rule.
+`src/domain/category-icons.ts` is covered by the current domain rule. The two
+brand-symbol PNGs imported by `src/ui/brand.tsx` are shipped light-tier assets;
+only the horizontal lockups used exclusively by `README.md` are no-impact.
 
 Representative CLI results:
 
@@ -60,9 +62,11 @@ Representative CLI results:
 | `src/domain/money.ts` | true | true | true | true | high risk |
 | `package-lock.json` | true | true | true | true | high risk |
 | `future-system/policy.ts` | true | true | true | true | high risk, unknown path |
+| `assets/brand/symbol-light-t.png` | false | true | true | true | ordinary shipped asset |
+| `assets/brand/horizontal-light.png` | false | false | false | false | README-only asset; light retained |
 | `docs/foundation/PHASE5-READINESS.md` | false | false | false | false | no application impact; light retained |
 
-The real `main..824cb9d` range classified as full with web build and both
+The real `main..branch-tip` range classified as full with web build and both
 deploys. This is expected: the range contains delivery files and
 correctness-sensitive production paths from the foundation program.
 
