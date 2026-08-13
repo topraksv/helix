@@ -40,6 +40,17 @@ updates:
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "react-native-svg"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
+      # Reanimated pins its own worklets runtime and both are resolved by the
+      # SDK, so a routine bump of either desynchronises the pair. PR #113
+      # proposed reanimated 4.1.1 -> 4.5.3, worklets 0.5.1 -> 0.11.3 and
+      # keyboard-controller 1.18.5 -> 1.22.3 while `expo install --check`
+      # reported the installed versions as the SDK 54 matrix.
+      - dependency-name: "react-native-reanimated"
+        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-native-worklets"
+        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-native-keyboard-controller"
+        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "eslint-config-expo"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "eslint"

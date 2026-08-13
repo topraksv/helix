@@ -123,7 +123,11 @@ jobs:
       - run: npm run control:check
       - run: npm run typecheck
       - run: npx expo lint
-      - run: npx vitest run
+      # On a full-gate push `test:coverage` runs this same suite under the
+      # per-file thresholds, so running it here too would execute every unit
+      # test twice for one commit.
+      - if: needs.classify.outputs.full_gate != 'true'
+        run: npx vitest run
 
   full-gate:
     needs: classify
@@ -183,8 +187,12 @@ jobs:
         with:
           path: dist
 
+  # The always-on browser signal for a light-tier push. A full-gate push runs
+  # `e2e-full`, whose 114 tests already contain these 24 `@smoke` ones, so
+  # running both would repeat them and pay for a third Metro export.
   e2e-smoke:
     needs: classify
+    if: needs.classify.outputs.full_gate != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -108,6 +108,16 @@ describe("release contract", () => {
     expect(ci).not.toContain("verify:release");
   });
 
+  it("never pays for the same unit or browser test twice in one run", () => {
+    // `test:coverage` runs the whole unit suite under the per-file thresholds,
+    // so the plain run is the light tier's own signal and must stand down when
+    // the full tier is selected.
+    expect(ci).toMatch(/if: needs\.classify\.outputs\.full_gate != 'true'\n\s+run: npx vitest run/);
+    // `e2e-full` executes all 114 browser tests; the 24 `@smoke` ones are a
+    // subset of them, and `test:e2e:smoke` would also export a third bundle.
+    expect(ci).toMatch(/e2e-smoke:\n\s+needs: classify\n\s+if: needs\.classify\.outputs\.full_gate != 'true'/);
+  });
+
   it("classifies first, always runs light checks, and adds full checks only for high risk", () => {
     expect(ci).toContain("  classify:");
     for (const output of [
@@ -202,7 +212,7 @@ describe("release contract", () => {
     expect(full).toContain("npx playwright test --shard=");
   });
 
-  it("runs smoke on every push and shards the risk-selected full suite", () => {
+  it("runs smoke on a light push and shards the risk-selected full suite", () => {
     expect(ci).toContain("npm run test:e2e:smoke");
     expect(ci).toContain("npx playwright install chromium firefox --with-deps");
     expect(nightly).toContain("npx playwright install chromium firefox --with-deps");
@@ -260,7 +270,11 @@ describe("release contract", () => {
     // Assert against the executed lines: the surrounding comments legitimately
     // discuss the escapes this job refuses to take.
     const commands = security.split("\n").filter((line) => /^\s*(-\s*)?(run|uses|continue-on-error):/.test(line));
-    expect(commands.join("\n")).toContain("npm audit --audit-level=high");
+    expect(commands.join("\n")).toContain("node scripts/check-advisories.mjs");
+    // A bare `npm audit --audit-level=high` cannot express an acceptance, so
+    // it reports the 11 packages carrying Metro's two build-chain advisories
+    // as 11 blocking findings and stays red until the threshold is relaxed.
+    expect(commands.join("\n")).not.toContain("npm audit --audit-level");
     for (const line of commands) {
       expect(line, line).not.toMatch(/--audit-level=(moderate|low|info)|--omit=dev|continue-on-error/);
     }
