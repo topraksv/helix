@@ -1,9 +1,9 @@
 /**
- * Expected payment/income engine (spec §2.6): every subscription,
- * installment plan and recurring income yields expected items with a due
- * date. State machine: pending → paid (user confirms / auto-pay) or late
- * (due date passed without confirmation). Confirmation is the source of
- * truth; automation only assists.
+ * Expected payment/income engine (spec §2.6): subscriptions and recurring
+ * incomes yield expected items with a due date; installment plans materialize
+ * scheduled transactions directly. State machine: pending → paid (user
+ * confirms / auto-pay) or late (due date passed without confirmation).
+ * Confirmation is the source of truth; automation only assists.
  */
 
 import { addMonthsToKey, daysBetweenISO, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
