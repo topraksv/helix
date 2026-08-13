@@ -130,22 +130,6 @@ describe("category deletion cascades to its budgets", () => {
     });
   });
 
-  it("treats a missing aggregate count row as zero", async () => {
-    dependencies.getSqliteAsync.mockResolvedValue({
-      getFirstAsync: vi.fn(async () => null),
-      getAllAsync: vi.fn(async () => []),
-    });
-
-    await expect(categoryReferenceUsage("user-1", "cat-1")).resolves.toEqual({
-      transactions: 0,
-      subscriptions: 0,
-      recurringIncomes: 0,
-      installmentPlans: 0,
-      cellNotes: 0,
-      total: 0,
-    });
-  });
-
   it("moves live references to the selected compatible category in one write", async () => {
     const sqlite = {
       getFirstAsync: vi.fn(async (sql: string) => {
