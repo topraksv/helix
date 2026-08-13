@@ -3,10 +3,10 @@
 ## Result
 
 **Behavior was proven identical for every retained edit, while the edited
-surface became modestly simpler.** Four small changes survived both the normal
-gate and a non-decreasing per-file mutation comparison. Two otherwise plausible
-changes were reverted because their mutation score fell. No test was changed to
-make a refactor pass.
+surface became modestly simpler.** Three small changes survived both the normal
+gate and a non-decreasing per-file mutation comparison. Three otherwise
+plausible changes were reverted when their evidence did not justify retaining
+them. No test was changed to make a refactor pass.
 
 This was deliberately not a rewrite. Most of the hardened domain was already
 small, direct, and carrying non-obvious product or security rationale. Leaving
@@ -21,13 +21,13 @@ The production diff contains exactly:
 src/domain/analytics.ts
 src/domain/card-statements.ts
 src/domain/expected.ts
-src/domain/input.ts
 ```
 
 There is no Phase 4 production diff under `src/data/repo/`, `src/app/`,
 `src/ui/`, `src/services/`, `src/sync/`, or `src/db/`. There is also no diff in
-`src/auth/recovery.ts`, `src/domain/matrix-preferences.ts`, tests, dependency
-files, or vendored skill bodies.
+`src/auth/recovery.ts`, `src/domain/input.ts`,
+`src/domain/matrix-preferences.ts`, tests, dependency files, or vendored skill
+bodies.
 
 ## Retained simplifications
 
@@ -41,17 +41,21 @@ matching Stryker's report.
 | `analytics.ts` | Removed an obsolete one-line description that called a monthly series cumulative while the retained incident rationale and implementation say the opposite. | 99.30% (141 K, 1 S) | 99.30% (141 K, 1 S) | -1 |
 | `card-statements.ts` | Collapsed a null guard plus equality return into one explicit null-safe conflict predicate. | 94.74% (54 K, 3 S) | 94.74% (54 K, 3 S) | -1 |
 | `expected.ts` | Corrected the module header so it no longer claims installment plans produce expected rows; the existing rationale and implementation both materialize their transactions directly. | 97.73% (171 K, 1 T, 4 S) | 97.73% (171 K, 1 T, 4 S) | 0 |
-| `input.ts` | Replaced manual string-iterator protocol management with direct `for...of` code-point iteration; this preserves PostgreSQL-compatible Unicode length without allocating an array. | 100.00% (44 K) | 100.00% (42 K) | -1 |
 
-The net production-text delta is 3 lines removed. The reduction is a side
-effect; the meaningful result is that contradictory guidance and needless
-control-flow ceremony disappeared without weakening any observed distinction.
-
-The `input.ts` mutant count fell from 44 to 42 because the manual iterator
-state disappeared. Every remaining mutant was killed, so its score stayed at
-100%.
+The net production-text delta is 2 lines removed. The reduction is a side
+effect; the meaningful result is that contradictory guidance and a needlessly
+split null guard disappeared without weakening any observed distinction.
 
 ## Reverted candidates
+
+### `input.ts`
+
+Direct `for...of` code-point iteration was tried in place of manual iterator
+protocol management. The normal gate passed and scoped mutation remained 100%,
+but the unused loop binding introduced an `@typescript-eslint/no-unused-vars`
+warning into the routine completion gate. Independent review rejected a
+cleanup-induced warning as a net quality regression. The edit was fully
+reverted; the warning-free Phase 3 implementation again kills all 44 mutants.
 
 ### `balance.ts`
 
@@ -67,8 +71,8 @@ A local was tried to avoid evaluating `plan.dueDay ?? 1` twice. The normal gate
 passed, but scoped mutation changed from 98.90% (90 K, 1 S) to 98.89% (89 K,
 1 S). The edit was fully reverted for the same reason.
 
-These failed attempts are evidence for keeping the apparent repetition, not a
-backlog of refactors to force through later.
+These failed attempts are evidence for keeping the current implementation, not
+a backlog of refactors to force through later.
 
 ## Reviewed and deliberately left alone
 
@@ -81,7 +85,7 @@ The grouped reason applies to each named file.
 | `balance-declaration.ts`; `budgets.ts`; `cash-flow-matrix.ts`; `computed-columns.ts`; `dashboard.ts`; `dates.ts`; `fx-provider.ts`; `fx.ts`; `market.ts`; `money.ts`; `recurrence.ts`; `settings.ts`; `transactions.ts` | These carry financial arithmetic, calendar boundaries, external-data validation, or synced-shape validation. The remaining branches are either observed product distinctions or Phase 3-adjudicated defensive convergence. No shallow module or single-use abstraction could be removed safely. |
 | `balance.ts`; `installments.ts` | The only concrete DRY candidates failed the non-decreasing mutation rule and were reverted, as recorded above. Their repeated expressions now remain intentionally. |
 | `investment-catalog.ts`; `investment-projection.ts`; `investments.ts` | Catalog identity, adapter filtering, fixed-point quote arithmetic, deterministic replay, and cash/holding invariants are cohesive. Splitting or compressing them would increase interface surface or obscure ordering guarantees. |
-| `form-state.ts`; `notifications.ts`; `onboarding.ts`; `route-params.ts`; `serial-queue.ts`; `subscriptions.ts`; `transaction-draft.ts`; `transaction-search.ts`; `types.ts`; `undo-outcome.ts`; `year-columns.ts` | These modules are already small policy functions or plain domain shapes. Their comments preserve incidents and edge-case rationale; further extraction would create shallower modules, while inlining would duplicate rules at callers. |
+| `form-state.ts`; `input.ts`; `notifications.ts`; `onboarding.ts`; `route-params.ts`; `serial-queue.ts`; `subscriptions.ts`; `transaction-draft.ts`; `transaction-search.ts`; `types.ts`; `undo-outcome.ts`; `year-columns.ts` | These modules are already small policy functions or plain domain shapes. Their comments preserve incidents and edge-case rationale; further extraction would create shallower modules, while inlining would duplicate rules at callers. The only tried `input.ts` cleanup was reverted because it added a lint warning. |
 | `upcoming.ts` | Its three projections share inputs but produce intentionally different output shapes. The repeated `name`/`categoryName` assignment is part of that public model; extracting or collapsing the mapping would add indirection without deleting a concept. |
 | `matrix-preferences.ts` | Explicitly out of scope because Phase 3 did not harden it. It was not used as a source of “easy” cleanup. |
 
@@ -118,7 +122,7 @@ control:check  clean — 35 installed skills, Claude bridge and lockfile
 tsc            clean
 Test Files     127 passed (127)
 Tests          1068 passed | 2 todo (1070)
-Duration       7.82s
+Duration       5.65s
 Exit           0
 ```
 
@@ -128,17 +132,17 @@ Command: `npx stryker run`
 
 ```text
 Source files  59
-Mutants       7,139
+Mutants       7,141
 Dry run       1,036 tests passed
-Killed        5,090
-Timeout       83
-Survived      775
+Killed        5,093
+Timeout       14
+Survived      843
 No coverage   1,191
 Errors        0
-All score     72.46%
-Covered       86.97%
+All score     71.52%
+Covered       85.83%
 Threshold     98% (unchanged)
-Duration      20m 46s
+Duration      19m 04s
 Exit          1 — score below break threshold
 ```
 
@@ -146,35 +150,30 @@ Subtotals from the generated JSON report:
 
 | Surface | Killed | Timeout | Survived | No coverage | Score |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Domain | 3,328 | 5 | 102 | 0 | 97.03% |
+| Domain | 3,331 | 1 | 105 | 0 | 96.95% |
 | Auth recovery | 116 | 0 | 2 | 0 | 98.31% |
-| Repository | 1,646 | 78 | 671 | 1,191 | 48.08% |
+| Repository | 1,646 | 13 | 736 | 1,191 | 46.26% |
 
 The broad score must not be read as a clean improvement over Phase 3's 71.33%:
-this run timed out 83 mutants instead of 1, including 73 in the out-of-scope
-repository onboarding file. Timeouts count as detected, so they inflate the
-score while reducing survivor counts. The stable evidence for Phase 4 is the
-fresh per-file comparison for each retained edit; all four are non-decreasing.
-The unchanged global threshold correctly keeps the full mutation command red
-because the repository layer remains under-hardened.
+this run timed out 14 mutants instead of 1 (3 in repository budgets, 1 in
+repository imports, 9 in repository onboarding, and 1 in domain expected).
+Timeouts count as detected, so they inflate the score while reducing survivor
+counts. The stable evidence for Phase 4 is the fresh per-file comparison for
+each retained edit; all three are non-decreasing. The unchanged global
+threshold correctly keeps the full mutation command red because the repository
+layer remains under-hardened.
 
 ## Routine completion gate
 
-`npm run verify` also exited 0 after the report was written. It repeated the
+`npm run verify` also exited 0 after the report was updated. It repeated the
 control and type checks, passed all per-file coverage thresholds, and ran Expo
 lint. Coverage reported 127 passing files, 1,068 passing tests and 2 todo tests;
-statements 99.76%, branches 99.08%, functions 100%, and lines 100%.
-
-Expo lint reported 0 errors and one warning: the `for...of` binding in
-`input.ts` is intentionally unused because iteration itself counts Unicode code
-points. This is disclosed rather than hidden with a lint-disable comment or a
-post-mutation source edit; the required final full mutation run was run once on
-the exact retained production state.
+statements 99.76%, branches 99.08%, functions 100%, and lines 100%. Expo lint
+reported 0 errors and 0 warnings on the final state.
 
 ## Conclusion
 
 Phase 4 is complete for the authorized hardened surface. The retained changes
-remove two contradictions and two pieces of needless control-flow ceremony.
-Every retained file preserved its mutation score, the normal gate is green,
-both known defects remain deferred, and no unprotected production surface was
-touched.
+remove two contradictions and one needlessly split guard. Every retained file
+preserved its mutation score, the normal gate is green, both known defects
+remain deferred, and no unprotected production surface was touched.
