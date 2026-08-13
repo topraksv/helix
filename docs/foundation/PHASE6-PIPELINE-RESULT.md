@@ -21,7 +21,8 @@ database schema, protected tag, or action pin changed in this phase.
 - `light_gate` — always true, because every `main` push proves the baseline;
 - `full_gate` — adds coverage, mutation, and full E2E for high risk;
 - `run_web_build`, `deploy_web`, and `deploy_mobile` — independent artifact and
-  publication decisions; and
+  publication decisions, with a narrow dual-republish recovery for changes to
+  `ci.yml` or the classifier itself; and
 - `reason` — the concrete tier or first five high-risk paths for the run log.
 
 An absent, zero, invalid, or otherwise unresolvable base produces the safe
@@ -65,6 +66,7 @@ Representative CLI results:
 | `assets/brand/symbol-light-t.png` | false | true | true | true | ordinary shipped asset |
 | `assets/brand/horizontal-light.png` | false | false | false | false | README-only asset; light retained |
 | `docs/foundation/PHASE5-READINESS.md` | false | false | false | false | no application impact; light retained |
+| `scripts/classify-changes.mjs` | true | true | true | true | delivery control changed; full gate and dual republish |
 
 The real `main..branch-tip` range classified as full with web build and both
 deploys. This is expected: the range contains delivery files and
@@ -86,14 +88,22 @@ CI nor agents needed.
    suite. `e2e-smoke` always runs the Chromium/Firefox smoke selection.
 3. `full-gate`, `e2e-build`, and the three `e2e-full` shards run only when
    `full_gate=true`. One E2E export is shared by every shard.
-4. `web-build` runs only when web bytes can change. It exports once, applies
-   the bundle budget, creates the deep-link fallback, and uploads those exact
-   checked bytes.
+4. `web-build` runs when web bytes can change or delivery-control recovery
+   requires republishing. It exports once, applies the bundle budget, creates
+   the deep-link fallback, and uploads those exact checked bytes.
 5. `gate` accepts tier-driven skips but rejects every failure or cancellation.
 6. `deploy-web` and `deploy-mobile` consume the same classifier and gate.
    They may run together. Web deploys the existing artifact and retains its
    live root/sub-route/bundle smoke; mobile retains the `EXPO_TOKEN` guard and
    publishes only `eas update --branch preview --platform all`.
+
+The first live push exposed one recovery edge: application bytes can be ready
+to ship while a full-gate test prevents both publications, and the corrective
+commit may otherwise contain only test and delivery-control changes. Changes to
+`ci.yml` or `scripts/classify-changes.mjs` therefore run the full gate, rebuild,
+and republish both surfaces. This exception is deliberately narrower than all
+test or tooling changes; ordinary `tests/**` and `e2e/**` changes remain
+non-shipping. A focused red-then-green classifier contract pins both sides.
 
 The Pages job retains `pages: write`, `id-token: write`, a direct dependency on
 the build job, and the `helix` environment, matching GitHub's custom Pages
@@ -175,6 +185,34 @@ No workflow was added or removed. Every `uses:` entry remains pinned to a
 GitHub-owned-actions-only policy remains intact. `actionlint 1.7.12` accepted
 all five workflow files with exit 0.
 
+### First live `main` push
+
+Push run `31716039352` exercised the expected high-risk path at commit
+`a2411be992db9051e018fd48082364a3525eb67e`. Classification, the light gate,
+coverage, the 99.15% delivery-mutation gate, web build/budget, smoke, and two
+of three full E2E shards passed. The third shard exposed a Firefox race in one
+long investment-flow test: React Native Web's controlled money input could
+drop an automated keystroke under runner load. The common `gate` failed and
+both deploy jobs were skipped, proving a partial green run cannot publish.
+
+The retained trace showed the input settling at prefixes such as `5` or `50`
+instead of `500`; increasing timeouts or retries would only hide that result.
+The flow now enters those amounts through each field's public calculator seam,
+which is the behavior boundary the investment-flow test owns. A focused
+Firefox burn-in passed 10/10 with no retry after the correction. The replacement
+push also changes the classifier's delivery-recovery contract, so it classifies
+as full with web build and both deploy targets. Its automatic deploy result is
+reported in the final handoff because it occurs after the commit containing
+this document.
+
+The first local `verify:full` after that correction passed the unit, coverage,
+lint, export, budget, and corrected cross-browser flow checks, but one unrelated
+Chromium geometry assertion sampled a non-finite computed style once. Its
+failure trace showed all three rendered metric values at the intended `15px`;
+the exact test then passed 10/10 without retry, and a fresh full run passed all
+114 browser tests. No timeout, retry, production change, or assertion weakening
+was used to hide that failed measurement.
+
 ## Track D — authority documentation
 
 `AGENTS.md` now separates three authorities:
@@ -220,8 +258,11 @@ Full Playwright         114 passed (Chromium + Firefox), 4.3m
 Overall                 exit 0
 ```
 
-The post-review normal gate exited 0 with 133 files, 1,181 passing tests, and
-exactly two existing todos. No todo or skip was added by this phase.
+After the delivery-recovery contract was added, a fresh `npm run verify:full`
+exited 0 with 133 files, 1,182 passing tests, exactly two existing todos,
+99.81/99.01/100/100 coverage, 66 exported routes, all bundle budgets within
+their limits, and 114/114 Playwright tests in 3.9 minutes. No todo or skip was
+added by this phase.
 
 ## Commits and merge boundary
 

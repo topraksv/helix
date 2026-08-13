@@ -90,7 +90,7 @@ describe("change classification", () => {
     ["Supabase migration", "supabase/migrations/00000000000029_retire_legacy_expected_kinds.sql", false],
     ["routing infrastructure", "src/app/(tabs)/_layout.tsx", true],
     ["HTML security shell", "src/app/+html.tsx", true],
-    ["delivery workflow", ".github/workflows/ci.yml", false],
+    ["delivery workflow", ".github/workflows/ci.yml", true],
     ["native config plugin", "plugins/with-ios-native-product-name.js", false],
   ] as const) {
     it(`treats ${area} as high risk`, () => {
@@ -123,12 +123,10 @@ describe("change classification", () => {
     });
   });
 
-  it("verifies tests and delivery tooling without publishing unchanged application bytes", () => {
+  it("verifies tests and non-delivery tooling without publishing unchanged application bytes", () => {
     for (const file of [
       "tests/balance.test.ts",
       "e2e/core-flow.spec.ts",
-      ".github/workflows/ci.yml",
-      "scripts/classify-changes.mjs",
     ]) {
       const result = classify([file]);
       expect(result, file).toMatchObject({
@@ -142,6 +140,22 @@ describe("change classification", () => {
       run_web_build: true,
       deploy_web: false,
     });
+  });
+
+  it("rebuilds and republishes both surfaces after delivery-control changes", () => {
+    for (const file of [
+      ".github/workflows/ci.yml",
+      "scripts/classify-changes.mjs",
+    ]) {
+      expect(classify([file]), file).toMatchObject({
+        light_gate: true,
+        full_gate: true,
+        run_web_build: true,
+        deploy_web: true,
+        deploy_mobile: true,
+        reason: `delivery control changed: ${file}; full gate and dual republish`,
+      });
+    }
   });
 
   it("publishes public files only to web and shipped assets to both targets", () => {

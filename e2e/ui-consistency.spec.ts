@@ -76,11 +76,20 @@ async function effectiveControlTextContrast(page: Page, label: string): Promise<
   }, label);
 }
 
-async function insertFormattedAmount(page: Page, field: Locator, raw: string, expected: string) {
-  await field.fill("");
-  await expect(field).toHaveValue("");
-  await field.focus();
-  await page.keyboard.insertText(raw);
+async function enterAmountViaCalculator(page: Page, field: Locator, raw: string, expected: string) {
+  // This long cross-browser flow owns the investment behavior, not keyboard
+  // event timing. Firefox dropped controlled MoneyField keystrokes under CI
+  // load (run 31716039352), so use the field's public calculator seam here.
+  await field.locator("xpath=..").getByRole("button", { name: "Hesap makinesini aç", exact: true }).click();
+  const calculator = page.locator('[aria-modal="true"]');
+  await expect(calculator).toBeVisible();
+  for (const character of raw) {
+    await calculator.getByRole("button", { name: character, exact: true }).click();
+  }
+  const useResult = calculator.getByRole("button", { name: /Sonucu Kullan/ });
+  await expect(useResult).toBeEnabled();
+  await useResult.click();
+  await expect(calculator).toHaveCount(0);
   await expect(field).toHaveValue(expected);
 }
 
@@ -1042,11 +1051,16 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
 
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("10");
-  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("100");
+  await enterAmountViaCalculator(
+    page,
+    page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }),
+    "100",
+    "100,00",
+  );
   const total = page.getByRole("textbox", { name: "Toplam TRY · isteğe bağlı", exact: true });
-  await insertFormattedAmount(page, total, "2000", "2.000");
+  await enterAmountViaCalculator(page, total, "2000", "2.000,00");
   await expect(page.getByRole("alert")).toContainText("birbiriyle uyuşmuyor");
-  await insertFormattedAmount(page, total, "1000", "1.000");
+  await enterAmountViaCalculator(page, total, "1000", "1.000,00");
   await page.getByRole("button", { name: "Alış ekle", exact: true }).click();
   await expect(page.getByText("SASA", { exact: true }).first()).toBeVisible();
 
@@ -1063,7 +1077,12 @@ test("investment setup, weighted sale, BES contribution and wallet refund form o
   await page.getByTestId("screen-header").getByRole("button", { name: "İşlem Ekle", exact: true }).click();
   await pickOption(page, "Ürün", "Emeklilik Planım · BES");
   await page.getByRole("radio", { name: "Yalnız katkı tutarı", exact: true }).click();
-  await page.getByRole("textbox", { name: "Toplam katkı · zorunlu", exact: true }).fill("500");
+  await enterAmountViaCalculator(
+    page,
+    page.getByRole("textbox", { name: "Toplam katkı · zorunlu", exact: true }),
+    "500",
+    "500,00",
+  );
   await page.getByRole("button", { name: "BES katkısı ekle", exact: true }).click();
   await expect(page.getByText("Pay bilgisi yok", { exact: true })).toBeVisible();
 

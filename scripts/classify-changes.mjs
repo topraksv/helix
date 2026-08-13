@@ -67,6 +67,19 @@ const NOT_SHIPPED = [
   /^plugins\//,
 ];
 
+/**
+ * Controls whose own correctness decides whether either delivery can finish.
+ *
+ * A shipped change can fail its shared gate before publication. Its follow-up
+ * may change only the classifier or delivery workflow, so these two paths must
+ * rebuild and republish both surfaces after the repaired gate passes; otherwise
+ * the already-built application bytes remain stranded behind the old failure.
+ */
+const DELIVERY_CONTROL = [
+  /^\.github\/workflows\/ci\.yml$/,
+  /^scripts\/classify-changes\.mjs$/,
+];
+
 /** Explicit light-tier allowlist; everything else escalates. */
 const KNOWN_LIGHT = [
   /^src\/i18n\//,
@@ -157,6 +170,7 @@ export function classify(files) {
   const highRisk = relevant.filter(
     (file) => matches(file, HIGH_RISK) || unknown.includes(file),
   );
+  const deliveryControl = relevant.filter((file) => matches(file, DELIVERY_CONTROL));
   const shipping = relevant.filter((file) => !matches(file, NOT_SHIPPED));
   const buildsWeb = relevant.filter(
     (file) => !matches(file, NEVER_WEB_BUILD)
@@ -167,12 +181,14 @@ export function classify(files) {
     run_ci: true,
     light_gate: true,
     full_gate: highRisk.length > 0,
-    run_web_build: buildsWeb.length > 0,
-    deploy_web: shipping.length > 0 && buildsWeb.length > 0,
-    deploy_mobile: shipping.some(
+    run_web_build: deliveryControl.length > 0 || buildsWeb.length > 0,
+    deploy_web: deliveryControl.length > 0 || (shipping.length > 0 && buildsWeb.length > 0),
+    deploy_mobile: deliveryControl.length > 0 || shipping.some(
       (file) => matches(file, AFFECTS_MOBILE_UPDATE) || unknown.includes(file),
     ),
-    reason: highRisk.length > 0
+    reason: deliveryControl.length > 0
+      ? `delivery control changed: ${deliveryControl.slice(0, 5).join(", ")}; full gate and dual republish`
+      : highRisk.length > 0
       ? `high risk: ${highRisk.slice(0, 5).join(", ")}`
       : "ordinary change; light gate",
   };

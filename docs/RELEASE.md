@@ -9,9 +9,12 @@ versions, and commands.
 
 A push to `main` classifies the changed paths, runs the light gate, adds the
 full gate for high-risk or unrecognised paths, and automatically publishes each
-surface whose bytes can have changed. Both surfaces can publish from the same
-successful gate and both use the `helix` environment. Authorization to push
-`main` includes those classifier-selected publications.
+surface whose bytes can have changed. A change to the delivery workflow or its
+classifier also rebuilds and republishes both surfaces after the full gate; this
+is the automatic recovery path when an earlier shipping push failed before
+publication. Both surfaces can publish from the same successful gate and both
+use the `helix` environment. Authorization to push `main` includes those
+classifier-selected publications.
 
 Manual `workflow_dispatch` remains an optional override for a check-only run or
 an explicit `web`, `mobile`, or `both` redeploy. Direct deploy/OTA commands,
