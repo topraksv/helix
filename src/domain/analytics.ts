@@ -62,7 +62,6 @@ export function categoryRangeMatrix(
   return rows;
 }
 
-/** Cumulative series for one category across a month range (trend chart). */
 /**
  * What the category cost in each month of the window.
  *
