@@ -53,7 +53,7 @@ import { interactionSurface } from "../../../ui/interaction";
 import { circle, controlSize, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { ledgerCellWidth, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
-import { categoryIcon } from "../../../data/category-icons";
+import { categoryIcon } from "../../../domain/category-icons";
 
 type MatrixModel = ReturnType<typeof buildCashFlowMatrixModel>;
 

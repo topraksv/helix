@@ -2,7 +2,7 @@ import type * as schema from "../../db/schema";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import { assertLiveRow, writeRows, writeRowsValidated, type RowWrite } from "../../db/mutations";
 import { assertInputWithinLimit } from "../../domain/input";
-import { suggestCategoryIcon } from "../category-icons";
+import { suggestCategoryIcon } from "../../domain/category-icons";
 import type { TemplateCategory } from "./onboarding";
 import { assertInvestmentWrites } from "./investment-validation";
 

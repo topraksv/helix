@@ -14,7 +14,7 @@ import { deleteRecurringIncomeWithExpected, restoreDeletedRule, upsertRecurringI
 import { scheduleSync } from "../../../sync/engine";
 import { shortDateLabel, tr } from "../../../i18n/tr";
 import { Body, Button, Card, CardList, ChipPicker, DataStateNotice, EmptyState, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, SectionHeader, Select } from "../../../ui/components";
-import { categoryIcon } from "../../../data/category-icons";
+import { categoryIcon } from "../../../domain/category-icons";
 import { RuleRow } from "../../../ui/rule-row";
 import { useUndo } from "../../../ui/undo";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";

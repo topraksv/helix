@@ -29,7 +29,7 @@ import { installmentDisplayTitle } from "../../../domain/installments";
 import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { transactionDateText } from "../../../ui/transaction-date";
-import { categoryIcon } from "../../../data/category-icons";
+import { categoryIcon } from "../../../domain/category-icons";
 import { monthLabel, tr } from "../../../i18n/tr";
 import { Amount, Body, Button, Card, DataStateNotice, DisclosureChevron, EmptyState, Field, Heading, Row, Screen, Spread } from "../../../ui/components";
 import { useDrawIn } from "../../../ui/motion-primitives";

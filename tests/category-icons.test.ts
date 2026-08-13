@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PaymentSourceType } from "../src/domain/types";
-import { categoryIcon, paymentSourceIcon, suggestCategoryIcon } from "../src/data/category-icons";
+import { categoryIcon, paymentSourceIcon, suggestCategoryIcon } from "../src/domain/category-icons";
 
 const expectedPaymentSourceIcons: Record<PaymentSourceType, string> = {
   credit_card: "💳",

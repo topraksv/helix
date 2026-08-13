@@ -7,7 +7,7 @@ import { useRouter } from "expo-router";
 import { bulkMonthEntry } from "../data/repo";
 import { useCategoriesState, usePersonsState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
-import { categoryIcon } from "../data/category-icons";
+import { categoryIcon } from "../domain/category-icons";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO } from "../domain/dates";
 import { categoryTableEntryType } from "../domain/transactions";
 import { monthLabel, tr } from "../i18n/tr";

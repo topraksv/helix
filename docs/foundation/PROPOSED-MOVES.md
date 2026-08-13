@@ -109,11 +109,11 @@ the visual defaults are persisted and therefore user-visible. Approval should
 require snapshot-free behavioral tests and the architecture gate; no icon,
 keyword order, or fallback pool may change in the move.
 
-**Status:** Cleared pending tests; no move was executed in Phase 2. This is a
-pure move, but no test directly covered `category-icons`,
-`suggestCategoryIcon`, `categoryIcon`, or `paymentSourceIcon`. Because these
-icons are persisted, user-visible defaults, first add the required direct,
-snapshot-free coverage before a separately authorized move.
+**Status:** Executed after direct, snapshot-free tests covered
+`suggestCategoryIcon`, `categoryIcon`, and `paymentSourceIcon`, including
+keyword precedence, Turkish normalization, deterministic fallback, and the
+closed `PaymentSourceType` mapping. The unchanged policy module now lives at
+`src/domain/category-icons.ts`; all thirteen source importers use that seam.
 
 ## Deliberately not proposed
 

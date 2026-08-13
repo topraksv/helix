@@ -11,7 +11,7 @@ import { createRecordId, CreditCardCycleRequiredError, ensureSubscriptionCategor
 import { useCategoriesState, usePersonsState, useSourcesState, useSubscriptionsState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
+import { categoryIcon, paymentSourceIcon } from "../domain/category-icons";
 import { advanceDueDate, dueDateInMonth, nextDueAfter } from "../domain/recurrence";
 import { normalizedMonthlyLoadMinor } from "../domain/analytics";
 import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates";

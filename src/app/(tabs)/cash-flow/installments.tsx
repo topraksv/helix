@@ -22,7 +22,7 @@ import {
   useAllTransactionsState,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { paymentSourceIcon } from "../../../data/category-icons";
+import { paymentSourceIcon } from "../../../domain/category-icons";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, SegmentBar, Select } from "../../../ui/components";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";

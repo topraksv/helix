@@ -27,7 +27,7 @@ import {
   useTxLike,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
-import { categoryIcon, paymentSourceIcon } from "../../../data/category-icons";
+import { categoryIcon, paymentSourceIcon } from "../../../domain/category-icons";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, ChartFrame, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { Collapse } from "../../../ui/motion-primitives";

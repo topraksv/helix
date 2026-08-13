@@ -12,7 +12,7 @@ import { formatMinorCompact, formatMinorInput } from "../../../domain/money";
 import { tr } from "../../../i18n/tr";
 import { scheduleSync } from "../../../sync/engine";
 import { Body, Button, Card, CardList, DataStateNotice, EmptyState, IconButton, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, SegmentBar, Select, Spread } from "../../../ui/components";
-import { categoryIcon } from "../../../data/category-icons";
+import { categoryIcon } from "../../../domain/category-icons";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";

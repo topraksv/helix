@@ -8,7 +8,7 @@ import { useCategoriesState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { categoryReferenceUsage, createCategory, deleteCategoryWithBudgets, reorderCategoryGroup, restoreCategoryWithBudgets, updateCategory } from "../../../data/repo";
 import type { CategoryReferenceUsage } from "../../../data/repo";
-import { categoryIcon } from "../../../data/category-icons";
+import { categoryIcon } from "../../../domain/category-icons";
 import { scheduleSync } from "../../../sync/engine";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { tr } from "../../../i18n/tr";

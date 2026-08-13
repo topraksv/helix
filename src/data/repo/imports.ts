@@ -6,7 +6,7 @@ import { addMonthsToKey, todayISO, yearOf, type MonthKey } from "../../domain/da
 import type { PaymentSourceType } from "../../domain/types";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
 import { collectInstallmentPlans, type ParsedSheet } from "../../services/spreadsheet-import";
-import { suggestCategoryIcon } from "../category-icons";
+import { suggestCategoryIcon } from "../../domain/category-icons";
 import { CreditCardCycleRequiredError, ImportBatchUnreadableError } from "./errors";
 import { buildPlanRows, linkDueRowsToCardStatements } from "./installments";
 import { buildSpreadsheetImportPlan, importCategoryKey } from "./import-plan";

@@ -7,7 +7,7 @@ import { countInstallmentsForPlan, createInstallmentPlan, CreditCardCycleRequire
 import { useAllTransactionsState, useCategoriesState, usePersonsState, usePlansState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
+import { categoryIcon, paymentSourceIcon } from "../domain/category-icons";
 import { addMonthsToKey, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { deriveStartMonth, isValidInstallmentCount, planProgress, type GeneratedInstallment } from "../domain/installments";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";

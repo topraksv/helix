@@ -27,7 +27,7 @@ import {
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { classifyRecordId } from "../domain/route-params";
-import { categoryIcon, paymentSourceIcon } from "../data/category-icons";
+import { categoryIcon, paymentSourceIcon } from "../domain/category-icons";
 import { previewTryMinor, resolveTransactionSave } from "../domain/transaction-draft";
 import { assertISODate, isISODate, lastDayOf, monthKeyOf, todayISO, type MonthKey } from "../domain/dates";
 import { isValidCardCycle, statementForPurchase } from "../domain/card-statements";
