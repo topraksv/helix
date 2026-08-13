@@ -137,6 +137,7 @@ describe("release contract", () => {
     expect(full).toContain("npm run test:mutation:ci");
     expect(full).toContain("MUTATION_BASE_SHA: ${{ github.event.before }}");
     expect(full).toContain("MUTATION_HEAD_SHA: ${{ github.sha }}");
+    expect(full).toContain("MUTATION_EVENT_NAME: ${{ github.event_name }}");
     expect(full).toContain("fetch-depth: 0");
   });
 

@@ -46,7 +46,7 @@ file list. The final tracked-tree survey was:
 | `src/i18n/` | 1 | 0 | 1 |
 | `src/app/**/*.tsx` route leaves | 40 | 0 | 40 |
 
-Across all 790 tracked paths, isolated changes classify as 187 full, 279
+Across all 790 tracked paths, isolated changes classify as 190 full, 276
 light-impact, and 324 no-application-impact paths. The last category still
 runs the light gate when it is part of a `main` push. Route layouts and
 `src/app/+html.tsx` are explicit high-risk exceptions to route-leaf handling.
@@ -130,11 +130,12 @@ Every later edit under `src/domain/`, `src/data/repo/`, `src/db/`, `src/sync/`,
 production files. A weak changed file therefore fails the unchanged threshold
 instead of being diluted by unrelated green files. The selector uses
 `--no-renames`, a full-history checkout, and an exported function covered by a
-temporary-repository rename/diff test.
+temporary-repository modification/diff test. A separate temporary-repository
+test proves the classifier's rename/removal behavior.
 
 An explicitly supplied zero, missing, or shallow push base fails the mutation
-selector closed; it cannot silently downgrade to sentinels. Only a dispatch
-with no diff inputs intentionally uses the redeploy sentinel.
+selector closed; it cannot silently downgrade to sentinels. A dispatch with no
+diff inputs and a direct local run intentionally use the redeploy sentinel.
 
 Partial repositories, including budgets, remain visible in the broad config
 and are not relabelled as hardened. A future edit to one is directly selected
@@ -219,18 +220,25 @@ Full Playwright         114 passed (Chromium + Firefox), 4.3m
 Overall                 exit 0
 ```
 
-The post-review normal gate exited 0 with 133 files, 1,180 passing tests, and
+The post-review normal gate exited 0 with 133 files, 1,181 passing tests, and
 exactly two existing todos. No todo or skip was added by this phase.
 
 ## Commits and merge boundary
 
-Incremental branch commits:
+Principal incremental branch commits before the final evidence correction:
 
 - `4e5aa6b` — classifier and current-tree contracts;
 - `e8cae20` — initial passing delivery mutation scope, later made diff-aware
   without changing the broad audit;
 - `a33cc79` — risk-tiered shared gate and automatic dual deploy; and
-- `824cb9d` — auxiliary-workflow rationale and release authority alignment.
+- `824cb9d` — auxiliary-workflow rationale and release authority alignment;
+- `0d1f9b0` — Phase 6 evidence report;
+- `e5a9e1a` — shipped-removal, brand-symbol, and nested-layout classification;
+  and
+- `711c760` — canonical broad audit plus diff-aware delivery mutation.
+
+The final evidence-correction commit and merge tip are reported in the handoff;
+a commit cannot contain its own resulting SHA.
 
 All were pushed to `origin/chore/foundation-reset`. Before the final report and
 review, local `main` and `origin/main` were still

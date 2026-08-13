@@ -151,6 +151,7 @@ jobs:
         env:
           MUTATION_BASE_SHA: ${{ github.event.before }}
           MUTATION_HEAD_SHA: ${{ github.sha }}
+          MUTATION_EVENT_NAME: ${{ github.event_name }}
 
   web-build:
     needs: classify

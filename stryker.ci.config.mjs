@@ -42,8 +42,11 @@ function isAncestor(ancestor, descendant, cwd) {
   }
 }
 
-export function selectMutationScope({ base, head, cwd = process.cwd() }) {
-  if (!base || !head) return PROVEN_SENTINEL_SCOPE;
+export function selectMutationScope({ base, head, eventName = "local", cwd = process.cwd() }) {
+  if (!base || !head) {
+    if (eventName === "push") throw new Error("Missing mutation diff base or head for a push event.");
+    return PROVEN_SENTINEL_SCOPE;
+  }
   if (/^0+$/.test(base)) throw new Error("Mutation diff base is the zero SHA; refusing a sentinel-only push gate.");
 
   try {
@@ -64,6 +67,7 @@ export function selectMutationScope({ base, head, cwd = process.cwd() }) {
 const mutate = selectMutationScope({
   base: process.env.MUTATION_BASE_SHA,
   head: process.env.MUTATION_HEAD_SHA,
+  eventName: process.env.MUTATION_EVENT_NAME,
 });
 
 export default {

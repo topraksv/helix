@@ -81,4 +81,19 @@ describe("CI mutation contract", () => {
       cwd: process.cwd(),
     })).toThrow(/mutation diff base/i);
   });
+
+  it("allows a ref-free sentinel only for an explicit manual dispatch", () => {
+    expect(selectMutationScope({
+      base: "",
+      head: "",
+      eventName: "workflow_dispatch",
+      cwd: process.cwd(),
+    })).toContain("src/auth/recovery.ts");
+    expect(() => selectMutationScope({
+      base: "",
+      head: "HEAD",
+      eventName: "push",
+      cwd: process.cwd(),
+    })).toThrow(/missing mutation diff/i);
+  });
 });
