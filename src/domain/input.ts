@@ -20,7 +20,8 @@ type InputLimitKind = keyof typeof INPUT_LIMITS;
 /** PostgreSQL char_length counts Unicode code points, not UTF-16 code units. */
 export function textLength(value: string): number {
   let length = 0;
-  for (const _character of value) length += 1;
+  const characters = value[Symbol.iterator]();
+  while (!characters.next().done) length += 1;
   return length;
 }
 
