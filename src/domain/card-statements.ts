@@ -77,6 +77,5 @@ export function statementForDueDate(dueDate: ISODate, cycle: CardCycle): CardSta
  * so the two have to be compared after both are resolved to a day number.
  */
 export function isCardCycleDayConflict(statementDay: number | null, dueDay: number | null): boolean {
-  if (statementDay == null || dueDay == null) return false;
-  return statementDay === dueDay;
+  return statementDay != null && dueDay != null && statementDay === dueDay;
 }
