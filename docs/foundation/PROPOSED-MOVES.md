@@ -14,6 +14,18 @@ changes.
 | 2 | Move live-query internals behind the existing hooks interface | Medium–high | High |
 | 3 | Move category-icon policy from `data` to `domain` | Medium | Low–medium |
 
+## Phase 2 decision record
+
+Phase 2 executed no source moves. Its deletion sweep found no
+repository-owned dead file, empty directory, or unused dependency to remove.
+Before these decisions, the frozen baseline and this pending-proposal source
+were restored byte-for-byte from `df3bfd6^`.
+
+Four pre-evidence full gates passed: `npm run control:check`,
+`npx tsc --noEmit`, and `npx vitest run` reported 35 installed skills with a
+clean bridge and lockfile, type-check exit 0, and 110 passing test files with
+970 passing tests. No per-move gate applied because no move was made.
+
 ## 1. Put backup/restore persistence behind one data-layer interface
 
 **Current seam:** backup work crosses both directions between persistence and
@@ -40,6 +52,13 @@ rule in the architecture contract, and unchanged backup, import, sync outbound,
 investment-maintenance, privacy, and round-trip tests. File-system and browser
 download code must remain outside the data interface.
 
+**Status:** Rejected for Phase 2. This is an interface redesign rather than a
+pure move: it would create `src/data/import/`, redistribute validation and
+write-planning responsibilities, and change the dependency contract. Its value
+requires logic extraction, explicit interface design, targeted test work, and
+an architecture-contract change, none of which fit move-plus-import-only
+authority.
+
 ## 2. Move live-query internals behind the existing hooks interface
 
 **Current seam:** `src/data/hooks.ts` is 772 lines and has three independently
@@ -63,6 +82,12 @@ implementation. Approval should require targeted lifecycle tests before the
 move; the existing `live-state`, database-recovery, session, ledger, and full
 integration gates alone do not prove React subscription identity.
 
+**Status:** Rejected for Phase 2. Splitting `hooks.ts` would extract
+interdependent state, retry, listener, registry, and projection logic, not move
+a whole file. The required targeted React subscription-identity tests were not
+present, and the phase allowed no test-logic changes; the existing integration
+gate cannot replace that proof.
+
 ## 3. Move category-icon policy from `data` to `domain`
 
 **Current seam:** `src/data/category-icons.ts` is a pure deterministic product
@@ -83,6 +108,12 @@ infrastructure.
 the visual defaults are persisted and therefore user-visible. Approval should
 require snapshot-free behavioral tests and the architecture gate; no icon,
 keyword order, or fallback pool may change in the move.
+
+**Status:** Cleared pending tests; no move was executed in Phase 2. This is a
+pure move, but no test directly covered `category-icons`,
+`suggestCategoryIcon`, `categoryIcon`, or `paymentSourceIcon`. Because these
+icons are persisted, user-visible defaults, first add the required direct,
+snapshot-free coverage before a separately authorized move.
 
 ## Deliberately not proposed
 
