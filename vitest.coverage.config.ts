@@ -7,6 +7,7 @@ const criticalDomainFiles = [
   "src/data/repo/investment-validation.ts",
   "src/data/repo/rule-validation.ts",
   "src/data/repo/settings.ts",
+  "src/data/repo/transactions.ts",
   "src/domain/analytics.ts",
   "src/domain/app-guard.ts",
   "src/domain/balance-declaration.ts",
