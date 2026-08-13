@@ -75,7 +75,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --config vitest.coverage.config.ts",
-    "test:mutation": "stryker run",
+    "test:mutation": "stryker run stryker.ci.config.mjs",
     "test:e2e:export": "node scripts/export-e2e-web.mjs",
     "test:e2e": "npm run test:e2e:export && playwright test",
     "test:e2e:only": "playwright test",
