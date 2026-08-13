@@ -128,6 +128,12 @@ Exit           0
 
 ## Final 59-file mutation run
 
+A 59-file run had already been made before independent review. Review then
+required reverting the `input.ts` source edit, so that artifact no longer
+described the final tree. The command was repeated on the corrected tree rather
+than presenting stale evidence. This exceeded the requested once-only execution;
+only the corrected-tree result below is final evidence.
+
 Command: `npx stryker run`
 
 ```text
