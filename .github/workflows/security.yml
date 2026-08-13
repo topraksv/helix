@@ -1,8 +1,9 @@
 # CodeQL and scheduled dependency auditing.
 #
-# CodeQL remains advisory because new query packs can change without a source
-# change. High/critical dependency advisories also run here on a schedule, but
-# the same deterministic lockfile check runs in ci/quality and blocks delivery.
+# CodeQL and registry advisories stay off the delivery path because either can
+# change without a source change. They run for security-relevant paths and on a
+# schedule, so a new finding remains visible without retroactively changing the
+# deterministic gate that certified an already-pushed commit.
 #
 # This replaced a separate PR-only dependency-review workflow. There are no
 # pull requests any more (work lands directly on main), so the lockfile is

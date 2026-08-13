@@ -69,8 +69,11 @@ output.
 ## Git and release authority
 
 Work in the checkout and branch the user explicitly authorized. Do not create
-a branch or worktree merely because generic guidance suggests one. Commit,
-push, deploy, OTA, release, database publish, and workflow dispatch require the
-user's explicit authorization for that exact action. Release dispatches must
-name their target and use the existing `helix` deployment environment. Never
-force-push or rewrite history.
+a branch or worktree merely because generic guidance suggests one. Commit and
+push require the user's explicit authorization. A user-authorized push to
+`main` also authorizes the risk classifier's automatic web and Expo Go
+deployments from that push; they share the existing `helix` deployment
+environment and need no second authorization. Manual workflow dispatch,
+direct deploy/OTA or
+release commands, and linked database publication require authorization for
+the exact target. Never force-push or rewrite history.

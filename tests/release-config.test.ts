@@ -9,6 +9,7 @@ const eas = JSON.parse(read("eas.json"));
 const ci = read(".github/workflows/ci.yml");
 const classifier = read("scripts/classify-changes.mjs");
 const agents = read("AGENTS.md");
+const release = read("docs/RELEASE.md");
 const security = read(".github/workflows/security.yml");
 const nightly = read(".github/workflows/nightly.yml");
 const keepalive = read(".github/workflows/keepalive.yml");
@@ -166,6 +167,14 @@ describe("release contract", () => {
       const jobBlock = ci.slice(start, jobEnd === -1 ? undefined : jobEnd);
       expect(jobBlock, job).toContain("environment:\n      name: helix");
     }
+  });
+
+  it("documents that an authorized main push authorizes its automatic deploys", () => {
+    expect(agents).toMatch(/A user-authorized push to\s+`main` also authorizes/);
+    expect(agents).toMatch(/automatic web and Expo Go\s+deployments/);
+    expect(release).toMatch(/A push to `main` classifies the changed paths/);
+    expect(release).toMatch(/Both surfaces can publish from the same\s+successful gate/);
+    expect(release).toMatch(/Manual `workflow_dispatch` remains an optional override/);
   });
 
   it("builds the E2E export once and shares it with every shard", () => {
@@ -364,7 +373,7 @@ describe("release contract", () => {
 
 /**
  * Row-level security is the ONLY authority on account isolation — the client
- * checks are defence in depth. Its 136 pgTAP assertions existed for months
+ * checks are defence in depth. Its 138 pgTAP assertions existed for months
  * with nothing running them, so this pins both that they run and how.
  */
 describe("database workflow", () => {

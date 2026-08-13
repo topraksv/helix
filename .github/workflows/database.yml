@@ -1,6 +1,6 @@
 # Row-level security, asserted.
 #
-# `supabase/tests/owner_integrity_and_rls.sql` is 136 pgTAP assertions and it is
+# `supabase/tests/owner_integrity_and_rls.sql` is 138 pgTAP assertions and it is
 # the ONLY executable proof that one account cannot read or write another's
 # rows. Client-side ownership checks are defence in depth; RLS is the authority.
 # Until now nothing ran the file, so the authority was unverified between one
@@ -56,7 +56,7 @@ jobs:
       - run: npx --yes supabase@2.109.1 start
       # The same linter the invariants require to stay clean after a migration
       # change. Cheap here, and it runs before the assertions so a schema fault
-      # is reported as a schema fault rather than as 136 failed tests.
+      # is reported as a schema fault rather than as 138 failed tests.
       # The managed `extensions` schema contains pgTAP internals that the
       # linter cannot resolve as ordinary application functions. The product
       # schema is the surface this workflow owns and is the one we gate.

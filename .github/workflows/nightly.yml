@@ -1,8 +1,8 @@
 # The complete browser suite, once a day, regardless of what changed.
 #
-# CI runs smoke tests on every push and the full suite only on an explicit
-# dispatch. The nightly catches slow drift without making every ordinary commit
-# pay for the complete browser matrix.
+# CI runs smoke tests on every push and the full suite for high-risk changes.
+# The nightly catches accumulated drift across light-tier pushes without making
+# each ordinary interface change pay for the complete browser matrix.
 #
 # It deploys nothing. A red nightly is a bug report, not a rollback trigger.
 name: nightly
