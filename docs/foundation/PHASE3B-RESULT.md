@@ -85,7 +85,7 @@ branches, functions, and lines.
 | `categories.ts` | 29.72 / 42.85 / 15.38 / 33.33 | 100 / 100 / 100 / 100 | Enforced |
 | `computed.ts` | 33.33 / 41.66 / 18.18 / 40.00 | 100 / 100 / 100 / 100 | Enforced |
 | `transactions.ts` | 65.04 / 70.14 / 68.18 / 66.66 | 100 / 98.50 / 100 / 100 | Enforced |
-| `budgets.ts` | 83.87 / 66.66 / 90.32 / 88.57 | 100 / 88.50 / 100 / 100 | **Not enforced:** branches are below 90 |
+| `budgets.ts` | 83.87 / 66.66 / 90.32 / 88.57 | 124/124; 100 / 77/87; 88.50 / 31/31; 100 / 105/105; 100 | **Not enforced:** branches are below 90 |
 
 `budgets.ts` briefly appeared to have 90.80% branch coverage, but that figure
 depended on a mock which fabricated two mutually exclusive live `cell_notes`
@@ -226,9 +226,10 @@ task; they do not justify calling 93.81% hardened or lowering the threshold.
 
 Five repository files were already hardened before Track B and were not
 remeasured per-file in this closeout. Their retained coverage evidence and the
-new broad JSON agree with their prior mutation ground truth:
+one-shot broad artifact at `6c8f4aa` agree with their prior mutation ground
+truth:
 
-| File | Retained coverage S/B/F/L | Final broad K/T/S/NC/errors; score |
+| File | Retained coverage S/B/F/L | One-shot broad artifact at `6c8f4aa` K/T/S/NC/errors; score |
 | --- | --- | --- |
 | `cell-notes.ts` | 100 / 100 / 100 / 100 | 26/0/0/0/0; 100% |
 | `import-plan.ts` | 94.87 / 91.66 / 100 / 100 | 69/0/0/0/0; 100% |
