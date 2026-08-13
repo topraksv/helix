@@ -130,6 +130,47 @@ describe("category deletion cascades to its budgets", () => {
     });
   });
 
+  it("treats a missing aggregate count row as zero", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: vi.fn(async () => null),
+      getAllAsync: vi.fn(async () => []),
+    });
+
+    await expect(categoryReferenceUsage("user-1", "cat-1")).resolves.toEqual({
+      transactions: 0,
+      subscriptions: 0,
+      recurringIncomes: 0,
+      installmentPlans: 0,
+      cellNotes: 0,
+      total: 0,
+    });
+  });
+
+  it("does not snapshot the same target note twice when query results overlap", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: vi.fn(async (sql: string) => {
+        if (sql.includes("SELECT * FROM categories")) return { id: "cat-1", kind: "expense", is_transfer: 0 };
+        if (sql.includes("SELECT id, kind, is_transfer")) return { id: "cat-2", kind: "expense", is_transfer: 0 };
+        return null;
+      }),
+      getAllAsync: vi.fn(async (sql: string, args: unknown[]) => {
+        if (sql.includes("category_budgets")) return [];
+        if (sql.includes("FROM cell_notes")) {
+          return args[1] === "cat-2"
+            ? [{ id: "shared-note", month: "2026-07", category_id: "cat-2", body: "Hedef" }]
+            : [{ id: "shared-note", month: "2026-07", category_id: "cat-1", body: "Kaynak" }];
+        }
+        return [];
+      }),
+    });
+
+    const snapshot = await deleteCategoryWithBudgets("user-1", "cat-1", "cat-2");
+
+    expect(snapshot?.reassigned).toEqual([
+      { table: "cell_notes", row: { id: "shared-note", month: "2026-07", category_id: "cat-1", body: "Kaynak" } },
+    ]);
+  });
+
   it("moves live references to the selected compatible category in one write", async () => {
     const sqlite = {
       getFirstAsync: vi.fn(async (sql: string) => {
