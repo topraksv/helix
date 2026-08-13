@@ -133,6 +133,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The mutation selector compares the event base with the cutover
+          # commit; a depth-one checkout would silently fall back to sentinels.
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -141,10 +144,13 @@ jobs:
       # Coverage repeats the unit suite to enforce the per-file financial and
       # persistence thresholds; the light run remains mandatory on every push.
       - run: npm run test:coverage
-      # The delivery mutation config contains only files already proven at or
-      # above the unchanged 98% break threshold. The 59-file audit remains a
-      # separate red gap inventory until its partial repositories are hardened.
-      - run: npm run test:mutation
+      # Mutate high-risk production files changed after the Phase 6 cutover.
+      # Config-only changes and the cutover push use the proven sentinel scope;
+      # the canonical broad command remains the honest red gap inventory.
+      - run: npm run test:mutation:ci
+        env:
+          MUTATION_BASE_SHA: ${{ github.event.before }}
+          MUTATION_HEAD_SHA: ${{ github.sha }}
 
   web-build:
     needs: classify

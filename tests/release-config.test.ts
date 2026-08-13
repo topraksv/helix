@@ -134,7 +134,10 @@ describe("release contract", () => {
     expect(full).toContain("needs: classify");
     expect(full).toContain("needs.classify.outputs.full_gate == 'true'");
     expect(full).toContain("npm run test:coverage");
-    expect(full).toContain("npm run test:mutation");
+    expect(full).toContain("npm run test:mutation:ci");
+    expect(full).toContain("MUTATION_BASE_SHA: ${{ github.event.before }}");
+    expect(full).toContain("MUTATION_HEAD_SHA: ${{ github.sha }}");
+    expect(full).toContain("fetch-depth: 0");
   });
 
   it("gates automatic and manual deploys on the same successful run", () => {

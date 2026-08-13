@@ -110,18 +110,40 @@ https://docs.expo.dev/eas/cli/#eas-update
 
 ### Mutation gate versus broad audit
 
-The prior `npm run test:mutation` pointed at the 59-file broad inventory whose
-recorded current-tree baseline is red: 79.65% against break 98. Using that as
-an automatic deploy prerequisite would make every high-risk release
-impossible; calling it green would be worse.
+The canonical `npm run test:mutation` still points at the 59-file broad
+inventory whose recorded current-tree baseline is red: 79.65% against break
+98. Using that known-red command unchanged as an automatic deploy prerequisite
+would make every high-risk release impossible; silently narrowing the command
+would make the audit lie. The two authorities therefore have distinct names:
 
-`stryker.config.mjs` therefore remains the unchanged broad gap inventory.
-`stryker.ci.config.mjs` inherits every setting and the unchanged 98 break
-threshold, but selects only the eleven files with retained or fresh scoped
-scores at or above 98: auth recovery, domain investments, and the nine
-mutation-hardened repositories. `npm run test:mutation` now runs this delivery
-config. Partial repositories, including budgets, remain visible in the broad
-config and are not relabelled as hardened.
+- `npm run test:mutation` remains the unchanged broad gap inventory; and
+- `npm run test:mutation:ci` uses `stryker.ci.config.mjs`, inherits every broad
+  setting and the unchanged 98 break threshold, and selects high-risk
+  production files changed after the Phase 6 cutover.
+
+Phase 6 itself changes no product source. For this first long-lived-branch
+cutover, config-only changes, and a manual redeploy with no diff, the delivery
+command uses an eleven-file sentinel scope already proven above 98: auth
+recovery, domain investments, and the nine mutation-hardened repositories.
+Every later edit under `src/domain/`, `src/data/repo/`, `src/db/`, `src/sync/`,
+`src/auth/`, or `src/services/` replaces that sentinel with the exact changed
+production files. A weak changed file therefore fails the unchanged threshold
+instead of being diluted by unrelated green files. The selector uses
+`--no-renames`, a full-history checkout, and an exported function covered by a
+temporary-repository rename/diff test.
+
+An explicitly supplied zero, missing, or shallow push base fails the mutation
+selector closed; it cannot silently downgrade to sentinels. Only a dispatch
+with no diff inputs intentionally uses the redeploy sentinel.
+
+Partial repositories, including budgets, remain visible in the broad config
+and are not relabelled as hardened. A future edit to one is directly selected
+by the delivery command and must meet 98 before publication.
+
+Stryker's official configuration reference confirms both that `mutate`
+selects the production-file subset and that `thresholds.break` produces a
+non-zero exit below the configured score:
+https://stryker-mutator.io/docs/stryker-js/configuration/
 
 Fresh delivery-mutation result:
 
@@ -186,7 +208,7 @@ Overall                 exit 0
 ### Full-gate additions
 
 ```sh
-npm run test:coverage && npm run test:mutation && npm run test:e2e
+npm run test:coverage && npm run test:mutation:ci && npm run test:e2e
 ```
 
 ```text
@@ -197,15 +219,16 @@ Full Playwright         114 passed (Chromium + Firefox), 4.3m
 Overall                 exit 0
 ```
 
-The normal post-track gate also exited 0 with 133 files, 1,175 passing tests,
-and exactly two existing todos. No todo or skip was added by this phase.
+The post-review normal gate exited 0 with 133 files, 1,180 passing tests, and
+exactly two existing todos. No todo or skip was added by this phase.
 
 ## Commits and merge boundary
 
 Incremental branch commits:
 
 - `4e5aa6b` — classifier and current-tree contracts;
-- `e8cae20` — passing delivery mutation scope, broad audit retained;
+- `e8cae20` — initial passing delivery mutation scope, later made diff-aware
+  without changing the broad audit;
 - `a33cc79` — risk-tiered shared gate and automatic dual deploy; and
 - `824cb9d` — auxiliary-workflow rationale and release authority alignment.
 
