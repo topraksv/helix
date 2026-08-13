@@ -109,11 +109,11 @@ the visual defaults are persisted and therefore user-visible. Approval should
 require snapshot-free behavioral tests and the architecture gate; no icon,
 keyword order, or fallback pool may change in the move.
 
-**Status:** Executed after direct, snapshot-free tests covered
-`suggestCategoryIcon`, `categoryIcon`, and `paymentSourceIcon`, including
-keyword precedence, Turkish normalization, deterministic fallback, and the
-closed `PaymentSourceType` mapping. The unchanged policy module now lives at
-`src/domain/category-icons.ts`; all thirteen source importers use that seam.
+**Status:** Phase 2 cleared the move pending direct behavior tests; it did not
+execute while that proof was missing. Track A later added snapshot-free tests
+for `suggestCategoryIcon`, `categoryIcon`, and `paymentSourceIcon`, satisfying
+the condition, then executed the unchanged move to
+`src/domain/category-icons.ts`. All thirteen source importers use that seam.
 
 ## Deliberately not proposed
 

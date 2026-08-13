@@ -2,9 +2,12 @@
 
 Date: 2026-08-13
 
-Track A started at `e2df16a`. The final Track B mutation measurement was made
-at `6c8f4aa`, with local `HEAD` and `origin/chore/foundation-reset` equal and
-the tracked worktree clean.
+Track A started at `e2df16a`. The one-shot 59-file Track B mutation
+measurement was made at `6c8f4aa`, with local `HEAD` and
+`origin/chore/foundation-reset` equal and the tracked worktree clean. Final
+review later removed one additional unreachable budgets mock in `fd83a8d`.
+The current scoped budgets evidence below supersedes its earlier scoped result;
+the broad artifact remains historical evidence for the pre-review test tree.
 
 ## Outcome
 
@@ -13,7 +16,7 @@ the tracked worktree clean.
 | Phase 2 record consolidation | **Done** | The Phase 2 decisions now live beside the three proposals in `PROPOSED-MOVES.md`; the redundant `PHASE2-RESULT.md` was removed only after its unique evidence was retained. |
 | Category-icon move | **Done** | Eleven direct tests preceded a byte-identical `R100` move to `src/domain`, all 13 source importers moved to the new seam, and the unchanged architecture contract passed. |
 | Repository hardening | **Partial** | Four repositories were newly fully hardened: `accounts.ts`, `categories.ts`, `computed.ts`, and `transactions.ts`. `budgets.ts` improved materially but remains partial. Together with five already-hardened files, 9 of 17 non-declaration repository implementation files are mutation-hardened. |
-| Final broad mutation gate | **Red** | The one final 59-file run scored 79.65% against the unchanged 98 break threshold and exited 1. It had 115 timeouts, so its score is not a clean before/after comparison. |
+| One-shot broad mutation gate at `6c8f4aa` | **Red, historical** | The 59-file run scored 79.65% against the unchanged 98 break threshold and exited 1. It had 115 timeouts and predates the final-review test removal, so it is neither a clean before/after comparison nor exact evidence for the current test tree. |
 
 The repository layer is **not fully hardened**. Seven eligible implementation
 files were deliberately untouched, `budgets.ts` remains below both the
@@ -28,11 +31,12 @@ implementation files.
 Commit `813b6f3` consolidated the Phase 2 record into
 `docs/foundation/PROPOSED-MOVES.md`. Proposals 1 and 2 remain rejected because
 they require interface redesign or interdependent extraction plus new proof.
-Proposal 3 was first recorded as cleared pending direct tests. The former
+Proposal 3 was first recorded as cleared pending direct tests. Track A later
+supplied those tests and executed the move, so its status now preserves both
+stages. The former
 parallel `PHASE2-RESULT.md` was deleted only after retaining the no-move
 decision, deletion-sweep outcome, frozen-baseline restoration, proposal
-rulings, and four pre-evidence gates. The proposal document is already in its
-final lifecycle state and needed no Phase 3B edit.
+rulings, and four pre-evidence gates.
 
 ### Category-icon policy lifecycle
 
@@ -65,8 +69,9 @@ Hardening required both of these file-level facts:
   behavior-changing gap left unresolved.
 
 Test counts below are supporting evidence only. They do not establish
-hardening by themselves. Relative to Track A's 1,079 passing tests, Track B
-ended with 1,154, a net addition of 75 passing test cases.
+hardening by themselves. Relative to Track A's 1,079 passing tests, the
+reviewed tree has 1,153, a net addition of 74 passing test cases; it also
+retains exactly two todos.
 
 ### Per-file coverage
 
@@ -80,13 +85,16 @@ branches, functions, and lines.
 | `categories.ts` | 29.72 / 42.85 / 15.38 / 33.33 | 100 / 100 / 100 / 100 | Enforced |
 | `computed.ts` | 33.33 / 41.66 / 18.18 / 40.00 | 100 / 100 / 100 / 100 | Enforced |
 | `transactions.ts` | 65.04 / 70.14 / 68.18 / 66.66 | 100 / 98.50 / 100 / 100 | Enforced |
-| `budgets.ts` | 83.87 / 66.66 / 90.32 / 88.57 | 100 / 89.65 / 100 / 100 | **Not enforced:** branches are below 90 |
+| `budgets.ts` | 83.87 / 66.66 / 90.32 / 88.57 | 100 / 88.50 / 100 / 100 | **Not enforced:** branches are below 90 |
 
 `budgets.ts` briefly appeared to have 90.80% branch coverage, but that figure
 depended on a mock which fabricated two mutually exclusive live `cell_notes`
-rows with the same table-local primary key. Removing that impossible case
-produced the truthful 89.65% result and commit `6c8f4aa` withdrew the file from
-the critical coverage set.
+rows with the same table-local primary key. Removing that impossible case in
+`6c8f4aa` produced 89.65% and withdrew the file from the critical coverage
+set. Final review then removed a second impossible mock: a scalar `COUNT(*)`
+query without `GROUP BY` cannot return no row. The current 88.50% result is the
+fresh measurement after both removals. The migrated-SQLite test for a genuine
+zero count remains.
 
 ### Scoped mutation progression
 
@@ -101,7 +109,7 @@ authoritative scoped artifact reported by that task.
 | `categories.ts` | 93/0/4/0; 95.88% | 96/0/1/0; 98.97% | Hardened |
 | `computed.ts` | 11/0/2/30; 25.58% Phase 3 baseline | 43/0/0/0; 100% | Hardened |
 | `transactions.ts` | 188/0/12/1; 93.53% | 198/0/3/0; 98.51% | Hardened |
-| `budgets.ts` | 275/0/30/2; 89.58% | 289/0/16/2; 94.14% | **Improved-partial; red below 98** |
+| `budgets.ts` | 275/0/30/2; 89.58% | 288/0/17/2; 93.81% | **Improved-partial; red below 98** |
 
 The Track B commits which produced that evidence are:
 
@@ -111,7 +119,7 @@ The Track B commits which produced that evidence are:
 | `transactions.ts` | `f6e3555` — persistence hardening; `30836b6` — exact restore outbox payloads |
 | `computed.ts` | `bd336dd` — real SQLite/outbox hardening and critical coverage inclusion |
 | `accounts.ts` | `03e3c45` — real SQLite/outbox hardening and critical coverage inclusion |
-| `budgets.ts` | `4417626` — reachable persistence coverage; `6c8f4aa` — impossible mock removal and critical coverage withdrawal |
+| `budgets.ts` | `4417626` — reachable persistence coverage; `6c8f4aa` — impossible overlap removal and critical coverage withdrawal; `fd83a8d` — impossible aggregate-null removal |
 
 ### Observable behavior evidence
 
@@ -160,15 +168,15 @@ including `deleted_at: null` and retained tombstone generation.
 
 #### Budgets and category cascade
 
-The final focused set has 43 tests across the real repository suite and the
+The final focused set has 42 tests across the real repository suite and the
 existing budget/category seams, versus 18 at baseline. It covers budget CRUD,
 natural IDs, immutable creation time, tombstone/restore, exact outbox writes,
 all five reference tables, omitted versus explicit-null replacement, category
 compatibility, transaction/rule/plan movement, cell-note creation/merge and
 length limits, legacy/current undo shapes, stale/foreign/recreated state, and
 forced atomic rollback. The reachable assertions materially improve the file,
-but truthful branch coverage is 89.65% and the final scoped mutation score is
-94.14%; **budgets is not hardened**.
+but current branch coverage is 88.50% and the final scoped mutation score is
+93.81%; **budgets is not hardened**.
 
 ### Final scoped survivor and reachability rulings
 
@@ -191,15 +199,18 @@ score green.
   rejected by the unchanged other check. At `:350`, removing optional chaining
   from `row?.n` is unreachable because SQLite's scalar `COUNT(*)` query always
   returns one row.
-- `budgets.ts` has 16 scoped survivors and two no-coverage fallbacks. Mutants
+- `budgets.ts` has 17 scoped survivors and two no-coverage fallbacks. Mutants
   `#5/#6/#9` at `:14` are equivalent because the fixed `RELATIONS` tuples
   selected by `column === "category_id"` and `target === "categories"` are
   identical. `#28` at `:38` allows zero only after an earlier guard has already
-  rejected zero/negative values. `#89` at `:142` changes an initialized list
-  which is either unread or overwritten. `#105` at `:150` adds only a
-  side-effect-free `id = NULL` lookup. `#181` at `:204` and `#195` at `:211`
-  remove optional chaining from locally initialized arrays. `#223` at `:235`
-  and `#247` at `:247` replace nullish fallback arrays which cannot execute.
+  rejected zero/negative values. `#55` at `:90` removes optional chaining from
+  a scalar `COUNT(*)` result; without `GROUP BY`, SQLite always returns its one
+  aggregate row, including when the count is zero. `#89` at `:142` changes an
+  initialized list which is either unread or overwritten. `#105` at `:150`
+  adds only a side-effect-free `id = NULL` lookup. `#181` at `:204` and `#195`
+  at `:211` remove optional chaining from locally initialized arrays. `#223`
+  at `:235` and `#247` at `:247` replace nullish fallback arrays which cannot
+  execute.
   `#163` at `:189`, `#190` at `:209`, `#192` at `:210`, and
   `#224/#228/#229/#231` at `:236` alter source/target cell-note key tracking,
   optional access, or de-duplication; a real source and target cell note cannot
@@ -209,7 +220,7 @@ score green.
   legacy path.
 
 The budgets rulings explain why no production edit was made during a test-only
-task; they do not justify calling 94.14% hardened or lowering the threshold.
+task; they do not justify calling 93.81% hardened or lowering the threshold.
 
 ### Existing hardened repository ground truth
 
@@ -234,25 +245,28 @@ unreachable aggregate fallbacks listed above.
 
 ### Seven deliberately untouched files
 
-These files retain their Phase 3 discovery coverage and mutation baselines.
-Coverage is `L/F/B`; mutation is `K/T/S/NC`. No current full-run timeout is
-used to rewrite this baseline or claim hardening.
+Coverage below was freshly measured together with V8 against the current full
+test suite: 131 files passed, with 1,153 passing tests and exactly two todos.
+Coverage is `S/B/F/L`, and every cell gives `covered/total; percentage`.
+Mutation remains the Phase 3 `K/T/S/NC` baseline because these files were not
+scoped mutation targets in Track B; no current broad timeout is used to claim
+hardening.
 
-| File | Phase 3 coverage L/F/B | Phase 3 mutation K/T/S/NC; score | Why untouched in Track B |
+| File | Current coverage S/B/F/L (covered/total; %) | Phase 3 mutation K/T/S/NC; score | Why untouched in Track B |
 | --- | --- | --- | --- |
-| `expected.ts` | 81.48 / 66.66 / 61.53 | 138/0/140/76; 38.98% | Schedule materialization, guarded transitions, FX/card confirmation and revert/update persistence need their own direct harness. |
-| `imports.ts` | 52.45 / 36.00 / 32.60 | 170/0/25/257; 37.61% | Import/remap, replace/add ownership and one-batch persistence paths remain thin. |
-| `installments.ts` | 31.76 / 12.50 / 36.23 | 48/0/21/159; 21.05% | Plan lifecycle, generated schedules and card-statement persistence need direct fixtures. |
-| `investments.ts` | 90.29 / 96.66 / 71.11 | 158/0/67/41; 59.40% | Lines were close, but functions/branches and projected graph/history writes remain below the bar. |
-| `maintenance.ts` | 43.36 / 21.87 / 27.17 | 29/0/109/190; 8.84% | The cross-repository maintenance orchestration surface requires a dedicated harness. |
-| `onboarding.ts` | 89.47 / 91.66 / 74.35 | 80/0/114/20; 37.38% | Workspace construction, deterministic reseeding/tombstones and balance settings remain under-observed. |
-| `rules.ts` | 65.71 / 41.17 / 69.69 | 193/0/71/111; 51.47% | Rule lifecycle, history writes and expected-row integration remain thin. |
+| `expected.ts` | 66/93; 70.96 / 88/143; 61.53 / 4/6; 66.66 / 66/81; 81.48 | 138/0/140/76; 38.98% | Schedule materialization, guarded transitions, FX/card confirmation and revert/update persistence need their own direct harness. |
+| `imports.ts` | 121/250; 48.40 / 45/138; 32.60 / 18/50; 36.00 / 107/204; 52.45 | 170/0/25/257; 37.61% | Import/remap, replace/add ownership and one-batch persistence paths remain thin. |
+| `installments.ts` | 31/102; 30.39 / 25/69; 36.23 / 3/24; 12.50 / 27/85; 31.76 | 48/0/21/159; 21.05% | Plan lifecycle, generated schedules and card-statement persistence need direct fixtures. |
+| `investments.ts` | 107/128; 83.59 / 64/90; 71.11 / 29/30; 96.66 / 93/103; 90.29 | 158/0/67/41; 59.40% | Lines were close, but functions/branches and projected graph/history writes remain below the bar. |
+| `maintenance.ts` | 53/134; 39.55 / 25/92; 27.17 / 7/32; 21.87 / 49/113; 43.36 | 29/0/109/190; 8.84% | The cross-repository maintenance orchestration surface requires a dedicated harness. |
+| `onboarding.ts` | 56/66; 84.84 / 29/39; 74.35 / 22/24; 91.66 / 51/57; 89.47 | 80/0/114/20; 37.38% | Workspace construction, deterministic reseeding/tombstones and balance settings remain under-observed. |
+| `rules.ts` | 75/121; 61.98 / 92/132; 69.69 / 7/17; 41.17 / 69/105; 65.71 | 193/0/71/111; 51.47% | Rule lifecycle, history writes and expected-row integration remain thin. |
 
 They were left visible in the broad scope rather than hidden or granted a
 lower bar. The honest partial closeout prioritizes durable evidence over an
 unmeasured “all repositories hardened” claim.
 
-## Single final broad mutation run
+## One-shot broad mutation measurement at `6c8f4aa`
 
 The exact command was run once at the end of Track B and was not retried:
 
@@ -265,6 +279,16 @@ The configured scope remained 59 files: all 17 non-declaration repository
 implementations, 41 domain files, and `src/auth/recovery.ts`. The config kept
 `high: 99`, `low: 98`, `break: 98`, `ignoreStatic: false`, per-test coverage,
 four workers and a 15-second timeout. The dry run passed 1,122 tests.
+
+Final review did not repeat this broad run because the measurement was
+explicitly once-only. Commit `fd83a8d` removed one budgets-only mock that made
+a scalar aggregate appear to return no row. Production source, Stryker
+configuration, thresholds and the mutant inventory are unchanged, but the
+test tree is not. Every raw broad total below therefore belongs to measurement
+commit `6c8f4aa`, predates `fd83a8d`, and is preserved unchanged rather than
+presented as exact final-test-tree evidence. The fresh scoped budgets rerun
+bounds the observed effect for its target: one former kill became the
+unreachable survivor at line 90, producing 288/0/17/2 and 93.81%.
 
 Raw result:
 
@@ -324,8 +348,9 @@ run had only 14 timeouts. Therefore the raw rise from Phase 4's 71.52% to
 only share is 5,573/7,141, or 78.04%, but that is a diagnostic calculation,
 not Stryker's score. The scoped, zero-timeout results above remain the basis
 for the four new hardening verdicts; broad `budgets` at 95.11% is likewise not
-an improvement over its 94.14% scoped result because three survivors merely
-timed out.
+an improvement over either scoped result because three survivors merely timed
+out. Its current scoped result is 93.81%; the earlier 94.14% scoped result and
+this broad row belong to the pre-final-review tree.
 
 ## Newly discovered production defect
 
@@ -344,7 +369,23 @@ fix was authorized in this test-only closeout; correction must include the
 table in the idempotency identity and migrate or otherwise account for any
 stored-key lifecycle implications before changing `src/db/mutations.ts`.
 
-## Final normal gate
+## Final gates
+
+### Routine completion gate
+
+```sh
+export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+npm run verify
+```
+
+Fresh post-review result: exit 0. The control checked 35 installed skills plus
+the Claude bridge and lockfile; TypeScript exited 0 with no diagnostics; the
+critical-coverage run passed 131 files and 1,153 tests with exactly two todos
+(1,155 total). Aggregate critical coverage was statements 99.81% (1,595/1,598),
+branches 99.01% (1,404/1,418), functions 100% (380/380), and lines 100%
+(1,315/1,315). Expo lint exited 0.
+
+### Exact prompt gate
 
 The required completion command is:
 
@@ -353,17 +394,18 @@ export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
 npm run control:check && npx tsc --noEmit && npx vitest run
 ```
 
-Fresh result after this document was written: exit 0. The control checked 35
-installed skills plus the Claude bridge and lockfile; TypeScript exited 0 with
-no diagnostics; Vitest passed 131 files and 1,154 tests with exactly two todos
-(1,156 total) in 6.20 seconds. The only diagnostics were the existing Node
-experimental-SQLite warnings.
+Fresh post-review result: exit 0. The control checked the same 35 installed
+skills plus bridge and lockfile; TypeScript exited 0 with no diagnostics;
+Vitest passed 131 files and 1,153 tests with exactly two todos (1,155 total).
+The only diagnostics in either gate were the existing Node experimental-SQLite
+warnings. Neither gate invokes mutation testing.
 
 ## Scope discipline
 
-Track B changed tests and the critical coverage list only. Task 15 changes
-this result document only. It does not change production, test, mutation or
-coverage configuration, thresholds, dependencies, architecture contracts,
-the frozen baseline, or either existing executable todo. It does not fix or
-normalize the new outbox defect. No PR, merge, deployment, release, OTA, or
-workflow dispatch is part of this result.
+Track B changed tests and the critical coverage list only. Final review removed
+one additional impossible test and corrected foundation records. It does not
+change production, test/mutation/coverage configuration, thresholds,
+dependencies, architecture contracts, the frozen baseline, or either existing
+executable todo. It does not fix or normalize the new outbox defect and it does
+not rerun the once-only broad mutation measurement. No PR, merge, deployment,
+release, OTA, or workflow dispatch is part of this result.
