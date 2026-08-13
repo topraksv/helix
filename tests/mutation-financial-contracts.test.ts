@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   categoryRangeMatrix,
+  creditCardSplit,
   creditCardSplitsByMonth,
   distributionForRange,
   fixedVsVariable,
@@ -54,6 +55,8 @@ describe("mutation-sensitive analytics contracts", () => {
     ];
     expect(creditCardSplitsByMonth(cardRows, new Set(["card"]), "2026-12-31"))
       .toEqual(new Map([["2026-07", { singleMinor: 100, installmentMinor: 200 }]]));
+    expect(creditCardSplit(cardRows, new Set(["card"]), "2026-08", "2026-12-31"))
+      .toEqual({ singleMinor: 0, installmentMinor: 0 });
     expect(normalizedMonthlyLoadMinor(101, 1)).toBe(101);
     expect(normalizedMonthlyLoadMinor(101, 0)).toBe(101);
     expect(normalizedMonthlyLoadMinor(101, 2)).toBe(51);
