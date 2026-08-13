@@ -1,9 +1,9 @@
-# The gate for every push to main and every explicit release dispatch.
+# Risk-tiered verification and automatic delivery from main.
 #
-# Quality, production web export/budget, and browser smoke always run. The full
-# browser suite is opt-in here because nightly.yml already runs it daily. `gate`
-# is the single required result so branch protection and both manual deploys
-# share one answer.
+# Every push proves type, lint, unit and browser-smoke behavior. Changes to
+# correctness-sensitive or unrecognised paths add coverage, mutation and the
+# sharded browser suite. Both deploy targets consume that same `gate` result;
+# the classifier decides whether either artifact can have changed.
 #
 # The EXPO_PUBLIC_* values are client-side keys: they ship inside the JS bundle
 # by design (same values as .env), so they are safe here. The service role key
@@ -16,10 +16,10 @@ on:
   workflow_dispatch:
     inputs:
       release_target:
-        description: "Explicitly choose the release target; none only runs checks."
+        description: "Optional redeploy target; none runs the full checks only."
         required: true
         type: choice
-        options: [none, web, mobile]
+        options: [none, web, mobile, both]
         default: none
 
 permissions:
@@ -36,7 +36,77 @@ env:
   EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_NvhpZdHfjtL1zRBLQp60gQ_FS90zaj3
 
 jobs:
-  quality:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      run_ci: ${{ steps.route.outputs.run_ci }}
+      light_gate: ${{ steps.route.outputs.light_gate }}
+      full_gate: ${{ steps.route.outputs.full_gate }}
+      run_web_build: ${{ steps.route.outputs.run_web_build }}
+      deploy_web: ${{ steps.route.outputs.deploy_web }}
+      deploy_mobile: ${{ steps.route.outputs.deploy_mobile }}
+      reason: ${{ steps.route.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # A fast-forward may contain months of commits. The push event's
+          # `before` SHA must exist locally or the safe classifier answer is an
+          # unnecessary fail-open dual deploy.
+          fetch-depth: 0
+      - id: raw
+        name: Classify changed paths
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: node scripts/classify-changes.mjs "$BASE_SHA" "$HEAD_SHA"
+      - id: route
+        name: Apply an explicit manual target override
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TARGET: ${{ inputs.release_target || 'none' }}
+          RUN_CI: ${{ steps.raw.outputs.run_ci }}
+          LIGHT_GATE: ${{ steps.raw.outputs.light_gate }}
+          FULL_GATE: ${{ steps.raw.outputs.full_gate }}
+          RUN_WEB_BUILD: ${{ steps.raw.outputs.run_web_build }}
+          DEPLOY_WEB: ${{ steps.raw.outputs.deploy_web }}
+          DEPLOY_MOBILE: ${{ steps.raw.outputs.deploy_mobile }}
+          REASON: ${{ steps.raw.outputs.reason }}
+        run: |
+          set -euo pipefail
+          run_web_build="$RUN_WEB_BUILD"
+          deploy_web="$DEPLOY_WEB"
+          deploy_mobile="$DEPLOY_MOBILE"
+
+          # A dispatch has no honest diff and therefore keeps the classifier's
+          # fail-open full gate. The explicit target only narrows publication.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_web_build=false
+            deploy_web=false
+            deploy_mobile=false
+            case "$RELEASE_TARGET" in
+              none) ;;
+              web) run_web_build=true; deploy_web=true ;;
+              mobile) deploy_mobile=true ;;
+              both) run_web_build=true; deploy_web=true; deploy_mobile=true ;;
+              *) echo "::error::unknown release target '$RELEASE_TARGET'"; exit 1 ;;
+            esac
+          fi
+
+          {
+            echo "run_ci=$RUN_CI"
+            echo "light_gate=$LIGHT_GATE"
+            echo "full_gate=$FULL_GATE"
+            echo "run_web_build=$run_web_build"
+            echo "deploy_web=$deploy_web"
+            echo "deploy_mobile=$deploy_mobile"
+            echo "reason=$REASON"
+          } >> "$GITHUB_OUTPUT"
+          echo "classification: $REASON"
+          echo "light=$LIGHT_GATE full=$FULL_GATE web-build=$run_web_build web=$deploy_web mobile=$deploy_mobile"
+
+  light-gate:
+    needs: classify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,14 +123,32 @@ jobs:
       - run: npm run control:check
       - run: npm run typecheck
       - run: npx expo lint
-      # Coverage runs the complete Vitest suite once, while enforcing per-file
-      # branch thresholds on the six financial domain modules.
+      - run: npx vitest run
+
+  full-gate:
+    needs: classify
+    if: needs.classify.outputs.full_gate == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Coverage repeats the unit suite to enforce the per-file financial and
+      # persistence thresholds; the light run remains mandatory on every push.
       - run: npm run test:coverage
-      # The focused mutation set costs ~29 seconds locally and catches weak
-      # assertions in investment, repository and recovery boundaries.
+      # The delivery mutation config contains only files already proven at or
+      # above the unchanged 98% break threshold. The 59-file audit remains a
+      # separate red gap inventory until its partial repositories are hardened.
       - run: npm run test:mutation
 
   web-build:
+    needs: classify
+    if: needs.classify.outputs.run_web_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,6 +177,7 @@ jobs:
           path: dist
 
   e2e-smoke:
+    needs: classify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -116,10 +205,11 @@ jobs:
   # One export for the whole sharded run. Each shard used to build its own
   # `dist-e2e`, which cost a second full Metro bundle and — worse — let the two
   # shards test two separately-produced artifacts. They now share these bytes.
-  # The sharded full suite is expensive, so it runs on demand rather than on
-  # every push; `e2e-smoke` is the always-on browser signal.
+  # The sharded full suite is expensive, so the classifier reserves it for
+  # high-risk pushes and explicit dispatches. Nightly remains the drift net.
   e2e-build:
-    if: github.event_name == 'workflow_dispatch'
+    needs: classify
+    if: needs.classify.outputs.full_gate == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,8 +231,11 @@ jobs:
           if-no-files-found: error
 
   e2e-full:
-    needs: e2e-build
-    if: github.event_name == 'workflow_dispatch'
+    needs: [classify, e2e-build]
+    if: >-
+      ${{ !cancelled()
+      && needs.classify.outputs.full_gate == 'true'
+      && needs.e2e-build.result == 'success' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -179,11 +272,11 @@ jobs:
             playwright-report
           retention-days: 7
 
-  # The one required check. On a push, the dispatch-only full-suite jobs are
-  # correctly skipped, so only `failure` and `cancelled` block a deploy.
+  # The one required check. Tier-inapplicable jobs are correctly skipped, so
+  # only a failure or cancellation blocks either deploy target.
   gate:
     if: always()
-    needs: [quality, web-build, e2e-smoke, e2e-build, e2e-full]
+    needs: [classify, light-gate, full-gate, web-build, e2e-smoke, e2e-build, e2e-full]
     runs-on: ubuntu-latest
     steps:
       - name: Fail on any real job failure
@@ -206,12 +299,12 @@ jobs:
   # `result` check puts back the only part of it that was wanted: a failed or
   # skipped gate must still stop the deploy.
   deploy-web:
-    needs: gate
+    needs: [classify, gate, web-build]
     if: >-
       ${{ !cancelled()
       && needs.gate.result == 'success'
-      && github.event_name == 'workflow_dispatch'
-      && inputs.release_target == 'web' }}
+      && needs.web-build.result == 'success'
+      && needs.classify.outputs.deploy_web == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -253,12 +346,11 @@ jobs:
           echo "bundle $bundle: $js"; [ "$js" = "200" ]
 
   deploy-mobile:
-    needs: gate
+    needs: [classify, gate]
     if: >-
       ${{ !cancelled()
       && needs.gate.result == 'success'
-      && github.event_name == 'workflow_dispatch'
-      && inputs.release_target == 'mobile' }}
+      && needs.classify.outputs.deploy_mobile == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: helix

@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 const app = JSON.parse(read("app.json"));
 const eas = JSON.parse(read("eas.json"));
 const ci = read(".github/workflows/ci.yml");
+const classifier = read("scripts/classify-changes.mjs");
 const agents = read("AGENTS.md");
 const security = read(".github/workflows/security.yml");
 const nightly = read(".github/workflows/nightly.yml");
@@ -88,10 +89,11 @@ describe("release contract", () => {
     expect(mobile).not.toMatch(/APPLE_|ASC_|provision/i);
   });
 
-  it("runs every release check somewhere in CI, and each of them once", () => {
+  it("runs each light and full release check once in its owning job", () => {
     for (const command of [
       "npm run typecheck",
       "npx expo lint",
+      "npx vitest run",
       "npm run test:coverage",
       "npm run test:mutation",
       "npx expo export -p web --clear",
@@ -105,41 +107,61 @@ describe("release contract", () => {
     expect(ci).not.toContain("verify:release");
   });
 
-  it("gates the deploys on the checks and on an explicit dispatch target", () => {
-    // A deploy is ordered after `gate` and is reachable only through a manual
-    // dispatch that names its target; nothing in a push path can release.
+  it("classifies first, always runs light checks, and adds full checks only for high risk", () => {
+    expect(ci).toContain("  classify:");
+    for (const output of [
+      "run_ci",
+      "light_gate",
+      "full_gate",
+      "run_web_build",
+      "deploy_web",
+      "deploy_mobile",
+      "reason",
+    ]) {
+      expect(classifier).toContain(`${output}:`);
+      expect(ci).toContain(`${output}: ` + "${{ steps.route.outputs." + output + " }}");
+    }
+
+    const light = ci.slice(ci.indexOf("  light-gate:"), ci.indexOf("  full-gate:"));
+    expect(light).toContain("needs: classify");
+    expect(light).not.toContain("needs.classify.outputs.full_gate == 'true'");
+    expect(light).toContain("npm run typecheck");
+    expect(light).toContain("npx expo lint");
+    expect(light).toContain("npx vitest run");
+
+    const full = ci.slice(ci.indexOf("  full-gate:"), ci.indexOf("  web-build:"));
+    expect(full).toContain("needs: classify");
+    expect(full).toContain("needs.classify.outputs.full_gate == 'true'");
+    expect(full).toContain("npm run test:coverage");
+    expect(full).toContain("npm run test:mutation");
+  });
+
+  it("gates automatic and manual deploys on the same successful run", () => {
     for (const job of ["deploy-web", "deploy-mobile"] as const) {
-      const target = job === "deploy-web" ? "web" : "mobile";
       const condition = ci.slice(ci.indexOf(`  ${job}:\n`), ci.indexOf("steps:", ci.indexOf(`  ${job}:\n`)));
-      expect(condition, job).toContain("needs: gate");
+      expect(condition, job).toContain("gate");
+      expect(condition, job).toContain("classify");
       // `!cancelled()` is load-bearing: without it GitHub propagates the
       // upstream skip through `gate`'s `always()` and this job never runs.
       expect(condition, job).toContain("!cancelled()");
       expect(condition, job).toContain("needs.gate.result == 'success'");
-      expect(condition, job).toContain("github.event_name == 'workflow_dispatch'");
-      expect(condition, job).toContain(`inputs.release_target == '${target}'`);
+      expect(condition, job).toContain(`needs.classify.outputs.deploy_${job === "deploy-web" ? "web" : "mobile"} == 'true'`);
     }
-    expect(ci).not.toContain("needs.gate.outputs");
+    expect(ci).not.toContain("release_approval");
   });
 
-  it("requires a target-specific manual dispatch and the existing helix environment", () => {
+  it("keeps manual target overrides including a dual redeploy", () => {
     expect(ci).toMatch(/workflow_dispatch:\n\s+inputs:\n\s+release_target:/);
     expect(ci).toContain("type: choice");
-    expect(ci).toContain("options: [none, web, mobile]");
+    expect(ci).toContain("options: [none, web, mobile, both]");
     expect(ci).not.toContain("release_approval");
     expect(ci).not.toContain("helix-release-approval");
     expect(ci).not.toContain("github-pages");
     expect(agents).toMatch(/existing `helix` deployment\s+environment/);
     expect(agents).not.toContain("helix-release-approval");
 
-    for (const [job, target] of [
-      ["deploy-web", "web"],
-      ["deploy-mobile", "mobile"],
-    ] as const) {
+    for (const job of ["deploy-web", "deploy-mobile"] as const) {
       const start = ci.indexOf(`  ${job}:\n`);
-      const condition = ci.slice(start, ci.indexOf("    runs-on:", start));
-      expect(condition, job).toContain("github.event_name == 'workflow_dispatch'");
-      expect(condition, job).toContain(`inputs.release_target == '${target}'`);
       const jobEnd = job === "deploy-web" ? ci.indexOf("\n  deploy-mobile:", start) : -1;
       const jobBlock = ci.slice(start, jobEnd === -1 ? undefined : jobEnd);
       expect(jobBlock, job).toContain("environment:\n      name: helix");
@@ -155,7 +177,7 @@ describe("release contract", () => {
     expect(build).toContain("actions/upload-artifact");
     expect(build).toContain("if-no-files-found: error");
     const full = ci.slice(ci.indexOf("  e2e-full:"), ci.indexOf("  gate:"));
-    expect(full).toContain("needs: e2e-build");
+    expect(full).toMatch(/needs: .*e2e-build/);
     expect(full).toContain("actions/download-artifact");
     expect(full).toContain("path: dist-e2e");
     // Every shard must consume the same named artifact.
@@ -167,7 +189,7 @@ describe("release contract", () => {
     expect(full).toContain("npx playwright test --shard=");
   });
 
-  it("runs smoke on every push and shards the on-demand full suite", () => {
+  it("runs smoke on every push and shards the risk-selected full suite", () => {
     expect(ci).toContain("npm run test:e2e:smoke");
     expect(ci).toContain("npx playwright install chromium firefox --with-deps");
     expect(nightly).toContain("npx playwright install chromium firefox --with-deps");
@@ -202,6 +224,10 @@ describe("release contract", () => {
     expect(nightly).not.toMatch(/^\s+deploy[\w-]*:$/m);
     expect(nightly).not.toMatch(/deploy-pages|upload-pages-artifact|eas-cli/);
     expect(nightly).toMatch(/permissions:\n\s+contents: read/);
+    const e2eBuild = ci.slice(ci.indexOf("  e2e-build:"), ci.indexOf("  e2e-full:"));
+    const e2eFull = ci.slice(ci.indexOf("  e2e-full:"), ci.indexOf("  gate:"));
+    expect(e2eBuild).toContain("needs.classify.outputs.full_gate == 'true'");
+    expect(e2eFull).toContain("needs.classify.outputs.full_gate == 'true'");
   });
 
   it("cancels a superseded run rather than certifying a stale commit", () => {
@@ -215,7 +241,7 @@ describe("release contract", () => {
     expect(ci).toContain("success|skipped) ;;");
   });
 
-  it("blocks delivery on dependency advisories while keeping CodeQL advisory", () => {
+  it("keeps scheduled security evidence off the delivery path", () => {
     expect(security).toContain("github/codeql-action/init");
     // The gate names each accepted advisory instead of relaxing the threshold.
     // Assert against the executed lines: the surrounding comments legitimately
@@ -233,9 +259,11 @@ describe("release contract", () => {
     const listed = paths.filter((line) => line.trim().startsWith("- ")).map((line) => line.trim());
     expect(listed.length).toBeGreaterThan(0);
     for (const entry of listed) expect(entry, entry).not.toMatch(/\.md|README/);
-    // CodeQL stays out of the delivery path; only the deterministic advisory
-    // policy over this commit's lockfile blocks it.
+    // CodeQL and the time-sensitive registry advisory feed stay outside the
+    // deterministic delivery gate. A red scheduled run remains visible
+    // evidence without retroactively making a tested commit undeployable.
     expect(ci).not.toContain("codeql");
+    expect(ci).not.toContain("npm audit");
   });
 
   it("removes the checkout token before dependency or build code runs", () => {
