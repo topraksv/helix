@@ -634,6 +634,12 @@ describe("transaction repository persistence", () => {
       tombstone_version: 1,
       amount_minor: 12_345,
     });
+    expect(outbox("transactions").map((row) => row.row_id)).toEqual([id]);
+    expect(JSON.parse(String(outbox("transactions")[0]!.payload))).toMatchObject({
+      id,
+      deleted_at: null,
+      tombstone_version: 1,
+    });
 
     clearOutbox();
     await expect(restoreTransaction(USER, snapshot!))
@@ -710,6 +716,12 @@ describe("transaction repository persistence", () => {
     await restoreBalanceAdjustment(USER, snapshot);
     expect(harness.db!.prepare("SELECT amount_minor, deleted_at, tombstone_version FROM balance_adjustments WHERE id = ?").get(id))
       .toEqual({ amount_minor: 100, deleted_at: null, tombstone_version: 1 });
+    expect(outbox("balance_adjustments").map((row) => row.row_id)).toEqual([id]);
+    expect(JSON.parse(String(outbox("balance_adjustments")[0]!.payload))).toMatchObject({
+      id,
+      deleted_at: null,
+      tombstone_version: 1,
+    });
     await expect(deleteBalanceAdjustment(OTHER_USER, id)).resolves.toBeNull();
   });
 
