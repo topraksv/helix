@@ -71,3 +71,7 @@ supabase/.temp/
 /.agents/*
 !/.agents/skills/
 !/.agents/skills/**
+
+# The code map graphify exports into the docs vault: generated, and a symlink
+# into the ignored graphify-out/ rather than a second copy.
+/docs/graph

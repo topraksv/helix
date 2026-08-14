@@ -166,23 +166,36 @@ they are per-checkout and invisible to Git: an unexplained rebuild of
 `graphify-out/` is almost always one of them, and a clone that lacks them will
 never refresh on its own. `GRAPHIFY_SKIP_HOOK=1` disables both.
 
-**Obsidian** opens `docs/` itself as the vault, so these documents gain
-backlinks without a second copy of them existing anywhere. The repository root
-is deliberately not the vault: Obsidian's excluded-files setting only
-de-emphasises a path in search, it does not stop indexing, so a root vault
-would index roughly 75,000 files to reach eleven authored ones. `AGENTS.md`,
-`CLAUDE.md`, `README.md`, and `e2e/native/README.md` stay outside it; each is
-loaded by a tool or read beside the code it describes rather than browsed. The
+**Obsidian** opens `docs/` as the vault, and `docs/graph` symlinks the graph
+export into it, so one vault holds these seven documents beside a note for
+every code symbol. Measured: about twenty-five seconds of indexing on open,
+settling near 700 MB resident at idle. That is the price of having the codebase
+searchable next to the prose describing it, and it is why the export is linked
+in rather than kept as a vault you switch to.
+
+The repository root is not the vault, and the reason is content rather than
+cost: of the ~4,900 Markdown files under it, all but eleven are `node_modules`
+READMEs, vendored skill bodies, or the graph export already reachable through
+`docs/graph`. Obsidian's excluded-files setting only de-emphasises a path in
+search, it does not stop indexing, so no configuration keeps them out.
+Obsidian also has no concept of a `.ts` file: no vault scope turns the 363
+source files into notes, and only the graph export represents them at all.
+
+`AGENTS.md`, `CLAUDE.md`, `README.md`, and `e2e/native/README.md` stay outside
+the vault; each is loaded by a tool or read beside the code it describes. The
 consequence is that the two `../e2e/native/README.md` links here resolve on
-GitHub but not inside Obsidian; that is the accepted cost of a seven-file
-vault, not a broken link to repair.
+GitHub but not inside Obsidian; that is an accepted cost, not a broken link to
+repair.
 `docs/.obsidian/app.json` keeps `useMarkdownLinks` on and `newLinkFormat`
 relative, so a link Obsidian writes stays `[text](path.md)` and still renders
 on GitHub, where a wikilink would resolve for no reader at all. `trashOption`
 is `system`, so deleting a note never leaves a `.trash/` copy inside the
-repository. `graphify export obsidian` writes a separate node-per-symbol vault
-under `graphify-out/obsidian/`; that one is derived, ignored, and not a place
-to write anything by hand.
+repository. `graphify export obsidian` writes that note-per-symbol tree into
+`graphify-out/obsidian/`, wikilinked, with an overview note per community.
+`docs/graph` is a symlink to it rather than a second copy, so one export
+refreshes both the ignored directory and the vault. Never write in it by hand,
+and re-export after a rebuild: the post-commit hook refreshes `graph.json` but
+not this export.
 
 ## Deliberately absent
 
