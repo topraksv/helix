@@ -31,11 +31,14 @@ evidence; an INFERRED or AMBIGUOUS one is the tool's guess. Open the cited
 source and confirm before acting on any of them, and cite the source rather
 than the graph.
 
-Nothing refreshes the index. `graphify-out/GRAPH_REPORT.md` names the commit it
-was built from; when that is not `git rev-parse HEAD`, either run
-`graphify update .` — seconds, no network, no API key — or report the graph as
-stale. If `graphify-out/` is absent the tool is not installed on this machine:
-use the normal file tools and do not install anything.
+Never assume the index is current. `graphify-out/GRAPH_REPORT.md` names the
+commit it was built from; compare that with `git rev-parse HEAD` before relying
+on it. A checkout may carry a local `.git/hooks/post-commit` that rebuilds the
+graph in the background, but hooks are not committed, so their presence differs
+per machine and proves nothing about freshness. When the graph is behind, run
+`graphify update .` — seconds, no network, no API key — or report it as stale.
+If `graphify-out/` is absent the tool is not installed here: use the normal
+file tools and do not install anything.
 
 `docs/ARCHITECTURE.md` records how the index and the Obsidian vault are set up.
 

@@ -160,6 +160,12 @@ vendored skill bodies out of the scan; without it their 224 files outnumber
 Helix's own source and the detected communities describe their publishers'
 prose instead of this codebase.
 
+`graphify hook install` writes `.git/hooks/post-commit` and `post-checkout`,
+which rebuild the graph in a detached process. Those hooks live in `.git/`, so
+they are per-checkout and invisible to Git: an unexplained rebuild of
+`graphify-out/` is almost always one of them, and a clone that lacks them will
+never refresh on its own. `GRAPHIFY_SKIP_HOOK=1` disables both.
+
 **Obsidian** opens `docs/` itself as the vault, so these documents gain
 backlinks without a second copy of them existing anywhere. The repository root
 is deliberately not the vault: Obsidian's excluded-files setting only
