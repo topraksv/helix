@@ -271,11 +271,19 @@ export async function writeRowBatchesAtomically(
       // same millisecond) the payload must be REPLACED, not ignored — otherwise
       // the stale first snapshot gets pushed and LWW echoes it back over the
       // newer local value.
+      //
+      // The key carries the table because the unique index on it is global.
+      // Without that prefix, two rows in different tables sharing an id and a
+      // millisecond collapse into one event and the second row silently never
+      // syncs. Ordinary writes cannot produce such a pair — `deterministicId`
+      // namespaces every natural key and everything else is uuidv7 — but a
+      // restore writes ids taken from the backup file, so the collision is
+      // reachable from input this process does not control.
       await sqlite.runAsync(
         `INSERT INTO outbox (table_name, row_id, op, payload, idempotency_key, created_at)
          VALUES (?, ?, 'upsert', ?, ?, ?)
          ON CONFLICT(idempotency_key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`,
-        [table, String(dbRow.id), JSON.stringify(dbRow), `${dbRow.id}:${dbRow.updated_at}`, nowIso()],
+        [table, String(dbRow.id), JSON.stringify(dbRow), `${table}:${dbRow.id}:${dbRow.updated_at}`, nowIso()],
       );
       states.set(key, { userId, deletedAt: requestedDeletedAt, tombstoneVersion });
     };

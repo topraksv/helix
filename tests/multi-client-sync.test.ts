@@ -172,7 +172,7 @@ class Client {
          VALUES (?, ?, 'upsert', ?, ?, ?)
          ON CONFLICT(idempotency_key) DO UPDATE SET payload = excluded.payload, created_at = excluded.created_at`,
       )
-      .run("transactions", full.id, JSON.stringify(full), `${full.id}:${full.updated_at}`, now);
+      .run("transactions", full.id, JSON.stringify(full), `transactions:${full.id}:${full.updated_at}`, now);
   }
 
   softDelete(id: string): void {

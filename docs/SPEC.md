@@ -245,19 +245,16 @@ mis-scaled instead of rejected as malformed provider data. A production fix is
 deferred; the pending regression contract in
 `tests/mutation-contracts.test.ts` records the correct fail-closed behavior.
 
-## Known defect — cross-table outbox idempotency collision
+## Outbox event identity
 
-`writeRows` derives the unique outbox idempotency key as `{rowId}:{updatedAt}`
-without the table name (`src/db/mutations.ts`), while the schema puts a unique
-index on that key. Two rows in different tables that share a table-local ID and
-are written at the same timestamp therefore collide: `ON CONFLICT` replaces only
-the payload and creation time, leaving one outbox row and displacing the other
-event. This is a production sync data-loss defect, not a test expectation.
+One outbox event exists per `(table, row, revision)`. Writing the same revision
+of the same row twice replaces the queued payload rather than queueing a second
+event, so a repeated write cannot push a stale snapshot that last-write-wins
+would then echo back over the newer local value.
 
-A valid migrated-SQLite budget fixture reproduces it with an
-`installment_plans` row and a `cell_notes` row. That fixture is retained because
-it kills real budgets mutants that incorrectly apply same-table identity
-assumptions across tables; the incorrect outbox result is not asserted as
-desired behavior. A correction must include the table in the idempotency
-identity and account for any stored-key lifecycle implications before changing
-`src/db/mutations.ts`.
+The identity carries the table because the unique index enforcing it is global.
+Ordinary writes could not produce a cross-table clash — `deterministicId`
+namespaces every natural key and everything else is uuidv7 — but a restore
+writes ids taken from the backup file, so the input is not this process's to
+trust. `src/db/mutations.ts` states the same constraint beside the statement
+that depends on it.

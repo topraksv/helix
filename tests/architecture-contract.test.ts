@@ -134,6 +134,20 @@ describe("module graph", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("reaches persistence through the repo facade rather than its internals", () => {
+    // `src/data/repo.ts` is the stable surface; `src/data/repo/*` is how it is
+    // currently built. A screen importing an internal pins the split in place,
+    // so the facade stops being free to change behind it. The rule was written
+    // down long before anything asserted it, which is exactly how an invariant
+    // decays without anyone noticing.
+    const offenders = files
+      .filter((file) => ["ui", "app"].includes(layerOf(file)))
+      .flatMap((file) => (graph.get(file) ?? [])
+        .filter((target) => /\/data\/repo\/[^/]+$/.test(target))
+        .map((target) => `${show(file)} → ${show(target)}`));
+    expect(offenders).toEqual([]);
+  });
+
   it("keeps double casts out of the layers that decide what gets written", () => {
     // `as unknown as` is the strongest cast the language has: it turns off
     // every check between two types. In `src/ui` it is how react-native-web

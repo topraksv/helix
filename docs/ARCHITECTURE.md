@@ -8,7 +8,12 @@ and dependency versions live in `package.json`, config, and workflows.
 ## Boundaries
 
 The dependency direction is `app → data → db`, `app → domain`, and
-`data|services → db`.
+`data|services → db`. `db` and `sync` are the one pair that points both ways:
+`src/db/mutations.ts` needs `sync/tombstone-policy` to stamp a delete, and
+`sync/engine.ts` needs the db client and schema to drain the outbox. The
+architecture contract checks cycles per file rather than per layer, so it does
+not see this pair; `tombstone-policy.ts` importing nothing is what keeps the
+pair from becoming a real cycle, and giving it an import would create one.
 
 - `src/app/` contains routes and orchestration, not raw SQL.
 - `src/domain/` is pure: no React, storage, network, or other I/O.
