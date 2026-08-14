@@ -38,11 +38,16 @@ expo-env.d.ts
 # Supabase CLI state
 supabase/.temp/
 
-# Obsidian opens `docs/` itself as its vault, so the canonical documents get
-# backlinks without a second tree. `app.json` is the shared vault
-# configuration; everything else Obsidian writes is per-machine window state.
+# Obsidian opens `docs/` as its vault. Track the files that decide how the
+# vault behaves, so a fresh clone opens with the same link format, plugins and
+# graph settings. Everything else Obsidian writes there — `workspace.json`
+# above all — is this machine's window layout and must not follow the repo.
 /docs/.obsidian/*
 !/docs/.obsidian/app.json
+!/docs/.obsidian/appearance.json
+!/docs/.obsidian/core-plugins.json
+!/docs/.obsidian/graph.json
+!/docs/.obsidian/hotkeys.json
 
 # Editor and OS debris
 .DS_Store

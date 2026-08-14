@@ -95,6 +95,7 @@
     "test:native:local:ios": ": \"${MAESTRO_DEVICE:?Set MAESTRO_DEVICE to an iOS simulator UDID}\"; PATH=\"/opt/homebrew/opt/openjdk@17/bin:$PATH\" maestro --device \"$MAESTRO_DEVICE\" test e2e/native-local",
     "test:native:local:android": "PATH=\"/opt/homebrew/opt/openjdk@17/bin:$PATH\" maestro --platform android test e2e/native-local",
     "ios:build": "expo run:ios --device \"iPhone 17 Pro\"",
+    "graph:refresh": "graphify update . && graphify export obsidian && rm -rf graphify-out/obsidian/.obsidian",
     "audit:unused": "npx --yes knip@6.32.0"
   },
   "private": true,

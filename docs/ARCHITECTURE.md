@@ -186,16 +186,21 @@ the vault; each is loaded by a tool or read beside the code it describes. The
 consequence is that the two `../e2e/native/README.md` links here resolve on
 GitHub but not inside Obsidian; that is an accepted cost, not a broken link to
 repair.
-`docs/.obsidian/app.json` keeps `useMarkdownLinks` on and `newLinkFormat`
-relative, so a link Obsidian writes stays `[text](path.md)` and still renders
-on GitHub, where a wikilink would resolve for no reader at all. `trashOption`
-is `system`, so deleting a note never leaves a `.trash/` copy inside the
-repository. `graphify export obsidian` writes that note-per-symbol tree into
-`graphify-out/obsidian/`, wikilinked, with an overview note per community.
-`docs/graph` is a symlink to it rather than a second copy, so one export
-refreshes both the ignored directory and the vault. Never write in it by hand,
-and re-export after a rebuild: the post-commit hook refreshes `graph.json` but
-not this export.
+`docs/.obsidian` is the only vault configuration in the tree, and the files
+tracked inside it are the ones that decide how the vault behaves. `app.json`
+keeps `useMarkdownLinks` on and `newLinkFormat` relative, so a link Obsidian
+writes stays `[text](path.md)` and still renders on GitHub, where a wikilink
+would resolve for no reader at all; it also sets `trashOption` to `system` so
+deleting a note leaves no `.trash/` copy in the repository. `core-plugins.json`,
+`graph.json` and `appearance.json` carry the plugin and view state a fresh
+clone should open with. `workspace.json` is this machine's window layout and
+stays ignored. `npm run graph:refresh` rebuilds the graph, re-exports that note-per-symbol
+tree into `graphify-out/obsidian/`, and deletes the `.obsidian` the exporter
+writes beside it. That deletion is the point of the script: `docs/graph`
+symlinks the tree into the vault, and a vault inside a vault is a layout
+Obsidian documents as unsupported. Use the script rather than the two graphify
+commands, because the post-commit hook refreshes `graph.json` alone and leaves
+the export stale. Never write in the exported tree by hand.
 
 ## Deliberately absent
 

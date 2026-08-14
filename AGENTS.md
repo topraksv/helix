@@ -36,9 +36,11 @@ commit it was built from; compare that with `git rev-parse HEAD` before relying
 on it. A checkout may carry a local `.git/hooks/post-commit` that rebuilds the
 graph in the background, but hooks are not committed, so their presence differs
 per machine and proves nothing about freshness. When the graph is behind, run
-`graphify update .` — seconds, no network, no API key — or report it as stale.
-If `graphify-out/` is absent the tool is not installed here: use the normal
-file tools and do not install anything.
+`npm run graph:refresh` — seconds, no network, no API key — which also rewrites
+the Obsidian vault that the hook leaves stale. Refresh it after work that moved
+or added modules, so the next session starts from an index that matches the
+tree. If `graphify-out/` is absent the tool is not installed here: use the
+normal file tools and do not install anything.
 
 `docs/ARCHITECTURE.md` records how the index and the Obsidian vault are set up.
 
