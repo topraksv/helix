@@ -78,11 +78,14 @@ cihazlar arasında tutarlı kalır. Bozuk veya yabancı satırlar cursor'ı iler
 Supabase yapılandırılmazsa uygulama **hesapsız (local-only)** açılır ve hiçbir
 finansal veri dışarı çıkmaz.
 
+Eşitleme kuralları [`docs/SPEC.md`](docs/SPEC.md), sınırlar ve gerekçeler
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) belgesindedir.
+
 ## Platformlar
 
 | Platform | Durum |
 |---|---|
-| Web | GitHub Pages'teki [canlı sürüm](https://topraksv.github.io/helix/) yalnız açıkça yetkilendirilmiş manuel release ile güncellenir |
+| Web | GitHub Pages'teki [canlı sürüm](https://topraksv.github.io/helix/) yetkilendirilmiş bir `main` push'unda, risk sınıflandırıcı web yüzeyini seçtiğinde otomatik yayımlanır |
 | iOS / Android | Yetkilendirilmiş EAS `preview` update'i Expo Go ile açılır; fiziksel cihaz kabulü **henüz yapılmadı** |
 
 Mobil kullanım Expo Go'nun SDK 54 içinde sunduğu native kütüphanelerle sınırlıdır.
@@ -92,14 +95,19 @@ sayılmaz.
 
 ## Tasarım
 
-Sıcak kâğıt tonları üzerinde kil vurgusu: **Warm Organic Editorial**. Fraunces
-başlıklar, Inter gövde, botanik çift sarmal logosu. Gelirler yeşil, giderler
+Sıcak kâğıt tonları üzerinde kil vurgusu: **Warm Organic Editorial**. IBM Plex
+Serif başlıklar, Inter gövde, botanik çift sarmal logosu. Gelirler yeşil, giderler
 kırmızı; light/dark tüm rol çiftleri otomatik kontrast sözleşmesinden geçer.
 Uzun Mali Tablo kalemleri yalnız dar hücrede tek satır kısalır ve erişilebilir
 etikette tam adı korur. Hareket sistemi Reduced Motion tercihine uyar; grafikler
-ekran okuyucu için tam değerli özet taşır.
+ekran okuyucu için tam değerli özet taşır. Arayüz sözleşmesinin tamamı
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) belgesindedir.
 
 ## Gizlilik ve güvenlik
+
+Aşağısı özettir; veri işleme ayrıntıları [`docs/PRIVACY.md`](docs/PRIVACY.md),
+güven sınırları ve kabul edilmiş artık riskler
+[`docs/SECURITY.md`](docs/SECURITY.md) belgesindedir.
 
 - **Hesapsız mod:** Bütün finansal veri cihazındaki SQLite veritabanında kalır.
 - **Hesaplı mod:** Değişiklikler yalnızca senin hesabına eşitlenir. Her tablo
@@ -114,7 +122,8 @@ ekran okuyucu için tam değerli özet taşır.
 
 ## Kurulum
 
-> **Node 22 zorunlu.** Expo SDK 54 araç zinciri Node 24+ ile uyumlu değildir.
+> **Node 22 zorunlu** (`.nvmrc`). Gerekçesi
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) içindedir.
 
 ```bash
 git clone https://github.com/topraksv/helix.git
@@ -129,22 +138,22 @@ npx expo start --tunnel --clear  # Expo Go QR
 Kalite kapısı tek komuttur:
 
 ```bash
-npm run verify           # typecheck + Vitest + lint
+npm run verify           # skill kontrolü + typecheck + kapsamlı Vitest + lint
 npm run test:e2e:smoke   # kritik tarayıcı senaryoları
 npm run verify:full      # + production export, bundle bütçesi, tüm Playwright
 ```
 
 GitHub Actions `main` push'unda kalite, web export/bütçe ve smoke E2E'yi koşar;
-tam browser paketi nightly veya açıkça istenen çalıştırmada üç shard'a bölünür.
-Yayın ayrı, hedefi belirtilmiş manuel dispatch ister.
+tam browser paketi nightly veya tam kapı gerektiren push'ta üç shard'a bölünür.
 
 ## Teslim modeli
 
-`main`'e push kalite kapısını çalıştırır, yayınlamaz. Yetkilendirilmiş web
-dispatch'i aynı koşuda export edilip bütçesi ölçülen immutable artefaktı;
-yetkilendirilmiş mobile dispatch'i aynı commit'i sabit EAS CLI ile `preview`
-branch'ine yollar. Hiçbir binary oluşturulmaz. Ayrıntı ve rollback sınırı
-[`docs/RELEASE.md`](docs/RELEASE.md) belgesindedir.
+`main`'e push değişen yolları sınıflandırır, kapıyı koşar ve baytları değişmiş
+olabilecek her yüzeyi otomatik yayımlar: web GitHub Pages'e, mobil sabit EAS CLI
+ile `preview` branch'ine. `main`'e push yetkisi bu sınıflandırıcı-seçimli
+yayımları da kapsar. Manuel `workflow_dispatch` yalnızca isteğe bağlı bir
+geçersiz kılmadır. Hiçbir binary oluşturulmaz. Yetki sınırı, ayrıntı ve rollback
+tek kanonik kaynakta: [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Lisans / License
 

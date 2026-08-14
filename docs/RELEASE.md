@@ -33,10 +33,10 @@ not evidence of installation or physical-device acceptance.
 
 ## Local gate
 
-Use Node 22. Run `npm run verify` for routine changes and
-`npm run verify:full` for application, asset, config, routing, browser, bundle,
-or release changes. Database changes also require the local Supabase workflow
-equivalent. A failed or skipped required check is not a release candidate.
+`AGENTS.md` selects between `npm run verify` and `npm run verify:full`, and
+`.nvmrc` pins the Node version both expect. Database changes also require the
+local Supabase workflow below. A failed or skipped required check is not a
+release candidate.
 
 The production web export and EAS update must clear Metro's cache; the reason is
 recorded in [`ARCHITECTURE.md`](ARCHITECTURE.md). Web publishes the exact

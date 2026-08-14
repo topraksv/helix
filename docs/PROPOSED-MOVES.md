@@ -1,30 +1,16 @@
-# Proposed Source Moves
+# Proposed source moves
 
-Proposal only. Nothing in this document was executed during the foundation
-reset. Any accepted move must preserve behavior, keep routes as leaves, retain
-the `src/data/repo.ts` facade, and update
-`tests/architecture-contract.test.ts` in the same change when a dependency rule
-changes.
-
-## Ranking
+Two structural moves have been evaluated and neither is approved. This file
+records what each would change and the evidence an approval must produce, so
+the analysis is not repeated from scratch. Any accepted move must preserve
+behavior, keep routes as leaves, retain the `src/data/repo.ts` facade, and
+update `tests/architecture-contract.test.ts` in the same change when a
+dependency rule changes.
 
 | Rank | Proposal | Value | Risk |
 |---|---|---|---|
 | 1 | Put backup/restore persistence behind one data-layer interface | High | High |
 | 2 | Move live-query internals behind the existing hooks interface | Medium–high | High |
-| 3 | Move category-icon policy from `data` to `domain` | Medium | Low–medium |
-
-## Phase 2 decision record
-
-Phase 2 executed no source moves. Its deletion sweep found no
-repository-owned dead file, empty directory, or unused dependency to remove.
-Before these decisions, the frozen baseline and this pending-proposal source
-were restored byte-for-byte from `df3bfd6^`.
-
-Four pre-evidence full gates passed: `npm run control:check`,
-`npx tsc --noEmit`, and `npx vitest run` reported 35 installed skills with a
-clean bridge and lockfile, type-check exit 0, and 110 passing test files with
-970 passing tests. No per-move gate applied because no move was made.
 
 ## 1. Put backup/restore persistence behind one data-layer interface
 
@@ -52,12 +38,11 @@ rule in the architecture contract, and unchanged backup, import, sync outbound,
 investment-maintenance, privacy, and round-trip tests. File-system and browser
 download code must remain outside the data interface.
 
-**Status:** Rejected for Phase 2. This is an interface redesign rather than a
-pure move: it would create `src/data/import/`, redistribute validation and
+**Status:** not approved. This is an interface redesign rather than a pure
+move: it would create `src/data/import/`, redistribute validation and
 write-planning responsibilities, and change the dependency contract. Its value
 requires logic extraction, explicit interface design, targeted test work, and
-an architecture-contract change, none of which fit move-plus-import-only
-authority.
+an architecture-contract change.
 
 ## 2. Move live-query internals behind the existing hooks interface
 
@@ -82,44 +67,13 @@ implementation. Approval should require targeted lifecycle tests before the
 move; the existing `live-state`, database-recovery, session, ledger, and full
 integration gates alone do not prove React subscription identity.
 
-**Status:** Rejected for Phase 2. Splitting `hooks.ts` would extract
-interdependent state, retry, listener, registry, and projection logic, not move
-a whole file. The required targeted React subscription-identity tests were not
-present, and the phase allowed no test-logic changes; the existing integration
-gate cannot replace that proof.
-
-## 3. Move category-icon policy from `data` to `domain`
-
-**Current seam:** `src/data/category-icons.ts` is a pure deterministic product
-policy. Routes use it for display, while category/import repositories use the
-same suggestion to persist a default. It performs no query, mutation, or I/O,
-so its current `data` location does not describe its dependencies.
-
-**Proposed move:** move the module to `src/domain/category-icons.ts` without
-renaming its exports. Update its thirteen source importers and add direct tests
-for keyword precedence, Turkish normalization, deterministic fallback, and
-payment-source exhaustiveness before moving it.
-
-**Value:** the dependency direction becomes explicit: both routes and data can
-consume one pure rule without making presentation code look like repository
-infrastructure.
-
-**Risk and approval conditions:** low–medium. Runtime behavior is simple, but
-the visual defaults are persisted and therefore user-visible. Approval should
-require snapshot-free behavioral tests and the architecture gate; no icon,
-keyword order, or fallback pool may change in the move.
-
-**Status:** Phase 2 cleared the move pending direct behavior tests; it did not
-execute while that proof was missing. Track A later added snapshot-free tests
-for `suggestCategoryIcon`, `categoryIcon`, and `paymentSourceIcon`, satisfying
-the condition, then executed the unchanged move to
-`src/domain/category-icons.ts`. All thirteen source importers use that seam.
+**Status:** not approved. Splitting `hooks.ts` would extract interdependent
+state, retry, listener, registry, and projection logic, not move a whole file.
+The required targeted React subscription-identity tests do not exist, and the
+existing integration gate cannot replace that proof.
 
 ## Deliberately not proposed
 
-- Do not merge the byte-identical splash and brand symbol pairs. Their
-  native-rebuild and OTA lifecycles are intentionally different and documented
-  in `docs/ARCHITECTURE.md`.
 - Do not remove root route re-exports such as `src/app/analytics.tsx` and
   `src/app/budgets.tsx`. `tests/navigation.test.ts` and their incident comments
   prove that root and in-tab entry paths need different navigation stacks.
@@ -127,6 +81,6 @@ the condition, then executed the unchanged move to
   files solely because they are long. Each currently concentrates related
   behavior behind a small interface; line count alone does not establish a
   better seam.
-- Do not move required root configuration into a tooling directory.
-  `docs/ARCHITECTURE.md` records that Expo, Metro, Babel, Drizzle, TypeScript,
-  ESLint, Vitest, and Playwright discover it at the root.
+
+The byte-identical asset pairs and the root-configuration location are settled
+in [`ARCHITECTURE.md`](ARCHITECTURE.md); do not reopen either as a move.

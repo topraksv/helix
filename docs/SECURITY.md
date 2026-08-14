@@ -37,7 +37,12 @@ grants, and narrowly scoped RPCs in `supabase/migrations/`.
   accept only the exact web origin/base path or `helix://reset-password`.
 - Native sessions use bounded, complete-read chunking over SecureStore. Web
   sessions use the browser profile's storage; browser-profile access therefore
-  implies session access.
+  implies session access. `src/sync/secure-chunked-storage.ts` limits values to
+  64 chunks of 1,900 characters, validates the marker, and rejects missing
+  chunks and oversize values. Interrupted replacement of an already chunked
+  value is not generation-tagged or checksummed and has no explicit
+  crash-atomicity test: that is an open proof gap, not evidence that mixed data
+  would be accepted downstream.
 - Session epochs stop late account-scoped work before account switch, sign-out,
   or deletion can expose it to another account.
 - Financial data is in async SQLite. iOS builds request

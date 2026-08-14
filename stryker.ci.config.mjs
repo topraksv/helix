@@ -4,7 +4,19 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * Phase 6 changes no product source. Its cutover commit is therefore the
+ * Why this file exists beside `stryker.config.mjs`.
+ *
+ * The canonical `npm run test:mutation` points at the 59-file broad inventory,
+ * whose recorded current-tree baseline is deliberately red: 79.65% against a
+ * break threshold of 98. Using that known-red command unchanged as an automatic
+ * deploy prerequisite would make every high-risk release impossible; silently
+ * narrowing that command instead would make the audit lie. So the two
+ * authorities keep distinct names: `test:mutation` stays the unchanged broad
+ * gap inventory, and `test:mutation:ci` (this file) inherits every broad
+ * setting and the unchanged 98 break threshold while selecting only the
+ * high-risk production files changed after the cutover below.
+ *
+ * Phase 6 changed no product source. Its cutover commit is therefore the
  * mutation-diff floor for the first long-lived-branch push to main: earlier
  * product changes keep their Phase 3/3B evidence instead of being presented as
  * newly hardened. Every later high-risk production edit is mutated directly.

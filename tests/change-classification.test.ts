@@ -23,7 +23,7 @@ describe("change classification", () => {
   it("keeps the light gate as the minimum for a no-impact push", () => {
     expect(classify([
       "README.md",
-      "docs/foundation/PHASE5-READINESS.md",
+      "docs/BASELINE.md",
       "assets/screenshots/dashboard-dark.png",
       ".gitignore",
     ])).toMatchObject({

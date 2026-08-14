@@ -31,7 +31,10 @@ ownership and shape before advancing its cursor. The cited domain rules are in
 
 Root config files stay at root when their tool discovers them there by default.
 Expo Router routes remain under `src/app/`; structural moves inside `src/` must
-preserve `tests/architecture-contract.test.ts`.
+preserve `tests/architecture-contract.test.ts`. Two such moves have been
+evaluated and neither is approved;
+[`PROPOSED-MOVES.md`](PROPOSED-MOVES.md) records what each would change and the
+evidence an approval must produce.
 
 ## Non-obvious toolchain constraints
 
@@ -89,8 +92,8 @@ patterns. New screens reuse those interfaces rather than restyling them inline.
   because they are sync and backup compatibility fields.
 - Income/positive is green, expense/negative red, warning amber. Accent color
   expresses hierarchy, not financial meaning.
-- Inter carries dense content; Fraunces is limited to brand-level headings and
-  high-value totals.
+- Inter carries dense content; the IBM Plex Serif display face is limited to
+  brand-level headings and high-value totals.
 - Phone layouts keep one reading column. Dense financial data stays in shared
   tables rather than becoming one card per value.
 - Motion uses the shared reduced-motion source in `src/ui/motion.ts`.
@@ -121,6 +124,60 @@ baseline only when those layers cannot express a named risk, and record that
 reason beside the baseline. Never weaken an assertion, threshold, or tolerance
 merely to turn a failing run green.
 
+[`BASELINE.md`](BASELINE.md) is the frozen measurement transcript. Its numbers
+are deliberately not updated; it is the comparison point for later performance
+and coverage work.
+
+### Simplifications already tried and reverted
+
+These are recorded so they are not attempted again. Each passed the normal gate
+yet lost detection, so each was fully reverted:
+
+- `src/domain/input.ts` — `for...of` code-point iteration instead of manual
+  iterator management introduced an `@typescript-eslint/no-unused-vars` warning
+  into the routine gate. A cleanup-induced warning is a net quality regression.
+- `src/domain/balance.ts` — a private helper for the duplicated
+  realized/pending month-bucket append dropped scoped mutation from 96.74% to
+  96.70%; it removed two distinctions the tests detected.
+- `src/domain/installments.ts` — a local avoiding a second `plan.dueDay ?? 1`
+  evaluation dropped scoped mutation from 98.90% to 98.89%.
+
+These are evidence for keeping the current implementations, not a backlog.
+
+## Derived indexes and navigation
+
+Neither tool below is an authority; `AGENTS.md` states how far an agent may
+trust the index. This section records only why each is wired the way it is,
+and nothing either produces is committed.
+
+**Graphify** is installed as a user-scope skill, never with `--project`. A
+project install writes an unlocked directory into `.agents/skills/` or
+`.claude/skills/`, which `npm run control:check` reports as drift and which the
+`npx skills` lockfile cannot describe. `graphify update .` rebuilds
+`graphify-out/` from the AST in seconds with no network call and no API key, so
+the output is regenerated rather than tracked. `.graphifyignore` holds the
+vendored skill bodies out of the scan; without it their 224 files outnumber
+Helix's own source and the detected communities describe their publishers'
+prose instead of this codebase.
+
+**Obsidian** opens `docs/` itself as the vault, so these documents gain
+backlinks without a second copy of them existing anywhere. The repository root
+is deliberately not the vault: Obsidian's excluded-files setting only
+de-emphasises a path in search, it does not stop indexing, so a root vault
+would index roughly 75,000 files to reach eleven authored ones. `AGENTS.md`,
+`CLAUDE.md`, `README.md`, and `e2e/native/README.md` stay outside it; each is
+loaded by a tool or read beside the code it describes rather than browsed. The
+consequence is that the two `../e2e/native/README.md` links here resolve on
+GitHub but not inside Obsidian; that is the accepted cost of a seven-file
+vault, not a broken link to repair.
+`docs/.obsidian/app.json` keeps `useMarkdownLinks` on and `newLinkFormat`
+relative, so a link Obsidian writes stays `[text](path.md)` and still renders
+on GitHub, where a wikilink would resolve for no reader at all. `trashOption`
+is `system`, so deleting a note never leaves a `.trash/` copy inside the
+repository. `graphify export obsidian` writes a separate node-per-symbol vault
+under `graphify-out/obsidian/`; that one is derived, ignored, and not a place
+to write anything by hand.
+
 ## Deliberately absent
 
 - No analytics, product telemetry, or session recording: this is a one-user app
@@ -128,7 +185,7 @@ merely to turn a failing run green.
 - No third-party crash-reporting or alerting service:
   `src/services/diagnostics.ts` keeps a bounded local buffer and uploads only
   redacted first-party events to the owner's Supabase rows. Silent failures
-  still do not alert the owner; privacy details live in `PRIVACY.md`.
+  still do not alert the owner; privacy details live in [`PRIVACY.md`](PRIVACY.md).
 - No feature-flag framework, second state/data library, server API tier, or
   component catalogue. A measured need must precede any of them.
 - No multi-tenant workspace model: every remote row is owner-scoped.

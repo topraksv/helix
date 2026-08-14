@@ -1,0 +1,9 @@
+{
+  "useMarkdownLinks": true,
+  "newLinkFormat": "relative",
+  "alwaysUpdateLinks": true,
+  "trashOption": "system",
+  "attachmentFolderPath": "attachments",
+  "showUnsupportedFiles": false,
+  "promptDelete": false
+}

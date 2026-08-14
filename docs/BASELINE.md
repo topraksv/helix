@@ -1,3 +1,16 @@
+# Frozen baseline measurements
+
+Raw transcripts captured during the foundation reset. **These numbers are
+deliberately never updated.** The file exists as the fixed comparison point for
+later performance and coverage work, so divergence from the current tree is
+expected and is not staleness. Current measurements come from running the gate,
+not from this file.
+
+The transcripts below are unedited. `df3bfd6` deleted this file as stale and
+`008c09e` restored it, so read a difference from the current tree as the
+baseline doing its job, not as a reason to delete it again. Everything above
+this line was added later, when the file moved out of `docs/foundation/`.
+
 ```text
 $ /usr/bin/time -p npx vitest run
 
