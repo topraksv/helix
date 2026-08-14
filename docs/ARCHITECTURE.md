@@ -166,12 +166,12 @@ they are per-checkout and invisible to Git: an unexplained rebuild of
 `graphify-out/` is almost always one of them, and a clone that lacks them will
 never refresh on its own. `GRAPHIFY_SKIP_HOOK=1` disables both.
 
-**Obsidian** opens `docs/` as the vault, and `docs/graph` symlinks the graph
-export into it, so one vault holds these seven documents beside a note for
-every code symbol. Measured: about twenty-five seconds of indexing on open,
-settling near 700 MB resident at idle. That is the price of having the codebase
-searchable next to the prose describing it, and it is why the export is linked
-in rather than kept as a vault you switch to.
+**Obsidian** opens `docs/` as the vault, and the graph export lands in
+`docs/graph`, so one vault holds these seven documents beside a note for every
+code symbol. Measured: about twenty-five seconds of indexing on open, settling
+near 700 MB resident at idle. That is the price of having the codebase
+searchable next to the prose describing it, and it is why the export goes here
+rather than into a second vault you switch to.
 
 The repository root is not the vault, and the reason is content rather than
 cost: of the ~4,900 Markdown files under it, all but eleven are `node_modules`
@@ -194,13 +194,15 @@ would resolve for no reader at all; it also sets `trashOption` to `system` so
 deleting a note leaves no `.trash/` copy in the repository. `core-plugins.json`,
 `graph.json` and `appearance.json` carry the plugin and view state a fresh
 clone should open with. `workspace.json` is this machine's window layout and
-stays ignored. `npm run graph:refresh` rebuilds the graph, re-exports that note-per-symbol
-tree into `graphify-out/obsidian/`, and deletes the `.obsidian` the exporter
-writes beside it. That deletion is the point of the script: `docs/graph`
-symlinks the tree into the vault, and a vault inside a vault is a layout
-Obsidian documents as unsupported. Use the script rather than the two graphify
-commands, because the post-commit hook refreshes `graph.json` alone and leaves
-the export stale. Never write in the exported tree by hand.
+stays ignored. `npm run graph:refresh` rebuilds the graph, exports that note-per-symbol tree
+into `docs/graph`, and deletes the `.obsidian` the exporter writes there. All
+three steps matter. The export is what makes the code visible in the vault; the
+deletion prevents a vault inside a vault, which Obsidian documents as
+unsupported and which the exporter recreates on every run; and running it as
+one command is what keeps the export level with the graph, because the
+post-commit hook refreshes `graph.json` alone. `docs/graph` is ignored and
+absent from a fresh clone until the script runs once. Never write in it by
+hand.
 
 ## Deliberately absent
 

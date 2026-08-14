@@ -77,6 +77,6 @@ supabase/.temp/
 !/.agents/skills/
 !/.agents/skills/**
 
-# The code map graphify exports into the docs vault: generated, and a symlink
-# into the ignored graphify-out/ rather than a second copy.
+# The code map graphify exports into the docs vault: ~2,900 generated notes,
+# rebuilt from the AST by `npm run graph:refresh` and never tracked.
 /docs/graph
