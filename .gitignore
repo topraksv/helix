@@ -80,3 +80,11 @@ supabase/.temp/
 # The code map graphify exports into the docs vault: ~2,900 generated notes,
 # rebuilt from the AST by `npm run graph:refresh` and never tracked.
 /docs/graph
+
+# TestSprite MCP-flow output: generated Python test scripts and per-run
+# recordings, regenerated fresh whenever that flow runs and never an input to
+# a build or test. The CLI + deployed-URL flow (the one actually in use)
+# tracks its own test definitions and run history remotely and writes
+# nothing here.
+/testsprite_tests/
+/.testsprite/
