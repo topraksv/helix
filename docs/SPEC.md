@@ -93,9 +93,19 @@ Free trials generate no charge before their end. Generation is idempotent on
 `kind + source + due date`; installment plans do not generate a second expected
 item because their pending transactions already represent the obligation.
 
+An expectation may also be settled by a transaction that already exists rather
+than by creating one: matching links the two, so the forecast stops counting
+money that has already moved without the ledger gaining a second copy. One
+transaction settles at most one expectation. Undoing a confirmation removes the
+row that confirmation created; undoing a match only unlinks, because the
+transaction was the owner's own record before the expectation pointed at it.
+
 Expected items begin pending. An unconfirmed item becomes late after its due
 date. A known fixed subscription with auto-pay may confirm on or after its due
-date; an estimated variable bill never auto-confirms. Paid and skipped history
+date, but only for a billing date that arrives AFTER the rule was created:
+saving a rule states a schedule, not that money has moved, so an occurrence on
+or before its creation day stays pending until the user confirms it. An
+estimated variable bill never auto-confirms. Paid and skipped history
 survives rule edits, while obsolete unpaid derivatives are removed according to
 the rule's current active/self-owned state. Confirmation records the supplied
 past payment day when valid, otherwise the due date if passed or today, and
@@ -172,6 +182,66 @@ variable invoice is preserved when the rule's forecast changes. Analytics
 normalizes each charge to `amount / interval months`, reports foreign-currency
 loads only when a TRY rate exists, and reports missing rates separately.
 
+The subscriptions screen reports what the active rules cost from that same
+normalization: a monthly TRY figure, its twelve-month restatement, a count of
+the rules excluded because their currency has no TRY figure, the soonest
+upcoming renewal, and the most recent stored price changes. A rule's first
+price-history row is its opening price rather than a change, a currency switch
+is not read as a rise or a fall, and history belonging to a deleted rule is not
+reported.
+
+## §3.1b — Card statement import (RECONSTRUCTED)
+
+Citing files:
+
+- `src/domain/statement-import.ts`
+- `src/services/pdf-text.ts`
+- `src/data/repo/statement-import.ts`
+
+A card statement PDF is read on the device and never uploaded. Text extraction
+handles uncompressed and FlateDecoded content streams and refuses everything
+else with a named reason — not a PDF, too large, encrypted, or no text layer —
+so a scanned statement is reported as a scan rather than parsed into nothing.
+Stream expansion and candidate counts are bounded.
+
+A candidate is produced only from a line carrying a date, a description and a
+single amount, optionally with an instalment marker; a line with two amounts,
+an impossible date or no merchant is rejected and shown. `1/1` is a single
+payment, not a plan. Each candidate takes a deterministic identity from the
+statement period, date, case-normalized description, amount and instalment
+position, so re-importing the same statement converges instead of doubling, and
+two genuinely identical charges stay two rows.
+
+Review classifies each candidate against the ledger before anything is written:
+already imported (same identity), covered by an existing instalment plan, or
+similar to an unkeyed row within three days. Only candidates resembling nothing
+are pre-selected. Accepted rows are written in one atomic batch with
+`origin = statement`, carry their import key, and an identity that already
+exists is skipped rather than overwritten so a later edit is not discarded.
+
+## §3.1c — Transaction attachments (RECONSTRUCTED)
+
+Citing files:
+
+- `src/domain/attachments.ts`
+- `src/data/repo/attachments.ts`
+- `src/services/attachment-store.ts`
+
+A transaction may carry receipts, invoices and warranty documents. The metadata
+row syncs; the bytes stay on the device that added them. Accepted types are PDF
+and common photo formats, bounded to 25 MB, and the declared type must agree
+with the name's extension. A display name carrying a path separator, a
+traversal segment, a control character or a bidirectional override is refused
+rather than sanitized. The on-disk name is derived from the row id, never from
+the owner's name, and is re-validated when read because a row can arrive from
+sync or a restore.
+
+The file is written before the row that names it, and a delete tombstones the
+row while leaving the file for the maintenance sweep, so an interruption leaves
+collectable bytes rather than an attachment that cannot be opened. A device
+without the bytes says so instead of offering a dead action. Backups carry the
+record, not the contents, and the export surface states this.
+
 ## §3.2 — Installments and bounded computed columns (RECONSTRUCTED)
 
 Citing files:
@@ -215,8 +285,18 @@ content, schedules at 09:00 local time, and keeps the soonest 60 reminders
 below the platform queue limit.
 
 The plan covers expected income, advance and due-day subscription reminders,
-trial endings, and final installments. Lock-screen content is neutral by
+trial endings, and final installments. Each carries an identity payload — a
+target kind and a record id, never a name, amount or route — so tapping it
+opens the record it named: a trial ending opens its subscription, a final
+installment opens its plan, and a due payment opens the upcoming list. The
+payload is read defensively, and anything unrecognized routes nowhere rather
+than to a guessed record. Taps are honoured both when they launch a cold app
+and when they arrive while it runs, and only for a signed-in, unlocked session.
+
+Lock-screen content is neutral by
 default; merchant and amount detail requires an explicit device preference.
+With details off the payload drops the record identity too, because one neutral
+reminder then stands for a whole day's items.
 Turning details off clears detailed scheduled and delivered notifications
 before rebuilding neutral ones, and every account teardown clears both queues.
 A planning/query failure leaves the previous working schedule intact.

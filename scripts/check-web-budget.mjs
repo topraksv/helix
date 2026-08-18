@@ -55,13 +55,27 @@ const root = process.argv[2] ?? "dist";
 // transactions. Measured 3_364_521 entry / 3_994_286 total, both past the
 // line below. Ceilings move once, together, to the measured figures plus the
 // same ~1% of slack every prior line here carries.
+//
+// Then this pass shipped five surfaces and a document reader: the attention
+// inbox, the card-statement import and its review, transaction attachments,
+// the contextual-colour sheet and the allocation-target panel, plus the
+// provenance/duplicate/matching model behind them. Measured 3_468_079 entry /
+// 4_097_844 total / 7_505_655 export.
+//
+// SheetJS is NOT part of that growth and must not become part of it. The PDF
+// reader borrows its inflate, and importing it statically measured 3_958_250
+// entry — 490_171 bytes for a module the overwhelming majority of sessions
+// never need. `src/services/pdf-text.ts` loads it with `await import` exactly
+// as `spreadsheet-import.ts` does, and these ceilings are set below what a
+// static import would cost, so putting it back trips this check rather than
+// shipping quietly.
 const limits = {
-  entryJavaScript: 3_398_000,
-  totalJavaScript: 4_034_000,
+  entryJavaScript: 3_503_000,
+  totalJavaScript: 4_139_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_500_000,
+  totalExport: 7_580_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

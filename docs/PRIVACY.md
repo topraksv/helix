@@ -75,10 +75,23 @@ SDK'sı yoktur.
 ## Bildirim, export ve import
 
 Bildirimler opt-in'dir. Varsayılan preview nötrdür; ad ve tutar için ayrı
-device-local tercih gerekir. Çıkış, hesap değişimi ve remote session iptali
+device-local tercih gerekir. Bildirime dokunulduğunda ilgili kaydın açılması
+için taşınan payload yalnız hedef türü ve kayıt id'sidir: tutar, ad veya rota
+içermez. Ayrıntılı preview kapalıyken payload kayıt kimliğini de bırakır, çünkü
+o durumda tek bir nötr hatırlatma o günün tamamını temsil eder. Çıkış, hesap değişimi ve remote session iptali
 hesaba ait bildirim ve cache durumunu temizler. App inactive/background iken
 finansal içeriğin üstüne privacy cover çizilir; gerçek snapshot zamanlaması
 cihazda kabul edilmelidir.
+
+Kredi kartı ekstresi PDF'i yalnızca cihazda okunur: Helix dosyayı saklamaz,
+kopyalamaz ve hiçbir yere göndermez. Okunamayan, taranmış veya parola korumalı
+bir PDF tahmin edilmez; nedeni söylenerek reddedilir. Ekstreden okunan hiçbir
+satır sen onaylamadan deftere yazılmaz.
+
+İşleme eklediğin belgelerin (fiş, fatura, garanti) yalnızca kaydı eşitlenir;
+dosyanın kendisi onu eklediğin cihazda kalır. Başka bir cihaz o dosyayı
+göremez ve bunu açıkça söyler. Yedek dosyası da belgelerin kaydını taşır,
+içeriklerini taşımaz.
 
 Restore, bundle'ın sahiplik, UUID, duplicate ve referential-integrity kontrolü
 bitmeden yazmaz. Spreadsheet ve JSON yollarında dosya, açılmış ZIP, satır, hücre

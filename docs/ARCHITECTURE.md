@@ -103,6 +103,16 @@ patterns. New screens reuse those interfaces rather than restyling them inline.
   tables rather than becoming one card per value.
 - Motion uses the shared reduced-motion source in `src/ui/motion.ts`.
 - Labels remain visible; placeholders never carry a field's only instruction.
+- Pinning a table column changes where it sits, never what it can do and never
+  how it looks. The pinned header carries the column's own action beside its
+  unpin control, the same pair a scrolling header has, and both rails render a
+  column through one `headerChrome`/`bodyCell` pair so a state cannot exist in
+  one and not the other.
+- Hover and pressed come from `interactionSurface` and nothing else, applied to
+  the pressable itself. A container without a role never carries the fill or
+  its transition: the transition IS the claim to be interactive.
+- A header's rule is always reserved and recoloured, never toggled on. A border
+  that appears with a state moves the text beside it by those pixels.
 
 ## Incident-derived decisions
 
@@ -120,6 +130,14 @@ failure that selected it.
 | `dist/404.html` copies root `index.html` | Copying Expo Router's `+not-found` output hydrated the wrong deep-link route |
 | iOS `NSFileProtectionComplete` is conditional | It is safe only while the app performs no background file work; revisit before adding background execution |
 | Loading uses one three-dot indicator for the whole wait | Replacing it mid-wait with the detailed logo changed shape and rendered as a smudge; the owner closed this alternative on 2026-07-26 |
+| Auto-pay ignores a billing date on or before its rule's creation day | Saving an auto-pay subscription on its own billing day confirmed a realized expense immediately, so the current balance fell by its amount before any money moved |
+| A stored UTC timestamp is converted with `localDayOfTimestamp`, never sliced | `created_at` is UTC and every date compared against it is local, so slicing reads a day behind for three hours of every day in Türkiye — enough to leak the same-day auto-pay guard |
+| Notification payloads carry a target kind and record id, never a route | A route read back from OS storage is a destination this app would follow from outside its own code; a closed union mapped in one switch is an allowlist by construction |
+| PDF text is inflated with SheetJS's `CFB.utils._inflateRaw` | A `FlateDecode` stream is DEFLATE, and the project already ships an inflate for `.xlsx`; adding a PDF library would put a large parser on the most sensitive file the owner has, for one function that was already present |
+| Attachment bytes never enter the sync pipeline | It carries PostgREST JSON, so a blob column would push whole documents through it and replicate every receipt to every device |
+| A statement row's id is derived from the printed line, not the import run | Re-downloading and re-importing the same statement must converge; an id tied to the run doubles the ledger instead |
+| A repeated statement identity is skipped, never overwritten | Overwriting discards an edit the owner made to that transaction after the first import |
+| The attachment sweep runs from `ui/root-lifecycle`, not `runMaintenance` | The filesystem is a native service and the data layer stays loadable — and unit-testable — without one |
 
 ## Testing policy
 
