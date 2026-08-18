@@ -19,7 +19,7 @@ import { selectionTap } from "./haptics";
 import { interactionSurface } from "./interaction";
 import { tr } from "../i18n/tr";
 import { fittedCellWidth } from "./responsive";
-import { font, maxFontScale, spacing, type, useTheme } from "./theme";
+import { font, maxFontScale, spacing, type, useTheme, type Palette } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
 export const STICKY_ROW_HEIGHT = 52;
@@ -72,6 +72,8 @@ export interface StickyColumn {
   label: string;
   /** Optional marker icon shown top-left of the header (e.g. a computed column). */
   icon?: LucideIcon;
+  /** A saturated rule under the header, when the column carries a mark. */
+  markEdge?: string;
 }
 
 export interface StickyRow {
@@ -86,6 +88,8 @@ export interface StickyRow {
   onLabelPress?: () => void;
   labelHighlight?: boolean;
   rowHighlight?: boolean;
+  /** A saturated rule beside the label, when the row carries a mark. */
+  markEdge?: string;
   /** One node per column (same order/length as `columns`). */
   cells: React.ReactNode[];
 }
@@ -225,6 +229,32 @@ function useWebInteractions(
   }, [vRef, bodyHRef, headerHRef, rowHeight, cellWidth]);
 }
 
+/**
+ * The chrome a column header wears, whatever rail it is drawn in.
+ *
+ * Two headers render a column — the scrolling one and the pinned one — and
+ * every state they can be in has to look the same in both. It did not: the
+ * pinned header knew nothing about `currentColumnKey`, so pinning the current
+ * month silently dropped its 3px underline and repainted its label, which
+ * reads as the pin having changed WHICH month is current. One function, so a
+ * state cannot exist in one rail and not the other.
+ *
+ * The border width is constant across states on purpose. A header that gains
+ * or loses a rule when it is pinned, marked or current moves its own text by
+ * those pixels, and a row of headers then sits at two different baselines.
+ */
+function headerChrome(
+  palette: Palette,
+  { isCurrent, markEdge }: { isCurrent: boolean; markEdge?: string },
+): { borderBottomWidth: number; borderBottomColor: string; labelColor: string } {
+  return {
+    // Always reserved, never toggled: the colour carries the state.
+    borderBottomWidth: 3,
+    borderBottomColor: isCurrent ? palette.primary : markEdge ?? "transparent",
+    labelColor: isCurrent ? palette.primaryText : palette.textSecondary,
+  };
+}
+
 export function StickyTable({
   cornerLabel,
   columns,
@@ -237,6 +267,8 @@ export function StickyTable({
   pinnedKey,
   onTogglePin,
   onColumnPress,
+  onColumnLongPress,
+  onRowLongPress,
   currentColumnKey,
   focusColumnKey,
   focusRowKey,
@@ -257,6 +289,9 @@ export function StickyTable({
   onTogglePin?: (key: string) => void;
   /** Column-header tap action (e.g. open a month). Takes precedence over pin. */
   onColumnPress?: (key: string) => void;
+  /** Hold a header or a row label to act on the whole column/row. */
+  onColumnLongPress?: (key: string) => void;
+  onRowLongPress?: (key: string) => void;
   /** Highlighted (e.g. current month) column key. */
   currentColumnKey?: string;
   /** Center this column horizontally on open (e.g. the current month). */
@@ -431,6 +466,7 @@ export function StickyTable({
    */
   const headerCell = (c: StickyColumn) => {
     const isCurrent = c.key === currentColumnKey;
+    const chrome = headerChrome(palette, { isCurrent, markEdge: c.markEdge });
     const both = !!onColumnPress && !!onTogglePin;
     const labelAction = onColumnPress ?? onTogglePin;
     const compactHeader = cellWidth < 104;
@@ -444,16 +480,20 @@ export function StickyTable({
           height: resolvedHeaderHeight,
           backgroundColor: "transparent",
           justifyContent: "center",
-          borderBottomWidth: isCurrent ? 3 : 0,
-          borderBottomColor: palette.primary,
+          // The current month keeps its own 3px rule; a marked column shows a
+          // 2px one in its token colour, so the two are never confused and a
+          // column can carry both facts at once.
+          borderBottomWidth: chrome.borderBottomWidth,
+          borderBottomColor: chrome.borderBottomColor,
         }}
       >
         <Pressable
-          disabled={!labelAction}
+          disabled={!labelAction && !onColumnLongPress}
           onPress={labelAction ? () => {
             if (!onColumnPress && onTogglePin) selectionTap();
             labelAction(c.key);
           } : undefined}
+          onLongPress={onColumnLongPress ? () => { selectionTap(); onColumnLongPress(c.key); } : undefined}
           accessibilityRole={labelAction ? "button" : undefined}
           accessibilityLabel={labelAction ? c.accessibilityLabel ?? c.label : undefined}
           // Fill the header band: wrapping only the label left a full-width but
@@ -487,7 +527,7 @@ export function StickyTable({
             style={[
               type.label,
               {
-                color: isCurrent ? palette.primaryText : palette.textSecondary,
+                color: chrome.labelColor,
                 fontSize: compactHeader ? type.small.fontSize : type.label.fontSize,
                 textAlign: "center",
                 flexShrink: 1,
@@ -546,6 +586,37 @@ export function StickyTable({
     );
   };
 
+  /**
+   * The box one cell sits in — the SAME box whether that cell is scrolling or
+   * pinned into the left rail.
+   *
+   * Pinning moves a column; it must not change the column. Two near-identical
+   * wrappers is how that promise decays: the pinned copy had already lost the
+   * current-month highlight, and every later cell-level affordance would have
+   * had to be added twice or silently work in only one of the two places.
+   * One function, so a pinned cell cannot drift from its scrolling self.
+   */
+  const bodyCell = (column: StickyColumn, row: StickyRow) => {
+    const index = colIndexByKey.get(column.key);
+    if (index === undefined) return null;
+    const isCurrent = column.key === currentColumnKey;
+    return (
+      <View
+        key={column.key}
+        style={{
+          width: cellWidth,
+          justifyContent: "center",
+          backgroundColor: isCurrent ? palette.primarySoft + "2E" : "transparent",
+          borderLeftWidth: isCurrent ? 1 : 0,
+          borderRightWidth: isCurrent ? 1 : 0,
+          borderColor: palette.primary + "70",
+        }}
+      >
+        {row.cells[index]}
+      </View>
+    );
+  };
+
   return (
     <View
       onLayout={(e: LayoutChangeEvent) => setTableW(e.nativeEvent.layout.width)}
@@ -567,6 +638,11 @@ export function StickyTable({
               label={pinnedCol.label}
               accessibilityLabel={pinnedCol.accessibilityLabel}
               width={cellWidth}
+              markEdge={pinnedCol.markEdge}
+              isCurrent={pinnedCol.key === currentColumnKey}
+              height={resolvedHeaderHeight}
+              onPress={onColumnPress ? () => onColumnPress(pinnedCol.key) : undefined}
+              onLongPress={onColumnLongPress ? () => onColumnLongPress(pinnedCol.key) : undefined}
               onUnpin={onTogglePin ? () => onTogglePin(pinnedCol.key) : undefined}
               onHeight={(textHeight) => measureLabel(`header:${pinnedCol.key}`, textHeight)}
             />
@@ -616,8 +692,9 @@ export function StickyTable({
                 }}
               >
                 <Pressable
-                  disabled={!r.onLabelPress}
+                  disabled={!r.onLabelPress && !onRowLongPress}
                   onPress={r.onLabelPress}
+                  onLongPress={onRowLongPress ? () => { selectionTap(); onRowLongPress(r.key); } : undefined}
                   accessibilityRole={r.onLabelPress ? "link" : undefined}
                   accessibilityLabel={r.accessibilityLabel ?? r.label}
                   style={(state) => [
@@ -626,6 +703,7 @@ export function StickyTable({
                     // plus its own padding, so hovering a two-line row lit a
                     // band floating inside it.
                     { width: headWidth, alignSelf: "stretch", alignItems: "flex-start", paddingVertical: spacing.xs },
+                    r.markEdge ? { borderLeftWidth: 3, borderLeftColor: r.markEdge } : null,
                     cellCenter,
                     interactionSurface(palette, state, { enabled: Boolean(r.onLabelPress) }),
                   ]}
@@ -648,7 +726,7 @@ export function StickyTable({
                     </View>
                   ) : null}
                 </Pressable>
-                {pinnedCol ? <View style={{ width: cellWidth, justifyContent: "center" }}>{r.cells[pinnedIndex]}</View> : null}
+                {pinnedCol ? bodyCell(pinnedCol, r) : null}
               </View>
             ))}
           </View>
@@ -686,24 +764,7 @@ export function StickyTable({
                     borderColor: palette.border,
                   }}
                 >
-                  {scrollCols.map((c) => {
-                    const idx = colIndexByKey.get(c.key)!;
-                    return (
-                      <View
-                        key={c.key}
-                        style={{
-                          width: cellWidth,
-                          justifyContent: "center",
-                          backgroundColor: c.key === currentColumnKey ? palette.primarySoft + "2E" : "transparent",
-                          borderLeftWidth: c.key === currentColumnKey ? 1 : 0,
-                          borderRightWidth: c.key === currentColumnKey ? 1 : 0,
-                          borderColor: palette.primary + "70",
-                        }}
-                      >
-                        {r.cells[idx]}
-                      </View>
-                    );
-                  })}
+                  {scrollCols.map((c) => bodyCell(c, r))}
                   {trailingSpacer > 0 ? <View style={{ width: trailingSpacer }} /> : null}
                 </View>
               ))}
@@ -715,60 +776,125 @@ export function StickyTable({
   );
 }
 
+/**
+ * The pinned column's header, in the fixed left rail.
+ *
+ * It carries the SAME two actions as a scrolling header (`headerCell`): the
+ * label runs the column's own action, and the pin mark beside it toggles the
+ * pin. Collapsing both into a single "unpin" Pressable is what made pinning
+ * subtract an ability — a pinned month could no longer be opened from its
+ * header, a pinned item could no longer open its breakdown, and the only way
+ * back to either was to unpin first. Pinning fixes a column in place; it does
+ * not change what the column can do.
+ */
 function PinnedHeader({
   label,
   accessibilityLabel,
   width,
+  height,
+  markEdge,
+  isCurrent,
+  onPress,
+  onLongPress,
   onUnpin,
   onHeight,
 }: {
   label: string;
   accessibilityLabel?: string;
   width: number;
+  /** The measured header height, so a pinned header is exactly as tall as a
+   *  scrolling one. Without it the two differed by the header row's own
+   *  hairline and the whole header moved 1px when a column was pinned. */
+  height: number;
+  markEdge?: string;
+  isCurrent: boolean;
+  /** The column's own action (open the month, open the breakdown). */
+  onPress?: () => void;
+  onLongPress?: () => void;
   onUnpin?: () => void;
   onHeight: (textHeight: number) => void;
 }) {
   const { palette } = useTheme();
   const compactHeader = width < 104;
+  const chrome = headerChrome(palette, { isCurrent, markEdge });
+  // With no column action to preserve, the whole header stays the unpin
+  // target — the behaviour a pin-only table always had.
+  const labelAction = onPress ?? onUnpin;
+  const separateUnpin = Boolean(onPress && onUnpin);
   return (
-    <Pressable
-      disabled={!onUnpin}
-      onPress={onUnpin ? () => { selectionTap(); onUnpin(); } : undefined}
-      accessibilityRole={onUnpin ? "button" : undefined}
-      accessibilityLabel={onUnpin ? tr.a11y.unpinColumn(accessibilityLabel ?? label) : undefined}
-      style={(state) => ({
+    <View
+      style={{
         width,
+        height,
         justifyContent: "center",
-        paddingLeft: compactHeader ? spacing.xs : STICKY_MARKER_W,
-        paddingRight: compactHeader ? STICKY_MARKER_W - 6 : STICKY_MARKER_W,
-        paddingVertical: spacing.xs,
-        alignItems: "center",
-        ...interactionSurface(palette, state, { enabled: Boolean(onUnpin) }),
-      })}
+        borderBottomWidth: chrome.borderBottomWidth,
+        borderBottomColor: chrome.borderBottomColor,
+      }}
     >
-      <Text
-        testID="table-column-label"
-        accessibilityLabel={accessibilityLabel ?? label}
-        maxFontSizeMultiplier={maxFontScale.measuredBox}
-        numberOfLines={LABEL_MAX_LINES}
-        ellipsizeMode="tail"
-        style={[
-          type.label,
-          {
-            color: palette.primaryText,
-            fontSize: compactHeader ? type.small.fontSize : type.label.fontSize,
-            textAlign: "center",
-            minWidth: 0,
-            maxWidth: "100%",
-          },
-        ]}
-        onLayout={(event) => onHeight(event.nativeEvent.layout.height)}
+      <Pressable
+        disabled={!labelAction && !onLongPress}
+        onPress={labelAction ? () => { if (!onPress) selectionTap(); labelAction(); } : undefined}
+        onLongPress={onLongPress ? () => { selectionTap(); onLongPress(); } : undefined}
+        accessibilityRole={labelAction ? "button" : undefined}
+        accessibilityLabel={
+          labelAction
+            ? onPress
+              ? accessibilityLabel ?? label
+              : tr.a11y.unpinColumn(accessibilityLabel ?? label)
+            : undefined
+        }
+        style={(state) => ({
+          flex: 1,
+          alignSelf: "stretch",
+          justifyContent: "center",
+          paddingLeft: compactHeader ? spacing.xs : STICKY_MARKER_W,
+          paddingRight: compactHeader ? STICKY_MARKER_W - 6 : STICKY_MARKER_W,
+          paddingVertical: spacing.xs,
+          alignItems: "center",
+          ...interactionSurface(palette, state, { enabled: Boolean(labelAction) }),
+        })}
       >
-        {softWrapLabel(label, width < 80 ? 8 : width < 104 ? 10 : 12)}
-      </Text>
+        <Text
+          testID="table-column-label"
+          accessibilityLabel={accessibilityLabel ?? label}
+          maxFontSizeMultiplier={maxFontScale.measuredBox}
+          numberOfLines={LABEL_MAX_LINES}
+          ellipsizeMode="tail"
+          style={[
+            type.label,
+            {
+              color: chrome.labelColor,
+              fontSize: compactHeader ? type.small.fontSize : type.label.fontSize,
+              textAlign: "center",
+              minWidth: 0,
+              maxWidth: "100%",
+            },
+          ]}
+          onLayout={(event) => onHeight(event.nativeEvent.layout.height)}
+        >
+          {softWrapLabel(label, width < 80 ? 8 : width < 104 ? 10 : 12)}
+        </Text>
+      </Pressable>
       <View style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: STICKY_MARKER_W, alignItems: "center", justifyContent: "center" }}>
-        <Pin accessible={false} size={11} color={palette.primary} fill={palette.primary} />
+        {separateUnpin && onUnpin ? (
+          <Pressable
+            onPress={() => { selectionTap(); onUnpin(); }}
+            accessibilityRole="button"
+            accessibilityLabel={tr.a11y.unpinColumn(accessibilityLabel ?? label)}
+            style={(state) => ({
+              width: STICKY_MARKER_W,
+              alignSelf: "stretch",
+              alignItems: "center",
+              justifyContent: "center",
+              ...interactionSurface(palette, state),
+            })}
+          >
+            <Pin accessible={false} size={11} color={palette.primary} fill={palette.primary} />
+          </Pressable>
+        ) : (
+          <Pin accessible={false} size={11} color={palette.primary} fill={palette.primary} />
+        )}
       </View>
-    </Pressable>
+    </View>
   );
 }
