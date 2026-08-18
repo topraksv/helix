@@ -163,20 +163,39 @@ export function findLate(expected: ExpectedPaymentLike[], today: ISODate): Expec
   return expected.filter((e) => e.status === "pending" && e.dueDate < today);
 }
 
-/** Auto-pay items due on/before today are auto-confirmed (user can revert). */
+/**
+ * Auto-pay items due on/before today are auto-confirmed (user can revert).
+ *
+ * Auto-pay automates the billing dates a rule LIVES THROUGH; it never
+ * back-fills one that already passed when the rule was written down. Saving a
+ * rule is a statement about a schedule, not a statement that money has moved,
+ * and `subscription-form.tsx` defaults `nextDueDate` to today whenever the
+ * billing day is today — so an unguarded `dueDate <= today` confirmed a
+ * realized expense the instant an auto-pay subscription was created, and the
+ * current balance dropped by its amount before anything had been paid
+ * (spec §2.6, §2.7: the actual balance is confirmed money only).
+ *
+ * Occurrences on or before the creation day stay pending, so they remain
+ * visible as an obligation, count toward the projection, and are one tap from
+ * confirmed — rather than being asserted as spent on the user's behalf.
+ *
+ * `autoPayRules` maps an auto-pay rule's id to the day it was created. A rule
+ * whose creation day is unknown (absent from the map's value, e.g. a corrupt
+ * row) keeps the documented behavior: the guard exists to stop same-day
+ * back-fill, not to silently disable a user's automation.
+ */
 export function findAutoConfirmable(
   expected: ExpectedPaymentLike[],
-  autoPayRefIds: Set<string>,
+  autoPayRules: ReadonlyMap<string, ISODate | null>,
   today: ISODate,
 ): ExpectedPaymentLike[] {
-  return expected.filter(
-    (e) =>
-      e.status === "pending" &&
-      e.dueDate <= today &&
-      e.kind === "subscription" &&
-      e.amountIsEstimated !== true &&
-      autoPayRefIds.has(e.refId),
-  );
+  return expected.filter((e) => {
+    if (e.status !== "pending" || e.dueDate > today) return false;
+    if (e.kind !== "subscription" || e.amountIsEstimated === true) return false;
+    if (!autoPayRules.has(e.refId)) return false;
+    const createdDay = autoPayRules.get(e.refId) ?? null;
+    return createdDay == null || e.dueDate > createdDay;
+  });
 }
 
 /** Reminder window check: due within `days` days from today (inclusive). */

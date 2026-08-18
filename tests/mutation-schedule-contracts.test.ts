@@ -137,10 +137,10 @@ describe("mutation-sensitive expected-item contract", () => {
       expected({ id: "today", dueDate: "2026-07-18" }),
       expected({ id: "income", dueDate: "2026-07-18", kind: "recurring_income" }),
       expected({ id: "estimated", dueDate: "2026-07-18", amountIsEstimated: true }),
-    ], new Set(["s"]), "2026-07-18").map((row) => row.id)).toEqual(["today"]);
+    ], new Map([["s", "2026-07-01"]]), "2026-07-18").map((row) => row.id)).toEqual(["today"]);
     expect(findAutoConfirmable([
       expected({ id: "late", dueDate: "2026-07-17", status: "late" }),
-    ], new Set(["s"]), "2026-07-18")).toEqual([]);
+    ], new Map([["s", "2026-07-01"]]), "2026-07-18")).toEqual([]);
     expect(isDueWithin(expected({ dueDate: "2026-07-18" }), "2026-07-18", 0)).toBe(true);
     expect(isDueWithin(expected({ dueDate: "2026-07-19" }), "2026-07-18", 0)).toBe(false);
     expect(isDueWithin(expected({ dueDate: "2026-07-17" }), "2026-07-18", 1)).toBe(false);

@@ -2,7 +2,7 @@ import { getSqliteAsync } from "../../db/client";
 import { createSerialQueue } from "../../domain/serial-queue";
 import { deterministicId, naturalKeys } from "../../db/ids";
 import { fromDbShape, nowIso, softDelete, writeRows, writeRowsValidated, writeSetting, type RowWrite } from "../../db/mutations";
-import { todayISO, type ISODate } from "../../domain/dates";
+import { localDayOfTimestamp, todayISO, type ISODate } from "../../domain/dates";
 import { findAutoConfirmable, findLate, generateExpected } from "../../domain/expected";
 import type { ExpectedPaymentLike } from "../../domain/types";
 import { isValidCardCycle, statementForDueDate, statementForPurchase, type CardStatementPeriod } from "../../domain/card-statements";
@@ -374,10 +374,12 @@ async function runMaintenanceInner(userId: string): Promise<void> {
     currency: r.currency,
     status: r.status as ExpectedPaymentLike["status"],
   }));
-  const autoPayIds = new Set(
+  // refId → the day the rule was written down. `findAutoConfirmable` needs it
+  // to tell a billing date the rule lived through from one it was created on.
+  const autoPayRules = new Map<string, ISODate | null>(
     subs
       .filter((s) => Boolean(s.auto_pay) && Boolean(s.is_self) && s.amount_mode !== "variable")
-      .map((s) => s.id as string),
+      .map((s) => [s.id as string, localDayOfTimestamp(s.created_at)]),
   );
   const subscriptionById = new Map(subs.map((subscription) => [subscription.id as string, subscription]));
   const selfPersonId = (
@@ -386,7 +388,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       [userId],
     )
   )?.id;
-  for (const item of findAutoConfirmable(pendingLike, autoPayIds, today)) {
+  for (const item of findAutoConfirmable(pendingLike, autoPayRules, today)) {
     if (selfPersonId) {
       const sub = subscriptionById.get(item.refId);
       try {
@@ -403,7 +405,7 @@ async function runMaintenanceInner(userId: string): Promise<void> {
       }
     }
   }
-  const stillPending = pendingLike.filter((p) => !autoPayIds.has(p.refId) || p.kind !== "subscription");
+  const stillPending = pendingLike.filter((p) => !autoPayRules.has(p.refId) || p.kind !== "subscription");
   const late = findLate(stillPending, today);
   if (late.length > 0) {
     const byId = new Map(pendingRows.map((r) => [r.id, r]));

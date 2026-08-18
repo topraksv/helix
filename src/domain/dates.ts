@@ -125,6 +125,27 @@ export function todayISO(now: Date = new Date()): ISODate {
 }
 
 /**
+ * The LOCAL calendar day a stored UTC timestamp falls on.
+ *
+ * Synced rows stamp `created_at`/`updated_at` with `new Date().toISOString()`,
+ * but every date these engines compare against is a local calendar date from
+ * `todayISO`. Slicing the first ten characters reads the UTC day instead,
+ * which is a day behind the local one for three hours of every day in Türkiye
+ * (UTC+3) — enough to make a same-day comparison silently wrong after local
+ * midnight. Returns null for absent or unparseable input so callers can decide
+ * what an unknown day means rather than inheriting a wrong one.
+ */
+export function localDayOfTimestamp(timestamp: unknown): ISODate | null {
+  // The type check earns its place: a number is a timestamp `Date` accepts and
+  // this contract does not. Everything else — an empty string included — is
+  // already an Invalid Date, so a second guard for it would only be a branch no
+  // input can reach.
+  if (typeof timestamp !== "string") return null;
+  const parsed = new Date(timestamp);
+  return Number.isNaN(parsed.getTime()) ? null : todayISO(parsed);
+}
+
+/**
  * Pick the day used by a transaction created from a monthly table cell.
  * The current month is anchored to today so it affects the current balance;
  * selecting another month is itself explicit historical/future intent.

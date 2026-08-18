@@ -151,13 +151,43 @@ describe("state transitions", () => {
       expected({ id: "auto-future", refId: "sub-auto", dueDate: "2026-07-20" }),
       expected({ id: "manual-due", refId: "sub-manual", dueDate: "2026-07-05" }),
     ];
-    const confirmable = findAutoConfirmable(items, new Set(["sub-auto"]), "2026-07-05");
+    const confirmable = findAutoConfirmable(items, new Map([["sub-auto", "2026-06-01"]]), "2026-07-05");
     expect(confirmable.map((e) => e.id)).toEqual(["auto-due"]);
   });
 
   it("never auto-confirms a variable subscription before its actual amount is entered", () => {
     const items = [expected({ refId: "sub-auto", amountIsEstimated: true, dueDate: "2026-07-05" })];
-    expect(findAutoConfirmable(items, new Set(["sub-auto"]), "2026-07-05")).toEqual([]);
+    expect(findAutoConfirmable(items, new Map([["sub-auto", "2026-06-01"]]), "2026-07-05")).toEqual([]);
+  });
+
+  /**
+   * Saving a rule is not paying a bill. Without this, an auto-pay subscription
+   * created on its own billing day confirmed a realized expense immediately
+   * and the current balance fell by its amount before any money moved.
+   */
+  it("never auto-confirms a billing date the rule was only created on", () => {
+    const items = [expected({ id: "same-day", refId: "sub-auto", dueDate: "2026-07-05" })];
+    expect(findAutoConfirmable(items, new Map([["sub-auto", "2026-07-05"]]), "2026-07-05")).toEqual([]);
+  });
+
+  it("never auto-confirms a billing date that predates the rule", () => {
+    const items = [expected({ id: "before", refId: "sub-auto", dueDate: "2026-07-05" })];
+    expect(findAutoConfirmable(items, new Map([["sub-auto", "2026-07-09"]]), "2026-07-10")).toEqual([]);
+  });
+
+  it("auto-confirms the first billing date that arrives after the rule exists", () => {
+    const items = [expected({ id: "next-cycle", refId: "sub-auto", dueDate: "2026-08-05" })];
+    expect(
+      findAutoConfirmable(items, new Map([["sub-auto", "2026-07-05"]]), "2026-08-05").map((e) => e.id),
+    ).toEqual(["next-cycle"]);
+  });
+
+  /** A corrupt row must not silently switch a user's automation off. */
+  it("keeps documented auto-pay behavior when the creation day is unknown", () => {
+    const items = [expected({ id: "unknown-origin", refId: "sub-auto", dueDate: "2026-07-05" })];
+    expect(
+      findAutoConfirmable(items, new Map([["sub-auto", null]]), "2026-07-05").map((e) => e.id),
+    ).toEqual(["unknown-origin"]);
   });
 });
 

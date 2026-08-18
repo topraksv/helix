@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { addDaysISO, todayISO } from "../src/domain/dates";
+import { addDaysISO, localDayOfTimestamp, todayISO } from "../src/domain/dates";
 import { formatMinor, parseTRAmountToMinor } from "../src/domain/money";
 import { dayIntervalDatesInRange } from "../src/domain/recurrence";
 
@@ -24,6 +24,21 @@ describe("Turkish locale and calendar boundaries", () => {
     expect(todayISO(instant)).toBe("2026-03-28");
     process.env.TZ = "Europe/Istanbul";
     expect(todayISO(instant)).toBe("2026-03-29");
+  });
+
+  /**
+   * `created_at` is UTC; every date compared against it is local. The
+   * subscription auto-pay guard turns on this conversion — reading the UTC day
+   * would let an auto-pay rule created after local midnight confirm its own
+   * creation-day charge and drop the balance on the spot.
+   */
+  it("reads a stored UTC timestamp as the user's local calendar day", () => {
+    process.env.TZ = "Europe/Istanbul";
+    expect(localDayOfTimestamp("2026-08-18T22:30:00.000Z")).toBe("2026-08-19");
+    process.env.TZ = "UTC";
+    expect(localDayOfTimestamp("2026-08-18T22:30:00.000Z")).toBe("2026-08-18");
+    process.env.TZ = "America/New_York";
+    expect(localDayOfTimestamp("2026-08-19T01:30:00.000Z")).toBe("2026-08-18");
   });
 
   it("keeps calendar-day arithmetic stable at leap and DST boundaries", () => {

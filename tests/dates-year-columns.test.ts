@@ -7,6 +7,7 @@ import {
   dateForMonthEntry,
   daysBetweenISO,
   daysInMonth,
+  localDayOfTimestamp,
   firstDayOf,
   isISODate,
   isMonthDay,
@@ -182,5 +183,32 @@ describe("orderLedgerCategories", () => {
       "market",
       "bills",
     ]);
+  });
+});
+
+/**
+ * Reading a stored UTC instant as a local calendar day.
+ *
+ * The timezone-dependent half of this contract lives in
+ * `locale-timezone.test.ts`, which the mutation runner excludes because its
+ * workers do not reliably apply a mid-test `TZ` change. What is deterministic
+ * — what counts as an unusable timestamp — belongs here, where it is mutated.
+ * An unknown day is a real answer: callers such as the auto-pay guard read it
+ * as "keep the documented behaviour" rather than as a date.
+ */
+describe("localDayOfTimestamp", () => {
+  it("reads a real timestamp as a calendar day", () => {
+    expect(localDayOfTimestamp("2026-08-18T09:00:00.000Z")).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
+  });
+
+  it("reports an unknown day rather than inventing one", () => {
+    expect(localDayOfTimestamp(null)).toBeNull();
+    expect(localDayOfTimestamp(undefined)).toBeNull();
+    expect(localDayOfTimestamp("")).toBeNull();
+    expect(localDayOfTimestamp("not a timestamp")).toBeNull();
+    expect(localDayOfTimestamp("2026-13-45T99:00:00.000Z")).toBeNull();
+    // A number is a plausible timestamp everywhere except this contract.
+    expect(localDayOfTimestamp(1_755_000_000_000)).toBeNull();
+    expect(localDayOfTimestamp({ createdAt: "2026-08-18" })).toBeNull();
   });
 });
