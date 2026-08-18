@@ -19,8 +19,7 @@ import type { MonthKey } from "./dates";
 export const MATRIX_COLOR_TOKENS = ["neutral", "info", "success", "warning", "critical"] as const;
 export type MatrixColorToken = (typeof MATRIX_COLOR_TOKENS)[number];
 
-export const MATRIX_COLOR_SCOPES = ["row", "column", "cell"] as const;
-export type MatrixColorScope = (typeof MATRIX_COLOR_SCOPES)[number];
+export type MatrixColorScope = "row" | "column" | "cell";
 
 export function isMatrixColorToken(value: unknown): value is MatrixColorToken {
   return typeof value === "string" && (MATRIX_COLOR_TOKENS as readonly string[]).includes(value);

@@ -113,7 +113,7 @@ export interface SubscriptionCostLike {
 }
 
 /** One rule's price moving from one figure to another on a known day. */
-export interface PriceChange {
+interface PriceChange {
   subscriptionId: string;
   name: string;
   currency: string;

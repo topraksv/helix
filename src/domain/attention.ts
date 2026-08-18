@@ -21,8 +21,8 @@ import { addDaysISO, daysBetweenISO, type ISODate } from "./dates";
 import type { Minor } from "./money";
 
 /** What kind of attention an item wants. Ordering follows this list. */
-export const ATTENTION_KINDS = ["late", "dueToday", "trialEnding", "driftedBalance", "finalInstallment", "upcoming"] as const;
-export type AttentionKind = (typeof ATTENTION_KINDS)[number];
+const ATTENTION_KINDS = ["late", "dueToday", "trialEnding", "driftedBalance", "finalInstallment", "upcoming"] as const;
+type AttentionKind = (typeof ATTENTION_KINDS)[number];
 
 /** Where an item sits in the inbox. One group per decision the owner makes. */
 export type AttentionGroup = "overdue" | "today" | "soon" | "watch";

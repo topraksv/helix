@@ -551,21 +551,21 @@ test("a contextual colour marks a cell, survives a pin, and is announced not mer
   const sheet = page.getByTestId("matrix-color-sheet");
   await expect(sheet).toBeVisible();
   // Five named, theme-owned choices — not a colour wheel.
-  for (const name of ["İşaretli", "Bilgi", "İyi gidiyor", "Göz at", "Sorunlu"]) {
+  for (const name of ["İşaretledim", "Açıklaması var", "Doğruladım", "Kontrol etmeliyim", "Hatalı görünüyor"]) {
     await expect(sheet.getByRole("radio", { name: new RegExp(name, "u") })).toBeVisible();
   }
   await page.getByTestId("matrix-color-warning").click();
   await expect(sheet).toHaveCount(0);
 
   // Colour is never the only carrier: the mark is in the accessible name.
-  const marked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Göz at olarak işaretli`, "u") });
+  const marked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Kontrol etmeliyim olarak işaretli`, "u") });
   await expect(marked).toBeVisible();
 
   // Pin that month. The mark, the cell's editability and the header's own
   // action must all survive being moved into the fixed rail.
   await page.getByRole("button", { name: `${month} kolonunu sabitle`, exact: true }).click();
   await expect(page.getByRole("button", { name: `${month} kolonunun sabitlemesini kaldır`, exact: true })).toBeVisible();
-  const pinnedMarked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Göz at olarak işaretli`, "u") });
+  const pinnedMarked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Kontrol etmeliyim olarak işaretli`, "u") });
   await expect(pinnedMarked).toBeVisible();
   await pinnedMarked.click();
   await expect(page).toHaveURL(/\/cell-editor\?/u);
@@ -576,7 +576,7 @@ test("a contextual colour marks a cell, survives a pin, and is announced not mer
   await longPress(page, page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, `, "u") }).first());
   await expect(page.getByTestId("matrix-color-sheet")).toBeVisible();
   await page.getByTestId("matrix-color-clear").click();
-  await expect(page.getByRole("button", { name: new RegExp("Göz at olarak işaretli", "u") })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: new RegExp("Kontrol etmeliyim olarak işaretli", "u") })).toHaveCount(0);
 
   await assertNoRuntimeErrors(errors, testInfo);
 });

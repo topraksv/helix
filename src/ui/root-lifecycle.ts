@@ -174,7 +174,7 @@ export function useWorkspaceMaintenance(ready: boolean, userId: string | null, u
         // those, so they would occupy the device for ever. It runs here rather
         // than in `runMaintenance` because the filesystem is a native service
         // and the data layer stays loadable without one.
-        pruneOrphanAttachmentFiles(await liveAttachmentNames(userId));
+        await pruneOrphanAttachmentFiles(await liveAttachmentNames(userId));
       })
         .catch((error) => devWarning("maintenance", String(error)))
         .finally(() => void syncNow(userId));

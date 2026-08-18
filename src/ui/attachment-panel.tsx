@@ -7,14 +7,13 @@
  * offering an open button that cannot work.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import * as Sharing from "expo-sharing";
 import Paperclip from "lucide-react-native/icons/paperclip";
 import { addAttachment, AttachmentRejectedError, deleteAttachment, restoreAttachment, type AttachmentRow } from "../data/repo";
-import { ATTACHMENT_MIME_TYPES, MAX_ATTACHMENT_BYTES, type AttachmentRejection } from "../domain/attachments";
-import { attachmentsSupported, localAttachment, storeAttachmentBytes } from "../services/attachment-store";
+import { ATTACHMENT_MIME_TYPES, type AttachmentRejection } from "../domain/attachments";
+import { attachmentsSupported, openAttachment, presentAttachments, storeAttachmentBytes } from "../services/attachment-store";
 import { devError } from "../services/logger";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
@@ -40,6 +39,23 @@ export function AttachmentPanel({
   const undo = useUndo();
   const [busy, setBusy] = useState(false);
   const supported = attachmentsSupported();
+  /**
+   * Which documents this device actually holds.
+   *
+   * Asked asynchronously because the browser's store is asynchronous, and
+   * re-asked whenever the list changes. Until it answers, nothing claims to be
+   * openable — an open button that appears and then fails is worse than one
+   * that appears a moment late.
+   */
+  const [present, setPresent] = useState<ReadonlySet<string>>(new Set());
+  const storedNames = attachments.map((attachment) => attachment.storedName).join("|");
+  useEffect(() => {
+    let cancelled = false;
+    void presentAttachments(storedNames === "" ? [] : storedNames.split("|"))
+      .then((found) => { if (!cancelled) setPresent(found); })
+      .catch((error) => devError("attachment.presence", error));
+    return () => { cancelled = true; };
+  }, [storedNames]);
 
   const pick = async () => {
     if (busy) return;
@@ -59,7 +75,10 @@ export function AttachmentPanel({
         // The repository decides the destination name and hands it back here;
         // it never receives a path to read from, so nothing outside the
         // picker's own result can be copied into app storage.
-        copyInto: (storedName) => storeAttachmentBytes(asset.uri, storedName),
+        // The repository decides the destination name and hands it back; it
+        // never receives a path to read from, so nothing outside the picker's
+        // own result can be copied into app storage.
+        copyInto: (storedName) => storeAttachmentBytes(asset, storedName),
       });
       scheduleSync(userId);
     } catch (error) {
@@ -75,15 +94,11 @@ export function AttachmentPanel({
   };
 
   const open = async (attachment: AttachmentRow) => {
-    const file = localAttachment(attachment.storedName);
-    if (!file) {
-      void appAlert(tr.attachments.unavailable, tr.errors.title);
-      return;
-    }
     try {
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri, { mimeType: attachment.mimeType });
+      await openAttachment(attachment.storedName, attachment.mimeType);
     } catch (error) {
       devError("attachment.open", error);
+      void appAlert(tr.attachments.unavailable, tr.errors.title);
     }
   };
 
@@ -119,7 +134,7 @@ export function AttachmentPanel({
         <Body muted testID="attachment-empty">{tr.attachments.empty}</Body>
       ) : (
         attachments.map((attachment) => {
-          const present = localAttachment(attachment.storedName) != null;
+          const held = present.has(attachment.storedName);
           return (
             <Card key={attachment.id} testID={`attachment-${attachment.id}`}>
               <Spread style={{ alignItems: "flex-start", gap: spacing.sm }}>
@@ -131,7 +146,7 @@ export function AttachmentPanel({
                     accessibilityLabel={tr.attachments.rowA11y(
                       attachment.fileName,
                       tr.attachments.kinds[attachment.kind],
-                      present ? "" : tr.attachments.unavailable,
+                      held ? "" : tr.attachments.unavailable,
                     )}
                     style={{ marginTop: spacing.xs }}
                   >
@@ -142,7 +157,7 @@ export function AttachmentPanel({
                   </Body>
                   {/* A device that did not add the file does not have it, and
                       the row says so rather than offering a dead button. */}
-                  {present ? null : (
+                  {held ? null : (
                     <Body muted testID={`attachment-missing-${attachment.id}`} style={{ marginTop: 2 }}>
                       {tr.attachments.unavailable}
                     </Body>
@@ -150,7 +165,7 @@ export function AttachmentPanel({
                 </View>
               </Spread>
               <Row gap={spacing.sm} style={{ marginTop: spacing.sm, flexWrap: "wrap" }}>
-                {present ? (
+                {held ? (
                   <View>
                     <Button size="sm" variant="secondary" label={tr.attachments.open} onPress={() => void open(attachment)} />
                   </View>
@@ -187,6 +202,3 @@ export function AttachmentPanel({
     </View>
   );
 }
-
-/** Bytes a picked document may occupy, restated for the picker's own guard. */
-export const ATTACHMENT_SIZE_LIMIT = MAX_ATTACHMENT_BYTES;

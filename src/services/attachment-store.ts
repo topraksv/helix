@@ -4,19 +4,18 @@
  * The row that describes an attachment syncs; the file does not. That is not a
  * limitation being worked around, it is the design — the sync pipeline carries
  * PostgREST JSON, and pushing documents through it would replicate every
- * receipt to every device and put them in a place the owner did not choose.
+ * receipt to every device and put them somewhere the owner did not choose.
  *
  * The consequence is stated openly rather than hidden: a device that did not
- * add the file does not have it, `localAttachment` returns null there, and the
- * UI says so instead of showing a broken open button.
+ * add the file does not have it, `presentAttachments` omits it there, and the
+ * UI says so instead of showing an open button that cannot work.
  *
- * `File`/`Directory` are native-only in expo-file-system 19 (the web build has
- * no sandbox to put them in), so every function here reports "not available"
- * on web rather than pretending a browser is a device with a filesystem.
+ * Native uses the app sandbox; `attachment-store.web.ts` is the browser's
+ * equivalent and keeps this exact interface.
  */
 
-import { Platform } from "react-native";
 import { Directory, File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { isStoredAttachmentName } from "../domain/attachments";
 import { devWarning } from "./logger";
 
@@ -24,7 +23,7 @@ import { devWarning } from "./logger";
 const ATTACHMENT_DIRECTORY = "attachments";
 
 export function attachmentsSupported(): boolean {
-  return Platform.OS !== "web";
+  return true;
 }
 
 function directory(): Directory {
@@ -47,63 +46,49 @@ function resolve(storedName: string): File | null {
 }
 
 /** Copy a picked file into app storage under a name the repository chose. */
-export async function storeAttachmentBytes(sourceUri: string, storedName: string): Promise<void> {
-  if (!attachmentsSupported()) throw new Error("Attachments are not available on this platform");
+export async function storeAttachmentBytes(source: { uri: string }, storedName: string): Promise<void> {
   const destination = resolve(storedName);
   if (!destination) throw new Error("Refusing to store an attachment under an unsafe name");
-  const source = new File(sourceUri);
-  source.copy(destination);
+  new File(source.uri).copy(destination);
 }
 
-/** The local file for a stored attachment, or null when this device lacks it. */
-export function localAttachment(storedName: string): File | null {
-  if (!attachmentsSupported()) return null;
-  try {
-    const file = resolve(storedName);
-    return file?.exists ? file : null;
-  } catch (error) {
-    devWarning("attachment.resolve", String(error));
-    return null;
+/** Which of these documents this device actually holds. */
+export async function presentAttachments(storedNames: readonly string[]): Promise<Set<string>> {
+  const present = new Set<string>();
+  for (const name of storedNames) {
+    try {
+      if (resolve(name)?.exists) present.add(name);
+    } catch (error) {
+      devWarning("attachment.resolve", String(error));
+    }
   }
+  return present;
 }
 
-/**
- * Remove a stored file.
- *
- * Never throws: the row is already tombstoned by the time this runs, and a
- * file that cannot be removed is collectable garbage rather than a failure the
- * owner can do anything about. The alternative — surfacing it — would make a
- * successful delete look broken.
- */
-export function removeAttachmentBytes(storedName: string): void {
-  if (!attachmentsSupported()) return;
-  try {
-    const file = resolve(storedName);
-    if (file?.exists) file.delete();
-  } catch (error) {
-    devWarning("attachment.remove", String(error));
-  }
+/** Hand the document to the OS so the owner can view or save it. */
+export async function openAttachment(storedName: string, mimeType: string): Promise<void> {
+  const file = resolve(storedName);
+  if (!file?.exists) throw new Error("Attachment is not on this device");
+  if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri, { mimeType });
 }
 
 /**
  * Delete stored files that no live row names any more.
  *
- * Files can outlive their rows: an add that was interrupted after the copy, a
- * tombstone that has since been pruned, or a restore that brought rows from a
- * device whose files never travelled. Nothing else would ever remove those, so
- * they would occupy the device for ever.
+ * Files can outlive their rows: an add interrupted after the copy, a delete
+ * the owner did not undo, or a restore that brought rows from a device whose
+ * files never travelled. Nothing else removes those, so they would occupy the
+ * device for ever.
  */
-export function pruneOrphanAttachmentFiles(liveNames: ReadonlySet<string>): number {
-  if (!attachmentsSupported()) return 0;
+export async function pruneOrphanAttachmentFiles(liveNames: ReadonlySet<string>): Promise<number> {
   let removed = 0;
   try {
     for (const entry of directory().list()) {
+      if (!(entry instanceof File)) continue;
       const name = entry.name;
       if (typeof name !== "string" || liveNames.has(name)) continue;
-      if (entry instanceof File) {
-        entry.delete();
-        removed += 1;
-      }
+      entry.delete();
+      removed += 1;
     }
   } catch (error) {
     devWarning("attachment.prune", String(error));

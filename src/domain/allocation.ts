@@ -21,7 +21,7 @@ import type { Minor } from "./money";
 /** Basis points: 10000 = 100%. Integers, like every other share here. */
 export const FULL_ALLOCATION_BP = 10_000;
 
-export type AllocationBasis = "cost";
+type AllocationBasis = "cost";
 
 export interface AllocationInput {
   id: string;
@@ -33,7 +33,7 @@ export interface AllocationInput {
   active: boolean;
 }
 
-export interface AllocationRow {
+interface AllocationRow {
   id: string;
   name: string;
   valueMinor: Minor;

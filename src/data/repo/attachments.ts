@@ -21,7 +21,6 @@ import {
   isStoredAttachmentName,
   storedAttachmentName,
   type AttachmentKind,
-  type AttachmentRejection,
 } from "../../domain/attachments";
 import { AttachmentRejectedError } from "./errors";
 
@@ -161,5 +160,3 @@ export async function liveAttachmentNames(userId: string): Promise<Set<string>> 
   );
   return new Set(rows.map((row) => row.stored_name).filter(isStoredAttachmentName));
 }
-
-export type { AttachmentRejection };

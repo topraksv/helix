@@ -254,10 +254,12 @@ test("a ledger row carries its origin, and repeats are offered for review not me
   // Nothing was merged or deleted, and the panel says so.
   await expect(page.getByText(/Helix hiçbirini kendiliğinden silmez/u)).toBeVisible();
 
-  // Opening the flagged row shows the same origin on the record itself.
+  // Opening the flagged row says nothing about its origin, because there is
+  // nothing to say: a hand-entered row is the ordinary case, and labelling it
+  // would bury the two origins that actually matter.
   await page.getByRole("button", { name: "İşlemi Aç", exact: true }).first().click();
   await expect(page).toHaveURL(/\/transaction\?id=/u);
-  await expect(page.getByTestId("transaction-provenance")).toHaveText("Kaynak: Elle girildi");
+  await expect(page.getByTestId("transaction-provenance")).toHaveCount(0);
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -382,6 +384,18 @@ test("a card statement is read locally, reviewed, and only then written", async 
   // Written, and reported as written.
   await expect(page.getByRole("alert").first()).toContainText("2 işlem aktarıldı.");
 
+  // Importing the same statement again recognises every row it already wrote,
+  // which is what the stored identity is FOR: re-downloading a statement and
+  // importing it a second time must not double the ledger.
+  await page.goto("/helix/statement-import");
+  await choosePdf(page, "ekstre.pdf", syntheticStatementPdf([
+    "12.08.2026 MIGROS MARKET 1.234,56",
+    "03.08.2026 TEKNOSA 3/9 500,00",
+  ]));
+  await expect(page.getByText("Bu satır zaten aktarılmış").first()).toBeVisible();
+  // And nothing is pre-selected, so accepting the defaults writes nothing.
+  await expect(page.getByTestId("statement-commit")).toBeDisabled();
+
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
@@ -398,6 +412,50 @@ test("an unreadable statement is refused with a reason instead of guessed at", a
   // A file that is not a PDF at all is a different problem with a different fix.
   await choosePdf(page, "not-a-pdf.pdf", Buffer.from("bu bir pdf degil", "latin1"));
   await expect(page.getByTestId("statement-failure")).toContainText("bir PDF değil");
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * Attaching a document, on the platform the owner is actually using.
+ *
+ * The bytes stay on this device either way — the app sandbox on a phone, the
+ * browser's own private storage here — and the row that describes them is the
+ * only part that syncs. What this proves is that the web is a first-class
+ * place to do it, not a read-only view of what a phone did.
+ */
+test("a receipt can be attached, opened and removed on the web", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await onboard(page);
+
+  await page.getByRole("button", { name: /İşlem Ekle/u }).first().click();
+  await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("120");
+  await pickOption(page, "Kategori", "Market");
+  await page.getByRole("button", { name: "Kaydet", exact: true }).click();
+  await page.getByRole("alert").first().getByRole("button", { name: "Düzenle", exact: true }).click();
+  await expect(page).toHaveURL(/\/transaction\?id=/u);
+
+  const panel = page.getByTestId("attachment-panel");
+  await expect(panel).toBeVisible();
+  await expect(page.getByTestId("attachment-empty")).toBeVisible();
+
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByTestId("attachment-add").click();
+  await (await chooser).setFiles({
+    name: "fatura.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test", "latin1"),
+  });
+
+  await expect(panel).toContainText("fatura.pdf");
+  // Held on this device, so it offers to open it rather than explaining why it cannot.
+  await expect(panel.getByRole("button", { name: "Aç", exact: true })).toBeVisible();
+  await expect(page.getByTestId("attachment-empty")).toHaveCount(0);
+
+  // Removing is undoable, because a receipt is not recoverable once gone.
+  await panel.getByRole("button", { name: "Sil", exact: true }).click();
+  await expect(page.getByTestId("attachment-empty")).toBeVisible();
+  await page.getByRole("alert").first().getByRole("button", { name: "Geri Al", exact: true }).click();
+  await expect(panel).toContainText("fatura.pdf");
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
