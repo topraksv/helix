@@ -128,6 +128,26 @@ describe("sensitive UI cover policy", () => {
     expect(notifications).toContain("else {\n    await clearAccountNotifications();\n    await setNotificationDetailsEnabled(false);");
     expect(notifications).toContain("await clearAccountNotifications(true)");
   });
+
+  /**
+   * The tap payload is stored by the OS beside the notification, so it is
+   * subject to the same redaction rule as the visible copy. It may carry an
+   * identity and nothing else: the amount, the rule name and the date all stay
+   * in the body, which `privateNotificationContent` already neutralizes.
+   */
+  it("keeps the notification tap payload to identity, never financial detail", () => {
+    const notifications = readFileSync(join(process.cwd(), "src/services/notifications.ts"), "utf8");
+    expect(notifications).toContain("data: notificationTargetPayload(n.target)");
+    expect(notifications).toContain("privateNotificationTarget(detailsEnabled, notification.target)");
+    // No planned target may be built from a name or an amount.
+    for (const match of notifications.matchAll(/target: \{[^}]*\}/g)) {
+      // `<row>.id` is the only legitimate identity expression: `t.name`,
+      // `f.title` or an amount would otherwise pass as "an id".
+      expect(match[0], "notification target payload").toMatch(
+        /^target: \{ kind: "(expected|subscription|installmentPlan)"(, id: \w+\.id)? \}$/,
+      );
+    }
+  });
 });
 
 /**

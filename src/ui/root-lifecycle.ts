@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
+import * as Notifications from "expo-notifications";
 import * as LocalAuthentication from "expo-local-authentication";
 import { kv } from "../services/kv";
-import { runMaintenance } from "../data/repo";
+import { liveAttachmentNames, runMaintenance } from "../data/repo";
 import { loadRateCache, refreshRates } from "../services/fx-fetch";
 import { connectMarkets, disconnectMarkets, suspendMarkets } from "../services/markets";
 import { rescheduleAll } from "../services/notifications";
+import { pruneOrphanAttachmentFiles } from "../services/attachment-store";
+import { notificationTapRoute } from "../domain/notifications";
 import { devWarning } from "../services/logger";
 import { runSyncSessionTask, syncNow } from "../sync/engine";
 import { useSyncStatus } from "../sync/status";
@@ -164,6 +167,14 @@ export function useWorkspaceMaintenance(ready: boolean, userId: string | null, u
         await runMaintenance(userId);
         if (signal.aborted) return;
         await rescheduleAll(userId);
+        if (signal.aborted) return;
+        // Attachment files can outlive their rows: an add interrupted after the
+        // copy, a delete the owner did not undo, a restore that brought rows
+        // from a device whose files never travelled. Nothing else removes
+        // those, so they would occupy the device for ever. It runs here rather
+        // than in `runMaintenance` because the filesystem is a native service
+        // and the data layer stays loadable without one.
+        pruneOrphanAttachmentFiles(await liveAttachmentNames(userId));
       })
         .catch((error) => devWarning("maintenance", String(error)))
         .finally(() => void syncNow(userId));
@@ -220,5 +231,78 @@ export function useMarketLifecycle(ready: boolean, userId: string | null, unlock
       subscription.remove();
       suspendMarkets();
     };
+  }, [ready, userId, unlocked]);
+}
+
+/**
+ * Open what a tapped reminder was about.
+ *
+ * A local notification used to carry only words: tapping one resumed the app
+ * wherever it had been left, so the payment it named still had to be hunted
+ * for. Each scheduled notification now carries an identity payload and this
+ * routes it (`domain/notifications.ts` decides where; the pathname never comes
+ * from the payload itself).
+ *
+ * Both entry points are covered because they are genuinely different events:
+ * `getLastNotificationResponse` is the tap that LAUNCHED a cold app and has
+ * already happened before any listener could exist, while the subscription
+ * catches taps that arrive while the app is running. Expo's docs pair them for
+ * exactly this reason.
+ *
+ * Gated on an unlocked, signed-in session, so a tap can never route around the
+ * biometric lock. A cold-start tap that arrives locked is still honoured once
+ * `unlocked` turns true — the OS keeps the last response, and this effect
+ * re-runs.
+ *
+ * A handled launch response is then CLEARED. The payload deliberately carries
+ * no user id (it would be an account identifier sitting in OS storage), so a
+ * response the OS keeps replaying is one this hook cannot attribute; clearing
+ * it is what stops a reminder raised under one account from being re-read
+ * after a switch to another. The target screens are user-scoped and redirect
+ * to their list when an id names no live row, so the worst remaining case is a
+ * list screen rather than another account's record.
+ */
+export function useNotificationTapRouting(
+  ready: boolean,
+  userId: string | null,
+  unlocked: boolean,
+  navigate: (route: { pathname: string; params?: Record<string, string> }) => void,
+): void {
+  // The route is read from a ref so a new navigator identity on every render
+  // cannot re-subscribe (and re-deliver) the listener.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  /** One route per response, however many times the effect re-runs. */
+  const handled = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === "web" || !ready || !userId || !unlocked) return;
+    const open = (response: Notifications.NotificationResponse | null, key: string) => {
+      if (!response || handled.current === key) return;
+      // A tap on a custom action button is not a request to open the record.
+      if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+      const route = notificationTapRoute(response.notification.request.content.data);
+      if (!route) return;
+      handled.current = key;
+      // Consume it: an unconsumed launch response is replayed on every later
+      // read, including after an account switch.
+      try {
+        Notifications.clearLastNotificationResponse();
+      } catch (error) {
+        devWarning("notification.clear", String(error));
+      }
+      navigateRef.current(route);
+    };
+
+    try {
+      const launch = Notifications.getLastNotificationResponse();
+      if (launch) open(launch, launch.notification.request.identifier);
+    } catch (error) {
+      devWarning("notification.launch", String(error));
+    }
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      open(response, response.notification.request.identifier);
+    });
+    return () => subscription.remove();
   }, [ready, userId, unlocked]);
 }

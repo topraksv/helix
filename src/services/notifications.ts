@@ -12,7 +12,16 @@ import { addDaysISO, todayISO } from "../domain/dates";
 import { formatMinorCompact } from "../domain/money";
 import { dateLabel, tr } from "../i18n/tr";
 import { loadDevicePreferences, notificationsEnabled, setNotificationDetailsEnabled, setNotificationsEnabled } from "./device-preferences";
-import { boundedScheduledNotifications, createNotificationReplacementQueue, normalizeReminderDays, privateNotificationContent, uniqueNotifications } from "../domain/notifications";
+import {
+  boundedScheduledNotifications,
+  createNotificationReplacementQueue,
+  normalizeReminderDays,
+  notificationTargetPayload,
+  privateNotificationContent,
+  privateNotificationTarget,
+  uniqueNotifications,
+  type NotificationTarget,
+} from "../domain/notifications";
 
 const HORIZON_DAYS = 30;
 /** iOS keeps at most 64 pending local notifications and silently drops the
@@ -100,6 +109,8 @@ interface PlannedNotification {
   date: string; // ISO date; fires at 09:00 local
   title: string;
   body: string;
+  /** What a tap opens. Identity only — never the amount or the name. */
+  target: NotificationTarget;
 }
 
 /** Collect everything worth notifying within the horizon. */
@@ -147,33 +158,40 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
       ? `${tr.subs.estimatedAmount} · ${formatMinorCompact(e.amount_minor, e.currency)}`
       : formatMinorCompact(e.amount_minor, e.currency);
     if (e.direction === "in") {
-      if (e.due_date >= today) planned.push({ date: e.due_date, title: tr.notif.salaryTitle, body: tr.notif.salaryBody(name, amount) });
+      if (e.due_date >= today) {
+        planned.push({ date: e.due_date, title: tr.notif.salaryTitle, body: tr.notif.salaryBody(name, amount), target: { kind: "expected" } });
+      }
       continue;
     }
     // early "is the money ready" reminder
     const earlyIso = addDaysISO(e.due_date, -reminderDays);
     if (earlyIso > today) {
-      planned.push({ date: earlyIso, title: tr.notif.upcomingTitle, body: tr.notif.upcoming(name, dateLabel(e.due_date), amount) });
+      planned.push({ date: earlyIso, title: tr.notif.upcomingTitle, body: tr.notif.upcoming(name, dateLabel(e.due_date), amount), target: { kind: "expected" } });
     }
     if (e.due_date >= today) {
-      planned.push({ date: e.due_date, title: tr.notif.dueTitle, body: tr.notif.dueBody(name, amount) });
+      planned.push({ date: e.due_date, title: tr.notif.dueTitle, body: tr.notif.dueBody(name, amount), target: { kind: "expected" } });
     }
   }
 
   // Trial endings
-  const trials = await sqlite.getAllAsync<{ name: string; trial_end_date: string }>(
-    `SELECT name, trial_end_date FROM subscriptions
+  const trials = await sqlite.getAllAsync<{ id: string; name: string; trial_end_date: string }>(
+    `SELECT id, name, trial_end_date FROM subscriptions
      WHERE user_id = ? AND is_active = 1 AND deleted_at IS NULL
        AND trial_end_date IS NOT NULL AND trial_end_date BETWEEN ? AND ?`,
     [userId, today, horizonIso],
   );
   for (const t of trials) {
-    planned.push({ date: t.trial_end_date, title: tr.notif.trialTitle, body: tr.notif.trialBody(t.name, dateLabel(t.trial_end_date)) });
+    planned.push({
+      date: t.trial_end_date,
+      title: tr.notif.trialTitle,
+      body: tr.notif.trialBody(t.name, dateLabel(t.trial_end_date)),
+      target: { kind: "subscription", id: t.id },
+    });
   }
 
   // Final installments finishing within the horizon
-  const finals = await sqlite.getAllAsync<{ title: string; effective_date: string }>(
-    `SELECT ip.title, t.effective_date FROM transactions t
+  const finals = await sqlite.getAllAsync<{ id: string; title: string; effective_date: string }>(
+    `SELECT ip.id, ip.title, t.effective_date FROM transactions t
      JOIN installment_plans ip ON ip.id = t.installment_plan_id AND ip.user_id = t.user_id
      WHERE t.user_id = ? AND t.deleted_at IS NULL AND ip.deleted_at IS NULL
        AND t.status = 'pending' AND t.installment_no = ip.installment_count
@@ -181,7 +199,12 @@ async function planNotifications(userId: string): Promise<PlannedNotification[]>
     [userId, today, horizonIso],
   );
   for (const f of finals) {
-    planned.push({ date: f.effective_date, title: tr.notif.lastInstallmentTitle, body: tr.notif.lastInstallmentBody(f.title) });
+    planned.push({
+      date: f.effective_date,
+      title: tr.notif.lastInstallmentTitle,
+      body: tr.notif.lastInstallmentBody(f.title),
+      target: { kind: "installmentPlan", id: f.id },
+    });
   }
 
   return planned;
@@ -211,6 +234,7 @@ async function replaceScheduledNotifications(userId: string): Promise<void> {
   const planned = uniqueNotifications((await planNotifications(userId)).map((notification) => ({
     ...notification,
     ...privateNotificationContent(detailsEnabled, notification, neutral),
+    target: privateNotificationTarget(detailsEnabled, notification.target),
   })))
     .map((notification) => ({ ...notification, fireAt: new Date(`${notification.date}T09:00:00`) }))
     .filter((notification) => notification.fireAt.getTime() > now);
@@ -220,7 +244,7 @@ async function replaceScheduledNotifications(userId: string): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
   for (const n of upcoming) {
     await Notifications.scheduleNotificationAsync({
-      content: { title: n.title, body: n.body },
+      content: { title: n.title, body: n.body, data: notificationTargetPayload(n.target) },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
         date: n.fireAt,
