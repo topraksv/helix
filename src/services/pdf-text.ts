@@ -353,6 +353,31 @@ function showText(stream: string, toUnicode: ToUnicodeMap | null): string {
 }
 
 /**
+ * Undo per-glyph positioning.
+ *
+ * Some producers place every single glyph with its own `Td`, so the gap this
+ * module emits between runs lands between every CHARACTER: `S o n Ö d e m e`
+ * instead of `Son Ödeme`. A real word boundary is still visible, because it is
+ * the run gap PLUS the space glyph's own advance — it arrives as two spaces
+ * where an intra-word gap arrives as one.
+ *
+ * Applied per line and only when the line actually looks like that (most of
+ * its tokens are one character long), so a normally-spaced statement — the
+ * common case — is returned untouched rather than being reflowed on a guess.
+ */
+function collapseGlyphSpacing(line: string): string {
+  const tokens = line.split(" ");
+  const printable = tokens.filter((token) => token.length > 0);
+  if (printable.length < 6) return line;
+  const singles = printable.filter((token) => token.length === 1).length;
+  if (singles / printable.length < 0.7) return line;
+  // An empty token is the doubled space, i.e. the word boundary.
+  let out = "";
+  for (const token of tokens) out += token.length === 0 ? " " : token;
+  return out.replace(/ {2,}/g, " ").trim();
+}
+
+/**
  * The text layer of a PDF, or a reason it could not be read.
  *
  * A failure is always a NAMED reason, never an empty string: the review flow
@@ -401,7 +426,12 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
   const text = streams.content
     .map((stream) => showText(stream, toUnicode))
     .join("\n")
-    .replace(/[ \t]+/g, " ")
+    .split("\n")
+    // Per line, and BEFORE any whitespace collapse: the collapse is what
+    // destroys the doubled space that marks a real word boundary.
+    .map((line) => collapseGlyphSpacing(line.replace(/\t/g, " ")))
+    .map((line) => line.replace(/ {2,}/g, " ").trim())
+    .join("\n")
     .trim();
   if (text.length === 0) return { ok: false, reason: "no_text_layer" };
   return { ok: true, text, pageCount: Math.max(1, pageCount) };

@@ -20,6 +20,22 @@
 
 begin;
 
+-- A composite foreign key needs a unique key to point at, and `transactions`
+-- has only `id`. `investment_products` already carries `unique (user_id, id)`
+-- for exactly this reason; without the matching constraint here the
+-- `attachments` foreign key below aborts the whole migration, the new columns
+-- never reach the database, and every client that has them fails to push.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.transactions'::regclass
+      and conname = 'transactions_user_id_id_key'
+  ) then
+    alter table public.transactions add constraint transactions_user_id_id_key unique (user_id, id);
+  end if;
+end $$;
+
 alter table public.transactions
   add column if not exists origin text
     constraint transactions_origin_check

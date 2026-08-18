@@ -30,7 +30,7 @@ import { daysBetweenISO, isISODate, type ISODate } from "./dates";
 import type { Minor } from "./money";
 
 /** What a candidate turned out to be. */
-export type StatementEntryKind = "purchase" | "installment";
+type StatementEntryKind = "purchase" | "installment";
 
 export interface StatementCandidate {
   /**
@@ -81,7 +81,7 @@ export interface StatementParseResult {
  * One constant, because it is the only thing that changes per bank and the
  * only thing that has to be re-verified against a real document.
  */
-export const STATEMENT_FORMAT = {
+const STATEMENT_FORMAT = {
   /**
    * `4 Ağustos 2026`, as the reference statement prints it, and the numeric
    * `dd.mm.yyyy` form as a second accepted shape.
@@ -114,6 +114,12 @@ export const STATEMENT_FORMAT = {
    * candidate built from it says exactly that and no more.
    */
   remainder: /(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\s*\/\s*(\d{1,2})(?!\d)/,
+  /**
+   * The same column printed the other way round: `1/3 TAKSIT (5.987,19)`, a
+   * position followed by the remaining total in brackets. The bracketed figure
+   * is that total, not a second charge.
+   */
+  bracketedRemainder: /\((\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\)/,
   /** An interest-rate row is not a transaction. */
   rate: /%/,
   /** Lines that are structure, not entries. */
@@ -185,6 +191,30 @@ export function statementImportKey(input: {
 }
 
 /**
+ * Put the spaces back where a producer ran fields together.
+ *
+ * One statement prints `16/07/2026MERKEZ ECZANE1.995,731/3` — date, merchant,
+ * amount and instalment position with no separator at all, because each field
+ * is positioned rather than spaced. Three targeted rules restore the
+ * boundaries, and only those three: a blanket "split digits from letters"
+ * would cut real merchant names like `A-101` and `K101-9919` in half.
+ */
+function separateGluedFields(line: string): string {
+  return line
+    // A full date immediately followed by a word.
+    .replace(/(\d{2}[./]\d{2}[./]\d{4})(?=[^\s\d])/g, "$1 ")
+    // An amount immediately followed by more digits. This runs BEFORE the rule
+    // below, which needs to see an amount that ENDS at its two decimals:
+    // `1.995,731/3` has to become `1.995,73 1/3` first, or the amount is never
+    // recognised as one and the merchant stays glued to it.
+    .replace(/(\d,\d{2})(?=\d)/g, "$1 ")
+    // A word immediately followed by an amount. A sign and an opening bracket
+    // are excluded: `-250,00` and `(5.987,19)` are already delimited, and
+    // splitting the sign off its amount turns a refund into a charge.
+    .replace(/([^\s\d.,(+-])(?=[+-]?\d{1,3}(?:\.\d{3})*,\d{2}(?!\d))/g, "$1 ");
+}
+
+/**
  * Read one line, or decline to.
  *
  * Returns null for a line that is plainly not an entry, a rejection for a line
@@ -194,7 +224,7 @@ export function parseStatementLine(
   line: string,
   period: string,
 ): { kind: "ignored" } | { kind: "rejected"; rejection: StatementRejection } | { kind: "candidate"; candidate: StatementCandidate } {
-  const trimmed = line.trim().replace(/\s+/g, " ");
+  const trimmed = separateGluedFields(line.trim().replace(/\s+/g, " "));
   if (trimmed === "") return { kind: "ignored" };
   if (STATEMENT_FORMAT.ignore.test(trimmed)) return { kind: "ignored" };
   // A rate table prints the same `n,nn / n,nn` shape as money and is not a
@@ -228,9 +258,18 @@ export function parseStatementLine(
   // unexplained pair is exactly the case where importing the wrong one is
   // indistinguishable from importing the right one.
   const remainderMatch = STATEMENT_FORMAT.remainder.exec(afterAmount);
+  const bracketed = STATEMENT_FORMAT.bracketedRemainder.exec(afterAmount);
   const remainingInstallments = remainderMatch ? Number(remainderMatch[3]) : null;
-  const accountedFor = remainderMatch ? 2 : 1;
-  const allAmounts = trimmed.match(new RegExp(STATEMENT_FORMAT.amount.source, "g")) ?? [];
+  // A bracketed remaining total closes the charge portion of the line:
+  // everything from it onwards belongs to the plan column and the points
+  // beside it, and counting those as competing charges rejected rows this can
+  // read perfectly well. Without a bracket, only one amount may appear before
+  // the remaining-instalment column.
+  const chargePortion = bracketed
+    ? trimmed.slice(0, trimmed.indexOf(bracketed[0]))
+    : trimmed;
+  const accountedFor = remainderMatch && !bracketed ? 2 : 1;
+  const allAmounts = chargePortion.match(new RegExp(STATEMENT_FORMAT.amount.source, "g")) ?? [];
   if (allAmounts.length > accountedFor) {
     return { kind: "rejected", rejection: { sourceLine: trimmed, reason: "ambiguous_amount" } };
   }
@@ -243,7 +282,11 @@ export function parseStatementLine(
   const between = trimmed
     .slice(dateMatch.index + dateMatch[0].length, amountMatch.index)
     .trim();
-  const installmentMatch = STATEMENT_FORMAT.installment.exec(between);
+  // The position can sit either inside the description (`TEKNOSA 3/9 500,00`)
+  // or after the amount, in the plan column (`1.995,73 1/3 TAKSIT (5.987,19)`).
+  // Both are the same fact and are read the same way.
+  const installmentMatch = STATEMENT_FORMAT.installment.exec(between)
+    ?? STATEMENT_FORMAT.installment.exec(afterAmount);
   const description = (installmentMatch
     ? between.replace(installmentMatch[0], " ")
     : between).replace(/\s+/g, " ").trim();
@@ -374,7 +417,7 @@ export type CandidateVerdict =
   | { state: "new" };
 
 /** How close a date has to be for an unkeyed row to be worth mentioning. */
-export const STATEMENT_SIMILAR_WINDOW_DAYS = 3;
+const STATEMENT_SIMILAR_WINDOW_DAYS = 3;
 
 function normalizedTitle(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
