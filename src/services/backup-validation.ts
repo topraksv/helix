@@ -4,6 +4,9 @@ import { parseDefinition, type ComputedColumnDefinition } from "../domain/comput
 import { resolveInvestmentQuote } from "../domain/investments";
 import { isSupportedMinorAmount } from "../domain/money";
 import { MAX_INSTALLMENT_COUNT } from "../domain/installments";
+import { ATTACHMENT_KINDS, ATTACHMENT_MIME_TYPES, MAX_ATTACHMENT_BYTES, isSafeAttachmentFileName } from "../domain/attachments";
+import { MATRIX_COLOR_TOKENS } from "../domain/matrix-colors";
+import { TRANSACTION_ORIGINS } from "../domain/types";
 import { isValidCardCycle } from "../domain/card-statements";
 import { isMonthKey, todayISO } from "../domain/dates";
 import { isSupportedCurrency } from "../domain/fx-provider";
@@ -88,6 +91,11 @@ function isSupportedMoney(value: unknown, allowZero = true): value is number {
 
 function isPositiveMoney(value: unknown): value is number {
   return isSupportedMoney(value, false) && value > 0;
+}
+
+/** A share of a whole in basis points: 0..10000 inclusive. */
+function isBasisPoints(value: unknown): boolean {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 10_000;
 }
 
 function isPositiveInteger(value: unknown): value is number {
@@ -211,6 +219,11 @@ export function isValidImportRow(
       const rate = Number(raw.fx_rate);
       if (!Number.isFinite(rate) || rate <= 0 || rate > 1_000_000) return false;
     }
+    // Provenance is optional (every row written before it existed has none),
+    // but an unrecognised value is refused rather than stored: duplicate
+    // review branches on it, and "some string" is not one of the branches.
+    if (raw.origin != null && !(TRANSACTION_ORIGINS as readonly string[]).includes(String(raw.origin))) return false;
+    if (raw.import_key != null && !optionalNonEmptyText(raw.import_key, 240)) return false;
   }
   if (table === "subscriptions") {
     // A variable bill (electricity, gas) may legitimately carry no estimate
@@ -228,6 +241,40 @@ export function isValidImportRow(
         || !optionalText(raw.note, 1_000)
       ))
     ) return false;
+  }
+  if (table === "attachments") {
+    // The stored name becomes a filesystem path inside the app's attachment
+    // directory. A name with a separator, a traversal segment or anything
+    // outside this alphabet is refused before it can address another
+    // directory — the file itself never leaves the device, and neither may
+    // the ability to name where it lives.
+    if (
+      typeof raw.stored_name !== "string"
+      || !/^[A-Za-z0-9._-]{1,120}$/.test(raw.stored_name)
+      || raw.stored_name === "."
+      || raw.stored_name === ".."
+      || !(ATTACHMENT_MIME_TYPES as readonly string[]).includes(String(raw.mime_type))
+      || !(ATTACHMENT_KINDS as readonly string[]).includes(String(raw.kind))
+      || !isPositiveInteger(raw.byte_size)
+      || Number(raw.byte_size) > MAX_ATTACHMENT_BYTES
+      || typeof raw.transaction_id !== "string"
+      || raw.transaction_id === ""
+      || !isSafeAttachmentFileName(raw.file_name)
+    ) return false;
+  }
+  if (table === "matrix_colors") {
+    if (!(MATRIX_COLOR_TOKENS as readonly string[]).includes(String(raw.token))) return false;
+    const scope = String(raw.scope);
+    const itemKey = raw.item_key;
+    const month = raw.month;
+    const hasItem = typeof itemKey === "string" && itemKey !== "" && textLength(itemKey) <= 120;
+    const hasMonth = typeof month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+    // A scope names exactly the coordinates it needs; anything else is a row
+    // two client versions would read differently.
+    if (scope === "row" && !(hasItem && month == null)) return false;
+    if (scope === "column" && !(hasMonth && itemKey == null)) return false;
+    if (scope === "cell" && !(hasItem && hasMonth)) return false;
+    if (!["row", "column", "cell"].includes(scope)) return false;
   }
   if (table === "price_history" && !isPositiveMoney(raw.amount_minor)) return false;
   if (table === "recurring_incomes" && !isPositiveMoney(raw.default_amount_minor)) return false;
@@ -288,6 +335,7 @@ export function isValidImportRow(
       || textLength(raw.name) > 120
       || !optionalNonEmptyText(raw.market_code, 40)
       || !optionalText(raw.note, 2_000)
+      || (raw.target_weight_bp != null && !isBasisPoints(raw.target_weight_bp))
     ) return false;
   }
   if (table === "investment_operations") {

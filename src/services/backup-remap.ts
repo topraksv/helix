@@ -67,6 +67,8 @@ export const REMAPPED_NATURAL_KEY_COVERAGE = {
   importSource: "payment_sources",
   importInstallmentPlan: "installment_plans",
   ccColumn: "computed_columns",
+  matrixColor: "matrix_colors",
+  statementTx: "transactions",
 } as const satisfies Record<keyof typeof naturalKeys, SyncedTableName>;
 
 /**
@@ -325,6 +327,53 @@ async function resolveCellNotes(
   }
 }
 
+
+/**
+ * `matrixColor(userId, scope, itemKey, month)` — needs `categories` resolved
+ * first, because a row/cell mark keys on the category it marks.
+ */
+async function resolveMatrixColors(
+  bundle: ExportBundle,
+  sourceUserId: string,
+  targetUserId: string,
+  idMap: Map<string, string>,
+): Promise<void> {
+  for (const row of deterministicRows(bundle, "matrix_colors")) {
+    const id = row.id as string;
+    const scope = String(row.scope ?? "");
+    const itemKey = row.item_key == null ? "" : String(row.item_key);
+    const month = row.month == null ? "" : String(row.month);
+    const sourceHash = await deterministicId(naturalKeys.matrixColor(sourceUserId, scope, itemKey, month));
+    if (sourceHash !== id) continue;
+    // `item_key` is a category id for row/cell marks; `remapRow` rewrites the
+    // column and the id has to be recomputed from the SAME rewritten value or
+    // the two disagree and a second device creates a duplicate mark.
+    const remappedItemKey = remappedOrSame(idMap, itemKey);
+    record(idMap, id, await deterministicId(naturalKeys.matrixColor(targetUserId, scope, remappedItemKey, month)));
+  }
+}
+
+/**
+ * `statementTx(userId, importKey)` — a transaction created from one statement
+ * line. The key is the line's own identity and carries no other row's id, so
+ * this resolves without ordering constraints.
+ */
+async function resolveStatementTransactions(
+  bundle: ExportBundle,
+  sourceUserId: string,
+  targetUserId: string,
+  idMap: Map<string, string>,
+): Promise<void> {
+  for (const row of deterministicRows(bundle, "transactions")) {
+    const id = row.id as string;
+    const importKey = row.import_key == null ? "" : String(row.import_key);
+    if (importKey === "") continue;
+    const sourceHash = await deterministicId(naturalKeys.statementTx(sourceUserId, importKey));
+    if (sourceHash !== id) continue;
+    record(idMap, id, await deterministicId(naturalKeys.statementTx(targetUserId, importKey)));
+  }
+}
+
 /** `cardStatement(userId, sourceId, periodMonth)` — needs `payment_sources` resolved first. */
 async function resolveCreditCardStatements(
   bundle: ExportBundle,
@@ -434,6 +483,8 @@ export async function buildIdRemap(
   await resolveBalanceAdjustments(bundle, sourceUserId, targetUserId, idMap);
   await resolveCategoryBudgets(bundle, sourceUserId, targetUserId, idMap);
   await resolveCellNotes(bundle, sourceUserId, targetUserId, idMap);
+  await resolveMatrixColors(bundle, sourceUserId, targetUserId, idMap);
+  await resolveStatementTransactions(bundle, sourceUserId, targetUserId, idMap);
   await resolveCreditCardStatements(bundle, sourceUserId, targetUserId, idMap);
   await resolveExpectedPayments(bundle, sourceUserId, targetUserId, idMap);
   await resolveTransactions(bundle, idMap);
@@ -522,6 +573,15 @@ function remapRow(
       out[key] = idMap.get(value);
       continue;
     }
+    // `item_key` is a category id for a row/cell mark and a computed-column
+    // key otherwise, so it is a foreign key that the generic `*_id` rule above
+    // cannot see. Without this, restoring into another account leaves every
+    // colour pointing at the source account's categories — the marks survive
+    // and silently stop matching anything.
+    if (table === "matrix_colors" && key === "item_key" && typeof value === "string" && idMap.has(value)) {
+      out[key] = idMap.get(value);
+      continue;
+    }
     if (table === "settings" && key === "value" && typeof value === "string") {
       out[key] = remapSettingsValue(String(row.key ?? ""), value, idMap);
       continue;
@@ -537,8 +597,9 @@ function remapRow(
 
 /**
  * Apply `idMap` to every row of `bundle`: its own `id`, every `*_id` column,
- * and the ids embedded in JSON (`computed_columns.definition`,
- * `settings.value` for `column_years`/`computed_columns_hidden`/`import_batch:*`).
+ * `matrix_colors.item_key`, and the ids embedded in JSON
+ * (`computed_columns.definition`, `settings.value` for
+ * `column_years`/`computed_columns_hidden`/`import_batch:*`).
  * An empty map returns `bundle` itself unchanged — the same-account restore
  * path this guarantees never touches a row.
  */

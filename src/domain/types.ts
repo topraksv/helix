@@ -9,6 +9,12 @@ import type { Minor } from "./money";
 export type TransactionType = "expense" | "income" | "transfer";
 export type CategoryKind = "expense" | "income";
 export type TransactionStatus = "pending" | "realized";
+/**
+ * Where a transaction came from. Absent on every row written before
+ * provenance existed, which reads as "unknown" and never as "typed by hand".
+ */
+export const TRANSACTION_ORIGINS = ["manual", "spreadsheet", "statement", "expected"] as const;
+export type TransactionOrigin = (typeof TRANSACTION_ORIGINS)[number];
 export type PaymentSourceType =
   | "credit_card"
   | "debit_card"

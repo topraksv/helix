@@ -78,6 +78,13 @@
       "when": 1786429092873,
       "tag": "0010_retire_legacy_expected_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1787061086734,
+      "tag": "0011_provenance_attachments_colors_targets",
+      "breakpoints": true
     }
   ]
 }

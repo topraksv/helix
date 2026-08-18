@@ -29,6 +29,9 @@ const MIGRATIONS_DIR = join(process.cwd(), "src/db/migrations");
  */
 const sqlFor = (tag: string): string => readFileSync(join(MIGRATIONS_DIR, `${tag}.sql`), "utf8");
 
+/** The migration whose data repair the retirement test exercises. */
+const RETIREMENT_TAG = "0010_retire_legacy_expected_payments";
+
 let database: DatabaseSync;
 /** How many journal entries the runner is allowed to see this time. */
 let visibleEntries = journal.entries.length;
@@ -160,7 +163,12 @@ describe("boot migration", () => {
   });
 
   it("retires a legacy installment expected row without deleting its tombstone", async () => {
-    visibleEntries = journal.entries.length - 1;
+    // Pinned to the migration under test rather than to "the last one": with
+    // `length - 1` this silently stopped exercising 0010 the moment 0011 was
+    // added, and still passed everything except its own assertion.
+    const retirement = journal.entries.findIndex((entry) => entry.tag === RETIREMENT_TAG);
+    expect(retirement, `${RETIREMENT_TAG} is missing from the journal`).toBeGreaterThan(-1);
+    visibleEntries = retirement;
     await migrateDb();
     database.prepare(
       `INSERT INTO expected_payments (
@@ -178,7 +186,7 @@ describe("boot migration", () => {
       10_000,
     );
 
-    visibleEntries = journal.entries.length;
+    visibleEntries = retirement + 1;
     await migrateDb();
 
     expect(database.prepare(

@@ -17,6 +17,7 @@ import type { ExportBundle } from "../src/services/backup-validation";
 const SOURCE_USER = "11111111-1111-4111-8111-111111111111";
 const TARGET_USER = "22222222-2222-4222-8222-222222222222";
 const SUBSCRIPTION_ID = "00000000-0000-7000-8000-000000000001";
+const STATEMENT_KEY = "stmt:visa:2026-08:0007";
 
 async function coverageBundle(): Promise<ExportBundle> {
   const categoryId = await deterministicId(naturalKeys.seedCategory(SOURCE_USER, "Market"));
@@ -80,7 +81,19 @@ async function coverageBundle(): Promise<ExportBundle> {
           installment_no: 1,
         },
         { id: await deterministicId(naturalKeys.confirmTx(expectedId)) },
+        {
+          id: await deterministicId(naturalKeys.statementTx(SOURCE_USER, STATEMENT_KEY)),
+          import_key: STATEMENT_KEY,
+          origin: "statement",
+        },
       ],
+      matrix_colors: [{
+        id: await deterministicId(naturalKeys.matrixColor(SOURCE_USER, "cell", categoryId, "2026-08")),
+        scope: "cell",
+        item_key: categoryId,
+        month: "2026-08",
+        token: "warning",
+      }],
     },
   };
 }

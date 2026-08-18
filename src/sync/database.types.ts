@@ -39,6 +39,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      attachments: {
+        Row: {
+          byte_size: number
+          created_at: string
+          deleted_at: string | null
+          file_name: string
+          id: string
+          kind: string
+          mime_type: string
+          stored_name: string
+          tombstone_version: number
+          transaction_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          byte_size: number
+          created_at?: string
+          deleted_at?: string | null
+          file_name: string
+          id: string
+          kind?: string
+          mime_type: string
+          stored_name: string
+          tombstone_version?: number
+          transaction_id: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          byte_size?: number
+          created_at?: string
+          deleted_at?: string | null
+          file_name?: string
+          id?: string
+          kind?: string
+          mime_type?: string
+          stored_name?: string
+          tombstone_version?: number
+          transaction_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attachments_user_transaction_fk"
+            columns: ["user_id", "transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["user_id", "id"]
+          },
+        ]
+      }
       balance_adjustments: {
         Row: {
           amount_minor: number
@@ -593,6 +646,7 @@ export type Database = {
           market_code: string | null
           name: string
           note: string | null
+          target_weight_bp: number | null
           tombstone_version: number
           updated_at: string
           user_id: string
@@ -605,6 +659,7 @@ export type Database = {
           market_code?: string | null
           name: string
           note?: string | null
+          target_weight_bp?: number | null
           tombstone_version?: number
           updated_at?: string
           user_id?: string
@@ -617,6 +672,7 @@ export type Database = {
           market_code?: string | null
           name?: string
           note?: string | null
+          target_weight_bp?: number | null
           tombstone_version?: number
           updated_at?: string
           user_id?: string
@@ -679,6 +735,45 @@ export type Database = {
         Update: {
           id?: number
           pinged_at?: string
+        }
+        Relationships: []
+      }
+      matrix_colors: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          id: string
+          item_key: string | null
+          month: string | null
+          scope: string
+          token: string
+          tombstone_version: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          id: string
+          item_key?: string | null
+          month?: string | null
+          scope: string
+          token: string
+          tombstone_version?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          item_key?: string | null
+          month?: string | null
+          scope?: string
+          token?: string
+          tombstone_version?: number
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -1055,6 +1150,8 @@ export type Database = {
           installment_plan_id: string | null
           is_aggregate: boolean
           note: string | null
+          origin: string | null
+          import_key: string | null
           payment_source_id: string | null
           person_id: string
           purchase_date: string | null
@@ -1081,6 +1178,8 @@ export type Database = {
           installment_plan_id?: string | null
           is_aggregate?: boolean
           note?: string | null
+          origin?: string | null
+          import_key?: string | null
           payment_source_id?: string | null
           person_id: string
           purchase_date?: string | null
@@ -1107,6 +1206,8 @@ export type Database = {
           installment_plan_id?: string | null
           is_aggregate?: boolean
           note?: string | null
+          origin?: string | null
+          import_key?: string | null
           payment_source_id?: string | null
           person_id?: string
           purchase_date?: string | null

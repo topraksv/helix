@@ -80,6 +80,15 @@ export const investmentProducts = sqliteTable("investment_products", {
   /** Static identifier from the existing market-title catalog; never a price feed key. */
   marketCode: text("market_code"),
   note: text("note"),
+  /**
+   * Intended share of the portfolio, in basis points (10000 = 100%).
+   *
+   * Basis points rather than a decimal string: a target is compared against a
+   * computed weight and summed across products, and integer arithmetic is the
+   * same choice `Minor` makes for money. Null means "no target set", which is
+   * different from a target of zero.
+   */
+  targetWeightBp: integer("target_weight_bp"),
 });
 
 export const investmentOperations = sqliteTable(
@@ -174,9 +183,24 @@ export const transactions = sqliteTable(
     subscriptionId: text("subscription_id"),
     isAggregate: integer("is_aggregate", { mode: "boolean" }).notNull().default(false),
     note: text("note"),
+    /**
+     * Where this row came from. Null on every row written before provenance
+     * existed, which reads as "unknown", never as "typed by hand" — the
+     * distinction matters because duplicate review treats an imported row and
+     * a hand-entered one differently.
+     */
+    origin: text("origin", { enum: ["manual", "spreadsheet", "statement", "expected"] }),
+    /**
+     * Stable identity of the source line this row was created from: a
+     * workbook cell, a statement line. Two imports of the same document
+     * produce the same key, which is what makes a re-import idempotent
+     * instead of doubling the ledger. Null for anything hand-entered.
+     */
+    importKey: text("import_key"),
   },
   (t) => [
     index("idx_tx_effective").on(t.effectiveDate),
+    index("idx_tx_import_key").on(t.importKey),
     index("idx_tx_category_effective").on(t.categoryId, t.effectiveDate),
     index("idx_tx_plan").on(t.installmentPlanId),
     index("idx_tx_card_statement").on(t.cardStatementId),
@@ -282,6 +306,54 @@ export const cellNotes = sqliteTable("cell_notes", {
   body: text("body").notNull(),
 });
 
+/**
+ * A receipt, invoice or warranty document kept beside a transaction.
+ *
+ * The METADATA syncs; the bytes never leave the device. The sync pipeline
+ * carries PostgREST JSON rows, so a blob column would push whole documents
+ * through it, and every device would hold every other device's files. A row
+ * whose `storedName` is missing locally is therefore a normal state, not a
+ * corruption: it means the file lives on another device, and the UI says so.
+ */
+export const attachments = sqliteTable(
+  "attachments",
+  {
+    ...syncColumns,
+    transactionId: text("transaction_id").notNull(),
+    /** User-visible name, sanitized at write time; never a path. */
+    fileName: text("file_name").notNull(),
+    /** Opaque device-local basename inside the app's attachment directory. */
+    storedName: text("stored_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    kind: text("kind", { enum: ["receipt", "invoice", "warranty", "other"] }).notNull().default("other"),
+  },
+  (t) => [index("idx_attachment_transaction").on(t.transactionId)],
+);
+
+/**
+ * A semantic colour a person put on one row, column or cell of Mali Tablo.
+ *
+ * The value is a TOKEN, never a colour: the palette owns what each token looks
+ * like in light and dark, so a marked cell keeps its meaning and its contrast
+ * when the theme changes, and a future palette change cannot strand a stored
+ * hex value at 1.4:1 on a surface it was never measured against.
+ */
+export const matrixColors = sqliteTable(
+  "matrix_colors",
+  {
+    ...syncColumns,
+    /** What is marked: a whole item row, a whole month column, or one cell. */
+    scope: text("scope", { enum: ["row", "column", "cell"] }).notNull(),
+    /** Item/computed-column key for row and cell scopes; null for a column. */
+    itemKey: text("item_key"),
+    /** Month key for column and cell scopes; null for a row. */
+    month: text("month"),
+    token: text("token", { enum: ["neutral", "info", "success", "warning", "critical"] }).notNull(),
+  },
+  (t) => [index("idx_matrix_color_lookup").on(t.scope, t.month, t.itemKey)],
+);
+
 export const settings = sqliteTable("settings", {
   ...syncColumns,
   key: text("key").notNull(),
@@ -344,6 +416,8 @@ export const SYNCED_TABLES = {
   credit_card_statements: creditCardStatements,
   subscriptions,
   transactions,
+  attachments,
+  matrix_colors: matrixColors,
   investment_operations: investmentOperations,
   price_history: priceHistory,
   recurring_incomes: recurringIncomes,

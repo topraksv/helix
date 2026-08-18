@@ -27,4 +27,5 @@ export const RELATIONS = [
   ["investment_operations", "product_id", "investment_products"],
   ["expected_payments", "transaction_id", "transactions"],
   ["cell_notes", "category_id", "categories"],
+  ["attachments", "transaction_id", "transactions"],
 ] as const satisfies readonly (readonly [SyncedTableName, string, SyncedTableName])[];

@@ -71,4 +71,11 @@ export const naturalKeys = {
   /** The credit-card installment column, migrated from a hard-coded column to
    *  an ordinary computed column exactly once per account. */
   ccColumn: (userId: string) => `computed-cc-installment:${userId}`,
+  /** One colour per marked target — re-colouring updates the same row on every
+   *  device instead of stacking marks that disagree about one cell. */
+  matrixColor: (userId: string, scope: string, itemKey: string, month: string) =>
+    `matrixcolor:${userId}:${scope}:${itemKey}:${month}`,
+  /** A transaction created from one statement line. Deterministic on the line's
+   *  own identity, so re-importing the same statement converges on one row. */
+  statementTx: (userId: string, importKey: string) => `stmttx:${userId}:${importKey}`,
 };
