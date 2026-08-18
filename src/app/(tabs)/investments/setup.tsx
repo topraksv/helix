@@ -3,7 +3,6 @@ import { Text, View } from "react-native";
 import ArrowRight from "lucide-react-native/icons/arrow-right";
 import Banknote from "lucide-react-native/icons/banknote";
 import Check from "lucide-react-native/icons/check";
-import Landmark from "lucide-react-native/icons/landmark";
 import PackagePlus from "lucide-react-native/icons/package-plus";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import { Redirect, Stack, useRouter } from "expo-router";
@@ -32,17 +31,16 @@ export default function InvestmentSetupScreen() {
   const [busy, setBusy] = useState(false);
   const amountPlaceholder = useRotatingPlaceholder(placeholderPools.amount, { prefix: false });
 
-  const save = async (addExisting = false) => {
+  const save = async () => {
     if (busy || cashMinor == null || cashMinor < 0) return;
     setBusy(true);
     try {
       await setupInvestments(userId, { startedOn: date, openingCashMinor: cashMinor });
       scheduleSync(userId);
-      if (addExisting) {
-        router.replace({ pathname: "/investments/product", params: { next: "existing" } });
-      } else {
-        navigateBack(router, "/(tabs)/investments");
-      }
+      // One way out, to the wallet, where "Yeni Ürün Tanımla" is the first
+      // thing on the screen. A second button that only skipped that one tap
+      // read as a second, different action and was not one.
+      navigateBack(router, "/(tabs)/investments");
     } catch (error) {
       void appAlert(userMessage(error, tr.errors.saveFailed), tr.errors.title);
     } finally {
@@ -128,7 +126,6 @@ export default function InvestmentSetupScreen() {
           disabled={cashMinor == null || cashMinor < 0 || busy}
           onPress={() => void save()}
         />
-        <Button variant="secondary" icon={Landmark} label={tr.investments.setupWithExisting} disabled={cashMinor == null || cashMinor < 0 || busy} onPress={() => void save(true)} />
       </View>
     </Screen>
   );

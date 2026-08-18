@@ -536,7 +536,7 @@ export default function SettingsScreen() {
     <Screen title={tr.settings.title} width="workspace">
       <DataStateNotice status={settingsData.status} retry={settingsData.retry} />
       <SectionHeader>{tr.settings.balanceSection}</SectionHeader>
-      <Card>
+      <Card rows>
         <ListRow icon={Flag} title={tr.settings.opening} subtitle={tr.settings.openingDesc} chevron onPress={() => router.push("/settings/opening-balance")} />
       </Card>
 
@@ -550,7 +550,7 @@ export default function SettingsScreen() {
       </Card>
 
       <SectionHeader>{tr.settings.tools}</SectionHeader>
-      <Card>
+      <Card rows>
         <ListRow
           icon={Wrench}
           title={tr.settings.toolsDestination}
@@ -863,13 +863,13 @@ export default function SettingsScreen() {
         onCancel={dataOps.cancel}
       />
 
-      <Card>
+      <Card rows>
         <ListRow icon={BookOpen} title={tr.tour.replay} subtitle={tr.tour.replayDesc} chevron onPress={() => setTourOpen(true)} />
       </Card>
 
       <SectionHeader>{tr.account.section}</SectionHeader>
       {isSupabaseConfigured ? (
-        <Card>
+        <Card rows>
           <ListRow icon={KeyRound} title={tr.account.security} subtitle={tr.account.securityDesc} chevron onPress={() => router.push("/account-security" as Href)} />
         </Card>
       ) : null}

@@ -38,7 +38,7 @@ import { lookupRate, useFxRates } from "../services/fx-fetch";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataStateNotice, Divider, Field, HeroCard, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
+import { Amount, Badge, Body, Button, Card, ChipPicker, ChoiceTile, DataStateNotice, Divider, Field, FieldNote, HeroCard, Label, MoneyField, MonthStepper, PanelHeader, Row, Screen, SectionHeader, Select, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -797,20 +797,20 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       ) : null}
       {dateless ? (
         <>
-          <MonthStepper value={monthKey} onChange={setMonthKey} />
-          <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
-            {tr.tx.monthOnlyHint(monthLabel(monthKey))}
-          </Body>
+          <FieldNote note={tr.tx.monthOnlyHint(monthLabel(monthKey))}>
+            <MonthStepper value={monthKey} onChange={setMonthKey} />
+          </FieldNote>
         </>
       ) : (
         <>
-          <DateField label={isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
-          <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
-            {cardStatementPreview
+          <FieldNote
+            note={cardStatementPreview
               ? tr.tx.cardPurchaseHint(dateLabel(cardStatementPreview.statementDate), dateLabel(cardStatementPreview.dueDate))
               : isCreditCardExpense ? tr.tx.cardCycleMissing
               : dateStr > todayISO() ? tr.tx.futureHint : tr.tx.effectiveDateHint}
-          </Body>
+          >
+            <DateField label={isCreditCardExpense ? tr.tx.cardPurchaseDate : tr.tx.effectiveDate} value={dateStr} onChange={setDateStr} />
+          </FieldNote>
           {isCreditCardExpense && !cardCycleValid ? (
             <Button size="sm" variant="secondary" label={tr.settings.sources} onPress={() => router.push("/payment-sources")} />
           ) : null}
@@ -875,7 +875,10 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
           Answering "did I type this, or did it arrive from the spreadsheet?"
           used to require remembering. A row written before provenance existed
           says so rather than claiming to have been typed. */}
-      {isEdit && existing ? (
+      {/* Only when it says something. Nearly every row IS hand-entered, so
+          labelling those states the obvious and buries the two cases that
+          matter: a row that arrived from a spreadsheet or a statement. */}
+      {isEdit && existing && provenanceOf(existing) !== "manual" ? (
         <Body
           muted
           testID="transaction-provenance"

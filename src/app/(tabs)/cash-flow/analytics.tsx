@@ -589,7 +589,7 @@ export default function AnalysisScreen() {
 
       <View style={compact ? undefined : { flex: 0.85, minWidth: 0 }}>
       {activeBudgetRows.length === 0 ? (
-        <Card>
+        <Card rows>
           <ListRow
             icon={Target}
             title={tr.budgets.emptyAnalysisTitle}

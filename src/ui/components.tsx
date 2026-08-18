@@ -311,6 +311,7 @@ export function Card({
   onPress,
   onLayout,
   padded = true,
+  rows = false,
   tone,
   accessibilityLabel,
   testID,
@@ -320,6 +321,17 @@ export function Card({
   onPress?: () => void;
   onLayout?: (e: LayoutChangeEvent) => void;
   padded?: boolean;
+  /**
+   * The children are `ListRow`s, which carry their own vertical padding and
+   * bleed their fill to the card's edges.
+   *
+   * Without this the card's own 13px sat OUTSIDE every row's pressable, so a
+   * hovered row lit a band that stopped short of the card top and bottom. On a
+   * card holding one row — Bakiye Düzeltme, Tanıtım Turu — that reads as a
+   * control smaller than the box it lives in, while the same row inside a
+   * multi-row card looked correct. One rule for both.
+   */
+  rows?: boolean;
   tone?: "success" | "warning" | "error";
   accessibilityLabel?: string;
   testID?: string;
@@ -332,7 +344,11 @@ export function Card({
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: toneColor ? toneColor + "66" : palette.border + "70",
       borderRadius: radius.lg,
-      padding: padded ? density.list.cardPadding : 0,
+      paddingHorizontal: padded ? density.list.cardPadding : 0,
+      // Rows own the vertical space so their fill can reach the card's edge;
+      // the card still clips (`overflow: hidden`), so the horizontal bleed
+      // lands exactly on the border rather than past it.
+      paddingVertical: rows ? 0 : padded ? density.list.cardPadding : 0,
       marginBottom: spacing.md,
       overflow: "hidden",
       borderCurve: "continuous",
@@ -907,3 +923,23 @@ function PressableRow({ children, onPress }: { children: ReactNode; onPress: () 
 }
 
 /** Cross-platform toggle with one theme-aware geometry. */
+
+/**
+ * A control and the sentence that belongs to it, as one block.
+ *
+ * A control carries its own bottom margin, so a hint placed after it sits a
+ * full step away and reads as the next thing rather than as part of this one.
+ * The pull-up cancels part of that margin — which is fine, and was already
+ * being done, but it was being done inline on each screen with a different
+ * number each time. One definition, one gap, and the block below it keeps the
+ * form's normal rhythm.
+ */
+export function FieldNote({ children, note }: { children: ReactNode; note: ReactNode }) {
+  const { palette } = useTheme();
+  return (
+    <View style={{ marginBottom: spacing.md }}>
+      {children}
+      <Text style={[type.small, { color: palette.textSecondary, marginTop: -spacing.sm }]}>{note}</Text>
+    </View>
+  );
+}
