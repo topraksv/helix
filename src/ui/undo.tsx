@@ -17,40 +17,76 @@ import { appAlert } from "./dialog";
 
 type UndoTone = Extract<HapticKind, "success" | "warning">;
 
+/**
+ * A second line and a second action, for a save that DID something worth
+ * checking: which figure moved, and by how much.
+ *
+ * Kept optional so the bar stays the same quiet confirmation everywhere else.
+ * It is not a dialog and does not block: the owner reads it or ignores it, and
+ * it leaves on its own. Nothing here refreshes a screen or remounts a route —
+ * the live queries have already delivered the change underneath it.
+ */
+export interface UndoDetail {
+  /** One short sentence: the derived effect, e.g. the balance impact. */
+  text: string;
+  /** A second action beside undo, e.g. "Düzenle". */
+  action?: { label: string; run: () => void } | null;
+}
+
 interface UndoState {
   message: string | null;
+  detail: UndoDetail | null;
   onUndo: (() => Promise<unknown> | unknown) | null;
   tone: UndoTone;
   /** `onUndo` is optional: the same bar also confirms an action that has
    *  nothing to take back, and then renders without the action label. */
   show: (message: string, onUndo?: (() => Promise<unknown> | unknown) | null, tone?: UndoTone) => void;
+  /** The same bar, carrying a derived effect and an optional second action. */
+  showDetailed: (
+    message: string,
+    detail: UndoDetail,
+    onUndo?: (() => Promise<unknown> | unknown) | null,
+    tone?: UndoTone,
+  ) => void;
   clear: () => void;
 }
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
+function present(
+  set: (state: Partial<UndoState>) => void,
+  message: string,
+  detail: UndoDetail | null,
+  onUndo: (() => Promise<unknown> | unknown) | null,
+  tone: UndoTone,
+): void {
+  if (hideTimer) clearTimeout(hideTimer);
+  haptic(tone);
+  set({ message, detail, onUndo, tone });
+  // Pure confirmations leave quickly; anything with an action to take, a
+  // warning, or a second line to read stays long enough to be acted on
+  // without becoming permanent chrome.
+  const duration = onUndo || detail || tone === "warning" ? 6000 : 3600;
+  hideTimer = setTimeout(() => set({ message: null, detail: null, onUndo: null, tone: "success" }), duration);
+}
+
 export const useUndo = create<UndoState>((set) => ({
   message: null,
+  detail: null,
   onUndo: null,
   tone: "success",
-  show: (message, onUndo = null, tone = "success") => {
-    if (hideTimer) clearTimeout(hideTimer);
-    haptic(tone);
-    set({ message, onUndo: onUndo ?? null, tone });
-    // Pure confirmations leave quickly; an undo action or warning stays long
-    // enough to be read and acted on without becoming permanent chrome.
-    const duration = onUndo || tone === "warning" ? 6000 : 3600;
-    hideTimer = setTimeout(() => set({ message: null, onUndo: null, tone: "success" }), duration);
-  },
+  show: (message, onUndo = null, tone = "success") => present(set, message, null, onUndo ?? null, tone),
+  showDetailed: (message, detail, onUndo = null, tone = "success") =>
+    present(set, message, detail, onUndo ?? null, tone),
   clear: () => {
     if (hideTimer) clearTimeout(hideTimer);
-    set({ message: null, onUndo: null, tone: "success" });
+    set({ message: null, detail: null, onUndo: null, tone: "success" });
   },
 }));
 
 export function UndoSnackbar() {
   const { palette } = useTheme();
-  const { message, onUndo, tone, clear } = useUndo();
+  const { message, detail, onUndo, tone, clear } = useUndo();
   const insets = useSafeAreaInsets();
   const [undoing, setUndoing] = React.useState(false);
   if (!message) return null;
@@ -107,7 +143,38 @@ export function UndoSnackbar() {
             )}
           </SuccessPop>
         </View>
-        <Text style={[type.body, { color: palette.background, flexShrink: 1 }]}>{message}</Text>
+        <View style={{ flexShrink: 1, minWidth: 0 }}>
+          <Text style={[type.body, { color: palette.background }]}>{message}</Text>
+          {/* The derived effect — what the save did to a figure the owner
+              watches. Second line, not a second bar: one event, one message. */}
+          {detail ? (
+            <Text style={[type.small, { color: palette.background, opacity: 0.85, marginTop: 2 }]}>
+              {detail.text}
+            </Text>
+          ) : null}
+        </View>
+        {detail?.action ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              selectionTap();
+              const run = detail.action?.run;
+              clear();
+              run?.();
+            }}
+            style={({ pressed }) => ({
+              minHeight: controlSize.minimumTarget,
+              justifyContent: "center",
+              paddingHorizontal: spacing.sm,
+              borderRadius: radius.sm,
+              opacity: pressed ? stateOpacity.pressed : 1,
+            })}
+          >
+            <Text style={[type.label, { color: palette.background, fontFamily: font.bold, fontSize: type.body.fontSize }]}>
+              {detail.action.label}
+            </Text>
+          </Pressable>
+        ) : null}
         {onUndo ? (
           <Pressable
             accessibilityRole="button"

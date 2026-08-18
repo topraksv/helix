@@ -18,6 +18,7 @@ import Columns3 from "lucide-react-native/icons/columns-3";
 import Eye from "lucide-react-native/icons/eye";
 import FileDown from "lucide-react-native/icons/file-down";
 import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
+import FileText from "lucide-react-native/icons/file-text";
 import FileUp from "lucide-react-native/icons/file-up";
 import Flag from "lucide-react-native/icons/flag";
 import KeyRound from "lucide-react-native/icons/key-round";
@@ -819,6 +820,10 @@ export default function SettingsScreen() {
 
       <SectionHeader>{tr.settings.transferSection}</SectionHeader>
       <Card>
+        {/* Said on the surface that produces the file, not buried in help: a
+            backup carries the RECORD of a document, never its bytes, and an
+            owner restoring on a new device must not discover that later. */}
+        <Body muted style={{ marginBottom: spacing.sm }}>{tr.attachments.backupNote}</Body>
         <ListRow
           icon={FileDown}
           title={tr.settings.export}
@@ -844,6 +849,7 @@ export default function SettingsScreen() {
           onPress={() => void importJson()}
         />
         <ListRow icon={FileSpreadsheet} title={tr.importer.title} subtitle={tr.importer.settingsDesc} chevron onPress={() => router.push("/import-wizard")} />
+        <ListRow icon={FileText} title={tr.statement.title} subtitle={tr.statement.settingsDesc} chevron onPress={() => router.push("/statement-import")} />
       </Card>
       <OperationStatusNotice
         state={dataOps.state}

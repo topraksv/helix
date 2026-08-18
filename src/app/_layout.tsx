@@ -61,6 +61,7 @@ import {
   useFirstPullGrace,
   useForegroundSync,
   useMarketLifecycle,
+  useNotificationTapRouting,
   useWorkspaceMaintenance,
 } from "../ui/root-lifecycle";
 
@@ -366,6 +367,11 @@ function RootLayoutInner() {
   useWorkspaceMaintenance(ready, userId, locked === false);
   useForegroundSync(ready, userId, locked === false);
   useMarketLifecycle(ready, userId, locked === false);
+  // A tapped reminder opens the record it named. Pushed, not replaced: the
+  // screen underneath stays the app the user was already in, so Back and the
+  // edge swipe return there rather than closing the app.
+  useNotificationTapRouting(ready, userId, locked === false, (route) =>
+    router.push(route as Parameters<typeof router.push>[0]));
 
   const guard = resolveRootGuard({
     ready,
@@ -493,6 +499,8 @@ function RootLayoutInner() {
               swipe-to-dismiss is disabled; the Settings entry point works
               because it has no sheet recognizer. */}
           <Stack.Screen name="columns-editor" options={{ ...cardScreenOptions(theme.palette), title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
+          <Stack.Screen name="statement-import" options={{ title: tr.statement.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="attention" options={{ title: tr.attention.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="upcoming" options={{ title: tr.upcoming.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="analytics" options={{ title: tr.analysis.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />

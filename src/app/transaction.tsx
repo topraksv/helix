@@ -15,6 +15,7 @@ import type { LucideIcon } from "lucide-react-native";
 import { addTransaction, createInstallmentPlan, CreditCardCycleRequiredError, updateTransaction } from "../data/repo";
 import {
   useAllTransactionsState,
+  useAttachmentsState,
   useCategoriesState,
   useInvestmentCategoriesState,
   useInvestmentOperationsState,
@@ -46,6 +47,9 @@ import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { radius, spacing, type, useTheme } from "../ui/theme";
 import { selectionTapIfChanged } from "../ui/haptics";
 import { navigateBack } from "../ui/navigation";
+import { buildSaveSummary, type SaveSummary } from "../domain/save-summary";
+import { provenanceOf } from "../domain/provenance";
+import { AttachmentPanel } from "../ui/attachment-panel";
 import { devError } from "../services/logger";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useUndo } from "../ui/undo";
@@ -279,6 +283,7 @@ function InvestmentRefundForm({ transactionsState }: { transactionsState: Return
 function TransactionForm({ existing, investmentRefund = false }: { existing?: ExistingTx; investmentRefund?: boolean }) {
   const userId = useUserId();
   const categoriesState = useCategoriesState();
+  const attachmentsState = useAttachmentsState();
   const sourcesState = useSourcesState();
   const personsState = usePersonsState();
   const categories = categoriesState.data;
@@ -452,6 +457,35 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
 
   const fail = (msg: string) => void appAlert(msg, tr.errors.title);
 
+  /**
+   * Confirm the write with what it DID, not merely that it happened.
+   *
+   * Non-blocking by construction: it is the same bar every other outcome uses,
+   * it dismisses itself, and it changes nothing on screen — the live queries
+   * have already delivered the row underneath it, so there is no refresh, no
+   * remount and no reload behind this.
+   */
+  const confirmSave = React.useCallback((summary: SaveSummary, editId: string | null) => {
+    const parts: string[] = [];
+    if (summary.effect.balanceMinor !== 0) {
+      parts.push(tr.tx.savedBalanceEffect(formatMinorCompact(summary.effect.balanceMinor)));
+    } else if (summary.effect.forecastOnly) {
+      parts.push(tr.tx.savedForecastEffect(formatMinorCompact(summary.effect.projectedMinor)));
+    }
+    if (summary.otherMonth) parts.push(tr.tx.savedOtherMonth(monthLabel(summary.otherMonth as MonthKey)));
+    const message = summary.kind === "updated" ? tr.tx.updatedNotice : tr.tx.savedNotice;
+    if (parts.length === 0) {
+      undo.show(message);
+      return;
+    }
+    undo.showDetailed(message, {
+      text: parts.join(" · "),
+      action: editId
+        ? { label: tr.common.edit, run: () => router.push({ pathname: "/transaction", params: { id: editId } }) }
+        : null,
+    });
+  }, [undo, router]);
+
   const save = async (thenNew: boolean) => {
     if (!saveable) return;
     await operationGuard.run(async () => {
@@ -459,6 +493,9 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
       try {
         assertISODate(effectiveDate);
         const fxRate = currency === "TRY" ? null : String(effectiveRateTry);
+        // The id of the row just written, so the confirmation can offer to
+        // open it. A plan writes many rows and has no single one to open.
+        let createdId: string | null = null;
         // The same eleven fields either way — an edit patches them, a new
         // entry creates them. One literal is what stops a twelfth from being
         // added to only one of the two write paths.
@@ -478,6 +515,21 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
         if (isEdit) {
           await updateTransaction(userId, existing, written);
           scheduleSync(userId);
+          confirmSave(
+            buildSaveSummary({
+              kind: "updated",
+              saved: {
+                type: entryType,
+                amountTryMinor: Math.abs(saveable.tryMinor),
+                effectiveDate,
+                status: effectiveDate <= todayISO() ? "realized" : "pending",
+                personIsSelf: saveable.person.isSelf,
+              },
+              today: todayISO(),
+              enteredFor: dateStr,
+            }),
+            null,
+          );
           allowExit(close);
           return;
         }
@@ -503,10 +555,24 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
             tryFactor: saveable.rateTry,
           });
         } else {
-          await addTransaction(userId, written);
+          createdId = await addTransaction(userId, written);
         }
         void kv.set(`helix.last.${entryType}`, JSON.stringify({ categoryId, sourceId }));
         scheduleSync(userId);
+        // An installment plan is many rows across many months; a single-row
+        // balance sentence would misdescribe it, so it keeps the plain notice.
+        const summary = installment ? null : buildSaveSummary({
+          kind: "created",
+          saved: {
+            type: entryType,
+            amountTryMinor: Math.abs(saveable.tryMinor),
+            effectiveDate,
+            status: effectiveDate <= todayISO() ? "realized" : "pending",
+            personIsSelf: saveable.person.isSelf,
+          },
+          today: todayISO(),
+          enteredFor: dateStr,
+        });
         if (thenNew) {
           setAmountRaw("");
           setAmountMinor(null);
@@ -515,8 +581,10 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
           // Staying on the form means the cleared amount is the only thing that
           // changes, and a blank field reads just as easily as "my input was
           // discarded". Confirm the write through the shared bar.
-          undo.show(tr.tx.savedNotice);
+          if (summary) confirmSave(summary, createdId);
+          else undo.show(tr.tx.savedNotice);
         } else {
+          if (summary) confirmSave(summary, createdId);
           allowExit(close);
         }
       } catch (e) {
@@ -784,6 +852,38 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
         multiline
         placeholder={notePlaceholder}
       />
+      {/* Documents belong to a row that exists: there is nothing to attach
+          them to until the transaction has been saved once. */}
+      {isEdit && existing ? (
+        <AttachmentPanel
+          userId={userId}
+          transactionId={existing.id}
+          attachments={attachmentsState.data
+            .filter((attachment) => attachment.transactionId === existing.id)
+            .map((attachment) => ({
+              id: attachment.id,
+              transactionId: attachment.transactionId,
+              fileName: attachment.fileName,
+              storedName: attachment.storedName,
+              mimeType: attachment.mimeType,
+              byteSize: attachment.byteSize,
+              kind: attachment.kind,
+            }))}
+        />
+      ) : null}
+      {/* Where this row came from, when there is a row to have come from.
+          Answering "did I type this, or did it arrive from the spreadsheet?"
+          used to require remembering. A row written before provenance existed
+          says so rather than claiming to have been typed. */}
+      {isEdit && existing ? (
+        <Body
+          muted
+          testID="transaction-provenance"
+          style={{ fontSize: type.small.fontSize, marginBottom: spacing.md }}
+        >
+          {tr.provenance.label(tr.provenance[provenanceOf(existing)])}
+        </Body>
+      ) : null}
       {/* The commit pair is a cluster, not a banner: across a desktop column
           each button ran to ~490px. */}
       {/* The form's own width. Bounded to what two buttons need, the primary

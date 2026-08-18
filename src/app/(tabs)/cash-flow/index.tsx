@@ -39,18 +39,25 @@ import {
   useCategoriesState,
   useComputedColumnsState,
   useLedgerState,
+  useMatrixColorsState,
   usePersonsState,
   useSettingsMapState,
   useSourcesState,
   useTxLike,
+  useUserId,
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
+import { setMatrixColor } from "../../../data/repo";
+import { scheduleSync } from "../../../sync/engine";
+import { devError } from "../../../services/logger";
 import { kv } from "../../../services/kv";
 import { Amount, Button, Card, DataStateNotice, EmptyState, FadeIn, IconButton, Row, Screen, Segmented, Spread } from "../../../ui/components";
 import { useScrollToTop } from "@react-navigation/native";
 import { StickyTable, STICKY_HEADER_HEIGHT, STICKY_ROW_HEIGHT } from "../../../ui/sticky-table";
+import { MatrixColorSheet } from "../../../ui/matrix-color-sheet";
+import { buildColorIndex, resolveCellToken, type MatrixColorScope, type MatrixColorToken } from "../../../domain/matrix-colors";
 import { interactionSurface } from "../../../ui/interaction";
-import { circle, controlSize, iconSize, radius, spacing, type, useTheme } from "../../../ui/theme";
+import { circle, controlSize, iconSize, matrixColorStyle, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { ledgerCellWidth, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 import { categoryIcon } from "../../../domain/category-icons";
@@ -155,6 +162,7 @@ export default function CashflowScreen() {
   const personsState = usePersonsState();
   const allTxState = useAllTransactionsState();
   const cellNotesState = useCellNotesState();
+  const matrixColorsState = useMatrixColorsState();
   const bundle = ledgerState.data;
   const categories = categoriesState.data;
   const computed = computedState.data;
@@ -167,7 +175,7 @@ export default function CashflowScreen() {
   const visibleComputed = useMemo(() => computed.filter((c) => !hiddenComputed.includes(c.id)), [computed, hiddenComputed]);
   const sources = sourcesState.data;
   const allTx = allTxState.data;
-  const { status: dataStatus, retry: retryData } = combineLiveStates([ledgerState, categoriesState, computedState, settingsState, sourcesState, personsState, allTxState, cellNotesState]);
+  const { status: dataStatus, retry: retryData } = combineLiveStates([ledgerState, categoriesState, computedState, settingsState, sourcesState, personsState, allTxState, cellNotesState, matrixColorsState]);
   const { width } = useWindowDimensions();
   const contentWidth = useContentWidth();
   const wide = shouldUseWideWorkspace(contentWidth);
@@ -470,7 +478,8 @@ export default function CashflowScreen() {
                   orientation={orientation}
                   compact={!wide}
                   measuredHeight={tableAreaH}
-                  pinnedKey={pinnedByMode[mode === "columns" ? "columns" : "rows"]}
+                  colors={matrixColorsState.data}
+          pinnedKey={pinnedByMode[mode === "columns" ? "columns" : "rows"]}
                   onTogglePin={togglePin}
                 />
               ) : null}
@@ -782,6 +791,7 @@ const MatrixTable = React.memo(function MatrixTable({
   measuredHeight,
   pinnedKey,
   onTogglePin,
+  colors,
   scrollRef,
 }: {
   year: number;
@@ -793,11 +803,28 @@ const MatrixTable = React.memo(function MatrixTable({
   measuredHeight: number;
   pinnedKey: string | null;
   onTogglePin: (key: string) => void;
+  colors: ReturnType<typeof useMatrixColorsState>["data"];
   scrollRef: React.RefObject<ScrollView | null>;
 }) {
   const { width: viewportWidth } = useWindowDimensions();
   const router = useRouter();
+  const { palette } = useTheme();
+  const userId = useUserId();
   const today = todayISO();
+  const colorIndex = React.useMemo(
+    () => buildColorIndex(colors.map((row) => ({
+      id: row.id,
+      scope: row.scope as MatrixColorScope,
+      itemKey: row.itemKey,
+      month: row.month,
+      token: row.token as MatrixColorToken,
+    }))),
+    [colors],
+  );
+  /** Which target the colour sheet is open for, if any. */
+  const [colorTarget, setColorTarget] = React.useState<
+    { scope: MatrixColorScope; itemKey: string | null; month: string | null; label: string } | null
+  >(null);
   const currentMonth = monthKeyOf(today);
 
   // Rebuilt from scratch every render before, same cost class as the grid
@@ -929,6 +956,45 @@ const MatrixTable = React.memo(function MatrixTable({
     openBreakdown(c.key); // computed column cell → its breakdown
   }, [columns, adjustmentByMonth, router, openBreakdown]);
 
+  /**
+   * Hold anything on the grid to mark it.
+   *
+   * The gesture carries the target, so the sheet never asks "which cell did
+   * you mean" and the app needs no permanently visible colour control on a
+   * screen whose whole job is showing money.
+   */
+  const openColorSheet = React.useCallback(
+    (scope: MatrixColorScope, itemKey: string | null, month: string | null, label: string) =>
+      setColorTarget({ scope, itemKey, month, label }),
+    [],
+  );
+  const onCellLongPress = React.useCallback((columnKey: string, month: MonthKey) => {
+    const column = columns.find((col) => col.key === columnKey);
+    if (!column) return;
+    openColorSheet("cell", column.categoryId ?? column.key, month, `${monthLabel(month)} · ${column.label}`);
+  }, [columns, openColorSheet]);
+  const onItemLongPress = React.useCallback((key: string) => {
+    const column = columns.find((col) => col.key === key);
+    if (!column) return;
+    openColorSheet("row", column.categoryId ?? column.key, null, column.label);
+  }, [columns, openColorSheet]);
+  const onMonthLongPress = React.useCallback(
+    (month: string) => openColorSheet("column", null, month, monthLabel(month as MonthKey)),
+    [openColorSheet],
+  );
+
+  const applyColor = React.useCallback(async (token: MatrixColorToken | null) => {
+    const target = colorTarget;
+    if (!target) return;
+    setColorTarget(null);
+    try {
+      await setMatrixColor(userId, { scope: target.scope, itemKey: target.itemKey, month: target.month }, token);
+      scheduleSync(userId);
+    } catch (error) {
+      devError("matrix-color", error);
+    }
+  }, [colorTarget, userId]);
+
   // Builds the ~300 cell elements plus their row/column wrappers. Honest
   // deps: only what can actually change a cell's value, note, press target or
   // label. A resize, the table-area layout measurement, or a pin toggle
@@ -942,6 +1008,14 @@ const MatrixTable = React.memo(function MatrixTable({
         : column.categoryId
           ? noteByCell.get(`${month}:${column.categoryId}`)
           : undefined;
+    const rowMarkEdge = (itemKey: string): string | undefined => {
+      const token = colorIndex.row.get(itemKey);
+      return token ? matrixColorStyle(palette, token).edge : undefined;
+    };
+    const columnMarkEdge = (month: string): string | undefined => {
+      const token = colorIndex.column.get(month);
+      return token ? matrixColorStyle(palette, token).edge : undefined;
+    };
     const canPressCell = (c: CashFlowMatrixColumn, month: MonthKey): boolean => {
       if (c.categoryId) return true;
       if (c.key === "closing" && adjustmentByMonth.has(month)) return true;
@@ -956,6 +1030,8 @@ const MatrixTable = React.memo(function MatrixTable({
           month={month}
           canPress={canPressCell(column, month)}
           onCellPress={onCellPress}
+          colorToken={resolveCellToken(colorIndex, column.categoryId ?? column.key, month)}
+          onCellLongPress={onCellLongPress}
           value={value}
           note={note}
           markerTone={column.key === "closing" ? "adjustment" : "note"}
@@ -979,6 +1055,7 @@ const MatrixTable = React.memo(function MatrixTable({
           key: c.key,
           label: c.label,
           icon: c.computed ? Sigma : undefined,
+          markEdge: rowMarkEdge(c.categoryId ?? c.key),
         })),
         stickyRows: months.map((slot) => ({
           key: slot.month,
@@ -987,6 +1064,7 @@ const MatrixTable = React.memo(function MatrixTable({
           onLabelPress: () => router.push(`/cash-flow/${slot.month}`),
           labelHighlight: slot.month === currentMonth,
           rowHighlight: slot.month === currentMonth,
+          markEdge: columnMarkEdge(slot.month),
           cells: columns.map((c) => cellNode(c, slot.month, false)),
         })),
       };
@@ -998,16 +1076,18 @@ const MatrixTable = React.memo(function MatrixTable({
         key: slot.month,
         label: compact ? shortMonthLabel(slot.month) : monthName(slot.month),
         accessibilityLabel: monthName(slot.month),
+        markEdge: columnMarkEdge(slot.month),
       })),
       stickyRows: columns.map((c) => ({
         key: c.key,
         label: c.label,
         icon: c.computed ? Sigma : undefined,
         onLabelPress: c.key === "opening" || c.key === "closing" ? undefined : () => openBreakdown(c.key),
+        markEdge: rowMarkEdge(c.categoryId ?? c.key),
         cells: months.map((slot) => cellNode(c, slot.month, slot.month === currentMonth)),
       })),
     };
-  }, [orientation, columns, months, compact, fontSize, noteByCell, adjustmentByMonth, onCellPress, openBreakdown, router, currentMonth]);
+  }, [orientation, columns, months, compact, fontSize, noteByCell, adjustmentByMonth, onCellPress, onCellLongPress, colorIndex, palette, openBreakdown, router, currentMonth]);
 
   const isColumns = orientation === "monthsAsColumns";
   const validPin = pinnedKey && stickyColumns.some((c) => c.key === pinnedKey) ? pinnedKey : null;
@@ -1030,8 +1110,25 @@ const MatrixTable = React.memo(function MatrixTable({
         pinnedKey={validPin}
         onTogglePin={onTogglePin}
         onColumnPress={isColumns ? (key) => router.push(`/cash-flow/${key}`) : openBreakdown}
+        onColumnLongPress={isColumns ? onMonthLongPress : onItemLongPress}
+        onRowLongPress={isColumns ? onItemLongPress : onMonthLongPress}
         height={tableHeight}
       />
+      {colorTarget ? (
+        <MatrixColorSheet
+          scope={colorTarget.scope}
+          targetLabel={colorTarget.label}
+          current={
+            colorTarget.scope === "row"
+              ? colorIndex.row.get(colorTarget.itemKey ?? "") ?? null
+              : colorTarget.scope === "column"
+                ? colorIndex.column.get(colorTarget.month ?? "") ?? null
+                : colorIndex.cell.get(`${colorTarget.itemKey}\u0000${colorTarget.month}`) ?? null
+          }
+          onCancel={() => setColorTarget(null)}
+          onSelect={applyColor}
+        />
+      ) : null}
     </Card>
   );
 });
@@ -1051,11 +1148,15 @@ const MatrixCell = React.memo(function MatrixCell({
   highlighted,
   fontSize,
   accessibilityLabel,
+  colorToken,
+  onCellLongPress,
 }: {
   columnKey: string;
   month: MonthKey;
   canPress: boolean;
   onCellPress: (columnKey: string, month: MonthKey) => void;
+  colorToken?: MatrixColorToken | null;
+  onCellLongPress?: (columnKey: string, month: MonthKey) => void;
   value: number | null;
   note?: string;
   /** What the corner dot means, so the two never look alike. */
@@ -1066,16 +1167,24 @@ const MatrixCell = React.memo(function MatrixCell({
 }) {
   const { palette } = useTheme();
   const onPress = canPress ? () => onCellPress(columnKey, month) : undefined;
+  const onLongPress = onCellLongPress ? () => onCellLongPress(columnKey, month) : undefined;
+  const mark = colorToken ? matrixColorStyle(palette, colorToken) : null;
   return (
     <Pressable
-      disabled={!onPress}
+      disabled={!onPress && !onLongPress}
       onPress={onPress}
+      onLongPress={onLongPress}
       // A cell that cannot be opened (a system column, or one with nothing to
       // edit) still has to announce its month/column/value. A labelled group
       // keeps that context without implying an action.
       role={onPress ? "button" : "group"}
-      accessibilityLabel={accessibilityLabel}
-      accessibilityHint={note}
+      // The mark is SPOKEN as well as painted. A cell whose only difference is
+      // a wash of colour is a cell that says nothing to a screen reader and
+      // nothing to someone who cannot separate the hues.
+      accessibilityLabel={colorToken ? `${accessibilityLabel}. ${tr.matrixColor.marked(tr.matrixColor.token[colorToken])}` : accessibilityLabel}
+      // Holding a cell marks it. Sighted users find that by trying it; this is
+      // how everyone else does, without a permanent control on the grid.
+      accessibilityHint={[note, onLongPress ? tr.matrixColor.action : null].filter(Boolean).join(". ") || undefined}
       style={(state) => [
         {
           flex: 1,
@@ -1083,6 +1192,9 @@ const MatrixCell = React.memo(function MatrixCell({
           justifyContent: "center",
           paddingHorizontal: fontSize <= type.caption.fontSize ? 2 : spacing.sm,
         },
+        // The mark sits UNDER the current-month highlight: a marked cell in
+        // the current month has to keep reading as the current month.
+        mark && { backgroundColor: mark.fill, borderLeftWidth: 3, borderLeftColor: mark.edge },
         highlighted && { backgroundColor: palette.primarySoft + "55" },
         interactionSurface(palette, state, { enabled: Boolean(onPress) }),
       ]}

@@ -7,6 +7,7 @@ import Bitcoin from "lucide-react-native/icons/bitcoin";
 import ChartNoAxesCombined from "lucide-react-native/icons/chart-no-axes-combined";
 import Coins from "lucide-react-native/icons/coins";
 import Landmark from "lucide-react-native/icons/landmark";
+import Target from "lucide-react-native/icons/target";
 import PackagePlus from "lucide-react-native/icons/package-plus";
 import Pencil from "lucide-react-native/icons/pencil";
 import Plus from "lucide-react-native/icons/plus";
@@ -45,6 +46,7 @@ import {
   Heading,
   HeroCard,
   MetricStrip,
+  PanelHeader,
   Row,
   Screen,
   SectionHeader,
@@ -57,6 +59,7 @@ import { interactionSurface } from "../../../ui/interaction";
 import { actionTileMetrics, circle, density, font, iconSize, motion, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { useContentWidth, useMeasuredWidth } from "../../../ui/viewport";
 import { WorkspaceGrid } from "../../../ui/workspace-layout";
+import { allocationReport, formatBasisPoints } from "../../../domain/allocation";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { scheduleSync } from "../../../sync/engine";
 import { userMessage } from "../../../domain/user-error";
@@ -361,6 +364,146 @@ function InvestmentQuickAction({
         </Text>
       </View>
     </Pressable>
+  );
+}
+
+
+/**
+ * Where the money is against where it was meant to be.
+ *
+ * A measurement, not advice: it names the gap and stops. No product is ranked,
+ * no trade is suggested, and the basis the shares are computed from is stated
+ * on the card rather than assumed — Helix knows what a holding COST, not what
+ * it is worth today, and a drift that quietly mixed the two would be a number
+ * nobody could check.
+ *
+ * The bar is paired with a signed figure and a word, so the direction survives
+ * both a monochrome render and a reader who cannot separate the hues.
+ */
+function AllocationPanel({
+  products,
+  compact,
+}: {
+  products: { id: string; name: string; costMinor: number; targetWeightBp?: number | null; active: boolean }[];
+  compact: boolean;
+}) {
+  const { palette } = useTheme();
+  const report = React.useMemo(
+    () => allocationReport(products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      valueMinor: product.costMinor,
+      targetWeightBp: product.targetWeightBp ?? null,
+      active: product.active,
+    }))),
+    [products],
+  );
+  const targeted = report.rows.filter((row) => row.targetBp != null);
+
+  return (
+    <Card testID="investment-allocation" style={{ marginBottom: spacing.md }}>
+      <PanelHeader icon={Target} title={tr.investments.allocation} description={tr.investments.allocationHint} />
+      {targeted.length === 0 ? (
+        <Body muted>{tr.investments.allocationEmpty}</Body>
+      ) : (
+        <>
+          <Text
+            style={[type.label, { color: report.totalDriftBp === 0 ? palette.successText : palette.text, marginBottom: spacing.sm }]}
+          >
+            {report.totalDriftBp === 0
+              ? tr.investments.allocationOnTarget
+              : tr.investments.allocationTotalDrift(formatBasisPoints(report.totalDriftBp))}
+          </Text>
+          {report.incompletePlan ? (
+            <Body muted style={{ color: palette.warningText, marginBottom: spacing.sm }}>
+              {tr.investments.allocationIncomplete}
+            </Body>
+          ) : null}
+          <Spread style={{ marginBottom: spacing.xs }}>
+            <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>
+              {tr.investments.allocationActual} / {tr.investments.allocationTarget}
+            </Text>
+          </Spread>
+          {targeted.map((row) => {
+            const drift = row.driftBp ?? 0;
+            const over = drift > 0;
+            const driftWord = drift === 0
+              ? tr.investments.allocationOnTarget
+              : over
+                ? tr.investments.allocationOver(formatBasisPoints(Math.abs(drift)))
+                : tr.investments.allocationUnder(formatBasisPoints(Math.abs(drift)));
+            return (
+              <View
+                key={row.id}
+                accessible
+                accessibilityLabel={tr.investments.allocationRowA11y(
+                  row.name,
+                  formatBasisPoints(row.actualBp),
+                  formatBasisPoints(row.targetBp ?? 0),
+                  driftWord,
+                )}
+                style={{ marginBottom: spacing.sm }}
+              >
+                <Spread style={{ alignItems: "baseline", gap: spacing.sm }}>
+                  <Text style={[type.body, { flex: 1, minWidth: 0, color: palette.text }]}>{row.name}</Text>
+                  <Text style={[type.small, { color: palette.textSecondary }]}>
+                    {formatBasisPoints(row.actualBp)} / {formatBasisPoints(row.targetBp ?? 0)}
+                  </Text>
+                </Spread>
+                {/* Two bars on one baseline: the target as a quiet rule, the
+                    actual as the filled part. The overshoot is drawn past the
+                    rule rather than clipped, which is the whole point. */}
+                <View style={{ height: 8, borderRadius: radius.sm, backgroundColor: palette.surfaceAlt, marginTop: 4, overflow: "hidden" }}>
+                  <View
+                    style={{
+                      height: "100%",
+                      width: `${Math.min(100, row.actualBp / 100)}%`,
+                      backgroundColor: drift === 0 ? palette.success : over ? palette.warning : palette.primary,
+                    }}
+                  />
+                </View>
+                <View
+                  accessible={false}
+                  style={{
+                    position: "absolute",
+                    left: `${Math.min(100, (row.targetBp ?? 0) / 100)}%`,
+                    bottom: 0,
+                    width: 2,
+                    height: 8,
+                    backgroundColor: palette.text,
+                  }}
+                />
+                {!compact ? (
+                  <Text style={[type.small, { color: palette.textSecondary, marginTop: 2, fontSize: type.micro.fontSize }]}>
+                    {driftWord}
+                    {row.driftMinor != null && row.driftMinor !== 0 ? ` · ${formatMinorCompact(Math.abs(row.driftMinor))}` : ""}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
+          {report.rows
+            .filter((row) => row.targetBp == null)
+            .map((row) => (
+              <Spread
+                key={row.id}
+                accessible
+                accessibilityLabel={`${row.name}. ${tr.investments.allocationActual} ${formatBasisPoints(row.actualBp)}. ${tr.investments.allocationNoTarget}.`}
+                style={{ alignItems: "baseline", gap: spacing.sm, marginBottom: spacing.xs }}
+              >
+                <Text style={[type.body, { flex: 1, minWidth: 0, color: palette.textSecondary }]}>{row.name}</Text>
+                <Text style={[type.small, { color: palette.textSecondary }]}>
+                  {formatBasisPoints(row.actualBp)} · {tr.investments.allocationNoTarget}
+                </Text>
+              </Spread>
+            ))}
+          {/* The assumption, on the card, in the owner's language. */}
+          <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs }}>
+            {tr.investments.allocationBasis}
+          </Body>
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -674,6 +817,7 @@ export default function InvestmentsScreen() {
           />
         </View>
       ) : null}
+      {active.length > 0 ? <AllocationPanel products={active} compact={compact} /> : null}
       {visibleActive.length === 0 ? (
         <Card>
           <EmptyState

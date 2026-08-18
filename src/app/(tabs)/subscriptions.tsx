@@ -10,12 +10,16 @@ import MousePointerClick from "lucide-react-native/icons/mouse-pointer-click";
 import Plus from "lucide-react-native/icons/plus";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Repeat from "lucide-react-native/icons/repeat";
+import TrendingDown from "lucide-react-native/icons/trending-down";
+import TrendingUp from "lucide-react-native/icons/trending-up";
+import Wallet from "lucide-react-native/icons/wallet";
 import Zap from "lucide-react-native/icons/zap";
 import { normalizedMonthlyLoadMinor } from "../../domain/analytics";
+import { subscriptionCostSummary } from "../../domain/subscriptions";
 import { addDaysISO, daysBetweenISO, todayISO, type ISODate } from "../../domain/dates";
 import { formatMinorCompact } from "../../domain/money";
 import { shortDateLabel, tr } from "../../i18n/tr";
-import { useAllTransactionsState, usePersonsState, useSubscriptionsState, useUserId } from "../../data/hooks";
+import { useAllTransactionsState, usePersonsState, usePriceHistoryState, useSubscriptionsState, useUserId } from "../../data/hooks";
 import { combineLiveStates } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
@@ -242,11 +246,133 @@ function SubscriptionScheduleOverview({
   );
 }
 
+
+/**
+ * What the active rules cost, and what their prices have done.
+ *
+ * Deliberately small, and deliberately built on what is already stored: the
+ * monthly figure is the one the schedule card already showed, the annual one
+ * restates it, and the changes come from `price_history` rows that
+ * `upsertSubscription` has been writing since the table existed with no
+ * surface ever reading them. No new store, no new chart engine.
+ *
+ * Direction is carried by a glyph AND by a word, never by the colour alone.
+ */
+function SubscriptionCostSummary({
+  subscriptions,
+  priceHistory,
+  today,
+}: {
+  subscriptions: ReturnType<typeof useSubscriptionsState>["data"];
+  priceHistory: ReturnType<typeof usePriceHistoryState>["data"];
+  today: ISODate;
+}) {
+  const { palette } = useTheme();
+  const summary = React.useMemo(
+    () => subscriptionCostSummary(
+      subscriptions.map((subscription) => ({
+        id: subscription.id,
+        name: subscription.name,
+        amountMinor: subscription.amountMinor,
+        currency: subscription.currency,
+        intervalMonths: subscription.intervalMonths,
+        nextDueDate: subscription.nextDueDate,
+        isActive: subscription.isActive,
+      })),
+      priceHistory.map((row) => ({
+        subscriptionId: row.subscriptionId,
+        amountMinor: row.amountMinor,
+        currency: row.currency,
+        effectiveFrom: row.effectiveFrom,
+      })),
+      today,
+      normalizedMonthlyLoadMinor,
+    ),
+    [subscriptions, priceHistory, today],
+  );
+
+  return (
+    <Card testID="subscription-cost-summary" style={{ marginBottom: spacing.lg }}>
+      <PanelHeader icon={Wallet} title={tr.subs.costSummary} description={tr.subs.costSummaryHint} />
+      <View style={{ flexDirection: "row", gap: spacing.sm }}>
+        {([
+          { label: tr.subs.monthlyCost, minor: summary.monthlyTryMinor },
+          { label: tr.subs.annualCost, minor: summary.annualTryMinor },
+        ]).map((figure) => (
+          <View
+            key={figure.label}
+            style={{
+              flex: 1,
+              padding: spacing.md,
+              borderRadius: radius.sm,
+              backgroundColor: palette.primarySoft,
+              borderLeftWidth: 3,
+              borderLeftColor: palette.primary,
+            }}
+          >
+            <Text style={[type.small, { color: palette.textSecondary }]}>{figure.label}</Text>
+            <Amount minor={figure.minor} colorized={false} style={{ marginTop: 2 }} />
+          </View>
+        ))}
+      </View>
+      {summary.excludedCurrencyCount > 0 ? (
+        <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.sm }]}>
+          {tr.subs.costExcluded(summary.excludedCurrencyCount)}
+        </Text>
+      ) : null}
+      {summary.nextRenewal ? (
+        <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.sm }]}>
+          {tr.subs.upcomingRenewal(
+            summary.nextRenewal.name,
+            shortDateLabel(summary.nextRenewal.dueDate),
+            formatMinorCompact(summary.nextRenewal.amountMinor, summary.nextRenewal.currency),
+          )}
+        </Text>
+      ) : null}
+
+      <SectionHeader>{tr.subs.recentPriceChanges}</SectionHeader>
+      {summary.recentChanges.length === 0 ? (
+        <Text style={[type.small, { color: palette.textSecondary }]}>{tr.subs.noPriceChanges}</Text>
+      ) : (
+        summary.recentChanges.map((change) => {
+          const rose = change.toMinor > change.fromMinor;
+          const Glyph = rose ? TrendingUp : TrendingDown;
+          const ink = rose ? palette.negativeText : palette.positiveText;
+          return (
+            <View
+              key={`${change.subscriptionId}:${change.changedOn}`}
+              accessible
+              accessibilityLabel={tr.subs.priceChangeRow(
+                change.name,
+                formatMinorCompact(change.fromMinor, change.currency),
+                formatMinorCompact(change.toMinor, change.currency),
+                rose ? tr.subs.priceRose : tr.subs.priceFell,
+                shortDateLabel(change.changedOn),
+              )}
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.xs }}
+            >
+              <Glyph accessible={false} size={14} color={ink} strokeWidth={2.3} />
+              <Text style={[type.small, { flex: 1, minWidth: 0, color: palette.text }]}>{change.name}</Text>
+              <Text style={[type.small, { color: palette.textSecondary }]}>
+                {formatMinorCompact(change.fromMinor, change.currency)} → {formatMinorCompact(change.toMinor, change.currency)}
+              </Text>
+              <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>
+                {shortDateLabel(change.changedOn)}
+              </Text>
+            </View>
+          );
+        })
+      )}
+    </Card>
+  );
+}
+
 export default function SubscriptionsScreen() {
   const userId = useUserId();
   const subscriptionsState = useSubscriptionsState();
   const personsState = usePersonsState();
   const transactionsState = useAllTransactionsState();
+  const priceHistoryState = usePriceHistoryState();
   const subscriptions = subscriptionsState.data;
   const persons = personsState.data;
   const router = useRouter();
@@ -346,7 +472,14 @@ export default function SubscriptionsScreen() {
     >
       <DataStateNotice status={dataStatus} retry={retryData} />
       {active.length > 0 ? (
-        <SubscriptionScheduleOverview active={active} today={today} />
+        <>
+          <SubscriptionScheduleOverview active={active} today={today} />
+          <SubscriptionCostSummary
+            subscriptions={subscriptions}
+            priceHistory={priceHistoryState.data}
+            today={today}
+          />
+        </>
       ) : null}
       {active.length === 0 && watched.length === 0 && passive.length === 0 ? (
         <EmptyState icon={RefreshCw} title={tr.subs.emptyTitle} hint={tr.subs.emptyHint} />

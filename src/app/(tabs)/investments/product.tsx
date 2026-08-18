@@ -75,6 +75,8 @@ export default function InvestmentProductScreen() {
   const [marketCode, setMarketCode] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
+  /** Whole-percent text; basis points are the stored unit, not the typed one. */
+  const [targetPercent, setTargetPercent] = useState("");
   const [busy, setBusy] = useState(false);
   const productPlaceholder = useRotatingPlaceholder(placeholderPools.investmentProduct);
   const notePlaceholder = useRotatingPlaceholder(placeholderPools.investmentNote);
@@ -93,8 +95,18 @@ export default function InvestmentProductScreen() {
   }
   if (profilesState.data.length === 0) return <Redirect href="/investments/setup" />;
 
+  // Empty means "no target"; anything that is not a whole 0..100 blocks the
+  // save rather than being rounded into a plan the owner did not write.
+  const trimmedTarget = targetPercent.trim();
+  const parsedTargetBp = trimmedTarget === ""
+    ? null
+    : /^\d{1,3}$/.test(trimmedTarget) && Number(trimmedTarget) <= 100
+      ? Number(trimmedTarget) * 100
+      : undefined;
+  const targetInvalid = parsedTargetBp === undefined;
+
   const save = async () => {
-    if (!effectiveName || busy) return;
+    if (!effectiveName || busy || targetInvalid) return;
     setBusy(true);
     try {
       const id = await saveInvestmentProduct(userId, {
@@ -102,6 +114,7 @@ export default function InvestmentProductScreen() {
         name: effectiveName,
         marketCode: catalogMode && !customCatalog ? marketCode : null,
         note,
+        targetWeightBp: parsedTargetBp,
       });
       scheduleSync(userId);
       if (nextOperation) {
@@ -181,6 +194,15 @@ export default function InvestmentProductScreen() {
             placeholder={productPlaceholder}
           />
         ) : null}
+        <Field
+          testID="investment-product-target"
+          label={tr.investments.allocationTargetLabel}
+          placeholder={tr.investments.allocationTargetHint}
+          value={targetPercent}
+          onChangeText={setTargetPercent}
+          keyboardType="number-pad"
+          error={targetInvalid ? tr.investments.allocationTargetInvalid : undefined}
+        />
         <Field label={tr.investments.productNote} value={note} onChangeText={setNote} multiline placeholder={notePlaceholder} />
       </Card>
 

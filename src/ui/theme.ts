@@ -830,3 +830,39 @@ export const ThemeContext = createContext<Theme>({
 export function useTheme(): Theme {
   return useContext(ThemeContext);
 }
+
+/**
+ * How a contextual mark is painted, per token.
+ *
+ * The palette owns this, not the matrix, and the mark reuses roles the theme
+ * has ALREADY measured (`success`/`warning`/`error` as status, `primary` and
+ * `tertiary` as hierarchy accents) rather than introducing five more colours
+ * that every contrast, hue and dark-mode contract would have to re-approve.
+ *
+ * `fill` is deliberately faint. A marked cell still has to show a right-aligned
+ * amount in `palette.text` at small sizes, so the tint is a wash under existing
+ * foregrounds, never a coloured block that would need its own ink. The `edge`
+ * carries the actual identification: a saturated left border reads at a glance
+ * down a column and survives both schemes.
+ *
+ * Colour is never the only carrier — `matrixColorLabel` in `i18n/tr.ts` names
+ * each token for assistive technology, and the sheet that sets one shows the
+ * name beside the swatch.
+ */
+export function matrixColorStyle(
+  palette: Palette,
+  token: "neutral" | "info" | "success" | "warning" | "critical",
+): { fill: string; edge: string; ink: string } {
+  switch (token) {
+    case "success":
+      return { fill: palette.success + "26", edge: palette.success, ink: palette.successText };
+    case "warning":
+      return { fill: palette.warning + "26", edge: palette.warning, ink: palette.warningText };
+    case "critical":
+      return { fill: palette.error + "26", edge: palette.error, ink: palette.errorText };
+    case "info":
+      return { fill: palette.tertiary + "26", edge: palette.tertiary, ink: palette.tertiaryText };
+    case "neutral":
+      return { fill: palette.primary + "22", edge: palette.primary, ink: palette.primaryText };
+  }
+}

@@ -943,7 +943,22 @@ export default function DashboardScreen() {
               app. A regular button's 48pt minimum height centres its label
               14.5pt from the card's padding while a ListRow insets its text by
               10 — which is exactly the uneven top/bottom gap this card had. */}
-          <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
+          <Row gap={spacing.sm}>
+            <View style={{ flex: 1 }}>
+              <Button label={tr.dashboard.allUpcoming} variant="ghost" size="sm" onPress={() => router.push("/upcoming" as Href)} />
+            </View>
+            {/* The inbox is the actionable half of the same data: what is
+                waiting for a decision, rather than the whole calendar. */}
+            <View style={{ flex: 1 }}>
+              <Button
+                testID="dashboard-attention-link"
+                label={tr.attention.title}
+                variant="ghost"
+                size="sm"
+                onPress={() => router.push("/attention" as Href)}
+              />
+            </View>
+          </Row>
         </Card>
       ) : (
         /* A compact calendar picture gives an otherwise empty equal-height
