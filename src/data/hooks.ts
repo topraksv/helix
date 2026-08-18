@@ -353,6 +353,56 @@ export function useSubscriptionsState() {
   );
 }
 
+/**
+ * Stored price changes for the cost summary.
+ *
+ * `upsertSubscription` has appended to this table on every price edit since it
+ * existed; nothing read it back until the subscriptions screen reported what a
+ * rule has cost over time.
+ */
+export function usePriceHistoryState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `price_history:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.priceHistory)
+        .where(and(eq(s.priceHistory.userId, userId), isNull(s.priceHistory.deletedAt)))
+        .orderBy(asc(s.priceHistory.effectiveFrom)),
+    ["price_history"],
+  );
+}
+
+/** Documents kept beside a transaction. Metadata only — bytes stay local. */
+export function useAttachmentsState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `attachments:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.attachments)
+        .where(and(eq(s.attachments.userId, userId), isNull(s.attachments.deletedAt)))
+        .orderBy(asc(s.attachments.createdAt)),
+    ["attachments"],
+  );
+}
+
+/** Contextual colours placed on Mali Tablo rows, columns and cells. */
+export function useMatrixColorsState() {
+  const userId = useUserId();
+  return useSharedLive(
+    `matrix_colors:${userId}`,
+    () =>
+      getDb()
+        .select()
+        .from(s.matrixColors)
+        .where(and(eq(s.matrixColors.userId, userId), isNull(s.matrixColors.deletedAt))),
+    ["matrix_colors"],
+  );
+}
+
 export function usePlansState() {
   const userId = useUserId();
   return useSharedLive(

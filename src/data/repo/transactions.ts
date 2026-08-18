@@ -15,7 +15,7 @@ import {
 import { isCurrentOrFutureMonth, isISODate, isMonthKey, todayISO, type ISODate, type MonthKey } from "../../domain/dates";
 import { assertSupportedMinorAmount, isSupportedMinorAmount, type Minor } from "../../domain/money";
 import { assertInputWithinLimit } from "../../domain/input";
-import type { PaymentSourceType, TransactionType } from "../../domain/types";
+import type { TransactionOrigin, PaymentSourceType, TransactionType } from "../../domain/types";
 import { reconciliationDelta } from "../../domain/balance";
 import { isSupportedCurrency } from "../../domain/fx-provider";
 import { categoryAcceptsTransaction } from "../../domain/transactions";
@@ -42,6 +42,13 @@ export interface NewTransaction {
   note: string | null;
   isAggregate?: boolean;
   subscriptionId?: string | null;
+  /**
+   * Where this row came from. Defaults to `manual`, because this is the entry
+   * point the forms use; every automated writer states its own origin.
+   */
+  origin?: TransactionOrigin;
+  /** The source line this row was created from, for a repeatable import. */
+  importKey?: string | null;
 }
 
 export interface LivePaymentSource {
@@ -193,6 +200,8 @@ export async function addTransaction(userId: string, input: NewTransaction): Pro
         cardStatementId: dates.cardStatementId,
         isAggregate: input.isAggregate ?? false,
         subscriptionId: input.subscriptionId ?? null,
+        origin: input.origin ?? "manual",
+        importKey: input.importKey ?? null,
         installmentPlanId: null,
         installmentNo: null,
         entryDate: today,

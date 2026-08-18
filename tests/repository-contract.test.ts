@@ -642,6 +642,47 @@ describe("repository compatibility contract", () => {
       .toBe("pending");
   });
 
+  /**
+   * Undo removes what the confirmation CREATED and nothing else.
+   *
+   * Matching points an expectation at a payment the owner had already
+   * recorded. Undoing that link must unlink it; deleting the transaction would
+   * destroy a record of real money that the expectation never owned.
+   */
+  it.each([
+    ["expected", true],
+    [null, true],
+    ["manual", false],
+    ["statement", false],
+    ["spreadsheet", false],
+  ])("reverting a confirmation deletes an origin=%s transaction: %s", async (origin, deleted) => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM subscriptions")) return null;
+        if (sql.includes("FROM transactions")) return { id: "transaction-1", deleted_at: null, origin };
+        return {
+          id: "expected-1",
+          direction: "out",
+          kind: "recurring_income",
+          ref_id: "income-1",
+          due_date: "2026-07-10",
+          amount_minor: 5_000,
+          currency: "TRY",
+          status: "paid",
+          transaction_id: "transaction-1",
+        };
+      },
+    });
+
+    await repository.revertExpected("user-1", "expected-1");
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const transactionWrite = writes.find((write: { table: string }) => write.table === "transactions");
+    expect(Boolean(transactionWrite)).toBe(deleted);
+    // The expectation is released either way — that is what undo means.
+    expect(writes.find((write: { table: string }) => write.table === "expected_payments")?.row.transactionId)
+      .toBeNull();
+  });
+
   it("does not rewind a subscription after a later confirmation advanced it again", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) => {

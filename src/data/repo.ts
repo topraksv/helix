@@ -7,7 +7,9 @@
  */
 
 export {
+  AttachmentRejectedError,
   CreditCardCycleRequiredError,
+  ExpectedAlreadyMatchedError,
   FxRateUnavailableError,
   InstallmentHistoryConflictError,
   ReferencedRecordError,
@@ -145,7 +147,28 @@ export {
   pendingSyncChangeCount,
   retrySyncDeadLetter,
   setAccountFrozen,
+  setAttentionState,
   setBalanceDeclaration,
   setPendingTableVisibility,
   setReminderDays,
 } from "./repo/settings";
+
+export {
+  addAttachment,
+  deleteAttachment,
+  liveAttachmentNames,
+  listAttachments,
+  restoreAttachment,
+  type AttachmentRow,
+  type AttachmentSnapshot,
+  type NewAttachment,
+} from "./repo/attachments";
+
+export { setMatrixColor, type ColorTarget } from "./repo/matrix-colors";
+export { matchExpectedToTransaction } from "./repo/expected";
+
+export {
+  commitStatementRows,
+  type AcceptedStatementRow,
+  type StatementCommitResult,
+} from "./repo/statement-import";

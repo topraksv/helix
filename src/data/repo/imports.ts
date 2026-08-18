@@ -394,6 +394,13 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
           // never surfaced as an upcoming payment, whatever the cell shape.
           isAggregate: true,
           note: item.note,
+          origin: "spreadsheet",
+          // The batch index (`import_batch:<year>`) already records which rows
+          // a workbook year produced, and replacing a year tombstones exactly
+          // those. A per-cell key would be a second, competing identity for
+          // the same fact — and a workbook cell has no stable line id to build
+          // one from, so it would be invented rather than observed.
+          importKey: null,
           deletedAt: null,
         },
       });

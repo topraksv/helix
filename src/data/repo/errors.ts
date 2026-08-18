@@ -47,3 +47,22 @@ export class ImportBatchUnreadableError extends Error {
     this.name = "ImportBatchUnreadableError";
   }
 }
+
+/**
+ * A picked file the app will not store. Carries the machine-readable reason so
+ * the screen can say WHICH rule was broken rather than "olmadı".
+ */
+export class AttachmentRejectedError extends Error {
+  constructor(readonly reason: string) {
+    super(`Attachment rejected: ${reason}`);
+    this.name = "AttachmentRejectedError";
+  }
+}
+
+/** One transaction settles one expectation; a second link would double-count. */
+export class ExpectedAlreadyMatchedError extends Error {
+  constructor() {
+    super("Transaction is already matched to another expected payment");
+    this.name = "ExpectedAlreadyMatchedError";
+  }
+}

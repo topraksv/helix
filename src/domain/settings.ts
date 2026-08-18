@@ -1,5 +1,6 @@
 /** Runtime decoders for synced/imported JSON settings. */
 
+import { isAttentionState } from "./attention";
 import { parseBalanceDeclaration } from "./balance-declaration";
 import { isISODate, isMonthKey } from "./dates";
 import { isSupportedMinorAmount } from "./money";
@@ -42,6 +43,8 @@ const SETTING_VALIDATORS = {
   account_frozen: (value: unknown) => typeof value === "boolean",
   onboarded: (value: unknown) => typeof value === "boolean",
   cc_column_removed: (value: unknown) => typeof value === "boolean",
+  /** What the owner did to attention items: read, dismissed, snoozed. */
+  attention_state: (value: unknown) => isAttentionState(value),
 } satisfies Record<string, (value: unknown) => boolean>;
 
 /** A settings key with a declared shape. */

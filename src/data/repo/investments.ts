@@ -1,3 +1,4 @@
+import { isValidTargetWeightBp } from "../../domain/allocation";
 import { getSqliteAsync } from "../../db/client";
 import { deterministicId, naturalKeys, newId } from "../../db/ids";
 import {
@@ -34,6 +35,11 @@ export interface InvestmentProductInput {
   name: string;
   marketCode?: string | null;
   note?: string | null;
+  /**
+   * Intended share of the portfolio in basis points, or null to remove it.
+   * `undefined` keeps whatever is stored — see the write below.
+   */
+  targetWeightBp?: number | null;
 }
 
 export interface InvestmentOperationInput extends InvestmentQuoteInput {
@@ -87,6 +93,9 @@ export async function setupInvestments(userId: string, input: InvestmentSetupInp
 export async function saveInvestmentProduct(userId: string, input: InvestmentProductInput): Promise<string> {
   const name = input.name.trim();
   if (!name || textLength(name) > 120) throw new InvestmentDomainError("unknown_product");
+  if (input.targetWeightBp != null && !isValidTargetWeightBp(input.targetWeightBp)) {
+    throw new InvestmentDomainError("invalid_money");
+  }
   assertInputWithinLimit(input.note ?? null, "note");
   const id = input.id ?? newId();
   const sqlite = await getSqliteAsync();
@@ -106,6 +115,12 @@ export async function saveInvestmentProduct(userId: string, input: InvestmentPro
       name,
       marketCode: input.marketCode?.trim() || null,
       note: input.note?.trim() || null,
+      // Absent means "leave the target as it was", so editing a product's name
+      // cannot silently clear a plan the owner set on another screen. An
+      // explicit null is how a target is removed.
+      targetWeightBp: input.targetWeightBp === undefined
+        ? (previous?.target_weight_bp ?? null)
+        : input.targetWeightBp,
       deletedAt: null,
     },
   }];

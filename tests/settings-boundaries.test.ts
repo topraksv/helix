@@ -19,6 +19,7 @@ import {
   pendingSyncChangeCount,
   retrySyncDeadLetter,
   setAccountFrozen,
+  setAttentionState,
   setBalanceDeclaration,
   setPendingTableVisibility,
   setReminderDays,
@@ -35,6 +36,23 @@ describe("synced setting decoder boundaries", () => {
     for (const key of ["account_frozen", "onboarded", "cc_column_removed"] as const) {
       expect(decodeSettingValue(key, "true", false), key).toBe(true);
       expect(decodeSettingValue(key, '"true"', false), key).toBe(false);
+    }
+  });
+
+  /**
+   * The attention state is one synced value, so the decoder is the boundary
+   * that stops a newer build's shape (or a tampered row) becoming the inbox's
+   * idea of what the owner dismissed.
+   */
+  it("accepts a well-formed attention state and refuses every other shape", () => {
+    const valid = JSON.stringify({ read: ["a"], dismissed: [], snoozedUntil: { a: "2026-09-01" } });
+    expect(decodeSettingValue("attention_state", valid, null)).toEqual({
+      read: ["a"],
+      dismissed: [],
+      snoozedUntil: { a: "2026-09-01" },
+    });
+    for (const raw of ['null', '3', '"x"', '{}', '{"read":[1],"dismissed":[],"snoozedUntil":{}}', '{"read":[],"dismissed":[],"snoozedUntil":5}']) {
+      expect(decodeSettingValue("attention_state", raw, null), raw).toBeNull();
     }
   });
 
@@ -90,5 +108,40 @@ describe("setting repository delegation", () => {
       expect(() => setReminderDays("user-1", days), String(days)).toThrow("Invalid reminder days");
     }
     expect(dependencies.writeSetting).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The stored attention value must not grow with the age of the account: a
+ * decision about an item nothing derives any more is not a decision worth
+ * keeping, and this is the only write path that can prune it.
+ */
+describe("attention state persistence", () => {
+  beforeEach(() => {
+    dependencies.writeSetting.mockClear();
+  });
+
+  it("prunes decisions about items that no longer exist, and marks the write as the owner's", async () => {
+    await setAttentionState(
+      "user-1",
+      { read: ["live", "gone"], dismissed: ["gone"], snoozedUntil: { live: "2026-09-01", gone: "2026-09-01" } },
+      new Set(["live"]),
+    );
+    expect(dependencies.writeSetting).toHaveBeenCalledWith(
+      "user-1",
+      "attention_state",
+      { read: ["live"], dismissed: [], snoozedUntil: { live: "2026-09-01" } },
+      true,
+    );
+  });
+
+  it("writes an empty state rather than skipping the write when everything is gone", async () => {
+    await setAttentionState("user-1", { read: ["gone"], dismissed: ["gone"], snoozedUntil: {} }, new Set());
+    expect(dependencies.writeSetting).toHaveBeenCalledWith(
+      "user-1",
+      "attention_state",
+      { read: [], dismissed: [], snoozedUntil: {} },
+      true,
+    );
   });
 });

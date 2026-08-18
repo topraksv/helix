@@ -1,4 +1,5 @@
 import { newId } from "../../db/ids";
+import { pruneAttentionState, type AttentionState } from "../../domain/attention";
 import { pendingOutboxCount, requeueSyncDeadLetter as requeueLocalSyncDeadLetter, writeSetting } from "../../db/mutations";
 
 export function createRecordId(): string {
@@ -37,4 +38,19 @@ export function setPendingTableVisibility(userId: string, visible: boolean): Pro
  */
 export function setBalanceDeclaration(userId: string, minor: number, at: string): Promise<void> {
   return writeSetting(userId, "balance_declared", { minor, at });
+}
+
+/**
+ * Record what the owner did to an attention item.
+ *
+ * Pruned on every write against the ids still being derived, so the one stored
+ * value cannot grow with the age of the account — a decision about an item that
+ * no longer exists is not a decision worth keeping.
+ */
+export async function setAttentionState(
+  userId: string,
+  state: AttentionState,
+  liveIds: ReadonlySet<string>,
+): Promise<void> {
+  await writeSetting(userId, "attention_state", pruneAttentionState(state, liveIds), true);
 }

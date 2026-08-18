@@ -9,7 +9,7 @@ import { isSupportedMinorAmount, type Minor } from "../../domain/money";
 import { isValidCardCycle, statementForPurchase } from "../../domain/card-statements";
 import { lookupRate } from "../../services/fx-fetch";
 import { marketSellRateTry } from "../../services/markets";
-import { FxRateUnavailableError } from "./errors";
+import { ExpectedAlreadyMatchedError, FxRateUnavailableError } from "./errors";
 import { assertLiveTransactionPerson, assertSignedTransactionAmounts, assertTransactionCategory, cardStatementWrite, livePaymentSource } from "./transactions";
 
 // Expected payments: confirm / skip / revert
@@ -154,6 +154,10 @@ export async function confirmExpected(
         subscriptionId: row.kind === "subscription" ? row.ref_id : null,
         isAggregate: false,
         note: null,
+        // Confirming an expectation is not hand entry: the matching flow and
+        // duplicate review both need to tell the two apart.
+        origin: "expected",
+        importKey: null,
         deletedAt: null,
       },
     },
@@ -278,10 +282,91 @@ export async function revertExpected(userId: string, expectedId: string): Promis
       `SELECT * FROM transactions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
       [row.transaction_id, userId],
     );
-    if (transaction) {
+    // Only a row THIS confirmation created is removed with it. A transaction
+    // the owner had already recorded and then MATCHED to the expectation is
+    // their own record of real money: unlinking it is the whole of the undo,
+    // and deleting it would destroy data the expectation never owned.
+    //
+    // A row with no origin is a confirmation from before provenance existed —
+    // matching did not exist then either, so the only way it could be linked
+    // was a confirmation, and it keeps the original behaviour.
+    const createdByConfirmation = transaction != null
+      && (transaction.origin == null || transaction.origin === "expected");
+    if (transaction && createdByConfirmation) {
       writes.unshift({
         table: "transactions",
         row: { ...fromDbShape("transactions", transaction), deletedAt: nowIso() },
+      });
+    }
+  }
+  await writeRows(userId, writes);
+}
+
+/**
+ * Record that an expectation was settled by a transaction that already exists.
+ *
+ * The counterpart to `confirmExpected`, which CREATES the payment. Here the
+ * payment was already recorded — imported from a statement, typed by hand —
+ * and the expectation simply needs to point at it, so the dashboard stops
+ * forecasting money that has already moved and the ledger does not gain a
+ * second copy of it.
+ *
+ * Nothing about the transaction is rewritten. Its amount may legitimately
+ * differ from the estimate (a variable bill), its date may differ from the due
+ * date, and neither is this function's business to correct.
+ */
+export async function matchExpectedToTransaction(
+  userId: string,
+  expectedId: string,
+  transactionId: string,
+): Promise<void> {
+  const row = await getExpectedRow(userId, expectedId);
+  if (!row || (row.status !== "pending" && row.status !== "late")) return;
+  const sqlite = await getSqliteAsync();
+  const transaction = await sqlite.getFirstAsync<{ id: string; person_id: string }>(
+    `SELECT id, person_id FROM transactions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    [transactionId, userId],
+  );
+  if (!transaction) throw new Error("Matched transaction does not exist");
+  // One transaction settles one expectation. Without this, two months of the
+  // same bill could both point at a single payment and the forecast would drop
+  // twice for money that moved once.
+  const alreadyLinked = await sqlite.getFirstAsync<{ id: string }>(
+    `SELECT id FROM expected_payments
+     WHERE user_id = ? AND transaction_id = ? AND id != ? AND deleted_at IS NULL AND status = 'paid'`,
+    [userId, transactionId, expectedId],
+  );
+  if (alreadyLinked) throw new ExpectedAlreadyMatchedError();
+
+  const writes: RowWrite[] = [{
+    table: "expected_payments",
+    row: {
+      ...fromDbShape("expected_payments", row),
+      status: "paid",
+      paidAt: nowIso(),
+      autoConfirmed: false,
+      transactionId,
+    },
+  }];
+  if (row.kind === "subscription" && isISODate(row.due_date)) {
+    const subscription = await sqlite.getFirstAsync<Record<string, unknown>>(
+      `SELECT * FROM subscriptions WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+      [row.ref_id, userId],
+    );
+    const intervalMonths = Number(subscription?.interval_months);
+    const billingDay = Number(subscription?.billing_day);
+    if (
+      subscription
+      && Number.isInteger(intervalMonths) && intervalMonths >= 1
+      && isMonthDay(billingDay)
+      && String(subscription.next_due_date) <= row.due_date
+    ) {
+      writes.push({
+        table: "subscriptions",
+        row: {
+          ...fromDbShape("subscriptions", subscription),
+          nextDueDate: advanceDueDate(row.due_date, intervalMonths, billingDay),
+        },
       });
     }
   }
