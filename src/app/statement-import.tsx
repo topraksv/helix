@@ -22,9 +22,7 @@ import React, { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import FileCheck2 from "lucide-react-native/icons/file-check-corner";
 import FileText from "lucide-react-native/icons/file-text";
-import ArrowRight from "lucide-react-native/icons/arrow-right";
 import Check from "lucide-react-native/icons/check";
 import ReceiptText from "lucide-react-native/icons/receipt-text";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
@@ -61,7 +59,7 @@ import {
   Screen,
   SectionHeader,
 } from "../ui/components";
-import { ImportJourney } from "../ui/import-journey";
+import { ImportArtwork, ImportJourney } from "../ui/import-journey";
 import { Select } from "../ui/selection-controls";
 import { interactionSurface } from "../ui/interaction";
 import { appConfirm, appAlert } from "../ui/dialog";
@@ -69,7 +67,7 @@ import { useUndo } from "../ui/undo";
 import { useOperationGuard } from "../ui/operation-guard";
 import { shouldUseWideImportGuide } from "../ui/responsive";
 import { useContentWidth } from "../ui/viewport";
-import { borderWidth, circle, radius, spacing, type, useTheme } from "../ui/theme";
+import { borderWidth, radius, spacing, type, useTheme } from "../ui/theme";
 
 /** A candidate as the owner may have edited it. */
 interface Draft {
@@ -89,51 +87,15 @@ interface Draft {
 function StatementArtwork({ ready }: { ready: boolean }) {
   const { palette } = useTheme();
   return (
-    <View accessible={false} style={{ width: 172, height: 112, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          position: "absolute",
-          left: 2,
-          top: 8,
-          width: 88,
-          height: 96,
-          padding: spacing.sm,
-          borderRadius: radius.md,
-          borderWidth: 1,
-          borderColor: palette.border,
-          backgroundColor: palette.surface,
-        }}
-      >
-        <View style={{ width: 30, height: 5, borderRadius: 3, backgroundColor: palette.primary, marginBottom: 7 }} />
-        {[46, 60, 38, 54, 44].map((width, row) => (
-          <View key={row} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 5 }}>
-            <View style={{ width: 12, height: 4, borderRadius: 2, backgroundColor: palette.border + "90" }} />
-            <View style={{ width: width * 0.6, height: 4, borderRadius: 2, backgroundColor: palette.border + "60" }} />
-          </View>
-        ))}
-      </View>
-      <View style={{ position: "absolute", left: 78, width: 30, height: 30, borderRadius: circle(30), alignItems: "center", justifyContent: "center", backgroundColor: ready ? palette.positive : palette.primary }}>
-        {ready ? <FileCheck2 accessible={false} size={17} color={palette.onPrimary} /> : <ArrowRight accessible={false} size={17} color={palette.onPrimary} />}
-      </View>
-      <View
-        style={{
-          position: "absolute",
-          right: 0,
-          bottom: 14,
-          width: 78,
-          height: 70,
-          padding: spacing.sm,
-          borderRadius: radius.md,
-          borderWidth: 1,
-          borderColor: ready ? palette.positive : palette.border,
-          backgroundColor: palette.primarySoft,
-        }}
-      >
-        <ReceiptText accessible={false} size={20} color={palette.primaryText} />
-        <View style={{ width: 51, height: 5, borderRadius: 3, backgroundColor: palette.primary, marginTop: spacing.sm }} />
-        <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: palette.border, marginTop: 5 }} />
-      </View>
-    </View>
+    <ImportArtwork ready={ready} destinationIcon={ReceiptText}>
+      <View style={{ width: 30, height: 5, borderRadius: 3, backgroundColor: palette.primary, marginBottom: 7 }} />
+      {[46, 60, 38, 54, 44].map((width, row) => (
+        <View key={row} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 5 }}>
+          <View style={{ width: 12, height: 4, borderRadius: 2, backgroundColor: palette.border + "90" }} />
+          <View style={{ width: width * 0.6, height: 4, borderRadius: 2, backgroundColor: palette.border + "60" }} />
+        </View>
+      ))}
+    </ImportArtwork>
   );
 }
 

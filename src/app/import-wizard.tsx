@@ -11,12 +11,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import ArrowRight from "lucide-react-native/icons/arrow-right";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";
-import FileCheck2 from "lucide-react-native/icons/file-check-corner";
 import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
 import Scale from "lucide-react-native/icons/scale";
-import { ImportJourney } from "../ui/import-journey";
+import { ImportArtwork, ImportJourney } from "../ui/import-journey";
 import TableProperties from "lucide-react-native/icons/table-properties";
 import Upload from "lucide-react-native/icons/upload";
 import { ImportBatchUnreadableError, importSheets, importedYears, openingBalanceFromSheets } from "../data/repo";
@@ -43,66 +41,30 @@ import { devError } from "../services/logger";
 function WorkbookArtwork({ ready }: { ready: boolean }) {
   const { palette } = useTheme();
   return (
-    <View accessible={false} style={{ width: 172, height: 112, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          position: "absolute",
-          left: 2,
-          top: 8,
-          width: 88,
-          height: 96,
-          padding: spacing.sm,
-          borderRadius: radius.md,
-          borderWidth: 1,
-          borderColor: palette.border,
-          backgroundColor: palette.surface,
-        }}
-      >
-        <View style={{ flexDirection: "row", gap: 3, marginBottom: 4 }}>
-          {[palette.positive, palette.warning, palette.negative].map((color) => (
-            <View key={color} style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: color }} />
-          ))}
-        </View>
-        {Array.from({ length: 4 }).map((_, row) => (
-          <View key={row} style={{ flexDirection: "row" }}>
-            {Array.from({ length: 3 }).map((__, column) => (
-              <View
-                key={column}
-                style={{
-                  width: 22,
-                  height: 14,
-                  borderRightWidth: 1,
-                  borderBottomWidth: 1,
-                  borderColor: palette.border + "90",
-                  backgroundColor: row === 0 || column === 0 ? palette.surfaceAlt : "transparent",
-                }}
-              />
-            ))}
-          </View>
+    <ImportArtwork ready={ready} destinationIcon={TableProperties}>
+      <View style={{ flexDirection: "row", gap: 3, marginBottom: 4 }}>
+        {[palette.positive, palette.warning, palette.negative].map((color) => (
+          <View key={color} style={{ width: 6, height: 6, borderRadius: circle(6), backgroundColor: color }} />
         ))}
       </View>
-      <View style={{ position: "absolute", left: 78, width: 30, height: 30, borderRadius: circle(30), alignItems: "center", justifyContent: "center", backgroundColor: ready ? palette.positive : palette.primary }}>
-        {ready ? <FileCheck2 accessible={false} size={17} color={palette.onPrimary} /> : <ArrowRight accessible={false} size={17} color={palette.onPrimary} />}
-      </View>
-      <View
-        style={{
-          position: "absolute",
-          right: 0,
-          bottom: 14,
-          width: 78,
-          height: 70,
-          padding: spacing.sm,
-          borderRadius: radius.md,
-          borderWidth: 1,
-          borderColor: ready ? palette.positive : palette.border,
-          backgroundColor: palette.primarySoft,
-        }}
-      >
-        <TableProperties accessible={false} size={20} color={palette.primaryText} />
-        <View style={{ width: 51, height: 5, borderRadius: 3, backgroundColor: palette.primary, marginTop: spacing.sm }} />
-        <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: palette.border, marginTop: 5 }} />
-      </View>
-    </View>
+      {Array.from({ length: 4 }).map((_, row) => (
+        <View key={row} style={{ flexDirection: "row" }}>
+          {Array.from({ length: 3 }).map((__, column) => (
+            <View
+              key={column}
+              style={{
+                width: 22,
+                height: 14,
+                borderRightWidth: 1,
+                borderBottomWidth: 1,
+                borderColor: palette.border + "90",
+                backgroundColor: row === 0 || column === 0 ? palette.surfaceAlt : "transparent",
+              }}
+            />
+          ))}
+        </View>
+      ))}
+    </ImportArtwork>
   );
 }
 
