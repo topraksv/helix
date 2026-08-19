@@ -216,12 +216,16 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.value }}
-      # On a hit only the system libraries are installed, which is the cheap
-      # half; on a miss this is the same command it always was.
+      # Only on a miss, and only then. The `--with-deps` half is an
+      # `apt-get install`, and that is the step that hangs: measured on
+      # 2026-08-19, two shards sat on it for 11+ minutes while a third finished
+      # the identical step in three and went on to pass its whole suite. On a
+      # hit the browsers come from the cache and the system libraries are
+      # already in the runner image, so there is nothing to install and nothing
+      # to wait on. A genuinely missing library fails loudly at browser launch
+      # rather than silently, which is why this is safe to skip.
       - run: npx playwright install chromium firefox --with-deps
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-      - run: npx playwright install-deps chromium firefox
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
       # The E2E export is local-only by construction (blank Supabase env), which
       # is why it never becomes the Pages artifact and why the suite can never
       # write to real data.
@@ -296,12 +300,16 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.value }}
-      # On a hit only the system libraries are installed, which is the cheap
-      # half; on a miss this is the same command it always was.
+      # Only on a miss, and only then. The `--with-deps` half is an
+      # `apt-get install`, and that is the step that hangs: measured on
+      # 2026-08-19, two shards sat on it for 11+ minutes while a third finished
+      # the identical step in three and went on to pass its whole suite. On a
+      # hit the browsers come from the cache and the system libraries are
+      # already in the runner image, so there is nothing to install and nothing
+      # to wait on. A genuinely missing library fails loudly at browser launch
+      # rather than silently, which is why this is safe to skip.
       - run: npx playwright install chromium firefox --with-deps
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-      - run: npx playwright install-deps chromium firefox
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dist-e2e-${{ github.run_id }}
