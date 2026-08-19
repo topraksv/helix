@@ -38,6 +38,18 @@ const PROVEN_SENTINEL_SCOPE = [
 
 const MUTATION_RELEVANT = /^src\/(?:domain|data\/repo|db|sync|auth|services)\/.*\.(?:[cm]?js|tsx?)$/;
 
+/**
+ * Files inside that scope that carry no logic to mutate.
+ *
+ * `src/db/migrations/migrations.js` is a generated import manifest — a list of
+ * `.sql` files and nothing else. Stryker cannot even parse it (its Babel setup
+ * and this project's collide on the decorator plugins), so the moment a
+ * migration is added the whole gate crashes rather than reporting a score.
+ * What the migrations actually do is covered by `tests/migration-upgrade.test.ts`,
+ * which replays every one of them against a real database.
+ */
+const MUTATION_EXCLUDED = /^src\/db\/migrations\//;
+
 function git(args, cwd) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 }
@@ -68,7 +80,7 @@ export function selectMutationScope({ base, head, eventName = "local", cwd = pro
     const changed = git(["diff", "--no-renames", "--name-only", `${effectiveBase}..${head}`], cwd)
       .split("\n")
       .filter(Boolean)
-      .filter((file) => MUTATION_RELEVANT.test(file))
+      .filter((file) => MUTATION_RELEVANT.test(file) && !MUTATION_EXCLUDED.test(file))
       .filter((file) => existsSync(resolve(cwd, file)));
     return changed.length > 0 ? [...new Set(changed)].sort() : PROVEN_SENTINEL_SCOPE;
   } catch (error) {

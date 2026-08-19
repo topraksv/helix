@@ -82,6 +82,26 @@ describe("CI mutation contract", () => {
     })).toThrow(/mutation diff base/i);
   });
 
+  /**
+   * The generated migration manifest is inside the relevant path but has no
+   * logic to mutate, and Stryker cannot parse it at all — its Babel setup and
+   * this project's collide on the decorator plugins. Before this exclusion the
+   * gate did not report a low score, it CRASHED, and it did so only on the
+   * pushes that add a migration. What those files do is proven by
+   * `tests/migration-upgrade.test.ts` replaying them against a real database.
+   */
+  it("never mutates the generated migration manifest", () => {
+    const scope = selectMutationScope({
+      base: "9d9d1021abcbb4f299133828dcb2af0b4dbbbe4a",
+      head: "HEAD",
+      eventName: "push",
+      cwd: process.cwd(),
+    });
+    expect(scope.some((file) => file.startsWith("src/db/migrations/"))).toBe(false);
+    // The exclusion is narrow: real database source is still in scope.
+    expect(scope).toContain("src/db/schema.ts");
+  });
+
   it("allows a ref-free sentinel only for an explicit manual dispatch", () => {
     expect(selectMutationScope({
       base: "",
