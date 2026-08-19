@@ -26,20 +26,20 @@ const ACKNOWLEDGED = [
   {
     id: "GHSA-w3rx-r6r6-pgpr",
     package: "image-size",
-    checkedOn: "2026-08-09",
-    expectedPaths: ["expo", "react-native", "react-native-reanimated"],
-    recheckAfter: "2026-09-09",
+    checkedOn: "2026-08-19",
+    expectedPaths: ["expo"],
+    recheckAfter: "2026-09-19",
     reason:
-      "image-size@1.2.1 remains only in Metro's build chain; `react-native-reanimated` is an audit peer-dependency path through React Native, not a second installed image-size path (`npm ls image-size` resolves only expo -> @expo/metro -> metro). image-size was absent from the production web export and iOS Release app bundle. image-size@2.0.2 was tested but rejected because Expo Metro failed on its unmatched.png asset path. The advisory has no upstream patched version; recheck the package and both exports before expiry.",
+      "image-size@1.2.1 remains only in Metro's build chain: `npm ls image-size --all` resolves the single path expo -> @expo/metro -> metro, and the audit reports one install node (metro/node_modules/image-size). Re-verified 2026-08-19 that image-size is absent from the production web export. npm offers no fix other than downgrading expo a major version, and image-size@2.0.2 was tested earlier but rejected because Expo Metro failed on its unmatched.png asset path. Recheck the package and the export before expiry.",
   },
   {
     id: "GHSA-5p2g-fcmc-qvqq",
     package: "image-size",
-    checkedOn: "2026-08-09",
-    expectedPaths: ["expo", "react-native", "react-native-reanimated"],
-    recheckAfter: "2026-09-09",
+    checkedOn: "2026-08-19",
+    expectedPaths: ["expo"],
+    recheckAfter: "2026-09-19",
     reason:
-      "image-size@1.2.1 remains only in Metro's build chain; `react-native-reanimated` is an audit peer-dependency path through React Native, not a second installed image-size path (`npm ls image-size` resolves only expo -> @expo/metro -> metro). image-size was absent from the production web export and iOS Release app bundle. image-size@2.0.2 was tested but rejected because Expo Metro failed on its unmatched.png asset path. The advisory has no upstream patched version; recheck the package and both exports before expiry.",
+      "image-size@1.2.1 remains only in Metro's build chain: `npm ls image-size --all` resolves the single path expo -> @expo/metro -> metro, and the audit reports one install node (metro/node_modules/image-size). Re-verified 2026-08-19 that image-size is absent from the production web export. npm offers no fix other than downgrading expo a major version, and image-size@2.0.2 was tested earlier but rejected because Expo Metro failed on its unmatched.png asset path. Recheck the package and the export before expiry.",
   },
 ];
 

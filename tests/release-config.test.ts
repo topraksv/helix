@@ -113,8 +113,8 @@ describe("release contract", () => {
     // so the plain run is the light tier's own signal and must stand down when
     // the full tier is selected.
     expect(ci).toMatch(/if: needs\.classify\.outputs\.full_gate != 'true'\n\s+run: npx vitest run/);
-    // `e2e-full` executes all 114 browser tests; the 24 `@smoke` ones are a
-    // subset of them, and `test:e2e:smoke` would also export a third bundle.
+    // `e2e-full` executes the whole browser suite; the `@smoke` tests are a
+    // subset of it, and `test:e2e:smoke` would also export a third bundle.
     expect(ci).toMatch(/e2e-smoke:\n\s+needs: classify\n\s+if: needs\.classify\.outputs\.full_gate != 'true'/);
   });
 
@@ -272,8 +272,8 @@ describe("release contract", () => {
     const commands = security.split("\n").filter((line) => /^\s*(-\s*)?(run|uses|continue-on-error):/.test(line));
     expect(commands.join("\n")).toContain("node scripts/check-advisories.mjs");
     // A bare `npm audit --audit-level=high` cannot express an acceptance, so
-    // it reports the 11 packages carrying Metro's two build-chain advisories
-    // as 11 blocking findings and stays red until the threshold is relaxed.
+    // every package carrying Metro's two build-chain advisories becomes its
+    // own blocking finding and the job stays red until the threshold is relaxed.
     expect(commands.join("\n")).not.toContain("npm audit --audit-level");
     for (const line of commands) {
       expect(line, line).not.toMatch(/--audit-level=(moderate|low|info)|--omit=dev|continue-on-error/);

@@ -13,7 +13,8 @@
     "**/*.{js,mjs,ts,tsx}"
   ],
   "ignore": [
-    "src/sync/database.types.ts"
+    "src/sync/database.types.ts",
+    ".agents/skills/**"
   ],
   "ignoreDependencies": [
     "@expo-google-fonts/ibm-plex-serif",
@@ -22,6 +23,7 @@
     "babel-preset-expo"
   ],
   "ignoreBinaries": [
+    "graphify",
     "maestro",
     "pyftsubset"
   ]

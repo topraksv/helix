@@ -68,8 +68,8 @@ jobs:
       # No `npm ci`: the audit resolves from package-lock.json alone.
       # High and critical only, and every accepted advisory is named with its
       # evidence in the script. A bare `npm audit --audit-level=high` reports
-      # the 11 packages carrying Metro's two build-chain `image-size`
-      # advisories as 11 findings and goes permanently red; the two usual
+      # every package carrying Metro's two build-chain `image-size`
+      # advisories as its own finding and goes permanently red; the two usual
       # escapes — lowering the level, or `--omit=dev` — would each hide a real
       # finding instead of explaining this one, because Expo and React Native
       # declare their build tooling as ordinary dependencies. (`xlsx` comes

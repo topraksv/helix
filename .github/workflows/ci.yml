@@ -188,8 +188,8 @@ jobs:
           path: dist
 
   # The always-on browser signal for a light-tier push. A full-gate push runs
-  # `e2e-full`, whose 114 tests already contain these 24 `@smoke` ones, so
-  # running both would repeat them and pay for a third Metro export.
+  # `e2e-full`, whose suite already contains every `@smoke` test, so running
+  # both would repeat them and pay for a third Metro export.
   e2e-smoke:
     needs: classify
     if: needs.classify.outputs.full_gate != 'true'
