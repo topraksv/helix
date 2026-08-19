@@ -92,6 +92,11 @@ Helix is a connected financial ledger, not a bank console or card dashboard.
 `src/ui/components.tsx` and focused primitives own reusable interaction
 patterns. New screens reuse those interfaces rather than restyling them inline.
 
+[`UI.md`](UI.md) is the placement authority: which component sits where, who
+owns the space around it, and how a surface changes with width. Read it before
+adding a screen, a card, a control cluster or a breakpoint. Only the rules that
+cost an incident to learn are repeated here.
+
 - Integer kuruş and ISO calendar dates retain financial precision.
 - The product says “Yatırım”; persisted `transfer` names remain unchanged
   because they are sync and backup compatibility fields.
@@ -110,9 +115,15 @@ patterns. New screens reuse those interfaces rather than restyling them inline.
   one and not the other.
 - Hover and pressed come from `interactionSurface` and nothing else, applied to
   the pressable itself. A container without a role never carries the fill or
-  its transition: the transition IS the claim to be interactive.
+  its transition: the transition IS the claim to be interactive. One visual
+  cell lights once — an inner control reports its pointer to the outer one
+  through `interactionSurface`'s `hovered` option and paints no fill itself.
 - A header's rule is always reserved and recoloured, never toggled on. A border
   that appears with a state moves the text beside it by those pixels.
+- Every width that changes a layout mode is a named predicate in
+  `src/ui/responsive.ts`, with its measurement in the comment. A threshold
+  written inline is a rule nobody can find, test, or keep level with the rule
+  beside it.
 
 ## Incident-derived decisions
 
@@ -137,7 +148,21 @@ failure that selected it.
 | Attachment bytes never enter the sync pipeline | It carries PostgREST JSON, so a blob column would push whole documents through it and replicate every receipt to every device |
 | A statement row's id is derived from the printed line, not the import run | Re-downloading and re-importing the same statement must converge; an id tied to the run doubles the ledger instead |
 | A repeated statement identity is skipped, never overwritten | Overwriting discards an edit the owner made to that transaction after the first import |
+| A payment TO the card is read and deliberately left out, never imported | It prints exactly like a refund, so the previous period's whole settlement was offered back as income and no total the importer produced could reconcile against the paper |
+| Statement wordings are matched against the FOLDED line, never with the `i` flag | A statement is printed in capitals and Turkish dotless `ı` does not case-fold to `I`, so `/yapılan/i` is false for "YAPILAN" |
+| A heading naming a concrete income source outranks the balance-column filter | `\bnet\b` classified **"Net Maaş"** — the commonest Turkish payroll heading — as a balance column, so every month's salary was dropped from the import and the chained balance ran further into the red each month |
+| Balance and total columns are excluded by DEFAULT, never dropped | The parser's reading of a heading was final and invisible; a sheet whose column it misreads had no way to say otherwise, and the resulting balance had no explanation on screen |
+| The workbook's opening balance is stated before it is adopted, and adopting it is a choice | It was written silently and only when earlier than the current anchor, so the first import's answer was permanent — re-importing a corrected workbook could not fix the one figure the whole chain hangs off |
+| A card's two days must be one to twenty nominal days apart | Only equality was refused, so `31 / 30` — a "due date" a day before the next statement closes — was accepted; and two of the three screens that create cards applied no rule at all, so both days could be "ayın sonu" |
 | The attachment sweep runs from `ui/root-lifecycle`, not `runMaintenance` | The filesystem is a native service and the data layer stays loadable — and unit-testable — without one |
+| The confirmation bar is dismissible by dragging it down | It leaves on its own after six seconds, and for six seconds it sits over the bottom of whatever is being read. Down only: up is where it came from |
+| The drag claims the gesture only after movement | The bar carries up to two actions, and a responder that claimed on touch-down would swallow the press that reaches them |
+| A table header's pin reports its hover instead of painting one | react-native-web's `Pressable` sets `contain: true`, so the inner control's hover ENDS the header's; the pin lit a 24px strip inside a column that had gone dark |
+| The pin stays a SIBLING of the header's pressable, never a child | Nesting was tried to inherit the hover and produced `nested-interactive` — a button inside a button, which axe fails and assistive technology cannot reach reliably. It also did not work: `contain: true` ends the outer hover on entry whether the inner control is a child or a sibling |
+| Mark slots are named for their hue, not for a meaning | The four names are the owner's and are editable account-wide, so a slot called `success` that someone renamed "Ödenmedi" would be a lie in the column |
+| A retired mark slot is still readable, never dropped | A mark that stops resolving is invisible, not broken: the cell simply loses a colour the owner put there, with nothing to notice |
+| The mark fill is 35%, chosen by ΔE rather than by eye | At 15% the four hues measured 2.7 ΔE apart — four washes nobody could tell apart, which is what "renkler stabil değil" was |
+| A server constraint that retires a vocabulary EXPANDS first and contracts later | The check and the client ship at different moments and a stale tab is a second client. A push Postgres refuses throws for the whole batch, so one rejected colour would stop that device syncing anything at all — the retired names stay legal until no client can still write them |
 
 ## Testing policy
 
@@ -226,6 +251,18 @@ one command is what keeps the export level with the graph, because the
 post-commit hook refreshes `graph.json` alone. `docs/graph` is ignored and
 absent from a fresh clone until the script runs once. Never write in it by
 hand.
+
+## Removed after use
+
+Features that shipped, were lived with, and were then taken out by the owner.
+Recorded so the reasoning is not rediscovered as a good idea.
+
+| Removed | Why |
+|---|---|
+| Duplicate review on the catch-up screen | It could not tell two identical grocery shops from one row entered twice, so every pair was a question the owner had to answer from memory anyway. `domain/provenance.ts` keeps only `provenanceOf` |
+| Matching an expectation to an existing transaction | It asked "is this payment already recorded?" — a question the three controls beside it (ödendi / tutarı düzelt / atla) already answer. `expected_payments.transaction_id` is still written by `confirmExpected` |
+| Investment target allocation and drift | A plan the app could only measure against BOOK cost, never market value, so the one number it reported was the one nobody could check. `investment_products.target_weight_bp` stays in the schema and is carried through writes, so an existing value and every backup round-trip unchanged |
+| The monthly figure in the subscription schedule card's header | The cost card below it answered the same question from a different computation; two answers to one question, a scroll apart |
 
 ## Deliberately absent
 

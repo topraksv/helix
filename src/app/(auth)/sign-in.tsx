@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import AlertCircle from "lucide-react-native/icons/circle-alert";
 import BellRing from "lucide-react-native/icons/bell-ring";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";
@@ -18,6 +18,8 @@ import { tr } from "../../i18n/tr";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { OperationFlow, OperationSignature } from "../../ui/operation-flow";
 import { isValidNewPassword } from "../../domain/input";
+import { shouldSplitAuthHero } from "../../ui/responsive";
+import { useContentWidth } from "../../ui/viewport";
 
 function JourneyNode({
   icon: Icon,
@@ -143,9 +145,8 @@ export default function SignInScreen() {
   const [signUpConfirmationSent, setSignUpConfirmationSent] = useState(false);
   const { signIn, signUp, requestPasswordReset } = useSession();
   const { palette } = useTheme();
-  const { width } = useWindowDimensions();
   const operationGuard = useOperationGuard();
-  const wide = width >= 820;
+  const wide = shouldSplitAuthHero(useContentWidth());
 
   const emailValid = /.+@.+\..+/.test(email.trim());
   const canSubmit = emailValid && (

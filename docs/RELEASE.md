@@ -49,8 +49,13 @@ Migrations are forward-only and backward-compatible with the installed client.
 The outbound sync policy derives its allowed columns from the LOCAL schema, so
 a client that writes a new column pushes it whether or not the database has it:
 publish the database migration before shipping the client that uses it.
-`00000000000030_provenance_attachments_colors_targets.sql` is unpublished and
-gates the provenance, attachment, matrix-colour and allocation-target release.
+`00000000000031_matrix_color_slots.sql` is unpublished and gates this
+release: the live check still admits only the five meaning-named colour tokens,
+and the client now writes the four hue-named ones. A rejected push throws for
+the whole batch, so shipping the client first stops that device syncing
+anything at all until the migration lands. It is written as an expand — both
+vocabularies pass — so the reverse order is safe and a client that has not
+taken the update keeps working.
 Never run linked `db reset` or destructive SQL against production. The order is:
 
 1. add the compatible schema change and its local RLS/constraint/RPC tests;

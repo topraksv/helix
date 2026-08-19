@@ -15,89 +15,31 @@ import ArrowRight from "lucide-react-native/icons/arrow-right";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";
 import FileCheck2 from "lucide-react-native/icons/file-check-corner";
 import FileSpreadsheet from "lucide-react-native/icons/file-spreadsheet";
-import ScanLine from "lucide-react-native/icons/scan-line";
+import Scale from "lucide-react-native/icons/scale";
+import { ImportJourney } from "../ui/import-journey";
 import TableProperties from "lucide-react-native/icons/table-properties";
 import Upload from "lucide-react-native/icons/upload";
-import type { LucideIcon } from "lucide-react-native";
-import { ImportBatchUnreadableError, importSheets, importedYears } from "../data/repo";
-import { usePersonsState, useSourcesState, useUserId } from "../data/hooks";
+import { ImportBatchUnreadableError, importSheets, importedYears, openingBalanceFromSheets } from "../data/repo";
+import { settingValue, usePersonsState, useSettingsMapState, useSourcesState, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
-import { isMonthDay, yearOf } from "../domain/dates";
+import { isMonthDay, yearOf, type MonthKey } from "../domain/dates";
 import { formatMinorCompact } from "../domain/money";
 import { monthLabel, tr } from "../i18n/tr";
 import { collectInstallmentPlans, MAX_WORKBOOK_BYTES, parseWorkbookBytes, type CellData, type ParsedSheet, type ParsedWorkbook } from "../services/spreadsheet-import";
 import { scheduleSync } from "../sync/engine";
 import { userMessage } from "../domain/user-error";
-import { Amount, Body, Button, Card, DataStateNotice, OperationStatusNotice, Row, Screen, SectionHeader, SelectionGrid } from "../ui/components";
+import { Amount, Body, Button, Card, DataStateNotice, FieldNote, OperationStatusNotice, PanelHeader, Row, Screen, SectionHeader, SelectionGrid, Spread, Toggle } from "../ui/components";
 import { circle, font, radius, spacing, type, type Palette, useTheme } from "../ui/theme";
-import { SuccessPop } from "../ui/motion-primitives";
 import { navigateBack } from "../ui/navigation";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../ui/operation-guard";
 import { useDirtyExitGuard } from "../ui/dirty-exit";
 import { shouldUseWideImportGuide } from "../ui/responsive";
 import { useContentWidth } from "../ui/viewport";
 import { readPickedBytes } from "../services/picked-file";
-import { MonthDayField } from "../ui/month-day-field";
+import { CardCycleFields, cardCycleError } from "../ui/card-cycle-fields";
 import { devError } from "../services/logger";
 
 // --- visual format guide ---------------------------------------------------
-function ImportJourney({ stage }: { stage: 0 | 1 | 2 }) {
-  const { palette } = useTheme();
-  const steps: { label: string; icon: LucideIcon }[] = [
-    { label: tr.importer.stepFile, icon: FileSpreadsheet },
-    { label: tr.importer.stepReview, icon: ScanLine },
-    { label: tr.importer.stepImport, icon: TableProperties },
-  ];
-  return (
-    <View
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={steps.map((step) => step.label).join(", ")}
-      style={{ flexDirection: "row", alignItems: "center", marginVertical: spacing.md }}
-    >
-      {steps.map((item, index) => {
-        const Icon = item.icon;
-        const active = index <= stage;
-        return (
-          <React.Fragment key={item.label}>
-            <View style={{ flex: 1, minWidth: 0, alignItems: "center", gap: 5 }}>
-              {/* Keyed on the stage that owns it, so the step the wizard has
-                  just reached lands rather than simply being a different
-                  colour from the one before. An import is the longest thing
-                  this app asks anyone to sit through and it needs to be seen
-                  to advance. */}
-              <SuccessPop key={index === stage ? `at-${stage}` : `step-${index}`}>
-              <View
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: circle(38),
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: active ? palette.primary : palette.border,
-                  backgroundColor: active ? palette.primarySoft : palette.surface,
-                }}
-              >
-                <Icon accessible={false} size={18} color={active ? palette.primaryText : palette.textSecondary} />
-              </View>
-              </SuccessPop>
-              <Text style={[type.small, { color: active ? palette.text : palette.textSecondary, fontFamily: active ? font.semibold : font.regular, textAlign: "center" }]}>
-                {item.label}
-              </Text>
-            </View>
-            {index < steps.length - 1 ? (
-              <View style={{ width: 34, alignItems: "center", marginTop: -18 }}>
-                <ArrowRight accessible={false} size={16} color={index < stage ? palette.primary : palette.border} />
-              </View>
-            ) : null}
-          </React.Fragment>
-        );
-      })}
-    </View>
-  );
-}
-
 function WorkbookArtwork({ ready }: { ready: boolean }) {
   const { palette } = useTheme();
   return (
@@ -280,6 +222,7 @@ export default function ImportWizardModal() {
   const userId = useUserId();
   const personsState = usePersonsState();
   const sourcesState = useSourcesState();
+  const settingsState = useSettingsMapState();
   const persons = personsState.data;
   const sources = sourcesState.data;
   const router = useRouter();
@@ -292,6 +235,15 @@ export default function ImportWizardModal() {
   const [reimportYears, setReimportYears] = useState<number[] | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [cardCycleDrafts, setCardCycleDrafts] = useState<Record<string, { statementDay: string; dueDay: string }>>({});
+  /**
+   * Whether this import may move the ledger's anchor.
+   *
+   * The whole chained balance hangs off one figure, and it used to be written
+   * with nothing on screen naming it — and only ever on the FIRST import, so a
+   * wrong opening balance could not be corrected by re-importing a fixed
+   * workbook. It is stated and it is a choice now.
+   */
+  const [adoptOpening, setAdoptOpening] = useState(false);
   const [committing, setCommitting] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const operation = useTrackedOperation();
@@ -332,7 +284,12 @@ export default function ImportWizardModal() {
         }
         setWorkbook(parsed);
         setSelectedYears(yearsOf(parsed));
-        setExcluded([]);
+        // Balances and running totals start OFF: importing a sum of the columns
+        // beside it counts the month twice. They are offered rather than
+        // dropped, because a heading is the one part of a personal spreadsheet
+        // nobody else wrote the rules for.
+        setExcluded([...new Set(parsed.sheets.flatMap((sheet) => sheet.skippedColumns))]);
+        setAdoptOpening(false);
         setCardCycleDrafts({});
       } catch (e) {
         if (e instanceof OperationCancelledError) return;
@@ -363,7 +320,11 @@ export default function ImportWizardModal() {
   };
   const cardCyclesValid = installmentCards.every((card) => {
     const cycle = cycleDraft(card);
-    return isMonthDay(cycle.statementDay) && isMonthDay(cycle.dueDay);
+    // The importer creates real cards, so it applies the editor's rule too:
+    // a pair it accepts here must be a pair the settings screen can reopen.
+    return isMonthDay(cycle.statementDay)
+      && isMonthDay(cycle.dueDay)
+      && cardCycleError(Number(cycle.statementDay), Number(cycle.dueDay)) === null;
   });
 
   const startImport = async () => {
@@ -402,6 +363,7 @@ export default function ImportWizardModal() {
       selfId,
       mode,
       informationalCards: workbook?.informationalCards ?? [],
+      adoptOpeningBalance: adoptOpening,
       cardCycles: Object.fromEntries(
         installmentCards.map((card) => {
           const cycle = cycleDraft(card);
@@ -449,7 +411,7 @@ export default function ImportWizardModal() {
   if (doneCount != null) {
     return (
       <Screen scrollRef={scrollRef} width="workspace">
-        <ImportJourney stage={2} />
+        <ImportJourney stage={2} fileIcon={FileSpreadsheet} />
         <Card tone="success">
           <Row gap={spacing.md} style={{ alignItems: "center" }}>
             <CheckCircle2 accessible={false} size={26} color={palette.success} />
@@ -466,16 +428,24 @@ export default function ImportWizardModal() {
 
   const years = workbook ? yearsOf(workbook) : [];
   // Column toggles: union of the active sheets' columns (first-seen kind).
-  const unionColumns: { label: string; income: boolean }[] = [];
+  const unionColumns: { label: string; income: boolean; balanceLike: boolean }[] = [];
   const seenCol = new Set<string>();
   for (const s of activeSheets) {
     for (const col of s.columns) {
       if (!seenCol.has(col.label)) {
         seenCol.add(col.label);
-        unionColumns.push({ label: col.label, income: col.kindGuess === "income" });
+        unionColumns.push({ label: col.label, income: col.kindGuess === "income", balanceLike: col.balanceLike });
       }
     }
   }
+  const balanceLikeColumns = unionColumns.filter((column) => column.balanceLike);
+  // What the workbook says the ledger should start from, and whether adopting
+  // it is even a question: data earlier than the current anchor always wins,
+  // because the ledger back-anchors to the earliest month it holds.
+  const workbookOpening = openingBalanceFromSheets(activeSheets, (year: number) => selectedYears.includes(year));
+  const currentStartMonth = settingValue<MonthKey | null>(settingsState.data, "start_month", null);
+  const openingIsEarlier = workbookOpening != null
+    && (currentStartMonth == null || workbookOpening.month < currentStartMonth);
   const preview: ParsedSheet | undefined = activeSheets[0];
 
   return (
@@ -500,7 +470,7 @@ export default function ImportWizardModal() {
           </View>
         </View>
       </Card>
-      <ImportJourney stage={workbook ? 1 : 0} />
+      <ImportJourney stage={workbook ? 1 : 0} fileIcon={FileSpreadsheet} />
       <OperationStatusNotice
         state={operation.state}
         label={workbook ? tr.operation.importing : tr.dataState.loading}
@@ -555,11 +525,54 @@ export default function ImportWizardModal() {
                 />
               </Row>
               <SelectionGrid
-                options={unionColumns.map((c) => ({ value: c.label, label: `${c.label}${c.income ? " ↑" : ""}` }))}
+                options={unionColumns.map((c) => ({
+                  value: c.label,
+                  label: `${c.label}${c.income ? " ↑" : ""}${c.balanceLike ? " Σ" : ""}`,
+                }))}
                 values={unionColumns.map((c) => c.label).filter((l) => !excluded.includes(l))}
                 onToggle={(label) => setExcluded((xs) => (xs.includes(label) ? xs.filter((x) => x !== label) : [...xs, label]))}
                 searchable
               />
+              {/* Said where the decision is made, not in help. A running total
+                  is off because importing it counts the month twice — and this
+                  is also where a heading the parser read wrongly gets put
+                  right, which is the only thing standing between a mis-read
+                  column and a balance nobody can explain. */}
+              {balanceLikeColumns.length > 0 ? (
+                <Body muted style={{ marginBottom: spacing.md }}>
+                  {tr.importer.balanceColumnsNote(balanceLikeColumns.map((column) => column.label).join(", "))}
+                </Body>
+              ) : null}
+
+              {/* The one figure the whole chained ledger hangs off, said out
+                  loud before it is written. It used to be adopted silently and
+                  only on the first import, so a wrong anchor produced a balance
+                  the owner could not explain and re-importing a corrected
+                  workbook could never put right. */}
+              {workbookOpening ? (
+                <Card>
+                  <PanelHeader
+                    icon={Scale}
+                    title={tr.importer.openingTitle}
+                    description={tr.importer.openingHint}
+                  />
+                  <Spread style={{ marginBottom: spacing.sm }}>
+                    <Body>{monthLabel(workbookOpening.month)}</Body>
+                    <Amount minor={workbookOpening.minor} colorized={false} />
+                  </Spread>
+                  {openingIsEarlier ? (
+                    <Body muted>{tr.importer.openingEarlier}</Body>
+                  ) : (
+                    <FieldNote note={tr.importer.openingAdoptHint(monthLabel(currentStartMonth ?? workbookOpening.month))}>
+                      <Toggle
+                        label={tr.importer.openingAdopt}
+                        value={adoptOpening}
+                        onValueChange={setAdoptOpening}
+                      />
+                    </FieldNote>
+                  )}
+                </Card>
+              ) : null}
 
               {installmentCards.length > 0 ? (
                 <Card>
@@ -570,28 +583,18 @@ export default function ImportWizardModal() {
                     return (
                       <View key={card} style={{ marginBottom: spacing.sm }}>
                         <Body style={{ marginBottom: spacing.xs }}>{card}</Body>
-                        <Row>
-                          <View style={{ flex: 1 }}>
-                            <MonthDayField
-                              label={tr.sources.statementDay}
-                              value={cycle.statementDay}
-                              onChange={(statementDay) => setCardCycleDrafts((current) => ({
-                                ...current,
-                                [card]: { ...cycleDraft(card), statementDay },
-                              }))}
-                            />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <MonthDayField
-                              label={tr.sources.dueDay}
-                              value={cycle.dueDay}
-                              onChange={(dueDay) => setCardCycleDrafts((current) => ({
-                                ...current,
-                                [card]: { ...cycleDraft(card), dueDay },
-                              }))}
-                            />
-                          </View>
-                        </Row>
+                        <CardCycleFields
+                          statementDayValue={cycle.statementDay}
+                          dueDayValue={cycle.dueDay}
+                          onStatementDayChange={(statementDay) => setCardCycleDrafts((current) => ({
+                            ...current,
+                            [card]: { ...cycleDraft(card), statementDay },
+                          }))}
+                          onDueDayChange={(dueDay) => setCardCycleDrafts((current) => ({
+                            ...current,
+                            [card]: { ...cycleDraft(card), dueDay },
+                          }))}
+                        />
                       </View>
                     );
                   })}

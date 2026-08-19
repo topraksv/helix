@@ -62,6 +62,18 @@ const root = process.argv[2] ?? "dist";
 // provenance/duplicate/matching model behind them. Measured 3_468_079 entry /
 // 4_097_844 total / 7_505_655 export.
 //
+// Then this pass removed three features and rebuilt four surfaces. Out went
+// the allocation-target panel, the duplicate review and the expected-to-ledger
+// matching model; in came the statement review with per-row edit and delete,
+// the four-slot colour sheet with renameable labels, the shared card-cycle and
+// import-journey components, and drag-to-dismiss on the undo bar. Net +9_013
+// bytes on every figure: measured 3_477_092 entry / 4_106_857 total /
+// 7_514_668 export. The removals landed — knip reports no orphaned module —
+// so this is the new UI paying for itself and a little more. Entry and total
+// move back to measured plus the same ~1% every line above them carries; they
+// had been left at 0.74%, which is a ceiling the next one-line change trips.
+// Total export keeps its existing ceiling: it still clears by 65_332 bytes.
+//
 // SheetJS is NOT part of that growth and must not become part of it. The PDF
 // reader borrows its inflate, and importing it statically measured 3_958_250
 // entry — 490_171 bytes for a module the overwhelming majority of sessions
@@ -70,8 +82,8 @@ const root = process.argv[2] ?? "dist";
 // static import would cost, so putting it back trips this check rather than
 // shipping quietly.
 const limits = {
-  entryJavaScript: 3_503_000,
-  totalJavaScript: 4_139_000,
+  entryJavaScript: 3_512_000,
+  totalJavaScript: 4_148_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.

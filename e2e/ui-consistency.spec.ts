@@ -550,22 +550,22 @@ test("a contextual colour marks a cell, survives a pin, and is announced not mer
   await longPress(page, page.getByRole("button", { name: cellName }).first());
   const sheet = page.getByTestId("matrix-color-sheet");
   await expect(sheet).toBeVisible();
-  // Five named, theme-owned choices — not a colour wheel.
-  for (const name of ["İşaretledim", "Açıklaması var", "Doğruladım", "Kontrol etmeliyim", "Hatalı görünüyor"]) {
+  // Four named, theme-owned hues — not a colour wheel.
+  for (const name of ["Ödenmedi", "Gecikti", "Kontrol edilmeli", "Ödendi"]) {
     await expect(sheet.getByRole("radio", { name: new RegExp(name, "u") })).toBeVisible();
   }
-  await page.getByTestId("matrix-color-warning").click();
+  await page.getByTestId("matrix-color-orange").click();
   await expect(sheet).toHaveCount(0);
 
   // Colour is never the only carrier: the mark is in the accessible name.
-  const marked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Kontrol etmeliyim olarak işaretli`, "u") });
+  const marked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Gecikti olarak işaretli`, "u") });
   await expect(marked).toBeVisible();
 
   // Pin that month. The mark, the cell's editability and the header's own
   // action must all survive being moved into the fixed rail.
   await page.getByRole("button", { name: `${month} kolonunu sabitle`, exact: true }).click();
   await expect(page.getByRole("button", { name: `${month} kolonunun sabitlemesini kaldır`, exact: true })).toBeVisible();
-  const pinnedMarked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Kontrol etmeliyim olarak işaretli`, "u") });
+  const pinnedMarked = page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, .*Gecikti olarak işaretli`, "u") });
   await expect(pinnedMarked).toBeVisible();
   await pinnedMarked.click();
   await expect(page).toHaveURL(/\/cell-editor\?/u);
@@ -576,57 +576,61 @@ test("a contextual colour marks a cell, survives a pin, and is announced not mer
   await longPress(page, page.getByRole("button", { name: new RegExp(`^${month} ${year}, Market, `, "u") }).first());
   await expect(page.getByTestId("matrix-color-sheet")).toBeVisible();
   await page.getByTestId("matrix-color-clear").click();
-  await expect(page.getByRole("button", { name: new RegExp("Kontrol etmeliyim olarak işaretli", "u") })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: new RegExp("Gecikti olarak işaretli", "u") })).toHaveCount(0);
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
 
 /**
- * Allocation drift is a measurement, and it has to say what it measured.
+ * A mark colour's NAME belongs to the colour, for the whole account.
  *
- * The arithmetic is pinned exhaustively in `tests/allocation.test.ts`; what a
- * render has to prove is that a target the owner typed reaches the panel, that
- * the gap is stated in words as well as drawn, and that the card carries its
- * own basis and its own disclaimer rather than leaving either to be assumed.
+ * This is the difference between a rename and a note: renaming yellow has to
+ * rename every cell already marked yellow, everywhere it is read — the sheet,
+ * the reading guide's legend, and the accessible name a screen reader speaks
+ * over the cell. A per-cell name would let one colour mean four things in one
+ * table, which is the state the owner reported as "renkler stabil değil".
  */
-test("investment targets report allocation drift with their basis stated", async ({ page }, testInfo) => {
+test("renaming a mark colour renames every cell already marked with it", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
-  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
-  await page.getByRole("tab", { name: "Yatırımlar", exact: true }).click();
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
-  await page.getByRole("textbox", { name: "Bugünkü serbest yatırım bakiyesi", exact: true }).fill("0");
-  await page.getByRole("button", { name: "Yatırım Alanını Aç", exact: true }).click();
+  await openCashFlow(page);
+  await page.getByRole("radio", { name: "Kolon odaklı", exact: true }).click();
 
-  // A product planned at half the portfolio, funded as the whole of it.
-  await page.getByRole("button", { name: /Yeni Ürün Tanımla/u }).first().click();
-  await page.getByRole("radio", { name: "Borsa", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ürün adı", exact: true }).fill("Altın");
-  await page.getByTestId("investment-product-target").fill("50");
-  await page.getByRole("button", { name: "Ürünü Kaydet", exact: true }).click();
-  await page.getByRole("button", { name: "Sahip Olduğumu Ekle" }).click();
-  await page.getByRole("textbox", { name: "Miktar / adet · zorunlu", exact: true }).fill("1");
-  await page.getByRole("textbox", { name: "Birim fiyat · zorunlu", exact: true }).fill("60.000");
-  await page.getByRole("button", { name: "Mevcut yatırımı ekle", exact: true }).click();
+  const month = new Intl.DateTimeFormat("tr-TR", { month: "long", timeZone: "Europe/Istanbul" })
+    .format(new Date())
+    .replace(/^./u, (character) => character.toLocaleUpperCase("tr-TR"));
+  const year = currentMonthKey().slice(0, 4);
+  const cellName = new RegExp(`^${month} ${year}, Market, `, "u");
 
-  const panel = page.getByTestId("investment-allocation");
-  await expect(panel).toBeVisible();
-  // The two figures are labelled, so "%100 / %50" is not a riddle.
-  await expect(panel).toContainText("Şu an / Hedef");
-  await expect(panel).toContainText("%100 / %50");
-  // Direction in words and in money, never carried by colour alone.
-  await expect(panel).toContainText("%50 fazla");
-  await expect(panel).toContainText(/₺30\.000,00/u);
-  await expect(panel).toContainText("Toplam sapma %25");
-  // A plan that does not add up says so instead of looking authoritative.
-  await expect(panel).toContainText("Hedeflerin toplamı %100 değil");
-  // The assumption is on the card, not in a footnote nobody reaches.
-  await expect(panel).toContainText("defter maliyetinden");
-  // It measures; it does not advise.
-  await expect(panel).toContainText("Yatırım tavsiyesi değildir");
+  // Mark a cell with the shipped default name.
+  await longPress(page, page.getByRole("button", { name: cellName }).first());
+  await page.getByTestId("matrix-color-yellow").click();
+  await expect(page.getByRole("button", { name: new RegExp("Kontrol edilmeli olarak işaretli", "u") })).toBeVisible();
 
-  // The row is one accessible sentence, not four unrelated numbers.
-  await expect(panel.getByLabel(/Altın\. Şu an %100, hedef %50\. %50 fazla\./u)).toBeVisible();
+  // Rename that hue from the sheet.
+  await longPress(page, page.getByRole("button", { name: cellName }).first());
+  await page.getByRole("button", { name: "Kontrol edilmeli adını değiştir", exact: true }).click();
+  const field = page.getByTestId("matrix-color-rename-yellow").getByLabel("Rengin adı");
+  await field.fill("Bankaya sorulacak");
+  await page.getByTestId("matrix-color-rename-save-yellow").click();
+
+  // The cell that was ALREADY marked now announces the new name, and the old
+  // one is gone from the whole page.
+  await expect(page.getByRole("button", { name: new RegExp("Bankaya sorulacak olarak işaretli", "u") })).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp("Kontrol edilmeli olarak işaretli", "u") })).toHaveCount(0);
+
+  // And the reading guide's legend is the same source, so it renamed too.
+  const guide = page.getByTestId("cash-flow-table-details-content");
+  if (await guide.count() === 0) {
+    await page.getByRole("button", { name: "Mali tabloyu okuma rehberi", exact: true }).click();
+  }
+  await expect(page.getByTestId("cash-flow-table-details-content")).toContainText("Bankaya sorulacak");
+  await expect(page.getByTestId("cash-flow-table-details-content")).not.toContainText("Kontrol edilmeli");
+
+  // It survives a reload: the name is stored, not held in the screen.
+  await page.reload();
+  await expect(page.getByRole("button", { name: new RegExp("Bankaya sorulacak olarak işaretli", "u") })).toBeVisible();
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -642,7 +646,7 @@ test("investment targets report allocation drift with their basis stated", async
  * header used to lose a pixel of height and its current-month rule the moment
  * it was pinned, which read as the pin having changed which month is current.
  */
-test("hover belongs to the control under the pointer, and pinning moves nothing but the column", async ({ page }, testInfo) => {
+test("a column lights as one under the pointer, and pinning moves nothing but the column", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await onboard(page);
@@ -669,12 +673,14 @@ test("hover belongs to the control under the pointer, and pinning moves nothing 
   expect(headerHover).not.toBe(transparent);
   expect(await background(pin)).toBe(transparent);
 
-  // The pin lights; the header it sits inside does not.
+  // The pointer moves onto the pin, and the COLUMN stays lit. The pin used to
+  // be a sibling with a fill of its own, so crossing into it dropped the
+  // header's fill and lit a 24px strip on its own — one column showing two
+  // states at once. It is nested now: one visual cell lights once, and the
+  // thing that lights is the column the pointer is in.
   await pin.hover();
-  await expect.poll(() => background(pin)).not.toBe(transparent);
-  expect(await background(header)).toBe(transparent);
-  // Both spend the SAME token: one hover in the whole product, not two.
-  expect(await background(pin)).toBe(headerHover);
+  await expect.poll(() => background(header)).toBe(headerHover);
+  expect(await background(pin)).toBe(transparent);
 
   // Pinning changes where the column is and nothing about how tall it is.
   const before = await header.boundingBox();
@@ -683,6 +689,22 @@ test("hover belongs to the control under the pointer, and pinning moves nothing 
   const after = await page.getByRole("button", { name: month, exact: true }).boundingBox();
   expect(after?.height).toBe(before?.height);
   expect(after?.y).toBe(before?.y);
+
+  // The pinned rail follows the same rule. Pinning moves a column; it must not
+  // change what the column does under a pointer.
+  const pinnedHeader = page.getByRole("button", { name: month, exact: true });
+  const unpin = page.getByRole("button", { name: `${month} kolonunun sabitlemesini kaldır`, exact: true });
+  await page.mouse.move(0, 0);
+  await expect.poll(() => background(pinnedHeader)).toBe(transparent);
+  await pinnedHeader.hover();
+  const pinnedHover = await background(pinnedHeader);
+  expect(pinnedHover).not.toBe(transparent);
+  await unpin.hover();
+  await expect.poll(() => background(pinnedHeader)).toBe(pinnedHover);
+  expect(await background(unpin)).toBe(transparent);
+  // One hover in the whole product: the pinned rail spends the same token the
+  // scrolling one does.
+  expect(pinnedHover).toBe(headerHover);
 
   // A pinned column keeps the state it had: it is still the current month.
   const rule = await page.getByRole("button", { name: month, exact: true })
@@ -693,6 +715,77 @@ test("hover belongs to the control under the pointer, and pinning moves nothing 
     });
   expect(rule.width).toBe("3px");
   expect(rule.color).not.toBe(transparent);
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * The confirmation bar can be pushed out of the way.
+ *
+ * It leaves on its own, but "on its own" is six seconds and it sits over the
+ * bottom of whatever the owner is trying to read. Dragging it DOWN dismisses
+ * it; dragging up means nothing, because up is where it came from. A short
+ * drag springs back rather than dismissing, so a mis-touch does not lose the
+ * one confirmation some actions get.
+ */
+test("the confirmation bar can be pushed down out of the way", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await onboard(page);
+  await addMarketExpense(page, "E2E kaydırma");
+
+  const bar = page.getByRole("alert").first();
+  await expect(bar).toBeVisible();
+  const box = await bar.boundingBox();
+  if (!box) throw new Error("the confirmation bar has no box");
+  const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  // A short drag is not a dismissal: the bar is still there afterwards.
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x, from.y + 10, { steps: 4 });
+  await page.mouse.up();
+  await expect(bar).toBeVisible();
+
+  // A real one is. Well inside the bar's own six seconds.
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x, from.y + 70, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByRole("alert")).toHaveCount(0, { timeout: 3_000 });
+
+  await assertNoRuntimeErrors(errors, testInfo);
+});
+
+/**
+ * The forecast row reaches the rule below it.
+ *
+ * Its hover fill used to stop `spacing.sm` short, so on both a phone and a
+ * desktop the lit band ended in mid-air with a strip of bare card between it
+ * and the line it belongs to. A control's fill ending before its own boundary
+ * reads as a fault, not as spacing.
+ */
+test("the forecast row's lit area ends on the rule under it", async ({ page }, testInfo) => {
+  const errors = collectRuntimeErrors(page);
+  await onboard(page);
+  await addMarketExpense(page, "E2E tahmin");
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/helix/");
+    const toggle = page.getByTestId("dashboard-forecast-toggle");
+    await expect(toggle).toBeVisible();
+    const gap = await toggle.evaluate((element) => {
+      // The row is the LAST child of the hero's left column, and the rule is
+      // that column's own next sibling — measured through the parent, because
+      // the row has no sibling of its own to compare against.
+      const parent = element.parentElement!;
+      const rule = parent.nextElementSibling as HTMLElement | null;
+      if (!rule) throw new Error("the forecast row has no rule after it");
+      return rule.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
+    });
+    expect(gap, `${viewport.width}px: bare card between the row and its rule`).toBeLessThanOrEqual(1);
+  }
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -980,7 +1073,11 @@ test("subscriptions explain recurrence and summarize the next payment path", asy
   await expect(page.getByText("Sıradaki ödeme durakları", { exact: true })).toBeVisible();
   await expect(page.getByText("0/1", { exact: true })).toBeVisible();
   await expect(page.getByText("1 elle takip", { exact: true })).toBeVisible();
-  await expect(page.getByText(/TRY aylık karşılığı/)).toBeVisible();
+  // What the rules cost is said ONCE, on the cost card, and never a second
+  // time in the schedule card's header — the two were computed differently and
+  // could disagree a scroll apart.
+  await expect(page.getByTestId("subscription-cost-figures")).toBeVisible();
+  await expect(page.getByText("Aylık", { exact: true })).toHaveCount(1);
   await expect(page.getByTestId("screen-header").getByRole("button", { name: "Abonelik Ekle", exact: true })).toBeVisible();
   await expect(page.getByTestId("subscription-cycle-summary").getByText("Müzik", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);

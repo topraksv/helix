@@ -48,10 +48,11 @@ vi.mock("../src/db/ids", () => ({
 }));
 vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
-import { importSheets } from "../src/data/repo/imports";
+import { importSheets, openingBalanceFromSheets } from "../src/data/repo/imports";
 import type { ParsedSheet } from "../src/services/spreadsheet-import";
 import { currentBalance } from "../src/domain/balance";
 import type { TxLike } from "../src/domain/types";
+import type { MonthKey } from "../src/domain/dates";
 
 const USER = "import-user";
 const NOW = "2026-08-18T09:00:00.000Z";
@@ -78,7 +79,7 @@ function sheet(): ParsedSheet {
     sheetName: "2026",
     year: 2026,
     months: ["2026-01", "2026-02"],
-    columns: [{ label: "Market", kindGuess: "expense", isInvestment: false, dueDay: null }],
+    columns: [{ label: "Market", kindGuess: "expense", isInvestment: false, balanceLike: false, dueDay: null }],
     cells: [
       [{ valueMinor: 1_500_00, formulaParts: null, comment: null, commentParts: null }],
       [{ valueMinor: 2_500_00, formulaParts: null, comment: null, commentParts: null }],
@@ -223,5 +224,34 @@ describe("importing the same workbook twice", () => {
     await importSheets(USER, { ...request("add"), sheets: [later] });
     expect(setting("start_month")).toBe("2025-12");
     expect(setting("opening_balance_minor")).toBe(5_000_00);
+  });
+});
+
+/**
+ * The anchor the whole chained ledger hangs off.
+ *
+ * It used to be written silently and only when the workbook's month was
+ * EARLIER than the current anchor — so the first import's answer was permanent
+ * and re-importing a corrected workbook could never put a wrong opening balance
+ * right. The importer states the figure and the owner decides.
+ */
+describe("adopting a workbook's opening balance", () => {
+  it("reads the earliest opening cell among the imported years", () => {
+    const sheet = (year: number, minor: number): ParsedSheet => ({
+      sheetName: String(year),
+      year,
+      months: [`${year}-01` as MonthKey],
+      columns: [],
+      cells: [[]],
+      skippedColumns: [],
+      openingBalance: { month: `${year}-01` as MonthKey, minor },
+    });
+    expect(openingBalanceFromSheets([sheet(2026, 500_00), sheet(2025, 300_00)]))
+      .toEqual({ month: "2025-01", minor: 300_00 });
+    // A year the owner did not select cannot move the anchor.
+    expect(openingBalanceFromSheets([sheet(2026, 500_00), sheet(2025, 300_00)], (year) => year === 2026))
+      .toEqual({ month: "2026-01", minor: 500_00 });
+    expect(openingBalanceFromSheets([{ ...sheet(2026, 0), openingBalance: null }])).toBeNull();
+    expect(openingBalanceFromSheets([])).toBeNull();
   });
 });

@@ -13,7 +13,7 @@ const sheet = (overrides: Partial<ParsedSheet> = {}): ParsedSheet => ({
   sheetName: "2026",
   year: 2026,
   months: ["2026-01"],
-  columns: [{ label: "Yatırım", kindGuess: "expense", isInvestment: true, dueDay: null }],
+  columns: [{ label: "Yatırım", kindGuess: "expense", isInvestment: true, balanceLike: false, dueDay: null }],
   cells: [[cell(100_00)]],
   skippedColumns: [],
   openingBalance: null,
@@ -46,9 +46,9 @@ describe("spreadsheet import-plan boundaries", () => {
 
   it("deduplicates column ids and skips missing, empty, and reconstructed installment cells", () => {
     const columns = [
-      { label: "Kira", kindGuess: "expense" as const, isInvestment: false, dueDay: null },
-      { label: "Kira", kindGuess: "expense" as const, isInvestment: false, dueDay: null },
-      { label: "KK Taksitli Harcamalar", kindGuess: "expense" as const, isInvestment: false, dueDay: null },
+      { label: "Kira", kindGuess: "expense" as const, isInvestment: false, balanceLike: false, dueDay: null },
+      { label: "Kira", kindGuess: "expense" as const, isInvestment: false, balanceLike: false, dueDay: null },
+      { label: "KK Taksitli Harcamalar", kindGuess: "expense" as const, isInvestment: false, balanceLike: false, dueDay: null },
     ];
     const plan = buildSpreadsheetImportPlan({
       sheets: [sheet({

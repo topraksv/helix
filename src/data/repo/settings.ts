@@ -1,5 +1,6 @@
 import { newId } from "../../db/ids";
 import { pruneAttentionState, type AttentionState } from "../../domain/attention";
+import { parseMatrixColorLabels, type MatrixColorLabels } from "../../domain/matrix-colors";
 import { pendingOutboxCount, requeueSyncDeadLetter as requeueLocalSyncDeadLetter, writeSetting } from "../../db/mutations";
 
 export function createRecordId(): string {
@@ -25,6 +26,19 @@ export function setReminderDays(userId: string, days: number): Promise<void> {
 
 export function setPendingTableVisibility(userId: string, visible: boolean): Promise<void> {
   return writeSetting(userId, "show_pending_in_table", visible);
+}
+
+/**
+ * Rename one Mali Tablo mark colour, for the whole account.
+ *
+ * The whole map is written as a unit because that is how it is stored: two
+ * devices renaming two different slots converge on the later write rather than
+ * on a half-merged object, and a merged object is not something the sync layer
+ * can produce anyway.
+ */
+export function setMatrixColorLabels(userId: string, labels: MatrixColorLabels): Promise<void> {
+  if (parseMatrixColorLabels(labels) === null) throw new Error("Invalid matrix colour labels");
+  return writeSetting(userId, "matrix_color_labels", labels);
 }
 
 /**

@@ -36,10 +36,12 @@ import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { isMonthDay } from "../../../domain/dates";
-import { isCardCycleDayConflict } from "../../../domain/card-statements";
-import { MonthDayField, monthDayLabel } from "../../../ui/month-day-field";
+
+import { monthDayLabel } from "../../../ui/month-day-field";
+import { CardCycleFields, cardCycleError } from "../../../ui/card-cycle-fields";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { PersonAssignment } from "../../../ui/person-assignment";
+import { shouldUseTripleTileGrid } from "../../../ui/responsive";
 
 const TYPES = PAYMENT_SOURCE_TYPES.map((value) => ({ value, label: tr.sources[value] }));
 const NO_SOURCE = "__none__";
@@ -80,7 +82,7 @@ function SourceGlyph({ sourceType, size = 44 }: { sourceType: PaymentSourceType;
 
 function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onChange: (value: PaymentSourceType) => void }) {
   const { palette } = useTheme();
-  const contentWidth = useContentWidth();
+  const tripleTiles = shouldUseTripleTileGrid(useContentWidth());
   return (
     <View
       role="radiogroup"
@@ -103,7 +105,7 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
             // accident of arithmetic. Giving the double width to the credit
             // card instead makes the most-reached-for option the easiest to
             // hit, and leaves an even six to fill the rows below it.
-            basis={option.value === "credit_card" ? (contentWidth >= 720 ? "48%" : "100%") : contentWidth >= 720 ? "23%" : "47%"}
+            basis={option.value === "credit_card" ? (tripleTiles ? "48%" : "100%") : tripleTiles ? "23%" : "47%"}
             onPress={() => {
               selectionTapIfChanged(value, option.value);
               onChange(option.value);
@@ -163,9 +165,10 @@ export default function SourcesScreen() {
   const validDay = (day: number | null) => day != null && isMonthDay(day);
   // A statement that closes on the day it is due has no period at all, and
   // "ayın sonu" is day 31 — so typing 31 opposite the month-end chip is the
-  // same collision written a different way.
-  const cycleConflict = sourceType === "credit_card" && isCardCycleDayConflict(statementDay, dueDay);
-  const cycleValid = sourceType !== "credit_card" || (validDay(statementDay) && validDay(dueDay) && !cycleConflict);
+  // same collision written a different way. Beyond that, the gap itself has to
+  // look like a card cycle; `CardCycleFields` owns both rules and shows why.
+  const cycleValid = sourceType !== "credit_card"
+    || (validDay(statementDay) && validDay(dueDay) && cardCycleError(statementDay, dueDay) === null);
   const formValid = Boolean(name.trim() && personId && cycleValid);
 
   const resetForm = () => {
@@ -335,29 +338,12 @@ export default function SourcesScreen() {
         <SourceTypePicker value={sourceType} onChange={setSourceType} />
         <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
         {sourceType === "credit_card" ? (
-          <>
-            <Row>
-              <View style={{ flex: 1 }}>
-                <MonthDayField
-                  label={tr.sources.statementDay}
-                  value={statementDayStr}
-                  onChange={setStatementDayStr}
-                  unavailableDay={dueDay}
-                  error={cycleConflict ? tr.sources.cycleSameDay : null}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <MonthDayField
-                  label={tr.sources.dueDay}
-                  value={dueDayStr}
-                  onChange={setDueDayStr}
-                  unavailableDay={statementDay}
-                  error={cycleConflict ? tr.sources.cycleSameDay : null}
-                />
-              </View>
-            </Row>
-            <Body muted style={{ marginBottom: spacing.md }}>{tr.sources.cycleHint}</Body>
-          </>
+          <CardCycleFields
+            statementDayValue={statementDayStr}
+            dueDayValue={dueDayStr}
+            onStatementDayChange={setStatementDayStr}
+            onDueDayChange={setDueDayStr}
+          />
         ) : null}
         {editingId ? (
           <Row>

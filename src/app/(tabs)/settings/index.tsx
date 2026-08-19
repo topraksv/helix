@@ -820,10 +820,6 @@ export default function SettingsScreen() {
 
       <SectionHeader>{tr.settings.transferSection}</SectionHeader>
       <Card>
-        {/* Said on the surface that produces the file, not buried in help: a
-            backup carries the RECORD of a document, never its bytes, and an
-            owner restoring on a new device must not discover that later. */}
-        <Body muted style={{ marginBottom: spacing.sm }}>{tr.attachments.backupNote}</Body>
         <ListRow
           icon={FileDown}
           title={tr.settings.export}

@@ -93,12 +93,12 @@ Free trials generate no charge before their end. Generation is idempotent on
 `kind + source + due date`; installment plans do not generate a second expected
 item because their pending transactions already represent the obligation.
 
-An expectation may also be settled by a transaction that already exists rather
-than by creating one: matching links the two, so the forecast stops counting
-money that has already moved without the ledger gaining a second copy. One
-transaction settles at most one expectation. Undoing a confirmation removes the
-row that confirmation created; undoing a match only unlinks, because the
-transaction was the owner's own record before the expectation pointed at it.
+An expectation is settled by confirming it, which creates the payment and links
+the two. Undoing a confirmation removes the row that confirmation created. The
+catch-up screen offers exactly three choices per item — confirm, correct the
+amount and confirm, or skip. Pointing an expectation at a transaction that
+already existed was offered and removed; it asked a question confirmation
+already answers.
 
 Expected items begin pending. An unconfirmed item becomes late after its due
 date. A known fixed subscription with auto-pay may confirm on or after its due
@@ -219,6 +219,19 @@ are pre-selected. Accepted rows are written in one atomic batch with
 `origin = statement`, carry their import key, and an identity that already
 exists is skipped rather than overwritten so a later edit is not discarded.
 
+A line that names the card's own settlement and carries a credit amount is
+read, classified as a card payment, and excluded from the candidates. It is
+listed rather than dropped: the purchases it settles are already in the ledger
+and the money left an account the ledger also tracks, so importing it would
+count the same money twice. Matching is done on a case-folded copy of the line,
+because a statement is printed in capitals and Turkish dotless `ı` does not
+case-fold to `I`.
+
+During review every candidate may be renamed, re-priced, re-categorised or
+removed from the list entirely; removal affects only the review, never the file.
+Selection is a checkbox per line, and nothing is written until the import is
+confirmed.
+
 ## §3.1c — Transaction attachments (RECONSTRUCTED)
 
 Citing files:
@@ -241,6 +254,85 @@ row while leaving the file for the maintenance sweep, so an interruption leaves
 collectable bytes rather than an attachment that cannot be opened. A device
 without the bytes says so instead of offering a dead action. Backups carry the
 record, not the contents, and the export surface states this.
+
+## §3.1d — Contextual marks on the financial table (RECONSTRUCTED)
+
+Citing files:
+
+- `src/domain/matrix-colors.ts`
+- `src/data/repo/matrix-colors.ts`
+- `src/ui/matrix-color-sheet.tsx`
+
+Holding a cell, an item row or a month column marks it in one of four fixed
+hues. A mark stores a slot and a target, never a colour value; what each slot
+looks like is the theme's, measured in both schemes.
+
+Specificity, not recency, decides what a cell shows: its own mark beats the
+column it sits in, which beats the row it sits on. Re-marking the same target
+replaces its mark rather than stacking a second one, and clearing tombstones so
+the removal survives a pull.
+
+Each slot carries a NAME the owner may change. A name belongs to the slot and is
+stored once for the account, so renaming one renames every mark already made in
+it, on every device and in every surface that reads it — the sheet, the reading
+guide's legend, and the accessible name spoken over a marked cell. An unnamed
+slot falls back to its shipped default. Marks written under the five
+meaning-named slots this replaced still resolve; they are rewritten to their hue
+on upgrade and on restore, never dropped.
+
+## §3.1e — Workbook column classification and the ledger anchor (RECONSTRUCTED)
+
+Citing files:
+
+- `src/services/spreadsheet-import.ts`
+- `src/data/repo/imports.ts`
+- `src/app/import-wizard.tsx`
+
+Every named column of a parsed sheet is kept. A column is classified as a
+balance or running total when its heading names a balance and does not name a
+concrete source of money; such columns are excluded from the import by default,
+because importing a sum of the columns beside it counts that month twice. The
+classification is a default and not a verdict: the importer lists them and the
+owner may include any of them.
+
+The ledger anchor — the start month and the opening balance the whole chained
+balance is computed from — may be seeded from the earliest imported sheet's
+opening-balance cell. It is adopted without asking only when it is earlier than
+the current anchor, because the ledger back-anchors to the earliest month it
+holds. Otherwise the importer states the month and amount it read and adopts it
+only if the owner says so.
+
+## §3.1f — Credit card cycle validity (RECONSTRUCTED)
+
+Citing files:
+
+- `src/domain/card-statements.ts`
+- `src/ui/card-cycle-fields.tsx`
+
+A card's statement day and due day are a pair, and the rule is the gap between
+them. The due date is resolved into the following month whenever the due day is
+not past the closing day, so no pair is ever backwards; what a pair may not be
+is implausible. The gap is counted against a nominal thirty-day month and must
+be at least one day and at most twenty. Every screen that creates a card applies
+the same rule, and each field shows — rather than hides — the days the other
+field rules out.
+
+## §3.1g — Documents in the ledger (RECONSTRUCTED)
+
+Citing files:
+
+- `src/ui/attachment-panel.tsx`
+- `src/ui/transaction-row.tsx`
+
+A transaction's documents are listed as one card of rows, each carrying the
+file's name, what kind it is, its size, and — when this device does not hold the
+bytes — that fact, in place of an open control that could not work. Every row
+offers the same pair the rest of the product offers: open, and remove. Removal
+is undoable and does not delete the bytes; the maintenance sweep collects a file
+once no live row names it.
+
+A ledger row that has at least one document says so where it is listed, not only
+inside its editor.
 
 ## §3.2 — Installments and bounded computed columns (RECONSTRUCTED)
 

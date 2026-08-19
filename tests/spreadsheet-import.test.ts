@@ -2,19 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   collectInstallmentPlans,
   extractDueDay,
+  isBalanceLikeColumn,
   isInstallmentCell,
   parseFormulaLiterals,
   parseInstallmentComment,
   parseMonthLabel,
   parseSheet,
   parseSheetAmount,
-  parseWorkbookBytes,
   parseWorkbook,
+  parseWorkbookBytes,
   planImportCell,
-  validateWorkbookContainer,
   type CellData,
   type ParsedSheet,
   type RawCell,
+  validateWorkbookContainer,
 } from "../src/services/spreadsheet-import";
 import * as XLSX from "xlsx";
 import { required } from "./helpers";
@@ -129,12 +130,25 @@ describe("parseFormulaLiterals", () => {
 });
 
 describe("parseSheet — vertical block", () => {
-  it("detects months, keeps item columns, skips balance columns", () => {
+  /**
+   * Every named column is kept and carries its own classification.
+   *
+   * Balance and total columns used to be DROPPED here, which made the parser's
+   * reading of a heading final and invisible. They are excluded by default —
+   * importing a running total counts the month twice — but they survive into
+   * the sheet so the importer can offer them back.
+   */
+  it("keeps every named column and flags the balance ones", () => {
     const s = asSheet(parseSheet(sheet2026(), "Gelir-Gider 2026"));
     expect(s.year).toBe(2026);
     expect(s.months).toEqual(["2026-01", "2026-02", "2026-03"]);
-    expect(s.columns.map((col) => col.label)).toEqual(["KK Taksitli Harcamalar", "Fatura ve Abonelikler", "Ek Gelirler"]);
+    expect(s.columns.map((col) => col.label)).toEqual([
+      "KK Taksitli Harcamalar", "Fatura ve Abonelikler", "Ek Gelirler",
+      "Ay Başında Eldeki Para", "Güncel Bakiye",
+    ]);
     expect(required(s.columns[2]).kindGuess).toBe("income"); // Ek Gelirler
+    expect(s.columns.filter((col) => col.balanceLike).map((col) => col.label))
+      .toEqual(["Ay Başında Eldeki Para", "Güncel Bakiye"]);
     expect(s.skippedColumns).toEqual(["Ay Başında Eldeki Para", "Güncel Bakiye"]);
     expect(sheetCell(s, 0, 0).valueMinor).toBe(1882292);
   });
@@ -428,7 +442,7 @@ describe("extractDueDay", () => {
 // --- installment plan collection across a workbook (item 8 wiring) ----------
 // Fictional template data; asserts the dedup / start-month / merge rules that a
 // real one-shot migration depends on.
-const col = (label: string) => ({ label, kindGuess: "expense" as const, isInvestment: false, dueDay: null });
+const col = (label: string) => ({ label, kindGuess: "expense" as const, isInvestment: false, balanceLike: false, dueDay: null });
 const cell = (comment: string | null): CellData => ({ valueMinor: 100, formulaParts: null, comment, commentParts: null });
 /** One-taksit-column sheet: [month, comment] rows. */
 const taksitSheet = (name: string, rows: [string, string | null][], label = "KK Taksitli Harcamalar"): ParsedSheet => ({
@@ -511,5 +525,53 @@ describe("isInstallmentCell", () => {
     expect(isInstallmentCell("Faturalar", "══ Kart A ══\nÜrün  100,00  1/3")).toBe(false); // wrong column
     expect(isInstallmentCell("KK Taksitli Harcamalar", "Elektrik 436,30")).toBe(false); // no N/M
     expect(isInstallmentCell("KK Taksitli Harcamalar", null)).toBe(false);
+  });
+});
+
+/**
+ * A heading that names where money came from is not a balance column.
+ *
+ * `BALANCE_HINTS` ran before the income check and swallowed the whole heading.
+ * The one that matters is "Net Maaş" — the commonest payroll heading in a
+ * Turkish household sheet — which `\bnet\b` read as a balance column. Every
+ * month's salary was dropped from the import and the chained balance ran
+ * further into the red with each month, which is exactly what the owner saw.
+ */
+describe("which headings are balances and which are money arriving", () => {
+  it("rescues a concrete income source from the balance filter", () => {
+    for (const label of ["Net Maaş", "Net Ücret", "Maaş", "Ek Gelirler", "Kira Geliri", "Prim", "İkramiye", "Mesai Ücreti"]) {
+      expect(isBalanceLikeColumn(label), label).toBe(false);
+    }
+  });
+
+  it("still refuses a sum of the columns beside it", () => {
+    // These are derived from the columns already being imported. Taking them
+    // as well counts the month twice, which is the defect the filter exists
+    // for and the reason it cannot simply be relaxed.
+    for (const label of ["Toplam Gelir", "Toplam Gider", "Genel Toplam", "Net Bakiye", "Kalan Bakiye", "Devir", "Birikim", "Ay Başında Eldeki Para"]) {
+      expect(isBalanceLikeColumn(label), label).toBe(true);
+    }
+  });
+
+  it("leaves ordinary item columns alone, including the one that looks like a total", () => {
+    // "İnternet" contains "net" and is a subscription, not a balance.
+    for (const label of ["Market", "Kira", "İnternet", "Netflix", "Ulaşım", "Yatırım"]) {
+      expect(isBalanceLikeColumn(label), label).toBe(false);
+    }
+  });
+
+  it("carries the flag onto the parsed column, so the importer can offer it back", () => {
+    const grid = [
+      [{ v: "Ay" }, { v: "Net Maaş" }, { v: "Market" }, { v: "Toplam Gider" }],
+      [{ v: "Ocak 2026" }, { v: 50000 }, { v: 4000 }, { v: 4000 }],
+      [{ v: "Şubat 2026" }, { v: 50000 }, { v: 4200 }, { v: 4200 }],
+    ];
+    const sheet = asSheet(parseSheet(grid, "2026"));
+    expect(sheet.columns.map((col) => [col.label, col.balanceLike, col.kindGuess])).toEqual([
+      ["Net Maaş", false, "income"],
+      ["Market", false, "expense"],
+      ["Toplam Gider", true, "expense"],
+    ]);
+    expect(sheet.skippedColumns).toEqual(["Toplam Gider"]);
   });
 });

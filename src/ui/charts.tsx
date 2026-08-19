@@ -11,6 +11,7 @@ import { Amount } from "./primitives";
 import { useDrawIn } from "./motion-primitives";
 import { chart, font, motion, radius, spacing, type, useTheme } from "./theme";
 import { useMeasuredWidth } from "./viewport";
+import { shouldUseLargeAxisType } from "./responsive";
 
 /**
  * A chart draws itself in once.
@@ -661,14 +662,14 @@ export function Bars({
   if (!axis || groups.length === 0) return null;
   const { min, max, ticks } = axis;
   const span = Math.max(axis.step, max - min);
-  const axisFontSize = width >= 480 ? 11 : 10;
+  const axisFontSize = shouldUseLargeAxisType(width) ? 11 : 10;
   const axisScale = chartAxisScale([
     ...groups.flatMap((group) => group.values),
     ...ticks,
     ...axis.valueTicks,
   ]);
   const pad = {
-    left: chartAxisLabelGutter([...ticks, ...axis.valueTicks], axisFontSize, width >= 480 ? 64 : 58, axisScale),
+    left: chartAxisLabelGutter([...ticks, ...axis.valueTicks], axisFontSize, shouldUseLargeAxisType(width) ? 64 : 58, axisScale),
     right: 10,
     top: 14,
     bottom: 28,

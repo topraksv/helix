@@ -27,6 +27,7 @@
  */
 
 import { daysBetweenISO, isISODate, type ISODate } from "./dates";
+import { foldForMatch } from "./logo-domain";
 import type { Minor } from "./money";
 
 /** What a candidate turned out to be. */
@@ -67,10 +68,28 @@ export interface StatementRejection {
   reason: "ambiguous_amount" | "ambiguous_date" | "no_description";
 }
 
+/**
+ * A line that was read perfectly well and deliberately left out.
+ *
+ * Separate from a rejection, which means "could not be trusted". This one is
+ * understood: a payment to the card is money moving between two things this
+ * ledger already knows about, so importing it would count the same money
+ * twice — once as the purchases it settles and once as itself.
+ *
+ * Surfaced rather than dropped. A statement importer that silently discards
+ * lines is one whose total can never be reconciled against the paper.
+ */
+export interface StatementSkip {
+  sourceLine: string;
+  reason: "card_payment";
+}
+
 export interface StatementParseResult {
   candidates: StatementCandidate[];
   /** Lines that resembled entries and were refused. Surfaced, never hidden. */
   rejected: StatementRejection[];
+  /** Lines understood and deliberately left out. Surfaced, never hidden. */
+  skipped: StatementSkip[];
   /** Lines that were plainly not entries (headers, totals). Counted only. */
   ignoredLineCount: number;
 }
@@ -122,6 +141,26 @@ const STATEMENT_FORMAT = {
   bracketedRemainder: /\((\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\)/,
   /** An interest-rate row is not a transaction. */
   rate: /%/,
+  /**
+   * A payment TO the card, which is money leaving an account this ledger
+   * already tracks — not a refund and not a purchase.
+   *
+   * It is printed exactly like a refund: a dated line with a credit amount.
+   * The reference statement's first entry is last period's settlement, so the
+   * importer was offering the whole previous balance back as income, which no
+   * total it produced could ever reconcile with.
+   *
+   * Matched against the FOLDED line, never with the `i` flag: a statement is
+   * printed in capitals, and Turkish dotless `ı` does not case-fold to `I`, so
+   * `/yapılan/i` is simply false for "YAPILAN". Written in the folded alphabet
+   * (`foldForMatch`) so one spelling covers every case the printer uses.
+   *
+   * Matched anywhere on the line, because it sits in the merchant position
+   * rather than at the start. Deliberately narrow — these are the wordings a
+   * card issuer uses for its own settlement, and a merchant genuinely called
+   * "ÖDEME" would need one of them verbatim.
+   */
+  cardPayment: /(?:^|\s)(?:hesaptan (?:yapilan )?odeme|kredi karti odemesi|kart odemesi|otomatik odeme|odeme[ -]tesekkur|tesekkur ederiz|tahsilat|virman|donem borcu odemesi)/,
   /** Lines that are structure, not entries. */
   ignore: /^(?:toplam|ara toplam|genel toplam|son ödeme|asgari|dönem|ekstre|hesap özeti|hesap bilgileri|işlem tarihi|sayfa|devreden|bakiye|limit|kullanılabilir|puan özeti|worldpuan)\b/i,
   /** A description has to be words, not a reference number. */
@@ -223,7 +262,11 @@ function separateGluedFields(line: string): string {
 export function parseStatementLine(
   line: string,
   period: string,
-): { kind: "ignored" } | { kind: "rejected"; rejection: StatementRejection } | { kind: "candidate"; candidate: StatementCandidate } {
+):
+  | { kind: "ignored" }
+  | { kind: "rejected"; rejection: StatementRejection }
+  | { kind: "skipped"; skip: StatementSkip }
+  | { kind: "candidate"; candidate: StatementCandidate } {
   const trimmed = separateGluedFields(line.trim().replace(/\s+/g, " "));
   if (trimmed === "") return { kind: "ignored" };
   if (STATEMENT_FORMAT.ignore.test(trimmed)) return { kind: "ignored" };
@@ -294,6 +337,16 @@ export function parseStatementLine(
     return { kind: "rejected", rejection: { sourceLine: trimmed, reason: "no_description" } };
   }
 
+  const isCredit = amountMatch[1] === "-" || amountMatch[1] === "+";
+  // Settling the card is not a transaction this ledger takes: the purchases it
+  // pays for are already here, and the money left an account this ledger also
+  // tracks. Both halves of the test matter — the wording AND the credit sign —
+  // so a merchant whose name happens to contain one of these words still
+  // imports as the charge it is.
+  if (isCredit && STATEMENT_FORMAT.cardPayment.test(foldForMatch(trimmed))) {
+    return { kind: "skipped", skip: { sourceLine: trimmed, reason: "card_payment" } };
+  }
+
   const installmentNo = installmentMatch ? Number(installmentMatch[1]) : null;
   const installmentCount = installmentMatch ? Number(installmentMatch[2]) : null;
   // `1/1` is a single payment printed in instalment notation, not a plan; and
@@ -318,7 +371,7 @@ export function parseStatementLine(
       date,
       description,
       amountMinor,
-      isRefund: amountMatch[1] === "-" || amountMatch[1] === "+",
+      isRefund: isCredit,
       installmentNo: hasPosition ? installmentNo : null,
       installmentCount: hasPosition ? installmentCount : null,
       remainingInstallments,
@@ -341,6 +394,7 @@ export const MAX_STATEMENT_CANDIDATES = 500;
 export function parseStatement(text: string, period: string): StatementParseResult {
   const candidates: StatementCandidate[] = [];
   const rejected: StatementRejection[] = [];
+  const skipped: StatementSkip[] = [];
   let ignoredLineCount = 0;
   const seenKeys = new Map<string, number>();
 
@@ -355,13 +409,17 @@ export function parseStatement(text: string, period: string): StatementParseResu
       rejected.push(parsed.rejection);
       continue;
     }
+    if (parsed.kind === "skipped") {
+      skipped.push(parsed.skip);
+      continue;
+    }
     const seen = seenKeys.get(parsed.candidate.importKey) ?? 0;
     seenKeys.set(parsed.candidate.importKey, seen + 1);
     candidates.push(seen === 0
       ? parsed.candidate
       : { ...parsed.candidate, importKey: `${parsed.candidate.importKey}#${seen + 1}` });
   }
-  return { candidates, rejected, ignoredLineCount };
+  return { candidates, rejected, skipped, ignoredLineCount };
 }
 
 /**

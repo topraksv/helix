@@ -28,11 +28,11 @@ import {
 } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { categoryIcon, paymentSourceIcon } from "../../../domain/category-icons";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, Divider, EmptyState, Field, FieldNote, Heading, IconButton, ListRow, MetricStrip, Row, Screen, SectionHeader, Segmented, Select, Spread } from "../../../ui/components";
 import { Bars, ChartFrame, Donut, Lines, distributionDonutData, useSeriesColors } from "../../../ui/charts";
 import { Collapse } from "../../../ui/motion-primitives";
 import { StickyTable } from "../../../ui/sticky-table";
-import { shouldPairFilterCards, shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
+import { shouldOfferTrendChart, shouldPairFilterCards, shouldUseNarrowAnalytics, shouldUseWideWorkspace } from "../../../ui/responsive";
 import { useContentWidth } from "../../../ui/viewport";
 import { interactionSurface } from "../../../ui/interaction";
 import { radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
@@ -196,7 +196,7 @@ export default function AnalysisScreen() {
     () => distributionForRange(txLike, firstDayOf(startMonth), lastDayOf(endMonth), today),
     [txLike, startMonth, endMonth, today],
   );
-  const supportsTrend = contentWidth >= 720 && monthKeys.length >= 2 && !categoryFilter;
+  const supportsTrend = shouldOfferTrendChart(contentWidth) && monthKeys.length >= 2 && !categoryFilter;
   useEffect(() => {
     if (!supportsTrend && chartType === "trend") setChartType("bars");
   }, [supportsTrend, chartType]);
@@ -351,30 +351,29 @@ export default function AnalysisScreen() {
           range is the same for the whole search, so it belongs in the hint
           below rather than inside a collapsed dropdown. */}
       <Collapse open={!compact || showSearchDetails}>
-      <Row style={{ alignItems: "flex-start" }}>
-        <View style={{ flex: 1 }}>
-          <Select
-            label={tr.analysis.searchSource}
-            options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: paymentSourceIcon(source.type) }))]}
-            value={sourceFilter ?? ""}
-            onChange={(value) => setSourceFilter(value || null)}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Select
-            label={tr.analysis.searchPeriod}
-            options={[
-              { value: "period", label: tr.analysis.selectedPeriod },
-              { value: "all", label: tr.analysis.allTime },
-            ]}
-            value={searchScope}
-            onChange={setSearchScope}
-          />
-        </View>
-      </Row>
-      <Body muted style={{ marginTop: -spacing.sm, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
-        {searchScope === "period" ? tr.analysis.selectedPeriodRange(searchPeriodLabel) : tr.analysis.allTimeHint}
-      </Body>
+      <FieldNote note={searchScope === "period" ? tr.analysis.selectedPeriodRange(searchPeriodLabel) : tr.analysis.allTimeHint}>
+        <Row style={{ alignItems: "flex-start" }}>
+          <View style={{ flex: 1 }}>
+            <Select
+              label={tr.analysis.searchSource}
+              options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: paymentSourceIcon(source.type) }))]}
+              value={sourceFilter ?? ""}
+              onChange={(value) => setSourceFilter(value || null)}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Select
+              label={tr.analysis.searchPeriod}
+              options={[
+                { value: "period", label: tr.analysis.selectedPeriod },
+                { value: "all", label: tr.analysis.allTime },
+              ]}
+              value={searchScope}
+              onChange={setSearchScope}
+            />
+          </View>
+        </Row>
+      </FieldNote>
       </Collapse>
       {searchActive && sortedResults.length > 1 ? (
         <Select

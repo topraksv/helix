@@ -18,8 +18,8 @@ import type { LucideIcon } from "lucide-react-native";
 import { selectionTap } from "./haptics";
 import { interactionSurface } from "./interaction";
 import { tr } from "../i18n/tr";
-import { fittedCellWidth } from "./responsive";
-import { font, maxFontScale, spacing, type, useTheme, type Palette } from "./theme";
+import { fittedCellWidth, isCompactTableCell, tableLabelCharBudget } from "./responsive";
+import { font, maxFontScale, spacing, stateOpacity, type, useTheme, type Palette } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
 export const STICKY_ROW_HEIGHT = 52;
@@ -359,6 +359,15 @@ export function StickyTable({
     });
   }, []);
 
+  /**
+   * Which column's pin the pointer is on, if any.
+   *
+   * The pin reports its pointer instead of painting: the header it belongs to
+   * is the surface that lights, so a column is one lit cell whether the
+   * pointer is on its name or on its pin. See `interactionSurface`'s `hovered`
+   * for why the nesting alone cannot do this.
+   */
+  const [hoveredPinKey, setHoveredPinKey] = useState<string | null>(null);
   const pinnedIndex = pinnedKey ? columns.findIndex((c) => c.key === pinnedKey) : -1;
   const pinnedCol = pinnedIndex >= 0 ? columns[pinnedIndex] : null;
   const scrollCols = columns.filter((_, i) => i !== pinnedIndex);
@@ -469,7 +478,7 @@ export function StickyTable({
     const chrome = headerChrome(palette, { isCurrent, markEdge: c.markEdge });
     const both = !!onColumnPress && !!onTogglePin;
     const labelAction = onColumnPress ?? onTogglePin;
-    const compactHeader = cellWidth < 104;
+    const compactHeader = isCompactTableCell(cellWidth);
     const markerWidth = both && c.icon ? 40 : STICKY_MARKER_W;
     const hasMarker = both || !!c.icon;
     return (
@@ -515,7 +524,10 @@ export function StickyTable({
             // number of visible financial columns.
             paddingRight: hasMarker ? (compactHeader ? markerWidth - 6 : markerWidth) : spacing.xs,
             paddingVertical: spacing.xs,
-            ...interactionSurface(palette, state, { enabled: Boolean(labelAction) }),
+            ...interactionSurface(palette, state, {
+              enabled: Boolean(labelAction),
+              hovered: hoveredPinKey === c.key,
+            }),
           })}
         >
           <Text
@@ -537,54 +549,80 @@ export function StickyTable({
             ]}
             onLayout={(event) => measureLabel(`header:${c.key}`, event.nativeEvent.layout.height)}
           >
-            {softWrapLabel(c.label, cellWidth < 80 ? 8 : cellWidth < 104 ? 10 : 12)}
+            {softWrapLabel(c.label, tableLabelCharBudget(cellWidth))}
           </Text>
         </Pressable>
-        {hasMarker ? (
-          <View
-            style={{
-              position: "absolute",
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: markerWidth,
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "row",
-              gap: 2,
-            }}
-          >
-            {c.icon ? <c.icon accessible={false} size={11} color={palette.textSecondary} strokeWidth={2.2} /> : null}
-            {both ? (
-              <Pressable
-                onPress={() => { selectionTap(); onTogglePin!(c.key); }}
-                accessibilityRole="button"
-                accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.accessibilityLabel ?? c.label) : tr.a11y.pinColumn(c.accessibilityLabel ?? c.label)}
-                // The mark stays 12px; the box it can be hit in is the whole
-                // header band, which is 56pt tall. `hitSlop` used to carry that
-                // and does nothing on the web, where the pin really was a 24x24
-                // target sitting between two amounts. The width stays inside
-                // the marker strip — wider, it crossed its own column's edge.
-                style={(state) => ({
-                  width: STICKY_MARKER_W,
-                  alignSelf: "stretch",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  ...interactionSurface(palette, state),
-                })}
-              >
-                <Pin
-                  accessible={false}
-                  size={12}
-                  color={pinnedKey === c.key ? palette.primaryText : palette.textSecondary}
-                />
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+        {hasMarker ? markerStrip(c, markerWidth) : null}
       </View>
     );
   };
+
+  /**
+   * The header's trailing marks — the computed-column sigma and the pin.
+   *
+   * A sibling of the label pressable, and deliberately NOT a child of it. The
+   * pin used to paint its own hover, so moving the pointer onto it dropped the
+   * header's fill and lit a 24px strip on its own: one column showing two
+   * states at once. Nesting it inside the header was tried and reverted — a
+   * button inside a button is `nested-interactive`, a WCAG violation axe
+   * catches, and react-native-web ends the outer hover on entry anyway
+   * (`Pressable` hard-codes `contain: true`).
+   *
+   * So the pin reports its pointer through `hoveredPinKey` and paints no fill
+   * at all. The header pressable spans the whole cell and this strip is
+   * transparent over its right end, so the fill the header paints is the one
+   * the reader sees under the pin. One visual cell lights once
+   * (`docs/UI.md` §3).
+   */
+  const markerStrip = (c: StickyColumn, markerWidth: number) => (
+    <View
+      style={{
+        position: "absolute",
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: markerWidth,
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: 2,
+      }}
+    >
+      {c.icon ? <c.icon accessible={false} size={11} color={palette.textSecondary} strokeWidth={2.2} /> : null}
+      {!!onColumnPress && !!onTogglePin ? (
+        <Pressable
+          onPress={() => { selectionTap(); onTogglePin(c.key); }}
+          onHoverIn={() => setHoveredPinKey(c.key)}
+          onHoverOut={() => setHoveredPinKey((current) => (current === c.key ? null : current))}
+          accessibilityRole="button"
+          accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.accessibilityLabel ?? c.label) : tr.a11y.pinColumn(c.accessibilityLabel ?? c.label)}
+          // The mark stays 12px; the box it can be hit in is the whole header
+          // band, which is 56pt tall. `hitSlop` used to carry that and does
+          // nothing on the web, where the pin really was a 24x24 target sitting
+          // between two amounts. The width stays inside the marker strip —
+          // wider, it crossed its own column's edge.
+          // Pressed, but never hovered. A pointer resting anywhere in this
+          // header lights the whole column through the pressable this sits
+          // in; a second fill here would light a 24px strip inside a lit
+          // column. A press still has to answer on a phone, where there is no
+          // hover to fall back on, so the mark itself dims.
+          style={({ pressed }) => ({
+            width: STICKY_MARKER_W,
+            alignSelf: "stretch",
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: pressed ? stateOpacity.pressed : 1,
+          })}
+        >
+          <Pin
+            accessible={false}
+            size={12}
+            color={pinnedKey === c.key ? palette.primaryText : palette.textSecondary}
+          />
+        </Pressable>
+      ) : null}
+    </View>
+  );
 
   /**
    * The box one cell sits in — the SAME box whether that cell is scrolling or
@@ -718,7 +756,7 @@ export function StickyTable({
                     style={[type.label, { color: r.onLabelPress ? palette.primaryText : palette.text, textAlign: "left", fontFamily: r.labelHighlight ? font.bold : font.semibold }]}
                     onLayout={(event) => measureLabel(`row:${r.key}`, event.nativeEvent.layout.height)}
                   >
-                    {softWrapLabel(r.label, headWidth < 80 ? 8 : 12)}
+                    {softWrapLabel(r.label, tableLabelCharBudget(headWidth, { twoStep: true }))}
                   </Text>
                   {r.icon ? (
                     <View style={{ position: "absolute", bottom: 4, right: 4 }}>
@@ -815,8 +853,11 @@ function PinnedHeader({
   onHeight: (textHeight: number) => void;
 }) {
   const { palette } = useTheme();
-  const compactHeader = width < 104;
+  const compactHeader = isCompactTableCell(width);
   const chrome = headerChrome(palette, { isCurrent, markEdge });
+  // The unpin mark reports its pointer; the header is what lights. Same rule
+  // as the scrolling rail, because pinning must not change how a column looks.
+  const [unpinHovered, setUnpinHovered] = useState(false);
   // With no column action to preserve, the whole header stays the unpin
   // target — the behaviour a pin-only table always had.
   const labelAction = onPress ?? onUnpin;
@@ -851,7 +892,7 @@ function PinnedHeader({
           paddingRight: compactHeader ? STICKY_MARKER_W - 6 : STICKY_MARKER_W,
           paddingVertical: spacing.xs,
           alignItems: "center",
-          ...interactionSurface(palette, state, { enabled: Boolean(labelAction) }),
+          ...interactionSurface(palette, state, { enabled: Boolean(labelAction), hovered: unpinHovered }),
         })}
       >
         <Text
@@ -872,21 +913,28 @@ function PinnedHeader({
           ]}
           onLayout={(event) => onHeight(event.nativeEvent.layout.height)}
         >
-          {softWrapLabel(label, width < 80 ? 8 : width < 104 ? 10 : 12)}
+          {softWrapLabel(label, tableLabelCharBudget(width))}
         </Text>
       </Pressable>
+      {/* A SIBLING of the label's pressable, exactly as the scrolling header
+          does it: pinning must not change what a column looks like, and a
+          marker that behaved differently in one rail is precisely that. */}
       <View style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: STICKY_MARKER_W, alignItems: "center", justifyContent: "center" }}>
         {separateUnpin && onUnpin ? (
           <Pressable
             onPress={() => { selectionTap(); onUnpin(); }}
+            onHoverIn={() => setUnpinHovered(true)}
+            onHoverOut={() => setUnpinHovered(false)}
             accessibilityRole="button"
             accessibilityLabel={tr.a11y.unpinColumn(accessibilityLabel ?? label)}
-            style={(state) => ({
+            // Same rule as the scrolling rail: the column's own hover is the
+            // only fill, and the mark answers a press by dimming.
+            style={({ pressed }) => ({
               width: STICKY_MARKER_W,
               alignSelf: "stretch",
               alignItems: "center",
               justifyContent: "center",
-              ...interactionSurface(palette, state),
+              opacity: pressed ? stateOpacity.pressed : 1,
             })}
           >
             <Pin accessible={false} size={11} color={palette.primary} fill={palette.primary} />

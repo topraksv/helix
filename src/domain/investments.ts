@@ -179,7 +179,6 @@ export interface InvestmentProductLike {
   assetType: InvestmentAssetType;
   name: string;
   /** Intended share of the portfolio in basis points; null when unplanned. */
-  targetWeightBp?: number | null;
 }
 
 export interface InvestmentOperationLike {
@@ -327,11 +326,6 @@ export function buildInvestmentState(input: {
         id: state.id,
         assetType: state.assetType,
         name: state.name,
-        // Carried through the replay rather than looked up again beside it:
-        // the allocation panel reads shares off this projection, and a target
-        // fetched from a second source could describe a product the replay
-        // does not have.
-        targetWeightBp: state.targetWeightBp ?? null,
         quantity,
         costMinor: state.costMinor,
         averageCostMinor,

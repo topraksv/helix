@@ -22,6 +22,7 @@ import {
   type ExistingImportIds,
 } from "./backup-validation";
 import { applyIdRemap, buildIdRemap } from "./backup-remap";
+import { normalizeMatrixColorToken } from "../domain/matrix-colors";
 export { MAX_BACKUP_BYTES, parseExportBundleText } from "./backup-validation";
 
 interface RestoreOperationOptions {
@@ -184,6 +185,13 @@ export async function importBundle(
           continue;
         }
         const row: Record<string, unknown> = { ...fromDbShape(table, raw as Record<string, unknown>), userId };
+        // A mark written under the retired vocabulary becomes its current
+        // slot on the way in. Validation accepts the old name so the file
+        // restores at all; storing it would push a token the server's check
+        // constraint refuses, and the row would land in sync quarantine.
+        if (table === "matrix_colors") {
+          row.token = normalizeMatrixColorToken(raw.token) ?? "yellow";
+        }
         if (table === "categories" && !("is_transfer" in raw)) {
           const legacyInvestmentName = typeof raw.name === "string" && raw.name.toLocaleLowerCase("tr-TR").includes("yatırım");
           row.isTransfer = raw.kind === "expense" && (legacyTransferCategoryIds.has(String(raw.id)) || legacyInvestmentName);

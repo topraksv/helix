@@ -5,7 +5,7 @@ import { resolveInvestmentQuote } from "../domain/investments";
 import { isSupportedMinorAmount } from "../domain/money";
 import { MAX_INSTALLMENT_COUNT } from "../domain/installments";
 import { ATTACHMENT_KINDS, ATTACHMENT_MIME_TYPES, MAX_ATTACHMENT_BYTES, isSafeAttachmentFileName } from "../domain/attachments";
-import { MATRIX_COLOR_TOKENS } from "../domain/matrix-colors";
+import { normalizeMatrixColorToken } from "../domain/matrix-colors";
 import { TRANSACTION_ORIGINS } from "../domain/types";
 import { isValidCardCycle } from "../domain/card-statements";
 import { isMonthKey, todayISO } from "../domain/dates";
@@ -263,7 +263,12 @@ export function isValidImportRow(
     ) return false;
   }
   if (table === "matrix_colors") {
-    if (!(MATRIX_COLOR_TOKENS as readonly string[]).includes(String(raw.token))) return false;
+    // A backup outlives the vocabulary it was written in. The five
+    // meaning-named slots this replaced are still readable, so an old file
+    // restores its marks instead of being refused whole; `importBundle`
+    // rewrites them to the current slot as the row goes in, which is what
+    // stops a retired name reaching the server's own check constraint.
+    if (normalizeMatrixColorToken(raw.token) === null) return false;
     const scope = String(raw.scope);
     const itemKey = raw.item_key;
     const month = raw.month;

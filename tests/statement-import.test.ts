@@ -319,11 +319,74 @@ describe("the reference statement layout", () => {
   });
 
   /** A credit is printed with a leading `+` and is money coming back. */
-  it("reads a payment or refund as a credit rather than as spending", () => {
-    expect(candidateOf("14 Temmuz 2026 ODEME-TESEKKUR EDERIZ +24.381,40")).toMatchObject({
+  it("reads a refund as a credit rather than as spending", () => {
+    expect(candidateOf("14 Temmuz 2026 BIR ISYERI IADE +1.250,00")).toMatchObject({
       isRefund: true,
-      amountMinor: 2_438_140,
+      amountMinor: 125_000,
     });
+  });
+
+  /**
+   * Settling the card is not a transaction this ledger takes.
+   *
+   * The reference statement's first entry is last period's payment, printed
+   * exactly like a refund: a dated line with a credit amount. It used to become
+   * a candidate — the whole previous balance offered back as income — so no
+   * total the importer produced could reconcile against the paper. The
+   * purchases it settles are already in the ledger, and the money left an
+   * account the ledger also tracks.
+   */
+  it("leaves the card's own settlement out, and says so", () => {
+    for (const line of [
+      "14 Temmuz 2026 ODEME-TESEKKUR EDERIZ +24.381,40",
+      "14 Temmuz 2026 HESAPTAN YAPILAN ODEME -24.381,40",
+      "01.08.2026 KREDI KARTI ODEMESI -5.000,00",
+      "01.08.2026 OTOMATIK ODEME -1.234,56",
+    ]) {
+      const result = parse(line);
+      expect(result.kind, line).toBe("skipped");
+      if (result.kind === "skipped") expect(result.skip.reason).toBe("card_payment");
+    }
+  });
+
+  /**
+   * Turkish is what makes this a real rule rather than a word list.
+   *
+   * A statement is printed in capitals, and dotless `ı` does NOT case-fold to
+   * `I` — `/yapılan/i` is simply false for "YAPILAN". The match runs over the
+   * folded line, so one spelling covers every case the printer uses.
+   */
+  it("recognises the settlement however the printer capitalises it", () => {
+    for (const line of [
+      "14 Temmuz 2026 HESAPTAN YAPILAN ÖDEME -24.381,40",
+      "14 Temmuz 2026 Hesaptan Yapılan Ödeme -24.381,40",
+      "14 Temmuz 2026 hesaptan yapilan odeme -24.381,40",
+    ]) {
+      expect(parse(line).kind, line).toBe("skipped");
+    }
+  });
+
+  /**
+   * Both halves of the test matter. A charge at a merchant whose name contains
+   * one of these words is still the charge it is — only a CREDIT can be a
+   * settlement, and inventing a skip would lose a real expense silently.
+   */
+  it("still imports a charge from a merchant whose name reads like a payment", () => {
+    expect(candidateOf("05.08.2026 TAHSILAT BUROSU 340,00")).toMatchObject({
+      amountMinor: 34_000,
+      isRefund: false,
+    });
+  });
+
+  it("collects every skipped line so the total can be reconciled", () => {
+    const parsed = parseStatement([
+      "14 Temmuz 2026 ODEME-TESEKKUR EDERIZ +24.381,40",
+      "15 Temmuz 2026 MIGROS 1.234,56",
+      "16 Temmuz 2026 HESAPTAN YAPILAN ODEME -500,00",
+    ].join("\n"), "2026-07");
+    expect(parsed.candidates).toHaveLength(1);
+    expect(parsed.skipped.map((skip) => skip.reason)).toEqual(["card_payment", "card_payment"]);
+    expect(parsed.skipped[0]!.sourceLine).toContain("ODEME-TESEKKUR");
   });
 
   /** An interest-rate table prints the same shape as money and is not money. */

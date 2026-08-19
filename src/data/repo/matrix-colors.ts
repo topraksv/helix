@@ -56,7 +56,7 @@ export async function setMatrixColor(
         // A cleared mark keeps its last token: the column is NOT NULL, and the
         // tombstone is what makes it cleared. Storing a placeholder token here
         // would make a restored tombstone unreadable to the validator.
-        token: token ?? "neutral",
+        token: token ?? "yellow",
         deletedAt: token === null ? nowIso() : null,
       },
     }],

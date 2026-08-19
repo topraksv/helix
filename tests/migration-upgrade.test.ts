@@ -31,6 +31,18 @@ const sqlFor = (tag: string): string => readFileSync(join(MIGRATIONS_DIR, `${tag
 
 /** The migration whose data repair the retirement test exercises. */
 const RETIREMENT_TAG = "0010_retire_legacy_expected_payments";
+/** The migration whose token rewrite the mark test exercises. */
+const MARK_SLOTS_TAG = "0012_matrix_color_slots";
+
+/**
+ * How many statements the runner will execute for one migration.
+ *
+ * Derived, never written down: the interruption test has to fail inside the
+ * LAST migration, and a hard-coded count silently stops interrupting anything
+ * the moment a one-statement migration is added after it — which is exactly
+ * how this suite quietly stopped exercising 0010.
+ */
+const statementCount = (tag: string): number => sqlFor(tag).split("--> statement-breakpoint").length;
 
 let database: DatabaseSync;
 /** How many journal entries the runner is allowed to see this time. */
@@ -204,7 +216,11 @@ describe("boot migration", () => {
     const before = schemaOf(database);
 
     visibleEntries = journal.entries.length;
-    failAfterStatements = 1;
+    // Interrupt the final statement of the final migration, whatever shape it
+    // has: a multi-statement migration proves a partial application is rolled
+    // back, and a single-statement one proves the entry is not recorded.
+    const lastTag = journal.entries.at(-1)!.tag;
+    failAfterStatements = statementCount(lastTag) - 1;
     await expect(migrateDb()).rejects.toThrow("injected migration interruption");
     expect(appliedCount(database)).toBe(journal.entries.length - 1);
     expect(schemaOf(database)).toEqual(before);
@@ -213,6 +229,42 @@ describe("boot migration", () => {
     expect(appliedCount(database)).toBe(journal.entries.length);
     expect(database.prepare("SELECT amount_try_minor FROM transactions WHERE id = ?").get("tx-interrupted"))
       .toEqual({ amount_try_minor: 54321 });
+  });
+
+  /**
+   * A mark the owner made is invisible once its token stops resolving, so the
+   * rename of the five meaning-named slots has to rewrite what is already
+   * stored rather than leave it to be filtered out on read.
+   */
+  it("carries every retired mark slot onto its hue", async () => {
+    const slots = journal.entries.findIndex((entry) => entry.tag === MARK_SLOTS_TAG);
+    expect(slots, `${MARK_SLOTS_TAG} must be in the journal`).toBeGreaterThan(0);
+    visibleEntries = slots;
+    await migrateDb();
+
+    const legacy = [
+      ["m-critical", "critical", "red"],
+      ["m-warning", "warning", "orange"],
+      ["m-neutral", "neutral", "yellow"],
+      ["m-info", "info", "yellow"],
+      ["m-success", "success", "green"],
+    ] as const;
+    for (const [id, token] of legacy) {
+      database.prepare(
+        `INSERT INTO matrix_colors (id, user_id, scope, item_key, month, token, created_at, updated_at)
+         VALUES (?, 'user-1', 'cell', 'cat-1', '2026-08', ?, '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')`,
+      ).run(id, token);
+    }
+
+    visibleEntries = slots + 1;
+    await migrateDb();
+
+    for (const [id, , expected] of legacy) {
+      expect(
+        database.prepare("SELECT token, updated_at FROM matrix_colors WHERE id = ?").get(id),
+        `${id} keeps its mark`,
+      ).toEqual({ token: expected, updated_at: "2026-08-01T00:00:00.000Z" });
+    }
   });
 
   it("applies nothing on a second boot", async () => {

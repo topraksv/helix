@@ -9,7 +9,6 @@
 export {
   AttachmentRejectedError,
   CreditCardCycleRequiredError,
-  ExpectedAlreadyMatchedError,
   FxRateUnavailableError,
   InstallmentHistoryConflictError,
   ReferencedRecordError,
@@ -109,6 +108,7 @@ export {
   hasImportedData,
   importSheets,
   importedYears,
+  openingBalanceFromSheets,
 } from "./repo/imports";
 export type { ImportRequest } from "./repo/imports";
 
@@ -149,6 +149,7 @@ export {
   setAccountFrozen,
   setAttentionState,
   setBalanceDeclaration,
+  setMatrixColorLabels,
   setPendingTableVisibility,
   setReminderDays,
 } from "./repo/settings";
@@ -165,7 +166,6 @@ export {
 } from "./repo/attachments";
 
 export { setMatrixColor, type ColorTarget } from "./repo/matrix-colors";
-export { matchExpectedToTransaction } from "./repo/expected";
 
 export {
   commitStatementRows,

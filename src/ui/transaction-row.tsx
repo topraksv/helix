@@ -6,6 +6,7 @@
 
 import React from "react";
 import { Text, View } from "react-native";
+import Paperclip from "lucide-react-native/icons/paperclip";
 import Pencil from "lucide-react-native/icons/pencil";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import { tr } from "../i18n/tr";
@@ -18,6 +19,7 @@ export function TransactionRow({
   note,
   pending,
   reversalBadge,
+  hasDocuments,
   amountMinor,
   onEdit,
   onDelete,
@@ -28,6 +30,14 @@ export function TransactionRow({
   note: string | null;
   pending: boolean;
   reversalBadge: { text: string; tone: "negative" | "positive" } | null;
+  /**
+   * A receipt, invoice or warranty is filed against this row.
+   *
+   * Worth saying HERE and not only inside the editor: the reason to open a
+   * three-month-old grocery row is usually the receipt attached to it, and
+   * nothing in the list said which rows had one.
+   */
+  hasDocuments?: boolean;
   amountMinor: number;
   onEdit: () => void;
   onDelete: () => void;
@@ -43,10 +53,11 @@ export function TransactionRow({
           {note && note !== installmentTitle ? (
             <Text style={[type.small, { color: palette.textSecondary }]}>{note}</Text>
           ) : null}
-          {reversalBadge || pending ? (
+          {reversalBadge || pending || hasDocuments ? (
             <Row gap={spacing.sm} style={{ marginTop: 2, flexWrap: "wrap" }}>
               {reversalBadge ? <Badge text={reversalBadge.text} tone={reversalBadge.tone} /> : null}
               {pending ? <Badge text={tr.tx.futureNote} tone="warning" /> : null}
+              {hasDocuments ? <Badge icon={Paperclip} text={tr.attachments.onTransaction} tone="primary" /> : null}
             </Row>
           ) : null}
         </View>

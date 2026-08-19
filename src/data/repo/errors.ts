@@ -59,10 +59,3 @@ export class AttachmentRejectedError extends Error {
   }
 }
 
-/** One transaction settles one expectation; a second link would double-count. */
-export class ExpectedAlreadyMatchedError extends Error {
-  constructor() {
-    super("Transaction is already matched to another expected payment");
-    this.name = "ExpectedAlreadyMatchedError";
-  }
-}

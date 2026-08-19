@@ -3,6 +3,7 @@
 import { isAttentionState } from "./attention";
 import { parseBalanceDeclaration } from "./balance-declaration";
 import { isISODate, isMonthKey } from "./dates";
+import { parseMatrixColorLabels } from "./matrix-colors";
 import { isSupportedMinorAmount } from "./money";
 
 function stringArray(value: unknown): value is string[] {
@@ -45,6 +46,14 @@ const SETTING_VALIDATORS = {
   cc_column_removed: (value: unknown) => typeof value === "boolean",
   /** What the owner did to attention items: read, dismissed, snoozed. */
   attention_state: (value: unknown) => isAttentionState(value),
+  /**
+   * What the owner calls each Mali Tablo mark colour.
+   *
+   * One account-wide map, not a property of any marked cell: renaming a colour
+   * has to rename it everywhere it has already been used, which is the whole
+   * point of the rename.
+   */
+  matrix_color_labels: (value: unknown) => parseMatrixColorLabels(value) !== null,
 } satisfies Record<string, (value: unknown) => boolean>;
 
 /** A settings key with a declared shape. */

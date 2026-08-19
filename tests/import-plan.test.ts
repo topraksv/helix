@@ -7,8 +7,8 @@ const sheet: ParsedSheet = {
   year: 2026,
   months: ["2026-01", "2026-02"],
   columns: [
-    { label: "Kira", kindGuess: "expense", isInvestment: false, dueDay: null },
-    { label: "Maaş", kindGuess: "income", isInvestment: false, dueDay: null },
+    { label: "Kira", kindGuess: "expense", isInvestment: false, balanceLike: false, dueDay: null },
+    { label: "Maaş", kindGuess: "income", isInvestment: false, balanceLike: false, dueDay: null },
   ],
   cells: [
     [

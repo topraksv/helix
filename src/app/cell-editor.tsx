@@ -12,6 +12,7 @@ import MessageSquareText from "lucide-react-native/icons/message-square-text";
 import PlusCircle from "lucide-react-native/icons/circle-plus";
 import { addTransaction, deleteTransaction, restoreTransaction, saveCellNote } from "../data/repo";
 import {
+  useAttachmentsState,
   useCategoriesState,
   useCellNotesState,
   usePersonsState,
@@ -90,6 +91,14 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
     .reduce((sum, t) => sum + signedBalanceEffectOf(t.type, t.amountTryMinor, category?.kind ?? null), 0);
 
   const cellNotesState = useCellNotesState();
+  const attachmentsState = useAttachmentsState();
+  // Which rows in this list carry a document. One pass over the account's
+  // attachments rather than a query per row: the list is virtualized and a
+  // per-row lookup would run on every scroll frame.
+  const documented = React.useMemo(
+    () => new Set(attachmentsState.data.map((attachment) => attachment.transactionId)),
+    [attachmentsState.data],
+  );
   const note = cellNotesState.data.find(
     (row) => row.month === rangeMonth && row.categoryId === categoryId,
   );
@@ -285,6 +294,7 @@ function CellEditor({ month, categoryId }: { month: string; categoryId: string }
               }
               note={t.note}
               pending={t.status === "pending"}
+              hasDocuments={documented.has(t.id)}
               reversalBadge={
                 t.amountTryMinor < 0
                   ? { text: tr.tx.reversalLabel(t.type), tone: t.type === "income" ? "negative" : "positive" }

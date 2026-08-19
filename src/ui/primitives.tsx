@@ -593,10 +593,12 @@ export function Badge({
   text,
   tone = "muted",
   icon: IconCmp,
+  testID,
 }: {
   text: string;
   tone?: "muted" | "positive" | "negative" | "success" | "error" | "warning" | "primary";
   icon?: LucideIcon;
+  testID?: string;
 }) {
   const { palette } = useTheme();
   const colors = {
@@ -610,6 +612,7 @@ export function Badge({
   }[tone];
   return (
     <View
+      testID={testID}
       style={{
         backgroundColor: colors.bg,
         borderRadius: radius.full,

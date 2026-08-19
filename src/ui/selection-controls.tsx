@@ -43,7 +43,7 @@ import { interactionSurface } from "./interaction";
 import { SlideUp } from "./motion-primitives";
 import { Body, DisclosureChevron, FadeIn, Label, Row, controlStateStyle } from "./primitives";
 import { Field } from "./fields";
-import { shouldBoundIntrinsicControls } from "./responsive";
+import { shouldBoundIntrinsicControls, shouldPresentOptionsAsSheet, shouldUseTripleTileGrid } from "./responsive";
 import { useContentWidth } from "./viewport";
 import { borderWidth, controlSize, font, iconSize, motion, radius, segmentedMaxWidth, spacing, themeShadow, type, useTheme, type Palette } from "./theme";
 
@@ -126,12 +126,12 @@ export function Select<T extends string>({
   const modalTitleRef = useModalAccessibility(open, triggerRef);
   const current = options.find((o) => o.value === value)
     ?? (selectedOption?.value === value ? selectedOption : undefined);
-  const modalVerticalInset = width < 640 ? spacing.lg : spacing.lg * 2;
-  const modalMaxHeight = Math.max(0, Math.min(width < 640 ? 560 : 460, height - modalVerticalInset));
+  const sheet = shouldPresentOptionsAsSheet(width);
+  const modalVerticalInset = sheet ? spacing.lg : spacing.lg * 2;
+  const modalMaxHeight = Math.max(0, Math.min(sheet ? 560 : 460, height - modalVerticalInset));
   // On a phone this is a sheet pulled up off the bottom edge; on a pointer
   // viewport it is a dialog in the middle of the window. The scrim fades either
   // way — sliding the scrim with the sheet would drag the whole screen.
-  const sheet = width < 640;
   // A function, not a value. Built eagerly, this element tree — one `Pressable`
   // per option — was constructed on every render of every closed picker on the
   // screen, and a category picker carries hundreds of options.
@@ -143,10 +143,10 @@ export function Select<T extends string>({
               style={{
                 flex: 1,
                 backgroundColor: palette.scrim,
-                justifyContent: width < 640 ? "flex-end" : "center",
-                paddingHorizontal: width < 640 ? spacing.sm : spacing.lg,
+                justifyContent: sheet ? "flex-end" : "center",
+                paddingHorizontal: sheet ? spacing.sm : spacing.lg,
                 paddingTop: spacing.lg,
-                paddingBottom: width < 640 ? 0 : spacing.lg,
+                paddingBottom: sheet ? 0 : spacing.lg,
               }}
               onPress={() => setOpen(false)}
             >
@@ -174,7 +174,7 @@ export function Select<T extends string>({
                     scheme === "light" && themeShadow.overlay(palette),
                   ]}
                 >
-                  {width < 640 ? (
+                  {sheet ? (
                     <View accessible={false} style={{ alignItems: "center", paddingTop: spacing.sm }}>
                       <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: palette.surfaceStrong }} />
                     </View>
@@ -640,7 +640,7 @@ export function SelectionGrid({
                   onToggle(option.value);
                 }}
                 style={(state) => ({
-                  flexBasis: contentWidth >= 720 ? "31%" : "47%",
+                  flexBasis: shouldUseTripleTileGrid(contentWidth) ? "31%" : "47%",
                   flexGrow: 1,
                   minWidth: 0,
                   minHeight: 48,

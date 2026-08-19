@@ -48,6 +48,14 @@ interface ParsedColumn {
   label: string;
   kindGuess: "expense" | "income";
   isInvestment: boolean;
+  /**
+   * A balance or a running total: excluded from the import by DEFAULT, because
+   * importing a sum of the columns beside it counts that month twice.
+   *
+   * A default rather than a verdict. The parser reads a heading, and a heading
+   * is the one part of a personal spreadsheet nobody else wrote the rules for.
+   */
+  balanceLike: boolean;
   /** Payment day pulled off the header ("Elektrik 06" → 6); null if none. Used
    *  to place the month's row on its real due day instead of a flat 15th. */
   dueDay: number | null;
@@ -61,7 +69,7 @@ export interface ParsedSheet {
   columns: ParsedColumn[];
   /** cells[monthIndex][columnIndex]. */
   cells: CellData[][];
-  /** Balance/derived column labels that were detected and skipped. */
+  /** Balance/derived column labels, excluded by default and offered back. */
   skippedColumns: string[];
   /** Earliest month's opening-balance cell ("Ay Başında Eldeki Para"), if any. */
   openingBalance: { month: MonthKey; minor: Minor } | null;
@@ -93,6 +101,33 @@ const MONTH_ABBR = MONTH_NAMES.map((m) => m.slice(0, 3));
 
 // `\bnet\b` so "İnternet Abonelikleri" is NOT mistaken for a balance column.
 const BALANCE_HINTS = /bakiye|devir|kalan|toplam|\bnet\b|eldeki|ay ba[sş]|birikim/i;
+
+/**
+ * A column that names where money actually came from, rather than summing the
+ * columns beside it.
+ *
+ * `BALANCE_HINTS` runs before the income check and swallowed these whole. The
+ * one that matters is **"Net Maaş"** — the commonest payroll heading in a
+ * Turkish household sheet — which `\bnet\b` classified as a balance column, so
+ * every month's salary was dropped from the import and the chained balance ran
+ * further into the red with each month. "Net Ücret" went the same way.
+ *
+ * The discriminator is a concrete SOURCE, not the word "gelir": "Toplam Gelir"
+ * is a sum of the columns already being imported and must stay skipped, or the
+ * month is counted twice.
+ */
+const FLOW_SOURCE_HINTS = /maa[sş]|[üu]cret|prim|ikramiye|mesai|burs|har[çc]l[ıi]k|kira geliri/i;
+
+/**
+ * Whether a column is a balance or a running total rather than a flow.
+ *
+ * Exported because the importer offers these back: they are excluded by
+ * DEFAULT, not silently, so a sheet whose heading this rule reads wrongly can
+ * be corrected by the person who wrote the sheet.
+ */
+export function isBalanceLikeColumn(label: string): boolean {
+  return BALANCE_HINTS.test(label) && !FLOW_SOURCE_HINTS.test(label);
+}
 const OPENING_HINTS = /ay ba[sş]|eldeki|devir|a[çc][ıi]l[ıi][sş]/i;
 const INCOME_HINTS = /maa[sş]|gelir|prim|kira geliri|burs|ek gelir/i;
 const INVESTMENT_HINTS = /yat[ıi]r[ıi]m/i;
@@ -272,16 +307,20 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
   const firstMonth = months[0];
   if (!firstMonth) return fail(tr.importer.reasonNoMonths);
 
+  // Every named column is KEPT and carries its own classification. Balance and
+  // total columns used to be dropped here, which made the parser's reading of a
+  // heading final and invisible: a sheet whose salary column is called "Net
+  // Maaş" lost its salary and there was no way to say otherwise. They are now
+  // excluded by default and offered back in the wizard.
   const keepIdx: number[] = [];
   const skippedColumns: string[] = [];
   let openingColIdx = -1;
   header.forEach((label, i) => {
     if (label === "") return;
-    if (BALANCE_HINTS.test(label)) {
+    keepIdx.push(i);
+    if (isBalanceLikeColumn(label)) {
       skippedColumns.push(label);
       if (openingColIdx < 0 && OPENING_HINTS.test(label)) openingColIdx = i;
-    } else {
-      keepIdx.push(i);
     }
   });
 
@@ -291,6 +330,7 @@ export function parseSheet(grid: RawCell[][], sheetName: string): ParsedSheet | 
       label,
       kindGuess: INCOME_HINTS.test(label) ? "income" : "expense",
       isInvestment: INVESTMENT_HINTS.test(label),
+      balanceLike: isBalanceLikeColumn(header[i] ?? ""),
       dueDay,
     };
   });

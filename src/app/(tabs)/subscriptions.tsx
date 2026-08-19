@@ -23,7 +23,7 @@ import { useAllTransactionsState, usePersonsState, usePriceHistoryState, useSubs
 import { combineLiveStates } from "../../data/live-state";
 import { deleteSubscriptionWithExpected, restoreDeletedRule } from "../../data/repo";
 import { scheduleSync } from "../../sync/engine";
-import { Amount, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, PanelHeader, Screen, SectionHeader } from "../../ui/components";
+import { Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, MetricStrip, PanelHeader, Screen, SectionHeader } from "../../ui/components";
 import { RuleRow, type RuleBadge } from "../../ui/rule-row";
 import { Logo } from "../../ui/logo";
 import { useUndo } from "../../ui/undo";
@@ -52,13 +52,6 @@ function SubscriptionScheduleOverview({
     return groups;
   }, new Map<ISODate, typeof active>()).entries()].map(([date, payments]) => ({ date, payments }));
   const visibleStops = scheduleStops.slice(0, 3);
-  const monthlyTryMinor = active
-    .filter((subscription) => subscription.currency === "TRY")
-    .reduce(
-      (total, subscription) =>
-        total + normalizedMonthlyLoadMinor(subscription.amountMinor, subscription.intervalMonths),
-      0,
-    );
   const autoPayCount = active.filter((subscription) => subscription.autoPay).length;
   const manualCount = active.length - autoPayCount;
   const nextStop = scheduleStops[0] ?? null;
@@ -94,16 +87,13 @@ function SubscriptionScheduleOverview({
         borderTopColor: palette.primary,
       }}
     >
+      {/* When, not how much. The monthly figure used to sit here too, computed
+          a second time and from a different set of rules than the cost card
+          below — two answers to one question, a scroll apart. */}
       <PanelHeader
         icon={CalendarClock}
         title={tr.subs.scheduleOverview}
         description={tr.subs.scheduleOverviewHint}
-        right={(
-          <View style={{ alignItems: "flex-end", paddingLeft: spacing.sm }}>
-            <Text style={[type.small, { color: palette.textSecondary, fontSize: type.micro.fontSize }]}>{tr.subs.tryMonthlyLoad}</Text>
-            <Amount minor={monthlyTryMinor} colorized={false} style={{ fontSize: type.label.fontSize }} />
-          </View>
-        )}
       />
       <View
         testID="subscription-cycle-summary"
@@ -294,27 +284,16 @@ function SubscriptionCostSummary({
   return (
     <Card testID="subscription-cost-summary" style={{ marginBottom: spacing.lg }}>
       <PanelHeader icon={Wallet} title={tr.subs.costSummary} description={tr.subs.costSummaryHint} />
-      <View style={{ flexDirection: "row", gap: spacing.sm }}>
-        {([
+      {/* The app's shared rail for a row of labelled figures, rather than two
+          hand-tinted boxes that were this screen's alone. One source, one
+          place: this card is the only thing that says what the rules cost. */}
+      <MetricStrip
+        testID="subscription-cost-figures"
+        items={[
           { label: tr.subs.monthlyCost, minor: summary.monthlyTryMinor },
           { label: tr.subs.annualCost, minor: summary.annualTryMinor },
-        ]).map((figure) => (
-          <View
-            key={figure.label}
-            style={{
-              flex: 1,
-              padding: spacing.md,
-              borderRadius: radius.sm,
-              backgroundColor: palette.primarySoft,
-              borderLeftWidth: 3,
-              borderLeftColor: palette.primary,
-            }}
-          >
-            <Text style={[type.small, { color: palette.textSecondary }]}>{figure.label}</Text>
-            <Amount minor={figure.minor} colorized={false} style={{ marginTop: 2 }} />
-          </View>
-        ))}
-      </View>
+        ]}
+      />
       {summary.excludedCurrencyCount > 0 ? (
         <Text style={[type.small, { color: palette.textSecondary, marginTop: spacing.sm }]}>
           {tr.subs.costExcluded(summary.excludedCurrencyCount)}

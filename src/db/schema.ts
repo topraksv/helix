@@ -349,7 +349,7 @@ export const matrixColors = sqliteTable(
     itemKey: text("item_key"),
     /** Month key for column and cell scopes; null for a row. */
     month: text("month"),
-    token: text("token", { enum: ["neutral", "info", "success", "warning", "critical"] }).notNull(),
+    token: text("token", { enum: ["red", "orange", "yellow", "green"] }).notNull(),
   },
   (t) => [index("idx_matrix_color_lookup").on(t.scope, t.month, t.itemKey)],
 );

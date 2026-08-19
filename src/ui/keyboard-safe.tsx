@@ -10,6 +10,7 @@
 
 import React, { useEffect } from "react";
 import { Platform, ScrollView, type ScrollViewProps } from "react-native";
+import { isMobileViewportWidth } from "./responsive";
 
 export interface KeyboardSafeScrollViewProps extends ScrollViewProps {
   /** Breathing room above the native keyboard, measured from the caret. */
@@ -64,7 +65,7 @@ function MobileWebKeyboardFocus() {
     // A desktop keyboard never shrinks the visual viewport. Coarse pointers
     // include phones and tablets; the width fallback also covers mobile web
     // emulation where pointer capability is not faithfully exposed.
-    const isMobileViewport = () => window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768;
+    const isMobileViewport = () => window.matchMedia("(pointer: coarse)").matches || isMobileViewportWidth(window.innerWidth);
     let frame: number | null = null;
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
     let viewportTimer: ReturnType<typeof setTimeout> | null = null;

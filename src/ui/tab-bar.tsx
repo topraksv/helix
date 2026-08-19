@@ -29,7 +29,7 @@ import { Animated, PanResponder, Platform, Pressable, Text, View, useWindowDimen
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion, useReduceTransparency } from "./motion";
-import { tabLabelsFit, tooWide } from "./responsive";
+import { shouldUseCompactNavigationMaterial, tabLabelsFit, tooWide } from "./responsive";
 import { font, maxFontScale, motion, NAV_GLASS, navigationMaterial, radius, stateOpacity, TAB_BAR, tabBarBottomOffset, tabBarHeight, themeShadow, type, useTheme } from "./theme";
 
 /** The bar's own inset. The selection slides inside it, not over its edge. */
@@ -48,7 +48,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         WebkitBackdropFilter: glass ? NAV_GLASS.blur : "none",
       } as unknown as ViewStyle)
     : null;
-  const materialFill = navigationMaterial(palette.surface, { glass, isWeb, compact: width < 600 });
+  const materialFill = navigationMaterial(palette.surface, { glass, isWeb, compact: shouldUseCompactNavigationMaterial(width) });
 
   // Dragging across the bar scrubs through the tabs. The geometry and the
   // current index are read from refs so the responder can be created once:

@@ -1,14 +1,15 @@
 /** Undo snackbar (approved feature): shown after deletes, restores tombstoned rows. */
 
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Check from "lucide-react-native/icons/check";
 import RotateCcw from "lucide-react-native/icons/rotate-ccw";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { create } from "zustand";
 import { SlideUp, SuccessPop } from "./motion-primitives";
-import { controlSize, font, navigationInset, radius, spacing, stateOpacity, themeShadow, type, useTheme } from "./theme";
+import { controlSize, font, motion, navigationInset, radius, spacing, stateOpacity, themeShadow, type, useTheme } from "./theme";
+import { useReducedMotion } from "./motion";
 import { tr } from "../i18n/tr";
 import { haptic, selectionTap, type HapticKind } from "./haptics";
 import { runUndo } from "../domain/undo-outcome";
@@ -84,11 +85,85 @@ export const useUndo = create<UndoState>((set) => ({
   },
 }));
 
+/**
+ * How far down the bar has to be dragged before letting go dismisses it.
+ *
+ * Measured against the bar's own height rather than the screen's: the gesture
+ * is "push this out of the way", and the thing being pushed is about 64pt tall.
+ * Half of that is unmistakably a drag and still reachable with one thumb.
+ */
+const DISMISS_DISTANCE = 32;
+
+/** A flick that dismisses even though it barely travelled. */
+const DISMISS_VELOCITY = 0.6;
+
+/** Movement before the drag claims the gesture, so a TAP still reaches the
+ *  action buttons inside the bar rather than being swallowed by the pan. */
+const DRAG_CLAIM = 6;
+
+/** Where the bar goes on its way out: far enough to be gone behind the edge. */
+const DISMISS_TRAVEL = 140;
+
 export function UndoSnackbar() {
   const { palette } = useTheme();
   const { message, detail, onUndo, tone, clear } = useUndo();
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const [undoing, setUndoing] = React.useState(false);
+  /**
+   * Pushing the bar out of the way.
+   *
+   * It leaves on its own, but "on its own" is six seconds and it sits over the
+   * thing the owner is trying to look at. Downward only: up is where the bar
+   * came from and dragging it there means nothing.
+   */
+  const dragY = React.useRef(new Animated.Value(0)).current;
+  // The store outlives this component's closures — a responder created once
+  // must dismiss whatever bar is up when it fires, not the one it was born on.
+  const clearRef = React.useRef(clear);
+  clearRef.current = clear;
+  const reducedMotionRef = React.useRef(reducedMotion);
+  reducedMotionRef.current = reducedMotion;
+  // A new confirmation arrives at rest, however the last one was pushed away.
+  React.useEffect(() => { dragY.setValue(0); }, [dragY, message]);
+
+  const pan = React.useMemo(
+    () => PanResponder.create({
+      // Never claim the gesture on touch-down: the bar carries up to two
+      // buttons and a press must reach them.
+      onMoveShouldSetPanResponder: (_event, gesture) =>
+        gesture.dy > DRAG_CLAIM && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      onPanResponderMove: (_event, gesture) => dragY.setValue(Math.max(0, gesture.dy)),
+      onPanResponderRelease: (_event, gesture) => {
+        const dismissed = gesture.dy > DISMISS_DISTANCE || gesture.vy > DISMISS_VELOCITY;
+        if (!dismissed) {
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: Platform.OS !== "web",
+            ...motion.spring.entrance,
+          }).start();
+          return;
+        }
+        if (reducedMotionRef.current) {
+          clearRef.current();
+          return;
+        }
+        Animated.timing(dragY, {
+          toValue: DISMISS_TRAVEL,
+          duration: motion.feedback,
+          useNativeDriver: Platform.OS !== "web",
+        }).start(() => clearRef.current());
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(dragY, {
+          toValue: 0,
+          useNativeDriver: Platform.OS !== "web",
+          ...motion.spring.entrance,
+        }).start();
+      },
+    }),
+    [dragY],
+  );
   if (!message) return null;
   // Clear the real navigation surface (shared tokens), not a hardcoded offset
   // that silently drifts when the bar changes. It floats, so the space it
@@ -105,10 +180,19 @@ export function UndoSnackbar() {
       {/* The bar is the only confirmation some actions get, so it is announced
           rather than left as silent decoration. Polite: it reports an outcome
           the user just caused and must not interrupt what they type next. */}
-      <View
+      <Animated.View
+        {...pan.panHandlers}
         accessibilityLiveRegion="polite"
         accessibilityRole="alert"
         style={{
+          transform: [{ translateY: dragY }],
+          // Fades as it goes, so the drag reads as the bar leaving rather than
+          // as the bar being moved somewhere else.
+          opacity: dragY.interpolate({
+            inputRange: [0, DISMISS_TRAVEL],
+            outputRange: [1, 0],
+            extrapolate: "clamp",
+          }),
           flexDirection: "row",
           alignItems: "center",
           gap: spacing.sm,
@@ -216,7 +300,7 @@ export function UndoSnackbar() {
             </View>
           </Pressable>
         ) : null}
-      </View>
+      </Animated.View>
     </SlideUp></View>
   );
 }

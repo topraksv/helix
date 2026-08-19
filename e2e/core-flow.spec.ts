@@ -223,43 +223,31 @@ test("saving reports its balance effect without refreshing the screen", async ({
 });
 
 /**
- * Provenance, duplicate review and expected-to-actual matching.
+ * A ledger row carries its origin, and only when there is something to say.
  *
- * Together these answer "where did this row come from" and "is this the same
- * money twice". Both answers exist so a person can act on them, so both are
- * checked as rendered text, and the duplicate review is checked for what it
- * does NOT do: it never resolves anything by itself.
+ * The duplicate review and expected-to-actual matching that used to be checked
+ * here were removed by the owner: the duplicate list could not tell two
+ * identical grocery shops from one entered twice, and matching an expectation
+ * to an existing payment asked a question "ödendi" already answers. What
+ * survives is the part that is still true — a hand-entered row is the ordinary
+ * case and says nothing, so the two origins that matter are not buried.
  */
-test("a ledger row carries its origin, and repeats are offered for review not merged", async ({ page }, testInfo) => {
+test("a hand-entered ledger row claims no origin it cannot prove", async ({ page }, testInfo) => {
   const errors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await onboard(page);
+  await addMarketExpense(page, "E2E köken");
 
-  // The same amount and category twice on one day: a suspicion, not a fact.
-  for (const _ of [0, 1]) {
-    await page.getByRole("button", { name: /İşlem Ekle/u }).first().click();
-    await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("120");
-    await pickOption(page, "Kategori", "Market");
-    await page.getByRole("button", { name: "Kaydet", exact: true }).click();
-    await expect(page.getByTestId("dashboard-current-balance")).toBeVisible();
-  }
-
-  await page.goto("/helix/reconciliation");
-  const review = page.getByText("Olası tekrar kayıtlar", { exact: true });
-  await expect(review).toBeVisible();
-  // The reason is stated, so the owner can disagree with something specific.
-  await expect(page.getByText("Tutar ve kalem aynı, tarihler yakın", { exact: true })).toBeVisible();
-  // A hand-entered row says so.
-  await expect(page.getByText(/aynı gün · Elle girildi/u)).toBeVisible();
-  // Nothing was merged or deleted, and the panel says so.
-  await expect(page.getByText(/Helix hiçbirini kendiliğinden silmez/u)).toBeVisible();
-
-  // Opening the flagged row says nothing about its origin, because there is
-  // nothing to say: a hand-entered row is the ordinary case, and labelling it
-  // would bury the two origins that actually matter.
-  await page.getByRole("button", { name: "İşlemi Aç", exact: true }).first().click();
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await page.getByRole("button", { name: /Market/ }).first().click();
+  await page.getByRole("button", { name: /^Düzenle/ }).first().click();
   await expect(page).toHaveURL(/\/transaction\?id=/u);
   await expect(page.getByTestId("transaction-provenance")).toHaveCount(0);
+
+  // The catch-up screen offers the three choices it kept, and nothing else.
+  await page.goto("/helix/reconciliation");
+  await expect(page.getByText("Olası tekrar kayıtlar")).toHaveCount(0);
+  await expect(page.getByText("Mevcut İşlemle Eşleştir")).toHaveCount(0);
 
   await assertNoRuntimeErrors(errors, testInfo);
 });
@@ -361,6 +349,9 @@ test("a card statement is read locally, reviewed, and only then written", async 
 
   await choosePdf(page, "ekstre.pdf", syntheticStatementPdf([
     "HESAP OZETI",
+    // Last period's settlement, printed exactly like a refund. It must not
+    // become a candidate: the purchases it pays for are already here.
+    "01.08.2026 HESAPTAN YAPILAN ODEME -24.381,40",
     "12.08.2026 MIGROS MARKET 1.234,56",
     "03.08.2026 TEKNOSA 3/9 500,00",
     "31.02.2026 BOZUK SATIR 10,00",
@@ -373,6 +364,12 @@ test("a card statement is read locally, reviewed, and only then written", async 
   await expect(page.getByText("3/9. taksit", { exact: true })).toBeVisible();
   // A line it could not read is surfaced, not silently dropped.
   await expect(page.getByText("Tarih geçersiz", { exact: true })).toBeVisible();
+  // The card's own settlement is read, left out, and SAID — a statement
+  // importer that silently discards lines is one whose total can never be
+  // reconciled against the paper.
+  await expect(page.getByText("Bilerek alınmayanlar", { exact: true })).toBeVisible();
+  await expect(page.getByText(/HESAPTAN YAPILAN ODEME/u)).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /HESAPTAN YAPILAN ODEME/u })).toHaveCount(0);
   // Nothing is in the ledger yet.
   await expect(page.getByTestId("statement-commit")).toBeVisible();
 
@@ -433,7 +430,17 @@ test("a receipt can be attached, opened and removed on the web", async ({ page }
   await page.getByRole("textbox", { name: "Tutar · TRY", exact: true }).fill("120");
   await pickOption(page, "Kategori", "Market");
   await page.getByRole("button", { name: "Kaydet", exact: true }).click();
-  await page.getByRole("alert").first().getByRole("button", { name: "Düzenle", exact: true }).click();
+  // Wait for the write to be confirmed before reloading the app: `goto` is a
+  // full page load and would race the save it is meant to observe.
+  await expect(page.getByRole("alert").first()).toContainText("İşlem kaydedildi");
+
+  // Reached through the ledger rather than through the save confirmation's own
+  // shortcut. This test is about DOCUMENTS; routing it through that shortcut
+  // made it fail four runs in five on a defect that has nothing to do with
+  // attachments — see the note in `helix-undo-bar-click-race`.
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await page.getByRole("button", { name: /Market/ }).first().click();
+  await page.getByRole("button", { name: /^Düzenle/ }).first().click();
   await expect(page).toHaveURL(/\/transaction\?id=/u);
 
   const panel = page.getByTestId("attachment-panel");
@@ -450,6 +457,14 @@ test("a receipt can be attached, opened and removed on the web", async ({ page }
   // Held on this device, so it offers to open it rather than explaining why it cannot.
   await expect(panel.getByRole("button", { name: "Aç", exact: true })).toBeVisible();
   await expect(page.getByTestId("attachment-empty")).toHaveCount(0);
+
+  // The row it belongs to says so, in the list, without opening anything: the
+  // reason to reopen a three-month-old grocery row is usually its receipt.
+  await page.goto(`/helix/cash-flow/${currentMonthKey()}`);
+  await page.getByRole("button", { name: /Market/ }).first().click();
+  await expect(page.getByText("Belge var", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: /^Düzenle/ }).first().click();
+  await expect(panel).toContainText("fatura.pdf");
 
   // Removing is undoable, because a receipt is not recoverable once gone.
   await panel.getByRole("button", { name: "Sil", exact: true }).click();

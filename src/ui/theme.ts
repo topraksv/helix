@@ -1,6 +1,7 @@
 /** System/light/dark design tokens shared by native and web. */
 
 import { createContext, useContext } from "react";
+import type { MatrixColorToken } from "../domain/matrix-colors";
 
 export interface Palette {
   // Yapısal nötrler: tema karakterini taşır ama ekranı tek renge boyamaz.
@@ -58,13 +59,25 @@ export interface Palette {
   negativeText: string;
   warning: string;
   warningText: string;
+  /**
+   * The fourth contextual-mark hue: a yellow between amber and green.
+   *
+   * It exists because Mali Tablo's marks need four hues a person can tell
+   * apart at a glance, and the semantic set had three. `warning` is an amber at
+   * hue ~34°; this sits at ~54°, which is the separation that makes "gecikti"
+   * and "kontrol edilmeli" two different colours rather than two shades of the
+   * same one. Not a status role: nothing outside the marks should reach for it.
+   */
+  caution: string;
+  cautionText: string;
   focus: string;
 }
 
 type SemanticPalette = Pick<Palette,
   | "destructive" | "onDestructive" | "error" | "errorText"
   | "success" | "successText" | "positive" | "positiveText"
-  | "negative" | "negativeText" | "warning" | "warningText" | "focus"
+  | "negative" | "negativeText" | "warning" | "warningText"
+  | "caution" | "cautionText" | "focus"
 >;
 
 /**
@@ -85,6 +98,8 @@ const lightSemanticColors = {
   negativeText: "#833832",
   warning: "#9A703A",
   warningText: "#745126",
+  caution: "#877E2B",
+  cautionText: "#665F1D",
   focus: "#3C6F96",
 } satisfies SemanticPalette;
 
@@ -101,6 +116,8 @@ const darkSemanticColors = {
   negativeText: "#F0A49E",
   warning: "#CFA667",
   warningText: "#E6C78F",
+  caution: "#C8C176",
+  cautionText: "#DEDA9C",
   focus: "#7EADD0",
 } satisfies SemanticPalette;
 
@@ -849,20 +866,41 @@ export function useTheme(): Theme {
  * each token for assistive technology, and the sheet that sets one shows the
  * name beside the swatch.
  */
+/**
+ * How strongly a contextual mark tints the cell it is on.
+ *
+ * Measured, not chosen. At the previous `26` (15%) the four hues landed 2.7 ΔE
+ * apart in light and 3.1 in dark on the shipped palettes — below the threshold
+ * where a colour is a signal rather than a smudge, which is exactly the
+ * "renkler stabil değil" this replaces. `59` (35%) puts the worst adjacent pair
+ * at 6.8–7.4 ΔE across all six palettes while keeping `palette.text` on the
+ * tinted cell at 5.96:1 or better, comfortably past AA. Raising it further buys
+ * little separation and spends the cell's own legibility: at 45% the darkest
+ * scheme drops the figure on the cell to 4.54:1, one rounding away from
+ * failing the thing the table is for.
+ */
+const MATRIX_MARK_FILL_ALPHA = "59";
+
+/**
+ * The four contextual-mark hues.
+ *
+ * `edge` is the full-strength colour drawn as the cell's 3px rule — the part
+ * that survives any tint under it. `fill` is the wash. `ink` is for a mark ON
+ * the fill (the sheet's tick), which is a graphical object under WCAG 1.4.11
+ * and therefore held to 3:1, not to text's 4.5:1.
+ */
 export function matrixColorStyle(
   palette: Palette,
-  token: "neutral" | "info" | "success" | "warning" | "critical",
+  token: MatrixColorToken,
 ): { fill: string; edge: string; ink: string } {
   switch (token) {
-    case "success":
-      return { fill: palette.success + "26", edge: palette.success, ink: palette.successText };
-    case "warning":
-      return { fill: palette.warning + "26", edge: palette.warning, ink: palette.warningText };
-    case "critical":
-      return { fill: palette.error + "26", edge: palette.error, ink: palette.errorText };
-    case "info":
-      return { fill: palette.tertiary + "26", edge: palette.tertiary, ink: palette.tertiaryText };
-    case "neutral":
-      return { fill: palette.primary + "22", edge: palette.primary, ink: palette.primaryText };
+    case "green":
+      return { fill: palette.success + MATRIX_MARK_FILL_ALPHA, edge: palette.success, ink: palette.successText };
+    case "yellow":
+      return { fill: palette.caution + MATRIX_MARK_FILL_ALPHA, edge: palette.caution, ink: palette.cautionText };
+    case "orange":
+      return { fill: palette.warning + MATRIX_MARK_FILL_ALPHA, edge: palette.warning, ink: palette.warningText };
+    case "red":
+      return { fill: palette.error + MATRIX_MARK_FILL_ALPHA, edge: palette.error, ink: palette.errorText };
   }
 }

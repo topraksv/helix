@@ -19,7 +19,7 @@ import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { CurrencyPicker } from "../ui/currency-picker";
-import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
+import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, FieldNote, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert } from "../ui/dialog";
 import { DateField } from "../ui/calendar";
@@ -457,14 +457,13 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
               onChange={setCycle}
             />
             {cycle === "custom" ? (
-              <>
+              <FieldNote note={tr.subs.intervalHint}>
                 <Field label={tr.subs.intervalLabel} value={intervalStr} onChangeText={setIntervalStr} keyboardType="number-pad" />
-                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>{tr.subs.intervalHint}</Body>
-              </>
+              </FieldNote>
             ) : null}
 
             {cycle === "yearly" ? (
-              <>
+              <FieldNote note={tr.subs.yearlyRenewalHint}>
                 <DateField
                   label={tr.subs.yearlyRenewalDate}
                   value={yearlyRenewalDate}
@@ -474,12 +473,9 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                     setBillingDayStr(String(Number(date.slice(8, 10))));
                   }}
                 />
-                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
-                  {tr.subs.yearlyRenewalHint}
-                </Body>
-              </>
+              </FieldNote>
             ) : (
-              <>
+              <FieldNote note={tr.subs.billingDayHint}>
                 <MonthDayField
                   label={tr.subs.billingDay}
                   value={billingDayStr}
@@ -487,10 +483,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                   quickDays={QUICK_DAYS}
                   error={billingDayStr !== "" && !isMonthDay(billingDayStr) ? tr.incomes.dayError : null}
                 />
-                <Body muted style={{ marginTop: -spacing.xs, marginBottom: spacing.md, fontSize: type.small.fontSize }}>
-                  {tr.subs.billingDayHint}
-                </Body>
-              </>
+              </FieldNote>
             )}
 
             {expenseCategories.length > 0 ? (

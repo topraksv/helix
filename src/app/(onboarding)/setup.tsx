@@ -27,7 +27,8 @@ import { placeholderPools, useRotatingPlaceholder } from "../../ui/placeholders"
 import { font, radius, spacing, type, useTheme } from "../../ui/theme";
 import { useOperationGuard } from "../../ui/operation-guard";
 import { readPickedText } from "../../services/picked-file";
-import { MonthDayField, monthDayLabel } from "../../ui/month-day-field";
+import { monthDayLabel } from "../../ui/month-day-field";
+import { CardCycleFields, cardCycleError } from "../../ui/card-cycle-fields";
 import { useDirtyExitGuard } from "../../ui/dirty-exit";
 import { userMessage } from "../../domain/user-error";
 import { devError } from "../../services/logger";
@@ -533,17 +534,12 @@ export default function SetupScreen() {
             onChange={setNewSourceType}
           />
           {newSourceType === "credit_card" ? (
-            <>
-              <Row>
-                <View style={{ flex: 1 }}>
-                  <MonthDayField label={tr.sources.statementDay} value={newSourceStatementDay} onChange={setNewSourceStatementDay} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <MonthDayField label={tr.sources.dueDay} value={newSourceDueDay} onChange={setNewSourceDueDay} />
-                </View>
-              </Row>
-              <Body muted style={{ marginBottom: spacing.md }}>{tr.sources.cycleHint}</Body>
-            </>
+            <CardCycleFields
+              statementDayValue={newSourceStatementDay}
+              dueDayValue={newSourceDueDay}
+              onStatementDayChange={setNewSourceStatementDay}
+              onDueDayChange={setNewSourceDueDay}
+            />
           ) : null}
           {persons.length > 1 ? (
             <ChipPicker
@@ -559,8 +555,13 @@ export default function SetupScreen() {
                 variant="secondary"
                 disabled={
                   !newSource.trim() ||
-                  (newSourceType === "credit_card" &&
-                    ![newSourceStatementDay, newSourceDueDay].every(isMonthDay))
+                  (newSourceType === "credit_card" && (
+                    ![newSourceStatementDay, newSourceDueDay].every(isMonthDay) ||
+                    // The same rule the settings editor applies. Onboarding used
+                    // to accept any pair, so a card could be created here that
+                    // the screen it is later edited on would refuse.
+                    cardCycleError(Number(newSourceStatementDay), Number(newSourceDueDay)) !== null
+                  ))
                 }
                 onPress={submitSource}
               />

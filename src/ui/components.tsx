@@ -46,7 +46,7 @@ import {
   useLedeAlignment,
 } from "./primitives";
 import { circle, contentWidth, density, font, heroSurface, iconSize, motion, radius, spacing, staggerDelay, type, type ContentWidth, useTheme } from "./theme";
-import { shouldStackListActions, shouldUseWideGutter } from "./responsive";
+import { shouldStackListActions, shouldStackPanelAction, shouldUseWideGutter } from "./responsive";
 import { useContentWidth, useNavigationSpace } from "./viewport";
 import { OperationFlow, type OperationFlowKind } from "./operation-flow";
 import { KeyboardSafeScrollView } from "./keyboard-safe";
@@ -565,7 +565,7 @@ export function PanelHeader({
 }) {
   const { palette } = useTheme();
   const { width: viewportWidth } = useWindowDimensions();
-  const stackRight = Boolean(right) && viewportWidth < 360;
+  const stackRight = Boolean(right) && shouldStackPanelAction(viewportWidth);
   const lede = useLedeAlignment(PANEL_MARK);
   const toneColor = tone === "warning"
     ? palette.warning

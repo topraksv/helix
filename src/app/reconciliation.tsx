@@ -6,9 +6,8 @@ import { View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import CheckCircle2 from "lucide-react-native/icons/circle-check";
 import Plus from "lucide-react-native/icons/plus";
-import { confirmExpected, ExpectedAlreadyMatchedError, FxRateUnavailableError, matchExpectedToTransaction, revertExpected, skipExpected, unskipExpected } from "../data/repo";
+import { confirmExpected, FxRateUnavailableError, revertExpected, skipExpected, unskipExpected } from "../data/repo";
 import {
-  useAllTransactionsState,
   useLastEntryInfoState,
   usePendingExpectedState,
   usePersonsState,
@@ -18,13 +17,12 @@ import {
 } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { todayISO } from "../domain/dates";
-import { findDuplicates, matchCandidates, provenanceOf, type MatchCandidate } from "../domain/provenance";
 import { formatMinorCompact } from "../domain/money";
 import { AMOUNT_LABELS, needsVariableAmountEntry, isVariableSubscriptionOccurrence, occurrenceAmountText } from "../domain/subscriptions";
 import { dateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
 import { devError } from "../services/logger";
-import { Badge, Body, Button, Card, DataStateNotice, EmptyState, MoneyField, Row, Screen, SectionHeader, Spread } from "../ui/components";
+import { Badge, Body, Button, Card, DataStateNotice, EmptyState, MoneyField, Row, Screen, Spread } from "../ui/components";
 import { appAlert } from "../ui/dialog";
 import { useUndo } from "../ui/undo";
 import { errorNotice } from "../ui/haptics";
@@ -35,78 +33,12 @@ import { WorkspaceGrid } from "../ui/workspace-layout";
 import { useClusterWidth } from "../ui/viewport";
 
 
-/**
- * Rows that may be the same money written twice.
- *
- * It finds and explains; it never resolves. Two identical grocery shops three
- * days apart is a real pattern, and a product that quietly merged them would
- * delete money that was actually spent — so every pair opens the transaction
- * and lets the owner decide, and the reason for the suspicion is stated so they
- * can disagree with something specific.
- */
-function DuplicateReview({
-  transactions,
-  onOpen,
-}: {
-  transactions: ReturnType<typeof useAllTransactionsState>["data"];
-  onOpen: (id: string) => void;
-}) {
-  const pairs = React.useMemo(
-    () => findDuplicates(transactions.map((transaction) => ({
-      id: transaction.id,
-      amountTryMinor: transaction.amountTryMinor,
-      effectiveDate: transaction.effectiveDate,
-      categoryId: transaction.categoryId,
-      origin: transaction.origin,
-      importKey: transaction.importKey,
-    }))).slice(0, 12),
-    [transactions],
-  );
-  const byId = React.useMemo(() => new Map(transactions.map((row) => [row.id, row])), [transactions]);
-
-  return (
-    <View style={{ marginTop: spacing.lg }}>
-      <SectionHeader>{tr.duplicates.title}</SectionHeader>
-      <Body muted style={{ marginBottom: spacing.sm }}>{tr.duplicates.hint}</Body>
-      {pairs.length === 0 ? (
-        <Body muted testID="duplicate-review-empty">{tr.duplicates.none}</Body>
-      ) : (
-        pairs.map((pair) => {
-          const duplicate = byId.get(pair.duplicateId);
-          if (!duplicate) return null;
-          return (
-            <Card key={`${pair.existingId}:${pair.duplicateId}`} tone={pair.certain ? "warning" : undefined}>
-              <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
-                <Badge text={pair.certain ? tr.duplicates.certain : tr.duplicates.suspected} tone={pair.certain ? "warning" : "muted"} />
-              </Row>
-              <Body style={{ marginTop: spacing.xs }}>
-                {formatMinorCompact(duplicate.amountTryMinor)} · {dateLabel(duplicate.effectiveDate)}
-              </Body>
-              <Body muted style={{ marginTop: 2 }}>
-                {pair.dayGap === 0 ? tr.duplicates.sameDay : tr.duplicates.dayGap(pair.dayGap)}
-                {" · "}
-                {tr.provenance[provenanceOf(duplicate)]}
-              </Body>
-              <Row gap={spacing.sm} style={{ marginTop: spacing.sm }}>
-                <View>
-                  <Button size="sm" variant="secondary" label={tr.duplicates.open} onPress={() => onOpen(pair.duplicateId)} />
-                </View>
-              </Row>
-            </Card>
-          );
-        })
-      )}
-    </View>
-  );
-}
-
 export default function CatchUpScreen() {
   const userId = useUserId();
   const expectedState = usePendingExpectedState();
   const subscriptionsState = useSubscriptionsState();
   const incomesState = useRecurringIncomesState();
   const personsState = usePersonsState();
-  const transactionsState = useAllTransactionsState();
   const lastEntryState = useLastEntryInfoState();
   const expected = expectedState.data;
   const subscriptions = subscriptionsState.data;
@@ -218,47 +150,6 @@ export default function CatchUpScreen() {
     }
   };
 
-  /** Which expectation the owner is looking for an existing payment for. */
-  const [matchingId, setMatchingId] = useState<string | null>(null);
-  /**
-   * Every transaction an expectation has already claimed, so one payment can
-   * never be offered as the answer to two different months.
-   */
-  const linkedTransactionIds = React.useMemo(
-    () => new Set(expectedState.data.flatMap((item) => item.transactionId ? [item.transactionId] : [])),
-    [expectedState.data],
-  );
-  const candidatesFor = React.useCallback((expected: { id: string; dueDate: string; amountMinor: number; currency: string; direction: "in" | "out" }): MatchCandidate[] =>
-    matchCandidates(
-      expected,
-      transactionsState.data.map((transaction) => ({
-        id: transaction.id,
-        amountTryMinor: transaction.amountTryMinor,
-        effectiveDate: transaction.effectiveDate,
-        categoryId: transaction.categoryId,
-        origin: transaction.origin,
-        importKey: transaction.importKey,
-      })),
-      { alreadyLinkedIds: linkedTransactionIds },
-    ).slice(0, 4),
-  [transactionsState.data, linkedTransactionIds]);
-
-  const applyMatch = async (expectedId: string, transactionId: string) => {
-    setMatchingId(null);
-    try {
-      await matchExpectedToTransaction(userId, expectedId, transactionId);
-      scheduleSync(userId);
-      undo.show(tr.matching.matched, () => revertExpected(userId, expectedId));
-    } catch (error) {
-      if (error instanceof ExpectedAlreadyMatchedError) {
-        void appAlert(tr.matching.alreadyMatched, tr.errors.title);
-        return;
-      }
-      devError("expected.match", error);
-      void appAlert(tr.errors.saveFailed, tr.errors.title);
-    }
-  };
-
   if (!dataReady) {
     return (
       <Screen>
@@ -300,63 +191,7 @@ export default function CatchUpScreen() {
                 </Body>
               </View>
             </Spread>
-            {matchingId === e.id ? (
-              /* Candidates for THIS expectation, ranked and never applied on
-                 their own: an exact amount on the due date is still only a
-                 candidate, because the owner is the one who knows whether the
-                 bill they paid was this month's. */
-              <View style={{ marginTop: spacing.md }}>
-                <Body style={{ marginBottom: 2 }}>{tr.matching.title}</Body>
-                <Body muted style={{ marginBottom: spacing.sm }}>{tr.matching.hint}</Body>
-                {candidatesFor({
-                  id: e.id,
-                  dueDate: e.dueDate,
-                  amountMinor: e.amountMinor,
-                  currency: e.currency,
-                  direction: e.direction,
-                }).length === 0 ? (
-                  <Body muted>{tr.matching.none}</Body>
-                ) : (
-                  candidatesFor({
-                    id: e.id,
-                    dueDate: e.dueDate,
-                    amountMinor: e.amountMinor,
-                    currency: e.currency,
-                    direction: e.direction,
-                  }).map((candidate) => {
-                    const reason = [
-                      candidate.sameAmount ? tr.matching.exactAmount : tr.matching.closeAmount,
-                      candidate.dayGap === 0 ? tr.matching.sameDay : tr.matching.dayGap(candidate.dayGap),
-                    ].join(" · ");
-                    return (
-                      <Spread
-                        key={candidate.transactionId}
-                        style={{ alignItems: "center", gap: spacing.sm, marginBottom: spacing.xs }}
-                      >
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Body>{formatMinorCompact(candidate.amountTryMinor)}</Body>
-                          <Body muted style={{ marginTop: 2 }}>{dateLabel(candidate.effectiveDate)} · {reason}</Body>
-                        </View>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          label={tr.matching.confirm}
-                          accessibilityHint={tr.matching.candidateA11y(
-                            formatMinorCompact(candidate.amountTryMinor),
-                            dateLabel(candidate.effectiveDate),
-                            reason,
-                          )}
-                          onPress={() => void applyMatch(e.id, candidate.transactionId)}
-                        />
-                      </Spread>
-                    );
-                  })
-                )}
-                <Row style={{ marginTop: spacing.sm }}>
-                  <Button label={tr.common.cancel} variant="ghost" onPress={() => setMatchingId(null)} />
-                </Row>
-              </View>
-            ) : editing === e.id ? (
+            {editing === e.id ? (
               <View style={{ marginTop: spacing.md }}>
                 <MoneyField
                   label={`${isVariableSubscription(e) ? tr.subs.amountEntryTitle : tr.catchup.fixAmount} (${e.currency})`}
@@ -383,22 +218,12 @@ export default function CatchUpScreen() {
                 </Row>
               </View>
             ) : (
-              // Three buttons, three widths taken from their own labels and one
-              // gap between them. They used to be stretched to 1 / 1.45 / 0.7
-              // of the row, so "Alındı", "Tutarı düzelt" and "Atla" sat at
-              // three arbitrary widths with a 4px gap: the cluster read as one
-              // squeezed block rather than as three choices.
+              // Three choices, three widths taken from their own labels and one
+              // gap between them: mark it paid, correct the amount, skip it.
+              // They used to be stretched to 1 / 1.45 / 0.7 of the row, so the
+              // cluster read as one squeezed block rather than as three
+              // choices.
               <Row gap={spacing.sm} style={{ marginTop: spacing.md, maxWidth: actionClusterWidth, flexWrap: "wrap" }}>
-                <View>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    testID={`match-${e.id}`}
-                    label={tr.matching.action}
-                    onPress={() => setMatchingId(e.id)}
-                    disabled={confirmingId != null}
-                  />
-                </View>
                 <View>
                   <Button
                     size="sm"
@@ -447,11 +272,6 @@ export default function CatchUpScreen() {
         ))}
         </WorkspaceGrid>
       )}
-      <DuplicateReview
-        transactions={transactionsState.data}
-        onOpen={(id) => router.push({ pathname: "/transaction", params: { id } })}
-      />
-
       {/* Only once there is a list to add to: with nothing pending, the same
           action is the empty state's own way out and repeating it here left it
           stranded at the bottom of an otherwise empty page. */}

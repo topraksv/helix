@@ -80,6 +80,21 @@ export interface InteractionOptions {
   base?: string;
   /** False for a disabled control: it keeps its resting fill and never reacts. */
   enabled?: boolean;
+  /**
+   * Hover this control although the pointer is not on it.
+   *
+   * For a compound control only: one visual cell that holds a smaller control
+   * inside it — a table header and its pin. react-native-web's `Pressable`
+   * hard-codes `contain: true` on its hover, so entering the inner control
+   * dispatches a lock that ENDS the outer one's hover, whether the inner is a
+   * child or a sibling. The result is a 24px strip lighting on its own inside
+   * a cell that has gone dark: one column showing two states at once.
+   *
+   * The outer control is the one that owns the fill, so the inner one reports
+   * its pointer here and paints nothing itself. Never use this to light
+   * something the pointer has no relationship with.
+   */
+  hovered?: boolean;
 }
 
 /**
@@ -102,11 +117,11 @@ export interface InteractionOptions {
 export function interactionSurface(
   palette: Palette,
   state: PressableStateCallbackType,
-  { base = "transparent", enabled = true }: InteractionOptions = {},
+  { base = "transparent", enabled = true, hovered = false }: InteractionOptions = {},
 ): ViewStyle {
   const opaqueBase = /^#[0-9a-f]{6}$/i.test(base) ? base : null;
   const translucentBase = /^#[0-9a-f]{8}$/i.test(base) ? base : null;
-  const level = !enabled ? null : state.pressed ? "pressed" : isHovered(state) ? "hover" : null;
+  const level = !enabled ? null : state.pressed ? "pressed" : isHovered(state) || hovered ? "hover" : null;
   // With NO base at all — the default — this declares no background rather than
   // a transparent one, so a caller that paints its own fill somewhere else in
   // the style array keeps it: a toned card, a highlighted matrix cell. This

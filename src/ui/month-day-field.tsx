@@ -28,18 +28,21 @@ export function MonthDayField({
   onChange,
   quickDays = [],
   error,
-  unavailableDay,
+  unavailableDays,
+  unavailableHint,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   quickDays?: readonly number[];
   error?: string | null;
-  /** A day the paired field already owns; choosing it would only produce an
-   *  invalid cycle, so it is shown but cannot be chosen. */
-  unavailableDay?: number | null;
+  /** Days the paired field rules out; choosing one would only produce an
+   *  invalid cycle, so each is shown but cannot be chosen. */
+  unavailableDays?: readonly number[];
+  /** Why those days are refused, in the caller's own words. */
+  unavailableHint?: string;
 }) {
-  // The unavailable day is disabled, never removed. These fields are used as a
+  // A refused day is disabled, never removed. These fields are used as a
   // pair in one row, and dropping an option shortened one column's chip row
   // while the other kept its own: picking the month end on the left deleted the
   // only chip on the right and its input jumped a whole control height up the
@@ -49,15 +52,17 @@ export function MonthDayField({
   // Measured on this field's own box, not the window: a pair of these inside a
   // card gets about half a column each and only the layout knows how much.
   const [boxWidth, onBoxLayout] = useMeasuredWidth(0);
+  const refused = new Set(unavailableDays ?? []);
+  const refusalHint = unavailableHint ?? tr.dates.dayTakenByPair;
   const numbers = fittedQuickDays(boxWidth, quickDays.filter((day) => day < MONTH_END_DAY));
   const options = [...new Set(numbers)].map((day) => ({
     value: String(day),
     label: monthDayLabel(day),
-    disabled: day === unavailableDay,
-    hint: day === unavailableDay ? tr.dates.dayTakenByPair : undefined,
+    disabled: refused.has(day),
+    hint: refused.has(day) ? refusalHint : undefined,
   }));
   const monthEndValue = String(MONTH_END_DAY);
-  const monthEndTaken = unavailableDay === MONTH_END_DAY;
+  const monthEndTaken = refused.has(MONTH_END_DAY);
   const selected = options.some((option) => option.value === value && !option.disabled) ? value : null;
 
   return (
@@ -83,7 +88,7 @@ export function MonthDayField({
           disabled={monthEndTaken}
           onPress={() => onChange(monthEndValue)}
           accessibilityLabel={`${label} · ${tr.dates.monthEnd}`}
-          accessibilityHint={monthEndTaken ? tr.dates.dayTakenByPair : undefined}
+          accessibilityHint={monthEndTaken ? refusalHint : undefined}
         />
       </View>
       {/* The input always holds the day. It used to blank itself when the

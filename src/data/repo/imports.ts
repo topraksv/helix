@@ -4,6 +4,7 @@ import { fromDbShape, nowIso, readSetting, writeRowsValidated, type RowWrite } f
 import type { ImportBatchKey } from "../../domain/settings";
 import { addMonthsToKey, todayISO, yearOf, type MonthKey } from "../../domain/dates";
 import type { PaymentSourceType } from "../../domain/types";
+import type { Minor } from "../../domain/money";
 import { isValidCardCycle, type CardCycle } from "../../domain/card-statements";
 import { collectInstallmentPlans, type ParsedSheet } from "../../services/spreadsheet-import";
 import { suggestCategoryIcon } from "../../domain/category-icons";
@@ -39,6 +40,17 @@ export interface ImportRequest {
   /** Explicit cycles for cards reconstructed from installment comments. Keys
    *  are card names; existing configured cards win. */
   cardCycles?: Record<string, CardCycle>;
+  /**
+   * Adopt the workbook's own opening-balance cell as the ledger anchor even
+   * when an anchor already exists at that month or earlier.
+   *
+   * The default is not to: a second import must not quietly move the anchor a
+   * first one established. But the default also meant the FIRST import's answer
+   * was permanent — re-importing a corrected workbook could never put a wrong
+   * opening balance right, and the whole chained ledger hangs off it. The
+   * importer states which figure it read and lets the owner say.
+   */
+  adoptOpeningBalance?: boolean;
 }
 
 const importBatchKey = (year: number): ImportBatchKey => `import_batch:${year}`;
@@ -527,7 +539,7 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
     metadataWrites.push(await settingWrite(userId, importBatchKey(year), batch));
   }
 
-  metadataWrites.push(...(await openingWritesFromImport(userId, req.sheets, yearAllowed)));
+  metadataWrites.push(...(await openingWritesFromImport(userId, req.sheets, yearAllowed, req.adoptOpeningBalance === true)));
   const writes = [
     ...cleanupWrites,
     ...catWrites,
@@ -547,18 +559,41 @@ export async function importSheets(userId: string, req: ImportRequest): Promise<
   return { imported };
 }
 
-/** Seed the ledger opening balance from the earliest imported opening cell. */
-async function openingWritesFromImport(userId: string, sheets: ParsedSheet[], yearAllowed: (y: number) => boolean): Promise<RowWrite[]> {
+/**
+ * The opening-balance cell the earliest imported sheet carries, if any.
+ *
+ * Exported so the importer can SHOW the figure it is about to adopt. The whole
+ * chained ledger hangs off this one number, and it was being written with
+ * nothing on screen naming it — an anchor read from the wrong column produced a
+ * balance the owner could not explain and could not find.
+ */
+export function openingBalanceFromSheets(
+  sheets: ParsedSheet[],
+  yearAllowed: (year: number) => boolean = () => true,
+): { month: MonthKey; minor: Minor } | null {
   const withOpening = sheets
-    .filter((s) => s.openingBalance && yearAllowed(yearOf(s.openingBalance.month)))
+    .filter((sheet) => sheet.openingBalance && yearAllowed(yearOf(sheet.openingBalance.month)))
     .sort((a, b) => a.openingBalance!.month.localeCompare(b.openingBalance!.month));
-  const earliest = withOpening[0];
-  if (!earliest) return [];
+  return withOpening[0]?.openingBalance ?? null;
+}
+
+/** Seed the ledger opening balance from the earliest imported opening cell. */
+async function openingWritesFromImport(
+  userId: string,
+  sheets: ParsedSheet[],
+  yearAllowed: (y: number) => boolean,
+  adopt: boolean,
+): Promise<RowWrite[]> {
+  const opening = openingBalanceFromSheets(sheets, yearAllowed);
+  if (!opening) return [];
   const currentStart = await readSetting<string>(userId, "start_month");
-  if (!currentStart || earliest.openingBalance!.month < currentStart) {
+  // Earlier data always wins without being asked: the ledger back-anchors to
+  // the earliest month it has, so an anchor later than the data is simply
+  // wrong. Anything else is the owner's call and arrives as `adopt`.
+  if (adopt || !currentStart || opening.month < currentStart) {
     return [
-      await settingWrite(userId, "start_month", earliest.openingBalance!.month),
-      await settingWrite(userId, "opening_balance_minor", earliest.openingBalance!.minor),
+      await settingWrite(userId, "start_month", opening.month),
+      await settingWrite(userId, "opening_balance_minor", opening.minor),
     ];
   }
   return [];

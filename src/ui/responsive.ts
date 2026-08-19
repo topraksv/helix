@@ -227,3 +227,199 @@ export function tabLabelsFit(labelWidth: number, slotWidth: number): boolean {
   if (labelWidth <= 0 || slotWidth <= 0) return true;
   return labelWidth <= slotWidth - LABEL_BREATHING;
 }
+
+// ---------------------------------------------------------------------------
+// Layout-mode thresholds
+//
+// Every width that changes a layout MODE lives here, named for what the width
+// buys rather than for the number. Written inline they became rules nobody
+// could find: `contentWidth >= 720` appeared in three files deciding three
+// different questions, and the two table headers each carried their own copy
+// of the cell-density constant that has to agree between them.
+//
+// Character budgets and measured glyph arithmetic stay with the component that
+// measures them; this file owns decisions of the form "at this width the
+// surface becomes a different layout".
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a tile grid stops fitting two across and fits three.
+ *
+ * A tile has to hold an icon, a Turkish label and its own 12px inset; measured,
+ * three of them need about 240px each before the labels start wrapping to a
+ * second line and the grid's rows stop being one height.
+ */
+const TRIPLE_TILE_GRID_WIDTH = 720;
+
+export function shouldUseTripleTileGrid(contentWidth: number): boolean {
+  return contentWidth >= TRIPLE_TILE_GRID_WIDTH;
+}
+
+/**
+ * Whether a multi-month trend line is offered at all.
+ *
+ * A trend needs one readable x-tick per month. Below this the ticks collide
+ * and the chart says less than the bars it replaced, so the option is not
+ * offered rather than offered and unreadable.
+ */
+const TREND_CHART_WIDTH = 720;
+
+export function shouldOfferTrendChart(contentWidth: number): boolean {
+  return contentWidth >= TREND_CHART_WIDTH;
+}
+
+/**
+ * The month distribution ring's ceiling class.
+ *
+ * `Donut` fits whatever box it is given; this only chooses which ceiling it is
+ * fitted against, so a ring that owns a whole desktop row is not a small
+ * picture in a large frame.
+ */
+const LARGE_DONUT_WIDTH = 900;
+
+export function shouldUseLargeDonut(contentWidth: number): boolean {
+  return contentWidth >= LARGE_DONUT_WIDTH;
+}
+
+/**
+ * How many market tiles share one row.
+ *
+ * Measured against the CARD's width, never the window: two columns of a 358px
+ * phone card and two columns of a 500px desktop column are different tiles,
+ * and the window says nothing about either.
+ */
+const MARKET_GRID_WIDE_WIDTH = 620;
+const MARKET_GRID_PAIR_WIDTH = 300;
+
+export function marketTileColumns(cardWidth: number, wideColumns: number): number {
+  if (cardWidth >= MARKET_GRID_WIDE_WIDTH) return wideColumns;
+  return cardWidth >= MARKET_GRID_PAIR_WIDTH ? 2 : 1;
+}
+
+/**
+ * Whether the financial table's supplementary details start expanded.
+ *
+ * A remembered preference overrides this; it is only the first answer on a
+ * viewport that has never been asked. Wide enough to show the details beside
+ * the table rather than pushing it a screen down.
+ */
+const TABLE_DETAILS_OPEN_WIDTH = 600;
+
+export function shouldStartTableDetailsOpen(viewportWidth: number): boolean {
+  return viewportWidth >= TABLE_DETAILS_OPEN_WIDTH;
+}
+
+/** Where the investments empty-state hero earns its taller frame. */
+const TALL_INVESTMENT_HERO_WIDTH = 760;
+
+export function shouldUseTallInvestmentHero(viewportWidth: number): boolean {
+  return viewportWidth >= TALL_INVESTMENT_HERO_WIDTH;
+}
+
+/** Where sign-in puts its brand panel beside the form instead of above it. */
+const SPLIT_AUTH_HERO_WIDTH = 820;
+
+export function shouldSplitAuthHero(viewportWidth: number): boolean {
+  return viewportWidth >= SPLIT_AUTH_HERO_WIDTH;
+}
+
+/**
+ * Where an options list is a sheet pulled off the bottom edge rather than a
+ * dialog in the middle of the window.
+ *
+ * The thumb reaches the bottom of a phone and the middle of nothing; a pointer
+ * reaches the middle of the window and has no bottom edge to speak of.
+ */
+const OPTION_SHEET_WIDTH = 640;
+
+export function shouldPresentOptionsAsSheet(viewportWidth: number): boolean {
+  return viewportWidth < OPTION_SHEET_WIDTH;
+}
+
+/**
+ * Where a panel header's trailing cluster drops below its title.
+ *
+ * A status chip beside a two-word Turkish title runs out of room before any
+ * other pairing in the app does, so this sits well below every other threshold.
+ */
+const PANEL_ACTION_STACK_WIDTH = 360;
+
+export function shouldStackPanelAction(viewportWidth: number): boolean {
+  return viewportWidth < PANEL_ACTION_STACK_WIDTH;
+}
+
+/** Where chart axis labels can afford the larger of the two type sizes. */
+const LARGE_AXIS_TYPE_WIDTH = 480;
+
+export function shouldUseLargeAxisType(chartWidth: number): boolean {
+  return chartWidth >= LARGE_AXIS_TYPE_WIDTH;
+}
+
+/** Where the navigation bar's material stops needing its compact treatment. */
+const COMPACT_NAV_MATERIAL_WIDTH = 600;
+
+export function shouldUseCompactNavigationMaterial(viewportWidth: number): boolean {
+  return viewportWidth < COMPACT_NAV_MATERIAL_WIDTH;
+}
+
+/**
+ * Whether a mobile browser's visual viewport can be shrunk by a keyboard.
+ *
+ * Coarse pointers cover phones and tablets; the width is the fallback for
+ * mobile emulation, where pointer capability is not faithfully reported.
+ */
+const MOBILE_VIEWPORT_WIDTH = 768;
+
+export function isMobileViewportWidth(viewportWidth: number): boolean {
+  return viewportWidth < MOBILE_VIEWPORT_WIDTH;
+}
+
+/**
+ * Where a financial table's cell stops holding a full-size header.
+ *
+ * Both header rails read this — the scrolling one and the pinned one — and the
+ * whole point of pinning is that a column does not change when it moves, so
+ * the two cannot be allowed to carry separate copies of the number.
+ */
+const COMPACT_TABLE_CELL_WIDTH = 104;
+
+export function isCompactTableCell(cellWidth: number): boolean {
+  return cellWidth < COMPACT_TABLE_CELL_WIDTH;
+}
+
+/**
+ * How many characters of a table label fit on one soft-wrapped line.
+ *
+ * Two shapes, because the two rails ask different questions. A column header
+ * has three densities — a phone's narrowest cell, a compact cell and a full
+ * one. A row label has two: it either has the rail's full width or it does not.
+ * Both were written inline three times over, in the two header renderers and
+ * the row renderer, so a change to one silently disagreed with the others.
+ */
+const NARROW_TABLE_LABEL_WIDTH = 80;
+
+export function tableLabelCharBudget(width: number, { twoStep = false } = {}): number {
+  if (width < NARROW_TABLE_LABEL_WIDTH) return 8;
+  if (twoStep) return 12;
+  return isCompactTableCell(width) ? 10 : 12;
+}
+
+/**
+ * The investments hero's two composition steps, measured on the CARD's own box
+ * rather than on the page column.
+ *
+ * Reading the column was fine at 100% zoom and wrong everywhere else: at 175%
+ * the same 1920 monitor reports 1097 CSS px, the layout picked its widest
+ * arrangement, and a 204px ring sat in a column that no longer had room for it
+ * beside the balance.
+ */
+const COMPACT_INVESTMENT_HERO_WIDTH = 520;
+const DESKTOP_INVESTMENT_HERO_WIDTH = 860;
+
+export function shouldUseCompactInvestmentHero(heroBoxWidth: number): boolean {
+  return heroBoxWidth < COMPACT_INVESTMENT_HERO_WIDTH;
+}
+
+export function shouldUseDesktopInvestmentHero(heroBoxWidth: number): boolean {
+  return heroBoxWidth >= DESKTOP_INVESTMENT_HERO_WIDTH;
+}

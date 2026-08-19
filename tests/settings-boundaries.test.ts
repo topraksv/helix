@@ -21,6 +21,7 @@ import {
   setAccountFrozen,
   setAttentionState,
   setBalanceDeclaration,
+  setMatrixColorLabels,
   setPendingTableVisibility,
   setReminderDays,
 } from "../src/data/repo/settings";
@@ -93,6 +94,7 @@ describe("setting repository delegation", () => {
     await setReminderDays("user-1", 0);
     await setPendingTableVisibility("user-1", false);
     await setBalanceDeclaration("user-1", 123_45, "2026-07-21");
+    await setMatrixColorLabels("user-1", { red: "Bankaya sorulacak" });
 
     expect(dependencies.writeSetting.mock.calls).toEqual([
       ["user-1", "account_frozen", true],
@@ -100,7 +102,22 @@ describe("setting repository delegation", () => {
       ["user-1", "reminder_days", 0],
       ["user-1", "show_pending_in_table", false],
       ["user-1", "balance_declared", { minor: 123_45, at: "2026-07-21" }],
+      ["user-1", "matrix_color_labels", { red: "Bankaya sorulacak" }],
     ]);
+  });
+
+  /**
+   * The colour names are one account-wide synced value, so this writer is the
+   * boundary that keeps a shape the decoder would later refuse out of storage —
+   * a map written and then permanently unreadable is a rename that silently
+   * did nothing.
+   */
+  it("refuses a colour-label map the decoder could not read back", () => {
+    for (const invalid of [null, "red", 7, ["red"]]) {
+      expect(() => setMatrixColorLabels("user-1", invalid as never), String(invalid))
+        .toThrow("Invalid matrix colour labels");
+    }
+    expect(dependencies.writeSetting).not.toHaveBeenCalled();
   });
 
   it("rejects every invalid reminder boundary before persistence", () => {

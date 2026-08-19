@@ -267,13 +267,22 @@ describe("content width is a shared scale, not a per-route number", () => {
    */
   it("measures layout rules against the content column, not the window", () => {
     // Two kinds of question, and only one of them may read the window. "What
-    // kind of window is this?" decides how far the page holds off its own edges
-    // — a property of the window itself. "How wide is my column?" is everything
-    // else.
-    const windowScoped = new Set(["shouldUseWideGutter"]);
+    // kind of window is this?" decides how far the page holds off its own edges,
+    // where an overlay anchors itself and how the navigation bar is painted —
+    // all properties of the window. "How wide is my column?" is everything else.
+    const windowScoped = new Set([
+      "shouldUseWideGutter",
+      "shouldPresentOptionsAsSheet",
+      "shouldUseCompactNavigationMaterial",
+    ]);
     const offenders: string[] = [];
     for (const path of sourceFiles("src", { atLeast: 150 })) {
       const source = readFileSync(join(root, path), "utf8");
+      // A local called `width` is only the window when the file takes it from
+      // `useWindowDimensions`. A measured box or a component's own prop shares
+      // the name and is exactly what a layout rule SHOULD be reading, so
+      // flagging it would push callers back to the window to satisfy a test.
+      if (!/useWindowDimensions\(\)/.test(source)) continue;
       for (const match of source.matchAll(/(should[A-Z]\w*)\(\s*width\s*\)/g)) {
         if (windowScoped.has(match[1]!)) continue;
         offenders.push(`${path}:${source.slice(0, match.index!).split("\n").length} ${match[0]}`);
@@ -430,8 +439,11 @@ describe("interaction feedback contracts", () => {
   it("keeps table editing and navigation quiet while pin changes use selection feedback", () => {
     expect(stickyTable).not.toContain("lightTap");
     expect(cashFlow).not.toContain("lightTap");
-    expect(stickyTable).toContain("selectionTap(); onTogglePin!");
-    expect(stickyTable).toContain("selectionTap(); onUnpin()");
+    // Both rails, and the punctuation of the call is not the contract: what
+    // matters is that every pin toggle is preceded by the selection tap.
+    const pinPresses = [...stickyTable.matchAll(/onPress=\{\(\) => \{ ([^}]*?)(?:onTogglePin|onUnpin)\b/g)];
+    expect(pinPresses.length, "both rails toggle a pin").toBe(2);
+    for (const press of pinPresses) expect(press[1]).toContain("selectionTap();");
   });
 
   it("keeps the owner's drag-across footer navigation on every viewport", () => {
@@ -1270,5 +1282,87 @@ describe("brand and utility matching reads Turkish", () => {
     for (const key of Object.keys(BRAND)) {
       expect(foldForMatch(key), `${key} is already in matching form`).toBe(key);
     }
+  });
+});
+
+/**
+ * The two placement rules from `docs/UI.md` that a static scan can prove.
+ *
+ * Both were real drift, not hypothetical: three screens pulled a hint up under
+ * its control with their own negative margin (two used `-spacing.xs`, one
+ * `-spacing.sm`), and eight files decided a layout mode from a width literal
+ * written where nobody could find it — `contentWidth >= 720` appeared three
+ * times answering three different questions, and the financial table's two
+ * header rails each carried their own copy of the cell-density constant that
+ * has to agree between them or pinning changes how a column looks.
+ */
+describe("placement contract", () => {
+  const placementSources = [
+    ...sourceFiles("src/app", { atLeast: 40 }),
+    ...sourceFiles("src/ui", { atLeast: 50 }),
+  ];
+
+  it("keeps a control's own sentence in FieldNote rather than a per-screen pull-up", () => {
+    const offenders = placementSources
+      .filter((path) => path !== "src/ui/components.tsx")
+      .flatMap((path) => {
+        const source = readFileSync(join(root, path), "utf8");
+        // A negative TOP margin is the field-note pull-up. Negative horizontal
+        // margins are the press-bleed pattern and are deliberate.
+        const matches = [...source.matchAll(/marginTop:\s*-\s*spacing\./g)];
+        return matches.map((match) => `${path}:${source.slice(0, match.index!).split("\n").length}`);
+      });
+    expect(offenders).toEqual([]);
+  });
+
+  it("names every layout-mode width threshold in responsive.ts", () => {
+    // A width identifier compared against a two-or-more digit literal. Single
+    // digits are counts and indices, never viewports.
+    const threshold = /\b\w*(?:W|w)idth\w*\s*(?:<=?|>=?)\s*\d{2,}/g;
+    const offenders = placementSources
+      .filter((path) => path !== "src/ui/responsive.ts")
+      .flatMap((path) => {
+        const source = readFileSync(join(root, path), "utf8");
+        return [...source.matchAll(threshold)].map(
+          (match) => `${path}:${source.slice(0, match.index!).split("\n").length} ${match[0]}`,
+        );
+      });
+    expect(offenders).toEqual([]);
+  });
+
+  it("gives each named threshold one definition, so two rails cannot disagree", () => {
+    const responsive = readFileSync(join(root, "src/ui/responsive.ts"), "utf8");
+    // The table's density is read by both header renderers and the pinned one.
+    const table = readFileSync(join(root, "src/ui/sticky-table.tsx"), "utf8");
+    expect(responsive).toContain("export function isCompactTableCell");
+    expect([...table.matchAll(/isCompactTableCell\(/g)]).toHaveLength(2);
+    expect(table).not.toMatch(/compactHeader\s*=\s*\w+\s*<\s*\d/);
+  });
+});
+
+/**
+ * An icon that does not exist is a build failure, three minutes away.
+ *
+ * `lucide-react-native` declares its icon subpaths with a wildcard, so
+ * `icons/file-check-2` typechecks, lints, and passes the whole routine gate —
+ * and then Metro cannot resolve it, which is only discovered by a web export.
+ * The real name was `file-check-corner`. Resolving them here costs nothing and
+ * moves the failure from the release gate to the test that runs on every save.
+ */
+describe("icon imports resolve", () => {
+  it("names an icon the installed package actually ships", () => {
+    const missing: string[] = [];
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
+      const source = readFileSync(join(root, path), "utf8");
+      for (const match of source.matchAll(/from "(lucide-react-native\/icons\/[a-z0-9-]+)"/g)) {
+        const specifier = match[1]!;
+        try {
+          require.resolve(specifier);
+        } catch {
+          missing.push(`${path}:${source.slice(0, match.index!).split("\n").length} ${specifier}`);
+        }
+      }
+    }
+    expect(missing, "an icon Metro cannot resolve").toEqual([]);
   });
 });

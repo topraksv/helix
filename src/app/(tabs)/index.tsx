@@ -53,7 +53,7 @@ import { BrandMark } from "../../ui/brand";
 import { FirstRunTour } from "../../ui/tour";
 import { useUndo } from "../../ui/undo";
 import { errorNotice } from "../../ui/haptics";
-import { shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart } from "../../ui/responsive";
+import { marketTileColumns, shouldPairDashboardPanels, shouldSplitDashboardHero, shouldUseCompactChart, shouldUseLargeDonut } from "../../ui/responsive";
 import { useContentWidth, useMeasuredWidth } from "../../ui/viewport";
 import { interactionSurface } from "../../ui/interaction";
 import { useWarmRoute } from "../../ui/route-warmup";
@@ -289,7 +289,7 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
       : status === "connecting"
         ? tr.markets.connecting
         : tr.markets.offline;
-  const marketColumns = cardWidth >= 620 ? desktopColumns : cardWidth >= 300 ? 2 : 1;
+  const marketColumns = marketTileColumns(cardWidth, desktopColumns);
   // A tile is cramped by how much of the card it actually gets, not by the
   // window: two columns of a 358px phone card and two columns of a 500px
   // desktop column are different tiles.
@@ -609,7 +609,7 @@ export default function DashboardScreen() {
                   // month card owns a whole desktop row, and a 236 ring in it
                   // is a small picture in a large frame. `Donut` still fits
                   // whatever box it actually gets.
-                  size={shouldUseCompactChart(contentWidth) ? 152 : contentWidth >= 900 ? 300 : 236}
+                  size={shouldUseCompactChart(contentWidth) ? 152 : shouldUseLargeDonut(contentWidth) ? 300 : 236}
                 />
               ) : (
                 <ChartFrame>
@@ -743,6 +743,13 @@ export default function DashboardScreen() {
                     paddingVertical: spacing.md,
                     borderTopWidth: StyleSheet.hairlineWidth,
                     borderTopColor: palette.border,
+                    // The row reaches the rule below it. It used to stop
+                    // `spacing.sm` short, so the lit band ended in mid-air with
+                    // a strip of card between it and the line it belongs to —
+                    // at every width, because the wide layout draws that line
+                    // vertically and the phone one horizontally.
+                    marginBottom: -spacing.md,
+                    paddingBottom: spacing.md,
                     ...interactionSurface(palette, state),
                   })}
                 >
@@ -779,14 +786,11 @@ export default function DashboardScreen() {
                 : {
                     height: StyleSheet.hairlineWidth,
                     backgroundColor: palette.border,
-                    // Stacked spacing, phone only: the forecast row above is a
-                    // tap target and already ends with its own 16pt padding,
-                    // so a full 24pt margin here put ~40pt of empty card
-                    // between that row and this line. The wide layout draws
-                    // this divider vertically and never had the problem. Only
-                    // the remainder is added back, and the full gap returns
-                    // when that row is absent.
-                    marginTop: projected != null ? spacing.sm : spacing.lg,
+                    // Nothing between the forecast row and this line: the row
+                    // owns the space down to it, so its hover fill ends ON the
+                    // rule rather than a gap short of it. The full gap returns
+                    // when that row is absent and there is nothing to touch.
+                    marginTop: projected != null ? 0 : spacing.lg,
                     marginBottom: spacing.lg,
                   }}
             />

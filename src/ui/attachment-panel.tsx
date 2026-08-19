@@ -5,11 +5,19 @@
  * on the panel and shown per row: a document added on the phone appears on the
  * desktop as a record with no file behind it, and says so, rather than
  * offering an open button that cannot work.
+ *
+ * Laid out as the app lays out every other list of records — one card of rows,
+ * each row an icon, a name, what it is, and the same two controls in the same
+ * order. It used to be one bordered card per file with the buttons stacked
+ * underneath, so two receipts took more vertical space than the form they
+ * belonged to.
  */
 
 import React, { useEffect, useState } from "react";
 import { View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import FileText from "lucide-react-native/icons/file-text";
+import ImageIcon from "lucide-react-native/icons/image";
 import Paperclip from "lucide-react-native/icons/paperclip";
 import { addAttachment, AttachmentRejectedError, deleteAttachment, restoreAttachment, type AttachmentRow } from "../data/repo";
 import { ATTACHMENT_MIME_TYPES, type AttachmentRejection } from "../domain/attachments";
@@ -17,7 +25,7 @@ import { attachmentsSupported, openAttachment, presentAttachments, storeAttachme
 import { devError } from "../services/logger";
 import { tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { Badge, Body, Button, Card, Row, SectionHeader, Spread } from "./components";
+import { Badge, Body, Button, Card, Divider, ListRow, Row, SectionHeader } from "./components";
 import { appAlert } from "./dialog";
 import { useUndo } from "./undo";
 import { spacing } from "./theme";
@@ -25,6 +33,11 @@ import { spacing } from "./theme";
 function rejectionMessage(reason: string): string {
   const known = tr.attachments.rejected as Record<string, string | undefined>;
   return known[reason] ?? tr.errors.saveFailed;
+}
+
+/** A page or a picture: the two things a receipt is ever stored as. */
+function attachmentIcon(mimeType: string) {
+  return mimeType.startsWith("image/") ? ImageIcon : FileText;
 }
 
 export function AttachmentPanel({
@@ -75,9 +88,6 @@ export function AttachmentPanel({
         // The repository decides the destination name and hands it back here;
         // it never receives a path to read from, so nothing outside the
         // picker's own result can be copied into app storage.
-        // The repository decides the destination name and hands it back; it
-        // never receives a path to read from, so nothing outside the picker's
-        // own result can be copied into app storage.
         copyInto: (storedName) => storeAttachmentBytes(asset, storedName),
       });
       scheduleSync(userId);
@@ -126,79 +136,69 @@ export function AttachmentPanel({
   };
 
   return (
-    <View testID="attachment-panel" style={{ marginTop: spacing.lg }}>
-      <SectionHeader>{tr.attachments.title}</SectionHeader>
-      <Body muted style={{ marginBottom: spacing.sm }}>{tr.attachments.hint}</Body>
+    <View testID="attachment-panel">
+      <SectionHeader description={tr.attachments.hint}>{tr.attachments.title}</SectionHeader>
 
       {attachments.length === 0 ? (
-        <Body muted testID="attachment-empty">{tr.attachments.empty}</Body>
+        <Card>
+          <Body muted testID="attachment-empty">{tr.attachments.empty}</Body>
+        </Card>
       ) : (
-        attachments.map((attachment) => {
-          const held = present.has(attachment.storedName);
-          return (
-            <Card key={attachment.id} testID={`attachment-${attachment.id}`}>
-              <Spread style={{ alignItems: "flex-start", gap: spacing.sm }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
-                    <Badge text={tr.attachments.kinds[attachment.kind]} tone="muted" />
-                  </Row>
-                  <Body
-                    accessibilityLabel={tr.attachments.rowA11y(
-                      attachment.fileName,
-                      tr.attachments.kinds[attachment.kind],
-                      held ? "" : tr.attachments.unavailable,
-                    )}
-                    style={{ marginTop: spacing.xs }}
-                  >
-                    {attachment.fileName}
-                  </Body>
-                  <Body muted style={{ marginTop: 2 }}>
-                    {tr.attachments.sizeLabel(Math.max(1, Math.round(attachment.byteSize / 1024)))}
-                  </Body>
-                  {/* A device that did not add the file does not have it, and
-                      the row says so rather than offering a dead button. */}
-                  {held ? null : (
-                    <Body muted testID={`attachment-missing-${attachment.id}`} style={{ marginTop: 2 }}>
-                      {tr.attachments.unavailable}
-                    </Body>
+        <Card rows>
+          {attachments.map((attachment, index) => {
+            const held = present.has(attachment.storedName);
+            return (
+              <React.Fragment key={attachment.id}>
+                {index > 0 ? <Divider /> : null}
+                <ListRow
+                  icon={attachmentIcon(attachment.mimeType)}
+                  title={attachment.fileName}
+                  stackRightOnNarrow
+                  subtitle={(
+                    <Row gap={spacing.sm} style={{ flexWrap: "wrap", marginTop: spacing.xs }}>
+                      <Badge text={tr.attachments.kinds[attachment.kind]} tone="muted" />
+                      <Badge text={tr.attachments.sizeLabel(Math.max(1, Math.round(attachment.byteSize / 1024)))} tone="muted" />
+                      {/* A device that did not add the file does not have it,
+                          and the row says so rather than offering a dead
+                          button. */}
+                      {held ? null : (
+                        <Badge testID={`attachment-missing-${attachment.id}`} text={tr.attachments.otherDevice} tone="warning" />
+                      )}
+                    </Row>
                   )}
-                </View>
-              </Spread>
-              <Row gap={spacing.sm} style={{ marginTop: spacing.sm, flexWrap: "wrap" }}>
-                {held ? (
-                  <View>
-                    <Button size="sm" variant="secondary" label={tr.attachments.open} onPress={() => void open(attachment)} />
-                  </View>
-                ) : null}
-                <View>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    label={tr.attachments.remove}
-                    disabled={busy}
-                    onPress={() => void remove(attachment)}
-                  />
-                </View>
-              </Row>
-            </Card>
-          );
-        })
+                  right={(
+                    <Row gap={spacing.sm}>
+                      {held ? (
+                        <Button size="sm" variant="secondary" label={tr.attachments.open} onPress={() => void open(attachment)} />
+                      ) : null}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        label={tr.attachments.remove}
+                        disabled={busy}
+                        onPress={() => void remove(attachment)}
+                      />
+                    </Row>
+                  )}
+                />
+              </React.Fragment>
+            );
+          })}
+        </Card>
       )}
 
-      <View style={{ marginTop: spacing.sm }}>
-        {supported ? (
-          <Button
-            testID="attachment-add"
-            icon={Paperclip}
-            variant="secondary"
-            label={tr.attachments.add}
-            disabled={busy}
-            onPress={() => void pick()}
-          />
-        ) : (
-          <Body muted testID="attachment-unsupported">{tr.attachments.unsupported}</Body>
-        )}
-      </View>
+      {supported ? (
+        <Button
+          testID="attachment-add"
+          icon={Paperclip}
+          variant="secondary"
+          label={tr.attachments.add}
+          disabled={busy}
+          onPress={() => void pick()}
+        />
+      ) : (
+        <Body muted testID="attachment-unsupported">{tr.attachments.unsupported}</Body>
+      )}
     </View>
   );
 }

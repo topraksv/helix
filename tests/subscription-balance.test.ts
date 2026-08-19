@@ -50,8 +50,7 @@ vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
 import { upsertSubscription } from "../src/data/repo/rules";
 import { runMaintenance } from "../src/data/repo/maintenance";
-import { confirmExpected, matchExpectedToTransaction, revertExpected } from "../src/data/repo/expected";
-import { addTransaction } from "../src/data/repo/transactions";
+import { confirmExpected } from "../src/data/repo/expected";
 import { currentBalance } from "../src/domain/balance";
 import { todayISO } from "../src/domain/dates";
 import type { TxLike } from "../src/domain/types";
@@ -238,103 +237,3 @@ describe("adding a subscription never moves the current balance", () => {
  * expectation back WITHOUT destroying the transaction, which the expectation
  * never owned.
  */
-describe("matching an expected payment to a transaction that already exists", () => {
-  beforeEach(() => {
-    harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
-    harness.nextId = 0;
-    seedWorkspace();
-  });
-
-  const dueTodayRule = () => {
-    const today = todayISO();
-    return { ...baseInput, billingDay: Number(today.slice(8, 10)), nextDueDate: today, autoPay: false };
-  };
-
-  async function ruleWithPendingOccurrence(): Promise<string> {
-    await upsertSubscription(USER, dueTodayRule());
-    await runMaintenance(USER);
-    const pending = expectedRows()[0];
-    expect(pending?.status).toBe("pending");
-    return pending!.id;
-  }
-
-  /** The payment the owner recorded themselves, before touching the reminder. */
-  async function recordOwnPayment(): Promise<string> {
-    return addTransaction(USER, {
-      type: "expense",
-      // Expenses are stored positive; the type carries the direction.
-      amountMinor: baseInput.amountMinor,
-      currency: "TRY",
-      fxRate: null,
-      amountTryMinor: baseInput.amountMinor,
-      effectiveDate: todayISO(),
-      categoryId: "category-subs",
-      paymentSourceId: null,
-      personId: "person-self",
-      note: null,
-    });
-  }
-
-  it("settles the expectation without adding a second transaction", async () => {
-    const expectedId = await ruleWithPendingOccurrence();
-    const transactionId = await recordOwnPayment();
-    expect(liveTransactions()).toHaveLength(1);
-
-    await matchExpectedToTransaction(USER, expectedId, transactionId);
-
-    // One payment, one row, and the balance moved exactly once.
-    expect(liveTransactions()).toHaveLength(1);
-    expect(balanceNow()).toBe(OPENING_MINOR - baseInput.amountMinor);
-    const settled = harness.db!
-      .prepare(`SELECT status, transaction_id FROM expected_payments WHERE id = ?`)
-      .get(expectedId) as { status: string; transaction_id: string };
-    expect(settled).toMatchObject({ status: "paid", transaction_id: transactionId });
-  });
-
-  it("records the owner's own row as hand-entered, not as a confirmation", async () => {
-    const transactionId = await recordOwnPayment();
-    const row = harness.db!.prepare(`SELECT origin FROM transactions WHERE id = ?`).get(transactionId) as { origin: string };
-    expect(row.origin).toBe("manual");
-  });
-
-  it("gives the expectation back on undo and keeps the owner's transaction", async () => {
-    const expectedId = await ruleWithPendingOccurrence();
-    const transactionId = await recordOwnPayment();
-    await matchExpectedToTransaction(USER, expectedId, transactionId);
-
-    await revertExpected(USER, expectedId);
-
-    // The reminder is pending again...
-    const reverted = harness.db!
-      .prepare(`SELECT status, transaction_id FROM expected_payments WHERE id = ?`)
-      .get(expectedId) as { status: string; transaction_id: string | null };
-    expect(reverted).toMatchObject({ status: "pending", transaction_id: null });
-    // ...and the payment the owner recorded is untouched.
-    expect(liveTransactions().map((row) => row.id)).toEqual([transactionId]);
-    expect(balanceNow()).toBe(OPENING_MINOR - baseInput.amountMinor);
-  });
-
-  /** A confirmation DID create its row, so undoing it removes that row. */
-  it("still removes the transaction a confirmation created", async () => {
-    const expectedId = await ruleWithPendingOccurrence();
-    await confirmExpected(USER, expectedId, { personId: "person-self", categoryId: "category-subs" });
-    expect(liveTransactions()).toHaveLength(1);
-
-    await revertExpected(USER, expectedId);
-
-    expect(liveTransactions()).toEqual([]);
-    expect(balanceNow()).toBe(OPENING_MINOR);
-  });
-
-  it("refuses to let one payment settle two expectations", async () => {
-    const firstId = await ruleWithPendingOccurrence();
-    const transactionId = await recordOwnPayment();
-    await matchExpectedToTransaction(USER, firstId, transactionId);
-    const secondId = expectedRows().find((row) => row.status === "pending")?.id;
-    expect(secondId).toBeDefined();
-
-    await expect(matchExpectedToTransaction(USER, secondId!, transactionId)).rejects.toThrow(/already matched/u);
-    expect(balanceNow()).toBe(OPENING_MINOR - baseInput.amountMinor);
-  });
-});
