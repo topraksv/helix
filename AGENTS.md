@@ -103,6 +103,14 @@ the change reaches web export, bundle, browser behavior, or a release surface;
 CI escalates. Report failed measurements as well as passed ones; do not claim
 success without fresh output.
 
+Neither command runs mutation testing. A push that changes a file under
+`src/{domain,data/repo,db,sync,auth,services}` mutates it in CI and compares
+the result with `mutation-baseline.json`, which records what each file scored
+when it was last measured. A file may not detect less than it did; a file with
+no entry fails rather than being adopted at whatever it scores. Read what
+survived before running `npm run mutation:baseline` — the whole point of the
+refusal is that adopting a score is a decision, not a build step.
+
 ## Git and release authority
 
 Work in the checkout and branch the user explicitly authorized. Do not create

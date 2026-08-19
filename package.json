@@ -76,7 +76,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --config vitest.coverage.config.ts",
     "test:mutation": "stryker run",
-    "test:mutation:ci": "stryker run stryker.ci.config.mjs",
+    "test:mutation:ci": "stryker run stryker.ci.config.mjs && node scripts/check-mutation-ratchet.mjs",
     "test:e2e:export": "node scripts/export-e2e-web.mjs",
     "test:e2e": "npm run test:e2e:export && playwright test",
     "test:e2e:only": "playwright test",
@@ -96,7 +96,8 @@
     "test:native:local:android": "PATH=\"/opt/homebrew/opt/openjdk@17/bin:$PATH\" maestro --platform android test e2e/native-local",
     "ios:build": "expo run:ios --device \"iPhone 17 Pro\"",
     "graph:refresh": "graphify update . && graphify export obsidian --dir docs/graph && rm -rf docs/graph/.obsidian",
-    "audit:unused": "npx --yes knip@6.32.0"
+    "audit:unused": "npx --yes knip@6.32.0",
+    "mutation:baseline": "node scripts/write-mutation-baseline.mjs"
   },
   "private": true,
   "overrides": {

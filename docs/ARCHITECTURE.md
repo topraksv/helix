@@ -163,6 +163,7 @@ failure that selected it.
 | A retired mark slot is still readable, never dropped | A mark that stops resolving is invisible, not broken: the cell simply loses a colour the owner put there, with nothing to notice |
 | The mark fill is 35%, chosen by ΔE rather than by eye | At 15% the four hues measured 2.7 ΔE apart — four washes nobody could tell apart, which is what "renkler stabil değil" was |
 | A server constraint that retires a vocabulary EXPANDS first and contracts later | The check and the client ship at different moments and a stale tab is a second client. A push Postgres refuses throws for the whole batch, so one rejected colour would stop that device syncing anything at all — the retired names stay legal until no client can still write them |
+| The push mutation gate is a per-file ratchet, not an absolute score | Its 98 came from the broad inventory, whose own baseline is 79.65. Applied to whatever a push touched it measured 54.22, and a gate no change can pass is one every release routes around — the release before this one shipped from a `workflow_dispatch`, which has no `github.event.before` and so quietly ran sentinels instead |
 
 ## Testing policy
 

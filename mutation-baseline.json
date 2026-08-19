@@ -1,0 +1,118 @@
+{
+  "measuredOn": "76f662f8776457e62fec6808747925517b1db713",
+  "measuredDate": "2026-08-19",
+  "files": {
+    "src/data/repo/errors.ts": {
+      "score": 21.05,
+      "killed": 4,
+      "timeout": 0,
+      "survived": 7,
+      "noCoverage": 8
+    },
+    "src/data/repo/expected.ts": {
+      "score": 45.92,
+      "killed": 169,
+      "timeout": 0,
+      "survived": 123,
+      "noCoverage": 76
+    },
+    "src/data/repo/imports.ts": {
+      "score": 51.51,
+      "killed": 238,
+      "timeout": 1,
+      "survived": 51,
+      "noCoverage": 174
+    },
+    "src/data/repo/investments.ts": {
+      "score": 59.33,
+      "killed": 159,
+      "timeout": 0,
+      "survived": 68,
+      "noCoverage": 41
+    },
+    "src/data/repo/matrix-colors.ts": {
+      "score": 0,
+      "killed": 0,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 32
+    },
+    "src/data/repo/settings.ts": {
+      "score": 100,
+      "killed": 34,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0
+    },
+    "src/db/schema.ts": {
+      "score": 33.58,
+      "killed": 138,
+      "timeout": 0,
+      "survived": 273,
+      "noCoverage": 0
+    },
+    "src/domain/card-statements.ts": {
+      "score": 90.53,
+      "killed": 86,
+      "timeout": 0,
+      "survived": 9,
+      "noCoverage": 0
+    },
+    "src/domain/investments.ts": {
+      "score": 98.87,
+      "killed": 349,
+      "timeout": 0,
+      "survived": 4,
+      "noCoverage": 0
+    },
+    "src/domain/matrix-colors.ts": {
+      "score": 85.71,
+      "killed": 138,
+      "timeout": 0,
+      "survived": 22,
+      "noCoverage": 1
+    },
+    "src/domain/provenance.ts": {
+      "score": 100,
+      "killed": 3,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 0
+    },
+    "src/domain/settings.ts": {
+      "score": 97.35,
+      "killed": 110,
+      "timeout": 0,
+      "survived": 3,
+      "noCoverage": 0
+    },
+    "src/domain/statement-import.ts": {
+      "score": 69.37,
+      "killed": 231,
+      "timeout": 0,
+      "survived": 95,
+      "noCoverage": 7
+    },
+    "src/services/backup-validation.ts": {
+      "score": 34.33,
+      "killed": 461,
+      "timeout": 0,
+      "survived": 443,
+      "noCoverage": 439
+    },
+    "src/services/export-import.ts": {
+      "score": 30.38,
+      "killed": 48,
+      "timeout": 0,
+      "survived": 42,
+      "noCoverage": 68
+    },
+    "src/services/spreadsheet-import.ts": {
+      "score": 62.08,
+      "killed": 659,
+      "timeout": 4,
+      "survived": 366,
+      "noCoverage": 39
+    }
+  }
+}

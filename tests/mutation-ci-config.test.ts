@@ -15,10 +15,22 @@ describe("CI mutation contract", () => {
     const ci = read("stryker.ci.config.mjs");
 
     expect(packageJson.scripts["test:mutation"]).toBe("stryker run");
-    expect(packageJson.scripts["test:mutation:ci"]).toBe("stryker run stryker.ci.config.mjs");
+    // Delivery runs the mutation pass and then the ratchet. Stryker reports
+    // the score; `check-mutation-ratchet.mjs` decides whether it is a failure.
+    expect(packageJson.scripts["test:mutation:ci"]).toBe(
+      "stryker run stryker.ci.config.mjs && node scripts/check-mutation-ratchet.mjs",
+    );
     expect(ci).toContain('import broadConfig from "./stryker.config.mjs"');
     expect(ci).toContain("...broadConfig");
-    expect(ci).not.toContain("thresholds:");
+
+    // The break threshold is the ONE broad setting delivery does not inherit,
+    // and it is disabled rather than lowered — a smaller number would be a
+    // quieter version of the same lie. Everything else still comes from the
+    // broad config, and the broad audit keeps the unchanged 98.
+    expect(ci).toContain("thresholds: { ...broadConfig.thresholds, break: null }");
+    expect(ci.match(/thresholds:/g)).toHaveLength(1);
+    expect(broad).toContain("break: 98");
+    expect(packageJson.scripts["mutation:baseline"]).toBe("node scripts/write-mutation-baseline.mjs");
 
     for (const file of [
       "src/auth/recovery.ts",

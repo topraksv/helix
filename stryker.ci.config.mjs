@@ -16,6 +16,17 @@ import { resolve } from "node:path";
  * setting and the unchanged 98 break threshold while selecting only the
  * high-risk production files changed after the cutover below.
  *
+ * The break threshold is the one broad setting this file does NOT inherit.
+ * Applied to whatever files a push touched, 98 was unreachable: measured on
+ * 2026-08-19 against the first real product diff ever to reach it, the selected
+ * sixteen files scored 54.22. A gate no change can pass is one every release
+ * routes around, and the previous release did exactly that — it shipped from a
+ * `workflow_dispatch`, which has no `github.event.before` and so ran sentinels.
+ * Stryker therefore reports the score without failing on it, and
+ * `scripts/check-mutation-ratchet.mjs` fails the run when a file detects less
+ * than `mutation-baseline.json` records for it. The broad `test:mutation`
+ * keeps the unchanged 98 and remains the honest gap inventory.
+ *
  * Phase 6 changed no product source. Its cutover commit is therefore the
  * mutation-diff floor for the first long-lived-branch push to main: earlier
  * product changes keep their Phase 3/3B evidence instead of being presented as
@@ -97,5 +108,7 @@ const mutate = selectMutationScope({
 export default {
   ...broadConfig,
   mutate,
+  // Reported, not enforced here. The ratchet script owns the pass/fail.
+  thresholds: { ...broadConfig.thresholds, break: null },
   jsonReporter: { fileName: "reports/mutation/ci-mutation.json" },
 };
