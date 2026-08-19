@@ -73,17 +73,6 @@ export default function CatchUpScreen() {
   const nameOf = (e: (typeof expected)[number]) =>
     subscriptionById.get(e.refId)?.name ?? incomeById.get(e.refId)?.name ?? tr.common.paymentFallback;
 
-  /** Undo for a confirmation, with the same "never look successful" rule. */
-  const revertConfirmed = async (expectedId: string) => {
-    try {
-      await revertExpected(userId, expectedId);
-      scheduleSync(userId);
-    } catch (err) {
-      devError("reconcile.revert", err);
-      void appAlert(tr.errors.saveFailed);
-    }
-  };
-
   const confirm = async (e: (typeof expected)[number], actual?: number) => {
     if (!selfPersonId) return;
     await operationGuard.run(async () => {
@@ -100,7 +89,9 @@ export default function CatchUpScreen() {
         setEditing(null);
         setAmountRaw("");
         setAmountMinor(null);
-        undo.show(`${nameOf(e)} ✓`, () => revertConfirmed(e.id));
+        // Straight through, so a failed revert rejects and the bar keeps its
+        // retry instead of clearing as though it had worked.
+        undo.show(`${nameOf(e)} ✓`, () => revertExpected(userId, e.id).then(() => scheduleSync(userId)));
       } catch (err) {
         errorNotice();
         if (err instanceof FxRateUnavailableError) void appAlert(tr.errors.fxUnavailable);
@@ -128,7 +119,7 @@ export default function CatchUpScreen() {
       try {
         await skipExpected(userId, e.id);
         scheduleSync(userId);
-        undo.show(tr.catchup.skipped(nameOf(e)), () => restoreSkipped(e.id), "warning");
+        undo.show(tr.catchup.skipped(nameOf(e)), () => unskipExpected(userId, e.id).then(() => scheduleSync(userId)), "warning");
       } catch (err) {
         errorNotice();
         devError("reconcile.skip", err);
@@ -137,17 +128,6 @@ export default function CatchUpScreen() {
         setConfirmingId(null);
       }
     });
-  };
-
-  /** Undo for a skip must itself report failure rather than look successful. */
-  const restoreSkipped = async (expectedId: string) => {
-    try {
-      await unskipExpected(userId, expectedId);
-      scheduleSync(userId);
-    } catch (err) {
-      devError("reconcile.unskip", err);
-      void appAlert(tr.errors.saveFailed);
-    }
   };
 
   if (!dataReady) {

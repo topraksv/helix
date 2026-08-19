@@ -73,6 +73,27 @@ describe("undo callbacks are owned everywhere", () => {
     }
   });
 
+  /**
+   * The other half of the same rule, and the one the `() => void` scan cannot
+   * see. A wrapper that catches its own failure RESOLVES, so `runUndo` records
+   * success, `clear()` dismisses the bar, and the deterministic retry the
+   * primitive keeps for exactly this case is thrown away — the user is left
+   * with a generic "save failed" while the bar says the undo worked.
+   *
+   * Reconciliation carried two such wrappers, and their own comments claimed
+   * they implemented the "never look successful" rule they were breaking.
+   * Every other caller in the app passes the repository call straight through
+   * and chains `scheduleSync` with `.then`, so the rejection reaches the bar.
+   */
+  it("lets a failed revert or unskip reach the snackbar instead of swallowing it", () => {
+    const text = readFileSync(join(process.cwd(), "src/app/reconciliation.tsx"), "utf8");
+    for (const swallowed of ["revertConfirmed", "restoreSkipped"]) {
+      expect(text, swallowed).not.toContain(swallowed);
+    }
+    expect(text).toMatch(/undo\.show\([^;]*revertExpected\(userId, e\.id\)/s);
+    expect(text).toMatch(/undo\.show\([^;]*unskipExpected\(userId, e\.id\)/s);
+  });
+
   it("keeps the skip flow owned as well", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
