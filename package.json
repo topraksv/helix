@@ -97,7 +97,8 @@
     "ios:build": "expo run:ios --device \"iPhone 17 Pro\"",
     "graph:refresh": "graphify update . && graphify export obsidian --dir docs/graph && rm -rf docs/graph/.obsidian",
     "audit:unused": "npx --yes knip@6.32.0",
-    "mutation:baseline": "node scripts/write-mutation-baseline.mjs"
+    "mutation:baseline": "node scripts/write-mutation-baseline.mjs",
+    "audit:duplication": "npx --yes jscpd@5.0.16 src"
   },
   "private": true,
   "overrides": {
