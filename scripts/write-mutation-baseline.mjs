@@ -8,19 +8,37 @@
  * something a person does after reading what survived. Running this without
  * reading the report first defeats the gate it feeds.
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { scoresFromReport, scoreOf } from "./check-mutation-ratchet.mjs";
 
 const REPORT = "reports/mutation/ci-mutation.json";
 const BASELINE = "mutation-baseline.json";
 
-if (!existsSync(REPORT)) {
+/**
+ * Read a JSON file, or return `missing` when it is not there.
+ *
+ * Deliberately not `existsSync` followed by `readFileSync`: that is two trips
+ * to the filesystem with a window between them, so the answer to the first
+ * can already be wrong by the time the second runs. The window is real here
+ * rather than theoretical — Stryker deletes and rewrites its report directory
+ * as a run finishes, and this script is invoked straight after one. Asking
+ * once and handling the failure is both correct and a syscall cheaper.
+ */
+function readJsonOrMissing(path, missing) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return missing;
+    throw error;
+  }
+}
+
+const report = readJsonOrMissing(REPORT, null);
+if (report === null) {
   console.error(`No mutation report at ${REPORT}. Run \`npm run test:mutation:ci\` first.`);
   process.exit(1);
 }
-
-const report = JSON.parse(readFileSync(REPORT, "utf8"));
 const scores = scoresFromReport(report);
 
 const files = {};
@@ -39,7 +57,7 @@ for (const file of Object.keys(scores).sort()) {
 }
 
 // A baseline that does not say which tree produced it cannot be re-derived.
-const previous = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : { files: {} };
+const previous = readJsonOrMissing(BASELINE, { files: {} });
 const merged = { ...previous.files, ...files };
 
 writeFileSync(
