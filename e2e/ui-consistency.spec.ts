@@ -775,16 +775,33 @@ test("the forecast row's lit area ends on the rule under it", async ({ page }, t
     await page.goto("/helix/");
     const toggle = page.getByTestId("dashboard-forecast-toggle");
     await expect(toggle).toBeVisible();
-    const gap = await toggle.evaluate((element) => {
+    const box = await toggle.evaluate((element) => {
       // The row is the LAST child of the hero's left column, and the rule is
       // that column's own next sibling — measured through the parent, because
       // the row has no sibling of its own to compare against.
       const parent = element.parentElement!;
       const rule = parent.nextElementSibling as HTMLElement | null;
       if (!rule) throw new Error("the forecast row has no rule after it");
-      return rule.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
+      const content = element.querySelector("div") as HTMLElement | null;
+      if (!content) throw new Error("the forecast row has no content block");
+      const ruleTop = rule.getBoundingClientRect().top;
+      return {
+        fillToRule: ruleTop - element.getBoundingClientRect().bottom,
+        textToRule: ruleTop - content.getBoundingClientRect().bottom,
+      };
     });
-    expect(gap, `${viewport.width}px: bare card between the row and its rule`).toBeLessThanOrEqual(1);
+    // Only the phone stacks the rule under this row; the wide layout draws it
+    // as a vertical divider beside the column, where "below" means nothing.
+    if (viewport.width >= 900) continue;
+    expect(box.fillToRule, `${viewport.width}px: bare card between the row and its rule`).toBeLessThanOrEqual(1);
+    // ...and the fill must not run PAST the rule either. A negative margin
+    // that cancels the padding put the line through the middle of the lit
+    // band and left the text sitting on it; the row's painted box and its
+    // layout box have to be the same box.
+    expect(box.fillToRule, `${viewport.width}px: the lit band overshoots its rule`).toBeGreaterThanOrEqual(-1);
+    // The row owns that space, so the space has to exist. At 0 the amount was
+    // touching the rule, which is what "çok dar" was.
+    expect(box.textToRule, `${viewport.width}px: the amount is crammed against the rule`).toBeGreaterThanOrEqual(12);
   }
 
   await assertNoRuntimeErrors(errors, testInfo);

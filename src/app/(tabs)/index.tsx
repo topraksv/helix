@@ -743,13 +743,23 @@ export default function DashboardScreen() {
                     paddingVertical: spacing.md,
                     borderTopWidth: StyleSheet.hairlineWidth,
                     borderTopColor: palette.border,
-                    // The row reaches the rule below it. It used to stop
-                    // `spacing.sm` short, so the lit band ended in mid-air with
-                    // a strip of card between it and the line it belongs to —
-                    // at every width, because the wide layout draws that line
-                    // vertically and the phone one horizontally.
-                    marginBottom: -spacing.md,
-                    paddingBottom: spacing.md,
+                    // The row reaches the rule below it and stops there.
+                    //
+                    // Phone only. The wide layout draws that rule as a vertical
+                    // divider beside this column, so there is nothing under the
+                    // row to reach and its trailing space is left alone.
+                    //
+                    // The space is PADDING, not a cancelled margin. Pulling the
+                    // rule up by exactly the padding it was supposed to sit
+                    // below put the line through the middle of the lit band and
+                    // left the amount resting on it — measured 0px from text to
+                    // rule and the fill 12px past it. A control's painted box
+                    // and its layout box have to be the same box, so the room
+                    // under the amount is the row's own padding and the fill
+                    // covers all of it.
+                    ...(wideDashboard
+                      ? { marginBottom: -spacing.md, paddingBottom: spacing.md }
+                      : { paddingBottom: spacing.lg }),
                     ...interactionSurface(palette, state),
                   })}
                 >
