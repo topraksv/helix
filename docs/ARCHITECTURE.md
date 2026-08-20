@@ -100,30 +100,14 @@ cost an incident to learn are repeated here.
 - Integer kuruş and ISO calendar dates retain financial precision.
 - The product says “Yatırım”; persisted `transfer` names remain unchanged
   because they are sync and backup compatibility fields.
-- Income/positive is green, expense/negative red, warning amber. Accent color
-  expresses hierarchy, not financial meaning.
-- Inter carries dense content; the IBM Plex Serif display face is limited to
-  brand-level headings and high-value totals.
-- Phone layouts keep one reading column. Dense financial data stays in shared
-  tables rather than becoming one card per value.
-- Motion uses the shared reduced-motion source in `src/ui/motion.ts`.
 - Labels remain visible; placeholders never carry a field's only instruction.
 - Pinning a table column changes where it sits, never what it can do and never
   how it looks. The pinned header carries the column's own action beside its
   unpin control, the same pair a scrolling header has, and both rails render a
   column through one `headerChrome`/`bodyCell` pair so a state cannot exist in
   one and not the other.
-- Hover and pressed come from `interactionSurface` and nothing else, applied to
-  the pressable itself. A container without a role never carries the fill or
-  its transition: the transition IS the claim to be interactive. One visual
-  cell lights once — an inner control reports its pointer to the outer one
-  through `interactionSurface`'s `hovered` option and paints no fill itself.
 - A header's rule is always reserved and recoloured, never toggled on. A border
   that appears with a state moves the text beside it by those pixels.
-- Every width that changes a layout mode is a named predicate in
-  `src/ui/responsive.ts`, with its measurement in the comment. A threshold
-  written inline is a rule nobody can find, test, or keep level with the rule
-  beside it.
 
 ## Incident-derived decisions
 
