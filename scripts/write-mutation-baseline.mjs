@@ -34,6 +34,13 @@ function readJsonOrMissing(path, missing) {
   }
 }
 
+// Provenance is per FILE. A single document-level "measured on" would claim
+// every entry came from the current tree, and a run only ever covers the scope
+// it was given — recording it that way made the file assert measurements it
+// had not taken.
+const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const today = new Date().toISOString().slice(0, 10);
+
 const report = readJsonOrMissing(REPORT, null);
 if (report === null) {
   console.error(`No mutation report at ${REPORT}. Run \`npm run test:mutation:ci\` first.`);
@@ -53,6 +60,8 @@ for (const file of Object.keys(scores).sort()) {
     timeout: counts.Timeout,
     survived: counts.Survived,
     noCoverage: counts.NoCoverage,
+    measuredOn: head,
+    measuredDate: today,
   };
 }
 
@@ -63,11 +72,7 @@ const merged = { ...previous.files, ...files };
 writeFileSync(
   BASELINE,
   JSON.stringify(
-    {
-      measuredOn: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
-      measuredDate: new Date().toISOString().slice(0, 10),
-      files: Object.fromEntries(Object.entries(merged).sort(([a], [b]) => a.localeCompare(b))),
-    },
+    { files: Object.fromEntries(Object.entries(merged).sort(([a], [b]) => a.localeCompare(b))) },
     null,
     2,
   ) + "\n",

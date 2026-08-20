@@ -156,5 +156,5 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
     console.error(`\n${problems.join("\n\n")}\n`);
     process.exit(1);
   }
-  console.log(`\nNo mutated file detects less than it did on ${baseline.measuredDate}.`);
+  console.log(`\nNo mutated file detects less than its recorded baseline.`);
 }

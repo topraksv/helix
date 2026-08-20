@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { evaluate, scoreOf, scoresFromReport } from "../scripts/check-mutation-ratchet.mjs";
+import { selectMutationScope } from "../stryker.ci.config.mjs";
 
 const baseline = (files: Record<string, number>) => ({
   measuredOn: "abc",
@@ -95,9 +96,38 @@ describe("ratchet", () => {
 describe("recorded baseline", () => {
   const recorded = JSON.parse(readFileSync("mutation-baseline.json", "utf8"));
 
-  it("names the tree it was measured on", () => {
-    expect(recorded.measuredOn).toMatch(/^[0-9a-f]{40}$/);
-    expect(recorded.measuredDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  /**
+   * Provenance is per FILE, not per document.
+   *
+   * One document-level "measured on" claimed every entry came from the current
+   * tree, but a run only ever covers the scope it was given — so recording a
+   * scope of eleven files rewrote the stamp on thirteen it never touched.
+   */
+  it("says which tree each entry was measured on, not one date for all of them", () => {
+    expect(Object.keys(recorded)).toEqual(["files"]);
+    const entries = Object.entries(recorded.files) as [string, Record<string, unknown>][];
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [file, entry] of entries) {
+      expect(entry.measuredOn, file).toMatch(/^[0-9a-f]{40}$/);
+      expect(entry.measuredDate, file).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  /**
+   * Every scope the selector can produce has to be covered.
+   *
+   * The first baseline was taken from one release's diff, which left the
+   * sentinel scope — what a push that touches no mutated path falls back to —
+   * entirely unrecorded. That is not a hypothetical: the very next push
+   * touched only scripts and workflows, fell back to sentinels, and would have
+   * failed the gate on nine UNBASELINED files. The ratchet was behaving
+   * correctly; the baseline was incomplete.
+   */
+  it("covers every file the sentinel scope can select", () => {
+    const sentinels = selectMutationScope({ base: "", head: "", eventName: "workflow_dispatch", cwd: process.cwd() });
+    expect(sentinels.length).toBeGreaterThan(0);
+    const missing = sentinels.filter((file: string) => recorded.files[file] === undefined);
+    expect(missing, `unrecorded sentinel file(s): ${missing.join(", ")}`).toEqual([]);
   });
 
   it("carries the counts behind every score, so a number can be re-derived", () => {
