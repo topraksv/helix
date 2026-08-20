@@ -58,8 +58,28 @@ const MUTATION_RELEVANT = /^src\/(?:domain|data\/repo|db|sync|auth|services)\/.*
  * migration is added the whole gate crashes rather than reporting a score.
  * What the migrations actually do is covered by `tests/migration-upgrade.test.ts`,
  * which replays every one of them against a real database.
+ *
+ * `src/db/schema.ts` is the same kind of file and was the gate's whole cost.
+ * It is 431 lines of Drizzle table declarations with no function in it, so
+ * every one of its 411 mutants is STATIC — each one re-runs the entire suite
+ * because there is no per-test coverage to narrow it to. Measured on
+ * 2026-08-20: 411 of the run's 712 static mutants, and static mutants were 93%
+ * of a 44-minute job that blocked the deploy.
+ *
+ * What the 242 survivors buy is nothing. Mutating `text("user_id")` to
+ * `text("")` or dropping a `.notNull()` tests a MIRROR: this file's own
+ * header records that constraints are deliberately not reproduced locally
+ * because Postgres enforces them at push time. The real schema is
+ * `supabase/migrations`, replayed by `tests/migration-upgrade.test.ts`
+ * against a real database and checked by `tests/relations-contract.test.ts`.
+ *
+ * The exclusion stays narrow: everything under `domain`, `data/repo`,
+ * `services`, `sync` and `auth` is still mutated, including files whose
+ * mutants are mostly static. `domain/statement-import.ts` is 219 static
+ * mutants of Turkish month names and amount-splitting regexes — real logic,
+ * so it keeps paying for itself.
  */
-const MUTATION_EXCLUDED = /^src\/db\/migrations\//;
+const MUTATION_EXCLUDED = /^src\/db\/(?:migrations\/|schema\.ts$)/;
 
 function git(args, cwd) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();

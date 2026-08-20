@@ -36,11 +36,22 @@ const BASELINE = "mutation-baseline.json";
 /**
  * How far a score may fall before it counts as a regression.
  *
- * Not slack for getting worse. Stryker's `timeoutMS` is wall-clock, so a
- * mutant that is killed on a quiet laptop can time out on a loaded CI runner
- * and vice versa; both count as detected, but a mutant that survives instead
- * of timing out moves the score by a fraction of a point. This absorbs that
- * and nothing else — a real regression removes whole percent.
+ * Not slack for getting worse. Stryker's `timeoutMS` is wall-clock and it
+ * counts a timeout as DETECTED, so how many mutants tip over that line moves
+ * the score without any code changing.
+ *
+ * Measured across three runs of the same tree: 5, 36 and 72 timeouts. The
+ * first two produced byte-identical per-file scores for every file except
+ * `src/db/schema.ts`, whose 411 static mutants each re-run the whole suite
+ * and were the entire source of the drift — which is one more reason it is no
+ * longer mutated. Dropping it changed the scheduling of what remained, and
+ * three files then scored HIGHER (statement-import 69.37 -> 79.58).
+ *
+ * So the recorded baselines are deliberately the ones from the 5-timeout run,
+ * the least favourable profile. A run with more timeouts can only score at or
+ * above them. RE-BASELINING FROM A NOISY RUN WOULD INVERT THAT and leave the
+ * gate failing honest commits: read `write-mutation-baseline.mjs` before
+ * adopting an improvement.
  */
 const TOLERANCE = 0.5;
 
@@ -133,8 +144,11 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()
 
   if (improvements.length > 0) {
     console.log(
-      `\n${improvements.length} file(s) improved:\n  ${improvements.join("\n  ")}\n` +
-        `  Lock these in with \`npm run mutation:baseline\` so they cannot slide back.`,
+      `\n${improvements.length} file(s) scored above baseline:\n  ${improvements.join("\n  ")}\n` +
+        `  Lock these in with \`npm run mutation:baseline\` ONLY if the gain came from\n` +
+        `  tests you added. A gain that came from more mutants timing out is a\n` +
+        `  property of the runner, not of the suite, and recording it makes the\n` +
+        `  next quieter run fail an honest commit.`,
     );
   }
 

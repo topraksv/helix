@@ -102,7 +102,7 @@ describe("CI mutation contract", () => {
    * pushes that add a migration. What those files do is proven by
    * `tests/migration-upgrade.test.ts` replaying them against a real database.
    */
-  it("never mutates the generated migration manifest", () => {
+  it("never mutates the generated manifest or the declarative schema", () => {
     const scope = selectMutationScope({
       base: "9d9d1021abcbb4f299133828dcb2af0b4dbbbe4a",
       head: "HEAD",
@@ -110,8 +110,18 @@ describe("CI mutation contract", () => {
       cwd: process.cwd(),
     });
     expect(scope.some((file) => file.startsWith("src/db/migrations/"))).toBe(false);
-    // The exclusion is narrow: real database source is still in scope.
-    expect(scope).toContain("src/db/schema.ts");
+    // `schema.ts` joined them for the same reason and a measured cost. Every
+    // one of its 411 mutants is static, which is 411 full runs of the suite —
+    // 93% of a 44-minute job that held up the deploy. What they test is a
+    // MIRROR: the file's own header records that constraints are deliberately
+    // not reproduced locally because Postgres enforces them, and the real
+    // schema is replayed against a database by `migration-upgrade`.
+    expect(scope).not.toContain("src/db/schema.ts");
+    // The exclusion stays narrow: database source that carries logic is still
+    // mutated, and so is everything outside `src/db`.
+    expect(scope).toContain("src/db/ids.ts");
+    expect(scope).toContain("src/db/relations.ts");
+    expect(scope).toContain("src/domain/statement-import.ts");
   });
 
   it("allows a ref-free sentinel only for an explicit manual dispatch", () => {

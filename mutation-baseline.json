@@ -44,13 +44,6 @@
       "survived": 0,
       "noCoverage": 0
     },
-    "src/db/schema.ts": {
-      "score": 41.12,
-      "killed": 138,
-      "timeout": 31,
-      "survived": 242,
-      "noCoverage": 0
-    },
     "src/domain/card-statements.ts": {
       "score": 90.53,
       "killed": 86,
