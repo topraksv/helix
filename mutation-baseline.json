@@ -1,5 +1,5 @@
 {
-  "measuredOn": "76f662f8776457e62fec6808747925517b1db713",
+  "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
   "measuredDate": "2026-08-19",
   "files": {
     "src/data/repo/errors.ts": {
@@ -45,10 +45,10 @@
       "noCoverage": 0
     },
     "src/db/schema.ts": {
-      "score": 33.58,
+      "score": 41.12,
       "killed": 138,
-      "timeout": 0,
-      "survived": 273,
+      "timeout": 31,
+      "survived": 242,
       "noCoverage": 0
     },
     "src/domain/card-statements.ts": {
