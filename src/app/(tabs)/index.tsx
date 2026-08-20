@@ -740,7 +740,6 @@ export default function DashboardScreen() {
                     alignItems: "center",
                     gap: spacing.sm,
                     marginTop: spacing.md,
-                    paddingVertical: spacing.md,
                     borderTopWidth: StyleSheet.hairlineWidth,
                     borderTopColor: palette.border,
                     // The row reaches the rule below it and stops there.
@@ -757,9 +756,14 @@ export default function DashboardScreen() {
                     // and its layout box have to be the same box, so the room
                     // under the amount is the row's own padding and the fill
                     // covers all of it.
+                    // The padding stays SYMMETRIC. `resilience.spec.ts` requires
+                    // it and is right to: this is one control, and a box whose
+                    // label sits nearer its top border than its bottom edge
+                    // reads as a mistake. So the phone grows both sides rather
+                    // than only the one that had to reach the rule.
                     ...(wideDashboard
-                      ? { marginBottom: -spacing.md, paddingBottom: spacing.md }
-                      : { paddingBottom: spacing.lg }),
+                      ? { paddingVertical: spacing.md, marginBottom: -spacing.md }
+                      : { paddingVertical: spacing.lg }),
                     ...interactionSurface(palette, state),
                   })}
                 >

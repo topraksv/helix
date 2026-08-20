@@ -100,12 +100,20 @@ describe("the month-end forecast carries one colour meaning", () => {
   });
 
   it("gives the forecast hover surface equal air above and below", () => {
-    const forecast = dashboard.slice(
-      dashboard.indexOf('testID="dashboard-forecast-toggle"'),
-      dashboard.indexOf("borderTopColor", dashboard.indexOf('testID="dashboard-forecast-toggle"')),
-    );
-    expect(forecast).toContain("paddingVertical: spacing.md");
-    expect(forecast).not.toContain("paddingTop: spacing.md");
+    const start = dashboard.indexOf('testID="dashboard-forecast-toggle"');
+    const forecast = dashboard.slice(start, dashboard.indexOf("interactionSurface", start));
+    // The invariant is symmetry, not a particular number: the phone opens this
+    // row up to reach the rule beneath it while the wide layout, where that
+    // rule is a vertical divider, keeps its own spacing. Pinning the literal
+    // `spacing.md` made a legitimate per-layout value look like a regression.
+    //
+    // What must never differ is the two sides, so the only way to set padding
+    // here is the property that sets both at once. Asserting that catches the
+    // asymmetry itself — an attempt to give the amount more room by growing
+    // `paddingBottom` alone fails this line.
+    expect(forecast).toMatch(/paddingVertical: spacing\.(md|lg)/);
+    expect(forecast).not.toMatch(/paddingTop:/);
+    expect(forecast).not.toMatch(/paddingBottom:/);
   });
 
   it("makes the balance-versus-forecast boundary explicit and removes the trailing card gap", () => {

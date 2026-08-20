@@ -203,6 +203,10 @@ test("budget summary keeps its forecast, charts and cash-flow tab route", async 
   await page.getByRole("tab", { name: "Durum" }).click();
   const forecastToggle = page.getByRole("button", { name: /Ay sonu tahmini/ }).first();
   await expect(forecastToggle).toBeVisible();
+  // One control, one balanced box: a row whose label sits nearer its top
+  // border than its bottom edge reads as a mistake rather than as spacing.
+  // This caught exactly that — an attempt to give the amount more room under
+  // it grew only the bottom padding and left the row lopsided.
   const forecastPadding = await forecastToggle.evaluate((element) => {
     const style = getComputedStyle(element);
     return { top: style.paddingTop, bottom: style.paddingBottom };
