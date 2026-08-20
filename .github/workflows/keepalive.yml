@@ -18,6 +18,7 @@ permissions: {}
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Upsert and read keep_alive row
         env:

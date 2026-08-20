@@ -259,6 +259,30 @@ describe("release contract", () => {
     );
   });
 
+  /**
+   * Every job is bounded in time.
+   *
+   * Nothing was, so the ceiling was GitHub's default of six hours. That is not
+   * hypothetical here: `nightly.yml` records a Playwright `apt-get` step
+   * hanging past 25 minutes on three shards at once, and the mutation job sat
+   * over an hour on 2026-08-20 while the deploy waited behind it. A hung job
+   * should fail and free the runner, not hold a release all afternoon.
+   *
+   * The limits are generous multiples of measured durations, so they fire on a
+   * hang and never on ordinary variance.
+   */
+  it("bounds every job so a hang fails instead of occupying a runner for six hours", () => {
+    for (const [name, workflow] of Object.entries({ ci, security, nightly, keepalive, database })) {
+      const jobsSection = workflow.slice(workflow.indexOf("\njobs:"));
+      const jobs = [...jobsSection.matchAll(/^  ([a-z0-9-]+):$/gm)].map((match) => match[1]);
+      expect(jobs.length, name).toBeGreaterThan(0);
+      const limits = [...jobsSection.matchAll(/^    timeout-minutes: (\d+)$/gm)].map((match) => Number(match[1]));
+      expect(limits.length, `${name}: ${jobs.length} job(s) but ${limits.length} timeout(s)`).toBe(jobs.length);
+      // A limit so large it could never fire is the same as having none.
+      for (const limit of limits) expect(limit, name).toBeLessThanOrEqual(90);
+    }
+  });
+
   it("lets the gate accept a skipped job but never a failed one", () => {
     expect(ci).toMatch(/gate:\n\s+if: always\(\)/);
     expect(ci).toContain("success|skipped) ;;");
