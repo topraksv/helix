@@ -2428,3 +2428,49 @@ describe("recurring income rules", () => {
     );
   });
 });
+
+/**
+ * What the app asks before it lets a spreadsheet govern the columns.
+ *
+ * Onboarding reads `hasImportedData` at the moment it commits, and the import
+ * wizard reads `importedYears` to warn that a year would be REPLACED. Both
+ * decide whether existing data is about to be overwritten, and neither had a
+ * test.
+ */
+describe("import batch questions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reports a year as imported only when its batch actually holds rows", async () => {
+    const batches: Record<string, unknown> = {
+      "import_batch:2024": { transactions: ["tx-1"], cellNotes: [], installmentPlans: [] },
+      "import_batch:2025": { transactions: [], cellNotes: [], installmentPlans: [] },
+      "import_batch:2026": { transactions: [], cellNotes: ["note-1"], installmentPlans: [] },
+    };
+    dependencies.readSetting.mockImplementation(async (_userId: string, key: string) => batches[key] ?? null);
+
+    // 2025 recorded a batch that wrote nothing, so replacing it destroys
+    // nothing and the warning must not be shown for it.
+    expect(await repository.importedYears("user-1", [2024, 2025, 2026, 2027])).toEqual([2024, 2026]);
+  });
+
+  it("asks each year once even when the caller repeats it", async () => {
+    dependencies.readSetting.mockResolvedValue({ transactions: ["tx-1"], cellNotes: [], installmentPlans: [] });
+
+    expect(await repository.importedYears("user-1", [2024, 2024, 2024])).toEqual([2024]);
+    expect(dependencies.readSetting).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers whether any workbook has ever been imported", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({ getFirstAsync: async () => ({ n: 2 }), getAllAsync: async () => [] });
+    expect(await repository.hasImportedData("user-1")).toBe(true);
+
+    dependencies.getSqliteAsync.mockResolvedValue({ getFirstAsync: async () => ({ n: 0 }), getAllAsync: async () => [] });
+    expect(await repository.hasImportedData("user-1")).toBe(false);
+
+    // No settings row at all reads as "never imported", not as undefined.
+    dependencies.getSqliteAsync.mockResolvedValue({ getFirstAsync: async () => null, getAllAsync: async () => [] });
+    expect(await repository.hasImportedData("user-1")).toBe(false);
+  });
+});
