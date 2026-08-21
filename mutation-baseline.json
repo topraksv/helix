@@ -24,7 +24,7 @@
       "timeout": 0,
       "survived": 1,
       "noCoverage": 0,
-      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
       "measuredDate": "2026-08-21"
     },
     "src/data/repo/budgets.ts": {
@@ -91,13 +91,13 @@
       "measuredDate": "2026-08-20"
     },
     "src/data/repo/imports.ts": {
-      "score": 51.51,
-      "killed": 238,
+      "score": 55.39,
+      "killed": 256,
       "timeout": 1,
-      "survived": 51,
-      "noCoverage": 174,
-      "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
-      "measuredDate": "2026-08-19"
+      "survived": 56,
+      "noCoverage": 151,
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "measuredDate": "2026-08-21"
     },
     "src/data/repo/investment-validation.ts": {
       "score": 100,
@@ -118,13 +118,13 @@
       "measuredDate": "2026-08-19"
     },
     "src/data/repo/matrix-colors.ts": {
-      "score": 0,
-      "killed": 0,
+      "score": 93.75,
+      "killed": 30,
       "timeout": 0,
-      "survived": 0,
-      "noCoverage": 32,
-      "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
-      "measuredDate": "2026-08-19"
+      "survived": 1,
+      "noCoverage": 1,
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "measuredDate": "2026-08-21"
     },
     "src/data/repo/onboarding.ts": {
       "score": 38.28,
@@ -153,6 +153,15 @@
       "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
       "measuredDate": "2026-08-20"
     },
+    "src/data/repo/statement-import.ts": {
+      "score": 75.56,
+      "killed": 34,
+      "timeout": 0,
+      "survived": 11,
+      "noCoverage": 0,
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "measuredDate": "2026-08-21"
+    },
     "src/data/repo/transactions.ts": {
       "score": 97.99,
       "killed": 195,
@@ -171,14 +180,23 @@
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
     },
+    "src/domain/attachments.ts": {
+      "score": 86.39,
+      "killed": 146,
+      "timeout": 0,
+      "survived": 19,
+      "noCoverage": 4,
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "measuredDate": "2026-08-21"
+    },
     "src/domain/card-statements.ts": {
       "score": 90.53,
       "killed": 86,
       "timeout": 0,
       "survived": 9,
       "noCoverage": 0,
-      "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
-      "measuredDate": "2026-08-19"
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "measuredDate": "2026-08-21"
     },
     "src/domain/expected.ts": {
       "score": 97.59,
@@ -204,7 +222,7 @@
       "timeout": 0,
       "survived": 18,
       "noCoverage": 0,
-      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
       "measuredDate": "2026-08-21"
     },
     "src/domain/provenance.ts": {
@@ -231,8 +249,8 @@
       "timeout": 0,
       "survived": 95,
       "noCoverage": 7,
-      "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
-      "measuredDate": "2026-08-19"
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "measuredDate": "2026-08-21"
     },
     "src/domain/upcoming.ts": {
       "score": 98.68,
@@ -241,6 +259,15 @@
       "survived": 2,
       "noCoverage": 0,
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
+    },
+    "src/services/attachment-store.ts": {
+      "score": 0,
+      "killed": 0,
+      "timeout": 0,
+      "survived": 0,
+      "noCoverage": 51,
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
       "measuredDate": "2026-08-21"
     },
     "src/services/backup-remap.ts": {
@@ -270,14 +297,23 @@
       "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
       "measuredDate": "2026-08-19"
     },
+    "src/services/pdf-text.ts": {
+      "score": 28.36,
+      "killed": 168,
+      "timeout": 1,
+      "survived": 167,
+      "noCoverage": 260,
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "measuredDate": "2026-08-21"
+    },
     "src/services/spreadsheet-import.ts": {
       "score": 62.08,
       "killed": 659,
       "timeout": 4,
       "survived": 366,
       "noCoverage": 39,
-      "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
-      "measuredDate": "2026-08-19"
+      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "measuredDate": "2026-08-21"
     },
     "src/sync/outbound-validation.ts": {
       "score": 59.69,
