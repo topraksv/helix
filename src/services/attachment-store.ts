@@ -1,5 +1,5 @@
 /**
- * Where an attachment's bytes live: this device, and nowhere else.
+ * Where an attachment's bytes live: this device, and nowhere else (spec §3.1c).
  *
  * The row that describes an attachment syncs; the file does not. That is not a
  * limitation being worked around, it is the design — the sync pipeline carries

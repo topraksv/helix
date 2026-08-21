@@ -1,7 +1,7 @@
 # Graphify already honours .gitignore, so this file only excludes what is
 # tracked but is not Helix's own knowledge.
 #
-# The vendored skill bodies are 224 upstream Markdown files. They would
+# The vendored skill bodies are 223 upstream Markdown files. They would
 # outnumber every Helix source file and make community detection describe
 # their publishers' prose instead of this codebase. Their authority is
 # skills-lock.json, not a derived index.

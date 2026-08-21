@@ -215,8 +215,8 @@ export async function hasImportedData(userId: string): Promise<boolean> {
 }
 
 /**
- * Import parsed sheets 1:1 into the ledger. Categories are matched by name (or
- * created as columns), each year records its own ordered column set
+ * Import parsed sheets 1:1 into the ledger (spec §3.1e). Categories are matched
+ * by name (or created as columns), each year records its own ordered column set
  * (`column_years`), formula/comment breakdowns become itemized rows or a cell
  * note (see `planImportCell`), and the earliest month's opening balance seeds
  * the ledger anchor. Re-importing a year either replaces its prior batch or

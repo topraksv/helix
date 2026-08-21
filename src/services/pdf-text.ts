@@ -1,5 +1,5 @@
 /**
- * Reading the text out of a PDF, locally, with no new dependency.
+ * Reading the text out of a PDF, locally, with no new dependency (spec §3.1b).
  *
  * ## Why this exists at all
  *

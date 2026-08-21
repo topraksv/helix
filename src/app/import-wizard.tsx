@@ -1,10 +1,11 @@
 /**
  * Spreadsheet import wizard: pick an .xlsx/.xlsm/.csv → see a visual, example-
  * rich format guide → choose which years/columns to bring → import 1:1 into the
- * Mali Tablo. Handles multi-year workbooks (each year keeps its own columns),
- * formula/comment breakdowns, opening balance, and re-import of a year that
- * already has data. Parsing/mapping lives in services/spreadsheet-import +
- * data/repo; this screen only guides and confirms.
+ * Mali Tablo (spec §3.1e). Handles multi-year workbooks (each year keeps its
+ * own columns), formula/comment breakdowns, opening balance, and re-import of a
+ * year that already has data. Parsing/mapping lives in
+ * services/spreadsheet-import + data/repo; this screen only guides and
+ * confirms.
  */
 
 import React, { useEffect, useRef, useState } from "react";

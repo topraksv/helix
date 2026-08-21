@@ -47,7 +47,6 @@ supabase/.temp/
 !/docs/.obsidian/appearance.json
 !/docs/.obsidian/core-plugins.json
 !/docs/.obsidian/graph.json
-!/docs/.obsidian/hotkeys.json
 
 # Editor and OS debris
 .DS_Store
@@ -77,7 +76,7 @@ supabase/.temp/
 !/.agents/skills/
 !/.agents/skills/**
 
-# The code map graphify exports into the docs vault: ~2,900 generated notes,
+# The code map graphify exports into the docs vault: ~3,250 generated notes,
 # rebuilt from the AST by `npm run graph:refresh` and never tracked.
 /docs/graph
 

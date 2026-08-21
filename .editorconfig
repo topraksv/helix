@@ -1,0 +1,33 @@
+# The formatting the tree already has, stated so an editor keeps it.
+#
+# There is no Prettier or Biome here and `eslint-config-expo` carries no
+# formatting rule, yet every hand-written file agrees: 2-space indent, LF,
+# UTF-8, no trailing whitespace, a final newline, and double-quoted strings
+# throughout. That consistency was measured, not assumed, and this file is what
+# turns the measurement into something a fresh clone reproduces on its own.
+# It is not a gate: nothing in `npm run verify` reads it, so it cannot fail a
+# build — it only stops an editor from introducing the first divergence.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Generated files, excluded because their generator decides how they end.
+# Drizzle writes 9 of the 13 migrations without a final newline and the
+# Obsidian exporter writes all of its JSON that way; adding one on save would
+# produce a diff against the tool on every regeneration.
+[src/db/migrations/**.sql]
+insert_final_newline = false
+
+[docs/.obsidian/*.json]
+insert_final_newline = false
+
+# Binary assets have no lines to normalise.
+[*.{png,ttf,ico}]
+insert_final_newline = false
+trim_trailing_whitespace = false

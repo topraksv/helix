@@ -1,5 +1,5 @@
 /**
- * Setting and clearing the contextual colours on Mali Tablo.
+ * Setting and clearing the contextual colours on Mali Tablo (spec §3.1d).
  *
  * One row per target, addressed by a deterministic id, so re-colouring the
  * same cell updates it on every device instead of stacking marks that

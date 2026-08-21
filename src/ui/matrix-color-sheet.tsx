@@ -20,7 +20,7 @@ import {
 import { matrixColorStyle, radius, spacing, themeShadow, type, useTheme } from "./theme";
 
 /**
- * Choosing a contextual colour for a row, a column or one cell.
+ * Choosing a contextual colour for a row, a column or one cell (spec §3.1d).
  *
  * Opened by holding the thing being marked, not by a button in the middle of
  * the screen: the target IS the gesture's context, so the sheet never has to

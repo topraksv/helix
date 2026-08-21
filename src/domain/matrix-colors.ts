@@ -1,5 +1,5 @@
 /**
- * Contextual colours on Mali Tablo rows, columns and cells.
+ * Contextual colours on Mali Tablo rows, columns and cells (spec §3.1d).
  *
  * ## Four slots, and why they are named after their hue
  *

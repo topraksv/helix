@@ -1,5 +1,5 @@
 /**
- * Documents kept beside a transaction.
+ * Documents kept beside a transaction (spec §3.1c).
  *
  * The row and the file are written as a pair, and the ORDER matters in both
  * directions: the file lands before the row that names it (a row pointing at

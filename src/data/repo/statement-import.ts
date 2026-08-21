@@ -1,5 +1,5 @@
 /**
- * Committing the statement rows a person accepted.
+ * Committing the statement rows a person accepted (spec §3.1b).
  *
  * Everything here happens AFTER a review: this module never decides what to
  * import, only how to write what was already approved. Two properties carry

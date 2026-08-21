@@ -187,3 +187,43 @@ describe("module graph", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * `SPEC.md` names the files that cite each section; this checks they do.
+ *
+ * The citation is how you get from a module to the rules it implements: every
+ * module header in the older layers carries one, as `(spec §2.7)`. `AGENTS.md`
+ * states the relationship in the other direction too — SPEC reconstructs "the
+ * product sections cited by source files" — so a section nobody cites is a
+ * section the code cannot lead you to.
+ *
+ * This is not a guard against a hypothetical. Sixteen files had already
+ * drifted when it was written: §3.1b–§3.1g were added for statement import,
+ * attachments, marks, workbook columns, card cycles and ledger documents, and
+ * each one listed its citing files without any of them citing back. The ten
+ * older sections were at 24/24, which is what made the gap legible as drift
+ * rather than as a convention nobody follows.
+ */
+describe("spec citations", () => {
+  const spec = readFileSync(join(ROOT, "docs/SPEC.md"), "utf8");
+  /** `## §3.1b — Card statement import (RECONSTRUCTED)` → id plus its body. */
+  const sections = spec.split(/^## /m).slice(1)
+    .flatMap((block) => {
+      const id = (block.match(/^(§[0-9]+(?:\.[0-9]+)?[a-z]?)/) ?? [])[1];
+      return id ? [{ id, cites: [...block.matchAll(/^- `([^`]+)`$/gm)].map((match) => match[1] ?? "") }] : [];
+    });
+
+  it("finds the sections and their citing-file lists", () => {
+    // Same floor rule `sourceFiles` applies: a parse that silently returns
+    // nothing would make every assertion below pass while checking nothing.
+    expect(sections.length).toBeGreaterThanOrEqual(16);
+    expect(sections.every((section) => section.cites.length > 0)).toBe(true);
+  });
+
+  it("has every cited file carry its own section marker", () => {
+    const offenders = sections.flatMap((section) => section.cites
+      .filter((file) => !readFileSync(join(ROOT, file), "utf8").includes(section.id))
+      .map((file) => `${file} is missing ${section.id}`));
+    expect(offenders).toEqual([]);
+  });
+});

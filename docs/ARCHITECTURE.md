@@ -60,6 +60,14 @@ evidence an approval must produce.
 - A production web export and an EAS update must clear Metro's cache. Its key
   does not include `EXPO_PUBLIC_*`, so a local-only E2E export can otherwise
   remove Supabase configuration from a later production bundle.
+- `src/db/migrations/meta/` has no snapshot for the hand-written data
+  migrations (0010 and 0012), and that gap is correct rather than damage.
+  Drizzle only writes a snapshot for a migration it generated, and those two
+  are pure `UPDATE`s that change no schema. `drizzle-kit` sorts the snapshot
+  filenames and diffs against the last one — `0011`, which is the current
+  schema — while the next index comes from `_journal.json`'s last entry plus
+  one. Neither reads the missing files, so `db:generate` still emits `0013`
+  against the right baseline.
 
 The byte-identical pairs `assets/images/splash-icon{,-dark}.png` and
 `assets/brand/symbol-{light,dark}-t.png` are intentional. Splash files are baked
@@ -190,9 +198,9 @@ project install writes an unlocked directory into `.agents/skills/` or
 `npx skills` lockfile cannot describe. `graphify update .` rebuilds
 `graphify-out/` from the AST in seconds with no network call and no API key, so
 the output is regenerated rather than tracked. `.graphifyignore` holds the
-vendored skill bodies out of the scan; without it their 224 files outnumber
-Helix's own source and the detected communities describe their publishers'
-prose instead of this codebase.
+vendored skill bodies out of the scan; without it their 223 Markdown files
+outnumber Helix's own source and the detected communities describe their
+publishers' prose instead of this codebase.
 
 `graphify hook install` writes `.git/hooks/post-commit` and `post-checkout`,
 which rebuild the graph in a detached process. Those hooks live in `.git/`, so
@@ -201,19 +209,20 @@ they are per-checkout and invisible to Git: an unexplained rebuild of
 never refresh on its own. `GRAPHIFY_SKIP_HOOK=1` disables both.
 
 **Obsidian** opens `docs/` as the vault, and the graph export lands in
-`docs/graph`, so one vault holds these seven documents beside a note for every
+`docs/graph`, so one vault holds these eight documents beside a note for every
 code symbol. Measured: about twenty-five seconds of indexing on open, settling
 near 700 MB resident at idle. That is the price of having the codebase
 searchable next to the prose describing it, and it is why the export goes here
 rather than into a second vault you switch to.
 
 The repository root is not the vault, and the reason is content rather than
-cost: of the ~4,900 Markdown files under it, all but eleven are `node_modules`
+cost: of the ~5,300 Markdown files under it, all but twelve are `node_modules`
 READMEs, vendored skill bodies, or the graph export already reachable through
 `docs/graph`. Obsidian's excluded-files setting only de-emphasises a path in
 search, it does not stop indexing, so no configuration keeps them out.
-Obsidian also has no concept of a `.ts` file: no vault scope turns the 363
-source files into notes, and only the graph export represents them at all.
+Obsidian also has no concept of a `.ts` file: no vault scope turns the 392
+tracked `.ts`/`.tsx` files into notes, and only the graph export represents
+them at all.
 
 `AGENTS.md`, `CLAUDE.md`, `README.md`, and `e2e/native/README.md` stay outside
 the vault; each is loaded by a tool or read beside the code it describes. The

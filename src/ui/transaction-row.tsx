@@ -2,6 +2,8 @@
  * Shared transaction row for the virtualized lists (month detail, cell editor,
  * analysis search). Pure layout: callers compose the date/meta text and decide
  * the surrounding card styling, so the row stays cheap to mount in a FlatList.
+ * A row carrying documents says so here rather than only on the detail screen
+ * (spec §3.1g).
  */
 
 import React from "react";
