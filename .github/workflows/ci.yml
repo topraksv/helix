@@ -114,6 +114,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # This job runs the unit suite whenever the full gate does NOT, and
+          # that suite asserts the mutation selector against real history from
+          # a fixed commit. A depth-one checkout does not contain it, so
+          # `git diff <base>..HEAD` fails and the selector throws rather than
+          # answering — the same reason `classify` and `full-gate` above take
+          # the full history. It stayed hidden because every push until now was
+          # high-risk, which skips the step below and runs the suite in
+          # `full-gate` instead; the first docs-only push to main found it.
+          fetch-depth: 0
       # Expo SDK 54 tooling is incompatible with Node 24/26 native TypeScript
       # stripping (it chokes on expo-modules-core's src/index.ts). Node 22 is
       # the newest LTS the SDK 54 build supports.
