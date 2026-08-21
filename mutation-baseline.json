@@ -18,6 +18,15 @@
       "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
       "measuredDate": "2026-08-20"
     },
+    "src/data/repo/attachments.ts": {
+      "score": 97.06,
+      "killed": 33,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
+    },
     "src/data/repo/categories.ts": {
       "score": 98.97,
       "killed": 96,
@@ -108,6 +117,15 @@
       "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
       "measuredDate": "2026-08-19"
     },
+    "src/data/repo/onboarding.ts": {
+      "score": 38.28,
+      "killed": 80,
+      "timeout": 0,
+      "survived": 114,
+      "noCoverage": 15,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
+    },
     "src/data/repo/rule-validation.ts": {
       "score": 100,
       "killed": 13,
@@ -127,13 +145,22 @@
       "measuredDate": "2026-08-20"
     },
     "src/data/repo/transactions.ts": {
-      "score": 97.55,
-      "killed": 199,
+      "score": 97.99,
+      "killed": 195,
       "timeout": 0,
-      "survived": 5,
+      "survived": 4,
       "noCoverage": 0,
-      "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
-      "measuredDate": "2026-08-20"
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
+    },
+    "src/domain/analytics.ts": {
+      "score": 99.21,
+      "killed": 126,
+      "timeout": 0,
+      "survived": 1,
+      "noCoverage": 0,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
     },
     "src/domain/card-statements.ts": {
       "score": 90.53,
@@ -143,6 +170,15 @@
       "noCoverage": 0,
       "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
       "measuredDate": "2026-08-19"
+    },
+    "src/domain/expected.ts": {
+      "score": 97.59,
+      "killed": 161,
+      "timeout": 1,
+      "survived": 4,
+      "noCoverage": 0,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
     },
     "src/domain/investments.ts": {
       "score": 98.87,
@@ -154,13 +190,13 @@
       "measuredDate": "2026-08-20"
     },
     "src/domain/matrix-colors.ts": {
-      "score": 85.71,
-      "killed": 138,
+      "score": 88.31,
+      "killed": 136,
       "timeout": 0,
-      "survived": 22,
-      "noCoverage": 1,
-      "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
-      "measuredDate": "2026-08-19"
+      "survived": 18,
+      "noCoverage": 0,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
     },
     "src/domain/provenance.ts": {
       "score": 100,
@@ -189,14 +225,32 @@
       "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
       "measuredDate": "2026-08-19"
     },
-    "src/services/backup-validation.ts": {
-      "score": 34.33,
-      "killed": 461,
+    "src/domain/upcoming.ts": {
+      "score": 98.68,
+      "killed": 149,
       "timeout": 0,
-      "survived": 443,
-      "noCoverage": 439,
-      "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
-      "measuredDate": "2026-08-19"
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
+    },
+    "src/services/backup-remap.ts": {
+      "score": 60.32,
+      "killed": 265,
+      "timeout": 1,
+      "survived": 117,
+      "noCoverage": 58,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
+    },
+    "src/services/backup-validation.ts": {
+      "score": 65.57,
+      "killed": 815,
+      "timeout": 0,
+      "survived": 339,
+      "noCoverage": 89,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
     },
     "src/services/export-import.ts": {
       "score": 30.38,
@@ -215,6 +269,15 @@
       "noCoverage": 39,
       "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
       "measuredDate": "2026-08-19"
+    },
+    "src/sync/outbound-validation.ts": {
+      "score": 55.71,
+      "killed": 78,
+      "timeout": 0,
+      "survived": 39,
+      "noCoverage": 23,
+      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "measuredDate": "2026-08-21"
     }
   }
 }
