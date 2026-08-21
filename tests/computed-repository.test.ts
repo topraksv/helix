@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,30 +7,10 @@ const harness = vi.hoisted(() => ({
   nextId: 0,
 }));
 
-vi.mock("../src/db/client", () => ({
-  getSqliteAsync: async () => {
-    harness.dbAcquisitions += 1;
-    return {
-      getFirstAsync: async (sql: string, args: unknown[] = []) =>
-        harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-      getAllAsync: async (sql: string, args: unknown[] = []) =>
-        harness.db!.prepare(sql).all(...(args as never[])),
-      runAsync: async (sql: string, args: unknown[] = []) => ({
-        changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-      }),
-    };
-  },
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+vi.mock("../src/db/client", async () => {
+  const { sqliteClientMock } = await import("./helpers");
+  return sqliteClientMock(() => harness.db!, () => { harness.dbAcquisitions += 1; });
+});
 
 vi.mock("../src/db/ids", () => ({
   newId: () => `computed-${String(++harness.nextId).padStart(2, "0")}`,
@@ -56,21 +34,11 @@ import {
   setComputedColumnsHidden,
 } from "../src/data/repo/computed";
 import { fromDbShape } from "../src/db/mutations";
+import { migrationStatements } from "./helpers";
 
 const USER = "computed-user";
 const OTHER_USER = "other-user";
 const NOW = "2026-08-13T09:00:00.000Z";
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) =>
-    readFileSync(join(migrationsDir, name), "utf8").split(
-      "--> statement-breakpoint",
-    ),
-  )
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 type ComputedColumnRow = Parameters<typeof reorderComputedColumns>[1][number];
 
@@ -123,7 +91,7 @@ describe("computed-column repository persistence", () => {
     harness.dbAcquisitions = 0;
     harness.nextId = 0;
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
   });
 
   afterEach(() => {

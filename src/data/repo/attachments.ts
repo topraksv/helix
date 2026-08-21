@@ -84,30 +84,6 @@ export async function addAttachment(userId: string, input: NewAttachment): Promi
   return id;
 }
 
-export async function listAttachments(userId: string, transactionId: string): Promise<AttachmentRow[]> {
-  const sqlite = await getSqliteAsync();
-  const rows = await sqlite.getAllAsync<Record<string, unknown>>(
-    `SELECT * FROM attachments
-     WHERE user_id = ? AND transaction_id = ? AND deleted_at IS NULL
-     ORDER BY created_at ASC`,
-    [userId, transactionId],
-  );
-  // A stored name that does not match what this app writes is refused at read
-  // time too, not only at write time: the row may have arrived from sync or a
-  // restored backup, and it is about to become a filesystem path.
-  return rows
-    .filter((row) => isStoredAttachmentName(row.stored_name))
-    .map((row) => ({
-      id: String(row.id),
-      transactionId: String(row.transaction_id),
-      fileName: String(row.file_name),
-      storedName: String(row.stored_name),
-      mimeType: String(row.mime_type),
-      byteSize: Number(row.byte_size),
-      kind: isAttachmentKind(row.kind) ? row.kind : "other",
-    }));
-}
-
 export interface AttachmentSnapshot {
   row: Record<string, unknown>;
   storedName: string;

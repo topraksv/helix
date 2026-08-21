@@ -11,33 +11,15 @@
  * The workbook is synthetic. No personal financial data belongs in this repo.
  */
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null, nextId: 0 }));
 
-vi.mock("../src/db/client", () => ({
-  getSqliteAsync: async () => ({
-    getFirstAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-    getAllAsync: async (sql: string, args: unknown[] = []) => harness.db!.prepare(sql).all(...(args as never[])),
-    runAsync: async (sql: string, args: unknown[] = []) => ({
-      changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-    }),
-  }),
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+vi.mock("../src/db/client", async () => {
+  const { sqliteClientMock } = await import("./helpers");
+  return sqliteClientMock(() => harness.db!);
+});
 
 vi.mock("../src/db/ids", () => ({
   newId: () => `0198f2aa-0000-7000-8000-${String(++harness.nextId).padStart(12, "0")}`,
@@ -53,18 +35,12 @@ import type { ParsedSheet } from "../src/services/spreadsheet-import";
 import { currentBalance } from "../src/domain/balance";
 import type { TxLike } from "../src/domain/types";
 import type { MonthKey } from "../src/domain/dates";
+import { migrationStatements } from "./helpers";
 
 const USER = "import-user";
 const NOW = "2026-08-18T09:00:00.000Z";
 const OPENING_MINOR = 10_000_00;
 
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) => readFileSync(join(migrationsDir, name), "utf8").split("--> statement-breakpoint"))
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 function seed(): void {
   harness.db!.prepare(
@@ -135,7 +111,7 @@ function balanceNow(): number {
 describe("importing the same workbook twice", () => {
   beforeEach(() => {
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
     harness.nextId = 0;
     seed();
   });

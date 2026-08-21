@@ -8,8 +8,6 @@
  * "restore my backup on my other account" actually does.
  */
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,21 +15,10 @@ const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null, nextId: 0 }
 
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 vi.mock("expo-file-system", () => ({ File: class {}, Paths: { cache: "/tmp" } }));
-vi.mock("../src/db/client", () => ({
-  getSqliteAsync: async () => ({
-    getFirstAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-    getAllAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).all(...(args as never[])),
-    runAsync: async (sql: string, args: unknown[] = []) => ({
-      changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-    }),
-  }),
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try { await task(); harness.db!.exec("COMMIT"); } catch (error) { harness.db!.exec("ROLLBACK"); throw error; }
-  },
-}));
+vi.mock("../src/db/client", async () => {
+  const { sqliteClientMock } = await import("./helpers");
+  return sqliteClientMock(() => harness.db!);
+});
 // Ids have to be REAL uuids here: the backup validator rejects any id or
 // `*_id` column that is not one, so a `row-0001` style stub would fail the
 // import for reasons the product never has.
@@ -67,17 +54,11 @@ import { deterministicId, naturalKeys } from "../src/db/ids";
 import { resetLocalWorkspace, writeSetting } from "../src/db/mutations";
 import { buildIdRemap, isDeterministicId } from "../src/services/backup-remap";
 import { buildExportText, importBundle, parseExportBundleText } from "../src/services/export-import";
+import { migrationStatements } from "./helpers";
 
 // Accounts are uuids in the product; the validator enforces that too.
 const SOURCE_USER = "11111111-1111-4111-8111-111111111111";
 const TARGET_USER = "22222222-2222-4222-8222-222222222222";
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) => readFileSync(join(migrationsDir, name), "utf8").split("--> statement-breakpoint"))
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 function countFor(table: string, userId: string): number {
   const row = harness.db!.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ?`).get(userId) as { n: number };
@@ -109,7 +90,7 @@ describe("backup round trip", () => {
     harness.db?.close();
     harness.nextId = 0;
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-10T12:00:00.000Z"));
   });

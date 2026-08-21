@@ -359,6 +359,32 @@ function MeasuredCollapse({
 }
 
 /**
+ * 0 → 1 on the shared entrance spring, or straight to 1 under Reduce Motion.
+ *
+ * `SuccessPop` and `SlideUp` differ only in the transform they map it onto and
+ * held a byte-identical copy each, so the spring, the driver choice and the
+ * Reduce Motion short-circuit could drift apart. One copy cannot.
+ */
+function useEntranceProgress(): Animated.Value {
+  const reducedMotion = useReducedMotion();
+  const progress = useRef(new Animated.Value(reducedMotion ? 1 : 0)).current;
+  useEffect(() => {
+    if (reducedMotion) {
+      progress.setValue(1);
+      return;
+    }
+    const animation = Animated.spring(progress, {
+      toValue: 1,
+      useNativeDriver: Platform.OS !== "web",
+      ...motion.spring.entrance,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, reducedMotion]);
+  return progress;
+}
+
+/**
  * Native collapse deliberately animates only compositor properties.
  *
  * Driving height on the JS thread made a fast open/close sequence compete
@@ -438,21 +464,7 @@ function NativeCollapse({
  * and the only other feedback would have been the screen changing.
  */
 export function SuccessPop({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  const reducedMotion = useReducedMotion();
-  const progress = useRef(new Animated.Value(reducedMotion ? 1 : 0)).current;
-  useEffect(() => {
-    if (reducedMotion) {
-      progress.setValue(1);
-      return;
-    }
-    const animation = Animated.spring(progress, {
-      toValue: 1,
-      useNativeDriver: Platform.OS !== "web",
-      ...motion.spring.entrance,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [progress, reducedMotion]);
+  const progress = useEntranceProgress();
   return (
     <Animated.View
       style={[
@@ -490,21 +502,7 @@ export function SlideUp({
   style?: StyleProp<ViewStyle>;
   distance?: number;
 }) {
-  const reducedMotion = useReducedMotion();
-  const progress = useRef(new Animated.Value(reducedMotion ? 1 : 0)).current;
-  useEffect(() => {
-    if (reducedMotion) {
-      progress.setValue(1);
-      return;
-    }
-    const animation = Animated.spring(progress, {
-      toValue: 1,
-      useNativeDriver: Platform.OS !== "web",
-      ...motion.spring.entrance,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [progress, reducedMotion]);
+  const progress = useEntranceProgress();
   return (
     <Animated.View
       style={[

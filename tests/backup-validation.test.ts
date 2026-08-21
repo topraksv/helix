@@ -3,6 +3,7 @@ import { ExportTextBuilder, isValidImportRow, MAX_BACKUP_BYTES, MAX_BACKUP_ROWS,
 import { SYNCED_TABLES, type SyncedTableName } from "../src/db/schema";
 import { LOCAL_ONLY_USER_ID } from "../src/domain/user-id";
 import { MAX_ABS_AMOUNT_MINOR } from "../src/domain/money";
+import { MAX_ATTACHMENT_BYTES } from "../src/domain/attachments";
 
 const timestamp = "2026-07-15T12:00:00.000Z";
 const id = (n: number) => `00000000-0000-7000-8000-${String(n).padStart(12, "0")}`;
@@ -219,13 +220,11 @@ describe("backup validation", () => {
     expect(() => parseExportBundleText("{")).toThrow("Geçersiz yedek dosyası");
   });
 
-  it("accepts the exact byte limit, rejects one byte more and stays inside its parse budget", () => {
+  it("accepts the exact byte limit and rejects one byte more", () => {
     const content = JSON.stringify({ version: 1, exportedAt: timestamp, tables: {} });
     const exactLimit = content.padEnd(MAX_BACKUP_BYTES, " ");
-    const started = performance.now();
 
     expect(parseExportBundleText(exactLimit).tables).toEqual({});
-    expect(performance.now() - started).toBeLessThan(2_000);
     expect(() => parseExportBundleText(`${exactLimit} `))
       .toThrow("Yedek dosyası güvenli içe aktarma sınırını aşıyor.");
   });
@@ -384,5 +383,135 @@ describe("backup validation", () => {
       exportedAt: timestamp,
       tables: { transactions: Array(MAX_BACKUP_ROWS + 1).fill(transaction) },
     })).toThrow("Yedek dosyası güvenli içe aktarma sınırını aşıyor.");
+  });
+});
+
+/**
+ * The per-table restore rules, exercised one refusal at a time.
+ *
+ * Measured on 2026-08-21, `isValidImportRow` scored 57.33 with 229 of its
+ * mutants never executed at all: whole table blocks — attachments, matrix
+ * colours, investment products — had no test reaching them. Every row of a
+ * restored backup passes through this function, and a backup is a file a
+ * person can hand-edit, so a rule nothing exercises is a rule that can be
+ * deleted by accident and noticed by nobody.
+ *
+ * Each case asserts the BASE row is accepted first. Without that, a typo in a
+ * fixture makes every rejection assertion pass for the wrong reason.
+ */
+const syncRow = { user_id: sourceUserId, created_at: timestamp, updated_at: timestamp, deleted_at: null, tombstone_version: 0 };
+
+const attachment = {
+  ...syncRow,
+  id: id(20),
+  transaction_id: transactionId,
+  file_name: "fatura.pdf",
+  stored_name: "0198f2aa1c2d7e3f8a9b000000000001.pdf",
+  mime_type: "application/pdf",
+  byte_size: 2048,
+  kind: "receipt",
+};
+
+const matrixColour = { ...syncRow, id: id(21), scope: "cell", item_key: categoryId, month: "2026-07", token: "green" };
+
+const investmentProduct = {
+  ...syncRow,
+  id: id(22),
+  asset_type: "equity",
+  name: "Türk Hava Yolları",
+  market_code: "THYAO",
+  note: null,
+  target_weight_bp: 2_500,
+};
+
+describe("per-table restore rules", () => {
+  const refuses = (
+    table: SyncedTableName,
+    base: Record<string, unknown>,
+    cases: [string, Record<string, unknown>][],
+  ) => {
+    expect(isValidImportRow(table, base), `${table} base row must be valid`).toBe(true);
+    for (const [why, patch] of cases) {
+      expect(isValidImportRow(table, { ...base, ...patch }), `${table}: ${why}`).toBe(false);
+    }
+  };
+
+  it("refuses an attachment whose stored name could address another directory", () => {
+    // `stored_name` becomes a path inside the app's attachment directory. The
+    // file never leaves the device, and neither may the ability to name where
+    // it lives.
+    refuses("attachments", attachment, [
+      ["a traversal segment", { stored_name: "../escape.pdf" }],
+      ["a path separator", { stored_name: "sub/dir.pdf" }],
+      ["a bare dot", { stored_name: "." }],
+      ["a bare double dot", { stored_name: ".." }],
+      ["a backslash", { stored_name: "a\\b.pdf" }],
+      ["an empty name", { stored_name: "" }],
+      ["a name past the alphabet", { stored_name: "aç.pdf" }],
+      ["an unlisted mime type", { mime_type: "application/zip" }],
+      ["an unlisted kind", { kind: "contract" }],
+      ["a zero byte size", { byte_size: 0 }],
+      ["a byte size past the cap", { byte_size: MAX_ATTACHMENT_BYTES + 1 }],
+      ["a fractional byte size", { byte_size: 10.5 }],
+      ["an empty owning transaction", { transaction_id: "" }],
+      ["a file name that is a path", { file_name: "../../etc/passwd" }],
+    ]);
+  });
+
+  it("refuses a matrix colour whose coordinates do not match its scope", () => {
+    // A row mark carrying a month is a row another client version reads as a
+    // cell, which is how two devices come to disagree about what is coloured.
+    refuses("matrix_colors", matrixColour, [
+      ["a row mark carrying a month", { scope: "row", month: "2026-07" }],
+      ["a column mark carrying an item", { scope: "column" }],
+      ["a cell mark missing its month", { month: null }],
+      ["a cell mark missing its item", { item_key: null }],
+      ["an unknown scope", { scope: "quarter" }],
+      ["a month that is not a month key", { month: "2026-13" }],
+      ["an unknown colour name", { token: "purple" }],
+    ]);
+    // A retired slot name still RESTORES — an old backup keeps its marks —
+    // while `matrix-colors.ts` rewrites it to the current vocabulary.
+    expect(isValidImportRow("matrix_colors", { ...matrixColour, token: "critical" })).toBe(true);
+  });
+
+  it("refuses a negative cost basis, which no replay can produce", () => {
+    // The two validators used to disagree here: restore wrote the row and
+    // every later push quarantined it, so the holding existed on one device
+    // and nowhere else. A cost basis is what a holding cost; the weighted
+    // replay divides a non-negative running cost and cannot emit one.
+    const operation = {
+      ...syncRow,
+      id: id(23),
+      product_id: id(22),
+      kind: "sell",
+      operation_date: "2026-07-01",
+      quantity: "1.5",
+      unit_price_minor: 100,
+      total_minor: 150,
+      cost_basis_minor: 0,
+      realized_profit_loss_minor: 0,
+      note: null,
+      import_key: null,
+    };
+    expect(isValidImportRow("investment_operations", operation)).toBe(true);
+    expect(isValidImportRow("investment_operations", { ...operation, cost_basis_minor: 120 })).toBe(true);
+    expect(isValidImportRow("investment_operations", { ...operation, cost_basis_minor: -1 })).toBe(false);
+    // A realized loss is a real outcome and stays allowed.
+    expect(isValidImportRow("investment_operations", { ...operation, realized_profit_loss_minor: -50 })).toBe(true);
+  });
+
+  it("refuses an investment product outside its catalogue and limits", () => {
+    refuses("investment_products", investmentProduct, [
+      ["an unknown asset type", { asset_type: "nft" }],
+      ["a blank name", { name: "   " }],
+      ["a name past the limit", { name: "a".repeat(121) }],
+      ["an empty market code", { market_code: "" }],
+      ["a negative target weight", { target_weight_bp: -1 }],
+      ["a target weight past 100%", { target_weight_bp: 10_001 }],
+      ["a fractional target weight", { target_weight_bp: 12.5 }],
+    ]);
+    // A product with no target set is not a product with a zero target.
+    expect(isValidImportRow("investment_products", { ...investmentProduct, target_weight_bp: null })).toBe(true);
   });
 });

@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,30 +7,10 @@ const harness = vi.hoisted(() => ({
   dbAcquisitions: 0,
 }));
 
-vi.mock("../src/db/client", () => ({
-  getSqliteAsync: async () => {
-    harness.dbAcquisitions += 1;
-    return {
-      getFirstAsync: async (sql: string, args: unknown[] = []) =>
-        harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-      getAllAsync: async (sql: string, args: unknown[] = []) =>
-        harness.db!.prepare(sql).all(...(args as never[])),
-      runAsync: async (sql: string, args: unknown[] = []) => ({
-        changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-      }),
-    };
-  },
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+vi.mock("../src/db/client", async () => {
+  const { sqliteClientMock } = await import("./helpers");
+  return sqliteClientMock(() => harness.db!, () => { harness.dbAcquisitions += 1; });
+});
 
 vi.mock("../src/db/ids", () => ({
   newId: () => `transaction-${String(++harness.nextId).padStart(2, "0")}`,
@@ -57,7 +35,6 @@ import {
   assertSignedTransactionAmounts,
   assertTransactionCategory,
   bulkMonthEntry,
-  countTransactionsForCategory,
   deleteBalanceAdjustment,
   deleteTransaction,
   livePaymentSource,
@@ -71,21 +48,11 @@ import {
 import { CreditCardCycleRequiredError } from "../src/data/repo/errors";
 import { fromDbShape } from "../src/db/mutations";
 import { MAX_ABS_AMOUNT_MINOR } from "../src/domain/money";
+import { migrationStatements } from "./helpers";
 
 const USER = "transaction-user";
 const OTHER_USER = "other-user";
 const NOW = "2026-08-13T09:00:00.000Z";
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) =>
-    readFileSync(join(migrationsDir, name), "utf8").split(
-      "--> statement-breakpoint",
-    ),
-  )
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 function seedPerson(
   id: string,
@@ -216,7 +183,7 @@ describe("transaction repository persistence", () => {
     harness.nextId = 0;
     harness.dbAcquisitions = 0;
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
     seedPerson("self");
     seedPerson("other-self", OTHER_USER);
     seedPerson("deleted-self", USER, "2026-08-12T00:00:00.000Z");
@@ -723,19 +690,6 @@ describe("transaction repository persistence", () => {
       tombstone_version: 1,
     });
     await expect(deleteBalanceAdjustment(OTHER_USER, id)).resolves.toBeNull();
-  });
-
-  it("counts only live owned category references", async () => {
-    const first = await addTransaction(USER, transactionInput());
-    await addTransaction(USER, transactionInput());
-    await addTransaction(USER, transactionInput({ categoryId: "income", type: "income" }));
-    seedTransaction("foreign-count", OTHER_USER);
-    await deleteTransaction(USER, first);
-
-    await expect(countTransactionsForCategory(USER, "expense")).resolves.toBe(1);
-    await expect(countTransactionsForCategory(USER, "income")).resolves.toBe(1);
-    await expect(countTransactionsForCategory(OTHER_USER, "other-expense")).resolves.toBe(1);
-    await expect(countTransactionsForCategory(USER, "missing")).resolves.toBe(0);
   });
 
   it("persists past-month aggregates and rejects invalid, current and future batches atomically", async () => {

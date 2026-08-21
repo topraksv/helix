@@ -8,7 +8,7 @@ import { ATTACHMENT_KINDS, ATTACHMENT_MIME_TYPES, MAX_ATTACHMENT_BYTES, isSafeAt
 import { normalizeMatrixColorToken } from "../domain/matrix-colors";
 import { TRANSACTION_ORIGINS } from "../domain/types";
 import { isValidCardCycle } from "../domain/card-statements";
-import { isMonthKey, todayISO } from "../domain/dates";
+import { isMonthKey, todayISO, type ISODate } from "../domain/dates";
 import { isSupportedCurrency } from "../domain/fx-provider";
 import { tr } from "../i18n/tr";
 import { LOCAL_ONLY_USER_ID } from "../domain/user-id";
@@ -135,6 +135,19 @@ export function isValidImportRow(
   // effect; quarantining it would instead keep the old cloud row alive.
   const enforceInputLimits = options.enforceInputLimits === true && raw.deleted_at == null;
   if (typeof raw.id !== "string" || !UUID_RE.test(raw.id)) return false;
+  return matchesDeclaredColumns(table, raw)
+    && hasWellFormedFields(raw)
+    && (TABLE_RULES[table]?.(raw, { enforceInputLimits, today }) ?? true);
+}
+
+/**
+ * Every column the schema declares, checked against what it declares.
+ *
+ * The exemptions are all the same shape: a backup written before a column
+ * existed simply has no key for it, and the database default is the
+ * pre-feature meaning. An absent key is therefore not a missing value.
+ */
+function matchesDeclaredColumns(table: SyncedTableName, raw: Record<string, unknown>): boolean {
   for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
     const value = raw[column.name];
     if (value == null) {
@@ -164,10 +177,33 @@ export function isValidImportRow(
         && raw.deleted_at != null
         && typeof value === "string"
         && LEGACY_EXPECTED_PAYMENT_KINDS.includes(value as (typeof LEGACY_EXPECTED_PAYMENT_KINDS)[number]);
-      if (!legacyExpectedKind) return false;
+      // A mark written before the slots were renamed to their hues carries a
+      // meaning-name (`critical`, `success`, …) that is no longer in the
+      // column's enum. Two other places already expect exactly that — the
+      // per-table rule below normalises it, and `importBundle` rewrites it on
+      // the way in — but this check ran first and refused the row, and one
+      // refused row rejects the WHOLE backup. An older file with any coloured
+      // cell was therefore unrestorable. The narrow set is what keeps this an
+      // exemption for known history rather than a hole.
+      const legacyMatrixColour = table === "matrix_colors"
+        && column.name === "token"
+        && normalizeMatrixColorToken(value) !== null;
+      if (!legacyExpectedKind && !legacyMatrixColour) return false;
     }
     if (typeof value === "string" && textLength(value) > 50_000) return false;
   }
+  return true;
+}
+
+/**
+ * The field shapes every table shares, whatever the schema says about them.
+ *
+ * Keyed by NAME rather than by column, because these are conventions the whole
+ * codebase relies on — an `_id` suffix is a UUID, a `_date` is a calendar day,
+ * a `_month` is a month key — and a row arriving from a hand-edited file can
+ * carry a key the schema does not declare at all.
+ */
+function hasWellFormedFields(raw: Record<string, unknown>): boolean {
   for (const [key, value] of Object.entries(raw)) {
     if (key === "user_id" && value === LOCAL_ONLY_USER_ID) continue;
     if ((key === "id" || key.endsWith("_id")) && value != null && (typeof value !== "string" || !UUID_RE.test(value))) return false;
@@ -178,9 +214,9 @@ export function isValidImportRow(
   for (const key of DATE_COLUMNS) {
     if (key in raw && raw[key] != null && !isIsoDate(raw[key])) return false;
   }
-  if ("start_month" in raw && !isMonthKey(raw.start_month)) return false;
-  if ("month" in raw && !isMonthKey(raw.month)) return false;
-  if ("period_month" in raw && !isMonthKey(raw.period_month)) return false;
+  for (const key of ["start_month", "month", "period_month"]) {
+    if (key in raw && !isMonthKey(raw[key])) return false;
+  }
   if ("currency" in raw && !isSupportedCurrency(raw.currency)) return false;
   if (
     "tombstone_version" in raw &&
@@ -190,15 +226,41 @@ export function isValidImportRow(
     const value = raw[key];
     if (value != null && (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 31)) return false;
   }
-  if (table === "settings") {
+  return true;
+}
+
+interface TableRuleContext {
+  enforceInputLimits: boolean;
+  today: ISODate;
+}
+
+/**
+ * The rules that belong to one table and to nowhere else.
+ *
+ * Everything above applies to every row: the id shape, the column types the
+ * schema declares, the timestamp and date columns, the month keys, the
+ * currency. What is left is per-table, and it used to be twenty `if (table
+ * === …)` blocks inline — with `recurring_incomes` in three of them and
+ * `categories`, `payment_sources` and `balance_adjustments` in two each, so
+ * reading "what does a restore require of an income rule" meant finding all
+ * three and hoping there was not a fourth.
+ *
+ * One entry per table, and the map is keyed by `SyncedTableName`, so a new
+ * synced table is a decision made here rather than a table that quietly has
+ * no rules. A table with nothing table-specific to say is simply absent.
+ */
+const TABLE_RULES: Partial<Record<SyncedTableName, (raw: Record<string, unknown>, ctx: TableRuleContext) => boolean>> = {
+  settings: (raw, { enforceInputLimits }) => {
     if (enforceInputLimits && (!requiredText(raw.key, 120) || !optionalText(raw.value, 50_000))) return false;
     try {
       JSON.parse(String(raw.value));
     } catch {
       return false;
     }
-  }
-  if (table === "computed_columns") {
+    return true;
+  },
+
+  computed_columns: (raw, { enforceInputLimits }) => {
     if (enforceInputLimits && !requiredText(raw.name, 120)) return false;
     try {
       const definition = parseDefinition(JSON.parse(String(raw.definition)));
@@ -206,8 +268,10 @@ export function isValidImportRow(
     } catch {
       return false;
     }
-  }
-  if (table === "transactions") {
+    return true;
+  },
+
+  transactions: (raw, { enforceInputLimits }) => {
     if (
       !isSupportedMoney(raw.amount_minor, false)
       || !isSupportedMoney(raw.amount_try_minor, false)
@@ -224,13 +288,15 @@ export function isValidImportRow(
     // review branches on it, and "some string" is not one of the branches.
     if (raw.origin != null && !(TRANSACTION_ORIGINS as readonly string[]).includes(String(raw.origin))) return false;
     if (raw.import_key != null && !optionalNonEmptyText(raw.import_key, 240)) return false;
-  }
-  if (table === "subscriptions") {
+    return true;
+  },
+
+  subscriptions: (raw, { enforceInputLimits }) => {
     // A variable bill (electricity, gas) may legitimately carry no estimate
     // yet, and 0 is that sentinel. Fixed subscriptions still name a real
     // recurring charge, so zero stays invalid there.
     const allowsUnknownAmount = raw.amount_mode === "variable";
-    if (
+    return !(
       !(allowsUnknownAmount ? isSupportedMoney(raw.amount_minor) && Number(raw.amount_minor) >= 0 : isPositiveMoney(raw.amount_minor))
       || !isPositiveInteger(raw.interval_months)
       || raw.interval_months > MAX_SUBSCRIPTION_INTERVAL_MONTHS
@@ -240,15 +306,16 @@ export function isValidImportRow(
         || !optionalText(raw.logo_ref, 512)
         || !optionalText(raw.note, 1_000)
       ))
-    ) return false;
-  }
-  if (table === "attachments") {
+    );
+  },
+
+  attachments: (raw) => {
     // The stored name becomes a filesystem path inside the app's attachment
     // directory. A name with a separator, a traversal segment or anything
     // outside this alphabet is refused before it can address another
     // directory — the file itself never leaves the device, and neither may
     // the ability to name where it lives.
-    if (
+    return !(
       typeof raw.stored_name !== "string"
       || !/^[A-Za-z0-9._-]{1,120}$/.test(raw.stored_name)
       || raw.stored_name === "."
@@ -260,9 +327,10 @@ export function isValidImportRow(
       || typeof raw.transaction_id !== "string"
       || raw.transaction_id === ""
       || !isSafeAttachmentFileName(raw.file_name)
-    ) return false;
-  }
-  if (table === "matrix_colors") {
+    );
+  },
+
+  matrix_colors: (raw) => {
     // A backup outlives the vocabulary it was written in. The five
     // meaning-named slots this replaced are still readable, so an old file
     // restores its marks instead of being refused whole; `importBundle`
@@ -279,33 +347,71 @@ export function isValidImportRow(
     if (scope === "row" && !(hasItem && month == null)) return false;
     if (scope === "column" && !(hasMonth && itemKey == null)) return false;
     if (scope === "cell" && !(hasItem && hasMonth)) return false;
-    if (!["row", "column", "cell"].includes(scope)) return false;
-  }
-  if (table === "price_history" && !isPositiveMoney(raw.amount_minor)) return false;
-  if (table === "recurring_incomes" && !isPositiveMoney(raw.default_amount_minor)) return false;
+    return ["row", "column", "cell"].includes(scope);
+  },
+
+  price_history: (raw) => isPositiveMoney(raw.amount_minor),
+
+  recurring_incomes: (raw, { enforceInputLimits }) => {
+    if (!isPositiveMoney(raw.default_amount_minor)) return false;
+    if (enforceInputLimits && (!requiredText(raw.name, 120) || !optionalText(raw.note, 1_000))) return false;
+    // A weekly or biweekly income counts days from an anchor, so without one
+    // it has no schedule at all; a monthly one uses its nominal pay day.
+    const recurrence = raw.recurrence ?? "monthly";
+    return !((recurrence === "weekly" || recurrence === "biweekly") && !isIsoDate(raw.anchor_date));
+  },
+
   // A still-estimated occurrence of a variable bill carries 0 until the user
   // enters the invoice; a known occurrence always names a real amount.
-  if (table === "expected_payments") {
+  expected_payments: (raw) => {
     const estimated = raw.amount_is_estimated === true || raw.amount_is_estimated === 1;
-    const amountValid = estimated
+    return estimated
       ? isSupportedMoney(raw.amount_minor) && Number(raw.amount_minor) >= 0
       : isPositiveMoney(raw.amount_minor);
-    if (!amountValid) return false;
-  }
-  if (table === "balance_adjustments" && !isSupportedMoney(raw.amount_minor)) return false;
-  if (table === "category_budgets" && !isPositiveMoney(raw.amount_minor)) return false;
-  if (table === "fx_rates" && !isSupportedRate(raw.rate_try)) return false;
-  if (table === "payment_sources" && raw.type === "credit_card" && !isValidCardCycle({
-    statementDay: typeof raw.statement_day === "number" ? raw.statement_day : null,
-    dueDay: typeof raw.due_day === "number" ? raw.due_day : null,
-  })) return false;
-  if (
-    table === "credit_card_statements"
-    && typeof raw.statement_date === "string"
+  },
+
+  balance_adjustments: (raw, { enforceInputLimits }) =>
+    isSupportedMoney(raw.amount_minor) && (!enforceInputLimits || optionalText(raw.note, 1_000)),
+
+  category_budgets: (raw) => isPositiveMoney(raw.amount_minor),
+
+  fx_rates: (raw) => isSupportedRate(raw.rate_try),
+
+  persons: (raw, { enforceInputLimits }) => !enforceInputLimits || requiredText(raw.name, 120),
+
+  cell_notes: (raw, { enforceInputLimits }) => !enforceInputLimits || optionalText(raw.body, 1_000),
+
+  payment_sources: (raw, { enforceInputLimits }) => {
+    if (raw.type === "credit_card" && !isValidCardCycle({
+      statementDay: typeof raw.statement_day === "number" ? raw.statement_day : null,
+      dueDay: typeof raw.due_day === "number" ? raw.due_day : null,
+    })) return false;
+    return !(enforceInputLimits && (
+      !requiredText(raw.name, 120)
+      || !optionalText(raw.color, 64)
+      || !optionalText(raw.logo_ref, 512)
+    ));
+  },
+
+  categories: (raw, { enforceInputLimits }) => {
+    if (raw.is_transfer != null) {
+      const transfer = raw.is_transfer === true || raw.is_transfer === 1;
+      if (transfer && raw.kind !== "expense") return false;
+    }
+    return !(enforceInputLimits && (
+      !requiredText(raw.name, 120)
+      || !optionalText(raw.icon, 64)
+      || !optionalText(raw.color, 64)
+    ));
+  },
+
+  credit_card_statements: (raw) => !(
+    typeof raw.statement_date === "string"
     && typeof raw.due_date === "string"
     && raw.due_date < raw.statement_date
-  ) return false;
-  if (table === "installment_plans") {
+  ),
+
+  installment_plans: (raw, { enforceInputLimits }) => {
     if (
       !isPositiveInteger(raw.installment_count)
       || raw.installment_count > MAX_INSTALLMENT_COUNT
@@ -321,29 +427,28 @@ export function isValidImportRow(
     if (!hasTotal && !hasMonthly) return false;
     if (raw.kind === "card_installment" && typeof raw.payment_source_id !== "string") return false;
     if (hasTotal && !isPositiveMoney(raw.total_amount_minor)) return false;
-    if (hasMonthly && !isPositiveMoney(raw.monthly_amount_minor)) return false;
-  }
-  if (table === "investment_profiles") {
-    if (
-      typeof raw.started_on !== "string"
-      || raw.started_on > today
-      || typeof raw.opening_cash_minor !== "number"
-      || raw.opening_cash_minor < 0
-      || !isSupportedMinorAmount(raw.opening_cash_minor)
-    ) return false;
-  }
-  if (table === "investment_products") {
-    if (
-      !["metal", "currency", "equity", "fund", "crypto", "pension"].includes(String(raw.asset_type))
-      || typeof raw.name !== "string"
-      || raw.name.trim() === ""
-      || textLength(raw.name) > 120
-      || !optionalNonEmptyText(raw.market_code, 40)
-      || !optionalText(raw.note, 2_000)
-      || (raw.target_weight_bp != null && !isBasisPoints(raw.target_weight_bp))
-    ) return false;
-  }
-  if (table === "investment_operations") {
+    return !(hasMonthly && !isPositiveMoney(raw.monthly_amount_minor));
+  },
+
+  investment_profiles: (raw, { today }) => !(
+    typeof raw.started_on !== "string"
+    || raw.started_on > today
+    || typeof raw.opening_cash_minor !== "number"
+    || raw.opening_cash_minor < 0
+    || !isSupportedMinorAmount(raw.opening_cash_minor)
+  ),
+
+  investment_products: (raw) => !(
+    !["metal", "currency", "equity", "fund", "crypto", "pension"].includes(String(raw.asset_type))
+    || typeof raw.name !== "string"
+    || raw.name.trim() === ""
+    || textLength(raw.name) > 120
+    || !optionalNonEmptyText(raw.market_code, 40)
+    || !optionalText(raw.note, 2_000)
+    || (raw.target_weight_bp != null && !isBasisPoints(raw.target_weight_bp))
+  ),
+
+  investment_operations: (raw, { today }) => {
     if (
       !["existing", "buy", "sell", "contribution"].includes(String(raw.kind))
       || typeof raw.operation_date !== "string"
@@ -351,6 +456,14 @@ export function isValidImportRow(
       || typeof raw.total_minor !== "number"
       || raw.total_minor <= 0
       || typeof raw.cost_basis_minor !== "number"
+      // A cost basis is what a holding cost, so it cannot be below zero. The
+      // replay that produces it divides a non-negative running cost and can
+      // never emit one, which is why refusing it here costs no genuine backup
+      // — and why the outbound validator already refused it. Without this the
+      // two disagreed: a restore wrote the row and every later push
+      // quarantined it, leaving a holding that existed on one device and
+      // nowhere else.
+      || raw.cost_basis_minor < 0
       || typeof raw.realized_profit_loss_minor !== "number"
       || !isSupportedMinorAmount(raw.total_minor, false)
       || !isSupportedMinorAmount(raw.cost_basis_minor)
@@ -377,34 +490,9 @@ export function isValidImportRow(
         return false;
       }
     }
-  }
-  if (table === "categories" && raw.is_transfer != null) {
-    const transfer = raw.is_transfer === true || raw.is_transfer === 1;
-    if (transfer && raw.kind !== "expense") return false;
-  }
-  if (enforceInputLimits && table === "persons" && !requiredText(raw.name, 120)) return false;
-  if (enforceInputLimits && table === "payment_sources" && (
-    !requiredText(raw.name, 120)
-    || !optionalText(raw.color, 64)
-    || !optionalText(raw.logo_ref, 512)
-  )) return false;
-  if (enforceInputLimits && table === "categories" && (
-    !requiredText(raw.name, 120)
-    || !optionalText(raw.icon, 64)
-    || !optionalText(raw.color, 64)
-  )) return false;
-  if (enforceInputLimits && table === "recurring_incomes" && (
-    !requiredText(raw.name, 120)
-    || !optionalText(raw.note, 1_000)
-  )) return false;
-  if (enforceInputLimits && table === "balance_adjustments" && !optionalText(raw.note, 1_000)) return false;
-  if (enforceInputLimits && table === "cell_notes" && !optionalText(raw.body, 1_000)) return false;
-  if (table === "recurring_incomes") {
-    const recurrence = raw.recurrence ?? "monthly";
-    if ((recurrence === "weekly" || recurrence === "biweekly") && !isIsoDate(raw.anchor_date)) return false;
-  }
-  return true;
-}
+    return true;
+  },
+};
 
 function definitionCategoryIds(definition: ComputedColumnDefinition): string[] {
   if (definition.op === "sum") return definition.categoryIds;

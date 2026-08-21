@@ -348,17 +348,6 @@ export async function setCurrentBalance(
   ]);
 }
 
-/** How many live transactions reference a category — for a warn-before-delete
- *  confirmation (deleting a category leaves its rows uncategorized, not lost). */
-export async function countTransactionsForCategory(userId: string, categoryId: string): Promise<number> {
-  const sqlite = await getSqliteAsync();
-  const row = await sqlite.getFirstAsync<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM transactions WHERE user_id = ? AND category_id = ? AND deleted_at IS NULL`,
-    [userId, categoryId],
-  );
-  return row?.n ?? 0;
-}
-
 // ---------------------------------------------------------------------------
 
 

@@ -4,7 +4,6 @@ import {
   findAutoConfirmable,
   findLate,
   generateExpected,
-  isDueWithin,
   obsoleteExpectedIds,
 } from "../src/domain/expected";
 import {
@@ -128,7 +127,7 @@ describe("mutation-sensitive expected-item contract", () => {
       .map((draft) => draft.dueDate)).toEqual(["2026-08-18"]);
   });
 
-  it("pins confirmation, lateness, autopay, and reminder equality boundaries", () => {
+  it("pins confirmation, lateness and autopay equality boundaries", () => {
     expect(confirmEffectiveDate("2026-07-18", "2026-07-18", "2026-07-18")).toBe("2026-07-18");
     expect(confirmEffectiveDate("2026-07-17", "2026-07-18", "2026-07-19")).toBe("2026-07-17");
     expect(confirmEffectiveDate("2026-07-17", "2026-07-18", "2026-07-18")).toBe("2026-07-18");
@@ -141,9 +140,5 @@ describe("mutation-sensitive expected-item contract", () => {
     expect(findAutoConfirmable([
       expected({ id: "late", dueDate: "2026-07-17", status: "late" }),
     ], new Map([["s", "2026-07-01"]]), "2026-07-18")).toEqual([]);
-    expect(isDueWithin(expected({ dueDate: "2026-07-18" }), "2026-07-18", 0)).toBe(true);
-    expect(isDueWithin(expected({ dueDate: "2026-07-19" }), "2026-07-18", 0)).toBe(false);
-    expect(isDueWithin(expected({ dueDate: "2026-07-17" }), "2026-07-18", 1)).toBe(false);
-    expect(isDueWithin(expected({ dueDate: "2026-07-18", status: "late" }), "2026-07-18", 1)).toBe(false);
   });
 });

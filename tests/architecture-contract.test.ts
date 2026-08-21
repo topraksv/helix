@@ -6,17 +6,15 @@ import { dirname, join, relative, resolve } from "node:path";
 /**
  * The module graph, asserted rather than described.
  *
- * These directions are the repository's one proven pattern rather than a
- * third style, but nothing
- * failed when a file drifted the other way. A dependency direction is cheap to
- * break by accident (one convenient import in a screen) and expensive to
- * unwind later, so it is checked here — statically, with no runtime cost.
+ * The repository asks that these directions stay one proven pattern instead of
+ * a third style, but nothing failed when a file drifted the other way. A
+ * dependency direction is cheap to break by accident (one convenient import in
+ * a screen) and expensive to unwind later, so it is checked here — statically,
+ * with no runtime cost.
  */
 
 const ROOT = process.cwd();
 const SRC = join(ROOT, "src");
-
-
 
 /**
  * Static, side-effect and dynamic specifiers alike. A lazy `import()` is still

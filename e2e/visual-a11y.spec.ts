@@ -7,8 +7,7 @@ import {
   currentMonthKey,
   isolateExternalData,
   onboard,
-  renderedBoundaryContrast,
-  renderedContrastRatio,
+  renderedContrast,
 } from "./helpers";
 
 /**
@@ -434,7 +433,7 @@ test("switches stay visible in both states and both themes", async ({ page }, te
       await expect(refund).toHaveAttribute("aria-checked", state === "on" ? "true" : "false");
       // WCAG 1.4.11 for a non-text UI component boundary.
       expect(
-        await renderedBoundaryContrast(track),
+        await renderedContrast(track, "boundary"),
         `refund switch ${state} in ${scheme}`,
       ).toBeGreaterThanOrEqual(3);
     }
@@ -476,10 +475,10 @@ test("follow-up forms keep the quiet control system in both themes", async ({ pa
       // from what the browser actually painted, in both schemes. Soft, so one
       // failing form still reports the other seven combinations.
       const title = page.getByRole("heading", { name: heading, exact: true }).first();
-      expect.soft(await renderedContrastRatio(title), `${tag} heading contrast`).toBeGreaterThanOrEqual(4.5);
+      expect.soft(await renderedContrast(title, "text"), `${tag} heading contrast`).toBeGreaterThanOrEqual(4.5);
       const field = page.getByRole("textbox").first();
       if (await field.count()) {
-        expect.soft(await renderedBoundaryContrast(field), `${tag} field boundary`).toBeGreaterThanOrEqual(3);
+        expect.soft(await renderedContrast(field, "boundary"), `${tag} field boundary`).toBeGreaterThanOrEqual(3);
       }
       const sideways = await page.evaluate(
         () => document.body.scrollWidth > document.body.clientWidth + 1,

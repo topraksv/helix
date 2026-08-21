@@ -11,27 +11,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null }));
 
-vi.mock("../src/db/client", () => ({
-  getSqliteAsync: async () => ({
-    getFirstAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-    getAllAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).all(...(args as never[])),
-    runAsync: async (sql: string, args: unknown[] = []) => ({
-      changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-    }),
-  }),
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+vi.mock("../src/db/client", async () => {
+  const { sqliteClientMock } = await import("./helpers");
+  return sqliteClientMock(() => harness.db!);
+});
 
 vi.mock("../src/db/ids", () => ({
   deterministicId: async (key: string) => `det:${key}`,

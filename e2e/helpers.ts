@@ -121,13 +121,22 @@ export async function addMarketExpense(page: Page, note: string, amount = "1.234
 }
 
 /**
- * Rendered contrast of an element's own text against the nearest ancestor that
- * actually paints a background. `getByRole` matches the accessible name, so a
- * control can pass every interaction assertion while being invisible to a
- * human — this measures what the browser really painted.
+ * Rendered contrast of an element against the nearest ancestor that actually
+ * paints a background.
+ *
+ * `getByRole` matches the accessible name, so a control can pass every
+ * interaction assertion while being invisible to a human — this measures what
+ * the browser really painted.
+ *
+ * `"text"` samples the element's own text colour. `"boundary"` samples its
+ * painted border instead, and starts the backdrop walk one level up because
+ * the border is painted ON the element: a control whose fill is a low-contrast
+ * neutral is visible only because of its outline, which the text measurement
+ * cannot see. The refund switch rendered at exactly 1.00:1 against its row and
+ * simply was not there, while every role/name assertion stayed green.
  */
-export async function renderedContrastRatio(locator: Locator): Promise<number> {
-  return locator.evaluate((element) => {
+export async function renderedContrast(locator: Locator, against: "text" | "boundary"): Promise<number> {
+  return locator.evaluate((element, mode) => {
     const parse = (value: string): [number, number, number] => {
       const parts = value.match(/[\d.]+/g);
       if (!parts || parts.length < 3) throw new Error(`Unsupported color: ${value}`);
@@ -139,8 +148,14 @@ export async function renderedContrastRatio(locator: Locator): Promise<number> {
         .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
         .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
 
-    const foreground = parse(getComputedStyle(element).color);
-    let node: HTMLElement | null = element as HTMLElement;
+    const style = getComputedStyle(element);
+    if (mode === "boundary" && Number.parseFloat(style.borderTopWidth) === 0) {
+      throw new Error("Control has no painted boundary");
+    }
+    const foreground = parse(mode === "boundary" ? style.borderTopColor : style.color);
+    let node: HTMLElement | null = mode === "boundary"
+      ? (element as HTMLElement).parentElement
+      : (element as HTMLElement);
     let background: [number, number, number] | null = null;
     while (node) {
       const painted = getComputedStyle(node).backgroundColor;
@@ -154,48 +169,7 @@ export async function renderedContrastRatio(locator: Locator): Promise<number> {
     if (!background) throw new Error("No painted background found above the element");
     const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
     return (lighter! + 0.05) / (darker! + 0.05);
-  });
-}
-
-/**
- * Contrast between an element's own painted boundary and the surface behind it.
- *
- * A control whose fill is a low-contrast neutral is only visible because of its
- * outline, and `renderedContrastRatio` cannot see that — it measures text. The
- * refund switch rendered at exactly 1.00:1 against its row and simply was not
- * there, while every role/name assertion stayed green.
- */
-export async function renderedBoundaryContrast(locator: Locator): Promise<number> {
-  return locator.evaluate((element) => {
-    const parse = (value: string): [number, number, number] => {
-      const parts = value.match(/[\d.]+/g);
-      if (!parts || parts.length < 3) throw new Error(`Unsupported color: ${value}`);
-      return [Number(parts[0]), Number(parts[1]), Number(parts[2])];
-    };
-    const luminance = (rgb: [number, number, number]) =>
-      rgb
-        .map((channel) => channel / 255)
-        .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
-        .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
-
-    const style = getComputedStyle(element);
-    if (Number.parseFloat(style.borderTopWidth) === 0) throw new Error("Control has no painted boundary");
-    const boundary = parse(style.borderTopColor);
-    let node: HTMLElement | null = element.parentElement;
-    let background: [number, number, number] | null = null;
-    while (node) {
-      const painted = getComputedStyle(node).backgroundColor;
-      const alpha = painted.match(/[\d.]+/g)?.[3];
-      if (painted && painted !== "transparent" && alpha !== "0") {
-        background = parse(painted);
-        break;
-      }
-      node = node.parentElement;
-    }
-    if (!background) throw new Error("No painted background found above the control");
-    const [lighter, darker] = [luminance(boundary), luminance(background)].sort((a, b) => b - a);
-    return (lighter! + 0.05) / (darker! + 0.05);
-  });
+  }, against);
 }
 
 export async function assertNoRuntimeErrors(errors: string[], testInfo: TestInfo): Promise<void> {

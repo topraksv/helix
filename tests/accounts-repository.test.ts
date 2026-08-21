@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -80,22 +78,12 @@ import {
 } from "../src/data/repo/accounts";
 import { fromDbShape } from "../src/db/mutations";
 import { PAYMENT_SOURCE_TYPES, type PaymentSourceType } from "../src/domain/types";
+import { migrationStatements } from "./helpers";
 
 const USER = "accounts-user";
 const OTHER_USER = "other-user";
 const NOW = "2026-08-13T09:00:00.000Z";
 const DELETED_AT = "2026-08-12T09:00:00.000Z";
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) =>
-    readFileSync(join(migrationsDir, name), "utf8").split(
-      "--> statement-breakpoint",
-    ),
-  )
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 function seedPerson(
   id: string,
@@ -367,7 +355,7 @@ describe("accounts repository persistence", () => {
     harness.repairCardStatementLinks.mockReset().mockResolvedValue(undefined);
     harness.runMaintenance.mockReset().mockResolvedValue(undefined);
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
     seedPerson("self", { isSelf: true, name: "Ben" });
     seedPerson("other-self", { userId: OTHER_USER, isSelf: true });
   });

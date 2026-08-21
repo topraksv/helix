@@ -5,12 +5,11 @@
  * fixed-vs-variable breakdown.
  */
 
-import { makeMonthKey, monthKeyOf, monthRange, type ISODate, type MonthKey } from "./dates";
+import { monthKeyOf, monthRange, type ISODate, type MonthKey } from "./dates";
 import type { Minor } from "./money";
 import { countsTowardBalance } from "./balance";
 import type { TxLike } from "./types";
 import { financialFlow } from "./transactions";
-import { convertToTryMinor } from "./fx";
 
 interface CategoryYearRow {
   categoryId: string;
@@ -19,18 +18,9 @@ interface CategoryYearRow {
 }
 
 /**
- * Realized sums per category per month for a year, plus YTD totals.
+ * Realized sums per category per month over a window, plus window totals.
  * Includes only rows that count toward the balance (is_self, realized).
  */
-export function categoryMonthMatrix(
-  transactions: TxLike[],
-  year: number,
-  today: ISODate,
-): Map<string, CategoryYearRow> {
-  return categoryRangeMatrix(transactions, makeMonthKey(year, 1), makeMonthKey(year, 12), today);
-}
-
-/** Same aggregation over an arbitrary month window (analysis period slicer). */
 export function categoryRangeMatrix(
   transactions: TxLike[],
   start: MonthKey,
@@ -195,24 +185,4 @@ export function creditCardSplitsByMonth(
 export function normalizedMonthlyLoadMinor(amountMinor: Minor, intervalMonths: number): Minor {
   if (!Number.isInteger(intervalMonths) || intervalMonths < 1) return amountMinor;
   return Math.round(amountMinor / intervalMonths);
-}
-
-/** Sum only subscriptions with a real TRY conversion; report unknowns. */
-export function subscriptionLoadTry(
-  subscriptions: { amountMinor: Minor; currency: string; intervalMonths: number }[],
-  rateFor: (currency: string) => number | null,
-): { totalMinor: Minor; missingRates: number } {
-  return subscriptions.reduce(
-    (result, subscription) => {
-      const rate = subscription.currency === "TRY" ? 1 : rateFor(subscription.currency);
-      if (rate == null) return { totalMinor: result.totalMinor, missingRates: result.missingRates + 1 };
-      return {
-        totalMinor:
-          result.totalMinor +
-          normalizedMonthlyLoadMinor(convertToTryMinor(subscription.amountMinor, rate), subscription.intervalMonths),
-        missingRates: result.missingRates,
-      };
-    },
-    { totalMinor: 0, missingRates: 0 },
-  );
 }

@@ -6,7 +6,7 @@
  * Confirmation is the source of truth; automation only assists.
  */
 
-import { addMonthsToKey, daysBetweenISO, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
+import { addMonthsToKey, isMonthDay, lastDayOf, monthKeyOf, type ISODate } from "./dates";
 import { dayIntervalDatesInRange, dueDateInMonth, dueDatesInRange } from "./recurrence";
 import type {
   ExpectedPaymentLike,
@@ -99,20 +99,26 @@ export function generateExpected(
 
   for (const income of incomes) {
     if (!income.isActive || !income.personIsSelf) continue;
+    // Both cadences produce the same row and differ only in which dates they
+    // land on, so the draft is described once — a field added to one schedule
+    // and not the other would be invisible until a reminder went missing.
+    const addIncomeDraft = (dueDate: ISODate): void => {
+      const draft: ExpectedDraft = {
+        direction: "in",
+        kind: "recurring_income",
+        refId: income.id,
+        dueDate,
+        amountMinor: income.defaultAmountMinor,
+        amountIsEstimated: false,
+        currency: income.currency,
+      };
+      if (!seen.has(expectedKey(draft))) drafts.push(draft);
+    };
     if (income.recurrence === "weekly" || income.recurrence === "biweekly") {
       if (!income.anchorDate) continue;
       const intervalDays = income.recurrence === "weekly" ? 7 : 14;
       for (const dueDate of dayIntervalDatesInRange(income.anchorDate, intervalDays, today, horizon)) {
-        const draft: ExpectedDraft = {
-          direction: "in",
-          kind: "recurring_income",
-          refId: income.id,
-          dueDate,
-          amountMinor: income.defaultAmountMinor,
-          amountIsEstimated: false,
-          currency: income.currency,
-        };
-        if (!seen.has(expectedKey(draft))) drafts.push(draft);
+        addIncomeDraft(dueDate);
       }
       continue;
     }
@@ -122,18 +128,7 @@ export function generateExpected(
     let month = monthKeyOf(today);
     for (let i = 0; i <= horizonMonths; i++) {
       const dueDate = dueDateInMonth(month, income.payDay);
-      if (dueDate >= today) {
-        const draft: ExpectedDraft = {
-          direction: "in",
-          kind: "recurring_income",
-          refId: income.id,
-          dueDate,
-          amountMinor: income.defaultAmountMinor,
-          amountIsEstimated: false,
-          currency: income.currency,
-        };
-        if (!seen.has(expectedKey(draft))) drafts.push(draft);
-      }
+      if (dueDate >= today) addIncomeDraft(dueDate);
       month = addMonthsToKey(month, 1);
     }
   }
@@ -196,11 +191,4 @@ export function findAutoConfirmable(
     const createdDay = autoPayRules.get(e.refId) ?? null;
     return createdDay == null || e.dueDate > createdDay;
   });
-}
-
-/** Reminder window check: due within `days` days from today (inclusive). */
-export function isDueWithin(e: ExpectedPaymentLike, today: ISODate, days: number): boolean {
-  if (e.status !== "pending") return false;
-  const diffDays = daysBetweenISO(today, e.dueDate);
-  return diffDays >= 0 && diffDays <= days;
 }

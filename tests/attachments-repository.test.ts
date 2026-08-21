@@ -7,33 +7,15 @@
  * than an attachment the list offers and cannot open.
  */
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({ db: null as DatabaseSync | null, nextId: 0 }));
 
-vi.mock("../src/db/client", () => ({
-  getSqliteAsync: async () => ({
-    getFirstAsync: async (sql: string, args: unknown[] = []) =>
-      harness.db!.prepare(sql).get(...(args as never[])) ?? null,
-    getAllAsync: async (sql: string, args: unknown[] = []) => harness.db!.prepare(sql).all(...(args as never[])),
-    runAsync: async (sql: string, args: unknown[] = []) => ({
-      changes: Number(harness.db!.prepare(sql).run(...(args as never[])).changes),
-    }),
-  }),
-  withTransaction: async (task: () => Promise<void>) => {
-    harness.db!.exec("BEGIN");
-    try {
-      await task();
-      harness.db!.exec("COMMIT");
-    } catch (error) {
-      harness.db!.exec("ROLLBACK");
-      throw error;
-    }
-  },
-}));
+vi.mock("../src/db/client", async () => {
+  const { sqliteClientMock } = await import("./helpers");
+  return sqliteClientMock(() => harness.db!);
+});
 
 vi.mock("../src/db/ids", () => ({
   newId: () => `0198f2aa-1c2d-7e3f-8a9b-00000000000${++harness.nextId}`,
@@ -48,21 +30,25 @@ import {
   addAttachment,
   deleteAttachment,
   liveAttachmentNames,
-  listAttachments,
   restoreAttachment,
 } from "../src/data/repo/attachments";
 import { AttachmentRejectedError } from "../src/data/repo/errors";
+import { migrationStatements } from "./helpers";
+
+/**
+ * The read-back these assertions need. Production reads attachments through
+ * the `useAttachmentsState` live query, so the repo layer exports no list
+ * function for this to borrow.
+ */
+const listed = (userId: string, transactionId: string): Record<string, unknown>[] =>
+  harness.db!.prepare(
+    `SELECT file_name, mime_type, byte_size, kind FROM attachments
+     WHERE user_id = ? AND transaction_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`,
+  ).all(userId, transactionId) as Record<string, unknown>[];
 
 const USER = "attachment-user";
 const OTHER = "other-user";
 const NOW = "2026-08-18T09:00:00.000Z";
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) => readFileSync(join(migrationsDir, name), "utf8").split("--> statement-breakpoint"))
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 function seed(userId = USER, transactionId = "tx-1"): void {
   harness.db!.prepare(
@@ -89,7 +75,7 @@ const newAttachment = (over: Record<string, unknown> = {}) => ({
 describe("attachment rows", () => {
   beforeEach(() => {
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
     harness.nextId = 0;
     copied.length = 0;
     seed();
@@ -98,27 +84,27 @@ describe("attachment rows", () => {
   it("copies the file before writing the row that names it", async () => {
     const id = await addAttachment(USER, newAttachment());
     expect(copied).toEqual([`${id}.pdf`]);
-    const rows = await listAttachments(USER, "tx-1");
+    const rows = listed(USER, "tx-1");
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ fileName: "fatura.pdf", mimeType: "application/pdf", byteSize: 2048, kind: "other" });
+    expect(rows[0]).toMatchObject({ file_name: "fatura.pdf", mime_type: "application/pdf", byte_size: 2048, kind: "other" });
   });
 
   it("refuses a rejected file without copying anything or writing a row", async () => {
     await expect(addAttachment(USER, newAttachment({ mimeType: "application/zip" })))
       .rejects.toBeInstanceOf(AttachmentRejectedError);
     expect(copied).toEqual([]);
-    expect(await listAttachments(USER, "tx-1")).toEqual([]);
+    expect(listed(USER, "tx-1")).toEqual([]);
   });
 
   it("refuses to attach to a transaction this account does not own", async () => {
     seed(OTHER, "tx-other");
     await expect(addAttachment(USER, newAttachment({ transactionId: "tx-other" }))).rejects.toThrow();
-    expect(await listAttachments(USER, "tx-other")).toEqual([]);
+    expect(listed(USER, "tx-other")).toEqual([]);
   });
 
   it("never lists another account's attachments", async () => {
     await addAttachment(USER, newAttachment());
-    expect(await listAttachments(OTHER, "tx-1")).toEqual([]);
+    expect(listed(OTHER, "tx-1")).toEqual([]);
   });
 
   /**
@@ -130,10 +116,10 @@ describe("attachment rows", () => {
     const id = await addAttachment(USER, newAttachment());
     const snapshot = await deleteAttachment(USER, id);
     expect(snapshot?.storedName).toBe(`${id}.pdf`);
-    expect(await listAttachments(USER, "tx-1")).toEqual([]);
+    expect(listed(USER, "tx-1")).toEqual([]);
 
     await restoreAttachment(USER, snapshot!);
-    expect(await listAttachments(USER, "tx-1")).toHaveLength(1);
+    expect(listed(USER, "tx-1")).toHaveLength(1);
   });
 
   it("reports nothing to delete for a row that is already gone", async () => {
@@ -142,13 +128,13 @@ describe("attachment rows", () => {
 
   /**
    * A stored name is about to become a filesystem path, and this row may have
-   * arrived from sync or a restored backup rather than from the picker — so it
-   * is re-validated on the way OUT, not only on the way in.
+   * arrived from sync or a restored backup rather than from the picker — so
+   * the sweep re-validates it on the way OUT, not only on the way in. Opening
+   * one is refused separately, in `attachment-store`'s own path resolution.
    */
-  it("hides a row whose stored name this app could not have written", async () => {
+  it("keeps a stored name this app could not have written out of the sweep", async () => {
     const id = await addAttachment(USER, newAttachment());
     harness.db!.prepare(`UPDATE attachments SET stored_name = '../escape.pdf' WHERE id = ?`).run(id);
-    expect(await listAttachments(USER, "tx-1")).toEqual([]);
     expect(await liveAttachmentNames(USER)).toEqual(new Set());
   });
 

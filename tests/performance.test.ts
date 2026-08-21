@@ -5,6 +5,7 @@ import { buildCashFlowMatrixModel } from "../src/domain/cash-flow-matrix";
 import { buildDashboardModel } from "../src/domain/dashboard";
 import type { ISODate } from "../src/domain/dates";
 import type { TxLike } from "../src/domain/types";
+import { MAX_BACKUP_BYTES, parseExportBundleText } from "../src/services/backup-validation";
 
 const LARGE_LEDGER_ROWS = 100_000;
 // Broad CI ceilings, not micro-benchmarks: a regression to repeated full-table
@@ -12,6 +13,7 @@ const LARGE_LEDGER_ROWS = 100_000;
 const LEDGER_BUDGET_MS = 4_000;
 const DASHBOARD_BUDGET_MS = 4_000;
 const MATRIX_BUDGET_MS = 4_000;
+const BACKUP_PARSE_BUDGET_MS = 4_000;
 
 function largeTransactions(count: number): TxLike[] {
   return Array.from({ length: count }, (_, index) => {
@@ -216,5 +218,32 @@ describe("analysis search cost", () => {
     expect(matches.every((match) => match.searchText.includes("market"))).toBe(true);
     expect(indexElapsed).toBeLessThan(SEARCH_BUDGET_MS);
     expect(filterElapsed).toBeLessThan(SEARCH_BUDGET_MS);
+  });
+});
+
+/**
+ * The backup parser's wall-clock ceiling.
+ *
+ * It lives here rather than beside the other backup assertions because a
+ * timing assertion cannot survive Stryker's instrumentation — it would measure
+ * the mutator, not the parser. Keeping it in `backup-validation.test.ts` meant
+ * that whole file was excluded from mutation runs, and with it the nineteen
+ * behavioural tests that guard `isValidImportRow`, the validator every restored
+ * row passes through. One budget was costing a security boundary its gate.
+ */
+describe("backup parse budget", () => {
+  it("parses a maximum-size bundle well inside the interaction budget", () => {
+    const content = JSON.stringify({ version: 1, exportedAt: "2026-07-15T12:00:00.000Z", tables: {} });
+    const exactLimit = content.padEnd(MAX_BACKUP_BYTES, " ");
+
+    // The same broad ceiling the budgets above use, not the 2_000 this carried
+    // beside the backup assertions. `MAX_BACKUP_BYTES` is 15MiB, which parses
+    // in ~150ms unloaded; the earlier 2_000 ceiling was tripped by runner load,
+    // not by the parser. This file exists to fail on regressions rather than on
+    // machine load, and a parser gone quadratic on this input would be a
+    // multiple of the ceiling, not a few percent over it.
+    const started = performance.now();
+    expect(parseExportBundleText(exactLimit).tables).toEqual({});
+    expect(performance.now() - started).toBeLessThan(BACKUP_PARSE_BUDGET_MS);
   });
 });

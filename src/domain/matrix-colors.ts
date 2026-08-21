@@ -92,19 +92,6 @@ export function isValidColorTarget(target: {
   return false;
 }
 
-/**
- * The identity of a mark, so re-colouring replaces rather than stacks.
- *
- * NUL-separated because both halves are user-reachable keys: a category named
- * with the separator would otherwise let one target collide with another.
- */
-export function colorTargetKey(target: {
-  scope: MatrixColorScope;
-  itemKey: string | null;
-  month: string | null;
-}): string {
-  return [target.scope, target.itemKey ?? "", target.month ?? ""].join("\u0000");
-}
 
 export interface MatrixColorIndex {
   row: ReadonlyMap<string, MatrixColorToken>;

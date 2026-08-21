@@ -1,19 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  categoryMonthMatrix,
   categoryRangeMatrix,
   creditCardSplit,
   monthlySeries,
   distributionForRange,
   fixedVsVariable,
   normalizedMonthlyLoadMinor,
-  subscriptionLoadTry,
 } from "../src/domain/analytics";
 import { tx } from "./helpers";
 
 const TODAY = "2026-07-05";
 
-describe("categoryMonthMatrix + YTD", () => {
+describe("categoryRangeMatrix + YTD", () => {
   const txs = [
     tx({ type: "expense", amountTryMinor: 100_00, effectiveDate: "2026-01-10", categoryId: "kk" }),
     tx({ type: "expense", amountTryMinor: 150_00, effectiveDate: "2026-02-10", categoryId: "kk" }),
@@ -24,7 +22,7 @@ describe("categoryMonthMatrix + YTD", () => {
   ];
 
   it("aggregates per category per month and computes YTD", () => {
-    const matrix = categoryMonthMatrix(txs, 2026, TODAY);
+    const matrix = categoryRangeMatrix(txs, "2026-01", "2026-12", TODAY);
     const kk = matrix.get("kk")!;
     expect(kk.monthly.get("2026-01")).toBe(140_00); // includes aggregate rows
     expect(kk.monthly.get("2026-02")).toBe(150_00);
@@ -34,17 +32,17 @@ describe("categoryMonthMatrix + YTD", () => {
 
   /** Per month, not a running total: March is empty, so March is zero. */
   it("builds a per-month series for the trend chart", () => {
-    const matrix = categoryMonthMatrix(txs, 2026, TODAY);
+    const matrix = categoryRangeMatrix(txs, "2026-01", "2026-12", TODAY);
     const series = monthlySeries(matrix.get("kk")!, "2026-01", "2026-03");
     expect(series.map((p) => p.amountMinor)).toEqual([140_00, 150_00, 0]);
   });
 
   it("keeps December and January in their own calendar buckets", () => {
-    const matrix = categoryMonthMatrix([
+    const matrix = categoryRangeMatrix([
       tx({ type: "expense", amountTryMinor: 10_00, effectiveDate: "2025-12-31", categoryId: "kk" }),
       tx({ type: "expense", amountTryMinor: 20_00, effectiveDate: "2026-01-01", categoryId: "kk" }),
       tx({ type: "expense", amountTryMinor: 30_00, effectiveDate: "2026-12-31", categoryId: "kk" }),
-    ], 2026, "2026-12-31");
+    ], "2026-01", "2026-12", "2026-12-31");
     expect([...matrix.get("kk")!.monthly.entries()]).toEqual([
       ["2026-01", 20_00],
       ["2026-12", 30_00],
@@ -53,9 +51,10 @@ describe("categoryMonthMatrix + YTD", () => {
   });
 
   it("does not count transfer categories as income or expense analytics", () => {
-    const matrix = categoryMonthMatrix(
+    const matrix = categoryRangeMatrix(
       [tx({ type: "transfer", amountTryMinor: 1_000_00, effectiveDate: "2026-02-10", categoryId: "yatirim" })],
-      2026,
+      "2026-01",
+      "2026-12",
       TODAY,
     );
     expect(matrix.has("yatirim")).toBe(false);
@@ -154,17 +153,5 @@ describe("normalizedMonthlyLoadMinor", () => {
   it("amortizes yearly subscriptions to a monthly load", () => {
     expect(normalizedMonthlyLoadMinor(1200_00, 12)).toBe(100_00);
     expect(normalizedMonthlyLoadMinor(1000_00, 12)).toBe(83_33);
-  });
-
-  it("excludes unknown foreign rates instead of treating them as TRY", () => {
-    const result = subscriptionLoadTry(
-      [
-        { amountMinor: 1_200_00, currency: "TRY", intervalMonths: 12 },
-        { amountMinor: 10_00, currency: "USD", intervalMonths: 1 },
-        { amountMinor: 20_00, currency: "GBP", intervalMonths: 1 },
-      ],
-      (currency) => (currency === "USD" ? 40 : null),
-    );
-    expect(result).toEqual({ totalMinor: 500_00, missingRates: 1 });
   });
 });

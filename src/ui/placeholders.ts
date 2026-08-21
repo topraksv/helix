@@ -12,7 +12,6 @@ export const placeholderPools = {
   installment: tr.placeholders.installment,
   category: tr.placeholders.category,
   person: tr.placeholders.person,
-  income: tr.placeholders.income,
   source: tr.placeholders.source,
   note: tr.placeholders.note,
   amount: tr.placeholders.amount,

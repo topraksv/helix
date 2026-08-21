@@ -2,7 +2,7 @@ import React from "react";
 import { Stack } from "expo-router";
 import { tr } from "../../../i18n/tr";
 import { HeaderBackButton } from "../../../ui/header-back";
-import { drillDownScreenOptions } from "../../../ui/header-bar";
+import { pageScreenOptions } from "../../../ui/header-bar";
 
 import { useTheme } from "../../../ui/theme";
 
@@ -15,7 +15,7 @@ export default function CashflowLayout() {
     // return to the cash-flow workspace through the same back contract.
     <Stack
       screenOptions={{
-        ...drillDownScreenOptions(palette),
+        ...pageScreenOptions(palette),
         headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" />,
       }}
     >

@@ -8,7 +8,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildColorIndex,
-  colorTargetKey,
   isMatrixColorToken,
   isValidColorTarget,
   matrixColorLabel,
@@ -104,12 +103,6 @@ describe("matrix colour targets", () => {
     ]) {
       expect(isValidColorTarget(target), JSON.stringify(target)).toBe(false);
     }
-  });
-
-  /** Both halves are user-reachable keys, so they cannot share a separator. */
-  it("gives colliding coordinates distinct identities", () => {
-    expect(colorTargetKey({ scope: "cell", itemKey: "a", month: "b" }))
-      .not.toBe(colorTargetKey({ scope: "cell", itemKey: "a\u0000b", month: null }));
   });
 });
 

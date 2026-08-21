@@ -1,7 +1,4 @@
 import { parseDefinition } from "../domain/computed-columns";
-import { isISODate, todayISO } from "../domain/dates";
-import { isSupportedCurrency } from "../domain/fx-provider";
-import { resolveInvestmentQuote } from "../domain/investments";
 import type { SyncedTableName } from "../db/schema";
 import { isValidImportRow } from "../services/backup-validation";
 import {
@@ -45,7 +42,6 @@ export function convertOutboundRow(
   if (!isValidImportRow(table, out, { enforceInputLimits: true })) {
     return { ok: false, reason: "invalid_row" };
   }
-  if ("currency" in out && !isSupportedCurrency(out.currency)) return { ok: false, reason: "invalid_row" };
   for (const column of policy.booleanColumns) {
     if (column in out && out[column] !== null) {
       if (![true, false, 0, 1].includes(out[column] as boolean | number)) {
@@ -76,48 +72,9 @@ export function convertOutboundRow(
     if (rate == null || rate <= 0) return { ok: false, reason: "invalid_row" };
     out.rate_try = rate;
   }
-  if (table === "investment_profiles") {
-    if (
-      !Number.isSafeInteger(out.opening_cash_minor)
-      || Number(out.opening_cash_minor) < 0
-      || typeof out.started_on !== "string"
-      || !isISODate(out.started_on)
-      || out.started_on > todayISO()
-    ) return { ok: false, reason: "invalid_row" };
-  }
-  if (table === "investment_operations") {
-    const positiveMoney = (value: unknown) => Number.isSafeInteger(value) && Number(value) > 0;
-    if (
-      !positiveMoney(out.total_minor)
-      || !Number.isSafeInteger(out.cost_basis_minor)
-      || Number(out.cost_basis_minor) < 0
-      || !Number.isSafeInteger(out.realized_profit_loss_minor)
-      || typeof out.operation_date !== "string"
-      || !isISODate(out.operation_date)
-      || out.operation_date > todayISO()
-    ) return { ok: false, reason: "invalid_row" };
-    if (out.quantity == null) {
-      if (out.kind !== "contribution" || out.unit_price_minor != null) {
-        return { ok: false, reason: "invalid_row" };
-      }
-    } else if (
-      typeof out.quantity !== "string"
-      || !/^[0-9]+(\.[0-9]{1,8})?$/.test(out.quantity)
-      || !positiveMoney(out.unit_price_minor)
-    ) return { ok: false, reason: "invalid_row" };
-    if (out.quantity != null) {
-      try {
-        resolveInvestmentQuote({
-          quantity: out.quantity as string,
-          unitPriceMinor: Number(out.unit_price_minor),
-          totalMinor: Number(out.total_minor),
-        });
-      } catch {
-        return { ok: false, reason: "invalid_row" };
-      }
-    }
-  }
-
+  // Nothing `isValidImportRow` already refuses is re-checked here. It runs
+  // above and is now strictly stronger on every table this pushes, including
+  // the negative cost basis that used to be this function's one exception.
   return { ok: true, row: out };
 }
 

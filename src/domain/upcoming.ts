@@ -162,14 +162,16 @@ export function buildUpcomingTimeline(input: {
     horizonDays,
   ).map((transaction) => {
     const flow = projectedTransactionFlow(transaction);
+    // A scheduled entry has no name of its own; its category is both.
+    const categoryName = transaction.categoryId ? categoryById.get(transaction.categoryId) ?? null : null;
     return {
       key: `transaction:${transaction.id}`,
       kind: "transaction" as const,
       sourceType: "scheduled_transaction" as const,
       refId: transaction.id,
       direction: flow.direction,
-      name: transaction.categoryId ? categoryById.get(transaction.categoryId) ?? null : null,
-      categoryName: transaction.categoryId ? categoryById.get(transaction.categoryId) ?? null : null,
+      name: categoryName,
+      categoryName,
       amountMinor: flow.amountTryMinor,
       currency: "TRY",
       date: transaction.effectiveDate,

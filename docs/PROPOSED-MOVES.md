@@ -46,10 +46,10 @@ an architecture-contract change.
 
 ## 2. Move live-query internals behind the existing hooks interface
 
-**Current seam:** `src/data/hooks.ts` is 772 lines and has three independently
-changing implementations: the retry/change-listener engine and shared
-subscription registry, table-specific live queries, and financial projection
-caches. Thirty-four source modules import its public hooks.
+**Current seam:** `src/data/hooks.ts` is the data layer's largest module and has
+three independently changing implementations: the retry/change-listener engine
+and shared subscription registry, table-specific live queries, and financial
+projection caches. Dozens of source modules import its public hooks.
 
 **Proposed move:** keep `src/data/hooks.ts` as the stable interface and move the
 three implementation clusters into private files under `src/data/live/`. Do

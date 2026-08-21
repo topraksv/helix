@@ -5,8 +5,6 @@
  * two properties that matter — deterministic identity and all-or-nothing —
  * are properties of the write, not of a mock.
  */
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,16 +48,10 @@ vi.mock("../src/db/ids", () => ({
 vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
 import { commitStatementRows, type AcceptedStatementRow } from "../src/data/repo/statement-import";
+import { migrationStatements } from "./helpers";
 
 const USER = "statement-user";
 const NOW = "2026-08-18T09:00:00.000Z";
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) => readFileSync(join(migrationsDir, name), "utf8").split("--> statement-breakpoint"))
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 function seed(): void {
   harness.db!.prepare(
@@ -91,7 +83,7 @@ const row = (over: Partial<AcceptedStatementRow> = {}): AcceptedStatementRow => 
 describe("committing accepted statement rows", () => {
   beforeEach(() => {
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
     harness.failWrites = false;
     seed();
   });

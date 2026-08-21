@@ -5,14 +5,32 @@ const dependencies = vi.hoisted(() => ({
   pendingOutboxCount: vi.fn(async () => 7),
   requeueSyncDeadLetter: vi.fn(async () => "requeued" as const),
   writeSetting: vi.fn(async () => {}),
+  deterministicId: vi.fn(async (key: string) => `color:${key}`),
+  nowIso: vi.fn(() => "2026-08-20T00:00:00.000Z"),
+  writeRows: vi.fn(),
+  assertLiveRow: vi.fn(async (_db: unknown, table: string, _user: string, id: string) => {
+    if (id !== "category-1") throw new Error(`Cannot edit missing ${table} row`);
+  }),
+  scheduleSync: vi.fn(),
 }));
 
-vi.mock("../src/db/ids", () => ({ newId: dependencies.newId }));
+vi.mock("../src/db/ids", () => ({
+  newId: dependencies.newId,
+  deterministicId: dependencies.deterministicId,
+  naturalKeys: { matrixColor: (...parts: string[]) => parts.join("|") },
+}));
 vi.mock("../src/db/mutations", () => ({
   pendingOutboxCount: dependencies.pendingOutboxCount,
   requeueSyncDeadLetter: dependencies.requeueSyncDeadLetter,
   writeSetting: dependencies.writeSetting,
+  assertLiveRow: dependencies.assertLiveRow,
+  nowIso: dependencies.nowIso,
+  writeRowsValidated: vi.fn(async (user: string, writes: unknown[], validate: (db: unknown) => Promise<void>) => {
+    await validate({});
+    dependencies.writeRows(user, writes);
+  }),
 }));
+vi.mock("../src/sync/engine", () => ({ scheduleSync: dependencies.scheduleSync }));
 
 import {
   createRecordId,
@@ -26,6 +44,7 @@ import {
   setReminderDays,
 } from "../src/data/repo/settings";
 import { decodeSettingValue, type SettingKey } from "../src/domain/settings";
+import { setMatrixColor } from "../src/data/repo/matrix-colors";
 
 describe("synced setting decoder boundaries", () => {
   it("returns the fallback when storage is absent or is not JSON", () => {
@@ -160,5 +179,70 @@ describe("attention state persistence", () => {
       { read: [], dismissed: [], snoozedUntil: {} },
       true,
     );
+  });
+});
+
+/**
+ * The other half of the Mali Tablo colour surface. `setMatrixColorLabels`
+ * above was covered; the write that actually marks a cell was not — measured
+ * at 0% lines with all 32 of its mutants uncovered, while
+ * `cash-flow/index.tsx` has been calling it in production.
+ */
+describe("matrix colour writes", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("writes a mark addressed by all four coordinates, substituting the absent one", async () => {
+    await setMatrixColor("user-1", { scope: "cell", itemKey: "category-1", month: "2026-08" }, "green");
+    expect(dependencies.writeRows).toHaveBeenCalledWith("user-1", [{
+      table: "matrix_colors",
+      row: {
+        id: "color:user-1|cell|category-1|2026-08",
+        scope: "cell",
+        itemKey: "category-1",
+        month: "2026-08",
+        token: "green",
+        deletedAt: null,
+      },
+    }]);
+    expect(dependencies.scheduleSync).toHaveBeenCalledWith("user-1");
+
+    // A row mark has no month; the key must still have four parts or a row
+    // mark and a column mark could collide.
+    await setMatrixColor("user-1", { scope: "row", itemKey: "category-1", month: null }, "red");
+    expect(dependencies.deterministicId).toHaveBeenLastCalledWith("user-1|row|category-1|");
+  });
+
+  it("tombstones a cleared mark and keeps its last token", async () => {
+    // The column is NOT NULL; the tombstone is what makes it cleared.
+    await setMatrixColor("user-1", { scope: "cell", itemKey: "category-1", month: "2026-08" }, null);
+    expect(dependencies.writeRows).toHaveBeenCalledWith("user-1", [expect.objectContaining({
+      row: expect.objectContaining({ token: "yellow", deletedAt: "2026-08-20T00:00:00.000Z" }),
+    })]);
+  });
+
+  it("refuses a target whose coordinates do not match its scope, and a retired token", async () => {
+    for (const target of [
+      { scope: "row", itemKey: "category-1", month: "2026-08" },
+      { scope: "cell", itemKey: "category-1", month: null },
+      { scope: "column", itemKey: "category-1", month: "2026-08" },
+    ]) {
+      await expect(setMatrixColor("user-1", target as never, "red"), JSON.stringify(target))
+        .rejects.toThrow("Invalid matrix colour target");
+    }
+    // `critical` still displays, by design; it must never be written again.
+    await expect(setMatrixColor("user-1", { scope: "row", itemKey: "category-1", month: null }, "critical" as never))
+      .rejects.toThrow("Invalid matrix colour token");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("checks the named category only when asked", async () => {
+    await expect(setMatrixColor("user-1", { scope: "row", itemKey: "gone", month: null }, "red", { validateCategory: true }))
+      .rejects.toThrow("Cannot edit missing categories row");
+
+    // Mali Tablo passes no options, so the DEFAULT path is unvalidated: the
+    // same dead category still writes. Making the check unconditional would
+    // change what production does.
+    await setMatrixColor("user-1", { scope: "row", itemKey: "gone", month: null }, "red");
+    expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
   });
 });

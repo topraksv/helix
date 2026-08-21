@@ -46,6 +46,7 @@ vi.mock("../src/services/markets", () => ({ marketSellRateTry: vi.fn() }));
 vi.mock("../src/sync/engine", () => ({ scheduleSync: vi.fn() }));
 
 import * as repository from "../src/data/repo";
+import { buildPlanRows, linkDueRowsToCardStatements, type NewPlan } from "../src/data/repo/installments";
 
 const publicRuntimeExports = [
   "TEMPLATE_CATEGORIES",
@@ -56,7 +57,6 @@ const publicRuntimeExports = [
   "SubscriptionCategoryRequiredError",
   "FxRateUnavailableError",
   "seedWorkspace",
-  "applyOnboardingBalance",
   "setOpeningBalance",
   "finalizeOnboarding",
   "upsertPaymentSource",
@@ -78,7 +78,6 @@ const publicRuntimeExports = [
   "deleteInvestmentOperation",
   "restoreInvestmentOperation",
   "removeInvestmentProductHistory",
-  "countTransactionsForCategory",
   "categoryReferenceUsage",
   "countInstallmentsForPlan",
   "createInstallmentPlan",
@@ -1379,5 +1378,340 @@ describe("replace-mode import with an unreadable batch", () => {
     })).rejects.toThrow("insufficient investment cash");
 
     expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The installment plan write path, which until now only had its refusals
+ * tested.
+ *
+ * Measured 2026-08-21: `src/data/repo/installments.ts` sat at 12.5% functions
+ * and 30.4% statements. The rejection cases above reach the guards at the top
+ * of `buildPlanRows` and stop there, so the part that actually turns one plan
+ * into N dated money rows — the split, the deterministic ids that make an edit
+ * reproduce the same paid/unpaid rows, the realized/pending boundary — ran in
+ * no test at all. That is the half where a mistake moves money.
+ */
+describe("installment plan materialization", () => {
+  const plan: NewPlan = {
+    title: "Dizüstü",
+    kind: "card_installment",
+    totalAmountMinor: 10_000,
+    monthlyAmountMinor: null,
+    installmentCount: 3,
+    currency: "TRY",
+    fxRate: null,
+    startMonth: "2026-06",
+    dueDay: 15,
+    paymentSourceId: null,
+    personId: "person-1",
+    personIsSelf: true,
+    categoryId: "category-1",
+    note: null,
+    tryFactor: 1,
+  };
+
+  const build = async (over: Partial<NewPlan> = {}, today = "2026-07-20") =>
+    buildPlanRows("plan-1", { ...plan, ...over }, today as never);
+
+  it("writes the plan plus one dated row per installment, and nothing else", async () => {
+    const { rows, keepNos } = await build();
+
+    expect(rows[0]).toMatchObject({ table: "installment_plans", row: { id: "plan-1", installmentCount: 3 } });
+    const txRows = rows.slice(1);
+    expect(txRows).toHaveLength(3);
+    expect(txRows.map((r) => r.row.effectiveDate)).toEqual(["2026-06-15", "2026-07-15", "2026-08-15"]);
+    expect(txRows.map((r) => r.row.installmentNo)).toEqual([1, 2, 3]);
+    expect(keepNos).toEqual(new Set([1, 2, 3]));
+  });
+
+  it("splits the total exactly, with the rounding remainder on the last month", async () => {
+    // 10_000 / 3 does not divide. The shares must still sum to the total, or a
+    // plan quietly costs more or less than the thing that was bought.
+    const { rows } = await build();
+    const amounts = rows.slice(1).map((r) => r.row.amountMinor as number);
+
+    expect(amounts).toEqual([3_333, 3_333, 3_334]);
+    expect(amounts.reduce((a, b) => a + b, 0)).toBe(10_000);
+  });
+
+  it("realizes only the installments whose date has already passed", async () => {
+    // The realized/pending split is derived from the date, never stored, which
+    // is what lets an edit regenerate the same plan without losing history.
+    const { rows } = await build({}, "2026-07-20");
+    expect(rows.slice(1).map((r) => r.row.status)).toEqual(["realized", "realized", "pending"]);
+
+    const { rows: earlier } = await build({}, "2026-06-01");
+    expect(earlier.slice(1).map((r) => r.row.status)).toEqual(["pending", "pending", "pending"]);
+  });
+
+  it("gives every installment an id derived from its plan and position", async () => {
+    // Deterministic, so re-saving an edited plan updates the same rows instead
+    // of stacking a second copy of every month.
+    const { rows } = await build();
+    expect(rows.slice(1).map((r) => r.row.id)).toEqual([
+      "id:installmentTx|plan-1|1",
+      "id:installmentTx|plan-1|2",
+      "id:installmentTx|plan-1|3",
+    ]);
+  });
+
+  it("converts each share with the plan's own factor rather than the amount", async () => {
+    const { rows } = await build({ currency: "USD", fxRate: "40", tryFactor: 40, totalAmountMinor: 300 });
+    const txRows = rows.slice(1);
+
+    expect(txRows.map((r) => r.row.amountMinor)).toEqual([100, 100, 100]);
+    expect(txRows.map((r) => r.row.amountTryMinor)).toEqual([4_000, 4_000, 4_000]);
+    expect(txRows.every((r) => r.row.currency === "USD" && r.row.fxRate === "40")).toBe(true);
+  });
+
+  it("repeats a fixed monthly amount for a loan instead of splitting a total", async () => {
+    const { rows } = await build({ kind: "loan", totalAmountMinor: null, monthlyAmountMinor: 2_500 });
+    expect(rows.slice(1).map((r) => r.row.amountMinor)).toEqual([2_500, 2_500, 2_500]);
+  });
+
+  it("attaches every installment to the card statement that will bill it", async () => {
+    // A card plan is not N loose charges: each month's row belongs to the
+    // statement whose due date it lands on, which is what makes one payment
+    // settle a whole month instead of each row asking to be paid separately.
+    dependencies.getSqliteAsync.mockResolvedValue({ getAllAsync: async () => [], getFirstAsync: async () => null });
+    const { rows } = await build({ paymentSourceId: "card-1" });
+
+    const linked = await linkDueRowsToCardStatements("user-1", "card-1", { statementDay: 25, dueDay: 15 }, rows);
+
+    const statements = linked.filter((w) => w.table === "credit_card_statements");
+    const txRows = linked.filter((w) => w.table === "transactions");
+    const planRows = linked.filter((w) => w.table === "installment_plans");
+
+    // Three months, three statements, and the plan row passes through untouched.
+    expect(statements).toHaveLength(3);
+    expect(txRows).toHaveLength(3);
+    expect(planRows).toHaveLength(1);
+    expect(planRows[0]?.row.cardStatementId).toBeUndefined();
+
+    const statementIds = new Set(statements.map((w) => String(w.row.id)));
+    for (const tx of txRows) {
+      expect(statementIds.has(String(tx.row.cardStatementId)), String(tx.row.effectiveDate)).toBe(true);
+    }
+    // Distinct months bill on distinct statements.
+    expect(new Set(txRows.map((w) => String(w.row.cardStatementId))).size).toBe(3);
+  });
+
+  it("reuses one statement when two installments fall in the same billing period", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({ getAllAsync: async () => [], getFirstAsync: async () => null });
+    const { rows } = await build({ installmentCount: 2, totalAmountMinor: 200 });
+    const sameMonth = rows.map((w) =>
+      w.table === "transactions" ? { ...w, row: { ...w.row, effectiveDate: "2026-06-15" } } : w,
+    );
+
+    const linked = await linkDueRowsToCardStatements("user-1", "card-1", { statementDay: 25, dueDay: 15 }, sameMonth);
+
+    expect(linked.filter((w) => w.table === "credit_card_statements")).toHaveLength(1);
+  });
+
+  it("refuses a plan whose parameters cannot describe a schedule", async () => {
+    for (const [why, patch] of [
+      ["an unknown kind", { kind: "mortgage" as never }],
+      ["an unsupported currency", { currency: "XYZ" }],
+      ["a start month that is not a month", { startMonth: "2026-13" as never }],
+      ["a zero installment count", { installmentCount: 0 }],
+      ["a non-positive FX factor", { tryFactor: 0 }],
+      ["a negative total", { totalAmountMinor: -1 }],
+      // `generateSchedule` clamps a corrupt day so an already-STORED plan can
+      // still render; a new one is refused here instead of being silently
+      // moved to another day of the month.
+      ["a due day outside the month", { dueDay: 45 }],
+    ] as [string, Partial<NewPlan>][]) {
+      await expect(build(patch), why).rejects.toThrow();
+    }
+  });
+});
+
+/**
+ * Skipping an expected payment, and taking that back.
+ *
+ * Measured 2026-08-21, `src/data/repo/expected.ts` sat at 66.7% functions with
+ * lines 223-240 — the whole of `skipExpected` and `unskipExpected` — never
+ * executed. Both are guard-first by design: an undo arrives from a snackbar
+ * the owner may tap late, twice, or after the row has already moved on, and
+ * the guard is the only thing stopping a stale tap from resurrecting a paid
+ * item as unpaid.
+ */
+describe("skipping an expected payment", () => {
+  const expectedRow = (over: Record<string, unknown> = {}) => ({
+    id: "expected-1",
+    user_id: "user-1",
+    kind: "subscription",
+    ref_id: "sub-1",
+    direction: "out",
+    due_date: "2026-07-10",
+    amount_minor: 100_00,
+    currency: "TRY",
+    status: "pending",
+    ...over,
+  });
+
+  const withRow = (row: Record<string, unknown> | null) => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getAllAsync: async () => [],
+      getFirstAsync: async () => row,
+    });
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("moves a pending or late item to skipped", async () => {
+    for (const status of ["pending", "late"]) {
+      dependencies.writeRows.mockClear();
+      withRow(expectedRow({ status }));
+
+      await repository.skipExpected("user-1", "expected-1");
+
+      expect(dependencies.writeRows, status).toHaveBeenCalledWith("user-1", [{
+        table: "expected_payments",
+        row: expect.objectContaining({ id: "expected-1", status: "skipped" }),
+      }]);
+    }
+  });
+
+  it("leaves an item that has already moved on exactly where it is", async () => {
+    // A paid item skipped by a stale tap would take a real transaction out of
+    // the catch-up list while leaving the money written.
+    for (const status of ["paid", "skipped"]) {
+      dependencies.writeRows.mockClear();
+      withRow(expectedRow({ status }));
+
+      await repository.skipExpected("user-1", "expected-1");
+
+      expect(dependencies.writeRows, status).not.toHaveBeenCalled();
+    }
+  });
+
+  it("does nothing for an item this account cannot see", async () => {
+    withRow(null);
+    await repository.skipExpected("user-1", "expected-1");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("returns a skipped item to pending, and only a skipped one", async () => {
+    withRow(expectedRow({ status: "skipped" }));
+    await repository.unskipExpected("user-1", "expected-1");
+    expect(dependencies.writeRows).toHaveBeenCalledWith("user-1", [{
+      table: "expected_payments",
+      row: expect.objectContaining({ id: "expected-1", status: "pending" }),
+    }]);
+
+    // Double-undo, or an undo that arrives after the item was confirmed.
+    for (const status of ["pending", "paid"]) {
+      dependencies.writeRows.mockClear();
+      withRow(expectedRow({ status }));
+
+      await repository.unskipExpected("user-1", "expected-1");
+
+      expect(dependencies.writeRows, status).not.toHaveBeenCalled();
+    }
+  });
+
+  it("refuses to confirm a variable subscription before its amount is known", async () => {
+    // A variable bill carries 0 until the invoice arrives. Confirming it then
+    // would write a zero-lira charge and mark the month settled.
+    withRow(expectedRow({ amount_is_estimated: 1 }));
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getAllAsync: async () => [],
+      getFirstAsync: async (sql: string) =>
+        sql.includes("FROM subscriptions")
+          ? { id: "sub-1", amount_mode: "variable", person_id: "person-1", category_id: null }
+          : expectedRow({ amount_is_estimated: 1 }),
+    });
+
+    await expect(repository.confirmExpected("user-1", "expected-1", { personId: "person-1" }))
+      .rejects.toThrow("Variable subscription amount must be entered before confirmation");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Deleting a subscription or income rule, and undoing that.
+ *
+ * Measured 2026-08-21, `src/data/repo/rules.ts` sat at 41.2% functions with
+ * lines 385-439 never executed — the delete-with-undo path in full. Deleting a
+ * rule must also tombstone the payments it has already generated, or the
+ * reminders outlive the rule; undo has to bring back exactly that set and
+ * nothing else, or a restored rule arrives with months it never scheduled.
+ */
+describe("rule deletion and undo", () => {
+  const subscription = { id: "sub-1", user_id: "user-1", name: "Servis", deleted_at: null };
+  const pendingExpected = [
+    { id: "expected-1", user_id: "user-1", kind: "subscription", ref_id: "sub-1", status: "pending", deleted_at: null },
+    { id: "expected-2", user_id: "user-1", kind: "subscription", ref_id: "sub-1", status: "late", deleted_at: null },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dependencies.restoreRows.mockImplementation(async (userId: string, writes: unknown[]) => {
+      dependencies.writeRows(userId, writes);
+    });
+  });
+
+  it("tombstones the rule and every payment it still had outstanding", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => subscription,
+      getAllAsync: async () => pendingExpected,
+    });
+
+    const snapshot = await repository.deleteSubscriptionWithExpected("user-1", "sub-1");
+
+    const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    expect(writes).toHaveLength(3);
+    expect(writes[0]?.table).toBe("subscriptions");
+    // One timestamp for the whole delete, so the rule and its payments cannot
+    // be restored to different moments.
+    const stamps = new Set(writes.map((w) => String(w.row.deletedAt)));
+    expect(stamps.size).toBe(1);
+    expect(writes.slice(1).map((w) => w.row.id)).toEqual(["expected-1", "expected-2"]);
+
+    // The snapshot is what undo replays, so it must carry the originals.
+    expect(snapshot).toEqual({ table: "subscriptions", root: subscription, expected: pendingExpected });
+  });
+
+  it("reports nothing to delete for a rule this account cannot see", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => null,
+      getAllAsync: async () => [],
+    });
+
+    expect(await repository.deleteSubscriptionWithExpected("user-1", "missing")).toBeNull();
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("routes an income rule to its own table and kind", async () => {
+    const income = { id: "income-1", user_id: "user-1", name: "Maaş", deleted_at: null };
+    const seen: unknown[][] = [];
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => income,
+      getAllAsync: async (_sql: string, args: unknown[]) => { seen.push(args); return []; },
+    });
+
+    const snapshot = await repository.deleteRecurringIncomeWithExpected("user-1", "income-1");
+
+    expect(snapshot?.table).toBe("recurring_incomes");
+    // The expected rows are looked up by the rule's OWN kind; the subscription
+    // kind here would tombstone another rule's payments.
+    expect(seen[0]).toEqual(["user-1", "recurring_income", "income-1"]);
+  });
+
+  it("brings back exactly what the snapshot recorded", async () => {
+    await repository.restoreDeletedRule("user-1", {
+      table: "subscriptions",
+      root: subscription,
+      expected: pendingExpected,
+    });
+
+    const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    expect(writes).toHaveLength(3);
+    expect(writes.every((w) => w.row.deletedAt === null)).toBe(true);
+    expect(writes.map((w) => w.row.id)).toEqual(["sub-1", "expected-1", "expected-2"]);
   });
 });

@@ -2,7 +2,7 @@ import React from "react";
 import { Stack } from "expo-router";
 import { tr } from "../../../i18n/tr";
 import { HeaderBackButton } from "../../../ui/header-back";
-import { drillDownScreenOptions } from "../../../ui/header-bar";
+import { pageScreenOptions } from "../../../ui/header-bar";
 
 import { useTheme } from "../../../ui/theme";
 
@@ -13,7 +13,7 @@ export default function SettingsLayout() {
   return (
     <Stack
       screenOptions={{
-        ...drillDownScreenOptions(palette),
+        ...pageScreenOptions(palette),
         headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" />,
       }}
     >

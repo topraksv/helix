@@ -13,17 +13,12 @@
  * those rules and the real schema's ownership constraints.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { prepareOutboundBatch } from "../src/sync/outbound-validation";
 import { remoteSupersededLocal, remoteWinsLww, shouldApplyServerAck } from "../src/sync/merge-policy";
-import { required } from "./helpers";
-
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "../src/db/migrations");
+import { migrationStatements, required } from "./helpers";
 
 const USER = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER = "22222222-2222-4222-8222-222222222222";
@@ -31,19 +26,7 @@ const ROW = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ROW_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const PERSON = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
-function migrationStatements(): string[] {
-  return readdirSync(migrationsDir)
-    .filter((name) => name.endsWith(".sql"))
-    .sort()
-    .flatMap((name) =>
-      readFileSync(join(migrationsDir, name), "utf8")
-        .split("--> statement-breakpoint")
-        .map((statement) => statement.trim())
-        .filter(Boolean),
-    );
-}
-
-const DDL = migrationStatements();
+const DDL = migrationStatements;
 
 /** The engine's own local write: an upsert that refuses to cross owners. */
 const UPSERT_GUARD = `INSERT INTO transactions (%COLS%) VALUES (%VALS%)

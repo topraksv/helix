@@ -51,7 +51,7 @@ import { tr } from "../i18n/tr";
 import { loadDevicePreferences } from "../services/device-preferences";
 import { DelayedLoadingIndicator } from "../ui/loading-indicator";
 import { HeaderBackButton, TransactionBackButton } from "../ui/header-back";
-import { cardScreenOptions, primaryScreenOptions } from "../ui/header-bar";
+import { cardScreenOptions, pageScreenOptions } from "../ui/header-bar";
 
 import { devError } from "../services/logger";
 import { KeyboardSafeRoot } from "../ui/keyboard-safe";
@@ -478,7 +478,7 @@ function RootLayoutInner() {
         <ErrorBoundary>
         <Stack
           screenOptions={{
-            ...primaryScreenOptions(theme.palette),
+            ...pageScreenOptions(theme.palette),
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

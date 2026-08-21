@@ -47,7 +47,7 @@ import { placeholderPools, useRotatingPlaceholder } from "../ui/placeholders";
 import { radius, spacing, type, useTheme } from "../ui/theme";
 import { selectionTapIfChanged } from "../ui/haptics";
 import { navigateBack } from "../ui/navigation";
-import { buildSaveSummary, type SaveSummary } from "../domain/save-summary";
+import { buildSaveSummary, type SavedTransaction, type SaveSummary } from "../domain/save-summary";
 import { provenanceOf } from "../domain/provenance";
 import { AttachmentPanel } from "../ui/attachment-panel";
 import { devError } from "../services/logger";
@@ -512,22 +512,21 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
           personId: saveable.person.id,
           note: note.trim() || null,
         };
+        // Same reasoning as `written`: the confirmation describes the same row
+        // either way, so one literal is what stops a field being added to the
+        // "created" summary and forgotten in the "updated" one.
+        const saved: SavedTransaction = {
+          type: entryType,
+          amountTryMinor: Math.abs(saveable.tryMinor),
+          effectiveDate,
+          status: effectiveDate <= todayISO() ? "realized" : "pending",
+          personIsSelf: saveable.person.isSelf,
+        };
         if (isEdit) {
           await updateTransaction(userId, existing, written);
           scheduleSync(userId);
           confirmSave(
-            buildSaveSummary({
-              kind: "updated",
-              saved: {
-                type: entryType,
-                amountTryMinor: Math.abs(saveable.tryMinor),
-                effectiveDate,
-                status: effectiveDate <= todayISO() ? "realized" : "pending",
-                personIsSelf: saveable.person.isSelf,
-              },
-              today: todayISO(),
-              enteredFor: dateStr,
-            }),
+            buildSaveSummary({ kind: "updated", saved, today: todayISO(), enteredFor: dateStr }),
             null,
           );
           allowExit(close);
@@ -561,18 +560,9 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
         scheduleSync(userId);
         // An installment plan is many rows across many months; a single-row
         // balance sentence would misdescribe it, so it keeps the plain notice.
-        const summary = installment ? null : buildSaveSummary({
-          kind: "created",
-          saved: {
-            type: entryType,
-            amountTryMinor: Math.abs(saveable.tryMinor),
-            effectiveDate,
-            status: effectiveDate <= todayISO() ? "realized" : "pending",
-            personIsSelf: saveable.person.isSelf,
-          },
-          today: todayISO(),
-          enteredFor: dateStr,
-        });
+        const summary = installment
+          ? null
+          : buildSaveSummary({ kind: "created", saved, today: todayISO(), enteredFor: dateStr });
         if (thenNew) {
           setAmountRaw("");
           setAmountMinor(null);

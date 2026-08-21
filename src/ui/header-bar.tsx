@@ -23,7 +23,6 @@ import React, { type ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controlSize, font, spacing, type, useTheme, type Palette } from "./theme";
-import { PRESENTATION_TAXONOMY, type PresentationClass } from "./presentation";
 
 /** Header row height, excluding the top safe-area inset. */
 const HEADER_ROW_HEIGHT = 64;
@@ -104,12 +103,14 @@ function HeaderBar({
  */
 const STACK_ANIMATION = "slide_from_right" as const;
 
-function stackScreenOptions(palette: Palette, presentationClass: PresentationClass = "drill-down") {
-  // Presentation taxonomy: every navigable route shares this stack contract —
-  // one header, one back rule, one safe-area rule. Short contextual choices
-  // live in `ui/dialog` and `ui/calendar` as real modals and never become a
-  // second navigation header.
-  const presentation = PRESENTATION_TAXONOMY[presentationClass];
+/**
+ * A navigable page with the app's own header.
+ *
+ * Every navigable route shares this stack contract — one header, one back rule,
+ * one safe-area rule. Short contextual choices live in `ui/dialog` and
+ * `ui/calendar` as real modals and never become a second navigation header.
+ */
+export function pageScreenOptions(palette: Palette) {
   return {
     animation: STACK_ANIMATION,
     headerStyle: { backgroundColor: palette.background },
@@ -117,7 +118,8 @@ function stackScreenOptions(palette: Palette, presentationClass: PresentationCla
     headerTitleStyle: { color: palette.textStrong, fontFamily: font.semibold },
     headerBackButtonDisplayMode: "minimal" as const,
     headerShadowVisible: false,
-    gestureEnabled: presentation.backAction === "back",
+    // Every route in this stack goes back; none of them close or dismiss.
+    gestureEnabled: true,
     contentStyle: { backgroundColor: palette.background },
     // One header component on every platform — see `ui/header-bar.tsx` for why
     // the native stack's own header could not be made to match the web one.
@@ -128,22 +130,9 @@ function stackScreenOptions(palette: Palette, presentationClass: PresentationCla
   };
 }
 
-export function primaryScreenOptions(palette: Palette) {
-  return stackScreenOptions(palette, "primary-page");
-}
-
-export function drillDownScreenOptions(palette: Palette) {
-  return stackScreenOptions(palette, "drill-down");
-}
-
-/** The one presentation: a full-screen page with the app's own header. */
+/** The same page, presented as a card over its parent. */
 export function cardScreenOptions(palette: Palette) {
-  const presentation = PRESENTATION_TAXONOMY["primary-page"];
-  return {
-    ...stackScreenOptions(palette, "primary-page"),
-    presentation: "card" as const,
-    gestureEnabled: presentation.backAction === "back",
-  };
+  return { ...pageScreenOptions(palette), presentation: "card" as const };
 }
 
 interface StackHeaderArgs {

@@ -255,11 +255,6 @@ async function onboardingBalanceRows(
   ];
 }
 
-export async function applyOnboardingBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
-  const rows = await onboardingBalanceRows(userId, startMonth, openingBalanceMinor);
-  if (rows.length > 0) await writeRows(userId, rows);
-}
-
 /** Replace the historical ledger anchor as one validated atomic write. */
 export async function setOpeningBalance(userId: string, startMonth: MonthKey, openingBalanceMinor: Minor): Promise<void> {
   if (!isMonthKey(startMonth) || startMonth > monthKeyOf(todayISO())) {

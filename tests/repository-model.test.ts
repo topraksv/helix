@@ -7,8 +7,6 @@
  * file. The oracle does not import the ledger, card-cycle or investment math.
  */
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addInvestmentOperation,
@@ -25,6 +23,7 @@ import {
   upsertPaymentSource,
 } from "../src/data/repo";
 import { projectInvestmentState } from "../src/domain/investment-projection";
+import { migrationStatements } from "./helpers";
 
 const harness = vi.hoisted(() => ({
   db: null as DatabaseSync | null,
@@ -77,17 +76,6 @@ const TODAY = "2026-08-09";
 // once per covered mutant, where one deterministic journal exercises the same
 // repository statements without multiplying an 882-mutant run by 100.
 const JOURNAL_SEEDS = process.env.STRYKER_MUTATOR_WORKER ? 1 : 100;
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) =>
-    readFileSync(join(migrationsDir, name), "utf8").split(
-      "--> statement-breakpoint",
-    ),
-  )
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 interface ModelTransaction {
   id: string;
@@ -216,7 +204,7 @@ describe("repository model oracle", () => {
       harness.db?.close();
       harness.nextId = 0;
       harness.db = new DatabaseSync(":memory:");
-      for (const statement of migrationSql) harness.db.exec(statement);
+      for (const statement of migrationStatements) harness.db.exec(statement);
 
       const personId = await createPerson(USER, "Ben");
       const expenseCategoryId = await createCategory(USER, {
@@ -551,7 +539,7 @@ describe("repository model oracle", () => {
     harness.db?.close();
     harness.nextId = 0;
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
 
     const personId = await createPerson(USER, "Ben");
     const transferCategoryId = await createCategory(USER, {

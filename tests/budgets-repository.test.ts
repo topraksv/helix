@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -57,21 +55,11 @@ import {
   upsertCategoryBudget,
 } from "../src/data/repo/budgets";
 import { fromDbShape } from "../src/db/mutations";
+import { migrationStatements } from "./helpers";
 
 const USER = "budget-user";
 const OTHER_USER = "other-user";
 const NOW = "2026-08-13T09:00:00.000Z";
-const migrationsDir = join(process.cwd(), "src/db/migrations");
-const migrationSql = readdirSync(migrationsDir)
-  .filter((name) => /^\d{4}_.+\.sql$/.test(name))
-  .sort()
-  .flatMap((name) =>
-    readFileSync(join(migrationsDir, name), "utf8").split(
-      "--> statement-breakpoint",
-    ),
-  )
-  .map((statement) => statement.trim())
-  .filter(Boolean);
 
 function seedCategory(
   id: string,
@@ -299,7 +287,7 @@ describe("budget repository persistence", () => {
     vi.setSystemTime(new Date(NOW));
     harness.beforeTransaction = null;
     harness.db = new DatabaseSync(":memory:");
-    for (const statement of migrationSql) harness.db.exec(statement);
+    for (const statement of migrationStatements) harness.db.exec(statement);
     seedPerson();
   });
 

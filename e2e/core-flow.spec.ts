@@ -8,7 +8,7 @@ import {
   isolateExternalData,
   onboard,
   pickOption,
-  renderedContrastRatio,
+  renderedContrast,
 } from "./helpers";
 
 test.beforeEach(async ({ context }) => isolateExternalData(context));
@@ -36,7 +36,7 @@ test("onboarding → add → edit → delete/undo → backup protects the core l
   // The snackbar inverts the page, so its label needs an inverted ink. Role
   // queries match the accessible name and stayed green while the label was
   // rendering at 1.27:1 — measure what the browser actually painted.
-  expect(await renderedContrastRatio(undo.getByText("Geri Al"))).toBeGreaterThanOrEqual(4.5);
+  expect(await renderedContrast(undo.getByText("Geri Al"), "text")).toBeGreaterThanOrEqual(4.5);
   await undo.click();
   await expect(page.getByText("E2E düzenlendi", { exact: true })).toBeVisible();
 

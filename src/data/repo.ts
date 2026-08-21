@@ -19,7 +19,6 @@ export {
 export {
   TEMPLATE_CATEGORIES,
   TEMPLATE_EXTRA_CATEGORIES,
-  applyOnboardingBalance,
   finalizeOnboarding,
   seedWorkspace,
   setOpeningBalance,
@@ -49,7 +48,6 @@ export type {
 export {
   addTransaction,
   bulkMonthEntry,
-  countTransactionsForCategory,
   deleteTransaction,
   deleteBalanceAdjustment,
   restoreBalanceAdjustment,
@@ -158,7 +156,6 @@ export {
   addAttachment,
   deleteAttachment,
   liveAttachmentNames,
-  listAttachments,
   restoreAttachment,
   type AttachmentRow,
   type AttachmentSnapshot,

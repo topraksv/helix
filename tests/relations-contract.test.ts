@@ -44,3 +44,50 @@ describe("foreign-key relation contract", () => {
     expect([...parsed].sort()).toEqual([...canonical].sort());
   });
 });
+
+const rlsSuiteFile = join(process.cwd(), "supabase/tests/owner_integrity_and_rls.sql");
+
+/**
+ * Every `array[...]` in the pgTAP suite that names synced tables at all.
+ *
+ * The suite cannot ask Postgres which tables are synced — that list lives in
+ * `SYNCED_TABLES` — so it repeats the names in eight hardcoded arrays and
+ * asserts a count against them. That is exactly the shape that drifts.
+ */
+function pgTapTableArrays(): string[][] {
+  const sql = readFileSync(rlsSuiteFile, "utf8");
+  const synced = new Set(Object.keys(SYNCED_TABLES));
+  return [...sql.matchAll(/array\s*\[([^\]]*)\]/gi)]
+    .map((match) => match[1]!.split(",").map((entry) => entry.trim().replace(/^'|'$/g, "")).filter(Boolean))
+    .filter((entries) => entries.some((entry) => synced.has(entry)));
+}
+
+/**
+ * This is not a guard against hypothetical drift — it is a guard against drift
+ * that already shipped. The suite was written when there were 19 synced tables
+ * and stayed at 19 after `attachments` and `matrix_colors` were added, so it
+ * kept passing while asserting nothing about the two newest tables' policies.
+ * A count assertion cannot notice its own array getting shorter than the truth.
+ */
+describe("RLS suite coverage", () => {
+  it("names every synced table in every table array the pgTAP suite asserts over", () => {
+    const expected = Object.keys(SYNCED_TABLES).sort();
+    const arrays = pgTapTableArrays();
+
+    // A parser that found nothing would make the per-array assertion vacuous.
+    expect(arrays.length).toBeGreaterThanOrEqual(8);
+    for (const entries of arrays) expect([...entries].sort()).toEqual(expected);
+  });
+
+  it("keeps the suite's hardcoded counts equal to the number of synced tables", () => {
+    const sql = readFileSync(rlsSuiteFile, "utf8");
+    const total = Object.keys(SYNCED_TABLES).length;
+
+    // Three policies per table — select, insert and update. Migration 30 adds
+    // no delete policy, which the suite asserts separately by privilege.
+    expect(sql).toContain(`all ${total} synced tables have select, insert and update owner policies`);
+    expect([...sql.matchAll(/^\s*(\d+)::bigint,$/gm)].map((match) => Number(match[1]))).toEqual(
+      expect.arrayContaining([total, total * 3]),
+    );
+  });
+});

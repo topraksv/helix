@@ -155,7 +155,6 @@ export const tr = {
     installment: ["Telefon", "Dizüstü bilgisayar", "Beyaz eşya", "Konut kredisi", "Mobilya", "Tatil", "Araç kasko taksidi"],
     category: ["Market", "Ulaşım", "Faturalar", "Eğlence", "Sağlık", "Eğitim", "Giyim", "Kira"],
     person: ["Eşim", "Annem", "Kardeşim", "Ev arkadaşım"],
-    income: ["Maaş", "Kira geliri", "Freelance", "Prim", "Burs"],
     source: ["Banka kartım", "Kredi kartım", "Nakit", "Dijital cüzdan", "Ortak hesap"],
     note: ["Market alışverişi", "Doğum günü hediyesi", "Yıllık ödeme", "Arkadaşlarla yemek", "İade bekleniyor"],
     amount: ["400+500", "15.000", "1.250,50", "89,90", "300+150", "2.500", "12.400", "49,99", "1.000+250+90"],

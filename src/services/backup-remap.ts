@@ -47,7 +47,14 @@ export function isDeterministicId(id: unknown): id is string {
 /**
  * Every natural-key constructor must have one remap resolver. Keeping this
  * exhaustive map beside the algorithm makes adding a new deterministic id a
- * compile-time and test-time event instead of a silent restore regression.
+ * compile-time event instead of a silent restore regression.
+ *
+ * Nothing reads it at runtime — the `satisfies` clause below IS the check, and
+ * it fails the build the moment a key is added to `naturalKeys` without one
+ * here (verified: removing `matrixColor` raises TS1360). It stays exported so
+ * it is not an unused local.
+ *
+ * @public
  */
 export const REMAPPED_NATURAL_KEY_COVERAGE = {
   setting: "settings",

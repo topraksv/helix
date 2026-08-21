@@ -410,12 +410,10 @@ export function circle(size: number): number {
 }
 
 /** Context-specific rhythm keeps a dashboard breathable without making a
- * financial table wasteful or turning settings into a dense control panel. */
+ * financial table wasteful. */
 export const density = {
   dashboard: { sectionGap: spacing.xl, cardPadding: spacing.xl, rowGap: spacing.md },
   list: { sectionGap: spacing.lg, cardPadding: spacing.md, rowGap: spacing.sm },
-  settings: { sectionGap: spacing.lg, cardPadding: spacing.md, rowGap: spacing.xs },
-  analytics: { sectionGap: spacing.lg, cardPadding: spacing.lg, rowGap: spacing.sm },
 } as const;
 
 /** Named motion families. A duration belongs to a user-perceived event, not a
@@ -423,9 +421,7 @@ export const density = {
 export const motion = {
   feedback: 120,
   standard: 220,
-  sheet: 320,
   settle: 420,
-  waiting: 1600,
   loading: 1200,
   loadingReveal: 350,
   /** A pointer arriving on, or leaving, a control.

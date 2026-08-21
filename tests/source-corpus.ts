@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 const ROOT = process.cwd();
 
-export interface CorpusOptions {
+interface CorpusOptions {
   /** Which files count. Defaults to TypeScript sources. */
   extensions?: readonly string[];
   /** Directory names never walked into. */

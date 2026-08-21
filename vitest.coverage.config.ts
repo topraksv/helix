@@ -1,17 +1,23 @@
 import { defineConfig } from "vitest/config";
 
+// The modules that decide what a number means or what gets written. Files
+// under `src/domain` and `src/data/repo` that are absent from this list score
+// below the thresholds below and are not gated yet.
 const criticalDomainFiles = [
   "src/data/repo/accounts.ts",
   "src/data/repo/categories.ts",
   "src/data/repo/cell-notes.ts",
   "src/data/repo/computed.ts",
   "src/data/repo/import-plan.ts",
+  "src/data/repo/matrix-colors.ts",
   "src/data/repo/investment-validation.ts",
   "src/data/repo/rule-validation.ts",
   "src/data/repo/settings.ts",
   "src/data/repo/transactions.ts",
   "src/domain/analytics.ts",
   "src/domain/app-guard.ts",
+  "src/domain/attachments.ts",
+  "src/domain/attention.ts",
   "src/domain/balance-declaration.ts",
   "src/domain/money.ts",
   "src/domain/balance.ts",
@@ -30,7 +36,12 @@ const criticalDomainFiles = [
   "src/domain/investment-projection.ts",
   "src/domain/investment-catalog.ts",
   "src/domain/installments.ts",
+  "src/domain/matrix-colors.ts",
+  "src/domain/matrix-preferences.ts",
+  "src/domain/provenance.ts",
   "src/domain/recurrence.ts",
+  "src/domain/save-summary.ts",
+  "src/domain/statement-import.ts",
   "src/domain/transaction-draft.ts",
   "src/domain/investments.ts",
   "src/domain/market.ts",

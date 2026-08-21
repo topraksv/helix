@@ -4,7 +4,6 @@ import {
   findAutoConfirmable,
   findLate,
   generateExpected,
-  isDueWithin,
   obsoleteExpectedIds,
 } from "../src/domain/expected";
 import type { ExpectedPaymentLike, RecurringIncomeLike, SubscriptionLike } from "../src/domain/types";
@@ -188,15 +187,6 @@ describe("state transitions", () => {
     expect(
       findAutoConfirmable(items, new Map([["sub-auto", null]]), "2026-07-05").map((e) => e.id),
     ).toEqual(["unknown-origin"]);
-  });
-});
-
-describe("reminder window", () => {
-  it("matches items due within N days, inclusive", () => {
-    expect(isDueWithin(expected({ dueDate: "2026-07-08" }), "2026-07-05", 3)).toBe(true);
-    expect(isDueWithin(expected({ dueDate: "2026-07-09" }), "2026-07-05", 3)).toBe(false);
-    expect(isDueWithin(expected({ dueDate: "2026-07-05" }), "2026-07-05", 0)).toBe(true);
-    expect(isDueWithin(expected({ dueDate: "2026-07-04" }), "2026-07-05", 3)).toBe(false); // past → late, not upcoming
   });
 });
 

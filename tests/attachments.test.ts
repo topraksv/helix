@@ -4,8 +4,10 @@
  * The bytes never leave the device, so the risk here is not exfiltration
  * through sync — it is a stored name that addresses somewhere it should not,
  * and a display name that lies about what a file is. Both are pinned here, and
- * both are re-checked at read time in `listAttachments`, because a row can
- * arrive from sync or a restored backup rather than from the picker.
+ * both are re-checked where the name becomes a path — `attachment-store.ts`
+ * refuses to resolve an unsafe name and `attachment-store.web.ts` refuses to
+ * key storage with one — because a row can arrive from sync or a restored
+ * backup rather than from the picker.
  */
 import { describe, expect, it } from "vitest";
 import {
