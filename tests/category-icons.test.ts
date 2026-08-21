@@ -28,6 +28,16 @@ describe("category icon policy", () => {
     expect(suggestCategoryIcon("  qxz  ", "expense")).toBe("🎯");
   });
 
+  it("falls back inside the income pool for an unmatched income name", () => {
+    // Income and expense draw from DIFFERENT pools, so an unmatched income
+    // category must not be handed a shopping bag. Same name, same icon every
+    // time, or a category's icon would change on each render.
+    const income = suggestCategoryIcon("qxz", "income");
+    expect(["💰", "💵", "🪙", "📈", "🏦", "💳", "🤝", "✨"]).toContain(income);
+    expect(suggestCategoryIcon("qxz", "income")).toBe(income);
+    expect(suggestCategoryIcon("  QXZ  ", "income")).toBe(income);
+  });
+
   it("uses a stored category icon before falling back to its suggestion", () => {
     expect(categoryIcon({ name: "Market", kind: "expense", icon: "🧺" })).toBe("🧺");
     expect(categoryIcon({ name: "Market", kind: "expense", icon: null })).toBe("🛒");

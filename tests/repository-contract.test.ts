@@ -511,6 +511,165 @@ describe("repository compatibility contract", () => {
     expect(writes[0]?.row).toMatchObject({ amountMinor: 7_250, amountIsEstimated: false });
   });
 
+  function expectedSqlite(over: { expected?: Record<string, unknown>; subscription?: Record<string, unknown> | null; source?: Record<string, unknown> | null } = {}) {
+    return {
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM expected_payments")) {
+          return {
+            id: "expected-1", direction: "out", kind: "subscription", ref_id: "subscription-1",
+            due_date: "2026-07-15", amount_minor: 5_000, amount_is_estimated: 0,
+            currency: "TRY", status: "pending", transaction_id: null,
+            ...over.expected,
+          };
+        }
+        if (sql.includes("FROM subscriptions")) {
+          return over.subscription === undefined
+            ? {
+                person_id: "person-1", category_id: "category-1", amount_mode: "fixed",
+                payment_source_id: null, next_due_date: "2026-07-15", interval_months: 1, billing_day: 15,
+              }
+            : over.subscription;
+        }
+        if (sql.includes("FROM payment_sources")) return over.source ?? null;
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM categories")) return { kind: "expense", is_transfer: 0 };
+        return null;
+      },
+    };
+  }
+
+  it("puts a card-paid subscription on the statement its purchase date falls in", async () => {
+    // Paying by credit card does not move money on the due date -- it moves it
+    // when that card's statement is due. The ledger row has to say so, or the
+    // month's cash flow would show the charge in the wrong month entirely.
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite({
+      subscription: {
+        person_id: "person-1", category_id: "category-1", amount_mode: "fixed",
+        payment_source_id: "card-1", next_due_date: "2026-07-15", interval_months: 1, billing_day: 15,
+      },
+      source: { id: "card-1", type: "credit_card", statement_day: 20, due_day: 10 },
+    }));
+
+    await repository.confirmExpected("user-1", "expected-1", { personId: "person-1", categoryId: "category-1" });
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const statement = writes.find((write: { table: string }) => write.table === "credit_card_statements");
+    const transaction = writes.find((write: { table: string }) => write.table === "transactions");
+    expect(statement).toBeDefined();
+    expect(transaction?.row.cardStatementId).toBe(statement?.row.id);
+    // The effective date is the statement's due date, not the expected row's.
+    expect(transaction?.row.effectiveDate).not.toBe("2026-07-15");
+  });
+
+  it("advances the subscription's next due date when its payment is confirmed", async () => {
+    // Confirming July's payment is what makes August's appear. Without this the
+    // rule would keep re-offering the month that was already paid.
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite());
+
+    await repository.confirmExpected("user-1", "expected-1", { personId: "person-1", categoryId: "category-1" });
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const rule = writes.find((write: { table: string }) => write.table === "subscriptions");
+    expect(rule?.row.nextDueDate).toBe("2026-08-15");
+  });
+
+  function paidSqlite(transactionOrigin: string | null, over: Record<string, unknown> = {}) {
+    return {
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM expected_payments")) {
+          return {
+            id: "expected-1", direction: "out", kind: "subscription", ref_id: "subscription-1",
+            due_date: "2026-07-15", amount_minor: 5_000, amount_is_estimated: 0, currency: "TRY",
+            status: "paid", transaction_id: "tx-1", ...over,
+          };
+        }
+        if (sql.includes("FROM subscriptions")) {
+          return {
+            id: "subscription-1", person_id: "person-1", category_id: "category-1",
+            next_due_date: "2026-08-15", interval_months: 1, billing_day: 15,
+          };
+        }
+        if (sql.includes("FROM transactions")) return { id: "tx-1", origin: transactionOrigin, amount_minor: 5_000 };
+        return null;
+      },
+    };
+  }
+
+  it("undoes a confirmation by removing the row it created and rolling the rule back", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue(paidSqlite("expected"));
+
+    await repository.revertExpected("user-1", "expected-1");
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const transaction = writes.find((write: { table: string }) => write.table === "transactions");
+    const expected = writes.find((write: { table: string }) => write.table === "expected_payments");
+    const rule = writes.find((write: { table: string }) => write.table === "subscriptions");
+    expect(transaction?.row.deletedAt).toBe(NOW);
+    expect(expected?.row).toMatchObject({ status: "pending", paidAt: null, transactionId: null, autoConfirmed: false });
+    // The month becomes due again, so the rule has to point back at it.
+    expect(rule?.row.nextDueDate).toBe("2026-07-15");
+  });
+
+  it("only unlinks a transaction the owner had already recorded, never deletes it", async () => {
+    // A MATCHED transaction is the owner's own record of real money. The undo
+    // owns the link, not the money -- deleting it would destroy data the
+    // expectation never created.
+    dependencies.getSqliteAsync.mockResolvedValue(paidSqlite("manual"));
+
+    await repository.revertExpected("user-1", "expected-1");
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes.some((write: { table: string }) => write.table === "transactions")).toBe(false);
+    expect(writes.find((write: { table: string }) => write.table === "expected_payments")?.row)
+      .toMatchObject({ status: "pending", transactionId: null });
+  });
+
+  it("does nothing when the payment was never confirmed", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue(paidSqlite("expected", { status: "pending" }));
+    await repository.revertExpected("user-1", "expected-1");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("edits an invoice amount only where a variable amount actually exists", async () => {
+    // A fixed subscription's amount lives on the rule, not on the month, and a
+    // recurring income has no invoice at all. Editing either here would write a
+    // number the rule would immediately contradict.
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite({ expected: { kind: "recurring_income" } }));
+    await expect(repository.setExpectedAmount("user-1", "expected-1", 7_250))
+      .rejects.toThrow("Only subscription amounts can be edited");
+
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite({ subscription: null }));
+    await expect(repository.setExpectedAmount("user-1", "expected-1", 7_250))
+      .rejects.toThrow("Expected payment source rule does not exist");
+
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite());
+    await expect(repository.setExpectedAmount("user-1", "expected-1", 7_250))
+      .rejects.toThrow("Only variable subscription amounts can be edited");
+
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("refuses to confirm against a date the ledger cannot place", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite({ expected: { due_date: "not-a-date" } }));
+    await expect(repository.confirmExpected("user-1", "expected-1", { personId: "person-1", categoryId: "category-1" }))
+      .rejects.toThrow("Invalid expected payment date");
+
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite());
+    await expect(repository.confirmExpected("user-1", "expected-1", {
+      personId: "person-1", categoryId: "category-1", paidOn: "15/07/2026" as never,
+    })).rejects.toThrow("Invalid expected payment date");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("refuses to confirm a payment whose rule has gone", async () => {
+    // The rule carries the category and person the transaction is written with.
+    // Without it there is nothing to write the payment against.
+    dependencies.getSqliteAsync.mockResolvedValue(expectedSqlite({ subscription: null }));
+    await expect(repository.confirmExpected("user-1", "expected-1", { personId: "person-1", categoryId: "category-1" }))
+      .rejects.toThrow("Expected payment source rule does not exist");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
   it("confirms a variable subscription using the entered amount in both ledger rows", async () => {
     dependencies.getSqliteAsync.mockResolvedValue({
       getFirstAsync: async (sql: string) => {
@@ -855,6 +1014,77 @@ describe("repository compatibility contract", () => {
     ]);
   });
 
+  it("rejects a seeded credit card that has no statement/due cycle", async () => {
+    // Onboarding is where most cards are created. A card without a cycle cannot
+    // place an instalment on a statement later, so it is refused at the seed
+    // rather than discovered when the first card plan is built.
+    await expect(repository.seedWorkspace("user-1", {
+      templateCategories: [],
+      startMonth: "2026-07",
+      openingBalanceMinor: 0,
+      persons: [{ name: "Ben", isSelf: true }],
+      sources: [{ name: "Kart", type: "credit_card", personIndex: 0, statementDay: null, dueDay: null }],
+    })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("refuses an opening balance month that is malformed or still in the future", async () => {
+    // The anchor is what every later balance is measured from, so a month the
+    // ledger cannot place it in must fail loudly instead of anchoring at zero.
+    const future = `${new Date().getUTCFullYear() + 1}-01` as const;
+    for (const month of ["2026-99", "nope", future]) {
+      await expect(repository.setOpeningBalance("user-1", month as never, 1_000))
+        .rejects.toThrow("Invalid opening balance month");
+    }
+    await expect(repository.seedWorkspace("user-1", {
+      templateCategories: [],
+      startMonth: future as never,
+      openingBalanceMinor: 0,
+      persons: [{ name: "Ben", isSelf: true }],
+      sources: [],
+    })).rejects.toThrow("Invalid opening balance month");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("refuses a seeded source whose owner is not one of the seeded people", async () => {
+    await expect(repository.seedWorkspace("user-1", {
+      templateCategories: [],
+      startMonth: "2026-07",
+      openingBalanceMinor: 0,
+      persons: [{ name: "Ben", isSelf: true }],
+      sources: [{ name: "Kart", type: "cash", personIndex: 7, statementDay: null, dueDay: null }],
+    })).rejects.toThrow("Onboarding payment source owner does not exist");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("keeps an earlier imported anchor rather than moving it forward", async () => {
+    // An import can set a start month before onboarding finishes. Re-anchoring
+    // to the later month would strand every row that came before it, so the
+    // earlier month wins and no anchor row is written at all.
+    dependencies.readSetting.mockResolvedValue("2024-01");
+
+    await repository.seedWorkspace("user-1", {
+      templateCategories: [],
+      startMonth: "2026-07",
+      openingBalanceMinor: 12_345,
+      persons: [{ name: "Ben", isSelf: true }],
+      sources: [],
+    });
+
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    const anchorKeys = writes
+      .filter((write: { table: string }) => write.table === "settings")
+      .map((write: { row: { key: string } }) => write.row.key);
+    expect(anchorKeys).not.toContain("start_month");
+    expect(anchorKeys).not.toContain("opening_balance_minor");
+  });
+
+  it("opens the app only by writing the onboarded flag", async () => {
+    // The route guard reads this one setting; nothing else marks completion.
+    await repository.finalizeOnboarding("user-1");
+    expect(dependencies.writeSetting).toHaveBeenCalledWith("user-1", "onboarded", true);
+  });
+
   it("rejects an onboarding graph without exactly one self person", async () => {
     await expect(repository.seedWorkspace("user-1", {
       templateCategories: [],
@@ -992,6 +1222,73 @@ describe("repository compatibility contract", () => {
       .rejects.toThrow("Invalid subscription billing day");
     await expect(repository.upsertSubscription("user-1", { ...input, nextDueDate: "2026-02-31" as never }))
       .rejects.toThrow("Invalid subscription due date");
+    await expect(repository.upsertSubscription("user-1", { ...input, cycle: "weekly" as never }))
+      .rejects.toThrow("Invalid subscription cycle");
+    // A trial end that is not a real date would silently never end.
+    await expect(repository.upsertSubscription("user-1", { ...input, trialEndDate: "2026-13-01" as never }))
+      .rejects.toThrow("Invalid subscription trial date");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("keeps a paid month and tombstones the months a deactivated rule no longer owes", async () => {
+    // Editing a rule regenerates its expected payments. A month already PAID
+    // must not come back as pending -- that would ask the owner to pay it
+    // twice -- and a month the rule no longer owes has to be withdrawn.
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM categories")) return { id: "cat-1" };
+        if (sql.includes("FROM persons")) return { is_self: 1 };
+        if (sql.includes("FROM subscriptions")) return { id: "sub-1" };
+        return null;
+      },
+      getAllAsync: async () => [
+        {
+          id: "expected-paid", user_id: "user-1", direction: "out", kind: "subscription", ref_id: "sub-1",
+          due_date: "2026-07-05", amount_minor: 4_990, currency: "TRY", status: "paid", deleted_at: null,
+        },
+        {
+          id: "expected-pending", user_id: "user-1", direction: "out", kind: "subscription", ref_id: "sub-1",
+          due_date: "2026-08-05", amount_minor: 4_990, currency: "TRY", status: "pending", deleted_at: null,
+        },
+      ],
+    });
+
+    await repository.upsertSubscription("user-1", {
+      id: "sub-1", name: "Netflix", amountMinor: 4_990, currency: "TRY", cycle: "monthly", intervalMonths: 1,
+      billingDay: 5, nextDueDate: "2026-08-05", paymentSourceId: null, categoryId: "cat-1",
+      personId: "person-1", isActive: false, trialEndDate: null, autoPay: false,
+      websiteDomain: null, note: null,
+    });
+
+    const [, writes] = required(dependencies.writeRowsValidated.mock.calls[0]);
+    const expectedWrites = writes.filter((write: { table: string }) => write.table === "expected_payments");
+    const tombstoned = expectedWrites.filter((write: { row: { deletedAt?: unknown } }) => write.row.deletedAt != null);
+    // The pending month is withdrawn; the paid one is never touched.
+    expect(tombstoned.map((write: { row: { id: string } }) => write.row.id)).toEqual(["expected-pending"]);
+    expect(expectedWrites.some((write: { row: { id: string } }) => write.row.id === "expected-paid")).toBe(false);
+  });
+
+  it("refuses a subscription billed to a card that has no statement cycle", async () => {
+    // Without a cycle the charge cannot be placed on a statement, so every
+    // month of this subscription would land on the wrong date.
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM categories")) return { id: "cat-1" };
+        if (sql.includes("FROM persons")) return { is_self: 1 };
+        if (sql.includes("FROM payment_sources")) {
+          return { id: "card-1", type: "credit_card", statement_day: null, due_day: null };
+        }
+        return null;
+      },
+      getAllAsync: async () => [],
+    });
+
+    await expect(repository.upsertSubscription("user-1", {
+      name: "Netflix", amountMinor: 4_990, currency: "TRY", cycle: "monthly", intervalMonths: 1,
+      billingDay: 5, nextDueDate: "2026-08-05", paymentSourceId: "card-1", categoryId: "cat-1",
+      personId: "person-1", isActive: true, trialEndDate: null, autoPay: false,
+      websiteDomain: null, note: null,
+    })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
     expect(dependencies.writeRows).not.toHaveBeenCalled();
   });
 
@@ -1713,5 +2010,421 @@ describe("rule deletion and undo", () => {
     expect(writes).toHaveLength(3);
     expect(writes.every((w) => w.row.deletedAt === null)).toBe(true);
     expect(writes.map((w) => w.row.id)).toEqual(["sub-1", "expected-1", "expected-2"]);
+  });
+});
+
+/**
+ * The repository's error contract.
+ *
+ * These are not decoration: screens switch on them. `attachment-panel.tsx:96`
+ * reads `AttachmentRejectedError.reason` to say WHICH rule a file broke rather
+ * than "olmadı", and the import flow reads `ImportBatchUnreadableError.years`
+ * to name the years it refused. `name` is what survives a structured-clone
+ * across the sync worker boundary, where `instanceof` does not.
+ */
+describe("repository error contract", () => {
+  it("gives every error a stable name and a message that says what happened", () => {
+    const cases: [Error, string, string][] = [
+      [new repository.ReferencedRecordError(), "ReferencedRecordError", "Record still has live references"],
+      [new repository.CreditCardCycleRequiredError(), "CreditCardCycleRequiredError", "Credit-card statement and due dates are required"],
+      [new repository.InstallmentHistoryConflictError(), "InstallmentHistoryConflictError", "Realized installments cannot be removed or rewritten"],
+      [new repository.SubscriptionCategoryRequiredError(), "SubscriptionCategoryRequiredError", "Subscription category is required"],
+    ];
+    for (const [error, name, message] of cases) {
+      expect(error).toBeInstanceOf(Error);
+      expect(error.name, name).toBe(name);
+      expect(error.message, name).toBe(message);
+    }
+  });
+
+  it("carries the machine-readable detail each caller actually reads", () => {
+    const fx = new repository.FxRateUnavailableError("USD");
+    expect(fx.name).toBe("FxRateUnavailableError");
+    expect(fx.currency).toBe("USD");
+    expect(fx.message).toContain("USD");
+
+    const batch = new repository.ImportBatchUnreadableError([2024, 2025]);
+    expect(batch.name).toBe("ImportBatchUnreadableError");
+    expect(batch.years).toEqual([2024, 2025]);
+    // The years are joined into the message, so a reader sees which ones.
+    expect(batch.message).toContain("2024, 2025");
+
+    const attachment = new repository.AttachmentRejectedError("too_large");
+    expect(attachment.name).toBe("AttachmentRejectedError");
+    expect(attachment.reason).toBe("too_large");
+    expect(attachment.message).toContain("too_large");
+  });
+});
+
+/**
+ * The installment write path's SUCCESS side.
+ *
+ * Everything else in this file drives these functions only through their
+ * refusals, so the branches that actually move money -- materialising a
+ * schedule, shrinking one, tombstoning a plan -- were never executed. A plan is
+ * the app's largest single write: one row plus one transaction per month.
+ */
+describe("installment plan lifecycle", () => {
+  const plan = {
+    title: "Buzdolabı",
+    kind: "loan" as const,
+    totalAmountMinor: null,
+    monthlyAmountMinor: 1_000,
+    installmentCount: 3,
+    currency: "TRY",
+    fxRate: null,
+    startMonth: "2026-07",
+    dueDay: 5,
+    paymentSourceId: null,
+    personId: "person-1",
+    personIsSelf: true,
+    categoryId: "category-1",
+    note: null,
+    tryFactor: 1,
+  };
+
+  function sqliteWith(planTransactions: Record<string, unknown>[] = [], planRow: Record<string, unknown> | null = null) {
+    return {
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM installment_plans")) return planRow;
+        if (sql.includes("COUNT(*)")) return { n: planTransactions.length };
+        return { kind: "expense", is_transfer: 0 };
+      },
+      getAllAsync: async () => planTransactions,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("materialises one transaction per month alongside the plan row", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue(sqliteWith());
+
+    const planId = await repository.createInstallmentPlan("user-1", plan);
+    expect(planId).toBe("new-id");
+
+    const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    const transactions = writes.filter((write) => write.table === "transactions");
+    expect(writes.filter((write) => write.table === "installment_plans")).toHaveLength(1);
+    expect(transactions).toHaveLength(3);
+    // Every instalment carries its number and the plan it belongs to, which is
+    // what lets an edit rewrite the schedule instead of stacking a second one.
+    expect(transactions.map((write) => write.row.installmentNo)).toEqual([1, 2, 3]);
+    expect(transactions.every((write) => write.row.installmentPlanId === planId)).toBe(true);
+    // The months advance from startMonth rather than all landing on it.
+    expect(new Set(transactions.map((write) => String(write.row.effectiveDate).slice(0, 7))).size).toBe(3);
+  });
+
+  it("tombstones the pending months an edit drops off the end of the schedule", async () => {
+    const existing = [1, 2, 3].map((no) => ({
+      id: `id:installmentTx|plan-1|${no}`, user_id: "user-1", installment_plan_id: "plan-1", installment_no: no,
+      status: "pending", type: "expense", amount_minor: 1_000, currency: "TRY", amount_try_minor: 1_000,
+      entry_date: "2026-07-05", effective_date: "2026-07-05", deleted_at: null, person_id: "person-1", is_aggregate: 0,
+    }));
+    dependencies.getSqliteAsync.mockResolvedValue(
+      sqliteWith(existing, { id: "plan-1", user_id: "user-1", deleted_at: null }),
+    );
+
+    await repository.updateInstallmentPlan("user-1", "plan-1", { ...plan, installmentCount: 2 });
+
+    const [, writes] = dependencies.writeRowsValidated.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    const tombstoned = writes.filter((write) => write.table === "transactions" && write.row.deletedAt != null);
+    expect(tombstoned).toHaveLength(1);
+    // The deterministic id names the month that was dropped: the third.
+    expect(tombstoned[0]!.row.id).toBe("id:installmentTx|plan-1|3");
+    // The two months that survive are rewritten, not duplicated.
+    expect(writes.filter((write) => write.table === "transactions" && write.row.deletedAt == null)).toHaveLength(2);
+  });
+
+  it("refuses to shrink a plan past an instalment that has already been paid", async () => {
+    const realized = [{
+      id: "id:installmentTx|plan-1|3", user_id: "user-1", installment_plan_id: "plan-1", installment_no: 3,
+      status: "realized", type: "expense", amount_minor: 1_000, currency: "TRY", amount_try_minor: 1_000,
+      entry_date: "2026-09-05", effective_date: "2026-09-05", deleted_at: null, person_id: "person-1", is_aggregate: 0,
+    }];
+    dependencies.getSqliteAsync.mockResolvedValue(
+      sqliteWith(realized, { id: "plan-1", user_id: "user-1", deleted_at: null }),
+    );
+
+    await expect(repository.updateInstallmentPlan("user-1", "plan-1", { ...plan, installmentCount: 2 }))
+      .rejects.toBeInstanceOf(repository.InstallmentHistoryConflictError);
+    expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
+  });
+
+  it("tombstones a plan together with every instalment it generated", async () => {
+    const transactions = [1, 2].map((no) => ({
+      id: `id:installmentTx|plan-1|${no}`, user_id: "user-1", installment_plan_id: "plan-1", installment_no: no,
+      status: "pending", type: "expense", amount_minor: 1_000, currency: "TRY", amount_try_minor: 1_000,
+      entry_date: "2026-07-05", effective_date: "2026-07-05", deleted_at: null, person_id: "person-1", is_aggregate: 0,
+    }));
+    dependencies.getSqliteAsync.mockResolvedValue(
+      sqliteWith(transactions, { id: "plan-1", user_id: "user-1", title: "Buzdolabı", deleted_at: null }),
+    );
+
+    await repository.deletePlan("user-1", "plan-1");
+
+    const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    expect(writes).toHaveLength(3);
+    expect(writes.every((write) => write.row.deletedAt != null)).toBe(true);
+    expect(writes.map((write) => write.table)).toEqual(["installment_plans", "transactions", "transactions"]);
+  });
+
+  it("writes nothing when the plan to delete is already gone", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue(sqliteWith([], null));
+
+    await repository.deletePlan("user-1", "plan-1");
+
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("routes a card plan through its statement cycle instead of the plan's own due day", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM payment_sources")) return { id: "card-1", type: "credit_card", statement_day: 20, due_day: 10 };
+        if (sql.includes("FROM installment_plans")) return null;
+        return { kind: "expense", is_transfer: 0 };
+      },
+      getAllAsync: async () => [],
+    });
+
+    await repository.createInstallmentPlan("user-1", {
+      ...plan, kind: "card_installment", paymentSourceId: "card-1", dueDay: 5,
+    });
+
+    const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    const transactions = writes.filter((write) => write.table === "transactions");
+    // A card instalment is not due on the plan's own dueDay -- it is due when
+    // the statement it lands on is due, so every row is attached to one.
+    expect(writes.some((write) => write.table === "credit_card_statements")).toBe(true);
+    expect(transactions).toHaveLength(3);
+    expect(transactions.every((write) => typeof write.row.cardStatementId === "string")).toBe(true);
+  });
+
+  it("refuses a card plan whose source is not a credit card with a cycle", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { id: "person-1" };
+        if (sql.includes("FROM payment_sources")) return { id: "acct-1", type: "bank_account", statement_day: null, due_day: null };
+        return { kind: "expense", is_transfer: 0 };
+      },
+      getAllAsync: async () => [],
+    });
+
+    await expect(repository.createInstallmentPlan("user-1", {
+      ...plan, kind: "card_installment", paymentSourceId: "acct-1",
+    })).rejects.toBeInstanceOf(repository.CreditCardCycleRequiredError);
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("keeps an already-paid instalment exactly as it was recorded", async () => {
+    const realized = {
+      id: "id:installmentTx|plan-1|1", user_id: "user-1", installment_plan_id: "plan-1", installment_no: 1,
+      status: "realized", type: "expense", amount_minor: 4_444, currency: "TRY", amount_try_minor: 4_444,
+      entry_date: "2026-07-05", effective_date: "2026-07-05", deleted_at: null, person_id: "person-1", is_aggregate: 0,
+    };
+    dependencies.getSqliteAsync.mockResolvedValue(
+      sqliteWith([realized], { id: "plan-1", user_id: "user-1", deleted_at: null }),
+    );
+
+    await repository.updateInstallmentPlan("user-1", "plan-1", { ...plan, monthlyAmountMinor: 9_999 });
+
+    const [, writes] = dependencies.writeRowsValidated.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];
+    const paid = writes.find((write) => write.table === "transactions" && write.row.id === "id:installmentTx|plan-1|1");
+    // The new monthly amount rewrites the PENDING months only. History is what
+    // actually happened; an edit must not restate it at the new price.
+    //
+    // `amount_minor`, not `amountMinor`: this row is the stored one handed back
+    // through `fromDbShape`, which this suite mocks as identity, so it keeps its
+    // database shape. The regenerated months below are built fresh and carry the
+    // camelCase write shape -- the difference is the point.
+    expect(paid?.row.amount_minor).toBe(4_444);
+    const pending = writes.filter((write) => write.table === "transactions" && write.row.id !== "id:installmentTx|plan-1|1");
+    expect(pending).toHaveLength(2);
+    expect(pending.every((write) => write.row.amountMinor === 9_999)).toBe(true);
+  });
+
+  it("counts the live instalments a delete would take with it", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue(sqliteWith([{}, {}, {}]));
+    expect(await repository.countInstallmentsForPlan("user-1", "plan-1")).toBe(3);
+
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => null,
+      getAllAsync: async () => [],
+    });
+    // No row at all still has to read as zero, not as undefined.
+    expect(await repository.countInstallmentsForPlan("user-1", "plan-1")).toBe(0);
+  });
+});
+
+/**
+ * The subscription category, created on demand.
+ *
+ * Subscriptions need a category and the owner usually has not made one. This
+ * reuses an existing category by NAME before creating anything, because a
+ * second "Abonelikler" would split the same spending across two columns.
+ */
+describe("subscription category", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reuses a category that already carries the name", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => null,
+      getAllAsync: async () => [
+        { id: "category-9", name: "Abonelikler", kind: "expense", deleted_at: null },
+      ],
+    });
+
+    expect(await repository.ensureSubscriptionCategory("user-1", "Abonelikler")).toBe("category-9");
+    expect(dependencies.writeRows).not.toHaveBeenCalled();
+  });
+
+  it("creates one at the end of the column order when there is none", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => ({ max_order: 4 }),
+      getAllAsync: async () => [],
+    });
+
+    const id = await repository.ensureSubscriptionCategory("user-1", "Abonelikler");
+
+    expect(id).toBe("id:seedCategory|user-1|Abonelikler");
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes[0]?.row).toMatchObject({
+      name: "Abonelikler", kind: "expense", isColumn: true, sortOrder: 5,
+    });
+  });
+
+  it("starts the order at zero for an account with no categories yet", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => ({ max_order: null }),
+      getAllAsync: async () => [],
+    });
+
+    await repository.ensureSubscriptionCategory("user-1", "Abonelikler");
+    const [, writes] = required(dependencies.writeRows.mock.calls[0]);
+    expect(writes[0]?.row.sortOrder).toBe(0);
+  });
+});
+
+/**
+ * The recurring-income write path.
+ *
+ * `upsertRecurringIncome` had no test at all: every branch of a rule that
+ * generates money into the ledger every month was unexecuted. Its refusals
+ * matter as much as its success, because a rule that saves with a bad anchor
+ * silently stops producing the payments the owner is counting on.
+ */
+describe("recurring income rules", () => {
+  const income = {
+    name: "Maaş",
+    kind: "salary" as const,
+    defaultAmountMinor: 50_000,
+    currency: "TRY",
+    payDay: 15,
+    personId: "person-1",
+    categoryId: "category-1",
+    isActive: true,
+    note: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { is_self: 1 };
+        if (sql.includes("FROM categories")) return { kind: "income", is_transfer: 0 };
+        return null;
+      },
+      getAllAsync: async () => [],
+    });
+  });
+
+  it("writes the rule and the payments it is expected to produce", async () => {
+    const id = await repository.upsertRecurringIncome("user-1", income);
+
+    expect(id).toBe("new-id");
+    const [, writes] = required(dependencies.writeRowsValidated.mock.calls[0]);
+    const rule = writes.find((write: { table: string }) => write.table === "recurring_incomes");
+    expect(rule?.row).toMatchObject({ name: "Maaş", defaultAmountMinor: 50_000, recurrence: "monthly", payDay: 15 });
+    // A monthly rule anchors on the pay day alone; the anchor date is for the
+    // day-interval cadences and must stay null here.
+    expect(rule?.row.anchorDate).toBeNull();
+    expect(writes.some((write: { table: string }) => write.table === "expected_payments")).toBe(true);
+  });
+
+  it("requires an anchor date for a cadence that is not monthly", async () => {
+    // Weekly and biweekly repeat from a specific day, not from a day-of-month,
+    // so without an anchor there is nothing to count from.
+    await expect(repository.upsertRecurringIncome("user-1", { ...income, recurrence: "weekly" }))
+      .rejects.toThrow("Invalid recurring income anchor date");
+    await expect(repository.upsertRecurringIncome("user-1", { ...income, recurrence: "biweekly", anchorDate: "15/07/2026" as never }))
+      .rejects.toThrow("Invalid recurring income anchor date");
+    expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
+  });
+
+  it("keeps the anchor for a weekly rule and drops it for a monthly one", async () => {
+    await repository.upsertRecurringIncome("user-1", { ...income, recurrence: "weekly", anchorDate: "2026-07-03" });
+    const [, weekly] = required(dependencies.writeRowsValidated.mock.calls[0]);
+    expect(weekly.find((write: { table: string }) => write.table === "recurring_incomes")?.row)
+      .toMatchObject({ recurrence: "weekly", anchorDate: "2026-07-03" });
+
+    vi.clearAllMocks();
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => sql.includes("FROM persons") ? { is_self: 1 } : { kind: "income", is_transfer: 0 },
+      getAllAsync: async () => [],
+    });
+    await repository.upsertRecurringIncome("user-1", { ...income, recurrence: "monthly", anchorDate: "2026-07-03" });
+    const [, monthly] = required(dependencies.writeRowsValidated.mock.calls[0]);
+    expect(monthly.find((write: { table: string }) => write.table === "recurring_incomes")?.row.anchorDate).toBeNull();
+  });
+
+  it("refuses the inputs a rule cannot be built from", async () => {
+    const cases: [Partial<typeof income> & Record<string, unknown>, string][] = [
+      [{ currency: "NOT-A-CURRENCY" }, "Invalid recurring income currency"],
+      // Zero is caught by the shared money guard before the rule's own check.
+      [{ defaultAmountMinor: 0 }, "Amount is outside the supported range"],
+      [{ kind: "bonus" as never }, "Invalid recurring income kind"],
+      [{ recurrence: "daily" as never }, "Invalid recurring income recurrence"],
+      [{ payDay: 32 }, "Invalid recurring income pay day"],
+    ];
+    for (const [over, message] of cases) {
+      await expect(repository.upsertRecurringIncome("user-1", { ...income, ...over }), message)
+        .rejects.toThrow(message);
+    }
+    expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
+  });
+
+  it("refuses a rule whose earner is not a live person of this account", async () => {
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async () => null,
+      getAllAsync: async () => [],
+    });
+    await expect(repository.upsertRecurringIncome("user-1", income))
+      .rejects.toThrow("Recurring income person is required");
+    expect(dependencies.writeRowsValidated).not.toHaveBeenCalled();
+  });
+
+  it("checks the edited rule is still live before rewriting it", async () => {
+    // Editing reuses the caller's id, so a rule deleted on another device must
+    // not be resurrected by an edit that raced the delete.
+    dependencies.getSqliteAsync.mockResolvedValue({
+      getFirstAsync: async (sql: string) => {
+        if (sql.includes("FROM persons")) return { is_self: 1 };
+        if (sql.includes("FROM recurring_incomes")) return { id: "income-1" };
+        return { kind: "income", is_transfer: 0 };
+      },
+      getAllAsync: async () => [],
+    });
+
+    const id = await repository.upsertRecurringIncome("user-1", { ...income, id: "income-1" });
+
+    expect(id).toBe("income-1");
+    expect(dependencies.assertLiveRow).toHaveBeenCalledWith(
+      expect.anything(), "recurring_incomes", "user-1", "income-1",
+    );
   });
 });

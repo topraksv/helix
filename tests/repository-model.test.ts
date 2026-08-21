@@ -14,6 +14,7 @@ import {
   createCategory,
   createPerson,
   deleteInvestmentOperation,
+  updateInvestmentOperation,
   deleteTransaction,
   removeInvestmentProductHistory,
   restoreInvestmentOperation,
@@ -645,5 +646,147 @@ describe("repository model oracle", () => {
     expect(harness.db.prepare(
       "SELECT COUNT(*) AS count FROM investment_operations WHERE id IN (?, ?, ?) AND deleted_at IS NOT NULL",
     ).get(existingId, laterSaleId, earliestSaleId)).toMatchObject({ count: 3 });
+  });
+
+  it("rewrites an operation in place and keeps the import key that identifies it", async () => {
+    harness.db?.close();
+    harness.nextId = 0;
+    harness.db = new DatabaseSync(":memory:");
+    for (const statement of migrationStatements) harness.db.exec(statement);
+
+    await createPerson(USER, "Ben");
+    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
+    const productId = await saveInvestmentProduct(USER, { assetType: "equity", name: "Hisse" });
+    const operationId = await addInvestmentOperation(USER, {
+      productId,
+      kind: "buy",
+      operationDate: "2026-01-02",
+      quantity: "2",
+      unitPriceMinor: 1_000_000,
+      totalMinor: 2_000_000,
+    });
+
+    // A mistyped quantity is corrected in place rather than deleted and
+    // re-entered, so the operation keeps its identity in the journal.
+    await updateInvestmentOperation(USER, operationId, {
+      productId,
+      kind: "buy",
+      operationDate: "2026-01-03",
+      quantity: "3",
+      unitPriceMinor: 1_000_000,
+      totalMinor: 3_000_000,
+    });
+
+    expect(harness.db.prepare(
+      "SELECT quantity, total_minor, operation_date, import_key FROM investment_operations WHERE id = ?",
+    ).get(operationId)).toMatchObject({
+      quantity: "3",
+      total_minor: 3_000_000,
+      operation_date: "2026-01-03",
+      import_key: null,
+    });
+    // Rewriting must not leave a second row behind.
+    expect(harness.db.prepare(
+      "SELECT COUNT(*) AS count FROM investment_operations WHERE user_id = ? AND deleted_at IS NULL",
+    ).get(USER)).toMatchObject({ count: 1 });
+  });
+
+  it("records a contribution that has an amount but no quantity", async () => {
+    // A pension contribution buys no countable units -- the owner knows only
+    // what left the bank. Requiring a quantity would make the flow unusable.
+    harness.db?.close();
+    harness.nextId = 0;
+    harness.db = new DatabaseSync(":memory:");
+    for (const statement of migrationStatements) harness.db.exec(statement);
+
+    await createPerson(USER, "Ben");
+    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
+    // Re-running setup with the SAME facts is a no-op, not a conflict: the
+    // onboarding screen can be reopened without the owner losing the wallet.
+    await expect(setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 }))
+      .resolves.toBeUndefined();
+    const productId = await saveInvestmentProduct(USER, { assetType: "pension", name: "BES" });
+
+    const id = await addInvestmentOperation(USER, {
+      productId,
+      kind: "contribution",
+      operationDate: "2026-01-02",
+      quantity: null,
+      unitPriceMinor: null,
+      totalMinor: 500_000,
+    });
+
+    expect(harness.db.prepare(
+      "SELECT quantity, unit_price_minor, total_minor FROM investment_operations WHERE id = ?",
+    ).get(id)).toMatchObject({ quantity: null, unit_price_minor: null, total_minor: 500_000 });
+
+    // A negative contribution is money leaving in the wrong direction.
+    await expect(addInvestmentOperation(USER, {
+      productId,
+      kind: "contribution",
+      operationDate: "2026-01-03",
+      quantity: null,
+      unitPriceMinor: null,
+      totalMinor: -1,
+    })).rejects.toMatchObject({ name: "InvestmentDomainError" });
+  });
+
+  it("answers safely for a product or operation that is not there", async () => {
+    // Every one of these is reachable from a stale screen on a second device.
+    // None of them may throw something the UI cannot name, or write anything.
+    harness.db?.close();
+    harness.nextId = 0;
+    harness.db = new DatabaseSync(":memory:");
+    for (const statement of migrationStatements) harness.db.exec(statement);
+
+    await createPerson(USER, "Ben");
+    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
+
+    // Removing a product that is already gone reports "nothing removed".
+    expect(await removeInvestmentProductHistory(USER, "no-such-product", [])).toBe(false);
+    // Deleting an operation that is already gone returns no snapshot to undo.
+    expect(await deleteInvestmentOperation(USER, "no-such-operation")).toBeNull();
+    // Adding an operation to an unknown product is a domain error, not a crash.
+    await expect(addInvestmentOperation(USER, {
+      productId: "no-such-product",
+      kind: "buy",
+      operationDate: "2026-01-02",
+      quantity: "1",
+      unitPriceMinor: 1_000,
+      totalMinor: 1_000,
+    })).rejects.toMatchObject({ name: "InvestmentDomainError", code: "unknown_product" });
+  });
+
+  it("refuses a refund selection that names the same ledger row twice", async () => {
+    // The selected transactions are tombstoned together with the product. A
+    // repeated or empty id would make the count of what was removed a lie.
+    harness.db?.close();
+    harness.nextId = 0;
+    harness.db = new DatabaseSync(":memory:");
+    for (const statement of migrationStatements) harness.db.exec(statement);
+
+    await createPerson(USER, "Ben");
+    await setupInvestments(USER, { startedOn: "2026-01-01", openingCashMinor: 10_000_000 });
+    const productId = await saveInvestmentProduct(USER, { assetType: "equity", name: "Hisse" });
+
+    await expect(removeInvestmentProductHistory(USER, productId, ["tx-1", "tx-1"]))
+      .rejects.toMatchObject({ name: "InvestmentDomainError", code: "invalid_operation" });
+    await expect(removeInvestmentProductHistory(USER, productId, [""]))
+      .rejects.toMatchObject({ name: "InvestmentDomainError", code: "invalid_operation" });
+    // A product that never sold anything has no proceeds, so no ledger row can
+    // be a refund of it -- selecting one has to be refused rather than guessed.
+    await expect(removeInvestmentProductHistory(USER, productId, ["tx-1"]))
+      .rejects.toMatchObject({ name: "InvestmentDomainError", code: "invalid_operation" });
+  });
+
+  it("refuses to rewrite an operation that is not live in this account", async () => {
+    await expect(updateInvestmentOperation(USER, "no-such-operation", {
+      productId: "no-such-product",
+      kind: "buy",
+      operationDate: "2026-01-03",
+      quantity: "1",
+      unitPriceMinor: 1_000,
+      totalMinor: 1_000,
+    })).rejects.toMatchObject({ name: "InvestmentDomainError" });
   });
 });

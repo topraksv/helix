@@ -85,6 +85,8 @@ describe("category deletion cascades to its budgets", () => {
     await restoreCategoryWithBudgets("user-1", {
       category: { id: "cat-1", deletedAt: "x" },
       budgets: [{ id: "b-1", deletedAt: "x" }],
+      reassigned: [],
+      created: [],
     });
     expect(dependencies.writeRows).toHaveBeenCalledTimes(1);
     const [, writes] = dependencies.writeRows.mock.calls[0] as [string, { table: string; row: Record<string, unknown> }[]];

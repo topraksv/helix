@@ -89,6 +89,18 @@ describe("attachment rows", () => {
     expect(rows[0]).toMatchObject({ file_name: "fatura.pdf", mime_type: "application/pdf", byte_size: 2048, kind: "other" });
   });
 
+  it("keeps the kind the caller chose, and falls back only when it is not one of ours", async () => {
+    // The default path above lands on "other" because the picker sends no kind.
+    // This is the other side: a kind the user picked must survive to the row,
+    // or the document list would label every receipt "other".
+    const id = await addAttachment(USER, newAttachment({ kind: "receipt" }));
+    expect(listed(USER, "tx-1").find((row) => row.file_name === "fatura.pdf")).toMatchObject({ kind: "receipt" });
+    expect(id).toBeTruthy();
+
+    await addAttachment(USER, newAttachment({ kind: "not-a-kind", fileName: "ikinci.pdf" }));
+    expect(listed(USER, "tx-1").find((row) => row.file_name === "ikinci.pdf")).toMatchObject({ kind: "other" });
+  });
+
   it("refuses a rejected file without copying anything or writing a row", async () => {
     await expect(addAttachment(USER, newAttachment({ mimeType: "application/zip" })))
       .rejects.toBeInstanceOf(AttachmentRejectedError);

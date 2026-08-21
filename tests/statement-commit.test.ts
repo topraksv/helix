@@ -165,6 +165,25 @@ describe("committing accepted statement rows", () => {
     expect(liveRows()).toEqual([]);
   });
 
+  it("leaves a charge dated after today pending rather than realized", async () => {
+    // A statement can list a charge that has not settled yet. Writing it as
+    // realized would move money in the ledger on a day it has not moved,
+    // which is the same defect an early-dated transaction would cause.
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const result = await commitStatementRows(USER, "person-self", [row({ date: future, importKey: "future-key" })]);
+
+    expect(result.writtenIds).toHaveLength(1);
+    const written = liveRows().find((live) => live.import_key === "future-key");
+    expect(written).toMatchObject({ status: "pending", effective_date: future });
+  });
+
+  it("refuses a negative amount, not only a zero one", async () => {
+    // Zero is caught by the amount guard above it; a negative has to be caught
+    // here or a refund typed as a charge would credit the ledger.
+    await expect(commitStatementRows(USER, "person-self", [row({ amountMinor: -1 })])).rejects.toThrow();
+    expect(liveRows()).toEqual([]);
+  });
+
   it("does nothing, successfully, when nothing was accepted", async () => {
     await expect(commitStatementRows(USER, "person-self", [])).resolves.toEqual({ writtenIds: [], skipped: 0 });
   });

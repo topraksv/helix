@@ -86,6 +86,49 @@ describe("outbound row conversion", () => {
     });
   });
 
+  /**
+   * The boolean handling here COERCES, it no longer re-rejects.
+   *
+   * `booleanColumnsOf` in `sync/engine.ts` and `matchesDeclaredColumns` in
+   * `services/backup-validation.ts` both derive from the same source — the
+   * `SQLiteBoolean` columns of `getTableColumns(SYNCED_TABLES[table])` — and
+   * `isValidImportRow` runs first and refuses any value there that is not
+   * `0`, `1` or a boolean. A row reaching the coercion loop can therefore only
+   * carry those, which is why the old rejection branch was unreachable and no
+   * test could cover it.
+   *
+   * These two tests pin the property that made removing it safe. If the
+   * upstream guard ever stops refusing a non-boolean, the first one fails here
+   * instead of a whole sync batch failing against Postgres.
+   */
+  it("refuses a non-boolean in a boolean column upstream, before the coercion loop", () => {
+    const booleanPolicy = {
+      allowedColumns: new Set(Object.keys(transaction)),
+      booleanColumns: new Set(["is_aggregate"]),
+    };
+    for (const bad of ["true", 2, -1, {}, []]) {
+      expect(
+        convertOutboundRow("transactions", { ...transaction, is_aggregate: bad }, booleanPolicy),
+        `is_aggregate=${JSON.stringify(bad)}`,
+      ).toEqual({ ok: false, reason: "invalid_row" });
+    }
+  });
+
+  it("coerces SQLite's 0 and 1 into the booleans PostgREST expects", () => {
+    const booleanPolicy = {
+      allowedColumns: new Set(Object.keys(transaction)),
+      booleanColumns: new Set(["is_aggregate"]),
+    };
+    expect(convertOutboundRow("transactions", { ...transaction, is_aggregate: 1 }, booleanPolicy)).toEqual({
+      ok: true,
+      row: { ...transaction, is_aggregate: true },
+    });
+    expect(convertOutboundRow("transactions", { ...transaction, is_aggregate: 0 }, booleanPolicy)).toEqual({
+      ok: true,
+      row: { ...transaction, is_aggregate: false },
+    });
+  });
+
   it("quarantines unsupported currencies before PostgREST", () => {
     const currencyPolicy = {
       allowedColumns: new Set(Object.keys(transaction)),

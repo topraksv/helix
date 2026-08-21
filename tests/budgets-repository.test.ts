@@ -839,6 +839,7 @@ describe("budget repository persistence", () => {
         table: "installment_plans" as const,
         row: { ...snapshotRow("installment_plans", "plan"), categoryId: "source" },
       }],
+      created: [],
     };
 
     await restoreCategoryWithBudgets(USER, snapshot);
@@ -855,6 +856,7 @@ describe("budget repository persistence", () => {
     const snapshot = {
       category: snapshotRow("categories", "source"),
       budgets: [snapshotRow("category_budgets", "budget")],
+      reassigned: [],
       created: [{ table: "cell_notes" as const, row: snapshotRow("cell_notes", "created-note") }],
     };
 

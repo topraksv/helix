@@ -73,10 +73,16 @@ export function restoreCategoryBudget(userId: string, snapshot: Record<string, u
 export interface CategoryDeleteSnapshot {
   category: Record<string, unknown>;
   budgets: Record<string, unknown>[];
-  /** Original rows are retained so undo restores every reassigned reference. */
-  reassigned?: CategoryReferenceSnapshot[];
+  /**
+   * Original rows are retained so undo restores every reassigned reference.
+   *
+   * Required, not optional: the only producer initialises both to `[]`, so
+   * every `?.` and `?? []` this type used to force was code that could not
+   * run. The type now says what is actually true.
+   */
+  reassigned: CategoryReferenceSnapshot[];
   /** Cell notes receive their natural target id when they move to a new column. */
-  created?: CategoryReferenceSnapshot[];
+  created: CategoryReferenceSnapshot[];
 }
 
 /** Count every live row that would otherwise keep a deleted column alive. */
@@ -201,14 +207,14 @@ export async function deleteCategoryWithBudgets(
           const movedNote = { ...original, id: targetId, categoryId: replacementId, deletedAt: null };
           writes.push({ table: "cell_notes", row: { ...original, deletedAt } });
           writes.push({ table: "cell_notes", row: movedNote });
-          snapshot.created?.push({ table: "cell_notes", row: movedNote });
+          snapshot.created.push({ table: "cell_notes", row: movedNote });
           continue;
         }
         const mergedBody = `${String(targetNote.body)}\n\n${String(original.body)}`;
         if (mergedBody.length > 1000) throw new Error("Category notes are too long to merge");
         const targetKey = `cell_notes:${String(targetNote.id)}`;
         if (!referenceIds.has(targetKey)) {
-          snapshot.reassigned?.push({ table: "cell_notes", row: targetNote });
+          snapshot.reassigned.push({ table: "cell_notes", row: targetNote });
           referenceIds.add(targetKey);
         }
         writes.push({ table: "cell_notes", row: { ...targetNote, body: mergedBody } });
@@ -232,8 +238,8 @@ export async function deleteCategoryWithBudgets(
       }
     }
     snapshot.reassigned = [
-      ...(snapshot.reassigned ?? []),
-      ...references.filter((reference) => !snapshot.reassigned?.some((item) => item.table === reference.table && item.row.id === reference.row.id)),
+      ...snapshot.reassigned,
+      ...references.filter((reference) => !snapshot.reassigned.some((item) => item.table === reference.table && item.row.id === reference.row.id)),
     ];
   }
 
@@ -244,7 +250,7 @@ export async function deleteCategoryWithBudgets(
       await assertLiveRow(db, "categories", userId, categoryId);
       if (replacementId != null) await assertLiveRow(db, "categories", userId, replacementId);
       if (hasReassignmentChoice) {
-        await Promise.all((snapshot.reassigned ?? []).map((reference) => assertLiveRow(db, reference.table, userId, String(reference.row.id))));
+        await Promise.all(snapshot.reassigned.map((reference) => assertLiveRow(db, reference.table, userId, String(reference.row.id))));
       }
     },
   );
@@ -257,27 +263,27 @@ export async function restoreCategoryWithBudgets(userId: string, snapshot: Categ
     { table: "categories", row: { ...snapshot.category, deletedAt: null } },
     ...snapshot.budgets.map((row) => ({ table: "category_budgets" as const, row: { ...row, deletedAt: null } })),
   ];
-  if (!snapshot.reassigned?.length && !snapshot.created?.length) {
+  if (!snapshot.reassigned.length && !snapshot.created.length) {
     await restoreRows(userId, categoryWrites);
     return;
   }
-  const createdTombstones = (snapshot.created ?? []).map((reference) => ({
+  const createdTombstones = snapshot.created.map((reference) => ({
     table: reference.table,
     row: { ...reference.row, deletedAt: nowIso() },
   }));
-  await writeRowsValidated(userId, [...categoryWrites, ...snapshot.reassigned?.map((reference) => ({
+  await writeRowsValidated(userId, [...categoryWrites, ...snapshot.reassigned.map((reference) => ({
     table: reference.table,
     row: { ...reference.row, deletedAt: null },
   })) ?? [], ...createdTombstones], async (db) => {
     await assertRestorableRows(db, userId, categoryWrites);
-    await Promise.all((snapshot.reassigned ?? []).map(async (reference) => {
+    await Promise.all(snapshot.reassigned.map(async (reference) => {
       const current = await db.getFirstAsync<{ user_id: string }>(
         `SELECT user_id FROM ${reference.table} WHERE id = ?`,
         [String(reference.row.id)],
       );
       if (!current || current.user_id !== userId) throw new Error(`Cannot restore ${reference.table} row from another account`);
     }));
-    await Promise.all((snapshot.created ?? []).map(async (reference) => {
+    await Promise.all(snapshot.created.map(async (reference) => {
       const current = await db.getFirstAsync<{ user_id: string; deleted_at: string | null }>(
         `SELECT user_id, deleted_at FROM ${reference.table} WHERE id = ?`,
         [String(reference.row.id)],
