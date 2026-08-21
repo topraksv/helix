@@ -27,6 +27,15 @@
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
     },
+    "src/data/repo/budgets.ts": {
+      "score": 94.85,
+      "killed": 276,
+      "timeout": 0,
+      "survived": 14,
+      "noCoverage": 1,
+      "measuredOn": "b9b509660d621bc2b356597b6693b9974b815f3b",
+      "measuredDate": "2026-08-21"
+    },
     "src/data/repo/categories.ts": {
       "score": 98.97,
       "killed": 96,
@@ -271,12 +280,12 @@
       "measuredDate": "2026-08-19"
     },
     "src/sync/outbound-validation.ts": {
-      "score": 55.71,
-      "killed": 78,
+      "score": 59.69,
+      "killed": 77,
       "timeout": 0,
-      "survived": 39,
-      "noCoverage": 23,
-      "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
+      "survived": 33,
+      "noCoverage": 19,
+      "measuredOn": "b9b509660d621bc2b356597b6693b9974b815f3b",
       "measuredDate": "2026-08-21"
     }
   }
