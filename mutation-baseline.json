@@ -298,12 +298,12 @@
       "measuredDate": "2026-08-19"
     },
     "src/services/pdf-text.ts": {
-      "score": 28.36,
-      "killed": 168,
+      "score": 27.85,
+      "killed": 165,
       "timeout": 1,
-      "survived": 167,
-      "noCoverage": 260,
-      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
+      "survived": 169,
+      "noCoverage": 261,
+      "measuredOn": "bca3517b5e0450a62a6c26dfc6a91e0806178646",
       "measuredDate": "2026-08-21"
     },
     "src/services/spreadsheet-import.ts": {
