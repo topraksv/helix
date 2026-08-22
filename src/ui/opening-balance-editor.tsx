@@ -21,14 +21,14 @@ import Info from "lucide-react-native/icons/info";
 import Scale from "lucide-react-native/icons/scale";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import { deleteBalanceAdjustment, restoreBalanceAdjustment, setBalanceDeclaration, setCurrentBalance, setOpeningBalance } from "../data/repo";
-import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useUserId } from "../data/hooks";
+import { settingValue, useAdjustmentsState, useLedgerState, useSettingsMapState, useTxLike, useUserId } from "../data/hooks";
 import { combineLiveStates } from "../data/live-state";
 import { scheduleSync } from "../sync/engine";
 import { addMonthsToKey, isCurrentOrFutureMonth, monthKeyOf, todayISO, yearOf } from "../domain/dates";
-import { balanceDeclarationDrift, parseBalanceDeclaration } from "../domain/balance-declaration";
+import { balanceDeclarationDrift, driftCandidates, parseBalanceDeclaration } from "../domain/balance-declaration";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
-import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
+import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, FadeIn, IconButton, ListRow, MoneyField, PanelHeader, Row, Screen, SectionHeader, Spread } from "./components";
 import { appAlert } from "./dialog";
 import { errorNotice, successNotice } from "./haptics";
 import { userMessage } from "../domain/user-error";
@@ -119,6 +119,11 @@ export function OpeningBalanceEditor() {
   // has moved since. Every other surface links here when this is set.
   const declaration = parseBalanceDeclaration(settingValue<unknown>(settings, "balance_declared", null));
   const declarationDrift = balanceDeclarationDrift(declaration, computed);
+  // Saying how far off the table is leaves the reason to memory. These are the
+  // rows the app can see and a person cannot hold in their head: dated in the
+  // past, still unconfirmed, and pointing the way the drift points.
+  const transactions = useTxLike();
+  const driftRows = declarationDrift == null ? [] : driftCandidates(declarationDrift, transactions, todayISO());
 
   const saveCurrent = async () => {
     if (computed == null || effectiveTarget == null || !balanceDirty) return;
@@ -253,6 +258,31 @@ export function OpeningBalanceEditor() {
               )}
             </Body>
           </View>
+        ) : null}
+        {driftRows.length > 0 ? (
+          // The leads sit in their own card rather than inside the warning
+          // above it: that block states the problem and this one offers a way
+          // in, which is the same pair every other surface in the app makes.
+          <>
+            <SectionHeader>{tr.settings.balanceDriftCandidates}</SectionHeader>
+            <Card>
+              <Body muted style={{ fontSize: type.small.fontSize, marginBottom: spacing.sm }}>
+                {tr.settings.balanceDriftCandidatesHint}
+              </Body>
+              <CardList
+                items={driftRows}
+                keyExtractor={(candidate) => candidate.id}
+                renderItem={(candidate) => (
+                  <ListRow
+                    title={dateLabel(candidate.date)}
+                    right={<Amount minor={candidate.effectMinor} />}
+                    chevron
+                    onPress={() => router.push({ pathname: "/transaction", params: { id: candidate.id } })}
+                  />
+                )}
+              />
+            </Card>
+          </>
         ) : null}
         <MoneyField
           label={tr.settings.realBalance}

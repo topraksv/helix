@@ -880,6 +880,27 @@ export default function DashboardScreen() {
               color={projected >= 0 ? palette.positiveText : palette.negativeText}
             />
           </Spread>
+          {/* The figure above sums what is KNOWN, and stays that. This is the
+              other end of the same month: what it looks like once the spending
+              no rule predicts is expected to happen too. It sits below the
+              result rather than inside the arithmetic because it is measured
+              from history, not recorded — and a reader has to be able to tell
+              which of the two numbers is which. */}
+          {model.expectedVariableMinor != null && model.expectedVariableMinor > 0 ? (
+            <>
+              <Spread style={{ marginTop: spacing.xs }}>
+                <Body muted>{tr.dashboard.forecastTypical}</Body>
+                <Amount
+                  minor={projected - model.expectedVariableMinor}
+                  colorized={false}
+                  color={palette.textSecondary}
+                />
+              </Spread>
+              <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs }}>
+                {tr.dashboard.forecastTypicalHint(formatMinorCompact(model.expectedVariableMinor))}
+              </Body>
+            </>
+          ) : null}
         </Card>
         ) : null}
       </Collapse>

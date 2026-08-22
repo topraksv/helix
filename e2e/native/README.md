@@ -73,6 +73,12 @@ simulator cannot answer deterministically. Their pure logic is unit-tested
 (`biometric-name.ts`, `domain/notifications.ts`); the prompts stay a manual
 check before a store build.
 
+Android's recents thumbnail is now blanked by `FLAG_SECURE` rather than by a
+React render, because `AppState` never reports `inactive` there — see
+`src/ui/privacy-cover.tsx`. Two things about it are device-only: that the
+thumbnail really is blank while signed in, and that screenshots work again
+after signing out. Neither can be observed from a simulator run here.
+
 No run here proves a physical iOS/Android install, locked-device file access,
 app-switcher snapshot timing, notification delivery, biometric enforcement,
 live two-device convergence, low-memory import behavior, or store delivery.

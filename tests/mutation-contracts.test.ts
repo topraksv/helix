@@ -64,20 +64,20 @@ describe("mutation-sensitive external contracts", () => {
     expect(isValidRateDate("x2026-07-18")).toBe(false);
     expect(isValidRateDate("2026-07-18x")).toBe(false);
     for (const xml of [
-      '<Tarih_DateX Date="07/18/2026"><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_DateX>',
-      '<Tarih_Date Date="7/18/2026"><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
-      '<Tarih_Date Date="07/8/2026"><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
-      '<Tarih_Date Date="07/18/26"><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_DateX Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_DateX>',
+      '<Tarih_Date Date="7/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/8/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
+      '<Tarih_Date Date="07/18/26"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
     ]) expect(() => parseTcmbRates(xml)).toThrow("TCMB response has no valid rate date");
-    expect(parseTcmbRates('<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+    expect(parseTcmbRates('<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
       .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
     expect(parseTcmbRates('<Tarih_Date Tarih="18.07.2026"><Currency CurrencyCode="USD"><Unit>2</Unit><ForexSelling>80</ForexSelling></Currency></Tarih_Date>'))
       .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
-    expect(parseTcmbRates('<Tarih_Date Source="TCMB" Date="07/18/2026"><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+    expect(parseTcmbRates('<Tarih_Date Source="TCMB" Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
       .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
-    expect(parseTcmbRates('<Tarih_Date Source="TCMB" Tarih="18.07.2026"><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+    expect(parseTcmbRates('<Tarih_Date Source="TCMB" Tarih="18.07.2026"><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
       .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
-    expect(parseTcmbRates('<Tarih_Date Date="07/18/2026" CurrencyCode="EUR"><ForexSelling>50</ForexSelling><Currency CurrencyCode="USD"><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
+    expect(parseTcmbRates('<Tarih_Date Date="07/18/2026" CurrencyCode="EUR"><ForexSelling>50</ForexSelling><Currency CurrencyCode="USD"><Unit>1</Unit><ForexSelling>40</ForexSelling></Currency></Tarih_Date>'))
       .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 40 }] });
     for (const xml of [
       '<Tarih_Date Date="07/18/2026"><Currency><ForexSelling>40</ForexSelling></Currency></Tarih_Date>',
@@ -90,10 +90,22 @@ describe("mutation-sensitive external contracts", () => {
       .toEqual({ rateDate: "2026-07-18", rates: [{ currency: "USD", rateTry: 1_000_000 }] });
   });
 
-  // Correct behavior is pending under docs/SPEC.md, "Known defect — malformed TCMB unit values".
-  it.todo("rejects a decimal TCMB Unit instead of treating it as the implicit unit", () => {
+  it("rejects a decimal TCMB Unit instead of treating it as the implicit unit", () => {
     expect(() => parseTcmbRates(
       '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="USD"><Unit>1.5</Unit><ForexSelling>60</ForexSelling></Currency></Tarih_Date>',
+    )).toThrow("TCMB response has no supported rates");
+  });
+
+  /**
+   * A missing `<Unit>` is refused for the same reason a malformed one is.
+   * TCMB quotes JPY, KRW and RUB per hundred, and all three are fetched, so
+   * reading an absent element as "one" is not a harmless default — it is a
+   * hundredfold error on the currencies most likely to carry the element that
+   * went missing.
+   */
+  it("refuses a currency block that declares no unit at all", () => {
+    expect(() => parseTcmbRates(
+      '<Tarih_Date Date="07/18/2026"><Currency CurrencyCode="JPY"><ForexSelling>60</ForexSelling></Currency></Tarih_Date>',
     )).toThrow("TCMB response has no supported rates");
   });
 

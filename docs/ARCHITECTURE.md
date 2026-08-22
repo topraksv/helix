@@ -89,6 +89,7 @@ cycle tool would widen the interface without changing Metro's bundle.
 | Account freeze | Half-frozen accounts when network or cleanup fails | `src/auth/freeze.ts` and account-security tests |
 | Chunked SecureStore | Oversized or partial native auth sessions being accepted from secure storage | `src/sync/secure-chunked-storage.ts` |
 | Install-script allowlist | A new dependency silently executing code during `npm ci` | `tests/install-scripts.test.ts` |
+| Android `FLAG_SECURE` while signed in | The recents thumbnail keeping a picture of the ledger, which no React render can prevent there | `src/ui/privacy-cover.tsx` |
 
 RLS, not a client guard, is the authorization boundary. Details and accepted
 residual risks live in [`SECURITY.md`](SECURITY.md).

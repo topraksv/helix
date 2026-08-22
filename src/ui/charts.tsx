@@ -1,7 +1,7 @@
 /** Accessible SVG chart primitives shared by native and web. */
 
 import React, { useMemo, type ReactNode } from "react";
-import { Animated, Text, View } from "react-native";
+import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, ClipPath, Defs, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import type { Distribution } from "../domain/analytics";
 import { compactMoneyScale, formatMinorCompact, formatMinorCompactAtScale, type CompactMoneyScale, usesCompactMoneyScale } from "../domain/money";
@@ -441,6 +441,16 @@ export function Lines({
   // card's heading, so an end label repeated it and cost a sixth of the plot.
   const draw = useDrawIn(true, motion.draw, series.map((s) => `${s.label}:${s.points.join(",")}`).join("|"));
   const clipId = `line-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  /**
+   * Which x position the finger is on, or `null` when nobody is touching.
+   *
+   * State rather than a shared value: what changes is the READOUT, and a
+   * readout is text that needs a render anyway. It only changes when the
+   * nearest index changes — a handful of times per drag, not once per frame —
+   * so the frame-accurate machinery `UI.md` reserves for scroll- and
+   * gesture-driven values would buy nothing here.
+   */
+  const [scrubIndex, setScrubIndex] = React.useState<number | null>(null);
   const values = series.flatMap((s) => s.points.filter((p): p is number => p != null));
   if (values.length === 0) return null;
   const min = Math.min(0, ...values);
@@ -464,8 +474,38 @@ export function Lines({
     return `${item.label}: ${itemValues}`;
   }).join(". "));
 
+  const lastIndex = Math.max(0, xLabels.length - 1);
+  const indexAt = (locationX: number): number => {
+    if (lastIndex === 0) return 0;
+    const ratio = (locationX - padding.left) / plotW;
+    return Math.min(lastIndex, Math.max(0, Math.round(ratio * lastIndex)));
+  };
+  const scrub = PanResponder.create({
+    // Claims the touch immediately: this view has no other gesture to lose it
+    // to, and a reading that only appears after the finger has travelled would
+    // make the first tap look broken.
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (event) => setScrubIndex(indexAt(event.nativeEvent.locationX)),
+    onPanResponderMove: (event) => setScrubIndex(indexAt(event.nativeEvent.locationX)),
+    onPanResponderRelease: () => setScrubIndex(null),
+    onPanResponderTerminate: () => setScrubIndex(null),
+  });
+  const scrubbed = scrubIndex == null ? null : {
+    x: x(scrubIndex),
+    label: xLabels[scrubIndex] ?? String(scrubIndex + 1),
+    readings: series
+      .map((item) => ({ label: item.label, point: item.points[scrubIndex] ?? null, color: item.color }))
+      .filter((reading): reading is { label: string; point: number; color: string } => reading.point != null),
+  };
+
   return (
-    <View accessible accessibilityRole="image" accessibilityLabel={chartSummary}>
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={chartSummary}
+      {...scrub.panHandlers}
+    >
       <Svg accessible={false} width={width} height={height}>
         <Defs>
           <ClipPath id={clipId}>
@@ -560,7 +600,67 @@ export function Lines({
             </SvgText>
           ) : null,
         )}
+        {scrubbed ? (
+          <>
+            {/* The rule is the reading. It is drawn under the markers so a
+                point the finger is on is never covered by the line telling
+                you which point it is. */}
+            <SvgLine
+              x1={scrubbed.x}
+              y1={padding.top}
+              x2={scrubbed.x}
+              y2={padding.top + plotH}
+              stroke={palette.textSecondary}
+              strokeWidth={1}
+            />
+            {scrubbed.readings.map((reading) => (
+              <Circle
+                key={reading.label}
+                cx={scrubbed.x}
+                cy={y(reading.point)}
+                r={chart.markerRadius}
+                fill={reading.color}
+                stroke={palette.surface}
+                strokeWidth={2}
+              />
+            ))}
+          </>
+        ) : null}
       </Svg>
+      {/* Absolutely positioned so the chart's box is the same height whether
+          or not a finger is on it: `e2e/ui-consistency.spec.ts` asserts that
+          nothing in a chart's ancestry overflows, and a readout that pushed
+          the layout would move the very thing it reports on. */}
+      {scrubbed ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: palette.surface,
+              borderRadius: radius.sm,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: palette.border,
+              paddingHorizontal: spacing.sm,
+              paddingVertical: 2,
+              maxWidth: "100%",
+            }}
+          >
+            <Text style={[type.small, { color: palette.text, textAlign: "center" }]}>
+              {scrubbed.readings.length === 0
+                ? scrubbed.label
+                : `${scrubbed.label} · ${scrubbed.readings.map((reading) => formatMinorCompact(reading.point)).join(" · ")}`}
+            </Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }

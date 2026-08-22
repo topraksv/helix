@@ -11,18 +11,20 @@
 
 import React from "react";
 import { View } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 import {
   CARD_CYCLE_GRACE,
   cardCycleGraceDays,
   isCardCycleDayConflict,
   isValidCardCycleGrace,
   refusedCardCycleDays,
-} from "../domain/card-statements";
-import { MONTH_END_DAY } from "../domain/dates";
+  cardCycleProgress,
+  isValidCardCycle,} from "../domain/card-statements";
+import { MONTH_END_DAY, todayISO } from "../domain/dates";
 import { tr } from "../i18n/tr";
 import { Body, Row } from "./components";
 import { MonthDayField } from "./month-day-field";
-import { spacing } from "./theme";
+import { spacing, useTheme } from "./theme";
 
 /**
  * The days offered as shortcuts.
@@ -98,5 +100,66 @@ export function CardCycleFields({
         {grace != null ? `${tr.sources.cycleGraceDays(grace)} · ${tr.sources.cycleHint}` : tr.sources.cycleHint}
       </Body>
     </>
+  );
+}
+
+/**
+ * A card's cycle as a ring that fills, rather than two numbers to work out.
+ *
+ * The two days are already printed beside it and stay there — this does not
+ * replace them, it answers the question they leave open: whether a purchase
+ * made now lands on the statement about to close or the next one. Several
+ * cards side by side become readable at a glance, which is the whole reason a
+ * person keeps more than one.
+ *
+ * Drawn, never animated. It moves once a day, and motion at that rate is a
+ * flicker on mount rather than something anyone perceives as movement.
+ */
+export function CardCycleRing({
+  statementDay,
+  dueDay,
+  size = 22,
+}: {
+  statementDay: number | null;
+  dueDay: number | null;
+  size?: number;
+}) {
+  const { palette } = useTheme();
+  const cycle = { statementDay, dueDay };
+  if (!isValidCardCycle(cycle)) return null;
+  const progress = cardCycleProgress(todayISO(), cycle);
+  const stroke = 3;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={tr.sources.cycleRingLabel(Math.round(progress * 100))}
+    >
+      <Svg width={size} height={size}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={palette.border}
+          strokeWidth={stroke}
+          fill="none"
+        />
+        {/* Starts at the top and fills clockwise: the twelve-o'clock start is
+            the only one a reader does not have to be told about. */}
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={palette.primaryText}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${circumference * progress} ${circumference}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+    </View>
   );
 }

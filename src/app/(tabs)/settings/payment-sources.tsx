@@ -38,7 +38,7 @@ import { WorkspaceSplit } from "../../../ui/workspace-layout";
 import { isMonthDay } from "../../../domain/dates";
 
 import { monthDayLabel } from "../../../ui/month-day-field";
-import { CardCycleFields, cardCycleError } from "../../../ui/card-cycle-fields";
+import { CardCycleFields, CardCycleRing, cardCycleError } from "../../../ui/card-cycle-fields";
 import { selectionTapIfChanged } from "../../../ui/haptics";
 import { PersonAssignment } from "../../../ui/person-assignment";
 import { shouldUseTripleTileGrid } from "../../../ui/responsive";
@@ -441,9 +441,14 @@ export default function SourcesScreen() {
                   </Body>
                 ) : null}
                 {s.type === "credit_card" ? (
-                  <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs }}>
+                  <Row gap={spacing.xs} style={{ flexWrap: "wrap", marginTop: spacing.xs, alignItems: "center" }}>
                     {s.statementDay && s.dueDay ? (
                       <>
+                        {/* The ring answers what the two numbers leave open:
+                            whether a purchase made now lands on the statement
+                            about to close or the next one. Side by side it
+                            also says which card is freshest. */}
+                        <CardCycleRing statementDay={s.statementDay} dueDay={s.dueDay} />
                         <Badge text={`${tr.sources.statementDayShort}: ${monthDayLabel(s.statementDay)}`} />
                         <Badge text={`${tr.sources.dueDayShort}: ${monthDayLabel(s.dueDay)}`} tone="primary" />
                       </>

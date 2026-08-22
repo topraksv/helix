@@ -133,17 +133,35 @@ opening plus income, minus expense and transfer, plus dated adjustments.
 Negative balances are valid. Pending self-owned rows may be shown in planned
 month/category views without entering the realized chain. Projected balance is
 actual balance plus known pending and expected inflows/outflows through the
-requested horizon. The projection sums every flow it is given; the defect below
-describes a caller that can supply two representations of one obligation.
+requested horizon. The projection sums every flow it is given, and the section
+below states how a caller avoids supplying two representations of one
+obligation.
 
-### Known defects
+A projection of known flows alone claims the rest of the month costs nothing,
+which is wrong every month in the same direction. Beside it the dashboard
+states what a typical month still has left to spend on everything no rule
+predicts: the median of what completed months cost, minus what this month has
+cost so far. Median rather than mean, so one unusual repair does not become the
+normal; six months, long enough that one month cannot define normal and short
+enough to follow a real change in prices. It is offered as a second figure and
+never folded into the first — one is recorded, the other is measured from
+history, and a reader has to be able to tell which is which.
 
-**Duplicate obligation in projected balance.** When one obligation is present
-as both a pending transaction and an expected payment, the dashboard passes
-both entries to `projectedBalance` without identity deduplication. The affected
-projected-balance value counts that obligation twice. The behavior fix is
-deferred to a later phase; this reconstruction does not treat the double count
-as intended product behavior.
+### One obligation, counted once
+
+When one obligation is present as both a pending transaction and an expected
+payment, only one of them reaches the projection. Identity is the rule that
+generated both: a transaction's `subscriptionId` against the expectation's
+`refId`, for the same date. `recurring_income` has no counterpart field on a
+transaction and so cannot be matched.
+
+The current client cannot produce that pair — confirming an expectation marks
+it paid and reverting one tombstones the transaction it created — so the match
+defends data that arrives another way: a restore, a sync from an older client,
+or a row left linked by the matching surface that was removed. It is
+deliberately strict for that reason. Counting one obligation twice overstates
+what leaves the account; collapsing two real ones would understate it, and only
+the first of those errors is safe to make.
 
 ## §2.8 — Self and watch-only people (RECONSTRUCTED)
 
@@ -231,6 +249,17 @@ During review every candidate may be renamed, re-priced, re-categorised or
 removed from the list entirely; removal affects only the review, never the file.
 Selection is a checkbox per line, and nothing is written until the import is
 confirmed.
+
+Because the parser reads only a line carrying all three of a date, a merchant
+and an amount, lines it does not read are expected rather than exceptional —
+and nothing noticed when one went missing, which surfaced later as balance
+drift with no way back to the cause. The review therefore accepts the period's
+charge total as the owner reads it off the paper, and says whether what was
+read comes to the same figure, netting refunds the way the printed total nets
+them. The figure is typed and not parsed: a total's wording is the most
+bank-specific thing on the page, and this importer does not guess at the one
+number whose job is to be certain. Nothing about the check is stored — it
+belongs to the moment the statement is open.
 
 ## §3.1c — Transaction attachments (RECONSTRUCTED)
 
@@ -408,14 +437,22 @@ auth-service refusal is an expired session. When a pull replaces a row already
 visible on the device, the store records a one-time remote-change timestamp;
 initial hydration and the device's own acknowledged writes do not trigger it.
 
-## Known defect — malformed TCMB unit values
+## Malformed TCMB unit values are refused
 
-`parseTcmbRates` accepts a decimal `<Unit>` such as `1.5` as if the element
-were absent, because the integer-only extraction does not match and the parser
-then applies its default unit of `1`. The affected TRY rate is therefore
-mis-scaled instead of rejected as malformed provider data. A production fix is
-deferred; the pending regression contract in
-`tests/mutation-contracts.test.ts` records the correct fail-closed behavior.
+`parseTcmbRates` reads what `<Unit>` contains and then judges it, rather than
+matching digits and defaulting when the match fails. A decimal such as `1.5` is
+a unit the parser cannot honour, so that currency is dropped; if nothing else in
+the response parses, the whole batch is refused rather than stored.
+
+A block that declares no `<Unit>` at all is refused for the same reason. The
+parser never supplies a unit the response did not state: TCMB quotes JPY, KRW
+and RUB per hundred and all three are fetched, so reading a missing element as
+one would be a hundredfold error on exactly the currencies whose unit matters.
+
+The earlier reading is what made both necessary: a digits-only pattern does not
+match `1.5` at all, so a default of `1` took over for the malformed and the
+missing alike, and the rate was scaled by the wrong unit instead of being
+refused.
 
 ## Outbox event identity
 

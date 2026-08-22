@@ -14,6 +14,7 @@ import {
   parseStatement,
   parseStatementLine,
   periodFromDates,
+  statementDifferenceMinor,
   statementImportKey,
 } from "../src/domain/statement-import";
 
@@ -416,3 +417,43 @@ describe("the reference statement layout", () => {
     }
   });
 });
+
+/**
+ * Whether the import accounted for the whole statement.
+ *
+ * The parser is deliberately narrow — only a line carrying a date, a merchant
+ * and an amount becomes an entry — so lines it does not read are expected
+ * rather than exceptional. Nothing noticed when one went missing: the ledger
+ * was quietly short by its amount, and it surfaced months later as balance
+ * drift with no way back to the cause.
+ *
+ * The figure it is checked against is TYPED, not parsed. The screen's own
+ * promise is that a statement is a document the app cannot verify and
+ * therefore does not guess at, and the total's wording is the most
+ * bank-specific thing on the page. Reading it would be a guess about the one
+ * number whose whole job is to be certain.
+ */
+describe("checking the read against the statement", () => {
+  const charge = (amountMinor: number, isRefund = false) => ({ amountMinor, isRefund });
+
+  it("nets refunds against charges, the way the printed figure does", () => {
+    expect(statementDifferenceMinor(300_00, [charge(400_00), charge(100_00, true)])).toBeNull();
+  });
+
+  it("reports what is missing when the read falls short", () => {
+    expect(statementDifferenceMinor(500_00, [charge(400_00)])).toBe(100_00);
+  });
+
+  it("reports the other direction too, rather than only under-reads", () => {
+    expect(statementDifferenceMinor(300_00, [charge(400_00)])).toBe(-100_00);
+  });
+
+  it("says nothing at all when there is no figure to check against", () => {
+    expect(statementDifferenceMinor(null, [charge(400_00)])).toBeNull();
+  });
+
+  it("treats an empty read as reading nothing, not as agreement", () => {
+    expect(statementDifferenceMinor(500_00, [])).toBe(500_00);
+  });
+});
+

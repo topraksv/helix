@@ -185,6 +185,48 @@ Standing rules:
   shape of a reload.
 - A list arrives with `staggerDelay`, bounded by `motion.stagger.budget`.
 
+### Which animation library
+
+New motion is written with `react-native-reanimated`. The existing families in
+`ui/motion-primitives.tsx` stay on React Native's `Animated` and are not being
+converted: on native they already run on the UI thread through
+`useNativeDriver`, and the ones that say `useNativeDriver: false` say it
+deliberately, because a colour cannot be driven natively. Rewriting them buys
+nothing a person can see and puts a suite of geometry and contrast assertions
+at risk for it.
+
+What Reanimated is for is the motion those families cannot express: anything
+driven by a finger or a scroll offset, where a value has to change every frame
+without a React render to carry it. Reach for the existing primitive first —
+if `Collapse`, `SlideUp`, `FadeIn`, `useCountUp` or `useValueFlash` already
+says what the screen means, use it and add nothing.
+
+### Motion evaluated and not adopted
+
+Recorded so the same three ideas are not costed twice.
+
+**A cell that grows into its editor.** Apple's zoom transition needs iOS 18 and
+Expo SDK 55, and this project is on 54; it is also iOS-only, while the primary
+surface here is the web. Hand-rolling a shared element across a route push is
+fragile on the web and would have to make `cell-editor` special, which breaks
+the single `cardScreenOptions` presentation that twelve screens share. Revisit
+with the SDK, not before.
+
+**A saved amount that flies to the month it landed in.** Two things stop it.
+Saving leaves the form, so the destination is not on screen to fly to; and the
+matrix must not run per-cell animation hooks, which the `useCountUp` header
+already states as the reason only one hero figure per surface uses one. What
+the animation was for — saying where an entry landed — the undo bar already
+says in words, including the month when it differs from the one being worked
+in. The one thing it does not say is how an instalment plan spreads across
+months, and that is a sentence, not an animation.
+
+**Typing directly into a matrix cell.** The nearest thing to a spreadsheet, and
+the most expensive: it lands in `sticky-table.tsx`, which carries incident
+history for pinned headers and hover containment and the same no-per-cell-hooks
+rule. Not attempted while the cell editor answers the same need from one tap
+away.
+
 ## 9. What proves it
 
 | Rule | Proof |

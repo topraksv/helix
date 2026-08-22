@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MONTH_END_DAY } from "../src/domain/dates";
+import { MONTH_END_DAY, addDaysISO } from "../src/domain/dates";
 import {
   CARD_CYCLE_GRACE,
   cardCycleGraceDays,
+  cardCycleProgress,
   isCardCycleDayConflict,
   isValidCardCycle,
   isValidCardCycleGrace,
@@ -166,3 +167,47 @@ describe("how far apart a card's two days may sit", () => {
     }
   });
 });
+
+/**
+ * How far through the current statement today is.
+ *
+ * The two days a card carries are printed as numbers and a person still has to
+ * work out what they mean today: whether a purchase now lands on the statement
+ * about to close or the next one, and how long the money has before it leaves.
+ * One fraction answers that without arithmetic, and it is the only thing a ring
+ * needs.
+ *
+ * The window is close-to-close, because that is the span a purchase chooses
+ * between. The due date is not on it: it falls AFTER the close, so putting it
+ * on the same ring would either run past the end or squash the part that
+ * matters.
+ */
+describe("where today sits in a card's cycle", () => {
+  const cycle = { statementDay: 15, dueDay: 5 };
+
+  it("is at the start on the day after a statement closed", () => {
+    expect(cardCycleProgress("2026-07-16", cycle)).toBeCloseTo(1 / 31, 5);
+  });
+
+  it("is near the end on the day the next one closes", () => {
+    expect(cardCycleProgress("2026-08-15", cycle)).toBe(1);
+  });
+
+  it("reads the middle of the window as the middle", () => {
+    // 16 Temmuz → 15 Ağustos is 30 days; the 31st of July is 15 of them in.
+    expect(cardCycleProgress("2026-07-31", cycle)).toBeCloseTo(16 / 31, 5);
+  });
+
+  it("stays inside 0 and 1 for every day of a year", () => {
+    for (let day = 0; day < 365; day += 1) {
+      const progress = cardCycleProgress(addDaysISO("2026-01-01", day), cycle);
+      expect(progress).toBeGreaterThanOrEqual(0);
+      expect(progress).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("refuses a cycle it cannot read rather than inventing a position", () => {
+    expect(() => cardCycleProgress("2026-07-16", { statementDay: 0, dueDay: 5 })).toThrow();
+  });
+});
+

@@ -39,7 +39,7 @@ import {
   type CandidateVerdict,
   type StatementCandidate,
   type StatementParseResult,
-} from "../domain/statement-import";
+  statementDifferenceMinor,} from "../domain/statement-import";
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { userMessage } from "../domain/user-error";
 import { dateLabel, tr } from "../i18n/tr";
@@ -277,6 +277,18 @@ export default function StatementImportScreen() {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
+  /**
+   * The period-charge figure printed on the paper, as the owner reads it.
+   *
+   * Typed rather than parsed on purpose. This screen's promise is that a
+   * statement is a document the app cannot verify and therefore does not guess
+   * at, and a total's wording is the most bank-specific thing on the page —
+   * guessing it would be a guess about the one number whose whole job is to be
+   * certain. Nothing is stored either: the check belongs to the moment the
+   * paper is in hand.
+   */
+  const [declaredRaw, setDeclaredRaw] = useState("");
+  const [declaredMinor, setDeclaredMinor] = useState<number | null>(null);
 
   const expenseCategories = useMemo(
     () => categoriesState.data.filter((category) => category.kind === "expense"),
@@ -287,6 +299,25 @@ export default function StatementImportScreen() {
   const visibleCandidates = useMemo(
     () => (extracted?.candidates ?? []).filter((candidate) => !removed.has(candidate.importKey)),
     [extracted, removed],
+  );
+
+  /**
+   * The read, as the owner has left it: their edits, minus what they removed.
+   *
+   * Not the raw parse. A line whose amount was corrected in review is worth
+   * its corrected amount, and one that was removed is not part of what this
+   * import claims to have read — checking the untouched parse would answer a
+   * question nobody is asking.
+   */
+  const statementDifference = useMemo(
+    () => statementDifferenceMinor(
+      declaredMinor,
+      visibleCandidates.map((candidate) => ({
+        amountMinor: drafts[candidate.importKey]?.amountMinor ?? candidate.amountMinor,
+        isRefund: candidate.isRefund,
+      })),
+    ),
+    [declaredMinor, visibleCandidates, drafts],
   );
 
   const existingRows = useMemo(
@@ -572,6 +603,34 @@ export default function StatementImportScreen() {
               ))}
             </>
           ) : null}
+
+          {/* The comment above the skipped panel names the gap this closes: an
+              importer that discards lines silently is one whose total can
+              never be reconciled against the paper. The figures it read are
+              here, so the one number that can prove the read was complete
+              belongs here too — beside them, before Aktar, while the statement
+              is still open. */}
+          <SectionHeader description={tr.statement.checkHint}>{tr.statement.checkTitle}</SectionHeader>
+          <Card tone={statementDifference == null ? (declaredMinor == null ? undefined : "success") : "warning"}>
+            <MoneyField
+              testID="statement-declared-total"
+              label={tr.statement.checkLabel}
+              value={declaredRaw}
+              onChangeMinor={(raw, minor) => {
+                setDeclaredRaw(raw);
+                setDeclaredMinor(minor);
+              }}
+            />
+            {declaredMinor == null ? null : (
+              <Body muted={statementDifference == null}>
+                {statementDifference == null
+                  ? tr.statement.checkMatch
+                  : statementDifference > 0
+                    ? tr.statement.checkShort(formatMinorCompact(statementDifference))
+                    : tr.statement.checkOver(formatMinorCompact(-statementDifference))}
+              </Body>
+            )}
+          </Card>
 
           <Button
             testID="statement-commit"

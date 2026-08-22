@@ -61,7 +61,16 @@ export function parseTcmbRates(xml: string): ProviderRateBatch {
   for (const block of xml.split("<Currency ").slice(1)) {
     const currency = /CurrencyCode="([A-Z]{3})"/.exec(block)?.[1];
     if (!FETCHED_FX_CURRENCIES.includes(currency as ProviderRate["currency"])) continue;
-    const unit = Number(/<Unit>(\d+)<\/Unit>/.exec(block)?.[1] ?? "1");
+    // Read whatever the element CONTAINS and judge it; never supply a unit the
+    // response did not state. A digits-only pattern does not match
+    // `<Unit>1.5</Unit>` at all, so a default of 1 took over and the rate was
+    // scaled by the wrong unit instead of being refused — and the same default
+    // covered a block with no `<Unit>` at all. Neither is harmless: TCMB quotes
+    // JPY, KRW and RUB per hundred and all three are fetched here, so assuming
+    // one is a hundredfold error on exactly the currencies whose unit matters.
+    // `Number(undefined)` is `NaN`, so both readings fall to the guard below,
+    // which the old pattern had made unreachable by guaranteeing what it checked.
+    const unit = Number(/<Unit>([^<]*)<\/Unit>/.exec(block)?.[1]);
     const selling = Number(/<ForexSelling>([\d.]+)<\/ForexSelling>/.exec(block)?.[1]);
     const rateTry = selling / unit;
     if (!Number.isInteger(unit) || unit <= 0 || !Number.isFinite(rateTry) || rateTry <= 0 || rateTry > 1_000_000) continue;

@@ -83,6 +83,15 @@ hesaba ait bildirim ve cache durumunu temizler. App inactive/background iken
 finansal içeriğin üstüne privacy cover çizilir; gerçek snapshot zamanlaması
 cihazda kabul edilmelidir.
 
+Android bunu çizerek yapamaz. React Native'in `AppState`'i `inactive` durumunu
+yalnız iOS'ta yayar; Android `background`'ı ancak uygulama gittikten sonra
+bildirir, sistem görev görüntüsünü çoktan almış olur. Bu yüzden Android'de
+koruma pencere bayrağıyla kurulur (`FLAG_SECURE`): önizlemeyi işletim sistemi
+karartır, render yarışı olmaz. Aynı bayrak ekran görüntüsünü ve ekran kaydını
+da engeller ve Android bu ikisini ayırmaya izin vermez, bu yüzden yalnız hesap
+açıkken tutulur — hesapsız (local-only) kullanımda ekran görüntüsü çalışmaya
+devam eder.
+
 Kredi kartı ekstresi PDF'i yalnızca cihazda okunur: Helix dosyayı saklamaz,
 kopyalamaz ve hiçbir yere göndermez. Okunamayan, taranmış veya parola korumalı
 bir PDF tahmin edilmez; nedeni söylenerek reddedilir. Ekstreden okunan hiçbir

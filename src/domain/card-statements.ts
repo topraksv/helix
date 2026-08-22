@@ -14,7 +14,7 @@ import {
   yearOf,
   type ISODate,
   type MonthKey,
-} from "./dates";
+  daysBetweenISO,} from "./dates";
 
 export interface CardCycle {
   statementDay: number;
@@ -132,4 +132,34 @@ export function refusedCardCycleDays(
   return candidates.filter((day) => !(role === "statement"
     ? isValidCardCycleGrace(day, otherDay)
     : isValidCardCycleGrace(otherDay, day)));
+}
+
+/**
+ * How far today is through the statement window that is currently filling.
+ *
+ * `0` on the day one statement closed, `1` on the day the next one does. The
+ * window is close-to-close because that is the span a purchase chooses
+ * between: the same shop on either side of it lands on a different statement
+ * and leaves the account a month apart.
+ *
+ * The due date is deliberately not on this scale. It falls after the close, so
+ * mapping it onto the same 0..1 would either run past the end or compress the
+ * part a person is actually reading.
+ *
+ * Throws on a cycle it cannot read rather than returning a position: an
+ * invented fraction would be drawn as confidently as a real one.
+ *
+ * The span is not checked for zero. Two consecutive closes are a month apart
+ * by construction, and a probe over every statement day from 1 to 31 across
+ * sixteen years — 5,952 combinations — found the shortest span to be 28 days
+ * and none at or below zero. The guard that used to be here was therefore
+ * unreachable, which is why its mutants survived while every other line's
+ * died; the probe was written to prove that before it was removed, and then
+ * removed itself.
+ */
+export function cardCycleProgress(today: ISODate, cycle: CardCycle): number {
+  const period = statementForPurchase(today, cycle);
+  const previousClose = statementPeriod(addMonthsToKey(period.periodMonth, -1), cycle).statementDate;
+  const span = daysBetweenISO(previousClose, period.statementDate);
+  return Math.min(1, Math.max(0, daysBetweenISO(previousClose, today) / span));
 }

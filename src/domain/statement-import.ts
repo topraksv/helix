@@ -546,3 +546,33 @@ export function defaultSelection(verdicts: ReadonlyMap<string, CandidateVerdict>
   }
   return selected;
 }
+
+/**
+ * How far the read fell short of the figure the owner checked it against.
+ *
+ * Positive means the statement says more than was read — the likeliest and
+ * most damaging case, because the missing amount never reaches the ledger and
+ * turns up later as balance drift with nothing pointing back here. Negative
+ * means the opposite and matters just as much: something was read twice, or a
+ * line that was not a charge became one.
+ *
+ * `null` is not "correct", it is "nothing to say" — either no figure was given
+ * to check against, or the two agree. Both leave the screen with no difference
+ * to report, and neither should be dressed up as the other.
+ *
+ * Refunds are netted the way the printed figure nets them: `amountMinor` is
+ * always positive here and `isRefund` is what carries direction, so a period
+ * with a return in it reconciles against the same number the bank shows.
+ */
+export function statementDifferenceMinor(
+  declaredMinor: Minor | null,
+  candidates: readonly Pick<StatementCandidate, "amountMinor" | "isRefund">[],
+): Minor | null {
+  if (declaredMinor == null) return null;
+  let read = 0;
+  for (const candidate of candidates) {
+    read += candidate.isRefund ? -candidate.amountMinor : candidate.amountMinor;
+  }
+  const difference = declaredMinor - read;
+  return difference === 0 ? null : difference;
+}
