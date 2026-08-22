@@ -189,14 +189,41 @@
       "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
       "measuredDate": "2026-08-21"
     },
+    "src/domain/balance-declaration.ts": {
+      "score": 94.59,
+      "killed": 70,
+      "timeout": 0,
+      "survived": 4,
+      "noCoverage": 0,
+      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
+      "measuredDate": "2026-08-22"
+    },
+    "src/domain/balance.ts": {
+      "score": 96.74,
+      "killed": 178,
+      "timeout": 0,
+      "survived": 6,
+      "noCoverage": 0,
+      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
+      "measuredDate": "2026-08-22"
+    },
     "src/domain/card-statements.ts": {
-      "score": 90.53,
-      "killed": 86,
+      "score": 91,
+      "killed": 91,
       "timeout": 0,
       "survived": 9,
       "noCoverage": 0,
-      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
-      "measuredDate": "2026-08-21"
+      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
+      "measuredDate": "2026-08-22"
+    },
+    "src/domain/dashboard.ts": {
+      "score": 94.83,
+      "killed": 165,
+      "timeout": 0,
+      "survived": 9,
+      "noCoverage": 0,
+      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
+      "measuredDate": "2026-08-22"
     },
     "src/domain/expected.ts": {
       "score": 97.59,
@@ -206,6 +233,15 @@
       "noCoverage": 0,
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
+    },
+    "src/domain/fx-provider.ts": {
+      "score": 94.44,
+      "killed": 255,
+      "timeout": 0,
+      "survived": 15,
+      "noCoverage": 0,
+      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
+      "measuredDate": "2026-08-22"
     },
     "src/domain/investments.ts": {
       "score": 98.87,
@@ -244,13 +280,13 @@
       "measuredDate": "2026-08-19"
     },
     "src/domain/statement-import.ts": {
-      "score": 69.37,
-      "killed": 231,
+      "score": 70.35,
+      "killed": 242,
       "timeout": 0,
       "survived": 95,
       "noCoverage": 7,
-      "measuredOn": "a9263150c9529d2bdb5552037b378916cbb57f34",
-      "measuredDate": "2026-08-21"
+      "measuredOn": "0dda8f4ab515ff54e3f87476074b9cd1c8ec055c",
+      "measuredDate": "2026-08-22"
     },
     "src/domain/upcoming.ts": {
       "score": 98.68,
