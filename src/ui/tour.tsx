@@ -198,6 +198,7 @@ export function TourModal({ onClose }: { onClose: () => void }) {
           accessible={false}
           tabIndex={-1}
           accessibilityViewIsModal
+          aria-label={tr.a11y.tourStep(step + 1, SLIDES.length, slide.title)}
           onPress={() => {}}
           style={{ width: Math.min(width - spacing.lg * 2, 420) }}
         >

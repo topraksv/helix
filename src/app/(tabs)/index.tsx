@@ -10,6 +10,7 @@ import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import ChartNoAxesColumn from "lucide-react-native/icons/chart-no-axes-column";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import History from "lucide-react-native/icons/rotate-ccw-clock";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import Plus from "lucide-react-native/icons/plus";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import TrendingDown from "lucide-react-native/icons/trending-down";
@@ -40,7 +41,7 @@ import {
 import { combineLiveStates } from "../../data/live-state";
 import { confirmExpected, FxRateUnavailableError, revertExpected, setExpectedAmount } from "../../data/repo";
 import { MARKET_SYMBOLS } from "../../domain/investment-catalog";
-import { marketSellRateTry, useMarkets } from "../../services/markets";
+import { marketSellRateTry, retryMarkets, useMarkets } from "../../services/markets";
 import { convertToTryMinor } from "../../domain/fx";
 import { lookupRate, useFxRates } from "../../services/fx-fetch";
 import { appAlert } from "../../ui/dialog";
@@ -354,6 +355,22 @@ function MarketsCard({ fill = false, desktopColumns = 2 }: { fill?: boolean; des
             <Body muted style={{ textAlign: fill ? "center" : "left", maxWidth: 380, alignSelf: fill ? "center" : "auto" }}>
               {tr.markets.noData}
             </Body>
+            {/* Something to do, and the truth about what is already happening.
+                An empty card the height of the payment list beside it offered
+                neither. */}
+            {status !== "connecting" ? (
+              <View style={{ marginTop: spacing.md, alignItems: fill ? "center" : "flex-start" }}>
+                <Button
+                  variant="secondary"
+                  icon={RefreshCw}
+                  label={tr.markets.retryNow}
+                  onPress={() => retryMarkets()}
+                />
+                <Body muted style={{ marginTop: spacing.sm, fontSize: type.small.fontSize, textAlign: fill ? "center" : "left" }}>
+                  {tr.markets.autoRetry}
+                </Body>
+              </View>
+            ) : null}
           </View>
         )}
       </Card>
@@ -612,7 +629,12 @@ export default function DashboardScreen() {
         <ListRow
           icon={ChartNoAxesColumn}
           title={tr.dashboard.monthNet(formatMinorCompact(monthNetMinor))}
-          subtitle={tr.dashboard.monthFlowSummary(formatMinorCompact(monthIncomeMinor), formatMinorCompact(monthOutflowMinor))}
+          // Signed, like the hero strip six centimetres above it and like the
+          // month card. Gelir + Çıkış = Net değişim only reads as arithmetic
+          // when the outflow carries its sign; this line showed the same
+          // ₺7.669,05 unsigned while the strip showed it signed, so one screen
+          // stated one figure two ways.
+          subtitle={tr.dashboard.monthFlowSummary(formatMinorCompact(monthIncomeMinor), formatMinorCompact(-monthOutflowMinor))}
           chevron
           // Root-level route, not the tab's own. Pushing into the Cash Flow
           // stack from here would mount that tab's index underneath, and the
@@ -782,6 +804,7 @@ export default function DashboardScreen() {
                   accessibilityLabel={`${tr.dashboard.forecastToggle} ${
                     projectedDelta != null && projectedDelta >= 0 ? tr.dashboard.forecastRising : tr.dashboard.forecastFalling
                   }`}
+                  aria-expanded={showForecast}
                   accessibilityState={{ expanded: showForecast }}
                   onPress={() => setShowForecast((v) => !v)}
                   style={(state) => ({

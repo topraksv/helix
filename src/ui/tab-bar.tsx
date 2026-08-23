@@ -40,6 +40,31 @@ const BAR_PADDING = 2;
 const DRAG_CLAIM_DISTANCE = 24;
 /** How much more horizontal than vertical that travel has to be. */
 const DRAG_HORIZONTAL_BIAS = 1.5;
+/**
+ * The width a label's glyphs really need, and whether they had to wrap.
+ *
+ * Measured over the text content rather than the element, because the element
+ * is a block box the column has already sized: every box-level answer
+ * (`scrollWidth`, `getClientRects`) is the column's width, not the label's.
+ */
+function measureLabelText(node: HTMLElement | null): { width: number; wrapped: boolean } {
+  if (!node || typeof document === "undefined" || typeof document.createRange !== "function") {
+    return { width: 0, wrapped: false };
+  }
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rects = range.getClientRects();
+    let width = 0;
+    for (let i = 0; i < rects.length; i += 1) width = Math.max(width, rects[i]?.width ?? 0);
+    return { width: Math.ceil(width), wrapped: rects.length > 1 };
+  } catch {
+    // A detached or unmeasurable node reads as "not measured yet", which the
+    // fit rule already treats as fitting.
+    return { width: 0, wrapped: false };
+  }
+}
+
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { palette, scheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -255,13 +280,22 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             }}
             onLayout={(event) => {
               // react-native-web does not dispatch `onTextLayout`, so the web
-              // half reads the DOM node directly — the same probe `Figure` uses
-              // for the amount ladder. More than one client rect is more than
-              // one line box.
-              const node = event.target as unknown as { scrollWidth?: number; getClientRects?: () => { length: number } } | null;
-              const wrapped = (node?.getClientRects?.().length ?? 1) > 1;
-              const intrinsic = node?.scrollWidth ?? 0;
-              setLabelWidth((known) => Math.max(known, wrapped ? tooWide(slotWidth) : Math.ceil(intrinsic)));
+              // half measures the DOM itself. It used to read `scrollWidth` and
+              // `getClientRects()` off the element, and both answers were the
+              // CONTAINER's: a react-native-web Text is a block box with
+              // `overflow: visible`, so `scrollWidth` never exceeds the column
+              // it is in and a block always reports exactly one rect. The bar
+              // therefore measured every label as "exactly fits" no matter how
+              // wide it really was — at 320px "Mali Tablo" and "Abonelikler"
+              // ended up 1px apart and read as one word, and the rule that
+              // exists to prevent that never fired once.
+              //
+              // A Range over the text CONTENT is not clipped by the box, so it
+              // reports the width the glyphs actually need and one rect per
+              // line box.
+              const node = event.target as unknown as HTMLElement | null;
+              const measured = measureLabelText(node);
+              setLabelWidth((known) => Math.max(known, measured.wrapped ? tooWide(slotWidth) : measured.width));
             }}
             style={{
               fontFamily: focused ? font.semibold : font.medium,

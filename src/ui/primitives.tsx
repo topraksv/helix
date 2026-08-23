@@ -31,7 +31,7 @@ import {
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import type { LucideIcon } from "lucide-react-native";
 import { formatMinorCompact } from "../domain/money";
-import { initialAmountFontSize, nextAmountFontSize, type AmountScale } from "./amount-layout";
+import { initialAmountFontSize, nextAmountFontSize, type AmountScale, shouldMeasureAmountFit } from "./amount-layout";
 import { initialsBadgeColor } from "./badge-color";
 import { haptic, type HapticKind } from "./haptics";
 import { interactionSurface } from "./interaction";
@@ -396,7 +396,7 @@ function Figure({
   const textRef = useRef<Text>(null);
   const availableWidth = useRef(0);
   const intrinsicWidth = useRef(0);
-  const shouldProbeOverflow = scale !== "regular" || formatted.length > 10;
+  const shouldProbeOverflow = shouldMeasureAmountFit(scale, formatted);
   const shrinkToNextStep = () => {
     const next = nextAmountFontSize(scale, fittedSize);
     if (next !== fittedSize) setFit({ key: fitKey, size: next });

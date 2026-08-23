@@ -317,6 +317,7 @@ export default function CashflowScreen() {
           today,
           openingLabel: tr.cashflow.opening,
           closingLabel: tr.cashflow.closing,
+          startMonth: bundle.startMonth,
         })
       : null,
     [bundle, year, columnCategories, visibleComputed, txLike, creditCardIds, liveCategoryIds, today],
@@ -1097,10 +1098,20 @@ const MatrixTable = React.memo(function MatrixTable({
     const cellNode = (column: CashFlowMatrixColumn, month: MonthKey, highlighted: boolean): React.ReactNode => {
       const value = column.values.get(month) ?? null;
       const note = noteFor(column, month);
+      // Zero means two different things in this grid, and it used to be drawn
+      // and spoken as if it meant one. In a CATEGORY cell, zero is "nothing
+      // happened": the cell stays blank and announces itself as empty. In a
+      // BALANCE column, zero is a real balance the chain arrived at, so a
+      // blank cell there reads as "not calculated" — the month that closed at
+      // exactly ₺0,00 simply vanished from the running balance, while a screen
+      // reader was told "₺0,00" for all 91 genuinely-empty cells beside it.
+      const balanceColumn = column.key === "opening" || column.key === "closing";
+      const shown = balanceColumn ? value : value === 0 ? null : value;
       return (
         <MatrixCell
           columnKey={column.key}
           month={month}
+          zeroIsMeaningful={balanceColumn}
           canPress={canPressCell(column, month)}
           onCellPress={onCellPress}
           colorToken={resolveCellToken(colorIndex, column.categoryId ?? column.key, month)}
@@ -1114,7 +1125,7 @@ const MatrixTable = React.memo(function MatrixTable({
           accessibilityLabel={tr.a11y.matrixCell(
             monthLabel(month),
             column.label,
-            value == null ? tr.a11y.emptyValue : formatMinorCompact(value),
+            shown == null ? tr.a11y.emptyValue : formatMinorCompact(shown),
             Boolean(note),
           )}
         />
@@ -1209,6 +1220,19 @@ const MatrixTable = React.memo(function MatrixTable({
   );
 });
 
+/**
+ * Whether a cell prints anything at all.
+ *
+ * Zero means two different things in this grid: in a category cell it is "no
+ * activity" and stays blank, in a balance column it is a real balance the
+ * chain arrived at. One predicate, so the drawn cell and its spoken label can
+ * never disagree again — they did, and 91 of 240 cells were announced as
+ * "₺0,00" while showing nothing.
+ */
+function hasPrintableValue(value: number | null, zeroIsMeaningful: boolean): value is number {
+  return value != null && (value !== 0 || zeroIsMeaningful);
+}
+
 // Memoized: each cell is a leaf in a ~300-node grid, re-rendered only when
 // its own props change. `onCellPress` is the one non-primitive prop — it must
 // stay referentially stable (see MatrixTable's `useCallback`) or this memo is
@@ -1219,6 +1243,7 @@ const MatrixCell = React.memo(function MatrixCell({
   canPress,
   onCellPress,
   value,
+  zeroIsMeaningful,
   note,
   markerTone = "note",
   highlighted,
@@ -1237,6 +1262,8 @@ const MatrixCell = React.memo(function MatrixCell({
   colorName?: string | null;
   onCellLongPress?: (columnKey: string, month: MonthKey) => void;
   value: number | null;
+  /** A balance column's zero is a real number; a category cell's zero is not. */
+  zeroIsMeaningful: boolean;
   note?: string;
   /** What the corner dot means, so the two never look alike. */
   markerTone?: "note" | "adjustment";
@@ -1251,6 +1278,11 @@ const MatrixCell = React.memo(function MatrixCell({
   return (
     <Pressable
       disabled={!onPress && !onLongPress}
+      // The grid is ONE tab stop, not 240. Reaching the navigation bar behind a
+      // two-year ledger used to take 240 Tab presses; the arrows now move
+      // between cells (see `useGridKeyboard`) and Tab moves past the table.
+      // Still focusable programmatically, so Enter opens the focused cell.
+      tabIndex={-1}
       onPress={onPress}
       onLongPress={onLongPress}
       // A cell that cannot be opened (a system column, or one with nothing to
@@ -1278,7 +1310,7 @@ const MatrixCell = React.memo(function MatrixCell({
         interactionSurface(palette, state, { enabled: Boolean(onPress) }),
       ]}
     >
-      {value == null || value === 0 ? null : (
+      {hasPrintableValue(value, zeroIsMeaningful) ? (
         <View style={{ width: "100%", minWidth: 0, alignItems: "flex-end" }}>
           <Amount
             testID="matrix-value"
@@ -1288,7 +1320,7 @@ const MatrixCell = React.memo(function MatrixCell({
             style={[type.amountSm, { maxWidth: "100%", fontSize, textAlign: "right" }]}
           />
         </View>
-      )}
+      ) : null}
       {note ? (
         <View
           style={{

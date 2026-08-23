@@ -217,6 +217,13 @@ export function Screen({
         <View style={{ flex: 1 }}>
           <Text
             accessibilityRole="header"
+            // The whole app announced every heading at level 1 — nine of them
+            // on Settings alone — because React Native's `header` role carries
+            // no level and nothing supplied one. Heading-to-heading jumping is
+            // how a screen reader user navigates a long page, and with one
+            // flat level it tells them nothing. Three levels, one meaning
+            // each: the page, its sections, the panels inside them.
+            aria-level={1}
             style={[type.title, { color: palette.textStrong, minWidth: 0, flexShrink: 1 }]}
           >
             {title}
@@ -527,6 +534,7 @@ export function SectionHeader({
         <View accessible={false} style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: palette.primary }} />
         <Text
           accessibilityRole="header"
+          aria-level={2}
           style={[
             type.heading,
             {
@@ -606,6 +614,7 @@ export function PanelHeader({
           <View onLayout={lede.onBlockLayout}>
             <Text
               accessibilityRole="header"
+              aria-level={3}
               onLayout={lede.onLineLayout}
               style={[type.body, { color: palette.textStrong, fontFamily: font.semibold }]}
             >
@@ -660,7 +669,7 @@ export function EmptyState({
           <IconCmp accessible={false} size={26} color={palette.textSecondary} strokeWidth={1.8} />
         </View>
       ) : null}
-      <Text accessibilityRole="header" style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
+      <Text accessibilityRole="header" aria-level={2} style={[type.heading, { color: palette.text, textAlign: "center" }]}>{title}</Text>
       {hint ? <Text style={[type.body, { color: palette.textSecondary, textAlign: "center" }]}>{hint}</Text> : null}
       {action ? <View style={{ marginTop: spacing.md }}>{action}</View> : null}
     </FadeIn>

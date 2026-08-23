@@ -99,6 +99,7 @@ export function CategoryDeleteSheet({
           accessible={false}
           tabIndex={-1}
           accessibilityViewIsModal
+          aria-label={tr.settings.deleteCategorySheetTitle(categoryName)}
           onPress={() => {}}
           style={{ width: "100%", maxWidth: 460, maxHeight: "90%" }}
         >

@@ -40,6 +40,7 @@ import { interactionSurface } from "./interaction";
 import { useReducedMotion } from "./motion";
 import { useShake } from "./motion-primitives";
 import { examplePlaceholder, numericPlaceholderColor } from "./input-placeholder";
+import { placeholderPools, useRotatingPlaceholder } from "./placeholders";
 import { Heading, IconButton, Label, Spread, controlStateStyle } from "./primitives";
 import { borderWidth, controlSize, iconSize, motion, radius, spacing, stateOpacity, themeShadow, toggleSize, type, useTheme, type Palette } from "./theme";
 
@@ -203,7 +204,7 @@ export function MoneyField({
   label,
   value,
   onChangeMinor,
-  placeholder = "0,00",
+  placeholder,
   expression = false,
   disabled = false,
   accessibilityLabel,
@@ -228,6 +229,12 @@ export function MoneyField({
   const { palette } = useTheme();
   const fieldId = useId();
   const labelId = `${fieldId}-label`;
+  // Only while the field is empty and only when the caller has not supplied
+  // its own sample — a hook that is showing nothing does not subscribe.
+  const rotatingExample = useRotatingPlaceholder(placeholderPools.amount, {
+    prefix: false,
+    active: placeholder == null && value.trim() === "",
+  });
   const [focused, setFocused] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
   const calculatorTriggerRef = useRef<View>(null);
@@ -280,7 +287,13 @@ export function MoneyField({
             }}
             keyboardType={expression ? "numbers-and-punctuation" : "decimal-pad"}
             inputMode={expression ? "text" : "decimal"}
-            placeholder={examplePlaceholder(placeholder)}
+            /* "Ör. 0,00" was the default for every money field that did not
+               name its own example, including the FIRST field a new account
+               ever shows. Zero is not an example: it teaches nothing and reads
+               as a value already filled in. The shared pool teaches something
+               real instead — including "400+500", which is how a person finds
+               out this field adds up. */
+            placeholder={examplePlaceholder(placeholder ?? rotatingExample)}
             placeholderTextColor={numericPlaceholderColor(palette.textSecondary)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}

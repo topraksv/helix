@@ -408,6 +408,23 @@ export function isCompactTableCell(cellWidth: number): boolean {
 }
 
 /**
+ * Whether the ledger's column controls are being driven by a finger.
+ *
+ * The pin that fixes a column measured 24x53: over WCAG 2.5.8's floor, fine
+ * under a mouse, and well under the 44pt a thumb is given — on a control that
+ * also ships to phones. It cannot simply grow to 44, because the strip sits
+ * inside a ~134px financial column next to that column's own label and would
+ * cost a visible month. So it grows only where the pointer is coarse: every
+ * native build, and the compact table a phone browser gets.
+ *
+ * `isWeb` is a parameter rather than a `Platform` read so this stays a pure
+ * function a test can hold, like every other threshold in this file.
+ */
+export function usesCoarsePointerTable(cellWidth: number, isWeb: boolean): boolean {
+  return !isWeb || isCompactTableCell(cellWidth);
+}
+
+/**
  * How many characters of a table label fit on one soft-wrapped line.
  *
  * Two shapes, because the two rails ask different questions. A column header

@@ -81,6 +81,7 @@ export function PrivacyCover({ enabled }: { enabled: boolean }) {
     <Modal visible animationType="none" onRequestClose={() => {}}>
       <View
         accessibilityViewIsModal
+        aria-label={tr.privacy.coverTitle}
         importantForAccessibility="yes"
         style={{
           flex: 1,

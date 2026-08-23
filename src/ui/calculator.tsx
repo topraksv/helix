@@ -338,7 +338,7 @@ export function CalculatorModal({
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: shortLandscape ? 680 : 340 }}>
+          <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal aria-label={tr.a11y.calculatorTitle} onPress={() => {}} style={{ width: "100%", maxWidth: shortLandscape ? 680 : 340 }}>
             <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, themeShadow.card(palette)]}>
               <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
                 <Text style={[type.heading, { color: palette.text, marginBottom: spacing.md }]}>{tr.a11y.calculatorTitle}</Text>

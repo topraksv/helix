@@ -23,3 +23,32 @@ export function nextAmountFontSize(scale: AmountScale, current: number): number 
   if (current <= last) return current;
   return steps.find((step) => step < current) ?? last;
 }
+
+/**
+ * The longest regular-scale amount that is safe to render without measuring.
+ *
+ * `Figure` skips its overflow probe for short amounts, because the probe is a
+ * layout read and the ledger paints 240 of these at once. The bound was
+ * `length > 10`, and 10 is exactly the length of "₺90.500,00" — which is what
+ * the dashboard's three-up month strip shows. At 320px each of those three
+ * columns is about 88px, a 10-character amount at the regular scale's opening
+ * 15px measures a little over 90, and the figure never shrank because it was
+ * never measured: measured on the real build, Gelir and Çıkış overlapped by
+ * 2px and read as one run of digits.
+ *
+ * Nine characters ("₺9.500,00") is ~75px at the same size, which clears the
+ * narrowest column the app lays out with room to spare. Ten is inside the
+ * margin of error, so ten gets measured.
+ */
+const SAFE_UNMEASURED_LENGTH = 9;
+
+/**
+ * Whether a figure has to be measured before it is trusted to fit.
+ *
+ * Every scale above `regular` opens large enough to overflow something, so
+ * those are always measured; `regular` is measured only when it is long
+ * enough to be at risk. Pure, so the bound is a test rather than a screenshot.
+ */
+export function shouldMeasureAmountFit(scale: AmountScale, formatted: string): boolean {
+  return scale !== "regular" || formatted.length > SAFE_UNMEASURED_LENGTH;
+}

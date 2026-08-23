@@ -12,13 +12,14 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent, type ViewProps } from "react-native";
 import Pin from "lucide-react-native/icons/pin";
 import type { LucideIcon } from "lucide-react-native";
 import { selectionTap } from "./haptics";
 import { interactionSurface } from "./interaction";
 import { tr } from "../i18n/tr";
-import { fittedCellWidth, isCompactTableCell, tableLabelCharBudget } from "./responsive";
+import { fittedCellWidth, isCompactTableCell, tableLabelCharBudget, usesCoarsePointerTable } from "./responsive";
+import { nextGridPosition } from "./grid-navigation";
 import { font, maxFontScale, spacing, stateOpacity, type, useTheme, type Palette } from "./theme";
 
 /** Default fixed metrics; exported so callers can size a table to its content. */
@@ -26,6 +27,18 @@ export const STICKY_ROW_HEIGHT = 52;
 export const STICKY_HEADER_HEIGHT = 56;
 /** Fixed right-hand strip holding a header's pin. */
 const STICKY_MARKER_W = 24;
+/**
+ * The pin's target on a device driven by a finger.
+ *
+ * 24px clears WCAG 2.5.8's floor and is fine under a mouse, but it is well
+ * under the 44pt/48dp a thumb needs, and this control also runs on phones. It
+ * cannot simply grow: the strip lives inside a ~134px financial column beside
+ * the header's own label, and taking 44 of those would cost a visible column.
+ * So the target widens only where the pointer is coarse — every native build,
+ * and the compact table a phone browser gets — and `hitSlop` carries the rest
+ * on native, where it actually applies.
+ */
+const STICKY_MARKER_TOUCH_W = 32;
 
 /**
  * User-authored column names can be one long token. Native Text wraps words,
@@ -92,6 +105,19 @@ export interface StickyRow {
   markEdge?: string;
   /** One node per column (same order/length as `columns`). */
   cells: React.ReactNode[];
+}
+
+/**
+ * React Native's `Role` union predates `gridcell`, and react-native-web
+ * forwards whatever role it is handed straight to the DOM. A `grid` whose
+ * children are plain `cell`s is not a grid to a screen reader, so the correct
+ * ARIA role is passed through the one place the type stops short.
+ */
+const gridCellRole = { role: "gridcell" } as unknown as ViewProps;
+
+/** `dataSet` is react-native-web's data-attribute channel; RN's types omit it. */
+function stickyCellId(rowKey: string, columnKey: string): ViewProps {
+  return { dataSet: { stickyCell: `${rowKey}\u0000${columnKey}` } } as unknown as ViewProps;
 }
 
 function getNode(ref: React.RefObject<ScrollView | null>): HTMLElement | null {
@@ -255,6 +281,101 @@ function headerChrome(
   };
 }
 
+
+/**
+ * Arrow-key navigation across the grid, and one tab stop instead of 240.
+ *
+ * Every cell used to be its own tab stop: crossing a two-year ledger by
+ * keyboard was 240 Tab presses to reach the navigation bar behind it, and the
+ * arrow keys did nothing at all. Cells now carry `tabIndex -1` (see
+ * `MatrixCell`), so Tab moves past the whole grid, and the arrows do what they
+ * do in every other table: move a cell at a time, Home/End to the ends of a
+ * row, PageUp/PageDown a screenful of rows, Ctrl+Home/End to the corners.
+ *
+ * DOM-driven rather than React state on purpose. The cell nodes are built by
+ * the screen and handed in as opaque children, and roving state through that
+ * boundary would mean every cell re-rendering on every arrow press — 240
+ * re-renders per keystroke on the screen this component exists to keep fast.
+ * Reading coordinates back off the wrapper costs one query per press.
+ */
+function useGridKeyboard(
+  gridRef: React.RefObject<View | null>,
+  rowCount: number,
+  columnCount: number,
+): void {
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const grid = gridRef.current as unknown as HTMLElement | null;
+    if (!grid || typeof window === "undefined") return;
+
+    const cells = () => Array.from(grid.querySelectorAll<HTMLElement>("[data-sticky-cell]"));
+    const coordsOf = (node: HTMLElement): [string, string] | null => {
+      const raw = node.dataset.stickyCell;
+      if (!raw) return null;
+      const [row, column] = raw.split("\u0000");
+      return row != null && column != null ? [row, column] : null;
+    };
+    const focusCell = (target: HTMLElement | undefined) => {
+      if (!target) return false;
+      // The value inside a cell is the pressable; focus that when it exists so
+      // Enter still opens the cell, and fall back to the wrapper for a system
+      // column that has nothing to open.
+      const inner = target.querySelector<HTMLElement>('[tabindex], [role="button"], [role="group"]');
+      const node = inner ?? target;
+      node.tabIndex = -1;
+      node.focus({ preventScroll: false });
+      return true;
+    };
+
+    /** The distinct row and column keys, in the order the grid paints them. */
+    const axes = (all: HTMLElement[]) => {
+      const rowKeys: string[] = [];
+      const columnKeys: string[] = [];
+      for (const cell of all) {
+        const at = coordsOf(cell);
+        if (!at) continue;
+        if (!rowKeys.includes(at[0])) rowKeys.push(at[0]);
+        if (!columnKeys.includes(at[1])) columnKeys.push(at[1]);
+      }
+      return { rowKeys, columnKeys };
+    };
+
+    /** Move from the cell that has focus to its neighbour. */
+    const moveFrom = (current: HTMLElement, all: HTMLElement[], event: KeyboardEvent): boolean => {
+      const here = coordsOf(current);
+      if (!here) return false;
+      const { rowKeys, columnKeys } = axes(all);
+      const at = { row: rowKeys.indexOf(here[0]), column: columnKeys.indexOf(here[1]) };
+      if (at.row < 0 || at.column < 0) return false;
+      const next = nextGridPosition(
+        { key: event.key, toEnds: event.ctrlKey || event.metaKey },
+        at,
+        { rows: rowKeys.length, columns: columnKeys.length },
+      );
+      if (!next) return false;
+      const wanted = `${rowKeys[next.row]}\u0000${columnKeys[next.column]}`;
+      return focusCell(all.find((cell) => cell.dataset.stickyCell === wanted));
+    };
+
+    const onKey = (event: KeyboardEvent) => {
+      const all = cells();
+      if (all.length === 0) return;
+      const current = (document.activeElement as HTMLElement | null)
+        ?.closest<HTMLElement>("[data-sticky-cell]") ?? null;
+      // Entering the grid from the scroller: the first arrow press lands on the
+      // first cell rather than scrolling past everything.
+      const moved = current
+        ? moveFrom(current, all, event)
+        : (event.key === "ArrowDown" || event.key === "ArrowRight") && focusCell(all[0]);
+      if (moved) event.preventDefault();
+    };
+
+    grid.addEventListener("keydown", onKey);
+    return () => grid.removeEventListener("keydown", onKey);
+    // Re-bound when the grid's shape changes so a resized table keeps working.
+  }, [gridRef, rowCount, columnCount]);
+}
+
 export function StickyTable({
   cornerLabel,
   columns,
@@ -304,6 +425,7 @@ export function StickyTable({
   scrollRef?: React.RefObject<ScrollView | null>;
 }) {
   const { palette } = useTheme();
+  const gridRef = useRef<View>(null);
   const ownVRef = useRef<ScrollView>(null);
   const vRef = scrollRef ?? ownVRef;
   const bodyHRef = useRef<ScrollView>(null);
@@ -466,6 +588,10 @@ export function StickyTable({
     headerHRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false });
   };
 
+  // Native is always a finger; a compact table is the layout a phone browser
+  // gets. Either way the pin's target grows (see STICKY_MARKER_TOUCH_W).
+  const coarsePointer = usesCoarsePointerTable(cellWidth, Platform.OS === "web");
+
   /**
    * Header controls keep one horizontal rhythm. The pin always owns the right
    * edge beside the label; it never creates a second marker row on phones.
@@ -479,7 +605,7 @@ export function StickyTable({
     const both = !!onColumnPress && !!onTogglePin;
     const labelAction = onColumnPress ?? onTogglePin;
     const compactHeader = isCompactTableCell(cellWidth);
-    const markerWidth = both && c.icon ? 40 : STICKY_MARKER_W;
+    const markerWidth = both && c.icon ? 40 : coarsePointer ? STICKY_MARKER_TOUCH_W : STICKY_MARKER_W;
     const hasMarker = both || !!c.icon;
     return (
       <View
@@ -598,16 +724,17 @@ export function StickyTable({
           accessibilityLabel={pinnedKey === c.key ? tr.a11y.unpinColumn(c.accessibilityLabel ?? c.label) : tr.a11y.pinColumn(c.accessibilityLabel ?? c.label)}
           // The mark stays 12px; the box it can be hit in is the whole header
           // band, which is 56pt tall. `hitSlop` used to carry that and does
-          // nothing on the web, where the pin really was a 24x24 target sitting
-          // between two amounts. The width stays inside the marker strip —
-          // wider, it crossed its own column's edge.
+          // nothing on the web, so the box carries its own width instead: 24
+          // under a mouse, 32 under a finger. It stops there rather than at 44
+          // because the strip shares a ~134px financial column with that
+          // column's label, and the last 12px would cost a visible month.
           // Pressed, but never hovered. A pointer resting anywhere in this
           // header lights the whole column through the pressable this sits
           // in; a second fill here would light a 24px strip inside a lit
           // column. A press still has to answer on a phone, where there is no
           // hover to fall back on, so the mark itself dims.
           style={({ pressed }) => ({
-            width: STICKY_MARKER_W,
+            width: coarsePointer ? STICKY_MARKER_TOUCH_W : STICKY_MARKER_W,
             alignSelf: "stretch",
             alignItems: "center",
             justifyContent: "center",
@@ -641,6 +768,12 @@ export function StickyTable({
     return (
       <View
         key={column.key}
+        {...gridCellRole}
+        // The coordinates arrow-key navigation reads back out of the DOM. The
+        // cell nodes themselves are built by the screen and handed here as
+        // opaque children, so the wrapper — the one box a cell always sits in,
+        // pinned or scrolling — is where the grid can address them.
+        {...stickyCellId(row.key, column.key)}
         style={{
           width: cellWidth,
           justifyContent: "center",
@@ -655,8 +788,19 @@ export function StickyTable({
     );
   };
 
+  useGridKeyboard(gridRef, rows.length, columns.length);
+
   return (
     <View
+      ref={gridRef}
+      // A table that says it is a table. Before this the grid was 240 loose
+      // buttons: a screen reader got no row/column structure, and a keyboard
+      // user needed 240 Tab presses to cross it because every cell was its own
+      // tab stop. `useGridKeyboard` gives the arrow keys their standard job and
+      // the cells carry tabIndex -1, so the whole grid is now ONE stop.
+      role="grid"
+      aria-rowcount={rows.length + 1}
+      aria-colcount={columns.length + 1}
       onLayout={(e: LayoutChangeEvent) => setTableW(e.nativeEvent.layout.width)}
       style={height ? { height } : { flex: 1 }}
     >
@@ -717,6 +861,7 @@ export function StickyTable({
             {rows.map((r, ri) => (
               <View
                 key={r.key}
+                role="row"
                 style={{
                   flexDirection: "row",
                   // Let the label report its natural first-pass height. A hard
@@ -787,6 +932,7 @@ export function StickyTable({
               {rows.map((r, ri) => (
                 <View
                   key={r.key}
+                  role="row"
                   style={{
                     flexDirection: "row",
                     // `height`, not `minHeight`: the label half owns the row's

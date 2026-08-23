@@ -61,7 +61,7 @@ export function CalendarSheet({
         style={{ flex: 1, backgroundColor: palette.scrim, alignItems: "center", justifyContent: "center", padding: spacing.lg }}
         onPress={onClose}
       >
-        <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ width: "100%", maxWidth: 360 }}>
+        <Pressable accessible={false} tabIndex={-1} accessibilityViewIsModal aria-label={tr.a11y.datePicker} onPress={() => {}} style={{ width: "100%", maxWidth: 360 }}>
           <FadeIn style={[{ backgroundColor: palette.surface, borderRadius: radius.lg, padding: spacing.lg }, themeShadow.card(palette)]}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md }}>
               <IconButton icon={ChevronLeft} label={tr.common.previous} haptic="selection" onPress={() => setMonth(addMonthsToKey(month, -1))} />
@@ -171,6 +171,7 @@ export function DateField({
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityHint={value ? dateLabel(value) : (placeholder ?? tr.common.pickDate)}
+        aria-expanded={open}
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [

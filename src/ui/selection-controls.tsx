@@ -154,6 +154,7 @@ export function Select<T extends string>({
                 accessible={false}
                 tabIndex={-1}
                 accessibilityViewIsModal
+                aria-label={label}
                 onPress={() => {}}
                 style={{ alignSelf: "center", width: "100%", maxWidth: sheet ? 520 : 400 }}
               >
@@ -297,6 +298,7 @@ export function Select<T extends string>({
         ref={triggerRef}
         accessibilityRole="button"
         accessibilityLabel={label ?? placeholder ?? current?.label}
+        aria-expanded={open}
         accessibilityState={{ disabled, expanded: open }}
         disabled={disabled}
         onPress={() => setOpen(true)}

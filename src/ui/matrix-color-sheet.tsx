@@ -108,6 +108,7 @@ export function MatrixColorSheet({
           accessible={false}
           tabIndex={-1}
           accessibilityViewIsModal
+          aria-label={tr.matrixColor.title(tr.matrixColor.scope[scope])}
           onPress={() => {}}
           style={{ width: "100%", maxWidth: 520, padding: spacing.lg }}
         >

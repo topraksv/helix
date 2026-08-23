@@ -185,7 +185,20 @@ function DialogShell({
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Pressable testID={operation ? "operation-dialog-surface" : undefined} accessible={false} tabIndex={-1} accessibilityViewIsModal onPress={() => {}} style={{ alignSelf: "center", width: "100%", maxWidth: asSheet ? undefined : operation ? 520 : 400 }}>
+          {/* The modal surface carries the dialog's NAME. Without it a screen
+              reader announced "iletişim kutusu" and stopped — every dialog in
+              the app, including the seven-step tour and the date picker, was
+              anonymous at the moment it took focus. The title is right here in
+              scope; there was never a reason to withhold it. */}
+          <Pressable
+            testID={operation ? "operation-dialog-surface" : undefined}
+            accessible={false}
+            tabIndex={-1}
+            accessibilityViewIsModal
+            aria-label={title}
+            onPress={() => {}}
+            style={{ alignSelf: "center", width: "100%", maxWidth: asSheet ? undefined : operation ? 520 : 400 }}
+          >
             <FadeIn
               style={[
                 {
@@ -222,7 +235,7 @@ function DialogShell({
                   }}
                 />
               ) : null}
-              <View ref={titleRef} accessible accessibilityRole="header" tabIndex={-1}>
+              <View ref={titleRef} accessible accessibilityRole="header" aria-level={2} tabIndex={-1}>
                 {operation ? <OperationDialogHeader kind={operation} title={title} message={message} testID="operation-dialog-header" /> : <Text style={[type.heading, { color: palette.text, marginBottom: spacing.sm }]}>{title}</Text>}
               </View>
               {!operation ? (

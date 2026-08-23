@@ -59,6 +59,7 @@ export function ExpectedAmountSheet({
           accessible={false}
           tabIndex={-1}
           accessibilityViewIsModal
+          aria-label={tr.subs.amountEntryTitle}
           onPress={() => {}}
           style={{ width: "100%", maxWidth: 420, maxHeight: "90%" }}
         >
