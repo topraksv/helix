@@ -14,6 +14,7 @@ import { getSqliteAsync, withTransaction } from "./client";
 import { SYNCED_TABLES, type SyncedTableName } from "./schema";
 import type { AnySettingKey } from "../domain/settings";
 import { deterministicId, naturalKeys } from "./ids";
+import { convertOutboundRow } from "../sync/outbound-validation";
 import { resolveTombstoneVersion } from "../sync/tombstone-policy";
 
 export interface RowWrite {
@@ -324,18 +325,51 @@ export async function pendingOutboxCount(): Promise<number> {
 }
 
 /**
- * Requeue the current local version of a quarantined row.
+ * What a retry can honestly report.
+ *
+ * `unrepairable` is the outcome this used to be missing, and its absence is
+ * why the owner could press "Yeniden Dene" for ever and watch the same rows
+ * come back. A quarantine says the row the server saw was invalid; retrying
+ * queued THE SAME LOCAL ROW again, the next push found it invalid for the same
+ * reason, and quarantined it again. The button was a loop with a spinner on it.
+ */
+export type DeadLetterRetry = "requeued" | "missing" | "unsupported" | "unrepairable";
+
+/**
+ * The outbound rules for one table, derived from the schema this build has.
+ *
+ * The same two sets `sync/engine.ts` builds for its push, so the check here and
+ * the check that will actually run cannot disagree — a retry that says "this
+ * will be accepted" and then is not would be worse than no check at all.
+ */
+function outboundPolicy(table: SyncedTableName): { allowedColumns: Set<string>; booleanColumns: Set<string> } {
+  const allowedColumns = new Set<string>();
+  const booleanColumns = new Set<string>();
+  for (const column of Object.values(getTableColumns(SYNCED_TABLES[table]))) {
+    allowedColumns.add(column.name);
+    if (column.columnType === "SQLiteBoolean") booleanColumns.add(column.name);
+  }
+  return { allowedColumns, booleanColumns };
+}
+
+/**
+ * Requeue the current local version of a quarantined row (spec §5).
  *
  * The dead letter stores the rejected snapshot for forensics, not as an
  * editable source of truth. Retrying that raw payload would repeat the same
  * validation failure, so this reads the current owned row and lets the normal
  * write boundary create a fresh outbox event. A missing row keeps its dead
  * letter: dropping the only local recovery clue would be data loss.
+ *
+ * And it now checks BEFORE it queues. `convertOutboundRow` is the same gate the
+ * push runs, so if the current row would fail it again, nothing is queued and
+ * the caller is told the row itself needs changing — which is a thing a person
+ * can actually do, unlike pressing the same button a fourth time.
  */
 export async function requeueSyncDeadLetter(
   userId: string,
   deadLetterId: number,
-): Promise<"requeued" | "missing" | "unsupported"> {
+): Promise<DeadLetterRetry> {
   const sqlite = await getSqliteAsync();
   const dead = await sqlite.getFirstAsync<{ table_name: string; row_id: string }>(
     `SELECT table_name, row_id FROM sync_dead_letters WHERE id = ?`,
@@ -349,6 +383,9 @@ export async function requeueSyncDeadLetter(
     [dead.row_id, userId],
   );
   if (!current) return "missing";
+  // Checked against a COPY: `convertOutboundRow` coerces the row it is handed,
+  // and the local row must not be edited by a question about it.
+  if (!convertOutboundRow(table, { ...current }, outboundPolicy(table)).ok) return "unrepairable";
 
   // Keep the original quarantine until the new outbox write succeeds. If the
   // local database changes between these two operations, the next retry uses
@@ -358,6 +395,25 @@ export async function requeueSyncDeadLetter(
     await sqlite.runAsync(`DELETE FROM sync_dead_letters WHERE id = ?`, [deadLetterId]);
   });
   return "requeued";
+}
+
+/**
+ * Forget one quarantine, without touching the row it points at.
+ *
+ * The only exit a dead letter had was a retry that could succeed, so a
+ * quarantine whose local row no longer exists — the common case after a delete,
+ * and every case after a payload from another account — was permanent. It sat
+ * on the settings screen for ever, said something alarming about data, and had
+ * no button that could make it true again.
+ *
+ * This deletes the CLUE, never the record: the local row, if there still is
+ * one, is untouched and still on the device. Returns whether there was
+ * anything to forget, so a caller cannot report success for a no-op.
+ */
+export async function discardSyncDeadLetter(deadLetterId: number): Promise<boolean> {
+  const sqlite = await getSqliteAsync();
+  const result = await sqlite.runAsync(`DELETE FROM sync_dead_letters WHERE id = ?`, [deadLetterId]);
+  return result.changes > 0;
 }
 
 /** Tombstone delete. Returns the previous row snapshot for undo. */

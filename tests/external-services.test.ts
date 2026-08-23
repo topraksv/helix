@@ -109,7 +109,7 @@ describe("external FX provider validation", () => {
 describe("remote logo boundary", () => {
   it("normalizes public hostnames and encodes the favicon query", () => {
     expect(normalizeLogoDomain("https://WWW.Netflix.com/account")).toBe("www.netflix.com");
-    expect(remoteFaviconUrl("netflix.com")).toBe("https://www.google.com/s2/favicons?domain=netflix.com&sz=128");
+    expect(remoteFaviconUrl("netflix.com")).toBe("https://www.google.com/s2/favicons?domain=netflix.com&sz=256");
   });
 
   it("rejects credentials, ports and local, IP or reserved targets", () => {

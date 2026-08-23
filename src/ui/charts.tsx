@@ -1,7 +1,7 @@
 /** Accessible SVG chart primitives shared by native and web. */
 
 import React, { useMemo, type ReactNode } from "react";
-import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
+import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, ClipPath, Defs, Path, Rect, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import type { Distribution } from "../domain/analytics";
 import { compactMoneyScale, formatMinorCompact, formatMinorCompactAtScale, type CompactMoneyScale, usesCompactMoneyScale } from "../domain/money";
@@ -10,6 +10,8 @@ import { resolveBarAxis } from "./chart-axis";
 import { Amount } from "./primitives";
 import { useDrawIn } from "./motion-primitives";
 import { chart, chartSeriesColors, font, motion, radius, spacing, type, useTheme } from "./theme";
+import { selectionTap } from "./haptics";
+import { interactionSurface } from "./interaction";
 import { useMeasuredWidth } from "./viewport";
 import { shouldUseLargeAxisType } from "./responsive";
 
@@ -208,15 +210,39 @@ export function Donut({
   // picture in a single frame.
   const draw = useDrawIn(true, motion.draw, slices.map((s) => `${s.label}:${s.valueMinor}`).join("|"));
 
-  const arcs: (DonutSlice & { path: string; sweep: number; end: number })[] = [];
+  /**
+   * Which slice the reader is asking about, or `null` for the whole ring.
+   *
+   * The ring used to be a picture: it drew itself once and then sat there,
+   * while the legend beside it held every figure it could not show. Touching an
+   * arc — or hovering a legend row with a pointer — now answers "what is that
+   * one?" in the middle of the ring, which is where the eye already is. It is
+   * a READOUT, so it lives in state rather than in a shared value; it changes
+   * when the finger crosses into a different arc, not once per frame.
+   */
+  const [active, setActive] = React.useState<number | null>(null);
+  const select = (index: number | null) => {
+    setActive((current) => {
+      const next = current === index ? null : index;
+      if (next !== current) selectionTap();
+      return next;
+    });
+  };
+
+  // Each arc carries the index of the SLICE it draws, not its own position in
+  // this list. A slice worth nothing gets no arc, so the two lists drift apart
+  // the moment one appears — and the legend selects by slice while the ring
+  // selects by arc. One index space, named on the arc.
+  const arcs: (DonutSlice & { path: string; sweep: number; end: number; sliceIndex: number })[] = [];
   let start = -90;
-  for (const slice of slices) {
+  for (const [sliceIndex, slice] of slices.entries()) {
     if (slice.valueMinor <= 0) continue;
     const sweep = arcTotal > 0 ? (slice.valueMinor / arcTotal) * 360 : 0;
     const end = start + sweep;
-    arcs.push({ ...slice, path: describeArc(cx, cy, r, start, end), sweep, end });
+    arcs.push({ ...slice, path: describeArc(cx, cy, r, start, end), sweep, end, sliceIndex });
     start = end;
   }
+  const activeSlice = active == null ? null : arcs.find((arc) => arc.sliceIndex === active) ?? null;
   const chartSummary = tr.a11y.donutChart(
     formatMinorCompact(displayTotal),
     [...slices, ...supplementalSlices]
@@ -249,6 +275,22 @@ export function Donut({
             fill="none"
           />
           {arcs.map((a, i) => {
+            // Thinner, never fainter. Fading the other slices would drop the
+            // ramp's weakest colour under the 3:1 floor it was designed to
+            // clear — see `chart.donutLift`. A narrower arc recedes just as
+            // clearly and keeps every colour at the contrast it was measured
+            // at, which also means the ring is still readable mid-gesture.
+            const width = active == null
+              ? strokeWidth
+              : active === a.sliceIndex
+                ? strokeWidth + chart.donutLift
+                : strokeWidth - chart.donutThin;
+            const press = {
+              onPress: () => select(a.sliceIndex),
+              // Native `Path` has no hover; on web react-native-svg forwards
+              // these to the DOM element, which is where a pointer lives.
+              onPressIn: () => setActive(a.sliceIndex),
+            };
             if (a.sweep >= 359.9) {
               // A ring that is one category is still a ring being drawn. This
               // used to be a plain circle, so the single-category case — which
@@ -257,11 +299,12 @@ export function Donut({
               return (
                 <AnimatedCircle
                   key={i}
+                  {...press}
                   cx={cx}
                   cy={cy}
                   r={r}
                   stroke={a.color}
-                  strokeWidth={strokeWidth}
+                  strokeWidth={width}
                   fill="none"
                   strokeDasharray={[circumference, circumference]}
                   strokeDashoffset={draw.interpolate({ inputRange: [0, 1], outputRange: [circumference, 0] })}
@@ -272,9 +315,13 @@ export function Donut({
             return (
               <AnimatedPath
                 key={i}
+                {...press}
                 d={a.path}
                 stroke={a.color}
-                strokeWidth={strokeWidth}
+                // Both directions grow or shrink from the same centre line, so
+                // nothing beside an arc moves — a slice that shifted would make
+                // the ring look like it had lost a segment.
+                strokeWidth={width}
                 fill="none"
                 strokeLinecap="butt"
                 strokeDasharray={[arcLength, circumference]}
@@ -282,11 +329,15 @@ export function Donut({
               />
             );
           })}
-          {/* 2px surface gaps between segments */}
+          {/* 2px surface gaps between segments.
+              Measured against the WIDEST an arc can be, not the resting width:
+              a lifted arc is `donutLift` thicker than its neighbours, and a gap
+              cut for the resting width would leave its ends joined. */}
           {arcs.length > 1
             ? arcs.map((arc, i) => {
-                const p1 = polar(cx, cy, r - strokeWidth / 2 - 1, arc.end);
-                const p2 = polar(cx, cy, r + strokeWidth / 2 + 1, arc.end);
+                const reach = strokeWidth + chart.donutLift;
+                const p1 = polar(cx, cy, r - reach / 2 - 1, arc.end);
+                const p2 = polar(cx, cy, r + reach / 2 + 1, arc.end);
                 return <SvgLine key={`gap-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={palette.surface} strokeWidth={2} />;
               })
             : null}
@@ -303,9 +354,11 @@ export function Donut({
             textAnchor="middle"
             fontFamily={font.semibold}
             fontSize={centreLabelSize}
-            fill={palette.textSecondary}
+            fill={activeSlice ? activeSlice.color : palette.textSecondary}
           >
-            {upperTR(tr.analysis.chartTotal)}
+            {activeSlice && arcTotal > 0
+              ? `%${Math.round((activeSlice.valueMinor / arcTotal) * 100)}`
+              : upperTR(tr.analysis.chartTotal)}
           </SvgText>
           <SvgText
             x={cx}
@@ -315,8 +368,9 @@ export function Donut({
             fontSize={centreValueSize}
             fill={palette.text}
           >
-            {formatMinorCompact(displayTotal)}
+            {formatMinorCompact(activeSlice ? activeSlice.valueMinor : displayTotal)}
           </SvgText>
+
         </Svg>
       </View>
       {/* Paired legend list: identity never color-alone (relief rule) */}
@@ -362,11 +416,48 @@ export function Donut({
         {[...slices, ...supplementalSlices].map((s, i) => {
           const supplemental = i >= slices.length;
           const share = !supplemental && arcTotal > 0 ? Math.round((s.valueMinor / arcTotal) * 100) : 0;
+          // A supplemental row is not a slice of the ring, so there is nothing
+          // for it to select — it stays a plain row.
+          const selectable = !supplemental && s.valueMinor > 0;
+          const isActive = selectable && active === i;
           return (
             // The share rule needs its own air: at a 3px gap under a 3px bar it
             // read as an underline on the label rather than as a track beside
             // the donut it belongs to.
-            <View key={`${s.label}-${i}`} style={{ gap: 6, marginBottom: 2 }}>
+            //
+            // The row is the pointer's way in. `onHoverIn` is web-only and a
+            // no-op on native, where the tap does the same job — so one control
+            // serves both without a platform branch.
+            <Pressable
+              key={`${s.label}-${i}`}
+              disabled={!selectable}
+              onPress={selectable ? () => select(i) : undefined}
+              onHoverIn={selectable ? () => setActive(i) : undefined}
+              onHoverOut={selectable ? () => setActive((current) => (current === i ? null : current)) : undefined}
+              accessibilityRole={selectable ? "button" : undefined}
+              accessibilityState={selectable ? { selected: isActive } : undefined}
+              accessibilityLabel={selectable
+                ? `${s.label} · ${arcTotal > 0 ? `%${share} · ` : ""}${formatMinorCompact(s.valueMinor)}`
+                : undefined}
+              // `interactionSurface` owns the hover and pressed fill for the
+              // whole app; the handlers above exist because the RING also has
+              // to know, and a style callback may not set state.
+              style={(state) => [
+                {
+                  gap: 6,
+                  marginBottom: 2,
+                  // Inset and un-inset by the same amount, so selecting a row
+                  // never moves the rows under it.
+                  marginHorizontal: -spacing.xs,
+                  paddingHorizontal: spacing.xs,
+                  paddingVertical: 2,
+                  borderRadius: radius.sm,
+                },
+                selectable
+                  ? interactionSurface(palette, state, { base: isActive ? palette.surfaceAlt : "transparent" })
+                  : null,
+              ]}
+            >
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                 {supplemental ? (
                   <View
@@ -381,7 +472,7 @@ export function Donut({
                 ) : (
                   <View style={{ width: 9, height: 9, borderRadius: 3, backgroundColor: s.color }} />
                 )}
-                <Text style={[type.small, { color: palette.text, flex: 1 }]}>{s.label}</Text>
+                <Text style={[type.small, { color: palette.text, flex: 1, fontFamily: isActive ? font.semibold : undefined }]}>{s.label}</Text>
                 <Text
                   style={[type.small, { color: palette.textSecondary, fontVariant: ["tabular-nums"] }]}
                 >
@@ -395,7 +486,7 @@ export function Donut({
                   <View style={{ width: `${share}%`, height: "100%", borderRadius: 2, backgroundColor: s.color }} />
                 </View>
               ) : null}
-            </View>
+            </Pressable>
           );
         })}
       </View>
@@ -808,6 +899,16 @@ export function Bars({
   const { palette } = useTheme();
   const draw = useDrawIn(true, motion.draw, groups.map((g) => `${g.label}:${g.values.join(",")}`).join("|"));
   const clipId = `bar-reveal-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  /**
+   * Which column the reader is asking about, or `null` for none.
+   *
+   * The x labels are thinned to at most six, so on a twelve-month chart most
+   * columns had no name at all and no figure anywhere — the only way to read
+   * one was to count across from a label that was still drawn. Touching a
+   * column (or hovering it with a pointer) now names it and prints every series
+   * in it, above the plot and without changing the chart's height.
+   */
+  const [activeGroup, setActiveGroup] = React.useState<number | null>(null);
   const axis = resolveBarAxis(groups.flatMap((g) => g.values));
   if (!axis || groups.length === 0) return null;
   const { min, max, ticks } = axis;
@@ -861,6 +962,17 @@ export function Bars({
     0,
   );
   const showValueLedger = groups.length <= 3 && visibleValueCount <= 9;
+  const reading = activeGroup == null ? null : groups[activeGroup] ?? null;
+  const readout = reading
+    ? [
+        reading.label,
+        ...reading.values.flatMap((value, index) =>
+          value == null
+            ? []
+            : [`${series[index]?.label ?? index + 1}: ${formatMinorCompact(value)}`],
+        ),
+      ].join(" · ")
+    : null;
   const chartSummary = tr.a11y.barChart(groups.map((group) => {
     const groupValues = group.values.map((value, index) =>
       `${series[index]?.label ?? index + 1}: ${formatMinorCompact(value ?? 0)}`,
@@ -948,6 +1060,22 @@ export function Bars({
               </SvgText>
             </React.Fragment>
           ))}
+          {/* The chosen column, marked by the ground under it rather than by
+              fading the others. Fading would take the categorical ramp below
+              the 3:1 floor it only just clears — see `chart.donutLift`. This
+              band is the plot's own surface pair, which every card in the app
+              already uses as its one step of separation, and it is drawn
+              BEFORE the bars so it can never sit over a value. */}
+          {activeGroup != null ? (
+            <Rect
+              x={pad.left + activeGroup * groupW}
+              y={pad.top}
+              width={groupW}
+              height={plotH}
+              rx={chart.barRadius}
+              fill={palette.surface}
+            />
+          ) : null}
           {groups.map((g, gi) => {
             const gx = pad.left + gi * groupW + (groupW - clusterW) / 2;
             return g.values.map((v, si) => {
@@ -964,14 +1092,75 @@ export function Bars({
             });
           })}
           {groups.map((g, gi) =>
-            gi % everyN === 0 ? (
-              <SvgText key={`l-${gi}`} x={pad.left + gi * groupW + groupW / 2} y={height - 7} fontFamily={font.semibold} fontSize={chart.axisFontSizeLarge} fill={palette.textSecondary} textAnchor="middle">
+            gi % everyN === 0 || activeGroup === gi ? (
+              <SvgText
+                key={`l-${gi}`}
+                x={pad.left + gi * groupW + groupW / 2}
+                y={height - 7}
+                fontFamily={font.semibold}
+                fontSize={chart.axisFontSizeLarge}
+                fill={activeGroup === gi ? palette.text : palette.textSecondary}
+                textAnchor="middle"
+              >
                 {g.label}
               </SvgText>
             ) : null,
           )}
         </Svg>
       </View>
+      {/* One transparent strip per column, laid over the plot.
+          Coordinates, not gestures: the strips are where the columns already
+          are, so a hover and a tap resolve to the same group without either
+          one measuring a touch position. A `Pressable` gives the pointer
+          `onHoverIn` on web and the finger a press target on native, and
+          `pointerEvents="box-none"` on the frame keeps the strips out of the
+          way of anything drawn under them. */}
+      <View
+        pointerEvents="box-none"
+        style={{ position: "absolute", left: pad.left, top: pad.top, width: plotW, height: plotH, flexDirection: "row" }}
+      >
+        {groups.map((group, groupIndex) => (
+          <Pressable
+            key={`hit-${group.label}-${groupIndex}`}
+            style={{ flex: 1 }}
+            // Twelve invisible strips per chart, so they must not be twelve
+            // tab stops. The chart already carries its whole reading in one
+            // `accessibilityLabel`; these exist for a finger and a pointer.
+            accessible={false}
+            tabIndex={-1}
+            importantForAccessibility="no-hide-descendants"
+            onPress={() => {
+              setActiveGroup((current) => {
+                const next = current === groupIndex ? null : groupIndex;
+                if (next !== current) selectionTap();
+                return next;
+              });
+            }}
+            onHoverIn={() => setActiveGroup(groupIndex)}
+            onHoverOut={() => setActiveGroup((current) => (current === groupIndex ? null : current))}
+          />
+        ))}
+      </View>
+      {/* Absolutely positioned, exactly as `Lines` places its readout: the box
+          has to be the same height with a finger on it as without, or the
+          chart moves under the finger reading it. */}
+      {readout ? (
+        <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, top: 0, alignItems: "center" }}>
+          <View
+            style={{
+              backgroundColor: palette.surface,
+              borderRadius: radius.sm,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: palette.border,
+              paddingHorizontal: spacing.sm,
+              paddingVertical: 2,
+              maxWidth: "100%",
+            }}
+          >
+            <Text style={[type.small, { color: palette.text, textAlign: "center" }]}>{readout}</Text>
+          </View>
+        </View>
+      ) : null}
       {showValueLedger ? (
         <View
           style={{

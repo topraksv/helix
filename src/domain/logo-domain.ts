@@ -35,6 +35,45 @@ export function nameMentions(name: string, needle: string): boolean {
   return !isWordCharacter(before) && !isWordCharacter(after);
 }
 
+/**
+ * Whether `name` contains a WORD THAT STARTS WITH `needle`, both folded.
+ *
+ * Turkish card programmes are named by concatenation, not by spacing:
+ * Worldeko, Worldgold, Bonus Platinium written as "bonusplatinium", Axessplus,
+ * Parafpara, Maximumgenc. `nameMentions` refuses every one of those, because a
+ * whole-word match is exactly what a concatenated sub-brand is not — so a card
+ * the owner really does hold was drawn with a generic outline while the plain
+ * "World" beside it got its mark.
+ *
+ * The prefix must be a word's OWN beginning, so "eko world" still resolves and
+ * "kredi" inside "yapikredi" does not steal the tile from Yapı Kredi. Callers
+ * enforce the minimum length that makes this safe; see `MIN_PREFIX_MATCH`.
+ */
+export function nameStartsWord(name: string, needle: string): boolean {
+  const folded = foldForMatch(name);
+  const target = foldForMatch(needle);
+  if (!target) return false;
+  let index = folded.indexOf(target);
+  while (index >= 0) {
+    const before = folded[index - 1];
+    if (before == null || !/[a-z0-9]/.test(before)) return true;
+    index = folded.indexOf(target, index + 1);
+  }
+  return false;
+}
+
+/**
+ * How long a catalogue key must be before it may match as a word PREFIX.
+ *
+ * Short keys are ordinary Turkish and English fragments: "ing" begins
+ * "İngiltere", "teb" begins "tebrik", "max" begins "maximum" — and that last
+ * one is a case the catalogue already had to get right, because Max and
+ * Maximum are two different companies. Five characters is where the fragments
+ * stop and the brands start: World, Bonus, Axess, Paraf all clear it, and
+ * every key below it keeps the strict whole-word rule it had before.
+ */
+export const MIN_PREFIX_MATCH = 5;
+
 const NON_PUBLIC_SUFFIXES = [
   ".home",
   ".internal",
@@ -74,7 +113,17 @@ export function normalizeLogoDomain(value: string | null | undefined): string | 
   }
 }
 
+/**
+ * 256, not 128.
+ *
+ * The tile is drawn at up to 46pt, and on a @3x screen that is 138 physical
+ * pixels — so a 128px source was already being upscaled on every phone, which
+ * is the softness in the marks the owner noticed. The service serves 256 for
+ * the same request and falls back to whatever it has when a site publishes
+ * nothing larger, so this costs a few KB on the sites that have it and nothing
+ * on the ones that do not.
+ */
 export function remoteFaviconUrl(value: string | null | undefined): string | null {
   const domain = normalizeLogoDomain(value);
-  return domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128` : null;
+  return domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=256` : null;
 }

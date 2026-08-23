@@ -25,9 +25,11 @@ import Wifi from "lucide-react-native/icons/wifi";
 import Zap from "lucide-react-native/icons/zap";
 import type { LucideIcon } from "lucide-react-native";
 import { InitialsBadge } from "./components";
-import { font } from "./theme";
+import { paymentSourceIconComponent } from "./category-icon";
+import type { PaymentSourceType } from "../domain/types";
+import { font, useTheme } from "./theme";
 import { BRAND, brandPlate } from "./brand-colors";
-import { foldForMatch, nameMentions, normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
+import { MIN_PREFIX_MATCH, foldForMatch, nameMentions, nameStartsWord, normalizeLogoDomain, remoteFaviconUrl } from "../domain/logo-domain";
 
 /** One shared frameless tile: near-square, rounded, no border — every variant
  *  (favicon, utility icon, brand chip, initials) renders in this exact shape
@@ -246,6 +248,137 @@ const BRAND_DOMAIN: Record<string, string> = {
   "booking": "booking.com",
 };
 
+
+/**
+ * Turkish banks, card programmes and wallets.
+ *
+ * Same table and same resolution as the subscription brands above, because a
+ * mark is a mark: a payment source called "Garanti" and a subscription called
+ * "Garanti" should not be drawn by two different mechanisms. Card programmes
+ * are listed beside their bank because people name the source after whichever
+ * one they think of — "Bonus" and "Garanti" are the same plastic.
+ *
+ * Keys are written FOLDED (plain lowercase ASCII, no Turkish diacritics),
+ * because `catalogueKey` folds the name before it looks anything up. "Yapı
+ * Kredi" arrives here as "yapi kredi".
+ */
+const BANK_DOMAIN: Record<string, string> = {
+  // Deposit banks
+  "yapi kredi": "yapikredi.com.tr",
+  yapikredi: "yapikredi.com.tr",
+  garanti: "garantibbva.com.tr",
+  "garanti bbva": "garantibbva.com.tr",
+  "is bankasi": "isbank.com.tr",
+  isbank: "isbank.com.tr",
+  isbankasi: "isbank.com.tr",
+  akbank: "akbank.com.tr",
+  ziraat: "ziraatbank.com.tr",
+  "ziraat bankasi": "ziraatbank.com.tr",
+  vakifbank: "vakifbank.com.tr",
+  "vakif bank": "vakifbank.com.tr",
+  halkbank: "halkbank.com.tr",
+  qnb: "qnb.com.tr",
+  finansbank: "qnb.com.tr",
+  teb: "teb.com.tr",
+  ing: "ing.com.tr",
+  hsbc: "hsbc.com.tr",
+  sekerbank: "sekerbank.com.tr",
+  odeabank: "odeabank.com.tr",
+  fibabanka: "fibabanka.com.tr",
+  "alternatif bank": "alternatifbank.com.tr",
+  alternatifbank: "alternatifbank.com.tr",
+  burgan: "burgan.com.tr",
+  anadolubank: "anadolubank.com.tr",
+  aktifbank: "aktifbank.com.tr",
+  "aktif bank": "aktifbank.com.tr",
+  adabank: "adabank.com.tr",
+  turkishbank: "turkishbank.com",
+  "turkish bank": "turkishbank.com",
+  turklandbank: "tbank.com.tr",
+  "turkland bank": "tbank.com.tr",
+  icbc: "icbc.com.tr",
+  // Participation banks
+  "kuveyt turk": "kuveytturk.com.tr",
+  kuveytturk: "kuveytturk.com.tr",
+  albaraka: "albaraka.com.tr",
+  "ziraat katilim": "ziraatkatilim.com.tr",
+  ziraatkatilim: "ziraatkatilim.com.tr",
+  "vakif katilim": "vakifkatilim.com.tr",
+  vakifkatilim: "vakifkatilim.com.tr",
+  // Card programmes.
+  //
+  // Listed beside their bank because people name the source after whichever
+  // one they think of — "Bonus" and "Garanti" are the same plastic — and
+  // because the programme has its own mark, which is the one printed on the
+  // card in the drawer.
+  world: "worldcard.com.tr",
+  worldcard: "worldcard.com.tr",
+  "world card": "worldcard.com.tr",
+  bonus: "bonus.com.tr",
+  bonuscard: "bonus.com.tr",
+  "bonus card": "bonus.com.tr",
+  maximum: "maximum.com.tr",
+  maximiles: "maximiles.com.tr",
+  axess: "axess.com.tr",
+  wings: "wings.com.tr",
+  paraf: "paraf.com.tr",
+  cardfinans: "cardfinans.com.tr",
+  "card finans": "cardfinans.com.tr",
+  bankkart: "bankkart.com.tr",
+  "bank kart": "bankkart.com.tr",
+  advantage: "advantage.com.tr",
+  // Digital banks, wallets and payment institutions
+  enpara: "enpara.com",
+  "n kolay": "nkolay.com.tr",
+  nkolay: "nkolay.com.tr",
+  papara: "papara.com",
+  ininal: "ininal.com",
+  paycell: "paycell.com.tr",
+  colendi: "colendi.com",
+  "getir finans": "getirfinans.com",
+  getirfinans: "getirfinans.com",
+  param: "param.com.tr",
+  sipay: "sipay.com.tr",
+  iyzico: "iyzico.com",
+  moka: "moka.com",
+  paratika: "paratika.com.tr",
+  bkm: "bkm.com.tr",
+  "bkm express": "bkmexpress.com.tr",
+  bkmexpress: "bkmexpress.com.tr",
+  // Garanti Ödeme ve Elektronik Para Hizmetleri A.Ş. — verified, and NOT
+  // Ziraat's, which is the easy mistake to make with a bank-adjacent brand.
+  tami: "tami.com.tr",
+  // Türkiye İş Bankası's app. The favicon service answers this domain with the
+  // bank's own mark, byte for byte, which is the right picture either way.
+  nays: "naysapp.com.tr",
+  // Card networks, for a source someone names after the scheme. `troy.com.tr`
+  // is a promotional-gifts company, not the payment scheme — checked, because
+  // the name makes it the obvious wrong guess.
+  visa: "visa.com.tr",
+  mastercard: "mastercard.com.tr",
+  troy: "troyodeme.com",
+};
+
+/**
+ * Names that belong to a real institution but have no mark to fetch.
+ *
+ * The favicon service answers an unknown domain with HTTP 404 and a grey globe
+ * in the body. `expo-image` treats the status as an error and falls back, but a
+ * browser's `<img>` renders any valid image body whatever the status says — so
+ * these five domains drew a globe on web and the type glyph on iOS, which is
+ * both a wrong picture and two different ones. Listing them here keeps the
+ * knowledge (they were checked; they are not missing by oversight) without
+ * asking for a mark that does not exist. DenizBank, Türkiye Finans, Emlak
+ * Katılım, Tosla and ininal's .tr domain publish nothing the service has
+ * indexed; a source named after one of them falls back to its type glyph.
+ */
+export const UNMARKED_INSTITUTIONS = [
+  "denizbank",
+  "turkiye finans",
+  "emlak katilim",
+  "tosla",
+] as const;
+
 /** Resolve the domain to fetch a favicon from (explicit override or a brand). */
 /**
  * The catalogue entry a name refers to.
@@ -259,27 +392,63 @@ function catalogueKey<T>(name: string, table: Record<string, T>): T | null {
   if (table[key] != null) return table[key]!;
   const firstWord = key.split(/\s+/)[0];
   if (firstWord && table[firstWord] != null) return table[firstWord]!;
-  const mentioned = Object.keys(table)
+  const keys = Object.keys(table);
+  const longestFirst = (a: string, b: string) => b.length - a.length;
+  const mentioned = keys
     .filter((entry) => entry.length >= 3 && nameMentions(name, entry))
-    .sort((a, b) => b.length - a.length)[0];
-  return mentioned != null ? table[mentioned]! : null;
+    .sort(longestFirst)[0];
+  if (mentioned != null) return table[mentioned]!;
+  // Last, and only for keys long enough to be a brand rather than a fragment:
+  // the concatenated sub-brand. "Worldeko", "Worldgold" and "bonusplatinium"
+  // are cards people really hold, and every one of them fails all three passes
+  // above. Longest key first here too, so a name that begins two keys resolves
+  // to the more specific one.
+  const prefixed = keys
+    .filter((entry) => entry.length >= MIN_PREFIX_MATCH && nameStartsWord(name, entry))
+    .sort(longestFirst)[0];
+  return prefixed != null ? table[prefixed]! : null;
 }
+
+/**
+ * Both catalogues as one, so the MORE SPECIFIC key wins rather than whichever
+ * table was consulted first.
+ *
+ * Asking the brands first and the banks second is a rule about tables, not
+ * about names: "Getir Finans" is a bank, and it mentions "getir" as a whole
+ * word, so the grocery app's mark was returned before the bank table was ever
+ * read. `catalogueKey` already prefers the longest matching key; giving it
+ * everything at once is what lets that preference do its job. The bank entry
+ * wins an exact collision, which is the right way round for a payment source
+ * and identical in value for the two keys the tables share.
+ */
+const CATALOGUE_DOMAIN: Record<string, string> = { ...BRAND_DOMAIN, ...BANK_DOMAIN };
 
 function domainFor(name: string, override?: string | null): string | null {
   const normalizedOverride = normalizeLogoDomain(override);
   if (normalizedOverride) return normalizedOverride;
-  return catalogueKey(name, BRAND_DOMAIN);
+  return catalogueKey(name, CATALOGUE_DOMAIN);
 }
 
 export function Logo({
   name,
   domain,
   size = 36,
+  fallback: FallbackIcon,
 }: {
   name: string;
   domain?: string | null;
   size?: number;
+  /**
+   * Drawn instead of the initials badge when no mark resolves.
+   *
+   * A subscription with an unknown name is best served by its initials — the
+   * name IS the identity. A payment source is not: "Nakit" and "Ana Kart" are
+   * kinds of thing, and their type already says which, so the type's own glyph
+   * carries more than two letters would.
+   */
+  fallback?: LucideIcon;
 }) {
+  const { palette } = useTheme();
   const [failedDomain, setFailedDomain] = useState<string | null>(null);
 
   const folded = foldForMatch(name);
@@ -352,5 +521,42 @@ export function Logo({
     );
   }
 
+  if (FallbackIcon) {
+    return (
+      <View accessible={false} style={[tileStyle(size), { backgroundColor: palette.primarySoft }]}>
+        <FallbackIcon accessible={false} size={Math.round(size * 0.46)} color={palette.accentText} strokeWidth={1.9} />
+      </View>
+    );
+  }
+
   return <InitialsBadge name={name} size={size} />;
+}
+
+/**
+ * The mark for a payment source, resolved exactly like a subscription's.
+ *
+ * `logoRef` is the manual override the schema already carries; when it holds a
+ * domain it wins, otherwise the name is looked up in the shared catalogue. A
+ * source that resolves to neither falls back to its TYPE glyph rather than to
+ * initials — see `fallback` above.
+ */
+export function PaymentSourceLogo({
+  name,
+  type,
+  logoRef,
+  size = 36,
+}: {
+  name: string;
+  type: PaymentSourceType;
+  logoRef?: string | null;
+  size?: number;
+}) {
+  return (
+    <Logo
+      name={name}
+      domain={logoRef}
+      size={size}
+      fallback={paymentSourceIconComponent(type)}
+    />
+  );
 }

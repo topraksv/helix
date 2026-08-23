@@ -18,7 +18,8 @@ import CreditCard from "lucide-react-native/icons/credit-card";
 import Landmark from "lucide-react-native/icons/landmark";
 import Trash2 from "lucide-react-native/icons/trash-2";
 import type { LucideIcon } from "lucide-react-native";
-import { categoryIconComponent, paymentSourceIconComponent } from "../ui/category-icon";
+import { categoryIconComponent,  } from "../ui/category-icon";
+import { PaymentSourceLogo } from "../ui/logo";
 import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, FadeIn, Field, Heading, IconButton, Label, MetricStrip, MoneyField, PanelHeader, Row, Screen, SegmentBar, Select, Spread } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
 import { appAlert, appConfirm } from "../ui/dialog";
@@ -31,6 +32,9 @@ import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { PersonAssignment } from "../ui/person-assignment";
+
+/** The Select's own icon column, so a source mark fits it exactly. */
+const SOURCE_MARK = 22;
 
 function InstallmentTimeline({ count, startMonth }: { count: number; startMonth: MonthKey }) {
   const { palette } = useTheme();
@@ -400,7 +404,7 @@ function PlanForm({ existing }: { existing?: ReturnType<typeof usePlansState>["d
             <Select
               label={tr.tx.source}
               placeholder={tr.tx.sourcePlaceholder}
-              options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIconComponent(s.type) }))}
+              options={sourceOptions.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
               value={sourceId}
               onChange={setSourceId}
               onCreate={{ label: tr.installments.addCard, run: () => router.push("/payment-sources") }}

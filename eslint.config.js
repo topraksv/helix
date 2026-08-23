@@ -5,7 +5,9 @@ const expoConfig = require("eslint-config-expo/flat");
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ["dist/*", "dist-e2e/*"],
+    // `supabase/functions` is Deno, not the app bundle: remote module
+    // specifiers and a `Deno` global that this config knows nothing about.
+    ignores: ["dist/*", "dist-e2e/*", "supabase/functions/**"],
   },
   {
     // Reporting only, not a gate: "warn" never fails `npx expo lint`, so it

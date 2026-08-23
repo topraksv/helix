@@ -422,11 +422,53 @@ Turning details off clears detailed scheduled and delivered notifications
 before rebuilding neutral ones, and every account teardown clears both queues.
 A planning/query failure leaves the previous working schedule intact.
 
+## §4.1 — Feedback reports (RECONSTRUCTED)
+
+Citing files:
+
+- `src/domain/feedback.ts`
+- `src/app/feedback.tsx`
+
+A person can report a problem from inside the app without leaving it, and the
+report reaches the owner as an email rather than a queue someone has to
+remember to read.
+
+A report carries a category, a description, and optionally one screenshot. The
+categories are the vocabulary the reporter and the owner have to share, so they
+name the KIND OF REPAIR rather than the feeling: it looks wrong, it does not
+work, it is slow, the number is wrong, this would be better, something else.
+
+The description has a floor and a ceiling. The floor stops an accidental send
+from arriving as an empty report; the ceiling bounds what the receiving function
+allocates before it has read anything. Length is measured on the trimmed text,
+so whitespace is not a description.
+
+Screenshots are optional and there may be several, because a flow that goes
+wrong is two pictures — the screen before and the screen after — and asking for
+one was asking which half of the evidence to discard. Each is an image and not a
+document, and each is small enough to survive an ordinary mail host once base64
+has inflated it. There is also a ceiling on what they weigh TOGETHER: the
+per-file cap alone does not bound the message, and a report refused after it was
+written is worse than a limit stated before. An image that is present but
+invalid blocks the send instead of being dropped, because a report that silently
+loses the picture is a report about nothing.
+
+Every refusal names the real figure. "The image is too large" without saying how
+large leaves the person guessing whether they missed by a little or a lot, and
+each limit has its own remedy — pick a different file, shrink it, remove one,
+remove a big one — so they are separate answers rather than one invalid-image.
+Refusals appear beside the control that produced them, not in a dialog over it.
+
+The same rules bind the form, the client that posts, and the function that
+receives — the last of which trusts neither of the first two.
+
 ## §5 — Visible synchronization state (RECONSTRUCTED)
 
 Citing files:
 
 - `src/sync/status.ts`
+- `src/db/mutations.ts`
+- `src/app/sync-issues.tsx`
 
 Synchronization has explicit `idle`, `syncing`, `attention`, `error`, and
 `unconfigured` states with a last-success timestamp and user-facing error.
@@ -436,6 +478,26 @@ quarantined dead letters remains `attention`; only a zero quarantine count is
 auth-service refusal is an expired session. When a pull replaces a row already
 visible on the device, the store records a one-time remote-change timestamp;
 initial hydration and the device's own acknowledged writes do not trigger it.
+
+### Quarantined records
+
+A record the server refused is kept on the device and recorded as a quarantine.
+Nothing is deleted, nothing is retried automatically, and the app keeps working.
+
+Retrying is allowed to say more than "it worked" or "it failed". A quarantine
+means the row as it stands was refused, so retrying it unchanged can only be
+refused again — the retry therefore runs the push's own validation FIRST and, if
+the row would still fail, queues nothing and says so. The four outcomes are
+distinct because their remedies are: it is queued; the row itself needs editing;
+there is no local row left to send; this build does not know the record's type.
+
+A quarantine whose row can never be sent may be forgotten. That removes the
+CLUE, not the record: the local row is untouched. Without it a quarantine
+created by a deleted row, or by a payload belonging to another account, was
+permanent and had no button that could ever clear it.
+
+The device-level view of this is one row, not a panel. Nothing here is lost and
+nothing is urgent; the count and every action live on a screen of their own.
 
 ## Malformed TCMB unit values are refused
 

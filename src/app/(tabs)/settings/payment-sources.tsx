@@ -1,7 +1,8 @@
 /** Payment source management: cards / cash / bank, per-person, card cycle. */
 
 import React, { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
+import { PaymentSourceLogo } from "../../../ui/logo";
 import { useContentWidth } from "../../../ui/viewport";
 import { useAllTransactionsState, useCreditCardStatementsState, usePersonsState, useSourcesState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
@@ -30,7 +31,7 @@ import type { LucideIcon } from "lucide-react-native";
 import { Amount, Badge, Body, Button, Card, CardList, ChipPicker, ChoiceTile, DataStateNotice, EmptyState, Field, IconButton, PanelHeader, Row, Screen, SectionHeader, Spread } from "../../../ui/components";
 import { placeholderPools, useRotatingPlaceholder } from "../../../ui/placeholders";
 import { useUndo } from "../../../ui/undo";
-import { spacing, useTheme } from "../../../ui/theme";
+import { spacing, type, useTheme } from "../../../ui/theme";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { useOperationGuard } from "../../../ui/operation-guard";
 import { useDirtyExitGuard } from "../../../ui/dirty-exit";
@@ -56,29 +57,6 @@ const sourceIcon = (value: PaymentSourceType): LucideIcon =>
         : value === "direct_debit"
           ? ReceiptText
           : CreditCard;
-
-function SourceGlyph({ sourceType, size = 44 }: { sourceType: PaymentSourceType; size?: number }) {
-  const { palette } = useTheme();
-  const Icon = sourceIcon(sourceType);
-  return (
-    <View
-      accessible={false}
-      style={{
-        width: size,
-        height: size,
-        flexShrink: 0,
-        borderRadius: Math.round(size * 0.34),
-        backgroundColor: palette.primarySoft,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: palette.primary + "70",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Icon size={Math.round(size * 0.44)} color={palette.primary} strokeWidth={1.8} />
-    </View>
-  );
-}
 
 function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onChange: (value: PaymentSourceType) => void }) {
   const { palette } = useTheme();
@@ -120,6 +98,7 @@ function SourceTypePicker({ value, onChange }: { value: PaymentSourceType; onCha
 }
 
 export default function SourcesScreen() {
+  const { palette } = useTheme();
   const userId = useUserId();
   const sourcesState = useSourcesState();
   const statementsState = useCreditCardStatementsState();
@@ -309,6 +288,18 @@ export default function SourcesScreen() {
       );
     }
   }
+  /**
+   * Six periods, not every period a card has ever had.
+   *
+   * A card kept for three years has thirty-six of these, and the thirty-first
+   * answers nothing anyone opened this screen to ask. Six is a half-year — long
+   * enough to see a season, short enough to stay a shape rather than a page.
+   */
+  const shownStatements = editingStatements.slice(0, 6);
+  const largestStatementAmount = shownStatements.reduce(
+    (largest, statement) => Math.max(largest, Math.abs(statementAmountById.get(statement.id) ?? 0)),
+    0,
+  );
   const replacementOptions = resolving ? eligibleReplacements(resolving.source.id, resolving.usage) : [];
   const cardReplacementRequired = Boolean(resolving && resolving.usage.cardInstallmentPlans > 0);
 
@@ -334,7 +325,21 @@ export default function SourcesScreen() {
           title={editingId ? tr.sources.editTitle : tr.sources.formTitle}
           description={editingId ? tr.sources.editHint(name || tr.sources.formTitle) : tr.sources.formHint}
         />
-        <Field label={tr.onboarding.addSource} value={name} onChangeText={setName} placeholder={sourcePlaceholder} />
+        {/* The mark resolves from the name as it is typed, so "Garanti"
+            becoming a Garanti mark is visible at the moment it happens rather
+            than after saving. Same live preview the subscription form gives. */}
+        <Row gap={spacing.md} style={{ alignItems: "center", marginBottom: spacing.sm }}>
+          <PaymentSourceLogo name={name || tr.sources.formTitle} type={sourceType} size={46} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Field
+              noMargin
+              label={tr.onboarding.addSource}
+              value={name}
+              onChangeText={setName}
+              placeholder={sourcePlaceholder}
+            />
+          </View>
+        </Row>
         <SourceTypePicker value={sourceType} onChange={setSourceType} />
         <PersonAssignment people={persons} value={personId} onChange={setPersonChoice} />
         {sourceType === "credit_card" ? (
@@ -359,24 +364,57 @@ export default function SourcesScreen() {
 
           {editingId && sourceType === "credit_card" && editingStatements.length > 0 ? (
             <Card>
-          <PanelHeader icon={ReceiptText} title={tr.sources.statementHistory} description={tr.sources.statementHistoryHint} />
-          {editingStatements.map((statement) => {
-            const amount = statementAmountById.get(statement.id) ?? 0;
-            return (
-              <Spread key={statement.id} style={{ paddingVertical: spacing.xs, alignItems: "center" }}>
-                <View style={{ flex: 1, paddingRight: spacing.md }}>
-                  <Body>{monthLabel(statement.periodMonth)}</Body>
-                  <Body muted>{tr.sources.statementDates(dateLabel(statement.statementDate), dateLabel(statement.dueDate))}</Body>
-                </View>
-                <Amount
-                  minor={amount}
-                  colorized={false}
-                  accessibilityLabel={formatMinorCompact(amount)}
-                  style={{ textAlign: "right" }}
-                />
-              </Spread>
-            );
-          })}
+              <PanelHeader
+                icon={ReceiptText}
+                title={tr.sources.statementHistory}
+                description={tr.sources.statementSummary(shownStatements.length, formatMinorCompact(largestStatementAmount))}
+              />
+              {/* Six rows of "Kesim 15 Ağustos · Son ödeme 25 Ağustos" under
+                  six month names was a paragraph where a shape belongs: the
+                  question a person opens this for is which month cost the
+                  most, and three lines of prose per period buried it.
+                  Each period is now one row — month, bar, amount — so the
+                  answer is the tallest bar, and the exact dates stay one tap
+                  away on the row itself rather than printed twelve times. */}
+              <View style={{ gap: spacing.sm }}>
+                {shownStatements.map((statement) => {
+                  const amount = statementAmountById.get(statement.id) ?? 0;
+                  const share = largestStatementAmount > 0
+                    ? Math.max(2, Math.round((Math.abs(amount) / largestStatementAmount) * 100))
+                    : 0;
+                  const dates = tr.sources.statementDates(
+                    dateLabel(statement.statementDate),
+                    dateLabel(statement.dueDate),
+                  );
+                  return (
+                    <View
+                      key={statement.id}
+                      accessible
+                      accessibilityLabel={`${monthLabel(statement.periodMonth)} · ${formatMinorCompact(amount)} · ${dates}`}
+                      style={{ gap: 5 }}
+                    >
+                      <Spread style={{ alignItems: "center" }}>
+                        <Body style={{ flex: 1, paddingRight: spacing.sm }}>{monthLabel(statement.periodMonth)}</Body>
+                        <Amount
+                          minor={amount}
+                          colorized={false}
+                          accessibilityLabel={formatMinorCompact(amount)}
+                          style={{ textAlign: "right" }}
+                        />
+                      </Spread>
+                      <View style={{ height: 4, borderRadius: 2, overflow: "hidden", backgroundColor: palette.surfaceAlt }}>
+                        <View style={{ width: `${share}%`, height: "100%", borderRadius: 2, backgroundColor: palette.primary }} />
+                      </View>
+                      <Body muted style={{ fontSize: type.small.fontSize }}>{dates}</Body>
+                    </View>
+                  );
+                })}
+              </View>
+              {editingStatements.length > shownStatements.length ? (
+                <Body muted style={{ marginTop: spacing.sm, fontSize: type.small.fontSize }}>
+                  {tr.sources.statementMore(editingStatements.length - shownStatements.length)}
+                </Body>
+              ) : null}
             </Card>
           ) : null}
           </View>
@@ -431,7 +469,7 @@ export default function SourcesScreen() {
                 renderItem={(s) => (
           <Spread style={{ paddingVertical: spacing.sm, alignItems: "center" }}>
             <Row style={{ flex: 1, alignItems: "center" }}>
-              <SourceGlyph sourceType={s.type} />
+              <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={44} />
               <View style={{ flex: 1 }}>
                 <Body>{s.name}</Body>
                 <Body muted style={{ marginTop: 1 }}>{TYPES.find((t) => t.value === s.type)?.label}</Body>

@@ -30,6 +30,7 @@ import {
   spacing,
   stateOpacity,
   resolvePaletteId,
+  DEFAULT_PALETTE_ID,
   lightPalette,
   PALETTES,
   ThemeContext,
@@ -170,6 +171,23 @@ export default function RootLayout() {
   const background = systemScheme === "dark" ? darkPalette.background : lightPalette.background;
   const foreground = systemScheme === "dark" ? darkPalette.text : lightPalette.text;
   const primaryForeground = systemScheme === "dark" ? darkPalette.primaryText : lightPalette.primaryText;
+  /**
+   * The theme for the screens that exist BEFORE preferences are readable.
+   *
+   * The database has not opened yet, so the saved palette is unknown; the
+   * system scheme is the one thing that is. It is the default palette in the
+   * right scheme rather than a guess at the user's chosen one, which is enough
+   * for the two controls this path draws and stops them being the only
+   * surfaces in the app outside the design system.
+   */
+  const bootTheme = useMemo(
+    () => ({
+      palette: systemScheme === "dark" ? darkPalette : lightPalette,
+      scheme: (systemScheme === "dark" ? "dark" : "light") as "light" | "dark",
+      paletteId: DEFAULT_PALETTE_ID,
+    }),
+    [systemScheme],
+  );
   const fontsReady = fontsLoaded || fontsError != null || fontGrace;
 
   return (
@@ -219,14 +237,24 @@ export default function RootLayout() {
           <RootLayoutInner />
         )
       ) : (
+        <ThemeContext.Provider value={bootTheme}>
         <View
           style={{ flex: 1, backgroundColor: background, justifyContent: "center", alignItems: "center", padding: 24, gap: 16 }}
         >
           {dbError ? (
             <>
               <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ color: foreground, textAlign: "center" }}>{tr.errors.database}</Text>
-              <Pressable
-                accessibilityRole="button"
+              {/* The shared control, not a hand-rolled one.
+                  This screen runs BEFORE the real theme provider is mounted,
+                  which is why it used to draw its own button — and that button
+                  was the app's only `fontWeight`, asking iOS to synthesise a
+                  bold rather than naming a loaded face, in the one screen a
+                  person sees when something has already gone wrong. A boot
+                  theme derived from the system scheme mounts the same context
+                  every other surface reads, so this ending and the render-crash
+                  ending are now the same product. */}
+              <Button
+                label={tr.common.retry}
                 onPress={() => {
                   // On web the usual cause is another tab holding the exclusive
                   // OPFS access handle, which leaves wa-sqlite's VFS permanently
@@ -245,20 +273,13 @@ export default function RootLayout() {
                   setDbReady(false);
                   setAttempt((a) => a + 1);
                 }}
-                style={({ pressed }) => ({
-                  minHeight: controlSize.minimumTarget,
-                  paddingHorizontal: spacing.lg,
-                  justifyContent: "center",
-                  opacity: pressed ? stateOpacity.pressed : 1,
-                })}
-              >
-                <Text style={{ color: primaryForeground, fontWeight: "600" }}>{tr.common.retry}</Text>
-              </Pressable>
+              />
             </>
           ) : (
             <DelayedLoadingIndicator />
           )}
         </View>
+        </ThemeContext.Provider>
       )}
       </>
     </KeyboardSafeRoot>
@@ -508,6 +529,8 @@ function RootLayoutInner() {
               because it has no sheet recognizer. */}
           <Stack.Screen name="columns-editor" options={{ ...cardScreenOptions(theme.palette), title: tr.cashflow.editColumns, headerLeft: () => <HeaderBackButton fallback="/(tabs)/cash-flow" /> }} />
           <Stack.Screen name="statement-import" options={{ title: tr.statement.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="feedback" options={{ title: tr.feedback.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
+          <Stack.Screen name="sync-issues" options={{ title: tr.settings.syncQuarantineTitle, headerLeft: () => <HeaderBackButton fallback="/(tabs)/settings" /> }} />
           <Stack.Screen name="attention" options={{ title: tr.attention.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="reconciliation" options={{ title: tr.catchup.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />
           <Stack.Screen name="upcoming" options={{ title: tr.upcoming.title, headerLeft: () => <HeaderBackButton fallback="/(tabs)" /> }} />

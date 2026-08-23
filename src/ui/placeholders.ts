@@ -41,6 +41,7 @@ export const placeholderPools = {
   investmentQuantity: tr.placeholders.investmentQuantity,
   investmentUnitPrice: tr.placeholders.investmentUnitPrice,
   investmentNote: tr.placeholders.investmentNote,
+  feedback: tr.placeholders.feedback,
 } as const;
 
 const ROTATE_MS = 4000;

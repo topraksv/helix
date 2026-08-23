@@ -162,6 +162,18 @@ export const tr = {
     investmentQuantity: ["17,23", "456,12", "10", "125,5", "1,25"],
     investmentUnitPrice: ["5.800,00", "41,25", "250,00", "12.400,50"],
     investmentNote: ["Uzun vadeli birikim", "Aylık alım", "Portföy başlangıcı", "Kısmi satış"],
+    // Written WITHOUT a prefix, like every other pool: `example()` adds the one
+    // "Ör." this app uses. The old text said "Örn." inline, which
+    // `examplePlaceholder` did not recognise as a prefix — so the field showed
+    // "Ör. Örn. Mali Tablo'da…".
+    feedback: [
+      "Mali Tablo'da Nisan sütunu boş kalıyor",
+      "Kaydet'e basınca hiçbir şey olmuyor",
+      "Abonelik listesi açılırken donuyor",
+      "Kredi kartı ekstresi bir ay ileri düşüyor",
+      "Bakiye, işlemlerin toplamıyla uyuşmuyor",
+      "Grafikteki renkler birbirine çok yakın",
+    ],
     example: (sample: string) => `Ör. ${sample}`,
   },
   auth: {
@@ -1045,18 +1057,39 @@ export const tr = {
     lastSync: (d: string) => `Son güncelleme: ${d}`,
     syncUnconfiguredHint: "Bulut senkronu yapılandırılmadı; veriler yalnız bu cihazda.",
     syncExplain: "Değişikliklerin önce bu cihazda saklanır. İnternet geldiğinde diğer cihazlarınla otomatik olarak güncellenir.",
-    syncQuarantineTitle: "Eşitlenmeyi bekleyen kayıtlar",
-    syncQuarantineBody: (count: number) => `${count} kayıt bu cihazda korunuyor; sunucuya gönderilmedi ve finans verin silinmedi.`,
-    syncQuarantineRetry: "Kayıtları Yeniden Dene",
-    syncQuarantineBackup: "Önce Yedekle",
-    syncQuarantineRetryDone: (count: number) => `${count} kayıt yeniden eşitleme sırasına alındı.`,
-    syncQuarantineRetryMissing: "Bazı kayıtların güncel yerel satırı bulunamadı; karantina bilgisi korundu.",
+    // The settings row. One quiet line, not a warning panel: nothing is lost,
+    // nothing is urgent, and the detail belongs on its own screen.
+    syncQuarantineRow: "Bu cihazda kalan kayıtlar",
+    syncQuarantineRowHint: (count: number) =>
+      `${count} kayıt buluta gönderilemedi. Hepsi cihazında duruyor.`,
+    syncQuarantineCount: (count: number) => `${count} kayıt`,
+    syncQuarantineTitle: "Bu cihazda kalan kayıtlar",
+    syncQuarantineIntro: "Bu kayıtlar cihazında duruyor ve silinmedi. Bulut bunları kabul etmediği için burada bekliyorlar; uygulamanın geri kalanı normal çalışmaya devam eder.",
+    syncQuarantineRetry: "Tekrar Dene",
+    syncQuarantineBackup: "Yedek Al",
+    syncQuarantineDismiss: "Listeden Kaldır",
+    syncQuarantineDismissed: "Kayıt listeden kaldırıldı. Verin cihazında duruyor.",
+    syncQuarantineDismissConfirm: "Bu satır listeden kaldırılacak. Kaydın kendisi cihazında kalmaya devam eder ve silinmez.",
+    syncQuarantineRetryDone: (count: number) => `${count} kayıt yeniden sıraya alındı.`,
+    syncQuarantineRetryNone: "Bu kayıtların hiçbiri şu an gönderilemiyor. Aşağıdaki açıklamalar ne yapılabileceğini söylüyor.",
     syncQuarantineType: (table: string) => `${table} kaydı`,
     syncQuarantineReason: {
       malformed_payload: "bozuk veri",
       wrong_user: "hesap eşleşmiyor",
       invalid_row: "geçersiz veri",
     },
+    // What the LAST retry learned about this row, said as a next step rather
+    // than as a status. "Yeniden dene" that can only fail is the thing the
+    // owner reported; each of these names something that would actually help.
+    syncQuarantineOutcome: {
+      requeued: "Sıraya alındı; bir sonraki eşitlemede gönderilecek.",
+      unrepairable: "Kaydın kendisinde bir sorun var. Uygulamada açıp kaydedersen düzelmiş hâli yeniden denenir.",
+      missing: "Bu kaydın cihazında bir karşılığı kalmamış. Gönderilecek bir şey yok; satırı listeden kaldırabilirsin.",
+      unsupported: "Bu kayıt türünü bu sürüm tanımıyor. Güncelleme sonrası tekrar denenebilir.",
+    },
+    syncQuarantineUntried: "Henüz denenmedi.",
+    syncQuarantineEmpty: "Bekleyen kayıt kalmadı.",
+    syncQuarantineEmptyHint: "Her şey buluta gönderildi.",
     syncQuarantineTypes,
     columnVisible: "Mali Tablo'da göster",
     deleteCategoryTitle: "Kalemi sil",
@@ -1499,6 +1532,10 @@ export const tr = {
     statementHistory: "Ekstre Dönemleri",
     statementHistoryHint: "Bu karta bağlı gerçek ekstrelerin kesim ve son ödeme tarihleri.",
     statementDates: (statement: string, due: string) => `Kesim ${statement} · Son ödeme ${due}`,
+    statementSummary: (count: number, largest: string) =>
+      `Son ${count} dönem · en yüksek ${largest}`,
+    statementMore: (count: number) => `+${count} eski dönem`,
+    statementEmptyPeriod: "Bu dönemde harcama yok",
     owner: "Sahibi",
   },
   incomeKinds: {
@@ -1541,6 +1578,66 @@ export const tr = {
     lastInstallmentBody: (name: string) => `${name} bu ay bitiyor.`,
     salaryTitle: "Maaş günü",
     salaryBody: (name: string, amount: string) => `${name} (${amount}) yattı mı? Teyit et.`,
+  },
+  feedback: {
+    title: "Geri bildirim",
+    settingsDesc: "Bir hata bildir ya da fikrini paylaş",
+    intro: "Ne olduğunu kendi cümlelerinle yaz. Ekran görüntüsü eklersen çok daha hızlı bulurum.",
+    categoryLabel: "Bu ne hakkında?",
+    category: {
+      visual: "Görsel hata",
+      functional: "Çalışmayan özellik",
+      performance: "Yavaşlık",
+      data: "Yanlış veri veya hesap",
+      suggestion: "Öneri",
+      other: "Diğer",
+    },
+    categoryHint: {
+      visual: "Bozuk görünüm, kayan hizalama, üst üste binen ya da kesilen yazı.",
+      functional: "Basınca tepki vermeyen bir kontrol, açılmayan bir ekran.",
+      performance: "Çalışıyor ama yavaş, takılıyor ya da pili tüketiyor.",
+      data: "Tutar, tarih, bakiye ya da içe aktarma sonucu yanlış.",
+      suggestion: "Bozuk bir şey yok; şöyle olsa daha iyi olur.",
+      other: "Yukarıdakilerden hiçbiri.",
+    },
+    messageLabel: "Ne oldu?",
+    imageTitle: "Ekran görüntüsü",
+    imageHint: (max: number, perImage: string, total: string) =>
+      `İsteğe bağlı. En fazla ${max} görsel, her biri ${perImage}, toplamda ${total}.`,
+    imageAdd: "Görsel Ekle",
+    imageAddMore: "Başka Görsel Ekle",
+    imageRemove: "Kaldır",
+    imageCount: (used: number, max: number, size: string) => `${used}/${max} görsel · ${size}`,
+    imageFull: "Sınıra ulaştın. Yenisini eklemek için bir görseli kaldır.",
+    messageCount: (used: number, max: number) => `${used}/${max} karakter`,
+    send: "Gönder",
+    sending: "Gönderiliyor",
+    sent: "Geri bildirimin ulaştı. Teşekkürler.",
+    rejected: {
+      empty: "Birkaç cümle yazman gerekiyor.",
+      tooShort: (min: number, used: number) =>
+        `Biraz daha ayrıntı yazar mısın? En az ${min} karakter gerekiyor, şu an ${used}.`,
+      tooLong: (max: number, used: number) =>
+        `Bu biraz uzun oldu: ${used} karakter yazdın, en fazla ${max} olabilir.`,
+      type: (picked: string) =>
+        `Yalnızca görsel eklenebilir: JPEG, PNG, WebP ya da HEIC. Seçtiğin dosya ${picked}.`,
+      // A picker can hand back an asset with no MIME type at all — a file with
+      // no extension, or a provider that does not report one. "Kategorisiz"
+      // was standing in here, which is a word about ledger columns.
+      unknownType: "tanınmayan bir türde",
+      size: (max: string, picked: string) =>
+        `Bir görsel ${max}'ı aşamaz. Seçtiğin görsel ${picked}.`,
+      count: (max: number) =>
+        `En fazla ${max} görsel ekleyebilirsin. Yenisini eklemek için birini kaldır.`,
+      total: (max: string, used: string, picked: string) =>
+        `Görsellerin toplamı ${max}'ı aşamaz. Şu an ${used} ekli, seçtiğin görsel ${picked}.`,
+      duplicate: "Bu görsel zaten ekli.",
+      unreadable: "Bu dosya okunamadı. Başka bir görsel dener misin?",
+    },
+    failed: "Gönderilemedi. Bağlantını kontrol edip tekrar dener misin?",
+    unauthenticated: "Geri bildirim göndermek için giriş yapman gerekiyor.",
+    unconfigured: "Bu kurulum buluta bağlı değil, bu yüzden geri bildirim gönderilemiyor.",
+    privacy: "Yalnızca yazdığın metin, seçtiğin kategori, varsa eklediğin görsel ve hesabının e-posta adresi gönderilir. Finansal verilerinin hiçbiri gitmez.",
   },
   months: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"],
 } as const;

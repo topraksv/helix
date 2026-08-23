@@ -1,7 +1,13 @@
 import { newId } from "../../db/ids";
 import { pruneAttentionState, type AttentionState } from "../../domain/attention";
 import { parseMatrixColorLabels, type MatrixColorLabels } from "../../domain/matrix-colors";
-import { pendingOutboxCount, requeueSyncDeadLetter as requeueLocalSyncDeadLetter, writeSetting } from "../../db/mutations";
+import {
+  discardSyncDeadLetter as discardLocalSyncDeadLetter,
+  pendingOutboxCount,
+  requeueSyncDeadLetter as requeueLocalSyncDeadLetter,
+  writeSetting,
+  type DeadLetterRetry,
+} from "../../db/mutations";
 
 export function createRecordId(): string {
   return newId();
@@ -11,8 +17,13 @@ export function pendingSyncChangeCount(): Promise<number> {
   return pendingOutboxCount();
 }
 
-export function retrySyncDeadLetter(userId: string, deadLetterId: number): Promise<"requeued" | "missing" | "unsupported"> {
+export function retrySyncDeadLetter(userId: string, deadLetterId: number): Promise<DeadLetterRetry> {
   return requeueLocalSyncDeadLetter(userId, deadLetterId);
+}
+
+/** Forget one quarantine clue. The row it points at is not touched. */
+export function dismissSyncDeadLetter(deadLetterId: number): Promise<boolean> {
+  return discardLocalSyncDeadLetter(deadLetterId);
 }
 
 export function setAccountFrozen(userId: string, frozen: boolean): Promise<void> {

@@ -528,6 +528,38 @@ describe("semantic theme contrast", () => {
     }
   });
 
+  /**
+   * Why a selected chart mark is emphasised rather than the others faded.
+   *
+   * Fading is the obvious way to say "this one, not those", and it is not
+   * available here: the ramp is designed to sit just above the 3:1 floor the
+   * test above enforces, so there is no headroom to spend on an alpha. This
+   * pins the arithmetic that ruled it out, and it is written as a THRESHOLD
+   * rather than as a ban — if the ramp is ever rebuilt with real headroom,
+   * this test is where that becomes visible.
+   */
+  it("leaves no headroom for de-emphasising a mark with opacity", () => {
+    let worstFull = Infinity;
+    let worstDimmed = Infinity;
+    for (const scheme of ["light", "dark"] as const) {
+      const grounds = shippedPalettes
+        .filter((p) => (luminance(p.surface) > 0.5) === (scheme === "light"))
+        .flatMap((p) => [p.surface, p.surfaceAlt]);
+      for (const colour of chartSeriesColors(scheme)) {
+        for (const ground of grounds) {
+          worstFull = Math.min(worstFull, contrastRatio(colour, ground));
+          // 0.8 is the gentlest fade anyone would reach for; if even that
+          // fails, every stronger one does too.
+          worstDimmed = Math.min(worstDimmed, contrastRatio(blend(colour, ground, 0.8), ground));
+        }
+      }
+    }
+    // The ramp clears the floor, and clears it by too little to fade.
+    expect(worstFull).toBeGreaterThanOrEqual(3);
+    expect(worstFull).toBeLessThan(3.5);
+    expect(worstDimmed).toBeLessThan(3);
+  });
+
   it("keeps purple and magenta out of the ramp, as everywhere else", () => {
     for (const scheme of ["light", "dark"] as const) {
       for (const colour of chartSeriesColors(scheme)) {

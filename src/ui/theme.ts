@@ -492,6 +492,23 @@ export const chart = {
   axisFontSizeLarge: 11,
   centreLabelRatio: 0.062,
   centreValueRatio: 0.098,
+  /**
+   * What a ring does when one of its slices is being asked about.
+   *
+   * Emphasis by WIDTH, never by opacity. Fading the other slices was the
+   * obvious move and it is the wrong one here: measured across all six
+   * palettes, the categorical ramp's weakest colour clears its background by
+   * 3.13:1 at full strength — it only just makes the 3:1 floor this project
+   * holds its chart marks to. Any alpha at all therefore breaks it; at 0.8 the
+   * worst pair falls to 2.51 and at 0.55 to 1.86. So the chosen arc grows and
+   * the others thin, and every arc keeps the contrast it was designed with.
+   *
+   * `donutLift` thickens the chosen arc outward from the same centre line and
+   * `donutThin` narrows the rest inward from theirs, so nothing moves sideways
+   * and the ring stays concentric.
+   */
+  donutLift: 3,
+  donutThin: 7,
 } as const;
 
 /**

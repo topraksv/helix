@@ -7,12 +7,14 @@ import { shouldPairFilterCards } from "../../../ui/responsive";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
+import MessageSquare from "lucide-react-native/icons/message-square";
 import Banknote from "lucide-react-native/icons/banknote";
 import Bell from "lucide-react-native/icons/bell";
 import BookOpen from "lucide-react-native/icons/book-open";
 import Calculator from "lucide-react-native/icons/calculator";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
 import Check from "lucide-react-native/icons/check";
+import CloudOff from "lucide-react-native/icons/cloud-off";
 import CloudUpload from "lucide-react-native/icons/cloud-upload";
 import Columns3 from "lucide-react-native/icons/columns-3";
 import Eye from "lucide-react-native/icons/eye";
@@ -37,7 +39,7 @@ import { SIGN_OUT_PENDING_CHANGES, useSession } from "../../../auth/session";
 import { useSettingsMapState, settingValue, useSyncDeadLettersState, useUserId } from "../../../data/hooks";
 import { combineLiveStates } from "../../../data/live-state";
 import { asyncFieldState } from "../../../domain/form-state";
-import { pendingSyncChangeCount, retrySyncDeadLetter, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
+import { pendingSyncChangeCount, setPendingTableVisibility, setReminderDays } from "../../../data/repo";
 import { buildExportText, buildTransactionsCsv, importBundle, MAX_BACKUP_BYTES, parseExportBundleText, saveTextFile } from "../../../services/export-import";
 import { disableNotifications, enableNotifications, rescheduleAll, updateNotificationDetails } from "../../../services/notifications";
 import { syncNow } from "../../../sync/engine";
@@ -51,7 +53,7 @@ import { useBiometricLabel } from "../../../ui/biometric-label";
 import { kv } from "../../../services/kv";
 import { useDevicePreferences } from "../../../services/device-preferences";
 import { dateLabel, dateTimeLabel, tr } from "../../../i18n/tr";
-import { Body, Button, Card, ChoiceTile, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
+import { Badge, Body, Button, Card, ChoiceTile, DataStateNotice, Field, ListRow, OperationStatusNotice, Row, Screen, SectionHeader, Toggle } from "../../../ui/components";
 import { appAlert, appConfirm } from "../../../ui/dialog";
 import { OperationCancelledError, useTrackedOperation, type TrackedOperationContext } from "../../../ui/operation-guard";
 import { circle, font, PALETTES, radius, spacing, type, type Palette, type ThemePreference, useTheme } from "../../../ui/theme";
@@ -297,7 +299,6 @@ export default function SettingsScreen() {
   const notificationDetails = useDevicePreferences((state) => state.notificationDetails);
   const devicePreferencesLoaded = useDevicePreferences((state) => state.loaded);
   const [notificationBusy, setNotificationBusy] = useState(false);
-  const [deadLetterBusy, setDeadLetterBusy] = useState(false);
   const reminderDays = settingValue<number>(settings, "reminder_days", 3);
   const showPending = settingValue<boolean>(settings, "show_pending_in_table", true);
   // Explicit dirty state, decided in `asyncFieldState` (domain/form-state.ts).
@@ -426,28 +427,6 @@ export default function SettingsScreen() {
         setDataBusy(null);
       }
     });
-  };
-
-  const retryDeadLetters = async () => {
-    if (deadLetterBusy || deadLettersState.data.length === 0) return;
-    setDeadLetterBusy(true);
-    try {
-      let requeued = 0;
-      let missing = 0;
-      for (const deadLetter of deadLettersState.data) {
-        const result = await retrySyncDeadLetter(userId, deadLetter.id);
-        if (result === "requeued") requeued += 1;
-        else missing += 1;
-      }
-      if (requeued > 0) void syncNow(userId);
-      if (missing > 0) void appAlert(tr.settings.syncQuarantineRetryMissing, tr.errors.title);
-      else if (requeued > 0) notify(tr.settings.syncQuarantineRetryDone(requeued));
-    } catch (error) {
-      devError("settings.sync-retry", error);
-      notify(`⚠ ${tr.errors.requestFailed}`);
-    } finally {
-      setDeadLetterBusy(false);
-    }
   };
 
   const exportJson = () =>
@@ -791,32 +770,20 @@ export default function SettingsScreen() {
         <Body muted style={{ fontSize: type.small.fontSize, marginTop: spacing.xs, marginBottom: spacing.sm }}>
           {tr.settings.syncExplain}
         </Body>
+        {/* A row, not a panel. Nothing here is lost and nothing is urgent, so
+            it says what it is in one line and keeps the detail — and every
+            action — on its own screen. */}
+        {deadLettersState.status !== "loading" && deadLettersState.data.length > 0 ? (
+          <ListRow
+            icon={CloudOff}
+            title={tr.settings.syncQuarantineRow}
+            subtitle={tr.settings.syncQuarantineRowHint(deadLettersState.data.length)}
+            right={<Badge text={tr.settings.syncQuarantineCount(deadLettersState.data.length)} tone="muted" />}
+            chevron
+            onPress={() => router.push("/sync-issues")}
+          />
+        ) : null}
       </Card>
-      {deadLettersState.status !== "loading" && deadLettersState.data.length > 0 ? (
-        <Card tone="warning">
-          <SectionHeader>{tr.settings.syncQuarantineTitle}</SectionHeader>
-          <Body muted style={{ marginBottom: spacing.sm }}>{tr.settings.syncQuarantineBody(deadLettersState.data.length)}</Body>
-          <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
-            {deadLettersState.data.slice(0, 4).map((deadLetter) => {
-              // deadLetter.tableName is a raw DB string, not the finite SyncedTableName
-              // union — a dead-letter row can carry a table name from a newer build
-              // than this client's i18n map, so the lookup can still miss at runtime.
-              const typeLabel = (tr.settings.syncQuarantineTypes as Record<string, string>)[deadLetter.tableName] ?? "kayıt";
-              const reason = tr.settings.syncQuarantineReason[deadLetter.reason as keyof typeof tr.settings.syncQuarantineReason] ?? tr.settings.syncQuarantineReason.invalid_row;
-              return (
-                <View key={deadLetter.id} style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.xs }}>
-                  <Body style={{ flex: 1, minWidth: 180 }}>{tr.settings.syncQuarantineType(`${typeLabel} · ${reason}`)}</Body>
-                  <Body muted style={{ fontSize: type.small.fontSize }}>{dateTimeLabel(deadLetter.quarantinedAt)}</Body>
-                </View>
-              );
-            })}
-          </View>
-          <Row gap={spacing.sm} style={{ flexWrap: "wrap" }}>
-            <Button size="sm" variant="secondary" label={tr.settings.syncQuarantineRetry} loading={deadLetterBusy} disabled={deadLetterBusy} onPress={() => void retryDeadLetters()} />
-            <Button size="sm" variant="secondary" label={tr.settings.syncQuarantineBackup} disabled={deadLetterBusy} onPress={() => void exportJson()} />
-          </Row>
-        </Card>
-      ) : null}
 
       <SectionHeader>{tr.settings.transferSection}</SectionHeader>
       <Card rows>
@@ -915,6 +882,20 @@ export default function SettingsScreen() {
         </Card>
       ) : null}
       {tourOpen ? <TourModal onClose={() => setTourOpen(false)} /> : null}
+
+      {/* Last, and deliberately after the account endings: this is the one row
+          here that is not about changing the workspace, and a person looking
+          for it is looking for the bottom of the page. */}
+      <SectionHeader>{tr.feedback.title}</SectionHeader>
+      <Card rows testID="settings-feedback">
+        <ListRow
+          icon={MessageSquare}
+          title={tr.feedback.title}
+          subtitle={tr.feedback.settingsDesc}
+          chevron
+          onPress={() => router.push("/feedback" as Href)}
+        />
+      </Card>
 
       <View style={{ alignItems: "center", marginTop: spacing.md }}>
         <Body muted style={{ fontSize: type.small.fontSize }}>

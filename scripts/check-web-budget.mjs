@@ -81,13 +81,31 @@ const root = process.argv[2] ?? "dist";
 // as `spreadsheet-import.ts` does, and these ceilings are set below what a
 // static import would cost, so putting it back trips this check rather than
 // shipping quietly.
+//
+// Then feedback and payment-source marks shipped. The in-app report form (its
+// category grid, screenshot picker and the domain rules all three of its
+// parties re-check), and every payment source resolving a real mark through
+// the same `Logo` the subscriptions use — which is a ~70-entry Turkish bank,
+// card-programme and wallet catalogue. Measured 3_519_901 entry / 4_149_666
+// total / 7_602_477 export: +7_901 entry for two features, which is the
+// catalogue and one route rather than anything structural.
+//
+// The edge function that actually sends the mail is NOT in any of these
+// figures and must not become so: it is Deno, it lives in
+// `supabase/functions/`, and `tsconfig.json` and `eslint.config.js` both
+// exclude it. Nothing in `src/` may import it.
+//
+// Entry and total move to measured plus the same ~1% every line above them
+// carries. Total export moves to measured plus ~1.5% rather than the ~3% the
+// note below it describes: fonts are the coarse part of that figure and they
+// did not change, so the looser step is not earned here.
 const limits = {
-  entryJavaScript: 3_512_000,
-  totalJavaScript: 4_148_000,
+  entryJavaScript: 3_555_000,
+  totalJavaScript: 4_191_000,
   // Fonts are 1_534_728 of this and the rest is one HTML file per route, so it
   // grows in coarser steps than the JavaScript above it — measured 8_037_112
   // with ~3% of slack rather than the ~1% the JS ceilings carry.
-  totalExport: 7_580_000,
+  totalExport: 7_717_000,
   fontFiles: 6,
   fontBytes: 800_000,
   // Pages is public. Symbolication maps belong only in a private crash service,

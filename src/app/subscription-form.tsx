@@ -17,7 +17,8 @@ import { isMonthDay, monthKeyOf, todayISO, type ISODate } from "../domain/dates"
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { dateLabel, shortDateLabel, tr } from "../i18n/tr";
 import { scheduleSync } from "../sync/engine";
-import { categoryIconComponent, paymentSourceIconComponent } from "../ui/category-icon";
+import { categoryIconComponent } from "../ui/category-icon";
+import { Logo, PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { Amount, Body, Button, Card, ChipPicker, DataStateNotice, FadeIn, Field, FieldNote, Label, MoneyField, PanelHeader, Row, Screen, Select, Spread, Toggle } from "../ui/components";
 import { useSubmitOnEnter } from "../ui/keyboard";
@@ -29,10 +30,12 @@ import { navigateBack } from "../ui/navigation";
 import { useOperationGuard } from "../ui/operation-guard";
 import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { MonthDayField } from "../ui/month-day-field";
-import { Logo } from "../ui/logo";
 import { font, radius, spacing, type, useTheme } from "../ui/theme";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { PersonAssignment } from "../ui/person-assignment";
+
+/** The Select's own icon column, so a source mark fits it exactly. */
+const SOURCE_MARK = 22;
 
 // Same quick-day set as the recurring-income form (no "20"; six chips fit one
 // row on a phone).
@@ -524,7 +527,7 @@ function SubscriptionForm({ existing }: { existing?: ReturnType<typeof useSubscr
                 <Select
                   label={tr.tx.source}
                   placeholder={tr.tx.sourcePlaceholder}
-                  options={sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIconComponent(s.type) }))}
+                  options={sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }))}
                   value={sourceId}
                   onChange={setSourceId}
                   onCreate={{ label: tr.tx.addSource, run: () => router.push("/payment-sources") }}

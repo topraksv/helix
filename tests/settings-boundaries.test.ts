@@ -4,6 +4,7 @@ const dependencies = vi.hoisted(() => ({
   newId: vi.fn(() => "record-id"),
   pendingOutboxCount: vi.fn(async () => 7),
   requeueSyncDeadLetter: vi.fn(async () => "requeued" as const),
+  discardSyncDeadLetter: vi.fn(async () => true),
   writeSetting: vi.fn(async () => {}),
   deterministicId: vi.fn(async (key: string) => `color:${key}`),
   nowIso: vi.fn(() => "2026-08-20T00:00:00.000Z"),
@@ -22,6 +23,7 @@ vi.mock("../src/db/ids", () => ({
 vi.mock("../src/db/mutations", () => ({
   pendingOutboxCount: dependencies.pendingOutboxCount,
   requeueSyncDeadLetter: dependencies.requeueSyncDeadLetter,
+  discardSyncDeadLetter: dependencies.discardSyncDeadLetter,
   writeSetting: dependencies.writeSetting,
   assertLiveRow: dependencies.assertLiveRow,
   nowIso: dependencies.nowIso,
@@ -34,6 +36,7 @@ vi.mock("../src/sync/engine", () => ({ scheduleSync: dependencies.scheduleSync }
 
 import {
   createRecordId,
+  dismissSyncDeadLetter,
   pendingSyncChangeCount,
   retrySyncDeadLetter,
   setAccountFrozen,
@@ -105,6 +108,16 @@ describe("setting repository delegation", () => {
     await expect(pendingSyncChangeCount()).resolves.toBe(7);
     await expect(retrySyncDeadLetter("user-1", 42)).resolves.toBe("requeued");
     expect(dependencies.requeueSyncDeadLetter).toHaveBeenCalledWith("user-1", 42);
+  });
+
+  it("passes a dismissal through, and passes back whether there was one", async () => {
+    // The answer matters: a caller that reported success for a no-op would
+    // tell someone a row had been cleared when nothing was.
+    await expect(dismissSyncDeadLetter(42)).resolves.toBe(true);
+    expect(dependencies.discardSyncDeadLetter).toHaveBeenCalledWith(42);
+
+    dependencies.discardSyncDeadLetter.mockResolvedValueOnce(false);
+    await expect(dismissSyncDeadLetter(7)).resolves.toBe(false);
   });
 
   it("writes each supported setting under its stable sync key", async () => {

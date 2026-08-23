@@ -258,11 +258,19 @@ export function shouldUseTripleTileGrid(contentWidth: number): boolean {
 /**
  * Whether a multi-month trend line is offered at all.
  *
- * A trend needs one readable x-tick per month. Below this the ticks collide
- * and the chart says less than the bars it replaced, so the option is not
- * offered rather than offered and unreadable.
+ * It used to be 720 — desktop only — because a trend needs one readable x-tick
+ * per month and twelve of them collide on a phone. That was true of the caller,
+ * not of the chart: `Lines` thins its own x labels to at most six and has done
+ * since it was written, so a twelve-month trend on a 390pt phone prints every
+ * other month about 50px apart at a 10pt face. What the chart genuinely cannot
+ * survive is the y-axis gutter eating the plot, which is what this floor now
+ * guards: below about 280 the 54px gutter and the 12px right margin leave less
+ * than 220px for the line itself.
+ *
+ * The owner asked for the trend on the phone. This is the width at which it is
+ * still worth reading.
  */
-const TREND_CHART_WIDTH = 720;
+const TREND_CHART_WIDTH = 280;
 
 export function shouldOfferTrendChart(contentWidth: number): boolean {
   return contentWidth >= TREND_CHART_WIDTH;

@@ -16,7 +16,8 @@ import { formatMinorCompact } from "../../../domain/money";
 import { signedBalanceEffectOf } from "../../../domain/transactions";
 import { filterTransactions, sortTransactions, type TransactionSortMode } from "../../../domain/transaction-search";
 import { budgetProgress } from "../../../domain/budgets";
-import { categoryIconComponent, paymentSourceIconComponent } from "../../../ui/category-icon";
+import { categoryIconComponent,  } from "../../../ui/category-icon";
+import { PaymentSourceLogo } from "../../../ui/logo";
 import { transactionDateText } from "../../../ui/transaction-date";
 import { monthLabel, monthName, shortMonthLabel, tr } from "../../../i18n/tr";
 import {
@@ -37,6 +38,9 @@ import { useContentWidth } from "../../../ui/viewport";
 import { interactionSurface } from "../../../ui/interaction";
 import { radius, segmentedMaxWidth, spacing, type, useTheme } from "../../../ui/theme";
 import { renderKeyboardSafeListScroll } from "../../../ui/keyboard-safe";
+
+/** The Select's own icon column, so a source mark fits it exactly. */
+const SOURCE_MARK = 22;
 
 type Period = "1m" | "3m" | "6m" | "12m" | "year" | "custom";
 
@@ -361,7 +365,7 @@ export default function AnalysisScreen() {
           <View style={{ flex: 1 }}>
             <Select
               label={tr.analysis.searchSource}
-              options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: paymentSourceIconComponent(source.type) }))]}
+              options={[{ value: "", label: tr.common.all }, ...sources.map((source) => ({ value: source.id, label: source.name, icon: <PaymentSourceLogo name={source.name} type={source.type} logoRef={source.logoRef} size={SOURCE_MARK} /> }))]}
               value={sourceFilter ?? ""}
               onChange={(value) => setSourceFilter(value || null)}
             />

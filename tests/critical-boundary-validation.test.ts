@@ -69,6 +69,25 @@ describe("identity and network boundary validation", () => {
     expect(remoteFaviconUrl("localhost")).toBeNull();
   });
 
+  /**
+   * The scheme test is ANCHORED, and an anchor is invisible until something
+   * matches in the wrong place.
+   *
+   * The IP test is anchored too, but nothing can reach past it: WHATWG parses
+   * any host whose last label is numeric as IPv4, so `a1.2.3.4` is refused by
+   * `new URL` before the pattern is ever consulted. That anchor cannot be
+   * demonstrated from the outside, and a test that pretended otherwise would
+   * be asserting the parser rather than this guard.
+   */
+  it("looks for a scheme only where a scheme can be", () => {
+    // "://" inside a path does not make the string a URL of its own. Read
+    // unanchored, the value is handed to `new URL` unprefixed, which throws,
+    // and a perfectly good domain resolves to nothing.
+    expect(normalizeLogoDomain("example.com/a://b")).toBe("example.com");
+    expect(normalizeLogoDomain("1.2.3.4")).toBeNull();
+    expect(normalizeLogoDomain("https://1.2.3.4")).toBeNull();
+  });
+
   it("accepts a bare project origin and rejects every extra URL component", () => {
     expect(trustedSupabaseOrigin(undefined)).toBeNull();
     expect(trustedSupabaseOrigin("not a url")).toBeNull();

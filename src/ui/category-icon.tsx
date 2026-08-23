@@ -49,7 +49,6 @@ import House from "lucide-react-native/icons/house";
 import Landmark from "lucide-react-native/icons/landmark";
 import Package from "lucide-react-native/icons/package";
 import PawPrint from "lucide-react-native/icons/paw-print";
-import PiggyBank from "lucide-react-native/icons/piggy-bank";
 import Pin from "lucide-react-native/icons/pin";
 import Plane from "lucide-react-native/icons/plane";
 import Plus from "lucide-react-native/icons/plus";
@@ -70,6 +69,7 @@ import Tag from "lucide-react-native/icons/tag";
 import Target from "lucide-react-native/icons/target";
 import TrendingUp from "lucide-react-native/icons/trending-up";
 import UtensilsCrossed from "lucide-react-native/icons/utensils-crossed";
+import Wallet from "lucide-react-native/icons/wallet";
 import WalletCards from "lucide-react-native/icons/wallet-cards";
 import Wifi from "lucide-react-native/icons/wifi";
 import Wrench from "lucide-react-native/icons/wrench";
@@ -92,7 +92,11 @@ const CATEGORY_GLYPHS: Record<string, LucideIcon> = {
   "🚌": Bus,
   "🧾": Receipt,
   "📈": TrendingUp,
-  "💰": PiggyBank,
+  // Salary and the generic income fallback. It was a piggy bank, which is a
+  // SAVINGS mark: the owner opened "Maaş" and found a pig looking back. A
+  // wallet is what a salary lands in, and at 18pt it is still distinct from
+  // the banknote (💵) and the coins (🪙) that share the income pool with it.
+  "💰": Wallet,
   "🩺": Stethoscope,
   "🎓": GraduationCap,
   "👕": Shirt,

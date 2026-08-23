@@ -142,6 +142,7 @@ export {
 
 export {
   createRecordId,
+  dismissSyncDeadLetter,
   pendingSyncChangeCount,
   retrySyncDeadLetter,
   setAccountFrozen,

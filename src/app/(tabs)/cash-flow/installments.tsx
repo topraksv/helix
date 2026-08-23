@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { paymentSourceIconComponent } from "../../../ui/category-icon";
+import { PaymentSourceLogo } from "../../../ui/logo";
 import { useContentWidth } from "../../../ui/viewport";
 import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -26,6 +26,9 @@ import { combineLiveStates } from "../../../data/live-state";
 import { Amount, Badge, Body, Button, Card, CardList, DataStateNotice, EmptyState, MonthStepper, Screen, SectionHeader, SegmentBar, Select } from "../../../ui/components";
 import { font, radius, spacing, type, useTheme } from "../../../ui/theme";
 import { WorkspaceSplit } from "../../../ui/workspace-layout";
+
+/** The Select's own icon column, so a source mark fits it exactly. */
+const SOURCE_MARK = 22;
 
 export default function InstallmentsScreen() {
   const plansState = usePlansState();
@@ -93,7 +96,9 @@ export default function InstallmentsScreen() {
     ...[...cardIdsThisMonth].map((id) => ({
       value: id,
       label: sourceName.get(id) ?? tr.installments.noSource,
-      icon: sourceById.get(id) ? paymentSourceIconComponent(sourceById.get(id)!.type) : undefined,
+      icon: sourceById.get(id)
+        ? <PaymentSourceLogo name={sourceById.get(id)!.name} type={sourceById.get(id)!.type} logoRef={sourceById.get(id)!.logoRef} size={SOURCE_MARK} />
+        : undefined,
     })),
   ];
 

@@ -146,12 +146,12 @@
     },
     "src/data/repo/settings.ts": {
       "score": 100,
-      "killed": 34,
+      "killed": 35,
       "timeout": 0,
       "survived": 0,
       "noCoverage": 0,
-      "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
-      "measuredDate": "2026-08-20"
+      "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
+      "measuredDate": "2026-08-23"
     },
     "src/data/repo/statement-import.ts": {
       "score": 75.56,
@@ -170,6 +170,15 @@
       "noCoverage": 0,
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
+    },
+    "src/db/mutations.ts": {
+      "score": 80.16,
+      "killed": 201,
+      "timeout": 1,
+      "survived": 38,
+      "noCoverage": 12,
+      "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
+      "measuredDate": "2026-08-23"
     },
     "src/domain/analytics.ts": {
       "score": 99.21,
@@ -234,6 +243,15 @@
       "measuredOn": "a4394d5ebe1055ee856167dd23e77c801b72b071",
       "measuredDate": "2026-08-21"
     },
+    "src/domain/feedback.ts": {
+      "score": 96.71,
+      "killed": 145,
+      "timeout": 2,
+      "survived": 5,
+      "noCoverage": 0,
+      "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
+      "measuredDate": "2026-08-23"
+    },
     "src/domain/fx-provider.ts": {
       "score": 94.44,
       "killed": 255,
@@ -251,6 +269,15 @@
       "noCoverage": 0,
       "measuredOn": "0c2881fade9362f7d22692880634afe8e92c4b8c",
       "measuredDate": "2026-08-20"
+    },
+    "src/domain/logo-domain.ts": {
+      "score": 96.5,
+      "killed": 136,
+      "timeout": 2,
+      "survived": 5,
+      "noCoverage": 0,
+      "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
+      "measuredDate": "2026-08-23"
     },
     "src/domain/matrix-colors.ts": {
       "score": 88.31,
@@ -332,6 +359,15 @@
       "noCoverage": 68,
       "measuredOn": "33ea3a4ac9db4b3571dc4e9e025984d122e4ddf4",
       "measuredDate": "2026-08-19"
+    },
+    "src/services/feedback.ts": {
+      "score": 97.26,
+      "killed": 71,
+      "timeout": 0,
+      "survived": 2,
+      "noCoverage": 0,
+      "measuredOn": "e74e17d4740a531ce1a342a2eeb52f9b7841e0fc",
+      "measuredDate": "2026-08-23"
     },
     "src/services/pdf-text.ts": {
       "score": 27.85,

@@ -198,6 +198,30 @@ describe("design-system typography contracts", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * The static faces carry one weight each, so a weight has to be chosen by
+   * NAMING a face. `fontWeight` beside them asks the platform to synthesise a
+   * second one, which iOS will do — badly.
+   *
+   * The rule was written in `theme.ts` and then broken in four places, three
+   * of them inside SVG chart labels and the fourth the retry button on the
+   * database-failure screen: the one control a person reaches when something
+   * has already gone wrong was the app's only synthesised bold, and it named
+   * no face at all.
+   */
+  it("never asks the platform to synthesize a weight", () => {
+    const offenders: string[] = [];
+    for (const path of sourceFiles("src", { atLeast: 150 })) {
+      const source = readFileSync(join(root, path), "utf8");
+      for (const [index, line] of source.split("\n").entries()) {
+        // The property, not the word: both files that still mention it are
+        // explaining why it is banned.
+        if (/fontWeight\s*[:=]/.test(line)) offenders.push(`${path}:${index + 1}`);
+      }
+    }
+    expect(offenders, "a synthesized weight beside a single-weight face").toEqual([]);
+  });
+
   it("keeps raw Inter face names inside the theme and font loader only", () => {
     const offenders = sourceFiles("src", { atLeast: 150 }).filter((path) => {
       if (path === "src/ui/theme.ts" || path === "src/app/_layout.tsx") return false;

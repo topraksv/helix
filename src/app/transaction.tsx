@@ -34,7 +34,8 @@ import { isValidCardCycle, statementForPurchase } from "../domain/card-statement
 import { formatMinorCompact, formatMinorInput } from "../domain/money";
 import { deriveStartMonth, isValidInstallmentCount } from "../domain/installments";
 import { lookupRate, useFxRates } from "../services/fx-fetch";
-import { categoryIconComponent, paymentSourceIconComponent } from "../ui/category-icon";
+import { categoryIconComponent,  } from "../ui/category-icon";
+import { PaymentSourceLogo } from "../ui/logo";
 import { CurrencyPicker } from "../ui/currency-picker";
 import { scheduleSync } from "../sync/engine";
 import { dateLabel, monthLabel, tr } from "../i18n/tr";
@@ -56,6 +57,9 @@ import { useUndo } from "../ui/undo";
 import { useDirtyExitGuard, useDraftDirty } from "../ui/dirty-exit";
 import { WorkspaceSplit } from "../ui/workspace-layout";
 import { PersonAssignment } from "../ui/person-assignment";
+
+/** The Select's own icon column, so a source mark fits it exactly. */
+const SOURCE_MARK = 22;
 
 type EntryType = "expense" | "income" | "transfer";
 
@@ -414,7 +418,7 @@ function TransactionForm({ existing, investmentRefund = false }: { existing?: Ex
     .filter((c) => c.kind === kindForCategories && (entryType !== "transfer" || c.isTransfer))
     .map((c) => ({ value: c.id, label: c.name, icon: categoryIconComponent(c) }));
 
-  const sourceOptions = sources.map((s) => ({ value: s.id, label: s.name, icon: paymentSourceIconComponent(s.type) }));
+  const sourceOptions = sources.map((s) => ({ value: s.id, label: s.name, icon: <PaymentSourceLogo name={s.name} type={s.type} logoRef={s.logoRef} size={SOURCE_MARK} /> }));
   const selectedSource = sources.find((source) => source.id === sourceId);
   const isCreditCardExpense = entryType === "expense" && selectedSource?.type === "credit_card";
   const cardCycle = selectedSource

@@ -140,6 +140,42 @@ cost an incident to learn are repeated here.
   DOM for a screen reader. Native has neither property — its transform maps
   "i" to "I" rather than "İ" — so `Eyebrow` cases the string itself there and
   hands the original to `accessibilityLabel`.
+- Brand and bank marks resolve from ONE merged catalogue, longest key first,
+  and only keys of five characters or more may match as a word prefix.
+  Consulting the brand table and then the bank table is a rule about tables,
+  not about names: "Getir Finans" is a bank whose name mentions a grocery app,
+  and the grocery app answered first. The prefix pass exists because Turkish
+  card sub-brands are formed by concatenation — Worldeko, Worldgold,
+  bonusplatinium — which a whole-word match refuses by construction. Five is
+  the length at which fragments stop and brands start: `ing` begins
+  "İngiltere", `teb` begins "tebrik", and `max` begins "maximum", which is a
+  different company from Max.
+- A domain is listed only when the favicon service actually has a mark for it.
+  An unknown domain answers HTTP 404 with a grey globe IN THE BODY, which
+  `expo-image` treats as an error and a browser's `<img>` renders — so a dead
+  domain drew a globe on web and the type glyph on iOS. Four institutions with
+  no indexed mark are recorded in `UNMARKED_INSTITUTIONS` rather than left to
+  look like an oversight.
+- A chart's selection lives in React state, not in a shared value. What changes
+  when a slice or a column is chosen is a READOUT — text, a width, a band — and
+  it changes when the pointer crosses into a different mark, a handful of times
+  per gesture rather than once per frame. `onHoverIn`/`onHoverOut` drive it
+  because the mark that has to respond is not the control being hovered;
+  `interactionSurface` still owns the hovered control's own fill, because a
+  style callback may not set state.
+- A selected mark is emphasised, never the others de-emphasised with opacity.
+  Measured across all six palettes, the categorical ramp's weakest colour
+  clears its background by 3.13:1 — it only just meets the 3:1 floor this
+  project holds chart marks to, so ANY alpha breaks it (0.8 → 2.51, 0.55 →
+  1.86). The ring therefore thickens the chosen arc and thins the rest, and the
+  bar chart draws a `surface`-on-`surfaceAlt` band behind the chosen column.
+  Both are additive, so every mark keeps the contrast it was designed with even
+  mid-gesture.
+- The retry on a quarantined row runs the push's own validator before it queues
+  anything. A quarantine means the row as it stands was refused; requeueing it
+  unchanged could only be refused again, which is why the button produced an
+  error every time it was pressed. Forgetting a quarantine deletes the clue and
+  never the row.
 
 ## Incident-derived decisions
 
